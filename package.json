@@ -1,11 +1,11 @@
 {
-  "name": "mc-next",
-  "version": "0.1.0",
+  "name": "mission-control",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npx tsx server.ts",
     "build": "next build",
-    "start": "next start",
+    "start": "npx tsx server.ts",
     "lint": "eslint"
   },
   "dependencies": {
@@ -33,6 +33,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
