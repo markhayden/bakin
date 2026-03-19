@@ -7,3 +7,79 @@
 {"ts":"2026-03-19T01:27:23.966Z","event":"task.created","agent":"dashboard","data":{"title":"Test dashboard task","assignee":"patch","column":"todo"}}
 {"ts":"2026-03-19T01:27:34.215Z","event":"task.moved","agent":"dashboard","data":{"title":"Test dashboard task","to":"in_progress"}}
 {"ts":"2026-03-19T01:27:34.225Z","event":"task.deleted","agent":"dashboard","data":{"title":"Test dashboard task"}}
+{"ts":"2026-03-19T01:50:53.484Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:53:12.671Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:54:08.512Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:54:14.140Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:54:16.765Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:54:24.445Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:54:26.823Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:54:30.770Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:54:33.000Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:54:35.272Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:54:37.765Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:54:40.349Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:55:49.151Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T01:56:17.250Z","event":"agent.start","agent":"dashboard","data":{"agent":"patch"}}
+{"ts":"2026-03-19T01:56:17.356Z","event":"agent.start","agent":"dashboard","data":{"agent":"patch"}}
+{"ts":"2026-03-19T01:57:03.095Z","event":"task.created","agent":"dashboard","data":{"title":"just post hello world in the general discord channel","column":"todo","assignee":"roscoe"}}
+{"ts":"2026-03-19T02:00:49.155Z","event":"task.dispatched","agent":"pixel","data":{"title":"Create visual style guide"}}
+{"ts":"2026-03-19T02:00:49.157Z","event":"task.dispatched","agent":"rolo","data":{"title":"Set up video LLM pipeline"}}
+{"ts":"2026-03-19T02:00:49.158Z","event":"task.dispatched","agent":"basil","data":{"title":"Plan first week content calendar"}}
+{"ts":"2026-03-19T02:07:41.881Z","event":"task.deleted","agent":"dashboard","data":{"title":"just post hello world in the general discord channel"}}
+{"ts":"2026-03-19T02:09:08.573Z","event":"task.deleted","agent":"dashboard","data":{"title":"Video LLM pipeline setup"}}
+{"ts":"2026-03-19T02:09:14.521Z","event":"task.deleted","agent":"dashboard","data":{"title":"Plan first week content calendar"}}
+{"ts":"2026-03-19T02:09:19.521Z","event":"task.deleted","agent":"dashboard","data":{"title":"Set up video LLM pipeline"}}
+{"ts":"2026-03-19T02:09:25.205Z","event":"task.deleted","agent":"dashboard","data":{"title":"Build Mission Control server + dashboard"}}
+{"ts":"2026-03-19T02:09:28.326Z","event":"task.deleted","agent":"dashboard","data":{"title":"Create visual style guide"}}
+{"ts":"2026-03-19T02:15:56.477Z","event":"task.deleted","agent":"dashboard","data":{"title":"Set up Discord MC channels"}}
+{"ts":"2026-03-19T02:17:31.249Z","event":"task.created","agent":"dashboard","data":{"title":"make a \"hello world 2\" post in discord","column":"todo"}}
+{"ts":"2026-03-19T02:18:54.750Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T02:19:06.607Z","event":"task.triaged","agent":"main","data":{"title":"make a \"hello world 2\" post in discord"}}
+{"ts":"2026-03-19T02:21:13.034Z","event":"task.created","agent":"dashboard","data":{"title":"create mc-daily-brief channel","column":"todo"}}
+{"ts":"2026-03-19T02:22:16.668Z","event":"task.created","agent":"dashboard","data":{"title":"assign a task to patch and emit message","column":"todo"}}
+{"ts":"2026-03-19T02:23:51.567Z","event":"task.updated","agent":"dashboard","data":{"originalTitle":"assign a task to patch and emit message","title":"assign a task to @patch and emit message","agent":"","column":"todo"}}
+{"ts":"2026-03-19T02:23:54.757Z","event":"task.triaged","agent":"main","data":{"title":"create mc-daily-brief channel"}}
+{"ts":"2026-03-19T02:23:54.760Z","event":"task.dispatched","agent":"patch","data":{"title":"assign a task to and emit message"}}
+{"ts":"2026-03-19T02:30:59.545Z","event":"task.moved","agent":"dashboard","data":{"title":"create mc-daily-brief channel","to":"todo"}}
+{"ts":"2026-03-19T02:33:26.384Z","event":"task.deleted","agent":"dashboard","data":{"title":"create mc-daily-brief channel"}}
+{"ts":"2026-03-19T02:37:05.228Z","event":"task.updated","agent":"dashboard","data":{"originalTitle":"create mc-daily-brief channel","title":"create mc-daily-brief channel","agent":"roscoe","column":"blocked"}}
+{"ts":"2026-03-19T02:37:07.886Z","event":"task.moved","agent":"dashboard","data":{"title":"create mc-daily-brief channel","from":"blocked","to":"todo"}}
+{"ts":"2026-03-19T02:37:34.960Z","event":"task.dispatched","agent":"main","data":{"title":"create mc-daily-brief channel"}}
+{"ts":"2026-03-19T02:40:46.374Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T02:40:59.133Z","event":"task.deleted","agent":"dashboard","data":{"title":"create mc-daily-brief channel"}}
+{"ts":"2026-03-19T02:41:31.872Z","event":"task.updated","agent":"dashboard","data":{"originalTitle":"assign a task to and emit message","title":"assign a task to and emit message","agent":"patch","column":"inProgress"}}
+{"ts":"2026-03-19T02:47:46.844Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T02:48:09.069Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T02:53:09.073Z","event":"task.dispatched","agent":"patch","data":{"title":"Create an image of a baby calf"}}
+{"ts":"2026-03-19T02:56:46.244Z","event":"agent.start","agent":"dashboard","data":{"agent":"patch"}}
+{"ts":"2026-03-19T02:57:11.093Z","event":"agent.start","agent":"dashboard","data":{"agent":"patch"}}
+{"ts":"2026-03-19T02:57:20.564Z","event":"agent.start","agent":"dashboard","data":{"agent":"patch"}}
+{"ts":"2026-03-19T02:57:31.117Z","event":"agent.start","agent":"dashboard","data":{"agent":"patch"}}
+{"ts":"2026-03-19T03:03:09.076Z","event":"task.dispatched","agent":"pixel","data":{"title":"Generate a cartoon image of a Hawaiian sunset"}}
+{"ts":"2026-03-19T03:08:09.078Z","event":"task.dispatched","agent":"pixel","data":{"title":"Generate cartoon Hawaiian sunset with capybara"}}
+{"ts":"2026-03-19T03:09:44.924Z","event":"task.deleted","agent":"dashboard","data":{"title":"Generate cartoon Hawaiian sunset with capybara"}}
+{"ts":"2026-03-19T03:09:52.459Z","event":"task.moved","agent":"dashboard","data":{"title":"assign a task to and emit message","from":"inProgress","to":"done"}}
+{"ts":"2026-03-19T03:42:42.488Z","event":"task.dispatched","agent":"basil","data":{"title":"**[1] Write recipe + post copy**"}}
+{"ts":"2026-03-19T03:42:42.489Z","event":"task.dispatched","agent":"pixel","data":{"title":"**[2] Generate recipe image**"}}
+{"ts":"2026-03-19T03:42:42.491Z","event":"task.dispatched","agent":"main","data":{"title":"**[3] Assemble + post to Discord**"}}
+{"ts":"2026-03-19T03:48:09.099Z","event":"task.dispatched","agent":"pixel","data":{"title":"Generate an image of a plate of tacos"}}
+{"ts":"2026-03-19T15:16:52.217Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T15:19:58.730Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T15:23:03.031Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T15:24:29.857Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T15:29:29.865Z","event":"task.dispatched","agent":"main","data":{"title":"Post \"hello world\" to #general in Discord"}}
+{"ts":"2026-03-19T15:34:29.862Z","event":"task.dispatched","agent":"patch","data":{"title":"Fix task log cross-contamination bug"}}
+{"ts":"2026-03-19T15:39:17.580Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T15:44:12.277Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T15:47:47.637Z","event":"task.dispatched","agent":"pixel","data":{"title":"Generate persona headshots for all agents"}}
+{"ts":"2026-03-19T15:53:28.196Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T15:55:06.288Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T15:56:34.654Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T15:59:11.530Z","event":"task.dispatched","agent":"basil","data":{"title":"Theme today's recipe and content around chicken and waffles"}}
+{"ts":"2026-03-19T15:59:48.301Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T16:12:38.093Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T16:14:57.515Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T16:15:22.818Z","event":"task.dispatched","agent":"patch","data":{"title":"Add agent detail drawer to Team page"}}
+{"ts":"2026-03-19T16:24:50.691Z","event":"system.init","agent":"roscoe","data":{}}
+{"ts":"2026-03-19T16:29:50.700Z","event":"task.dispatched","agent":"basil","data":{"title":"Create a recipe and full asset package for a healthy chicken and waffles dish"}}

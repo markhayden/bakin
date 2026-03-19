@@ -1,0 +1,13 @@
+{
+  "filename": "2026-03-18-21-48-00-plate-of-tacos.png",
+  "title": "Plate of Tacos — Food Photography",
+  "generated": "2026-03-18T21:48:00-06:00",
+  "author": "pixel",
+  "task": "Generate an image of a plate of tacos",
+  "model": "Gemini 3 Pro Image (Nano Banana Pro)",
+  "resolution": "2K",
+  "aspect_ratio": "4:3",
+  "prompt": "Professional food photography of a plate of beautiful street tacos. Three corn tortilla tacos on a rustic clay plate with carne asada, onion, cilantro, tomatoes, tomatillo salsa, red chile salsa, cotija cheese, lime wedges. Dark moody wooden table with Mexican textile, molcajete, agua fresca. Warm golden side-light, dramatic shadows, ultra-realistic, shallow depth of field.",
+  "style": "Ultra-realistic food photography, moody, rich",
+  "tags": ["food", "tacos", "mexican", "street-food", "food-photography", "carne-asada"]
+}

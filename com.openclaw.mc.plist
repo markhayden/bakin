@@ -8,8 +8,16 @@
   <key>ProgramArguments</key>
   <array>
     <string>/opt/homebrew/bin/node</string>
-    <string>/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.js</string>
+    <string>/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx</string>
+    <string>/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>NODE_ENV</key>
+    <string>production</string>
+  </dict>
   <key>WorkingDirectory</key>
   <string>/Users/roscoe/go/src/github.com/madeinwyo/mission-control</string>
   <key>RunAtLoad</key>

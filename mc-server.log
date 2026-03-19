@@ -1,0 +1,33 @@
+> Mission Control ready on http://0.0.0.0:3737
+> Tailscale: http://100.91.112.69:3737
+ GET / 307 in 372ms (next.js: 274ms, application-code: 98ms)
+ GET /tasks 200 in 50ms (next.js: 16ms, application-code: 34ms)
+ GET / 307 in 48ms (next.js: 4ms, application-code: 44ms)
+ GET /tasks 200 in 54ms (next.js: 3ms, application-code: 50ms)
+ GET /api/state 200 in 38ms (next.js: 33ms, application-code: 5ms)
+ GET /api/agents/health 200 in 51ms (next.js: 49ms, application-code: 1663µs)
+ GET /tasks 200 in 55ms (next.js: 4ms, application-code: 51ms)
+ GET /tasks 200 in 50ms (next.js: 4ms, application-code: 46ms)
+ GET /tasks 200 in 55ms (next.js: 5ms, application-code: 50ms)
+ GET / 307 in 53ms (next.js: 5ms, application-code: 49ms)
+ GET /tasks 200 in 26ms (next.js: 1091µs, application-code: 25ms)
+> Mission Control ready on http://0.0.0.0:3737
+> Tailscale: http://100.91.112.69:3737
+> Mission Control ready on http://0.0.0.0:3737
+> Tailscale: http://100.91.112.69:3737
+> Mission Control ready on http://0.0.0.0:3737
+> Tailscale: http://100.91.112.69:3737
+> Mission Control ready on http://0.0.0.0:3737
+> Tailscale: http://100.91.112.69:3737
+> Mission Control ready on http://0.0.0.0:3737
+> Tailscale: http://100.91.112.69:3737
+> Mission Control ready on http://0.0.0.0:3737
+> Tailscale: http://100.91.112.69:3737
+> Mission Control ready on http://0.0.0.0:3737
+> Tailscale: http://100.91.112.69:3737
+> Mission Control ready on http://0.0.0.0:3737
+> Tailscale: http://100.91.112.69:3737
+> Mission Control ready on http://0.0.0.0:3737
+> Tailscale: http://100.91.112.69:3737
+> Mission Control ready on http://0.0.0.0:3737
+> Tailscale: http://100.91.112.69:3737

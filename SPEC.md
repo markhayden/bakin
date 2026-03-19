@@ -1274,6 +1274,94 @@ commands, etc.
 
 ---
 
+---
+
+## Phase 2-3: Antfly — Persistent Storage & Semantic Memory
+
+_Added: 2026-03-19_
+
+### The Problem With Flat Files
+
+Phase 1 uses markdown files as the source of truth. This works great early on
+but has hard limits:
+
+- `memory_search` indexes local files — quality degrades as files grow
+- Every session loads static context regardless of relevance (fixed token cost)
+- No way to query "what decisions did we make about X?" efficiently
+- Agent memory is bounded by what fits in the context window
+
+As the system matures — more agents, more tasks, months of history — this
+becomes a real bottleneck both in quality and cost.
+
+### The Antfly Solution
+
+**Antfly (AntflyDB)** is a self-hosted, AI-native document database that gives
+us persistent vector storage, hybrid search, and RAG built in. No cloud, no
+recurring cost, runs locally on the Mac mini alongside OpenClaw.
+
+Key capabilities relevant to Mission Control:
+- **Hybrid search** — BM25 (keyword) + vector similarity via Reciprocal Rank
+  Fusion. "Token costs" and "API spend" both surface the same memory.
+- **Automatic embedding** — documents are chunked and embedded in the
+  background. Supports Gemini embeddings (already in our stack).
+- **RAG built in** — streaming retrieval with SSE, no pipeline assembly needed.
+- **Multimodal** — can index Pixel's generated image assets alongside text.
+- **Local ML inference** — embeddings run via ONNX locally, data never leaves
+  the Mac mini.
+- **Go/TypeScript/Python SDKs** — easy to integrate with our Node.js MC server.
+
+### Token Optimization Architecture
+
+**Current (Phase 1):**
+```
+Session start → load files → fixed token cost regardless of relevance
+```
+
+**With Antfly (Phase 2+):**
+```
+Session start → query Antfly → only relevant chunks enter context window
+```
+
+The difference at scale is massive. A system with 6 months of decisions,
+project notes, and conversation summaries would cost the same per query as
+day one — because only the relevant ~10 chunks load, not the entire history.
+
+### What Gets Stored in Antfly
+
+| Content Type | Source | How Indexed |
+|---|---|---|
+| Task history | TASKBOARD.md entries | On completion, write to Antfly with tags |
+| Decisions | MEMORY-LOG.md entries | On write, sync to Antfly |
+| Project context | projects/*.md | On create/update, sync to Antfly |
+| Conversation summaries | End of session | Agent writes summary to Antfly |
+| Docs / reference | docs/*.md | On create, sync to Antfly |
+| Image assets | content/assets/ | Indexed with metadata (prompt, date, tags) |
+
+### Migration Plan
+
+**Phase 2 — Dual-write (non-breaking):**
+1. Stand up Antfly locally on Mac mini (Docker or binary)
+2. Build a lightweight sync layer: every markdown write also writes to Antfly
+3. Add `antfly_search` queries alongside existing `memory_search`
+4. Compare quality — validate Antfly is returning better results
+5. Gradually shift agents to prefer Antfly queries over file reads
+
+**Phase 3 — Antfly as primary store:**
+1. Agents query Antfly first, fall back to files only if needed
+2. AGENTS.md stays lean (static rules only)
+3. All dynamic context comes from Antfly queries
+4. Eventually phase out bulk file reads entirely
+
+### Repo
+When ready to build: `~/go/src/github.com/madeinwyo/antfly-integration/`
+
+### Reference
+- Website: <https://antfly.io>
+- Docs: <https://antfly.io/docs>
+- Evaluated: 2026-03-19
+
+---
+
 ## Open Decisions
 
 | Decision | Options | Status |

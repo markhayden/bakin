@@ -1,0 +1,33 @@
+env: node: No such file or directory
+env: node: No such file or directory
+⚠ Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "100.91.112.69".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['100.91.112.69'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+Failed to dispatch to basil: Command failed: /opt/homebrew/bin/openclaw agent --agent basil --message Work on this task: "Create a recipe and full asset package for a healthy chicken and waffles dish".
+
+Details:
+- Write the recipe copy (ingredients, steps, nutrition highlights, caption)
+- Brief and spawn @pixel to generate a photorealistic hero image of the dish
+- Assemble the full post package
+- When done, post results + image to Discord #general (channel id: 1483917792745885768)
+
+Log your progress as you work: curl -s -X POST http://localhost:3737/api/tasks/log -H 'Content-Type: application/json' -d '{"title":"Create a recipe and full asset package for a healthy chicken and waffles dish","author":"basil","message":"your update here"}'
+
+When you are finished, log completion and report back to roscoe using: openclaw agent --agent main --message "TASK COMPLETE: Create a recipe and full asset package for a healthy chicken and waffles dish — <summary of what you did>" --deliver
+
+If you cannot complete this task or hit an error, log it: curl -s -X POST http://localhost:3737/api/tasks/log -H 'Content-Type: application/json' -d '{"title":"Create a recipe and full asset package for a healthy chicken and waffles dish","author":"basil","message":"BLOCKED: <reason>"}' — then report via: openclaw agent --agent main --message "TASK BLOCKED: Create a recipe and full asset package for a healthy chicken and waffles dish — <reason>" --deliver --deliver
+Gateway agent failed; falling back to embedded: Error: gateway timeout after 630000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: /Users/roscoe/.openclaw/openclaw.json
+Bind: loopback
+Error: Discord recipient is required. Use "channel:<id>" for channels or "user:<id>" for DMs.
+
