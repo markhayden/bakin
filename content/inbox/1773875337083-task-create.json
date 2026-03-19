@@ -1,0 +1,6 @@
+{
+  "action": "task.create",
+  "title": "generate an image of a plate of tacos",
+  "column": "todo",
+  "assignee": "pixel"
+}

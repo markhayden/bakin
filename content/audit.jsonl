@@ -1,0 +1,9 @@
+{"ts":"2026-03-18T20:00:00-06:00","event":"system.init","agent":"roscoe","data":{"message":"Mission Control initialized. Content files scaffolded."}}
+{"ts":"2026-03-18T23:06:36.685Z","event":"task.created","agent":"dashboard","data":{"title":"Test task","assignee":"patch","column":"todo"}}
+{"ts":"2026-03-18T23:08:57.084Z","event":"task.created","agent":"dashboard","data":{"title":"generate an image of a plate of tacos","assignee":"pixel","column":"todo"}}
+{"ts":"2026-03-18T23:10:11.909Z","event":"agent.start","agent":"dashboard","data":{"target":"roscoe"}}
+{"ts":"2026-03-18T23:10:18.884Z","event":"agent.start","agent":"dashboard","data":{"target":"roscoe"}}
+{"ts":"2026-03-18T23:10:20.775Z","event":"agent.start","agent":"dashboard","data":{"target":"roscoe"}}
+{"ts":"2026-03-19T01:27:23.966Z","event":"task.created","agent":"dashboard","data":{"title":"Test dashboard task","assignee":"patch","column":"todo"}}
+{"ts":"2026-03-19T01:27:34.215Z","event":"task.moved","agent":"dashboard","data":{"title":"Test dashboard task","to":"in_progress"}}
+{"ts":"2026-03-19T01:27:34.225Z","event":"task.deleted","agent":"dashboard","data":{"title":"Test dashboard task"}}
