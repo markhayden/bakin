@@ -6,7 +6,7 @@ export const ActivityContext = createContext({ open: false, toggle: () => {} })
 export const useActivityContext = () => useContext(ActivityContext)
 
 export function ActivityProvider({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   const toggle = () => setOpen((o) => !o)
   return (
     <ActivityContext.Provider value={{ open, toggle }}>

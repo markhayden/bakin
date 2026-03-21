@@ -22,13 +22,29 @@ interface PluginState {
 const pluginStates = new Map<string, PluginState>()
 let initialized = false
 
+/**
+ * Broadcast function that relays events to the custom server's SSE system.
+ * Next.js API routes run in a separate context, so we POST to the activity
+ * emit endpoint which the custom server handles and broadcasts via SSE.
+ */
+function relayBroadcast(data: Record<string, unknown>): void {
+  const port = process.env.PORT || 3737
+  fetch(`http://localhost:${port}/api/activity/emit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).catch(() => {
+    // Best effort — server may not be ready during init
+  })
+}
+
 function ensureInitialized() {
   if (initialized) return
   initialized = true
   console.log('[api-route] Initializing plugin routes...')
 
   const storage = new MarkdownStorageAdapter()
-  const events = new MCEventBus(() => {})
+  const events = new MCEventBus(relayBroadcast)
 
   const plugins = [tasksPlugin, memoryPlugin, modelsPlugin, calendarPlugin, workflowsPlugin]
 
@@ -64,7 +80,7 @@ function findRoute(pluginId: string, path: string, method: string): APIRoute | n
 
 function buildContext(pluginId: string): PluginContext {
   const storage = new MarkdownStorageAdapter()
-  const events = new MCEventBus(() => {})
+  const events = new MCEventBus(relayBroadcast)
   return {
     storage,
     events,

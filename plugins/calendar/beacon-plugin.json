@@ -1,0 +1,15 @@
+{
+  "id": "calendar",
+  "name": "Calendar",
+  "version": "1.0.0",
+  "beacon": ">=1.0.0",
+  "description": "Content calendar with scheduling, brainstorming, and multi-agent content pipeline",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": ["calendar.json"],
+  "secrets": ["gateway-token"],
+  "tests": "tests/",
+  "dependencies": ["tasks"],
+  "permissions": ["storage.read", "storage.write", "events.emit"]
+}

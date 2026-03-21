@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['chokidar'],
   // Allow Tailscale and local network access to dev HMR/resources
   allowedDevOrigins: ['100.91.112.69'],
+  devIndicators: false,
 };
 
 export default nextConfig;

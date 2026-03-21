@@ -1,7 +1,6 @@
 'use client'
 
 import { useSidebarContext } from '@/context/sidebar-context'
-import { useActivityContext } from '@/context/activity-context'
 import { ActivityFeed } from '@/components/tasks/activity-feed'
 
 export function LayoutShell({
@@ -12,7 +11,6 @@ export function LayoutShell({
   children: React.ReactNode
 }) {
   const { collapsed } = useSidebarContext()
-  const { open: activityOpen } = useActivityContext()
 
   return (
     <>
@@ -28,7 +26,7 @@ export function LayoutShell({
       <main
         className={`fixed top-14 bottom-0 right-0 overflow-hidden transition-all duration-150 ease-in-out ${
           collapsed ? 'left-[52px]' : 'left-52'
-        } ${activityOpen ? 'right-[300px]' : 'right-0'}`}
+        }`}
       >
         <div className="h-full overflow-auto flex flex-col"><div className="p-6 flex flex-col flex-1">{children}</div></div>
       </main>

@@ -12,6 +12,7 @@ import type {
   APIRoute,
   UISlotRegistration,
 } from './plugin-types'
+import { registerRouteDoc } from '../core/api-docs'
 
 interface PluginState {
   plugin: MCPlugin
@@ -55,7 +56,10 @@ class PluginRegistryImpl {
           events,
           pluginId: plugin.id,
           registerNav: (items) => { state.navItems.push(...items) },
-          registerRoute: (route) => { state.routes.push(route) },
+          registerRoute: (route) => {
+            state.routes.push(route)
+            registerRouteDoc(plugin.id, route)
+          },
           registerSlot: (reg) => { state.slots.push(reg) },
           watchFiles: (patterns) => { state.watchPatterns.push(...patterns) },
         }

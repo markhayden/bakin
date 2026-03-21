@@ -38,6 +38,8 @@ export interface APIRoute {
   path: string
   method: 'GET' | 'POST' | 'PUT' | 'DELETE'
   handler: (req: Request, ctx: PluginContext) => Response | Promise<Response>
+  description?: string
+  params?: string
 }
 
 export interface UISlotRegistration {
@@ -73,6 +75,23 @@ export interface MCPlugin {
   activate(ctx: PluginContext): void | Promise<void>
   navItems?: NavItem[]
   contentFiles?: ContentFile[]
+}
+
+// ---------------------------------------------------------------------------
+// Plugin Manifest (beacon-plugin.json)
+// ---------------------------------------------------------------------------
+export interface PluginManifest {
+  id: string
+  name: string
+  version: string
+  beacon: string
+  description: string
+  entry: { server: string; client?: string }
+  contentFiles?: string[]
+  secrets?: string[]
+  tests?: string
+  dependencies?: string[]
+  permissions?: string[]
 }
 
 // ---------------------------------------------------------------------------
