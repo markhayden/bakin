@@ -1,0 +1,37 @@
+id: video-script
+name: Video Script
+description: Develop a full script using SALT methodology, then break into clip segments
+version: 1
+
+steps:
+  - id: write-script
+    type: agent
+    label: Write Script
+    agent: chef
+    skill: write-script
+
+  - id: script-gate
+    type: gate
+    label: Approve Script
+    description: Owner reviews and approves the full script
+    approval_required: true
+    on_approve: segment-script
+    on_reject:
+      goto: write-script
+      note_to_agent: true
+
+  - id: segment-script
+    type: agent
+    label: Break Into Clips
+    agent: chef
+    skill: segment-script
+
+  - id: segments-gate
+    type: gate
+    label: Approve Segments
+    description: Owner reviews clip breakdown before production
+    approval_required: true
+    on_approve: done
+    on_reject:
+      goto: segment-script
+      note_to_agent: true

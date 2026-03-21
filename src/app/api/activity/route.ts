@@ -20,6 +20,7 @@ function mapAuditMessage(event: string, data: Record<string, unknown>): string {
     case 'task.created': return `Created task: ${data.title}`
     case 'task.deleted': return `Deleted task: ${data.title}`
     case 'system.init': return 'Beacon started'
+    case 'system.dispatch_error': return `Dispatch failed: ${data.error || 'unknown error'}`
     default: return event
   }
 }

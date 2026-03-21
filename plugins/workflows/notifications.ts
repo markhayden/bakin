@@ -4,7 +4,7 @@
  * (Discord first) when gates are reached or workflows complete.
  */
 import type { EventBus } from '../../src/lib/plugin-types'
-import type { StepContext, WorkflowInstance } from './types'
+import type { WorkflowInstance } from './types'
 
 let eventBus: EventBus | null = null
 

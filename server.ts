@@ -2,6 +2,7 @@ import { createServer } from 'http'
 import next from 'next'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
+import { execSync } from 'child_process'
 
 import { MarkdownStorageAdapter } from './src/lib/storage/markdown-adapter'
 import { MCEventBus } from './src/lib/events/event-bus'
@@ -29,6 +30,14 @@ import * as pluginInstaller from './src/core/plugin-installer'
 import * as doctor from './src/core/doctor'
 
 const log = createLogger('server')
+
+// Git version — computed once at startup
+let BEACON_VERSION = 'unknown'
+try {
+  const hash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
+  const dirty = execSync('git status --porcelain', { encoding: 'utf-8' }).trim() ? '-dirty' : ''
+  BEACON_VERSION = `${hash}${dirty}`
+} catch { /* not a git repo or git not installed */ }
 
 const dev = process.env.NODE_ENV !== 'production'
 const port = Number(process.env.PORT || 3737)
@@ -85,6 +94,12 @@ app.prepare().then(async () => {
     // SSE endpoint
     if (url.pathname === '/api/events') {
       handleSSE(req, res)
+      return
+    }
+
+    // Version endpoint
+    if (url.pathname === '/api/version' && req.method === 'GET') {
+      jsonResponse(res, 200, { version: BEACON_VERSION })
       return
     }
 

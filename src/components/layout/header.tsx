@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Menu, X, PanelLeftClose, PanelLeft } from 'lucide-react'
 import { ConnectionDot } from './connection-dot'
 import { DispatchTimer } from './dispatch-timer'
@@ -9,7 +9,12 @@ import { useSidebarContext } from '@/context/sidebar-context'
 
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [version, setVersion] = useState('')
   const { collapsed, toggle } = useSidebarContext()
+
+  useEffect(() => {
+    fetch('/api/version').then(r => r.json()).then(d => setVersion(d.version)).catch(() => {})
+  }, [])
 
   return (
     <>
@@ -33,6 +38,7 @@ export function Header() {
         <div className="flex items-center gap-2">
           <img src="/beacon-logo.svg" alt="Beacon" className="h-5 w-5" />
           <span className="text-sm font-semibold tracking-widest text-foreground uppercase">Beacon</span>
+          {version && <span className="text-[10px] font-mono text-muted-foreground">{version}</span>}
         </div>
         <div className="ml-auto flex items-center gap-4">
           <DispatchTimer />

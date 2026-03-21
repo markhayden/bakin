@@ -7,6 +7,7 @@ export const AGENTS: AgentMeta[] = AGENT_PROFILES.map(a => ({
   emoji: a.emoji,
   name: a.name,
   role: a.role,
+  headshot: a.headshot,
 }))
 
 export { AGENT_MAP }

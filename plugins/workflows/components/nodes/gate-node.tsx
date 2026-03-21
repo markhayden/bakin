@@ -11,7 +11,7 @@ export function GateNode({ data }: NodeProps) {
   const { label, description } = data as GateNodeData
 
   return (
-    <div className="w-[260px] rounded-lg border-2 border-amber-400 bg-zinc-900 p-3 shadow-lg">
+    <div className="w-[320px] rounded-lg border-2 border-amber-400 bg-zinc-900 p-4 shadow-lg">
       <div className="mb-0.5 text-xs font-bold uppercase tracking-wider text-amber-400">
         🚦 Approval Gate
       </div>
@@ -19,8 +19,8 @@ export function GateNode({ data }: NodeProps) {
       {description && (
         <p className="text-xs text-zinc-500 leading-relaxed">{description}</p>
       )}
-      <Handle type="target" position={Position.Top} className="!bg-zinc-500" />
-      <Handle type="source" position={Position.Bottom} className="!bg-zinc-500" />
+      <Handle type="target" position={Position.Left} className="!bg-zinc-500" />
+      <Handle type="source" position={Position.Right} className="!bg-zinc-500" />
     </div>
   )
 }

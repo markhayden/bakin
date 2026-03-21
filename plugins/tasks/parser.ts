@@ -88,8 +88,11 @@ export function parseTasks(content: string): TaskBoard {
     } else if (currentTask && /^\s{2,}/.test(line) && line.trim()) {
       const trimmed = line.trim()
       const depMatch = trimmed.match(/^dependsOn:\s*(\S+)/)
+      const wfMatch = trimmed.match(/^workflow:\s*(\S+)/)
       if (depMatch) {
         currentTask.dependsOn = depMatch[1]
+      } else if (wfMatch) {
+        currentTask.workflowId = wfMatch[1]
       } else {
         const logMatch = trimmed.match(LOG_RE)
         if (logMatch) {

@@ -441,7 +441,7 @@ export function approveGate(
   taskId: string,
   stepId: string,
   contentDir?: string
-): { success: boolean; errors?: string[]; nextStep?: StepContext | { status: 'complete' } } {
+): { success: boolean; errors?: string[]; nextStep?: ReturnType<typeof getCurrentStep> | undefined } {
   const dir = contentDir || getContentDir()
   const instance = loadInstance(taskId, dir)
   if (!instance) return { success: false, errors: ['Workflow instance not found'] }
@@ -474,7 +474,7 @@ export function approveGate(
   advanceWorkflow(instance, def, dir)
   saveInstance(instance, dir)
 
-  if (instance.status === 'complete') {
+  if ((instance.status as string) === 'complete') {
     return { success: true, nextStep: { status: 'complete' } }
   }
 

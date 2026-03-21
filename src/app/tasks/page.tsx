@@ -3,5 +3,5 @@
 import { KanbanBoard } from '@mc/tasks/components/kanban-board'
 
 export default function TasksPage() {
-  return <KanbanBoard />
+  return <div className="p-6 flex flex-col flex-1"><KanbanBoard /></div>
 }
