@@ -5,7 +5,7 @@ import type { ColumnId } from '@mc/tasks/types'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { originalTitle, id, title, description, agent, column } = body
+  const { originalTitle, id, title, description, agent, column, workflowId } = body
   const identifier = id || originalTitle
 
   if (!identifier) {
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await updateTask(identifier, { title, description, agent, column: column as ColumnId })
+    await updateTask(identifier, { title, description, agent, column: column as ColumnId, workflowId })
     appendAudit('task.updated', 'dashboard', { id, originalTitle, title, agent, column })
     return NextResponse.json({ ok: true })
   } catch (err) {

@@ -310,6 +310,133 @@ async function checkAntfly(): Promise<DiagnosticResult[]> {
   }
 }
 
+/**
+ * Orchestrator rules: verify AGENTS.md has the Beacon rules block and it's current.
+ * Auto-fixable — safe to write/update our own block in AGENTS.md.
+ */
+const AGENT_RULES_BLOCK_START = '<!-- beacon:orchestrator-rules:start -->'
+const AGENT_RULES_BLOCK_END = '<!-- beacon:orchestrator-rules:end -->'
+
+const ORCHESTRATOR_RULES_CONTENT = `## Beacon Orchestrator Rules
+
+> Auto-managed by \`beacon agent-rules --apply\`. Do not edit this block manually.
+
+These rules govern Roscoe as orchestrator of the Beacon multi-agent system.
+
+1. **Every task gets logged before work begins.** Use \`beacon tasks create\` before spawning any subagent or producing any deliverable. No exceptions.
+
+2. **Never do subagent work inline.** Roscoe delegates — Roscoe does not generate images, write long-form copy, or produce video. That's what the team is for.
+
+3. **High-level tasks only on the board.** Don't break tasks into subtasks yourself. Create one task, assign it, let the subagent decompose it.
+
+4. **Subagents own their handoffs.** If Basil needs Pixel, Basil creates that task — not Roscoe. Let the pipeline flow naturally.
+
+5. **Approval gates are non-negotiable.** Before publishing, sending, or any external action: pause and confirm with Mark unless pre-approved.
+
+6. **Monitor the pipeline, don't micromanage.** Check heartbeats, watch for blocked tasks, intervene when stuck — but don't shadow-execute tasks that are in flight.
+
+7. **One task per agent per piece of content.** Don't assign the same content to multiple agents in parallel. Let the assigned agent drive.
+
+8. **AGENTS.md is your rulebook, not the subagents'.** The Beacon skill (SKILL.md) governs subagents. AGENTS.md governs you.`
+
+function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
+  const agentsPath = join(process.env.HOME || '~', '.openclaw', 'workspace', 'AGENTS.md')
+
+  if (!existsSync(agentsPath)) {
+    return [warn('orchestrator-rules', 'AGENTS.md not found — cannot verify orchestrator rules')]
+  }
+
+  const current = readFileSync(agentsPath, 'utf-8')
+  const startIdx = current.indexOf(AGENT_RULES_BLOCK_START)
+  const endIdx = current.indexOf(AGENT_RULES_BLOCK_END)
+  const hasBlock = startIdx !== -1
+
+  if (!hasBlock) {
+    if (!autoFix) {
+      return [warn('orchestrator-rules', 'Orchestrator rules block missing from AGENTS.md — run: beacon agent-rules --apply', true)]
+    }
+    const block = `${AGENT_RULES_BLOCK_START}\n${ORCHESTRATOR_RULES_CONTENT}\n${AGENT_RULES_BLOCK_END}\n`
+    writeFileSync(agentsPath, current.trimEnd() + '\n\n' + block, 'utf-8')
+    return [fixed('orchestrator-rules', 'Added orchestrator rules block to AGENTS.md')]
+  }
+
+  if (endIdx === -1) {
+    return [error('orchestrator-rules', 'Orchestrator rules block start marker found but no end marker — AGENTS.md may be corrupt')]
+  }
+
+  const blockContent = current.slice(startIdx + AGENT_RULES_BLOCK_START.length, endIdx).trim()
+  const expected = ORCHESTRATOR_RULES_CONTENT.trim()
+
+  if (blockContent === expected) {
+    return [ok('orchestrator-rules', 'Orchestrator rules block present and up to date')]
+  }
+
+  if (!autoFix) {
+    return [warn('orchestrator-rules', 'Orchestrator rules block is outdated — run: beacon agent-rules --apply', true)]
+  }
+
+  const block = `${AGENT_RULES_BLOCK_START}\n${ORCHESTRATOR_RULES_CONTENT}\n${AGENT_RULES_BLOCK_END}`
+  const updated = current.slice(0, startIdx) + block + current.slice(endIdx + AGENT_RULES_BLOCK_END.length)
+  writeFileSync(agentsPath, updated, 'utf-8')
+  return [fixed('orchestrator-rules', 'Updated orchestrator rules block in AGENTS.md')]
+}
+
+/**
+ * Service: verify the macOS LaunchAgent is installed with correct paths.
+ * NOT auto-fixable — stale paths require human judgment.
+ */
+function checkService(projectRoot: string): DiagnosticResult[] {
+  if (process.platform !== 'darwin') {
+    return [ok('service', 'Skipped — macOS only')]
+  }
+
+  const results: DiagnosticResult[] = []
+  const homedir = process.env.HOME || '~'
+  const plistPath = join(homedir, 'Library', 'LaunchAgents', 'com.openclaw.mc.plist')
+
+  if (!existsSync(plistPath)) {
+    results.push(warn('service', 'LaunchAgent plist not found — run: beacon setup service'))
+    return results
+  }
+
+  try {
+    const plistContent = readFileSync(plistPath, 'utf-8')
+
+    // Check WorkingDirectory matches current project
+    const wdMatch = plistContent.match(/<key>WorkingDirectory<\/key>\s*<string>([^<]+)<\/string>/)
+    if (wdMatch && wdMatch[1] !== projectRoot) {
+      results.push(error('service',
+        `LaunchAgent WorkingDirectory is "${wdMatch[1]}" but project is at "${projectRoot}" — run: beacon setup service`
+      ))
+    }
+
+    // Check server.ts path matches
+    const serverMatch = plistContent.match(/<string>([^<]*server\.ts)<\/string>/)
+    if (serverMatch && serverMatch[1] !== join(projectRoot, 'server.ts')) {
+      results.push(error('service',
+        `LaunchAgent references stale server.ts path — run: beacon setup service`
+      ))
+    }
+  } catch (err) {
+    results.push(error('service', `Failed to read plist: ${err}`))
+    return results
+  }
+
+  // Check service is loaded
+  try {
+    const { execSync } = require('child_process')
+    execSync('launchctl list com.openclaw.mc', { encoding: 'utf-8', stdio: 'pipe' })
+  } catch {
+    results.push(warn('service', 'LaunchAgent plist exists but service is not loaded — run: beacon setup service'))
+  }
+
+  if (results.length === 0) {
+    results.push(ok('service', 'LaunchAgent installed and loaded with correct paths'))
+  }
+
+  return results
+}
+
 // ---------------------------------------------------------------------------
 // Notification — escalate unfixable issues to roscoe
 // ---------------------------------------------------------------------------
@@ -364,6 +491,8 @@ export async function runDiagnostics(
   results.push(...checkPersonas(contentDir, autoFix))
   results.push(...checkTaskboard(contentDir, autoFix))
   results.push(...checkAndSyncSkill(projectRoot, autoFix))
+  results.push(...checkOrchestratorRules(autoFix))
+  results.push(...checkService(projectRoot))
 
   // Async checks (network, not auto-fixable)
   results.push(...await checkGateway())

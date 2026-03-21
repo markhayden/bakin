@@ -80,7 +80,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       const taskWithWorkflow = task as typeof task & { workflowId?: string }
       if (taskWithWorkflow.workflowId) {
         try {
-          await dispatchWorkflowTask(taskWithWorkflow, contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog)
+          await dispatchWorkflowTask({ ...taskWithWorkflow, workflowId: taskWithWorkflow.workflowId }, contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog)
         } catch (err) {
           log.error(`Failed to dispatch workflow task "${task.title}"`, err)
         }

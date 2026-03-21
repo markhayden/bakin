@@ -301,6 +301,101 @@ async function cmdDoctor(): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Agent Rules
+// ---------------------------------------------------------------------------
+
+const AGENT_RULES_BLOCK_START = '<!-- beacon:orchestrator-rules:start -->'
+const AGENT_RULES_BLOCK_END = '<!-- beacon:orchestrator-rules:end -->'
+
+const ORCHESTRATOR_RULES_CONTENT = `## Beacon Orchestrator Rules
+
+> Auto-managed by \`beacon agent-rules --apply\`. Do not edit this block manually.
+
+These rules govern Roscoe as orchestrator of the Beacon multi-agent system.
+
+1. **Every task gets logged before work begins.** Use \`beacon tasks create\` before spawning any subagent or producing any deliverable. No exceptions.
+
+2. **Never do subagent work inline.** Roscoe delegates — Roscoe does not generate images, write long-form copy, or produce video. That's what the team is for.
+
+3. **High-level tasks only on the board.** Don't break tasks into subtasks yourself. Create one task, assign it, let the subagent decompose it.
+
+4. **Subagents own their handoffs.** If Basil needs Pixel, Basil creates that task — not Roscoe. Let the pipeline flow naturally.
+
+5. **Approval gates are non-negotiable.** Before publishing, sending, or any external action: pause and confirm with Mark unless pre-approved.
+
+6. **Monitor the pipeline, don't micromanage.** Check heartbeats, watch for blocked tasks, intervene when stuck — but don't shadow-execute tasks that are in flight.
+
+7. **One task per agent per piece of content.** Don't assign the same content to multiple agents in parallel. Let the assigned agent drive.
+
+8. **AGENTS.md is your rulebook, not the subagents'.** The Beacon skill (SKILL.md) governs subagents. AGENTS.md governs you.`
+
+async function cmdAgentRules(options: { apply?: boolean; check?: boolean } = {}): Promise<void> {
+  const { readFileSync, writeFileSync, existsSync } = await import('fs')
+  const { join } = await import('path')
+
+  const agentsPath = join(process.env.HOME || '~', '.openclaw', 'workspace', 'AGENTS.md')
+
+  if (!existsSync(agentsPath)) {
+    console.error(`[FAIL] AGENTS.md not found at ${agentsPath}`)
+    process.exit(1)
+  }
+
+  const current = readFileSync(agentsPath, 'utf-8')
+  const hasBlock = current.includes(AGENT_RULES_BLOCK_START)
+
+  if (options.check) {
+    if (hasBlock) {
+      // Verify content matches
+      const startIdx = current.indexOf(AGENT_RULES_BLOCK_START)
+      const endIdx = current.indexOf(AGENT_RULES_BLOCK_END)
+      if (startIdx === -1 || endIdx === -1) {
+        console.log('[WARN] Orchestrator rules block is malformed — run: beacon agent-rules --apply')
+        process.exit(1)
+      }
+      const blockContent = current.slice(startIdx + AGENT_RULES_BLOCK_START.length, endIdx).trim()
+      const expected = ORCHESTRATOR_RULES_CONTENT.trim()
+      if (blockContent === expected) {
+        console.log('[OK] Orchestrator rules block is present and up to date')
+      } else {
+        console.log('[WARN] Orchestrator rules block is outdated — run: beacon agent-rules --apply')
+        process.exit(1)
+      }
+    } else {
+      console.log('[WARN] Orchestrator rules block not found in AGENTS.md — run: beacon agent-rules --apply')
+      process.exit(1)
+    }
+    return
+  }
+
+  if (!options.apply) {
+    console.log('Usage: beacon agent-rules --apply    # Write orchestrator rules block to AGENTS.md')
+    console.log('       beacon agent-rules --check    # Check if rules block is present and current')
+    return
+  }
+
+  const block = `${AGENT_RULES_BLOCK_START}\n${ORCHESTRATOR_RULES_CONTENT}\n${AGENT_RULES_BLOCK_END}`
+
+  let updated: string
+  if (hasBlock) {
+    // Replace existing block
+    const startIdx = current.indexOf(AGENT_RULES_BLOCK_START)
+    const endIdx = current.indexOf(AGENT_RULES_BLOCK_END)
+    if (endIdx === -1) {
+      console.error('[FAIL] Found start marker but no end marker — AGENTS.md may be corrupt')
+      process.exit(1)
+    }
+    updated = current.slice(0, startIdx) + block + current.slice(endIdx + AGENT_RULES_BLOCK_END.length)
+    console.log('[OK] Updated orchestrator rules block in AGENTS.md')
+  } else {
+    // Append to end of file
+    updated = current.trimEnd() + '\n\n' + block + '\n'
+    console.log('[OK] Added orchestrator rules block to AGENTS.md')
+  }
+
+  writeFileSync(agentsPath, updated, 'utf-8')
+}
+
 async function cmdInit(): Promise<void> {
   const { initBeaconHome } = await import('../plugins/workflows/content-dir')
   const targetDir = process.env.BEACON_HOME || undefined
@@ -317,6 +412,154 @@ async function cmdInit(): Promise<void> {
     console.log('Already initialized — nothing to do')
   }
   console.log('Done.')
+}
+
+const SERVICE_LABEL = 'com.openclaw.mc'
+
+function generatePlist(opts: {
+  nodePath: string
+  tsxPath: string
+  serverPath: string
+  workingDir: string
+  stdoutPath: string
+  stderrPath: string
+}): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${SERVICE_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${opts.nodePath}</string>
+    <string>${opts.tsxPath}</string>
+    <string>${opts.serverPath}</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>NODE_ENV</key>
+    <string>production</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>${opts.workingDir}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${opts.stdoutPath}</string>
+  <key>StandardErrorPath</key>
+  <string>${opts.stderrPath}</string>
+</dict>
+</plist>
+`
+}
+
+async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<void> {
+  const { execSync } = await import('child_process')
+  const { writeFileSync, existsSync, unlinkSync, mkdirSync } = await import('fs')
+  const { join, resolve, dirname } = await import('path')
+  const { homedir } = await import('os')
+
+  const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')
+  const plistPath = join(launchAgentsDir, `${SERVICE_LABEL}.plist`)
+  const uid = execSync('id -u', { encoding: 'utf-8' }).trim()
+
+  // Uninstall
+  if (options.uninstall) {
+    console.log('[..] Stopping service...')
+    try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* may not be loaded */ }
+    if (existsSync(plistPath)) {
+      unlinkSync(plistPath)
+      console.log('[OK] Removed plist and stopped service')
+    } else {
+      console.log('[OK] Service was not installed')
+    }
+    return
+  }
+
+  // Detect paths
+  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+  console.log(`[..] Detecting paths for ${projectDir}`)
+
+  let nodePath: string
+  try {
+    nodePath = execSync('which node', { encoding: 'utf-8' }).trim()
+  } catch {
+    console.error('[FAIL] Could not find node binary. Is Node.js installed?')
+    process.exit(1)
+  }
+
+  const tsxPath = join(projectDir, 'node_modules', '.bin', 'tsx')
+  if (!existsSync(tsxPath)) {
+    console.error('[FAIL] tsx not found at node_modules/.bin/tsx — run: npm install')
+    process.exit(1)
+  }
+
+  const serverPath = join(projectDir, 'server.ts')
+  if (!existsSync(serverPath)) {
+    console.error('[FAIL] server.ts not found — are you in the beacon project directory?')
+    process.exit(1)
+  }
+
+  console.log(`  node:    ${nodePath}`)
+  console.log(`  tsx:     ${tsxPath}`)
+  console.log(`  server:  ${serverPath}`)
+  console.log(`  workdir: ${projectDir}`)
+
+  // Unload existing service (idempotent)
+  try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* ignore */ }
+
+  // Generate and write plist
+  if (!existsSync(launchAgentsDir)) {
+    mkdirSync(launchAgentsDir, { recursive: true })
+  }
+
+  const plist = generatePlist({
+    nodePath,
+    tsxPath,
+    serverPath,
+    workingDir: projectDir,
+    stdoutPath: join(projectDir, 'mc-server.log'),
+    stderrPath: join(projectDir, 'mc-server-error.log'),
+  })
+
+  writeFileSync(plistPath, plist, 'utf-8')
+  console.log(`[OK] Wrote ${plistPath}`)
+
+  // Load the service
+  console.log('[..] Loading service...')
+  try {
+    execSync(`launchctl bootstrap gui/${uid} ${plistPath}`, { stdio: 'pipe' })
+    console.log('[OK] Service loaded')
+  } catch (err) {
+    // bootstrap can fail if already loaded — try kickstart instead
+    try {
+      execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_LABEL}`, { stdio: 'pipe' })
+      console.log('[OK] Service restarted')
+    } catch {
+      console.error('[FAIL] Could not load service:', err instanceof Error ? err.message : String(err))
+      console.error(`  Try manually: launchctl bootstrap gui/${uid} ${plistPath}`)
+      process.exit(1)
+    }
+  }
+
+  // Verify
+  try {
+    execSync(`launchctl list ${SERVICE_LABEL}`, { encoding: 'utf-8', stdio: 'pipe' })
+    console.log('[OK] Service is running')
+  } catch {
+    console.log('[WARN] Service loaded but may not be running yet — check: beacon status')
+  }
+
+  console.log('')
+  console.log('Beacon service installed. It will auto-start on login.')
+  console.log('  Status:    beacon status')
+  console.log('  Uninstall: beacon setup service --uninstall')
 }
 
 async function cmdReindex(): Promise<void> {
@@ -346,8 +589,10 @@ Commands:
   plugins list                     List installed plugins
   plugins install <path|repo>      Install plugin (local path or github:user/repo)
   plugins remove <id>              Remove an installed plugin
+  setup service [--uninstall]       Install/remove macOS LaunchAgent for auto-start
   setup antfly                     Install AntflyDB + enable + reindex (one command)
   init                             Initialize ~/.beacon/ directory with defaults
+  agent-rules [--apply|--check]    Manage orchestrator rules block in AGENTS.md
   doctor                           Run health checks (agent sync, skill, gateway, etc.)
   reindex                          Reindex all content to Antfly
   docs                             Print API documentation
@@ -443,14 +688,24 @@ async function main(): Promise<void> {
         break
 
       case 'setup':
-        if (sub === 'antfly') {
+        if (sub === 'service') {
+          const uninstall = args.includes('--uninstall')
+          await cmdSetupService({ uninstall })
+        } else if (sub === 'antfly') {
           await cmdSetupAntfly()
         } else {
           console.error(`Unknown setup target: ${sub}`)
-          console.error('Available: beacon setup antfly')
+          console.error('Available: beacon setup service | beacon setup antfly')
           process.exit(1)
         }
         break
+
+      case 'agent-rules': {
+        const apply = args.includes('--apply')
+        const check = args.includes('--check')
+        await cmdAgentRules({ apply, check })
+        break
+      }
 
       case 'init':
         await cmdInit()

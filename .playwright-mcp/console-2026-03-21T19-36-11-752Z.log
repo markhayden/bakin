@@ -1,0 +1,10 @@
+[     101ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/system.png:0
+[   10075ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/dispatch:0
+[   10755ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[   11075ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/dispatch:0
+[   12074ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/dispatch:0
+[   12755ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[   12757ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[   13075ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/dispatch:0
+[   14075ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/dispatch:0
+[   17022ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/system.png:0

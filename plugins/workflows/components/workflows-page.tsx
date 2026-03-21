@@ -51,7 +51,7 @@ export function WorkflowsPage() {
             <Zap className="size-4 text-amber-400" />
             <h1 className="text-base font-semibold">Workflows</h1>
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">Template Library</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Agent Workflows</p>
         </div>
       </div>
 
@@ -91,13 +91,13 @@ export function WorkflowsPage() {
                       {agentIds.map(id => {
                         const agent = AGENTS.find(a => a.id === id)
                         return agent ? (
-                          <span
+                          <img
                             key={id}
+                            src={agent.headshot}
+                            alt={agent.name}
                             title={agent.name}
-                            className="inline-flex size-5 items-center justify-center rounded-full bg-zinc-800 text-[10px] ring-1 ring-zinc-700"
-                          >
-                            {agent.emoji}
-                          </span>
+                            className="size-5 rounded-full ring-1 ring-zinc-700 object-cover"
+                          />
                         ) : null
                       })}
                     </div>

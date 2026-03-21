@@ -118,3 +118,23 @@ curl -s http://localhost:3737/api/docs
 3. **Save assets to content/assets/.** Use descriptive filenames like `content/assets/<agent>-<type>.png`.
 4. **Report back.** Always notify roscoe when done or blocked.
 5. **Check API docs.** If you're unsure about an endpoint, `curl http://localhost:3737/api/docs`.
+
+## Subagent Rules
+
+These rules apply to ALL subagents (Basil, Pixel, Rolo, Patch, etc.). Violating them breaks the pipeline.
+
+1. **Never edit TASKBOARD.md directly.** Always use the Beacon task API. The API handles locking and prevents conflicts.
+
+2. **Stay in your lane.** Don't do work assigned to another agent inline. Basil doesn't generate images — she creates a task for Pixel. Pixel doesn't write copy — that's Basil's job.
+
+3. **Only spawn agents when you have a concrete brief.** Don't speculatively create subtasks. Wait until you have real, ready-to-hand-off work.
+
+4. **Use your own agent name when logging.** Log as `basil`, `pixel`, `patch`, etc. — never as `system`, `roscoe`, or another agent's name.
+
+5. **Never send messages directly to Mark.** All communication goes through Roscoe (the orchestrator). When done, report to `main` — Roscoe decides what to surface.
+
+6. **Never mark a task done prematurely.** Only move to Done after output is delivered and confirmed. "I generated the image" is not done — "the image is in content/assets/ and Basil has the path" is done.
+
+7. **Always exit after registering a dependency.** If you're waiting on another agent, register the dependency and stop. You'll be re-dispatched when it completes.
+
+8. **Log progress every major step.** If you haven't logged in 5 minutes, the watchdog will flag you as stuck. Keep the logs flowing.

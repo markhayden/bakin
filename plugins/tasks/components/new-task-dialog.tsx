@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -15,12 +15,29 @@ import { AGENTS } from '@/lib/constants'
 import { Plus } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 
+interface WorkflowOption {
+  name: string
+  filename: string
+  description: string
+  stepCount: number
+}
+
 export function NewTaskDialog() {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [assignee, setAssignee] = useState('')
   const [column, setColumn] = useState('todo')
+  const [workflowId, setWorkflowId] = useState('')
+  const [workflows, setWorkflows] = useState<WorkflowOption[]>([])
+
+  useEffect(() => {
+    if (!open) return
+    fetch('/api/plugins/workflows/list')
+      .then((r) => r.ok ? r.json() : { templates: [] })
+      .then((data) => setWorkflows(data.templates || []))
+      .catch(() => setWorkflows([]))
+  }, [open])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -35,6 +52,7 @@ export function NewTaskDialog() {
           description: description.trim() || undefined,
           column,
           assignee: assignee || undefined,
+          workflowId: workflowId || undefined,
         }),
       })
       if (!res.ok) {
@@ -52,13 +70,14 @@ export function NewTaskDialog() {
     setDescription('')
     setAssignee('')
     setColumn('todo')
+    setWorkflowId('')
     setOpen(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        render={<Button variant="outline" size="sm" />}
+        render={<Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white border-0" />}
       >
         <Plus className="size-4" />
         New Task
@@ -97,6 +116,31 @@ export function NewTaskDialog() {
               rows={5}
               className="rounded-md border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground resize-y min-h-[120px] focus:outline-none focus:ring-1 focus:ring-ring"
             />
+          </div>
+
+          {/* Workflow */}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="workflow" className="text-sm font-semibold text-foreground">
+              Workflow
+            </Label>
+            <select
+              id="workflow"
+              value={workflowId}
+              onChange={(e) => setWorkflowId(e.target.value)}
+              className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="">None</option>
+              {workflows.map((w) => (
+                <option key={w.filename} value={w.filename.replace('.yaml', '')}>
+                  {w.name} ({w.stepCount} steps)
+                </option>
+              ))}
+            </select>
+            {workflowId && (
+              <p className="text-xs text-muted-foreground">
+                {workflows.find((w) => w.filename.replace('.yaml', '') === workflowId)?.description}
+              </p>
+            )}
           </div>
 
           {/* Assignee + Column side by side */}

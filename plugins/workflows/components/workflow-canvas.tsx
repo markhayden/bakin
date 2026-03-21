@@ -1,14 +1,17 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   ReactFlow,
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   type Node,
   type Edge,
   type NodeTypes,
+  type NodeChange,
+  applyNodeChanges,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
@@ -27,10 +30,10 @@ const nodeTypes: NodeTypes = {
   output: OutputNode,
 }
 
-const NODE_WIDTH = 260
-const NODE_HEIGHT = 120
+const NODE_WIDTH = 320
+const NODE_HEIGHT = 140
+const X_SPACING = 400
 const Y_SPACING = 200
-const X_SPACING = 300
 const PARALLEL_PADDING = 40
 
 interface WorkflowCanvasProps {
@@ -41,7 +44,7 @@ function buildGraph(definition: WorkflowDefinition) {
   const nodes: Node[] = []
   const edges: Edge[] = []
 
-  let y = 0
+  let x = 0
 
   // Trigger node
   const inputDesc = definition.inputs
@@ -51,33 +54,33 @@ function buildGraph(definition: WorkflowDefinition) {
   nodes.push({
     id: '__trigger',
     type: 'trigger',
-    position: { x: 0, y },
+    position: { x, y: 0 },
     data: { description: inputDesc },
   })
 
   let prevNodeIds = ['__trigger']
-  y += Y_SPACING
+  x += X_SPACING
 
   for (const step of definition.steps) {
     if (step.type === 'parallel') {
       const subSteps = step.steps
-      const totalWidth = subSteps.length * X_SPACING
-      const startX = -(totalWidth - X_SPACING) / 2
+      const totalHeight = subSteps.length * Y_SPACING
+      const startY = -(totalHeight - Y_SPACING) / 2
 
-      const containerWidth = totalWidth + PARALLEL_PADDING * 2
-      const containerHeight = NODE_HEIGHT + PARALLEL_PADDING * 2 + 30
+      const containerHeight = totalHeight + PARALLEL_PADDING * 2
+      const containerWidth = NODE_WIDTH + PARALLEL_PADDING * 2 + 30
       nodes.push({
         id: step.id,
         type: 'parallel',
-        position: { x: -(containerWidth - NODE_WIDTH) / 2, y: y - 20 },
+        position: { x: x - 20, y: -(containerHeight - NODE_HEIGHT) / 2 },
         data: { label: step.label, width: containerWidth, height: containerHeight },
         style: { width: containerWidth, height: containerHeight },
       })
 
       const subNodeIds: string[] = []
       subSteps.forEach((sub, i) => {
-        const subX = startX + i * X_SPACING
-        const subY = y + 30
+        const subX = x + 30
+        const subY = startY + i * Y_SPACING
 
         nodes.push({
           id: sub.id,
@@ -102,7 +105,7 @@ function buildGraph(definition: WorkflowDefinition) {
       })
 
       prevNodeIds = subNodeIds
-      y += containerHeight + Y_SPACING - 40
+      x += containerWidth + X_SPACING - 40
     } else {
       let nodeType: string = step.type
       if (nodeType !== 'gate' && nodeType !== 'output') {
@@ -112,7 +115,7 @@ function buildGraph(definition: WorkflowDefinition) {
       nodes.push({
         id: step.id,
         type: nodeType,
-        position: { x: 0, y },
+        position: { x, y: 0 },
         data: {
           label: step.label,
           agent: step.type === 'agent' ? step.agent : undefined,
@@ -131,7 +134,7 @@ function buildGraph(definition: WorkflowDefinition) {
       }
 
       prevNodeIds = [step.id]
-      y += Y_SPACING
+      x += X_SPACING
     }
   }
 
@@ -139,24 +142,36 @@ function buildGraph(definition: WorkflowDefinition) {
 }
 
 export function WorkflowCanvas({ definition }: WorkflowCanvasProps) {
-  const { nodes, edges } = useMemo(() => buildGraph(definition), [definition])
+  const { nodes: initialNodes, edges } = useMemo(() => buildGraph(definition), [definition])
+  const [nodes, setNodes] = useState<Node[]>(initialNodes)
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => setNodes(nds => applyNodeChanges(changes, nds)),
+    [],
+  )
+
+  // Reset nodes when definition changes
+  useMemo(() => {
+    setNodes(initialNodes)
+  }, [initialNodes])
 
   return (
     <div className="h-full w-full bg-zinc-950">
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        onNodesChange={onNodesChange}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         proOptions={{ hideAttribution: true }}
-        nodesDraggable={false}
+        nodesDraggable={true}
         nodesConnectable={false}
         defaultEdgeOptions={{
           style: { stroke: '#525252', strokeWidth: 2 },
         }}
       >
-        <Background color="#27272a" gap={20} />
+        <Background variant={BackgroundVariant.Dots} color="#3f3f46" gap={24} size={1.5} />
         <Controls
           showInteractive={false}
           className="[&>button]:border-zinc-700 [&>button]:bg-zinc-900 [&>button]:text-zinc-400 [&>button]:hover:bg-zinc-800"

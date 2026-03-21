@@ -60,6 +60,7 @@ export interface AgentMeta {
   emoji: string
   name: string
   role: string
+  headshot: string
 }
 
 export interface Heartbeat {

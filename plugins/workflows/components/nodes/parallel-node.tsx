@@ -16,8 +16,8 @@ export function ParallelNode({ data }: NodeProps) {
       <div className="text-xs font-bold uppercase tracking-wider text-zinc-500">
         ⚡ {label}
       </div>
-      <Handle type="target" position={Position.Top} className="!bg-zinc-500" />
-      <Handle type="source" position={Position.Bottom} className="!bg-zinc-500" />
+      <Handle type="target" position={Position.Left} className="!bg-zinc-500" />
+      <Handle type="source" position={Position.Right} className="!bg-zinc-500" />
     </div>
   )
 }

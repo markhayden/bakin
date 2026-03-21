@@ -73,6 +73,9 @@ export function serializeTaskboard(columns: TaskColumns): string {
       if (task.dependsOn) {
         md += `  dependsOn: ${task.dependsOn}\n`
       }
+      if (task.workflowId) {
+        md += `  workflow: ${task.workflowId}\n`
+      }
       if (task.description) {
         for (const descLine of task.description.split('\n')) {
           md += `  ${descLine}\n`
@@ -117,7 +120,7 @@ function findTask(columns: TaskColumns, identifier: string): { task: Task; colId
 // ---------------------------------------------------------------------------
 // Mutations — all wrapped in the mutex
 // ---------------------------------------------------------------------------
-export function createTask(title: string, column?: string, assignee?: string, description?: string): Promise<Task> {
+export function createTask(title: string, column?: string, assignee?: string, description?: string, workflowId?: string): Promise<Task> {
   return withTaskboardLock(() => {
     const { columns } = readTaskboard()
     const colId = column ? (normalizeColumn(column) || 'todo') : 'todo'
@@ -127,6 +130,7 @@ export function createTask(title: string, column?: string, assignee?: string, de
       agent: assignee,
       checked: colId === 'done',
       description,
+      workflowId,
     }
     if (colId === 'inProgress' || colId === 'done') {
       task.date = new Date().toISOString().split('T')[0]
@@ -210,7 +214,7 @@ export function blockTask(identifier: string, reason: string, agent?: string): P
 
 export function updateTask(
   identifier: string,
-  updates: { title?: string; description?: string; agent?: string; column?: ColumnId }
+  updates: { title?: string; description?: string; agent?: string; column?: ColumnId; workflowId?: string }
 ): Promise<void> {
   return withTaskboardLock(() => {
     const { columns } = readTaskboard()
@@ -221,6 +225,7 @@ export function updateTask(
     if (updates.title !== undefined) task.title = updates.title
     if (updates.description !== undefined) task.description = updates.description || undefined
     if (updates.agent !== undefined) task.agent = updates.agent || undefined
+    if (updates.workflowId !== undefined) task.workflowId = updates.workflowId || undefined
 
     if (updates.column !== undefined && updates.column !== colId) {
       columns[colId].splice(idx, 1)
