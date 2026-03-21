@@ -152,14 +152,9 @@ export async function restartGateway(): Promise<void> {
 export async function ping(): Promise<boolean> {
   try {
     const baseUrl = getBaseUrl()
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({
-        model: 'openclaw',
-        messages: [{ role: 'user', content: 'ping' }],
-        max_tokens: 1,
-      }),
+    // Use the lightweight /health endpoint (no auth required, no model roundtrip)
+    const res = await fetch(`${baseUrl}/health`, {
+      method: 'GET',
       signal: AbortSignal.timeout(5000),
     })
     return res.ok
