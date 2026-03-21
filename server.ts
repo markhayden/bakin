@@ -23,6 +23,7 @@ import { registerShutdownHandlers } from './src/core/lifecycle'
 import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
 import * as antfly from './src/core/antfly'
+import * as antflyServer from './src/core/antfly-server'
 import * as agents from './src/core/agents'
 import * as pluginInstaller from './src/core/plugin-installer'
 import * as doctor from './src/core/doctor'
@@ -56,7 +57,10 @@ app.prepare().then(async () => {
   log.info('Loading plugins...')
   await pluginRegistry.initialize(config, storage, eventBus)
 
-  // Initialize Antfly (optional — no-op if disabled in settings)
+  // Start Antfly server if enabled (auto-manages the process)
+  await antflyServer.start()
+
+  // Initialize Antfly client (optional — no-op if disabled in settings)
   await antfly.initialize()
 
   // Register Antfly sync hook with file watcher
@@ -181,10 +185,10 @@ app.prepare().then(async () => {
 
     // Reindex endpoint (triggers Antfly full reindex)
     if (url.pathname === '/api/reindex' && req.method === 'POST') {
-      handleJsonPost(req, res, async () => {
-        const { reindexAll } = await import('./src/core/antfly')
-        const count = await reindexAll(CONTENT_DIR)
-        return { ok: true, indexed: count }
+      antfly.reindexAll(CONTENT_DIR).then(count => {
+        jsonResponse(res, 200, { ok: true, indexed: count })
+      }).catch(err => {
+        jsonResponse(res, 500, { error: String(err) })
       })
       return
     }

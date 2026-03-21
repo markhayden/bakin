@@ -196,7 +196,7 @@ function checkTaskboard(contentDir: string, autoFix: boolean): DiagnosticResult[
 
     // Column headers
     const hasInProgress = content.includes('In Progress')
-    const hasTodo = content.includes('TODO')
+    const hasTodo = content.includes('Todo')
     const hasDone = content.includes('Done')
     if (!hasInProgress || !hasTodo || !hasDone) {
       results.push(warn('taskboard', 'TASKBOARD.md missing standard column headers'))
@@ -275,23 +275,36 @@ function checkAndSyncSkill(projectRoot: string, autoFix: boolean): DiagnosticRes
 }
 
 /**
- * Antfly: verify connection when enabled.
- * NOT auto-fixable — infrastructure issue.
+ * Antfly: verify binary installed and connection when enabled.
+ * Binary check is informational when disabled, error when enabled and missing.
  */
 async function checkAntfly(): Promise<DiagnosticResult[]> {
   const settings = getSettings()
+  const { installed, running } = await import('./antfly-server')
+
   if (!settings.antfly.enabled) {
-    return [ok('antfly', 'Antfly disabled — skipping')]
+    if (!installed()) {
+      return [warn('antfly', 'Antfly disabled and binary not installed — install with: brew install --cask antflydb/antfly/antfly')]
+    }
+    return [ok('antfly', 'Antfly disabled — binary installed, enable with: beacon settings set antfly.enabled true')]
+  }
+
+  if (!installed()) {
+    return [error('antfly', 'Antfly enabled but binary not found — install with: brew install --cask antflydb/antfly/antfly')]
+  }
+
+  if (!running()) {
+    return [error('antfly', 'Antfly enabled but server not running — it should auto-start on next Beacon restart')]
   }
 
   try {
-    const { AntflyClient } = await import('@antfly/sdk')
-    const client = new AntflyClient({
-      baseUrl: settings.antfly.url,
-      auth: settings.antfly.auth,
-    })
-    const status = await client.getStatus()
-    return [ok('antfly', `Antfly connected (health: ${status?.health})`)]
+    const base = settings.antfly.url.replace(/\/api\/v1\/?$/, '')
+    const res = await fetch(`${base}/api/v1/status`, { signal: AbortSignal.timeout(3000) })
+    if (res.ok) {
+      const status = await res.json()
+      return [ok('antfly', `Antfly connected (health: ${status?.health})`)]
+    }
+    return [error('antfly', `Antfly returned status ${res.status}`)]
   } catch (err) {
     return [error('antfly', `Antfly connection failed: ${err}`)]
   }

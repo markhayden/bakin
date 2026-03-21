@@ -3,13 +3,12 @@
  * Optional vector database integration — Beacon works without it.
  * When enabled, provides dual-write sync and hybrid search across all content.
  */
-import { AntflyClient } from '@antfly/sdk'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 
 const log = createLogger('antfly')
 
-let client: AntflyClient | null = null
+let client: any = null
 let isInitialized = false
 
 // Table names for Beacon content
@@ -48,6 +47,7 @@ export async function initialize(): Promise<void> {
   }
 
   try {
+    const { AntflyClient } = await import('@antfly/sdk')
     client = new AntflyClient({
       baseUrl: settings.antfly.url,
       auth: settings.antfly.auth,
@@ -66,52 +66,72 @@ export async function initialize(): Promise<void> {
 }
 
 async function ensureTables(): Promise<void> {
-  if (!client) return
+  const settings = getSettings()
+  const baseUrl = settings.antfly.url
 
-  const existingTables = await client.tables.list()
-  const existingNames = new Set((existingTables || []).map(t => t.name))
+  // List existing tables
+  let existingNames = new Set<string>()
+  try {
+    const res = await fetch(`${baseUrl}/tables`, { signal: AbortSignal.timeout(5000) })
+    if (res.ok) {
+      const tables = await res.json()
+      existingNames = new Set((tables || []).map((t: { name: string }) => t.name))
+    }
+  } catch {
+    log.warn('Could not list tables — will attempt creation')
+  }
 
   for (const [key, tableName] of Object.entries(TABLES)) {
     if (existingNames.has(tableName)) continue
 
     try {
-      await client.tables.create(tableName, {
-        num_shards: 1,
-        description: `Beacon ${key} — auto-created`,
-        schema: {
-          default_type: key,
-          document_schemas: {
-            [key]: {
-              schema: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string', 'x-antfly-types': ['keyword'] },
-                  content: { type: 'string', 'x-antfly-types': ['text'] },
-                  source: { type: 'string', 'x-antfly-types': ['keyword'] },
-                  agent: { type: 'string', 'x-antfly-types': ['keyword'] },
-                  created_at: { type: 'string', 'x-antfly-types': ['keyword'] },
+      const res = await fetch(`${baseUrl}/tables/${tableName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          num_shards: 1,
+          description: `Beacon ${key} — auto-created`,
+          schema: {
+            default_type: key,
+            document_schemas: {
+              [key]: {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', 'x-antfly-types': ['keyword'] },
+                    content: { type: 'string', 'x-antfly-types': ['text'] },
+                    source: { type: 'string', 'x-antfly-types': ['keyword'] },
+                    agent: { type: 'string', 'x-antfly-types': ['keyword'] },
+                    created_at: { type: 'string', 'x-antfly-types': ['keyword'] },
+                  },
+                  'x-antfly-include-in-all': ['content'],
                 },
-                'x-antfly-include-in-all': ['content'],
               },
             },
           },
-        },
-        indexes: {
-          search: {
-            name: 'search',
-            type: 'full_text',
-          },
-          embeddings: {
-            name: 'embeddings',
-            type: 'embeddings',
-            embedder: {
-              provider: 'antfly' as const,
-              model: 'all-MiniLM-L6-v2',
+          indexes: {
+            search: {
+              name: 'search',
+              type: 'full_text',
+            },
+            embeddings: {
+              name: 'embeddings',
+              type: 'embeddings',
+              embedder: {
+                provider: 'antfly',
+                model: 'all-MiniLM-L6-v2',
+              },
             },
           },
-        },
+        }),
+        signal: AbortSignal.timeout(10000),
       })
-      log.info(`Table created: ${tableName}`)
+      if (res.ok) {
+        log.info(`Table created: ${tableName}`)
+      } else {
+        const body = await res.text()
+        log.warn(`Failed to create table ${tableName}: ${res.status} ${body}`)
+      }
     } catch (err) {
       log.warn(`Failed to create table ${tableName}`, err)
     }
