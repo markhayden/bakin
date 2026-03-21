@@ -301,6 +301,24 @@ async function cmdDoctor(): Promise<void> {
   }
 }
 
+async function cmdInit(): Promise<void> {
+  const { initBeaconHome } = await import('../plugins/workflows/content-dir')
+  const targetDir = process.env.BEACON_HOME || undefined
+  console.log(`Initializing Beacon home directory${targetDir ? ` at ${targetDir}` : ''}...`)
+  const { created, seeded } = initBeaconHome(targetDir)
+
+  if (created.length > 0) {
+    console.log(`Created ${created.length} directories/files`)
+  }
+  if (seeded.length > 0) {
+    console.log(`Seeded ${seeded.length} default files: ${seeded.join(', ')}`)
+  }
+  if (created.length === 0 && seeded.length === 0) {
+    console.log('Already initialized — nothing to do')
+  }
+  console.log('Done.')
+}
+
 async function cmdReindex(): Promise<void> {
   console.log('Reindexing all content to Antfly...')
   const result = await apiPost('/api/reindex') as { ok: boolean; indexed: number }
@@ -329,6 +347,7 @@ Commands:
   plugins install <path|repo>      Install plugin (local path or github:user/repo)
   plugins remove <id>              Remove an installed plugin
   setup antfly                     Install AntflyDB + enable + reindex (one command)
+  init                             Initialize ~/.beacon/ directory with defaults
   doctor                           Run health checks (agent sync, skill, gateway, etc.)
   reindex                          Reindex all content to Antfly
   docs                             Print API documentation
@@ -431,6 +450,10 @@ async function main(): Promise<void> {
           console.error('Available: beacon setup antfly')
           process.exit(1)
         }
+        break
+
+      case 'init':
+        await cmdInit()
         break
 
       case 'doctor':

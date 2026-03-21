@@ -1,5 +1,5 @@
 /**
- * Workflow plugin types — template/recipe library (no execution)
+ * Workflow plugin types — definitions, runtime instances, and skills.
  */
 
 // ─── Definition Types ────────────────────────────────────────────────────────
@@ -30,13 +30,17 @@ export interface BaseStep {
 export interface AgentStep extends BaseStep {
   type: 'agent'
   agent: string
-  task: string
+  task?: string
+  skill?: string
+  description?: string
   outputs?: StepOutput[]
+  dependsOn?: string | string[]
 }
 
 export interface GateStep extends BaseStep {
   type: 'gate'
   description?: string
+  approval_required?: boolean
   notify?: NotifyChannel[]
   preview?: string[]
   on_approve: string
@@ -44,6 +48,7 @@ export interface GateStep extends BaseStep {
     goto: string
     note_to_agent?: boolean
   }
+  dependsOn?: string | string[]
 }
 
 export interface ParallelStep extends BaseStep {
@@ -53,14 +58,19 @@ export interface ParallelStep extends BaseStep {
 
 export interface OutputStep extends BaseStep {
   type: 'output'
+  agent?: string
+  skill?: string
+  description?: string
   channels?: string[]
   content?: Record<string, string>
   schedule?: string
+  dependsOn?: string | string[]
 }
 
 export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep
 
 export interface WorkflowDefinition {
+  id?: string
   name: string
   description: string
   version: number
@@ -76,4 +86,56 @@ export interface WorkflowTemplate {
   description: string
   stepCount: number
   definition: WorkflowDefinition
+}
+
+// ─── Skill Types ────────────────────────────────────────────────────────────
+
+export interface SkillDefinition {
+  name: string
+  output_schema?: Record<string, unknown>
+  instructions: string
+}
+
+// ─── Instance Types ─────────────────────────────────────────────────────────
+
+export type StepStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'complete'
+  | 'pending_approval'
+  | 'rejected'
+  | 'failed'
+
+export type InstanceStatus =
+  | 'in_progress'
+  | 'pending_approval'
+  | 'complete'
+  | 'failed'
+
+export interface StepState {
+  status: StepStatus
+  startedAt?: string
+  completedAt?: string
+  output?: Record<string, unknown>
+  rejectionReason?: string
+}
+
+export interface StepHistoryEntry {
+  stepId: string
+  status: StepStatus
+  completedAt: string
+  output?: Record<string, unknown>
+  rejectionReason?: string
+}
+
+export interface WorkflowInstance {
+  instanceId: string
+  workflowId: string
+  taskId: string
+  currentStepId: string
+  status: InstanceStatus
+  stepStates: Record<string, StepState>
+  history: StepHistoryEntry[]
+  createdAt: string
+  updatedAt: string
 }

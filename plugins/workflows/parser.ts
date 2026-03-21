@@ -1,110 +1,108 @@
 /**
- * YAML workflow definition parser
+ * YAML workflow definition parser.
+ * Uses js-yaml for reliable parsing with definition validation.
  */
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import yaml from 'js-yaml'
-import type { WorkflowDefinition } from './types'
+import type { WorkflowDefinition, WorkflowStep, ParallelStep } from './types'
+import { getContentDir } from './content-dir'
 
-const CONTENT_DIR = process.env.CONTENT_DIR || join(process.cwd(), 'content')
-const DEFINITIONS_DIR = join(CONTENT_DIR, 'workflows', 'definitions')
+function getDefinitionsDir(contentDir?: string): string {
+  const dir = contentDir || getContentDir()
+  return join(dir, 'workflows', 'definitions')
+}
 
 /**
- * Parse YAML workflow definition
- * Simple parser - supports basic YAML structure without full YAML library
+ * Parse a YAML string into a WorkflowDefinition.
  */
 export function parseYAML(content: string): Record<string, unknown> {
-  // For MVP, use a simple line-based parser
-  // In production, would use js-yaml
-  const lines = content.split('\n')
-  const result: Record<string, unknown> = {}
-  const stack: { indent: number; obj: Record<string, unknown>; key?: string; arr?: unknown[] }[] = [
-    { indent: -1, obj: result },
-  ]
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line.trim().startsWith('#') || !line.trim()) continue
-
-    const indent = line.search(/\S/)
-    const trimmed = line.trim()
-
-    // Pop stack to correct level
-    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
-      stack.pop()
-    }
-
-    const current = stack[stack.length - 1]
-
-    // Array item
-    if (trimmed.startsWith('- ')) {
-      const value = trimmed.slice(2).trim()
-      if (!current.arr) {
-        current.arr = []
-        if (current.key) {
-          current.obj[current.key] = current.arr
-        }
-      }
-
-      if (value.includes(':')) {
-        // Object in array
-        const obj: Record<string, unknown> = {}
-        const [key, val] = value.split(':').map(s => s.trim())
-        if (val) {
-          obj[key] = parseValue(val)
-        }
-        current.arr.push(obj)
-        stack.push({ indent, obj, arr: undefined, key: undefined })
-      } else if (value) {
-        current.arr.push(parseValue(value))
-      } else {
-        // Start of object in array
-        const obj: Record<string, unknown> = {}
-        current.arr.push(obj)
-        stack.push({ indent, obj, arr: undefined, key: undefined })
-      }
-      continue
-    }
-
-    // Key: value pair
-    const colonIdx = trimmed.indexOf(':')
-    if (colonIdx > 0) {
-      const key = trimmed.slice(0, colonIdx).trim()
-      const value = trimmed.slice(colonIdx + 1).trim()
-
-      if (value) {
-        // Simple value
-        current.obj[key] = parseValue(value)
-      } else {
-        // Start of nested object or array
-        current.obj[key] = {}
-        current.key = key
-        stack.push({ indent, obj: current.obj[key] as Record<string, unknown>, key: undefined, arr: undefined })
-      }
-    }
-  }
-
-  return result
-}
-
-function parseValue(value: string): unknown {
-  if (value === 'true') return true
-  if (value === 'false') return false
-  if (value === 'null') return null
-  if (/^-?\d+$/.test(value)) return parseInt(value, 10)
-  if (/^-?\d+\.\d+$/.test(value)) return parseFloat(value)
-  // Remove quotes
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1)
-  }
-  return value
+  return yaml.load(content) as Record<string, unknown>
 }
 
 /**
- * Load a workflow definition by name
+ * Collect all step IDs (including nested parallel children).
  */
-export function loadDefinition(name: string): WorkflowDefinition | null {
-  const filePath = join(DEFINITIONS_DIR, `${name}.yaml`)
+function collectStepIds(steps: WorkflowStep[]): string[] {
+  const ids: string[] = []
+  for (const step of steps) {
+    ids.push(step.id)
+    if (step.type === 'parallel') {
+      for (const child of (step as ParallelStep).steps) {
+        ids.push(child.id)
+      }
+    }
+  }
+  return ids
+}
+
+/**
+ * Validate a parsed workflow definition.
+ * Returns an array of error messages (empty if valid).
+ */
+export function validateDefinition(def: WorkflowDefinition): string[] {
+  const errors: string[] = []
+
+  if (!def.name) errors.push('Missing required field: name')
+  if (!def.steps || !Array.isArray(def.steps) || def.steps.length === 0) {
+    errors.push('Workflow must have at least one step')
+    return errors
+  }
+
+  const allIds = collectStepIds(def.steps)
+  const idSet = new Set<string>()
+
+  // Check for duplicate IDs
+  for (const id of allIds) {
+    if (idSet.has(id)) {
+      errors.push(`Duplicate step ID: "${id}"`)
+    }
+    idSet.add(id)
+  }
+
+  // Validate references
+  for (const step of def.steps) {
+    // Check gate on_reject.goto references
+    if (step.type === 'gate' && step.on_reject?.goto) {
+      if (!idSet.has(step.on_reject.goto)) {
+        errors.push(`Step "${step.id}": on_reject.goto references nonexistent step "${step.on_reject.goto}"`)
+      }
+    }
+
+    // Check dependsOn references
+    if ('dependsOn' in step && step.dependsOn) {
+      const deps = Array.isArray(step.dependsOn) ? step.dependsOn : [step.dependsOn]
+      for (const dep of deps) {
+        if (!idSet.has(dep)) {
+          errors.push(`Step "${step.id}": dependsOn references nonexistent step "${dep}"`)
+        }
+      }
+    }
+
+    // Validate parallel children
+    if (step.type === 'parallel') {
+      for (const child of (step as ParallelStep).steps) {
+        if ('dependsOn' in child && child.dependsOn) {
+          const deps = Array.isArray(child.dependsOn) ? child.dependsOn : [child.dependsOn]
+          for (const dep of deps) {
+            if (!idSet.has(dep)) {
+              errors.push(`Step "${child.id}": dependsOn references nonexistent step "${dep}"`)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return errors
+}
+
+/**
+ * Load a workflow definition by name.
+ */
+export function loadDefinition(name: string, contentDir?: string): WorkflowDefinition | null {
+  const defsDir = getDefinitionsDir(contentDir)
+  const filePath = join(defsDir, `${name}.yaml`)
   if (!existsSync(filePath)) return null
 
   const content = readFileSync(filePath, 'utf-8')
@@ -113,16 +111,17 @@ export function loadDefinition(name: string): WorkflowDefinition | null {
 }
 
 /**
- * List all available workflow definitions
+ * List all available workflow definitions.
  */
-export function listDefinitions(): { name: string; definition: WorkflowDefinition }[] {
-  if (!existsSync(DEFINITIONS_DIR)) return []
+export function listDefinitions(contentDir?: string): { name: string; definition: WorkflowDefinition }[] {
+  const defsDir = getDefinitionsDir(contentDir)
+  if (!existsSync(defsDir)) return []
 
-  return readdirSync(DEFINITIONS_DIR)
+  return readdirSync(defsDir)
     .filter(f => f.endsWith('.yaml'))
     .map(f => {
       const name = f.replace('.yaml', '')
-      const definition = loadDefinition(name)
+      const definition = loadDefinition(name, contentDir)
       return definition ? { name, definition } : null
     })
     .filter((d): d is { name: string; definition: WorkflowDefinition } => d !== null)

@@ -45,6 +45,10 @@ export interface BeaconSettings {
     intervalMs: number
     autoFixSkill: boolean
   }
+  notifications: {
+    channel: 'discord' | 'slack' | 'none'
+    target: string
+  }
 }
 
 const DEFAULTS: BeaconSettings = {
@@ -79,6 +83,10 @@ const DEFAULTS: BeaconSettings = {
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes
     autoFixSkill: true,
+  },
+  notifications: {
+    channel: 'none',
+    target: '',
   },
 }
 
