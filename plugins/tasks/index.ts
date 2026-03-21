@@ -12,6 +12,7 @@ import {
   blockTask,
   updateTask,
 } from './taskboard'
+import { indexCompletedTask } from '../../src/core/antfly'
 
 const tasksPlugin: MCPlugin = {
   id: 'tasks',
@@ -58,6 +59,10 @@ const tasksPlugin: MCPlugin = {
         }
         try {
           await moveTask(identifier, to, from)
+          // Index completed tasks to Antfly for historical search
+          if (to.toLowerCase() === 'done') {
+            indexCompletedTask({ id: identifier, title: identifier }).catch(() => {})
+          }
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })

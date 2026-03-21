@@ -1,13 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { Menu, X } from 'lucide-react'
+import { Menu, X, PanelLeftClose, PanelLeft } from 'lucide-react'
 import { ConnectionDot } from './connection-dot'
 import { DispatchTimer } from './dispatch-timer'
 import { AppSidebar } from './app-sidebar'
+import { useSidebarContext } from '@/context/sidebar-context'
 
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { collapsed, toggle } = useSidebarContext()
 
   return (
     <>
@@ -18,8 +20,18 @@ export function Header() {
         >
           {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
         </button>
+        <button
+          onClick={toggle}
+          className="hidden md:flex text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] mr-2"
+        >
+          {collapsed ? (
+            <PanelLeft className="size-4" />
+          ) : (
+            <PanelLeftClose className="size-4" />
+          )}
+        </button>
         <div className="flex items-center gap-2">
-          <img src="/beacon-logo.svg" alt="Beacon" className="h-5 w-5" style={{filter: 'invert(72%) sepia(80%) saturate(800%) hue-rotate(355deg) brightness(98%)'}} />
+          <img src="/beacon-logo.svg" alt="Beacon" className="h-5 w-5" />
           <span className="text-sm font-semibold tracking-widest text-foreground uppercase">Beacon</span>
         </div>
         <div className="ml-auto flex items-center gap-4">

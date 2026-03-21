@@ -1,0 +1,15 @@
+{
+  "id": "workflows",
+  "name": "Workflows",
+  "version": "1.0.0",
+  "beacon": ">=1.0.0",
+  "description": "Workflow template library — define and visualize agent workflows",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": [],
+  "secrets": [],
+  "tests": "tests/",
+  "dependencies": [],
+  "permissions": ["storage.read"]
+}

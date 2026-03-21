@@ -11,8 +11,6 @@ import {
   Users,
   Cpu,
   Zap,
-  PanelLeftClose,
-  PanelLeft,
 } from 'lucide-react'
 import { allNavItems } from '@/lib/plugin-manifest'
 import { useSidebarContext } from '@/context/sidebar-context'
@@ -39,20 +37,6 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <nav className="flex flex-col gap-0.5 px-2 py-3">
-      {/* Toggle button */}
-      <div className={`flex mb-1 ${collapsed ? 'justify-center' : 'justify-end'} px-1`}>
-        <button
-          onClick={toggle}
-          className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)]"
-        >
-          {collapsed ? (
-            <PanelLeft className="size-4" />
-          ) : (
-            <PanelLeftClose className="size-4" />
-          )}
-        </button>
-      </div>
-
       {allNavItems.map((item) => {
         const Icon = ICONS[item.icon]
         const active = pathname === item.href || pathname.startsWith(item.href + '/')
