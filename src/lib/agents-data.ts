@@ -101,7 +101,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     shouldDo: [
       'Generate high-quality images from detailed briefs',
       'Match the style, mood, and crop specified in the brief',
-      'Save outputs to content/assets/ with descriptive filenames',
+      'Discover the assets directory via the paths API (GET /api/paths?key=assets) and save outputs there with descriptive filenames',
       'Move your own task to Done when complete (POST /api/tasks/move with {"id":"<task-id>","to":"done"})',
       'Report back to Main Operator with file paths when done',
       'Ask for clarification if a brief is too vague',
@@ -132,7 +132,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     shouldDo: [
       'Produce short-form recipe and lifestyle videos from briefs',
       'Follow the shot list and timing provided by Chef',
-      'Save video outputs to content/assets/ with metadata',
+      'Discover the assets directory via the paths API (GET /api/paths?key=assets) and save video outputs there with metadata',
       'Move your own task to Done when complete (POST /api/tasks/move with {"id":"<task-id>","to":"done"})',
       'Report back to Main Operator with file paths when done',
     ],

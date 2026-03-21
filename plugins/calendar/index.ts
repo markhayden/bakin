@@ -11,6 +11,7 @@ import {
   getItem,
 } from './storage'
 import type { CalendarItem, ContentStatus } from './types'
+import { getContentDir } from '../../src/core/content-dir'
 
 async function normalizeAssetPath(absPath: string | undefined): Promise<string | undefined> {
   if (!absPath) return undefined
@@ -20,7 +21,7 @@ async function normalizeAssetPath(absPath: string | undefined): Promise<string |
   const { existsSync, copyFileSync, mkdirSync } = await import('fs')
 
   const filename = basename(absPath)
-  const CONTENT_DIR = process.env.CONTENT_DIR || join(process.cwd(), 'content')
+  const CONTENT_DIR = getContentDir()
   const assetsDir = join(CONTENT_DIR, 'assets')
   const targetPath = join(assetsDir, filename)
 
@@ -177,7 +178,7 @@ const calendarPlugin: MCPlugin = {
             const { join } = await import('path')
             const execFileAsync = promisify(execFile)
             const OPENCLAW = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
-            const CONTENT_DIR = process.env.CONTENT_DIR || join(process.cwd(), 'content')
+            const CONTENT_DIR = getContentDir()
 
             const caption = item.draft?.caption || item.title
             const target = item.channelTarget || '1483917792745885768'
@@ -267,7 +268,7 @@ const calendarPlugin: MCPlugin = {
           const { join } = await import('path')
           const { homedir } = await import('os')
           
-          const CONTENT_DIR = process.env.CONTENT_DIR || join(process.cwd(), 'content')
+          const CONTENT_DIR = getContentDir()
           const personaPath = join(CONTENT_DIR, 'team', 'personas', `${agentId}.md`)
           let persona = ''
           if (existsSync(personaPath)) {

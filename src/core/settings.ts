@@ -5,6 +5,7 @@
 import fs from 'fs'
 import path from 'path'
 import { createLogger } from './logger'
+import { getContentDir } from './content-dir'
 
 const log = createLogger('settings')
 
@@ -93,8 +94,7 @@ const DEFAULTS: BeaconSettings = {
 let cachedSettings: BeaconSettings | null = null
 
 function getSettingsPath(): string {
-  const contentDir = process.env.CONTENT_DIR || path.join(process.cwd(), 'content')
-  return path.join(contentDir, '.beacon', 'settings.json')
+  return path.join(getContentDir(), '.beacon', 'settings.json')
 }
 
 function deepMerge(defaults: Record<string, unknown>, overrides: Record<string, unknown>): Record<string, unknown> {

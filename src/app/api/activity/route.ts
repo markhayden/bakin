@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { readTaskboard } from '@mc/tasks/taskboard'
+import { getContentDir } from '@/core/content-dir'
 
 export interface ActivityEvent {
   id: string
@@ -11,7 +12,7 @@ export interface ActivityEvent {
   message: string
 }
 
-const AUDIT_PATH = join(process.cwd(), 'content', 'audit.jsonl')
+const AUDIT_PATH = join(getContentDir(), 'audit.jsonl')
 
 function mapAuditMessage(event: string, data: Record<string, unknown>): string {
   switch (event) {

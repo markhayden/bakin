@@ -5,12 +5,13 @@
 import fs from 'fs'
 import path from 'path'
 import type { StorageAdapter } from '../plugin-types'
+import { getContentDir } from '../../core/content-dir'
 
 export class MarkdownStorageAdapter implements StorageAdapter {
   private contentDir: string
 
   constructor(contentDir?: string) {
-    this.contentDir = contentDir || path.join(process.cwd(), 'content')
+    this.contentDir = contentDir || getContentDir()
   }
 
   private resolve(relativePath: string): string {

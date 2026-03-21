@@ -11,6 +11,7 @@ import config from './mc.config'
 
 import { createLogger } from './src/core/logger'
 import { getSettings } from './src/core/settings'
+import { getContentDir, getBeaconPaths, isUsingBeaconHome } from './src/core/content-dir'
 import { handleSSE, broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
 import * as vault from './src/core/vault'
@@ -41,7 +42,7 @@ try {
 
 const dev = process.env.NODE_ENV !== 'production'
 const port = Number(process.env.PORT || 3737)
-const CONTENT_DIR = join(process.cwd(), 'content')
+const CONTENT_DIR = getContentDir()
 
 const app = next({ dev })
 const handle = app.getRequestHandler()
@@ -182,6 +183,23 @@ app.prepare().then(async () => {
         broadcast({ type: 'activity', agent: payload.agent, message: payload.message, ts: payload.ts })
         return { ok: true }
       })
+      return
+    }
+
+    // Paths endpoint — agents use this to discover content locations
+    if (url.pathname === '/api/paths' && req.method === 'GET') {
+      const key = url.searchParams.get('key')
+      const paths = getBeaconPaths()
+      if (key) {
+        const value = (paths as unknown as Record<string, string>)[key]
+        if (value === undefined) {
+          jsonResponse(res, 400, { error: `Unknown path key: ${key}. Available: ${Object.keys(paths).join(', ')}` })
+        } else {
+          jsonResponse(res, 200, { key, path: value })
+        }
+      } else {
+        jsonResponse(res, 200, { paths, isBeaconHome: isUsingBeaconHome() })
+      }
       return
     }
 

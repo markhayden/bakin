@@ -62,8 +62,14 @@ describe('initBeaconHome', () => {
     expect(existsSync(join(testDir, 'workflows', 'instances'))).toBe(true)
     expect(existsSync(join(testDir, 'plugins'))).toBe(true)
 
-    // Verify settings.json was created
-    expect(existsSync(join(testDir, 'settings.json'))).toBe(true)
+    // Verify settings.json was created inside .beacon/ subdir
+    expect(existsSync(join(testDir, '.beacon', 'settings.json'))).toBe(true)
+
+    // Verify new directories (assets, posts, projects, team/personas)
+    expect(existsSync(join(testDir, 'assets'))).toBe(true)
+    expect(existsSync(join(testDir, 'posts'))).toBe(true)
+    expect(existsSync(join(testDir, 'projects'))).toBe(true)
+    expect(existsSync(join(testDir, 'team', 'personas'))).toBe(true)
 
     expect(created.length).toBeGreaterThan(0)
   })
