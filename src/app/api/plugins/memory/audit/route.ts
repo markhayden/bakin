@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
+import { getContentDir } from '@/core/content-dir'
 
-const CONTENT_DIR = join(process.cwd(), 'content')
+const CONTENT_DIR = getContentDir()
 
 export async function GET() {
   const auditPath = join(CONTENT_DIR, 'audit.jsonl')

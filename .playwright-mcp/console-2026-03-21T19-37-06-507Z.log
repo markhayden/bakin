@@ -92,3 +92,108 @@
 [ 3171886ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/dashboard.png:0
 [ 3189195ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/system.png:0
 [ 3189197ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/dashboard.png:0
+[ 4775968ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775968ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775968ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775968ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775968ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775968ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775968ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775968ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775968ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775968ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775968ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775969ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775969ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775969ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775969ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775969ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775969ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775969ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775969ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775969ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775969ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775969ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775970ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775971ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775971ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775971ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775971ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775971ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775971ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775971ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775971ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775971ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775971ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775972ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775972ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775972ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775972ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775972ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775972ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775972ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775972ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775972ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775973ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775973ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775973ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4775973ms] [ERROR] Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES @ http://localhost:3737/api/dispatch:0
+[ 4792479ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/system.png:0
+[ 4792481ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/dashboard.png:0
+[ 5231375ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5232409ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5233373ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5233393ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5233411ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5234415ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5235418ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5236376ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5236422ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5237396ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5239379ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5241428ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5242382ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5245385ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5245399ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5246434ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5248388ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5251391ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5251453ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5254394ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5256479ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5257397ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5260400ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5261403ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5261507ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5263403ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5266406ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5266621ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5269410ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/events:0
+[ 5271805ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/api/dispatch:0
+[ 5271931ms] [ERROR] WebSocket connection to 'ws://localhost:3737/_next/webpack-hmr?id=iESr8RkRKNylBTpgL-6PC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3737/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 5278433ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/system.png:0
+[ 5278464ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/dashboard.png:0
+[ 5282491ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/system.png:0
+[ 5282491ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/dashboard.png:0
+[ 5292872ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/system.png:0
+[ 5292884ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/dashboard.png:0
+[ 5301457ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/system.png:0
+[ 5301465ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/dashboard.png:0
+[ 5398356ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/system.png:0
+[ 5398359ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/dashboard.png:0
+[ 5462183ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/system.png:0
+[ 5462197ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/dashboard.png:0
+[ 5487370ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/system.png:0
+[ 5487372ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3737/headshots/dashboard.png:0

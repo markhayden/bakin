@@ -152,10 +152,8 @@ export async function restartGateway(): Promise<void> {
 export async function ping(): Promise<boolean> {
   try {
     const baseUrl = getBaseUrl()
-    // Use the lightweight /health endpoint (no auth required, no model roundtrip)
     const res = await fetch(`${baseUrl}/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
     })
     return res.ok
   } catch {

@@ -89,7 +89,10 @@ export function parseTasks(content: string): TaskBoard {
       const trimmed = line.trim()
       const depMatch = trimmed.match(/^dependsOn:\s*(\S+)/)
       const wfMatch = trimmed.match(/^workflow:\s*(\S+)/)
-      if (depMatch) {
+      const createdByMatch = trimmed.match(/^createdBy:\s*(\S+)/)
+      if (createdByMatch) {
+        currentTask.createdBy = createdByMatch[1]
+      } else if (depMatch) {
         currentTask.dependsOn = depMatch[1]
       } else if (wfMatch) {
         currentTask.workflowId = wfMatch[1]

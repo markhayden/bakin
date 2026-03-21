@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { readFileSync, existsSync, statSync } from 'fs'
 import { join, extname } from 'path'
-import { cwd } from 'process'
+import { getContentDir } from '@/core/content-dir'
 
-const CONTENT_DIR = process.env.CONTENT_DIR || join(cwd(), 'content')
+const CONTENT_DIR = getContentDir()
 
 const MIME_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',

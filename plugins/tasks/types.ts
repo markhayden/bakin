@@ -8,6 +8,7 @@ export interface Task {
   id: string
   title: string
   agent?: string
+  createdBy?: string
   checked: boolean
   date?: string
   blockedReason?: string

@@ -70,6 +70,9 @@ export function serializeTaskboard(columns: TaskColumns): string {
       if (task.blockedReason) line += ` — BLOCKED: ${task.blockedReason}`
       else if (task.date) line += ` — ${task.date}`
       md += line + '\n'
+      if (task.createdBy) {
+        md += `  createdBy: ${task.createdBy}\n`
+      }
       if (task.dependsOn) {
         md += `  dependsOn: ${task.dependsOn}\n`
       }
@@ -120,7 +123,7 @@ function findTask(columns: TaskColumns, identifier: string): { task: Task; colId
 // ---------------------------------------------------------------------------
 // Mutations — all wrapped in the mutex
 // ---------------------------------------------------------------------------
-export function createTask(title: string, column?: string, assignee?: string, description?: string, workflowId?: string): Promise<Task> {
+export function createTask(title: string, column?: string, assignee?: string, description?: string, workflowId?: string, createdBy?: string): Promise<Task> {
   return withTaskboardLock(() => {
     const { columns } = readTaskboard()
     const colId = column ? (normalizeColumn(column) || 'todo') : 'todo'
@@ -128,6 +131,7 @@ export function createTask(title: string, column?: string, assignee?: string, de
       id: generateTaskId(),
       title,
       agent: assignee,
+      createdBy,
       checked: colId === 'done',
       description,
       workflowId,

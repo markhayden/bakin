@@ -96,7 +96,7 @@ export function createInboxHandler(deps: { contentDir: string, sendNotification:
       const raw = readFileSync(fullPath, 'utf-8')
       const msg = JSON.parse(raw)
       if (msg.type === 'task-complete' && msg.title && msg.agent) {
-        const reviewMsg = `Agent ${msg.agent} reports task complete: "${msg.title}". Summary: ${msg.summary || 'No summary provided.'}. Please review and if satisfied, move the task to Done in content/TASKBOARD.md. If rework is needed, add notes and leave it in In Progress.`
+        const reviewMsg = `Agent ${msg.agent} reports task complete: "${msg.title}". Summary: ${msg.summary || 'No summary provided.'}. Please review and if satisfied, move the task to Done via the Beacon API (beacon tasks move <id> done). If rework is needed, add notes and leave it in In Progress.`
         deps.sendNotification(reviewMsg)
 
         appendAudit(deps.contentDir, 'task.completion_report', msg.agent, {

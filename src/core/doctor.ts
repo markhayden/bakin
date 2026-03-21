@@ -14,6 +14,7 @@ import { join } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
+import { isUsingBeaconHome, getContentDir } from './content-dir'
 import * as openclaw from './openclaw-client'
 
 const log = createLogger('doctor')
@@ -107,7 +108,7 @@ function checkPersonas(contentDir: string, autoFix: boolean): DiagnosticResult[]
       mkdirSync(personasDir, { recursive: true })
       results.push(fixed('personas', 'Created missing personas directory'))
     } else {
-      results.push(warn('personas', 'No personas directory at content/team/personas/', true))
+      results.push(warn('personas', `No personas directory at ${personasDir}`, true))
       return results
     }
   }
@@ -126,7 +127,7 @@ function checkPersonas(contentDir: string, autoFix: boolean): DiagnosticResult[]
         writeFileSync(join(personasDir, `${agent}.md`), stub, 'utf-8')
         created++
       } else {
-        results.push(warn('personas', `Missing persona: content/team/personas/${agent}.md`, true))
+        results.push(warn('personas', `Missing persona: ${join(personasDir, `${agent}.md`)}`, true))
       }
     }
   }
@@ -311,6 +312,20 @@ async function checkAntfly(): Promise<DiagnosticResult[]> {
 }
 
 /**
+ * Content directory: verify content lives in ~/.beacon/ not ./content/.
+ * NOT auto-fixable — migration requires user judgment (moving live data).
+ */
+function checkContentDir(): DiagnosticResult[] {
+  const contentDir = getContentDir()
+  if (isUsingBeaconHome()) {
+    return [ok('content-dir', `Content directory: ${contentDir}`)]
+  }
+  return [warn('content-dir',
+    `Content lives at ${contentDir} instead of ~/.beacon/ — run: beacon init && move content/* to ~/.beacon/`
+  )]
+}
+
+/**
  * Orchestrator rules: verify AGENTS.md has the Beacon rules block and it's current.
  * Auto-fixable — safe to write/update our own block in AGENTS.md.
  */
@@ -487,6 +502,7 @@ export async function runDiagnostics(
   const results: DiagnosticResult[] = []
 
   // Sync checks (fast, some auto-fixable)
+  results.push(...checkContentDir())
   results.push(...checkAgentRoster(contentDir))
   results.push(...checkPersonas(contentDir, autoFix))
   results.push(...checkTaskboard(contentDir, autoFix))
@@ -494,9 +510,12 @@ export async function runDiagnostics(
   results.push(...checkOrchestratorRules(autoFix))
   results.push(...checkService(projectRoot))
 
-  // Async checks (network, not auto-fixable)
-  results.push(...await checkGateway())
-  results.push(...await checkAntfly())
+  // Async checks (network, not auto-fixable) — run in parallel
+  const [gatewayResults, antflyResults] = await Promise.all([
+    checkGateway(),
+    checkAntfly(),
+  ])
+  results.push(...gatewayResults, ...antflyResults)
 
   // Summarize
   const errors = results.filter(r => r.status === 'error').length

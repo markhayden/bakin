@@ -34,12 +34,12 @@ const tasksPlugin: MCPlugin = {
       method: 'POST',
       handler: async (req) => {
         const body = await req.json()
-        const { title, description, column, assignee } = body
+        const { title, description, column, assignee, createdBy } = body
         if (!title) {
           return Response.json({ error: 'title required' }, { status: 400 })
         }
         try {
-          const task = await createTask(title, column, assignee, description)
+          const task = await createTask(title, column, assignee, description, undefined, createdBy)
           return Response.json({ ok: true, id: task.id })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })

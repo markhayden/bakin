@@ -396,8 +396,25 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean } = {})
   writeFileSync(agentsPath, updated, 'utf-8')
 }
 
+async function cmdPaths(key?: string): Promise<void> {
+  const result = await apiGet(`/api/paths${key ? `?key=${encodeURIComponent(key)}` : ''}`) as Record<string, unknown>
+
+  if (key) {
+    // Single path — print just the value (useful for scripting: beacon paths assets)
+    console.log(result.path)
+  } else {
+    const paths = result.paths as Record<string, string>
+    const isHome = result.isBeaconHome ? '~/.beacon' : './content (not migrated)'
+    console.log(`Content dir: ${isHome}`)
+    console.log('')
+    for (const [k, v] of Object.entries(paths)) {
+      console.log(`  ${k.padEnd(12)} ${v}`)
+    }
+  }
+}
+
 async function cmdInit(): Promise<void> {
-  const { initBeaconHome } = await import('../plugins/workflows/content-dir')
+  const { initBeaconHome } = await import('../src/core/content-dir')
   const targetDir = process.env.BEACON_HOME || undefined
   console.log(`Initializing Beacon home directory${targetDir ? ` at ${targetDir}` : ''}...`)
   const { created, seeded } = initBeaconHome(targetDir)
@@ -591,6 +608,7 @@ Commands:
   plugins remove <id>              Remove an installed plugin
   setup service [--uninstall]       Install/remove macOS LaunchAgent for auto-start
   setup antfly                     Install AntflyDB + enable + reindex (one command)
+  paths [key]                      Show content directory paths (keys: home, taskboard, assets, etc.)
   init                             Initialize ~/.beacon/ directory with defaults
   agent-rules [--apply|--check]    Manage orchestrator rules block in AGENTS.md
   doctor                           Run health checks (agent sync, skill, gateway, etc.)
@@ -698,6 +716,10 @@ async function main(): Promise<void> {
           console.error('Available: beacon setup service | beacon setup antfly')
           process.exit(1)
         }
+        break
+
+      case 'paths':
+        await cmdPaths(args[1])
         break
 
       case 'agent-rules': {

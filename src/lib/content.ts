@@ -5,8 +5,9 @@
 import fs from 'fs'
 import path from 'path'
 import { MarkdownStorageAdapter } from './storage/markdown-adapter'
+import { getContentDir } from '../core/content-dir'
 
-const CONTENT_DIR = path.join(process.cwd(), 'content')
+const CONTENT_DIR = getContentDir()
 const adapter = new MarkdownStorageAdapter(CONTENT_DIR)
 
 export function readAllContent(): Record<string, string> {

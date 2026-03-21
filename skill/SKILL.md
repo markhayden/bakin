@@ -55,12 +55,12 @@ openclaw agent --agent main --message "TASK BLOCKED: <title> -- <reason>" --deli
 
 ## Creating Subtasks
 
-If your task requires work from another agent (e.g., images from Pixel, code from Patch):
+If your task requires work from another agent (e.g., images from Pixel, code from Patch), always include `createdBy` with your own agent name so the assigned agent knows who to report back to:
 
 ```bash
 curl -s -X POST http://localhost:3737/api/plugins/tasks/create \
   -H 'Content-Type: application/json' \
-  -d '{"title":"<subtask>","assignee":"<agent>","description":"<brief>"}'
+  -d '{"title":"<subtask>","assignee":"<agent>","description":"<brief>","createdBy":"<your-agent-name>"}'
 ```
 
 ## Dependencies
@@ -102,20 +102,35 @@ Get full API documentation:
 curl -s http://localhost:3737/api/docs
 ```
 
-## Content Locations
+## Discovering Paths (REQUIRED)
 
-- Tasks: `content/TASKBOARD.md`
-- Decisions/Memory: `content/MEMORY-LOG.md`
-- Team contacts: `content/team/CONTACTS.md`
-- Agent personas: `content/team/personas/<agent>.md`
-- Calendar: `content/calendar.json`
-- Assets: `content/assets/`
+**NEVER hardcode or construct filesystem paths.** The content directory location is managed by Beacon and can change. Always use the paths API to discover where files live.
+
+Get all paths:
+```bash
+curl -s http://localhost:3737/api/paths
+```
+
+Get a specific path:
+```bash
+curl -s 'http://localhost:3737/api/paths?key=assets'
+curl -s 'http://localhost:3737/api/paths?key=personas'
+```
+
+Available path keys: `home`, `taskboard`, `memoryLog`, `calendar`, `audit`, `assets`, `personas`, `team`, `heartbeats`, `inbox`, `posts`, `projects`, `docs`, `workflows`, `settings`.
+
+When you need to write a file (e.g., save an image to assets), first query the paths API, then use the returned absolute path. Example:
+
+```bash
+ASSETS_DIR=$(curl -s 'http://localhost:3737/api/paths?key=assets' | jq -r '.path')
+# Now use $ASSETS_DIR/my-image.png
+```
 
 ## Rules
 
 1. **Always log progress.** The watchdog monitors for stuck tasks. Log before, during, and after major steps.
 2. **Use the API, not file edits.** Don't edit TASKBOARD.md directly — use the task API endpoints. The system handles locking and formatting.
-3. **Save assets to content/assets/.** Use descriptive filenames like `content/assets/<agent>-<type>.png`.
+3. **Discover paths via the API.** Never hardcode `content/`, `~/.beacon/`, or any absolute path. Always use `curl http://localhost:3737/api/paths?key=<key>` to find where to read or write files.
 4. **Report back.** Always notify roscoe when done or blocked.
 5. **Check API docs.** If you're unsure about an endpoint, `curl http://localhost:3737/api/docs`.
 
@@ -125,16 +140,18 @@ These rules apply to ALL subagents (Basil, Pixel, Rolo, Patch, etc.). Violating 
 
 1. **Never edit TASKBOARD.md directly.** Always use the Beacon task API. The API handles locking and prevents conflicts.
 
-2. **Stay in your lane.** Don't do work assigned to another agent inline. Basil doesn't generate images — she creates a task for Pixel. Pixel doesn't write copy — that's Basil's job.
+2. **Never hardcode filesystem paths.** Always use the paths API (`/api/paths?key=<key>`) to discover content locations. Paths change between environments and after migrations. Constructing paths like `content/assets/` or `~/.beacon/assets/` will break.
 
-3. **Only spawn agents when you have a concrete brief.** Don't speculatively create subtasks. Wait until you have real, ready-to-hand-off work.
+3. **Stay in your lane.** Don't do work assigned to another agent inline. Basil doesn't generate images — she creates a task for Pixel. Pixel doesn't write copy — that's Basil's job.
 
-4. **Use your own agent name when logging.** Log as `basil`, `pixel`, `patch`, etc. — never as `system`, `roscoe`, or another agent's name.
+4. **Only spawn agents when you have a concrete brief.** Don't speculatively create subtasks. Wait until you have real, ready-to-hand-off work.
 
-5. **Never send messages directly to Mark.** All communication goes through Roscoe (the orchestrator). When done, report to `main` — Roscoe decides what to surface.
+5. **Use your own agent name when logging.** Log as `basil`, `pixel`, `patch`, etc. — never as `system`, `roscoe`, or another agent's name.
 
-6. **Never mark a task done prematurely.** Only move to Done after output is delivered and confirmed. "I generated the image" is not done — "the image is in content/assets/ and Basil has the path" is done.
+6. **Never send messages directly to Mark.** All communication goes through Roscoe (the orchestrator). When done, report to `main` — Roscoe decides what to surface.
 
-7. **Always exit after registering a dependency.** If you're waiting on another agent, register the dependency and stop. You'll be re-dispatched when it completes.
+7. **Never mark a task done prematurely.** Only move to Done after output is delivered and confirmed. "I generated the image" is not done — "the image is saved and Basil has the path" is done.
 
-8. **Log progress every major step.** If you haven't logged in 5 minutes, the watchdog will flag you as stuck. Keep the logs flowing.
+8. **Always exit after registering a dependency.** If you're waiting on another agent, register the dependency and stop. You'll be re-dispatched when it completes.
+
+9. **Log progress every major step.** If you haven't logged in 5 minutes, the watchdog will flag you as stuck. Keep the logs flowing.
