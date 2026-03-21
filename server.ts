@@ -104,6 +104,7 @@ app.prepare().then(async () => {
       antfly.search(query, {
         table: url.searchParams.get('table') || undefined,
         limit: Number(url.searchParams.get('limit')) || undefined,
+        agent: url.searchParams.get('agent') || undefined,
       }).then(results => {
         jsonResponse(res, 200, { results, enabled: antfly.enabled() })
       }).catch(err => {

@@ -2,13 +2,15 @@
  * Antfly core module for Beacon.
  * Optional vector database integration — Beacon works without it.
  * When enabled, provides dual-write sync and hybrid search across all content.
+ *
+ * Uses direct HTTP calls to the Antfly REST API (no SDK dependency at runtime).
  */
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 
 const log = createLogger('antfly')
 
-let client: any = null
+let baseUrl: string | null = null
 let isInitialized = false
 
 // Table names for Beacon content
@@ -29,6 +31,18 @@ export interface SearchResult {
 }
 
 // ---------------------------------------------------------------------------
+// HTTP helpers
+// ---------------------------------------------------------------------------
+
+async function antflyFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    signal: init?.signal || AbortSignal.timeout(10000),
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
 
@@ -46,33 +60,31 @@ export async function initialize(): Promise<void> {
     return
   }
 
-  try {
-    const { AntflyClient } = await import('@antfly/sdk')
-    client = new AntflyClient({
-      baseUrl: settings.antfly.url,
-      auth: settings.antfly.auth,
-    })
+  baseUrl = settings.antfly.url
 
+  try {
     // Verify connection
-    const status = await client.getStatus()
-    log.info('Antfly connected', { url: settings.antfly.url, health: status?.health })
+    const statusUrl = baseUrl.replace(/\/api\/v1\/?$/, '') + '/api/v1/status'
+    const res = await fetch(statusUrl, { signal: AbortSignal.timeout(3000) })
+    if (!res.ok) throw new Error(`Status check returned ${res.status}`)
+    const status = await res.json()
+    log.info('Antfly connected', { url: baseUrl, health: status?.health })
 
     // Ensure tables exist
     await ensureTables()
   } catch (err) {
     log.error('Failed to connect to Antfly — falling back to file-only mode', err)
-    client = null
+    baseUrl = null
   }
 }
 
 async function ensureTables(): Promise<void> {
-  const settings = getSettings()
-  const baseUrl = settings.antfly.url
+  if (!baseUrl) return
 
   // List existing tables
   let existingNames = new Set<string>()
   try {
-    const res = await fetch(`${baseUrl}/tables`, { signal: AbortSignal.timeout(5000) })
+    const res = await antflyFetch('/tables')
     if (res.ok) {
       const tables = await res.json()
       existingNames = new Set((tables || []).map((t: { name: string }) => t.name))
@@ -85,9 +97,8 @@ async function ensureTables(): Promise<void> {
     if (existingNames.has(tableName)) continue
 
     try {
-      const res = await fetch(`${baseUrl}/tables/${tableName}`, {
+      const res = await antflyFetch(`/tables/${tableName}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           num_shards: 1,
           description: `Beacon ${key} — auto-created`,
@@ -110,21 +121,15 @@ async function ensureTables(): Promise<void> {
             },
           },
           indexes: {
-            search: {
-              name: 'search',
-              type: 'full_text',
-            },
+            search: { name: 'search', type: 'full_text' },
             embeddings: {
               name: 'embeddings',
               type: 'embeddings',
-              embedder: {
-                provider: 'antfly',
-                model: 'all-MiniLM-L6-v2',
-              },
+              field: 'content',
+              embedder: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
             },
           },
         }),
-        signal: AbortSignal.timeout(10000),
       })
       if (res.ok) {
         log.info(`Table created: ${tableName}`)
@@ -136,6 +141,10 @@ async function ensureTables(): Promise<void> {
       log.warn(`Failed to create table ${tableName}`, err)
     }
   }
+
+  // Wait for shards to finish initializing before allowing writes
+  await new Promise(r => setTimeout(r, 3000))
+  log.info('Tables ready')
 }
 
 // ---------------------------------------------------------------------------
@@ -149,20 +158,23 @@ export async function index(
   table: string,
   doc: { id: string; content: string; metadata?: Record<string, unknown> }
 ): Promise<void> {
-  if (!client || !enabled()) return
+  if (!baseUrl || !enabled()) return
 
   const tableName = TABLES[table as keyof typeof TABLES] || table
 
   try {
-    await client.tables.batch(tableName, {
-      inserts: {
-        [doc.id]: {
-          id: doc.id,
-          content: doc.content,
-          created_at: new Date().toISOString(),
-          ...doc.metadata,
+    await antflyFetch(`/tables/${tableName}/batch`, {
+      method: 'POST',
+      body: JSON.stringify({
+        inserts: {
+          [doc.id]: {
+            id: doc.id,
+            content: doc.content,
+            created_at: new Date().toISOString(),
+            ...doc.metadata,
+          },
         },
-      },
+      }),
     })
   } catch (err) {
     log.warn('Antfly index failed (non-blocking)', err, { table: tableName, id: doc.id })
@@ -173,12 +185,13 @@ export async function index(
  * Delete a document from Antfly.
  */
 export async function remove(table: string, id: string): Promise<void> {
-  if (!client || !enabled()) return
+  if (!baseUrl || !enabled()) return
 
   const tableName = TABLES[table as keyof typeof TABLES] || table
   try {
-    await client.tables.batch(tableName, {
-      deletes: [id],
+    await antflyFetch(`/tables/${tableName}/batch`, {
+      method: 'POST',
+      body: JSON.stringify({ deletes: [id] }),
     })
   } catch (err) {
     log.warn('Antfly delete failed', err, { table: tableName, id })
@@ -195,11 +208,9 @@ export async function remove(table: string, id: string): Promise<void> {
  */
 export async function search(
   query: string,
-  options: { table?: string; limit?: number } = {}
+  options: { table?: string; limit?: number; agent?: string } = {}
 ): Promise<SearchResult[]> {
-  if (!client || !enabled()) {
-    return []
-  }
+  if (!baseUrl || !enabled()) return []
 
   const limit = options.limit || 10
   const tableName = options.table
@@ -208,7 +219,7 @@ export async function search(
 
   try {
     if (tableName) {
-      return await searchTable(tableName, query, limit)
+      return await searchTable(tableName, query, limit, options.agent)
     }
 
     // Search all Beacon tables and merge results
@@ -217,7 +228,7 @@ export async function search(
 
     for (const [key, tName] of Object.entries(TABLES)) {
       try {
-        const results = await searchTable(tName, query, perTable)
+        const results = await searchTable(tName, query, perTable, options.agent)
         allResults.push(...results.map(r => ({ ...r, table: key })))
       } catch {
         // Skip tables that don't exist yet
@@ -233,25 +244,37 @@ export async function search(
   }
 }
 
-async function searchTable(tableName: string, query: string, limit: number): Promise<SearchResult[]> {
-  if (!client) return []
+async function searchTable(tableName: string, query: string, limit: number, agent?: string): Promise<SearchResult[]> {
+  if (!baseUrl) return []
 
-  const result = await client.query({
-    table: tableName,
+  const body: Record<string, unknown> = {
     full_text_search: { query },
     semantic_search: query,
     indexes: ['embeddings'],
     limit,
+  }
+  if (agent) {
+    body.filter = { agent: { eq: agent } }
+  }
+
+  const res = await antflyFetch(`/tables/${tableName}/query`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   })
 
-  if (!result?.hits?.hits) return []
+  if (!res.ok) return []
 
-  return result.hits.hits.map((hit) => ({
+  const result = await res.json()
+  // Antfly wraps query results in a responses[] array
+  const response = result?.responses?.[0] || result
+  if (!response?.hits?.hits) return []
+
+  return response.hits.hits.map((hit: any) => ({
     id: hit._id || '',
     table: tableName,
-    content: String((hit._source as Record<string, unknown>)?.content || ''),
+    content: String(hit._source?.content || ''),
     score: hit._score || 0,
-    metadata: (hit._source as Record<string, unknown>) || {},
+    metadata: hit._source || {},
   }))
 }
 
@@ -267,7 +290,6 @@ export async function syncFile(relativePath: string, content: string): Promise<v
   if (!enabled()) return
 
   if (relativePath === 'TASKBOARD.md') {
-    // Task sync happens on completion, not on every write
     return
   }
 
@@ -351,34 +373,28 @@ export async function reindexAll(contentDir: string): Promise<number> {
   const { join } = await import('path')
   let count = 0
 
-  // Index MEMORY-LOG.md
   const memoryLog = join(contentDir, 'MEMORY-LOG.md')
   if (existsSync(memoryLog)) {
     await syncFile('MEMORY-LOG.md', readFileSync(memoryLog, 'utf-8'))
     count++
   }
 
-  // Index project docs
   const projectsDir = join(contentDir, 'projects')
   if (existsSync(projectsDir)) {
     for (const file of readdirSync(projectsDir).filter(f => f.endsWith('.md'))) {
-      const rel = `projects/${file}`
-      await syncFile(rel, readFileSync(join(projectsDir, file), 'utf-8'))
+      await syncFile(`projects/${file}`, readFileSync(join(projectsDir, file), 'utf-8'))
       count++
     }
   }
 
-  // Index docs
   const docsDir = join(contentDir, 'docs')
   if (existsSync(docsDir)) {
     for (const file of readdirSync(docsDir).filter(f => f.endsWith('.md'))) {
-      const rel = `docs/${file}`
-      await syncFile(rel, readFileSync(join(docsDir, file), 'utf-8'))
+      await syncFile(`docs/${file}`, readFileSync(join(docsDir, file), 'utf-8'))
       count++
     }
   }
 
-  // Index team personas
   const personasDir = join(contentDir, 'team', 'personas')
   if (existsSync(personasDir)) {
     for (const file of readdirSync(personasDir).filter(f => f.endsWith('.md'))) {
