@@ -8,6 +8,12 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import * as openclaw from './openclaw-client'
+import {
+  loadInstance,
+  createInstance,
+  getCurrentStep,
+  getActiveAgents,
+} from '../../plugins/workflows/runtime'
 
 const log = createLogger('dispatch')
 
@@ -69,6 +75,17 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       if (lastFailure && Date.now() - lastFailure < settings.dispatch.failureCooldownMs) continue
 
       if (task.agent && !settings.agents.includes(task.agent)) continue
+
+      // Workflow-aware dispatch path
+      const taskWithWorkflow = task as typeof task & { workflowId?: string }
+      if (taskWithWorkflow.workflowId) {
+        try {
+          await dispatchWorkflowTask(taskWithWorkflow, contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog)
+        } catch (err) {
+          log.error(`Failed to dispatch workflow task "${task.title}"`, err)
+        }
+        continue
+      }
 
       const targetAgent = task.agent ? resolveId(task.agent) : 'main'
       const agentName = task.agent || 'main-operator'
@@ -149,6 +166,132 @@ export function stop(): void {
     dispatchTimer = null
     log.info('Dispatch stopped')
   }
+}
+
+/**
+ * Dispatch a workflow-backed task. Creates an instance if needed,
+ * then sends only the current step's instructions to the assigned agent.
+ */
+async function dispatchWorkflowTask(
+  task: { id: string; title: string; description?: string; agent?: string; workflowId: string },
+  contentDir: string,
+  port: number,
+  dispatchedSet: Set<string>,
+  state: DispatchState,
+  moveTaskToInProgress: (id: string, agent: string) => Promise<void>,
+  addTaskLog: (id: string, author: string, message: string) => Promise<void>,
+): Promise<void> {
+  // Load or create workflow instance
+  let instance = loadInstance(task.id, contentDir)
+  if (!instance) {
+    instance = createInstance(task.id, task.workflowId, contentDir)
+    log.info('Created workflow instance', { taskId: task.id, workflowId: task.workflowId })
+  }
+
+  // Get agents for current step
+  const activeAgents = getActiveAgents(task.id, contentDir)
+  if (activeAgents.length === 0) {
+    log.debug('No active agents for workflow step', { taskId: task.id })
+    return
+  }
+
+  for (const { agent, stepId } of activeAgents) {
+    const stepContext = getCurrentStep(task.id, agent, contentDir)
+    if (!stepContext || 'status' in stepContext && (stepContext.status === 'complete' || stepContext.status === 'pending_approval')) {
+      continue
+    }
+
+    const ctx = stepContext as { stepId: string; label: string; instructions?: string; output_schema?: Record<string, unknown>; rejectionReason?: string }
+    const targetAgent = resolveId(agent)
+    const message = buildWorkflowDispatchMessage(task, ctx, agent, port)
+
+    try {
+      await openclaw.sendMessage(targetAgent, message)
+      dispatchedSet.add(`${task.id}:${stepId}`)
+
+      appendAudit(contentDir, 'task.dispatched', targetAgent, {
+        id: task.id,
+        title: task.title,
+        workflowId: task.workflowId,
+        stepId,
+      })
+      log.info('Workflow step dispatched', { taskId: task.id, stepId, agent: targetAgent })
+    } catch (err) {
+      log.error(`Failed to dispatch workflow step "${stepId}" to ${targetAgent}`, err)
+      if (!state.failedDispatches) state.failedDispatches = {}
+      state.failedDispatches[task.id] = Date.now()
+
+      try {
+        await addTaskLog(task.id, 'system', `Workflow dispatch failed for step "${stepId}": agent "${targetAgent}" unavailable`)
+      } catch {
+        // best effort
+      }
+    }
+  }
+
+  // Move task to in_progress on first dispatch
+  if (!dispatchedSet.has(task.id)) {
+    const firstAgent = activeAgents[0]?.agent || task.agent || 'main-operator'
+    await moveTaskToInProgress(task.id, firstAgent)
+    dispatchedSet.add(task.id)
+  }
+}
+
+/**
+ * Build a dispatch message for a workflow step.
+ * Contains ONLY the current step instructions — never future steps.
+ */
+function buildWorkflowDispatchMessage(
+  task: { id: string; title: string },
+  stepContext: { stepId: string; label: string; instructions?: string; output_schema?: Record<string, unknown>; rejectionReason?: string },
+  agentName: string,
+  port: number
+): string {
+  const lines: string[] = []
+
+  lines.push(`# Workflow Task: "${task.title}"`)
+  lines.push(`## Current Step: ${stepContext.label}`)
+  lines.push('')
+
+  if (stepContext.rejectionReason) {
+    lines.push(`> **REVISION REQUESTED:** ${stepContext.rejectionReason}`)
+    lines.push('')
+  }
+
+  if (stepContext.instructions) {
+    lines.push(stepContext.instructions)
+    lines.push('')
+  }
+
+  // Workflow framing rules
+  lines.push('---')
+  lines.push('## Workflow Rules')
+  lines.push('- You are working on ONE step of a multi-step workflow')
+  lines.push('- Complete this step, then submit your output — the next step will be assigned automatically')
+  lines.push('- Do NOT attempt to do work beyond this step')
+  lines.push('')
+
+  // API endpoints
+  const base = `http://localhost:${port}/api/plugins/workflows`
+  lines.push('## Commands')
+  lines.push(`Check current step: curl -s "${base}/step?taskId=${task.id}&agentId=${agentName}"`)
+  lines.push('')
+
+  if (stepContext.output_schema) {
+    lines.push(`Submit output: curl -s -X POST ${base}/step/complete -H 'Content-Type: application/json' -d '${JSON.stringify({ taskId: task.id, stepId: stepContext.stepId, output: '{{YOUR_OUTPUT}}' })}'`)
+    lines.push('')
+    lines.push('Expected output format:')
+    lines.push('```json')
+    lines.push(JSON.stringify(stepContext.output_schema, null, 2))
+    lines.push('```')
+  } else {
+    lines.push(`Submit output: curl -s -X POST ${base}/step/complete -H 'Content-Type: application/json' -d '{"taskId":"${task.id}","stepId":"${stepContext.stepId}","output":{"result":"your output here"}}'`)
+  }
+
+  lines.push('')
+  lines.push(`Log progress: curl -s -X POST http://localhost:${port}/api/tasks/log -H 'Content-Type: application/json' -d '{"title":"${task.id}","author":"${agentName}","message":"your update"}'`)
+
+  return lines.join('\n')
 }
 
 export function getDispatchInfo(contentDir: string): Record<string, unknown> {

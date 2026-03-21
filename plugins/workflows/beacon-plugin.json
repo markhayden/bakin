@@ -1,15 +1,19 @@
 {
   "id": "workflows",
   "name": "Workflows",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "beacon": ">=1.0.0",
-  "description": "Workflow template library — define and visualize agent workflows",
+  "description": "Workflow runtime — enforces step-by-step agent execution with gated delivery, parallel steps, human gates, and output validation",
   "entry": {
     "server": "index.ts"
   },
-  "contentFiles": [],
+  "contentFiles": [
+    "workflows/definitions/",
+    "workflows/skills/",
+    "workflows/instances/"
+  ],
   "secrets": [],
   "tests": "tests/",
-  "dependencies": [],
-  "permissions": ["storage.read"]
+  "dependencies": ["ajv"],
+  "permissions": ["storage.read", "storage.write", "events.emit"]
 }

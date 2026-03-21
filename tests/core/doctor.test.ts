@@ -66,7 +66,7 @@ describe('doctor', () => {
     const doctor = await import('@/core/doctor')
     writeFileSync(join(contentDir, 'TASKBOARD.md'), `# Taskboard
 
-## TODO
+## 📋 Todo
 - [ ] Something
 
 ## 🔵 In Progress
