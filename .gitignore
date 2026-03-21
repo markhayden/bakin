@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# beacon runtime data (unique per installation)
+/content/
+mc-server.log
+mc-server-error.log
+
+# claude code
+.claude/
