@@ -1,0 +1,109 @@
+/**
+ * Catch-all API route for plugin-registered handlers.
+ * Dispatches /api/plugins/:pluginId/:path to the plugin's registered route handler.
+ */
+import { NextResponse } from 'next/server'
+import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
+import { MCEventBus } from '@/lib/events/event-bus'
+import type { PluginContext, MCPlugin, APIRoute } from '@/lib/plugin-types'
+
+// Direct plugin imports (can't use dynamic import in Next.js bundle)
+import tasksPlugin from '@mc/tasks'
+import memoryPlugin from '@mc/memory'
+import modelsPlugin from '@mc/models'
+import calendarPlugin from '@mc/calendar'
+import workflowsPlugin from '@mc/workflows'
+
+interface PluginState {
+  plugin: MCPlugin
+  routes: APIRoute[]
+}
+
+const pluginStates = new Map<string, PluginState>()
+let initialized = false
+
+function ensureInitialized() {
+  if (initialized) return
+  initialized = true
+  console.log('[api-route] Initializing plugin routes...')
+
+  const storage = new MarkdownStorageAdapter()
+  const events = new MCEventBus(() => {})
+
+  const plugins = [tasksPlugin, memoryPlugin, modelsPlugin, calendarPlugin, workflowsPlugin]
+
+  for (const plugin of plugins) {
+    if (!plugin.id || !plugin.activate) continue
+
+    const state: PluginState = {
+      plugin,
+      routes: [],
+    }
+
+    const ctx: PluginContext = {
+      storage,
+      events,
+      pluginId: plugin.id,
+      registerNav: () => {},
+      registerRoute: (route) => { state.routes.push(route) },
+      registerSlot: () => {},
+      watchFiles: () => {},
+    }
+
+    plugin.activate(ctx)
+    pluginStates.set(plugin.id, state)
+    console.log(`[api-route] Plugin ${plugin.id}: ${state.routes.length} routes registered`)
+  }
+}
+
+function findRoute(pluginId: string, path: string, method: string): APIRoute | null {
+  const state = pluginStates.get(pluginId)
+  if (!state) return null
+  return state.routes.find(r => r.path === path && r.method === method.toUpperCase()) || null
+}
+
+function buildContext(pluginId: string): PluginContext {
+  const storage = new MarkdownStorageAdapter()
+  const events = new MCEventBus(() => {})
+  return {
+    storage,
+    events,
+    pluginId,
+    registerNav: () => {},
+    registerRoute: () => {},
+    registerSlot: () => {},
+    watchFiles: () => {},
+  }
+}
+
+async function handleRequest(
+  req: Request,
+  { params }: { params: Promise<{ pluginId: string; path: string[] }> }
+) {
+  ensureInitialized()
+
+  const { pluginId, path: pathSegments } = await params
+  const routePath = '/' + pathSegments.join('/')
+  const method = req.method
+
+  const route = findRoute(pluginId, routePath, method)
+  if (!route) {
+    return NextResponse.json(
+      { error: `No ${method} handler for ${pluginId}${routePath}` },
+      { status: 404 }
+    )
+  }
+
+  try {
+    const ctx = buildContext(pluginId)
+    return await route.handler(req, ctx)
+  } catch (err) {
+    console.error(`Plugin route error [${pluginId}${routePath}]:`, err)
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
+export const GET = handleRequest
+export const POST = handleRequest
+export const PUT = handleRequest
+export const DELETE = handleRequest

@@ -1,0 +1,129 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
+import { Zap } from 'lucide-react'
+import { WorkflowCanvas } from './workflow-canvas'
+import { AGENTS } from '@/lib/constants'
+import type { WorkflowTemplate, WorkflowStep, AgentStep } from '../types'
+
+/** Collect unique agent IDs from workflow steps */
+function collectAgents(steps: WorkflowStep[]): string[] {
+  const ids = new Set<string>()
+  for (const step of steps) {
+    if (step.type === 'agent') ids.add((step as AgentStep).agent)
+    if (step.type === 'parallel') {
+      for (const sub of step.steps) {
+        if (sub.type === 'agent') ids.add(sub.agent)
+      }
+    }
+  }
+  return Array.from(ids)
+}
+
+export function WorkflowsPage() {
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
+  const [selected, setSelected] = useState<string | null>(null)
+
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/workflows/list')
+      const data = await res.json()
+      setTemplates(data.templates ?? [])
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchTemplates()
+  }, [fetchTemplates])
+
+  const selectedTemplate = templates.find(t => t.filename === selected)
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Top bar */}
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Zap className="size-4 text-amber-400" />
+            <h1 className="text-base font-semibold">Workflows</h1>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">Template Library</p>
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left sidebar — template list */}
+        <div className="flex w-72 shrink-0 flex-col border-r border-border bg-card">
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-3 pt-3 pb-1">
+              <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Templates
+              </span>
+            </div>
+            {templates.length === 0 && (
+              <p className="px-3 py-4 text-xs text-muted-foreground">No workflow templates found.</p>
+            )}
+            {templates.map((t) => {
+              const agentIds = collectAgents(t.definition.steps)
+              return (
+                <button
+                  key={t.filename}
+                  onClick={() => setSelected(t.filename)}
+                  className={cn(
+                    'flex w-full flex-col gap-1.5 px-3 py-3 text-left transition-colors hover:bg-muted/50',
+                    selected === t.filename && 'bg-muted',
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <Zap className="size-3 shrink-0 text-amber-400" />
+                    <span className="truncate text-sm font-medium">{t.name}</span>
+                  </div>
+                  <p className="line-clamp-2 text-xs text-muted-foreground leading-relaxed">{t.description}</p>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-[10px]">
+                      {t.stepCount} steps
+                    </Badge>
+                    <div className="flex -space-x-1.5">
+                      {agentIds.map(id => {
+                        const agent = AGENTS.find(a => a.id === id)
+                        return agent ? (
+                          <span
+                            key={id}
+                            title={agent.name}
+                            className="inline-flex size-5 items-center justify-center rounded-full bg-zinc-800 text-[10px] ring-1 ring-zinc-700"
+                          >
+                            {agent.emoji}
+                          </span>
+                        ) : null
+                      })}
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Right panel — canvas or empty state */}
+        <div className="flex-1 overflow-hidden">
+          {selectedTemplate ? (
+            <WorkflowCanvas definition={selectedTemplate.definition} />
+          ) : (
+            <div className="flex h-full items-center justify-center bg-zinc-950">
+              <div className="text-center">
+                <Zap className="mx-auto mb-3 size-8 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">
+                  Select a template to view its workflow
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

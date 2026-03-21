@@ -19,9 +19,8 @@ export function Header() {
           {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
         </button>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold tracking-tight text-foreground">
-            Mission Control
-          </span>
+          <img src="/beacon-logo.svg" alt="Beacon" className="h-5 w-5" style={{filter: 'invert(72%) sepia(80%) saturate(800%) hue-rotate(355deg) brightness(98%)'}} />
+          <span className="text-sm font-semibold tracking-widest text-foreground uppercase">Beacon</span>
         </div>
         <div className="ml-auto flex items-center gap-4">
           <DispatchTimer />

@@ -5,6 +5,7 @@ export interface TaskLogEntry {
 }
 
 export interface Task {
+  id: string
   title: string
   agent?: string
   checked: boolean

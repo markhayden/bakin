@@ -3,6 +3,8 @@ import { Inter, JetBrains_Mono } from 'next/font/google'
 import { Providers } from '@/components/providers'
 import { Header } from '@/components/layout/header'
 import { AppSidebar } from '@/components/layout/app-sidebar'
+import { LayoutShell } from '@/components/layout/layout-shell'
+import config from '../../mc.config'
 import './globals.css'
 
 const inter = Inter({
@@ -16,9 +18,13 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Mission Control',
-  description: 'Multi-agent mission control dashboard',
+  title: 'Beacon',
+  description: 'Multi-agent command dashboard',
 }
+
+const themeOverrides = config.theme && Object.keys(config.theme).length > 0
+  ? Object.entries(config.theme).map(([k, v]) => `${k}: ${v}`).join('; ')
+  : ''
 
 export default function RootLayout({
   children,
@@ -27,16 +33,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}>
+      {themeOverrides && (
+        <head>
+          <style dangerouslySetInnerHTML={{ __html: `:root { ${themeOverrides} }` }} />
+        </head>
+      )}
       <body className="min-h-full bg-background text-foreground">
         <Providers>
           <Header />
-          {/* Desktop sidebar */}
-          <aside className="fixed top-14 left-0 bottom-0 w-52 border-r border-border bg-background hidden md:block overflow-y-auto">
-            <AppSidebar />
-          </aside>
-          <main className="pt-14 md:pl-52 min-h-screen">
-            <div className="p-6">{children}</div>
-          </main>
+          <LayoutShell sidebar={<AppSidebar />}>
+            {children}
+          </LayoutShell>
         </Providers>
       </body>
     </html>

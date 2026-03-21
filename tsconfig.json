@@ -19,7 +19,17 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@mc/tasks": ["./plugins/tasks"],
+      "@mc/tasks/*": ["./plugins/tasks/*"],
+      "@mc/memory": ["./plugins/memory"],
+      "@mc/memory/*": ["./plugins/memory/*"],
+      "@mc/models": ["./plugins/models"],
+      "@mc/models/*": ["./plugins/models/*"],
+      "@mc/calendar": ["./plugins/calendar"],
+      "@mc/calendar/*": ["./plugins/calendar/*"],
+      "@mc/workflows": ["./plugins/workflows"],
+      "@mc/workflows/*": ["./plugins/workflows/*"]
     }
   },
   "include": [

@@ -154,3 +154,9 @@
 .prose-invert th, .prose-invert td { border: 1px solid rgba(255,255,255,0.08); padding: 0.5rem 0.75rem; text-align: left; }
 .prose-invert th { font-weight: 600; color: #ededef; }
 .prose-invert td { color: #8a8a8a; }
+
+/* Kanban drop indicator marching ants */
+@keyframes march {
+  from { background-position: 0 0; }
+  to { background-position: 12px 0; }
+}

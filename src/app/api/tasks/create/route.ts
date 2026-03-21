@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { createTask } from '@/lib/taskboard'
+import { createTask } from '@mc/tasks/taskboard'
 import { appendAudit } from '@/lib/audit'
 
 export async function POST(request: NextRequest) {
@@ -11,9 +11,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    createTask(title, column, assignee, description)
-    appendAudit('task.created', 'dashboard', { title, column: column || 'todo', assignee })
-    return NextResponse.json({ ok: true })
+    const task = await createTask(title, column, assignee, description)
+    appendAudit('task.created', 'dashboard', { id: task.id, title, column: column || 'todo', assignee })
+    return NextResponse.json({ ok: true, id: task.id })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }

@@ -29,6 +29,12 @@ export async function POST(
       return NextResponse.json({ error: 'invalid action' }, { status: 400 })
   }
 
-  appendAudit(`agent.${action}`, 'dashboard', { agent })
+  // Only audit successful actions
+  if (result.ok) {
+    appendAudit(`agent.${action}`, 'dashboard', { agent })
+  } else {
+    appendAudit(`agent.${action}.failed`, 'dashboard', { agent, error: 'error' in result ? result.error : 'note' in result ? result.note : 'unknown' })
+  }
+
   return NextResponse.json(result)
 }

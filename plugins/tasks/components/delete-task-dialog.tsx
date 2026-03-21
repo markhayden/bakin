@@ -11,19 +11,19 @@ import {
 import { Button } from '@/components/ui/button'
 
 interface DeleteTaskDialogProps {
-  title: string | null
+  title: { id: string; title: string } | null
   onConfirm: () => void
   onCancel: () => void
 }
 
-export function DeleteTaskDialog({ title, onConfirm, onCancel }: DeleteTaskDialogProps) {
+export function DeleteTaskDialog({ title: target, onConfirm, onCancel }: DeleteTaskDialogProps) {
   return (
-    <Dialog open={!!title} onOpenChange={(open) => { if (!open) onCancel() }}>
+    <Dialog open={!!target} onOpenChange={(open) => { if (!open) onCancel() }}>
       <DialogContent className="bg-card border-border sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Delete task</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete &ldquo;{title}&rdquo;? This can&apos;t be undone.
+            Are you sure you want to delete &ldquo;{target?.title}&rdquo;? This can&apos;t be undone.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

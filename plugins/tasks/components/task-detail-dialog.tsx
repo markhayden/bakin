@@ -12,8 +12,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Send } from 'lucide-react'
-import { AGENTS, COLUMN_CONFIG } from '@/lib/constants'
-import type { Task, ColumnId } from '@/types'
+import { AGENTS } from '@/lib/constants'
+import { COLUMN_CONFIG } from '../constants'
+import { toast } from '@/hooks/use-toast'
+import type { Task, ColumnId } from '../types'
 
 interface TaskDetailDrawerProps {
   task: Task | null
@@ -50,34 +52,53 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
 
   async function handleSave() {
     setSaving(true)
-    await fetch('/api/tasks/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        originalTitle: task!.title,
-        title: title.trim(),
-        description: description.trim(),
-        agent,
-        column,
-      }),
-    })
+    try {
+      const res = await fetch('/api/tasks/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: task!.id,
+          originalTitle: task!.title,
+          title: title.trim(),
+          description: description.trim(),
+          agent,
+          column,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Unknown error' }))
+        toast(data.error || 'Failed to save', 'error')
+      } else {
+        toast('Task updated', 'success')
+        setDirty(false)
+        onClose()
+      }
+    } catch {
+      toast('Network error', 'error')
+    }
     setSaving(false)
-    setDirty(false)
-    onClose()
   }
 
   async function handleAddLog() {
     if (!logMessage.trim()) return
     setAddingLog(true)
-    await fetch('/api/tasks/log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: task!.title,
-        author: 'mark',
-        message: logMessage.trim(),
-      }),
-    })
+    try {
+      const res = await fetch('/api/tasks/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: task!.id,
+          title: task!.title,
+          author: 'mark',
+          message: logMessage.trim(),
+        }),
+      })
+      if (!res.ok) {
+        toast('Failed to add log entry', 'error')
+      }
+    } catch {
+      toast('Network error', 'error')
+    }
     setLogMessage('')
     setAddingLog(false)
   }

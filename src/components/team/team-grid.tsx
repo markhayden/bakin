@@ -1,84 +1,49 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useContentStore } from '@/hooks/use-content-store'
 import { Badge } from '@/components/ui/badge'
 import { AgentDrawer } from './agent-drawer'
+import { AGENT_MAP } from '@/lib/agents-data'
+import { formatAge, isStale } from '@/lib/format'
+import { parseTasks } from '../../../plugins/tasks/parser'
 import type { Heartbeat } from '@/types'
 
-function formatAge(timestamp: string) {
-  const ms = Date.now() - new Date(timestamp).getTime()
-  const mins = Math.floor(ms / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  return `${hours}h ago`
-}
-
-const AGENT_DETAILS: Record<string, { emoji: string; name: string; title: string; subtitle: string; headshot: string }> = {
-  main-operator: {
-    emoji: '🐾',
-    name: 'Main Operator',
-    title: 'Orchestrator',
-    subtitle: 'Lead Agent',
-    headshot: '/headshots/main-operator.png',
-  },
-  chef: {
-    emoji: '🥗',
-    name: 'Chef',
-    title: 'Content Creator',
-    subtitle: 'Nutritionist & Chef',
-    headshot: '/headshots/chef.png',
-  },
-  pixel: {
-    emoji: '🖼️',
-    name: 'Pixel',
-    title: 'Image Generation',
-    subtitle: 'Visual Content',
-    headshot: '/headshots/pixel.png',
-  },
-  rolo: {
-    emoji: '🎬',
-    name: 'Rolo',
-    title: 'Videographer',
-    subtitle: 'Video & Editing',
-    headshot: '/headshots/rolo.png',
-  },
-  patch: {
-    emoji: '⚙️',
-    name: 'Patch',
-    title: 'Lead Developer',
-    subtitle: 'Infrastructure',
-    headshot: '/headshots/patch.png',
-  },
-}
-
-function AgentCard({ id, heartbeat, onClick }: { id: string; heartbeat?: Heartbeat; onClick?: () => void }) {
-  const agent = AGENT_DETAILS[id]
+function AgentCard({ id, status, statusLabel, heartbeat, onClick }: {
+  id: string
+  status: 'online' | 'working' | 'available'
+  statusLabel: string
+  heartbeat?: Heartbeat
+  onClick?: () => void
+}) {
+  const agent = AGENT_MAP[id]
   if (!agent) return null
-  const isActive = heartbeat && (Date.now() - new Date(heartbeat.timestamp).getTime()) < 15 * 60 * 1000
+
+  const dotColor = status === 'online' ? 'bg-green-500' : status === 'working' ? 'bg-blue-500' : 'bg-zinc-400'
+  const badgeVariant = status === 'online' || status === 'working' ? 'default' : 'secondary'
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden w-36 shrink-0 flex flex-col cursor-pointer hover:border-foreground/30 transition-colors" onClick={onClick}>
-      {/* Headshot */}
+    <div
+      className="rounded-xl border border-border bg-card overflow-hidden w-36 shrink-0 flex flex-col cursor-pointer hover:border-foreground/30 transition-colors"
+      onClick={onClick}
+    >
       <div className="relative w-full" style={{ paddingBottom: '100%' }}>
         <img
           src={agent.headshot}
           alt={agent.name}
           className="absolute inset-0 w-full h-full object-cover object-top"
         />
-        {/* Status dot */}
-        <div className={`absolute top-2 right-2 size-2.5 rounded-full border-2 border-card ${isActive ? 'bg-green-500' : 'bg-zinc-500'}`} />
+        <div className={`absolute top-2 right-2 size-2.5 rounded-full border-2 border-card ${dotColor}`} />
       </div>
-
-      {/* Info */}
       <div className="p-2.5 flex flex-col gap-0.5">
         <div className="text-sm font-semibold text-foreground leading-tight">{agent.name}</div>
-        <div className="text-xs text-muted-foreground leading-tight">{agent.title}</div>
+        {agent.fullName
+          ? <div className="text-xs text-muted-foreground leading-tight">{agent.fullName}</div>
+          : null}
         <div className="text-xs text-muted-foreground/60 leading-tight">{agent.subtitle}</div>
         <div className="mt-1.5">
-          <Badge variant={isActive ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
-            {isActive ? `active · ${formatAge(heartbeat!.timestamp)}` : 'standby'}
+          <Badge variant={badgeVariant} className="text-[10px] px-1.5 py-0">
+            {statusLabel}
           </Badge>
         </div>
       </div>
@@ -88,15 +53,33 @@ function AgentCard({ id, heartbeat, onClick }: { id: string; heartbeat?: Heartbe
 
 export function TeamGrid() {
   const heartbeats = useContentStore((s) => s.heartbeats)
-  const subagentIds = ['chef', 'pixel', 'rolo', 'patch']
+  const files = useContentStore((s) => s.files)
+  const subagentIds = ['pixel', 'rolo', 'patch']
+  const affiliateIds = ['chef', 'explorer', 'trainer', 'coach']
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+
+  // Parse active tasks to know who's working
+  const activeAgents = useMemo(() => {
+    const content = files['TASKBOARD.md'] || ''
+    if (!content) return new Set<string>()
+    const { columns } = parseTasks(content)
+    return new Set(columns.inProgress.map(t => t.agent).filter(Boolean) as string[])
+  }, [files])
+
+  // Main Operator uses real heartbeat — he's persistent
+  const roscoeHb = heartbeats['main-operator'] as Heartbeat | undefined
+  const roscoeActive = roscoeHb && !isStale(roscoeHb.timestamp)
+
+  function getSubagentStatus(id: string): { status: 'working' | 'available'; label: string } {
+    if (activeAgents.has(id)) return { status: 'working', label: 'working' }
+    return { status: 'available', label: 'available' }
+  }
 
   return (
     <div>
       <h1 className="text-lg font-semibold text-foreground mb-8">Team</h1>
 
       <div className="flex flex-col items-center gap-0">
-
         {/* Mark */}
         <div className="rounded-xl border border-border bg-card px-5 py-3 flex items-center gap-3">
           <div className="size-9 rounded-full bg-accent/20 flex items-center justify-center text-base">👤</div>
@@ -107,32 +90,59 @@ export function TeamGrid() {
           <Badge variant="secondary" className="ml-4 text-xs font-mono">MDT</Badge>
         </div>
 
-        {/* Connector */}
         <div className="w-px h-8 bg-border" />
 
-        {/* Main Operator */}
+        {/* Main Operator — heartbeat-based (persistent agent) */}
         <AgentCard
           id="main-operator"
-          heartbeat={heartbeats['main-operator'] as Heartbeat | undefined}
+          status={roscoeActive ? 'online' : 'available'}
+          statusLabel={roscoeActive ? `online · ${formatAge(roscoeHb!.timestamp)}` : 'online'}
+          heartbeat={roscoeHb}
           onClick={() => setSelectedAgent('main-operator')}
         />
 
-        {/* Connector */}
         <div className="w-px h-8 bg-border" />
 
-        {/* Horizontal bar */}
-        <div className="relative flex items-start justify-center gap-6">
-          <div className="absolute top-0 left-[calc(50%-((4*144px+3*24px)/2))] w-[calc(4*144px+3*24px)] h-px bg-border" />
-          {subagentIds.map((id) => (
-            <div key={id} className="flex flex-col items-center">
-              <div className="w-px h-8 bg-border" />
-              <AgentCard
-                id={id}
-                heartbeat={heartbeats[id] as Heartbeat | undefined}
-                onClick={() => setSelectedAgent(id)}
-              />
-            </div>
-          ))}
+        {/* Subagents — task-based status */}
+        <div className="relative flex flex-wrap items-start justify-center gap-6">
+          <div className="absolute top-0 left-[72px] right-[72px] h-px bg-border hidden xl:block" />
+          {subagentIds.map((id) => {
+            const { status, label } = getSubagentStatus(id)
+            return (
+              <div key={id} className="flex flex-col items-center">
+                <div className="w-px h-8 bg-border" />
+                <AgentCard
+                  id={id}
+                  status={status}
+                  statusLabel={label}
+                  onClick={() => setSelectedAgent(id)}
+                />
+              </div>
+            )
+          })}
+        </div>
+
+        {/* SampleBrand Affiliates */}
+        <div className="mt-12 w-full">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground px-2">Content Creators</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <div className="flex flex-wrap justify-center gap-6">
+            {affiliateIds.map((id) => {
+              const { status, label } = getSubagentStatus(id)
+              return (
+                <AgentCard
+                  key={id}
+                  id={id}
+                  status={status}
+                  statusLabel={label}
+                  onClick={() => setSelectedAgent(id)}
+                />
+              )
+            })}
+          </div>
         </div>
 
       </div>
