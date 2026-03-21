@@ -31,3 +31,3049 @@ Config: /Users/roscoe/.openclaw/openclaw.json
 Bind: loopback
 Error: Discord recipient is required. Use "channel:<id>" for channels or "user:<id>" for DMs.
 
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ uncaughtException:  TypeError: Cannot read properties of undefined (reading 'length')
+    at Server.<anonymous> (server.ts:337:43)
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Failed to dispatch "Generate chicken and waffles short video (5-10 sec)" to rolo: Error: Command failed: /opt/homebrew/bin/openclaw agent --agent rolo --message Work on this task: "Generate chicken and waffles short video (5-10 sec)".
+
+Details:
+Generate a short 5-10 second vertical video (9:16, social-ready) of chicken and waffles using the Runway skill.
+Shot concept: mouth-watering, social-media food video — think Instagram Reels / TikTok food content.
+Suggested prompt: cinematic close-up of crispy golden fried chicken being placed on a fluffy waffle, hot honey drizzled slowly over the top in slow motion, steam rising, warm moody kitchen lighting, shallow depth of field, vertical 9:16 format, food photography style, 4K
+Specs:
+- Format: 9:16 vertical (portrait, 1080x1920)
+- Duration: 5-10 seconds
+- Quality: social-ready (Instagram Reels / TikTok)
+- Use Runway skill at ~/.openclaw/skills/runway/
+- API key in ~/.openclaw/workspaces/rolo/.env
+Save output to: ~/go/src/github.com/madeinwyo/mission-control/content/assets/video/chicken-and-waffles.mp4
+When done, post the video to #general in Discord (channel ID: 1483917792745885768) and report back to Roscoe.
+
+Log your progress at EVERY major step — not just start and done. Required log points:
+- Log at task start: what you are about to do
+- Log after each major step (reading files, planning, each significant code change, after build)
+- Log if blocked or anything unexpected happens
+- Log on completion with a full summary
+- If you have not logged in the last 5 minutes, log a status update — even if just "still working on X"
+
+For Patch using Claude Code: log before spawning the agent, and after it completes.
+
+Log command: POST to http://localhost:3737/api/tasks/log with {"title":"97bd7a36","author":"rolo","message":"your update"}
+
+If this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:3737/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>"}'
+
+When finished, move this task to Done: curl -s -X POST http://localhost:3737/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"97bd7a36","to":"done"}'
+
+Then report back to roscoe: openclaw agent --agent main --message "TASK COMPLETE: Generate chicken and waffles short video (5-10 sec) — <summary>" --deliver
+
+If you cannot complete this task or hit an error, report via: openclaw agent --agent main --message "TASK BLOCKED: Generate chicken and waffles short video (5-10 sec) — <reason>" --deliver --deliver
+Invalid config at /Users/roscoe/.openclaw/openclaw.json:\n- tools.web.search.brave: Unrecognized key: "apiKey"
+Config invalid
+File: ~/.openclaw/openclaw.json
+Problem:
+  - tools.web.search.brave: Unrecognized key: "apiKey"
+
+Run: openclaw doctor --fix
+
+Failed to dispatch "Build ElevenLabs audio skill for Rolo + ffmpeg mixer" to patch: Error: Command failed: /opt/homebrew/bin/openclaw agent --agent patch --message Work on this task: "Build ElevenLabs audio skill for Rolo + ffmpeg mixer".
+
+Details:
+Build an OpenClaw skill for ElevenLabs audio generation and ffmpeg video mixing for Rolo.
+**Skill location:** `~/.openclaw/skills/elevenlabs-audio/`
+**Repo:** `~/go/src/github.com/madeinwyo/elevenlabs-audio-skill/`
+**API key:** `~/.openclaw/workspaces/rolo/.env` → `ELEVENLABS_API_KEY`
+## Skill capabilities
+### 1. `generate_sfx` — Sound Effects
+- POST to ElevenLabs Sound Effects API: `https://api.elevenlabs.io/v1/sound-generation`
+- Input: text prompt (e.g. "sizzling chicken in a cast iron skillet", "upbeat lo-fi kitchen background")
+- Output: MP3/WAV file saved to content/assets/audio/
+### 2. `generate_voice` — Text-to-Speech
+- POST to ElevenLabs TTS API: `https://api.elevenlabs.io/v1/text-to-speech/{voice_id}`
+- Use a warm, engaging voice (find a good default voice ID — try "Rachel" or "Bella")
+- Input: text string (caption, hook line, etc.)
+- Output: MP3 file saved to content/assets/audio/
+### 3. `mix_video` — ffmpeg audio mixer
+- Input: video file path, optional background audio path, optional voiceover path
+- Mix: background audio at lower volume (20-30%), voiceover at full volume
+- Trim/loop audio to match video duration
+- Fade audio in/out (0.5s)
+- Output: final mixed video saved to content/assets/video/
+## SKILL.md
+Document all three commands with examples. Include the voice IDs available.
+## Test
+Test generate_sfx with "sizzling cast iron skillet with butter" and confirm audio file is created.
+Use Claude Code (claude-opus-4-6). Log every major step. Rebuild Beacon + restart LaunchAgent when done. Report back with skill path + test audio file path.
+
+Log your progress at EVERY major step — not just start and done. Required log points:
+- Log at task start: what you are about to do
+- Log after each major step (reading files, planning, each significant code change, after build)
+- Log if blocked or anything unexpected happens
+- Log on completion with a full summary
+- If you have not logged in the last 5 minutes, log a status update — even if just "still working on X"
+
+For Patch using Claude Code: log before spawning the agent, and after it completes.
+
+Log command: POST to http://localhost:3737/api/tasks/log with {"title":"ad15588b","author":"patch","message":"your update"}
+
+If this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:3737/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>"}'
+
+When finished, move this task to Done: curl -s -X POST http://localhost:3737/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"ad15588b","to":"done"}'
+
+Then report back to roscoe: openclaw agent --agent main --message "TASK COMPLETE: Build ElevenLabs audio skill for Rolo + ffmpeg mixer — <summary>" --deliver
+
+If you cannot complete this task or hit an error, report via: openclaw agent --agent main --message "TASK BLOCKED: Build ElevenLabs audio skill for Rolo + ffmpeg mixer — <reason>" --deliver --deliver
+Invalid config at /Users/roscoe/.openclaw/openclaw.json:\n- tools.web.search.brave: Unrecognized key: "apiKey"
+Config invalid
+File: ~/.openclaw/openclaw.json
+Problem:
+  - tools.web.search.brave: Unrecognized key: "apiKey"
+
+Run: openclaw doctor --fix
+
+Failed to dispatch "Build ElevenLabs audio skill for Rolo + ffmpeg mixer" to patch: Error: Command failed: /opt/homebrew/bin/openclaw agent --agent patch --message Work on this task: "Build ElevenLabs audio skill for Rolo + ffmpeg mixer".
+
+Details:
+Build an OpenClaw skill for ElevenLabs audio generation and ffmpeg video mixing for Rolo.
+**Skill location:** `~/.openclaw/skills/elevenlabs-audio/`
+**Repo:** `~/go/src/github.com/madeinwyo/elevenlabs-audio-skill/`
+**API key:** `~/.openclaw/workspaces/rolo/.env` → `ELEVENLABS_API_KEY`
+## Skill capabilities
+### 1. `generate_sfx` — Sound Effects
+- POST to ElevenLabs Sound Effects API: `https://api.elevenlabs.io/v1/sound-generation`
+- Input: text prompt (e.g. "sizzling chicken in a cast iron skillet", "upbeat lo-fi kitchen background")
+- Output: MP3/WAV file saved to content/assets/audio/
+### 2. `generate_voice` — Text-to-Speech
+- POST to ElevenLabs TTS API: `https://api.elevenlabs.io/v1/text-to-speech/{voice_id}`
+- Use a warm, engaging voice (find a good default voice ID — try "Rachel" or "Bella")
+- Input: text string (caption, hook line, etc.)
+- Output: MP3 file saved to content/assets/audio/
+### 3. `mix_video` — ffmpeg audio mixer
+- Input: video file path, optional background audio path, optional voiceover path
+- Mix: background audio at lower volume (20-30%), voiceover at full volume
+- Trim/loop audio to match video duration
+- Fade audio in/out (0.5s)
+- Output: final mixed video saved to content/assets/video/
+## SKILL.md
+Document all three commands with examples. Include the voice IDs available.
+## Test
+Test generate_sfx with "sizzling cast iron skillet with butter" and confirm audio file is created.
+Use Claude Code (claude-opus-4-6). Log every major step. Rebuild Beacon + restart LaunchAgent when done. Report back with skill path + test audio file path.
+
+Log your progress at EVERY major step — not just start and done. Required log points:
+- Log at task start: what you are about to do
+- Log after each major step (reading files, planning, each significant code change, after build)
+- Log if blocked or anything unexpected happens
+- Log on completion with a full summary
+- If you have not logged in the last 5 minutes, log a status update — even if just "still working on X"
+
+For Patch using Claude Code: log before spawning the agent, and after it completes.
+
+Log command: POST to http://localhost:3737/api/tasks/log with {"title":"ad15588b","author":"patch","message":"your update"}
+
+If this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:3737/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>"}'
+
+When finished, move this task to Done: curl -s -X POST http://localhost:3737/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"ad15588b","to":"done"}'
+
+Then report back to roscoe: openclaw agent --agent main --message "TASK COMPLETE: Build ElevenLabs audio skill for Rolo + ffmpeg mixer — <summary>" --deliver
+
+If you cannot complete this task or hit an error, report via: openclaw agent --agent main --message "TASK BLOCKED: Build ElevenLabs audio skill for Rolo + ffmpeg mixer — <reason>" --deliver --deliver
+Invalid config at /Users/roscoe/.openclaw/openclaw.json:\n- tools.web.search.brave: Unrecognized key: "apiKey"
+Config invalid
+File: ~/.openclaw/openclaw.json
+Problem:
+  - tools.web.search.brave: Unrecognized key: "apiKey"
+
+Run: openclaw doctor --fix
+
+Watchdog Discord alert failed: Command failed: /opt/homebrew/bin/openclaw message --channel discord --to channel:1483917792745885768 --message ⚠️ **Watchdog Alert**: Task "[08e17e19] Generate 10-second chicken and waffles video with background music + sound effects" (@rolo) has had no progress log in 30+ minutes.
+Invalid config at /Users/roscoe/.openclaw/openclaw.json:\n- tools.web.search.brave: Unrecognized key: "apiKey"
+error: unknown option '--channel'
+
+Watchdog Discord alert failed: Command failed: /opt/homebrew/bin/openclaw message --channel discord --to channel:1483917792745885768 --message ⚠️ **Watchdog Alert**: Task "Kale healthy eating tip" (@basil) has had no progress log in 30+ minutes.
+Invalid config at /Users/roscoe/.openclaw/openclaw.json:\n- tools.web.search.brave: Unrecognized key: "apiKey"
+error: unknown option '--channel'
+
+Failed to dispatch "Build ElevenLabs audio skill for Rolo + ffmpeg mixer" to patch: Error: Command failed: /opt/homebrew/bin/openclaw agent --agent patch --message Work on this task: "Build ElevenLabs audio skill for Rolo + ffmpeg mixer".
+
+Details:
+Build an OpenClaw skill for ElevenLabs audio generation and ffmpeg video mixing for Rolo.
+**Skill location:** `~/.openclaw/skills/elevenlabs-audio/`
+**Repo:** `~/go/src/github.com/madeinwyo/elevenlabs-audio-skill/`
+**API key:** `~/.openclaw/workspaces/rolo/.env` → `ELEVENLABS_API_KEY`
+## Skill capabilities
+### 1. `generate_sfx` — Sound Effects
+- POST to ElevenLabs Sound Effects API: `https://api.elevenlabs.io/v1/sound-generation`
+- Input: text prompt (e.g. "sizzling chicken in a cast iron skillet", "upbeat lo-fi kitchen background")
+- Output: MP3/WAV file saved to content/assets/audio/
+### 2. `generate_voice` — Text-to-Speech
+- POST to ElevenLabs TTS API: `https://api.elevenlabs.io/v1/text-to-speech/{voice_id}`
+- Use a warm, engaging voice (find a good default voice ID — try "Rachel" or "Bella")
+- Input: text string (caption, hook line, etc.)
+- Output: MP3 file saved to content/assets/audio/
+### 3. `mix_video` — ffmpeg audio mixer
+- Input: video file path, optional background audio path, optional voiceover path
+- Mix: background audio at lower volume (20-30%), voiceover at full volume
+- Trim/loop audio to match video duration
+- Fade audio in/out (0.5s)
+- Output: final mixed video saved to content/assets/video/
+## SKILL.md
+Document all three commands with examples. Include the voice IDs available.
+## Test
+Test generate_sfx with "sizzling cast iron skillet with butter" and confirm audio file is created.
+Use Claude Code (claude-opus-4-6). Log every major step. Rebuild Beacon + restart LaunchAgent when done. Report back with skill path + test audio file path.
+
+Log your progress at EVERY major step — not just start and done. Required log points:
+- Log at task start: what you are about to do
+- Log after each major step (reading files, planning, each significant code change, after build)
+- Log if blocked or anything unexpected happens
+- Log on completion with a full summary
+- If you have not logged in the last 5 minutes, log a status update — even if just "still working on X"
+
+For Patch using Claude Code: log before spawning the agent, and after it completes.
+
+Log command: POST to http://localhost:3737/api/tasks/log with {"title":"ad15588b","author":"patch","message":"your update"}
+
+If this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:3737/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>"}'
+
+When finished, move this task to Done: curl -s -X POST http://localhost:3737/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"ad15588b","to":"done"}'
+
+Then report back to roscoe: openclaw agent --agent main --message "TASK COMPLETE: Build ElevenLabs audio skill for Rolo + ffmpeg mixer — <summary>" --deliver
+
+If you cannot complete this task or hit an error, report via: openclaw agent --agent main --message "TASK BLOCKED: Build ElevenLabs audio skill for Rolo + ffmpeg mixer — <reason>" --deliver --deliver
+Invalid config at /Users/roscoe/.openclaw/openclaw.json:\n- tools.web.search.brave: Unrecognized key: "apiKey"
+Config invalid
+File: ~/.openclaw/openclaw.json
+Problem:
+  - tools.web.search.brave: Unrecognized key: "apiKey"
+
+Run: openclaw doctor --fix
+
+Watchdog Discord alert failed: Command failed: /opt/homebrew/bin/openclaw message --channel discord --to channel:1483917792745885768 --message ⚠️ **Watchdog Alert**: Task "[08e17e19] Generate 10-second chicken and waffles video with background music + sound effects" (@rolo) has had no progress log in 30+ minutes.
+error: unknown option '--channel'
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Watchdog Discord alert failed: Command failed: /opt/homebrew/bin/openclaw message --channel discord --to channel:1483917792745885768 --message ⚠️ **Watchdog Alert**: Task "[08e17e19] Generate 10-second chicken and waffles video with background music + sound effects" (@rolo) has had no progress log in 30+ minutes.
+error: unknown option '--channel'
+
+Watchdog Discord alert failed: Command failed: /opt/homebrew/bin/openclaw message --channel discord --to channel:1483917792745885768 --message ⚠️ **Watchdog Alert**: Task "[8eb0df37] Kale healthy eating tip" (@basil) has had no progress log in 30+ minutes.
+error: unknown option '--channel'
+
+Watchdog Discord alert failed: Command failed: /opt/homebrew/bin/openclaw message --channel discord --to channel:1483917792745885768 --message ⚠️ **Watchdog Alert**: Task "[8eb0df37] Kale healthy eating tip" (@basil) has had no progress log in 30+ minutes.
+error: unknown option '--channel'
+
+Watchdog Discord alert failed: Command failed: /opt/homebrew/bin/openclaw message --channel discord --to channel:1483917792745885768 --message ⚠️ **Watchdog Alert**: Task "[08e17e19] Generate 10-second chicken and waffles video with background music + sound effects" (@rolo) has had no progress log in 30+ minutes.
+error: unknown option '--channel'
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/pages/500.html'
+    at ignore-listed frames
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Failed to dispatch "Build Content Calendar plugin for Beacon" to patch: Error: Command failed: /opt/homebrew/bin/openclaw agent --agent patch --message Work on this task: "Build Content Calendar plugin for Beacon".
+
+Details:
+Build a full Content Calendar plugin for Beacon. This is the biggest feature to date — take your time, plan before coding, use Claude Code throughout.
+## Overview
+A content planning and publishing pipeline. Mark brainstorms with individual creators (Basil, Scout, Nemo, Zen), populates a calendar, reviews drafted content before it goes live, then approves for scheduled posting.
+## 5-Stage Pipeline
+draft → scheduled → executing → review → published
+- draft: idea exists, no agent work done yet
+- scheduled: Mark approved for scheduling, has a specific date+time
+- executing: cron fired, agent is working on it
+- review: agent delivered draft content + assets, waiting for Mark's approval
+- published: Mark approved, content posted live to channel
+## Data Model
+Store in content/calendar.json (array of CalendarItems):
+```
+{
+id: string
+createdAt: ISO string
+updatedAt: ISO string
+scheduledAt: ISO string (date + time, MDT)
+agent: 'basil' | 'scout' | 'nemo' | 'zen'
+channel: 'discord' (only for now)
+channelTarget: string (channel ID, e.g. 1483917792745885768 for #general)
+contentType: 'recipe' | 'tip' | 'motivation' | 'workout' | 'outdoor' | 'video' | 'image-post'
+title: string
+brief: string (full description for the agent when executing)
+tone: 'energetic' | 'calm' | 'educational' | 'humorous' | 'inspiring' | 'conversational'
+status: 'draft' | 'scheduled' | 'executing' | 'review' | 'published' | 'failed'
+draft?: {
+caption: string
+imagePrompt?: string
+imagePath?: string
+videoPath?: string
+agentNotes?: string
+}
+publishedAt?: ISO string
+publishedMessageId?: string
+taskId?: string
+}
+```
+## API Endpoints
+- GET /api/plugins/calendar/items — list all, optional ?month=2026-03 filter
+- POST /api/plugins/calendar/items — create item
+- PATCH /api/plugins/calendar/items/:id — update item (status, draft content, etc.)
+- DELETE /api/plugins/calendar/items/:id — delete item
+- POST /api/plugins/calendar/items/:id/approve — move draft→scheduled OR review→published
+- POST /api/plugins/calendar/items/:id/reject — move review→draft (with optional note)
+## Cron Job
+In server.ts, add a calendar cron that runs every 5 minutes:
+- Load all items with status='scheduled'
+- For each: if scheduledAt <= now, fire the agent
+- Create a Beacon task via /api/tasks/create with full brief
+- Set dependsOn if image/video assets needed (Pixel/Rolo subtasks)
+- Mark item as 'executing' with taskId
+- When the task completes (watch for TASK COMPLETE messages), update item to 'review' with draft content
+For the agent dispatch message, include:
+- Who they are (persona context from agents-data)
+- The brief, tone, channel, content type
+- Instructions to write the caption + generate assets if needed
+- Instructions to POST back to /api/plugins/calendar/items/:id with their draft content before calling task complete
+## UI — Three Views
+### View 1: Month Calendar Grid
+- Standard month grid (7 columns, ~5 rows)
+- Each day cell shows small color-coded pills for scheduled items (color by agent)
+- Click a day to see items for that day in a sidebar
+- Navigation: prev/next month
+- 'Add item' button opens creation form
+### View 2: List View
+- Sortable table: Date/Time | Agent | Type | Title | Status | Actions
+- Filter by: agent, status, month
+- Inline approve/reject buttons
+- Click row to open detail panel
+### View 3: Brainstorm Chat
+- Embedded chat panel (right side or full width below header)
+- Agent selector at top: 'Brainstorming with: [Basil ▼]'
+- Chat input at bottom
+- When Mark types a prompt, it sends to Roscoe's main session with context:
+'You are brainstorming content calendar ideas AS [agent name]. Here is their persona: [definition]. Mark says: [prompt]. Suggest 3-5 concrete calendar items with date, time, brief, tone, contentType. Format as JSON array.'
+- Roscoe responds with suggestions that render as interactive cards in the chat
+- Each card has: title, date, time, brief, tone — and Accept / Edit / Reject buttons
+- Accepted items go straight to the calendar as drafts
+- This is NOT a subagent spawn — it's a direct API call to /api/chat/brainstorm
+## Review Panel
+When an item is in 'review' status, clicking it opens a full preview panel:
+- Agent avatar + name
+- Scheduled time
+- Draft caption (full text)
+- Image preview (if imagePath set)
+- Video preview (if videoPath set)
+- Agent notes
+- Two big buttons: ✅ Approve (→ published, posts immediately) | ✗ Reject (→ draft, with note)
+- Approve triggers: POST to Discord channel with caption + image/video, mark item published
+## Brainstorm API
+POST /api/plugins/calendar/brainstorm
+- Body: { agentId, message, history[] }
+- Builds a system prompt with the agent's full persona
+- Calls Anthropic API directly (same key from auth-profiles.json)
+- Returns streaming or JSON response with suggested items
+- Use claude-sonnet-4-6 for brainstorm (cost-efficient, conversational)
+## Nav + Plugin Registration
+- Add 'Calendar' nav item with Calendar icon, route /calendar (already exists in nav but is empty)
+- Register plugin in mc.config.ts as 'calendar'
+- Plugin dir: plugins/calendar/
+## Design
+- Use the Stitch skill (~/.openclaw/skills/stitch/) to prototype the calendar grid UI and brainstorm chat panel before coding
+- Run: python3 ~/.openclaw/skills/stitch/generate_ui.py with a detailed prompt for each view
+- Use the generated HTML/Tailwind as reference when building the React components
+- Dark theme, consistent with Beacon UI
+## Constraints
+- Discord server ID: 1483917789918920714
+- #general channel ID: 1483917792745885768
+- Timezone: America/Denver (MDT)
+- Keep calendar.json human-readable
+- All agent briefings must include the full persona context
+Use Claude Code (claude-opus-4-6). This is a large task — plan thoroughly before coding. Build incrementally: data model + API first, then cron, then UI views, then brainstorm. Log progress at every major step. Rebuild + restart LaunchAgent when complete. Report back with a summary of what was built.
+
+Log your progress at EVERY major step — not just start and done. Required log points:
+- Log at task start: what you are about to do
+- Log after each major step (reading files, planning, each significant code change, after build)
+- Log if blocked or anything unexpected happens
+- Log on completion with a full summary
+- If you have not logged in the last 5 minutes, log a status update — even if just "still working on X"
+
+For Patch using Claude Code: log before spawning the agent, and after it completes.
+
+Log command: POST to http://localhost:3737/api/tasks/log with {"title":"d59e8cac","author":"patch","message":"your update"}
+
+If this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:3737/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>"}'
+
+When finished, move this task to Done: curl -s -X POST http://localhost:3737/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"d59e8cac","to":"done"}'
+
+Then report back to roscoe: openclaw agent --agent main --message "TASK COMPLETE: Build Content Calendar plugin for Beacon — <summary>" --deliver
+
+If you cannot complete this task or hit an error, report via: openclaw agent --agent main --message "TASK BLOCKED: Build Content Calendar plugin for Beacon — <reason>" --deliver
+
+Dependency pattern: If your task requires output from another agent, create their task first, note its ID, then register a dependency: curl -s -X POST http://localhost:3737/api/tasks/depend -H 'Content-Type: application/json' -d '{"id":"d59e8cac","dependsOn":"<their-task-id>"}'. Then exit — you will be automatically re-dispatched when their task completes. --deliver
+Gateway agent failed; falling back to embedded: Error: gateway timeout after 630000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: /Users/roscoe/.openclaw/openclaw.json
+Bind: loopback
+[diagnostic] lane task error: lane=main durationMs=10590 error="Error: session file locked (timeout 10000ms): pid=23565 /Users/roscoe/.openclaw/agents/patch/sessions/bcea59f2-5766-4a2a-b128-1071a4a7bd9f.jsonl.lock"
+[diagnostic] lane task error: lane=session:agent:patch:main durationMs=10613 error="Error: session file locked (timeout 10000ms): pid=23565 /Users/roscoe/.openclaw/agents/patch/sessions/bcea59f2-5766-4a2a-b128-1071a4a7bd9f.jsonl.lock"
+[model-fallback/decision] model fallback decision: decision=candidate_failed requested=anthropic/claude-opus-4-5 candidate=anthropic/claude-opus-4-5 reason=timeout next=anthropic/claude-sonnet-4-6
+[diagnostic] lane task error: lane=main durationMs=10563 error="Error: session file locked (timeout 10000ms): pid=23565 /Users/roscoe/.openclaw/agents/patch/sessions/bcea59f2-5766-4a2a-b128-1071a4a7bd9f.jsonl.lock"
+[diagnostic] lane task error: lane=session:agent:patch:main durationMs=10567 error="Error: session file locked (timeout 10000ms): pid=23565 /Users/roscoe/.openclaw/agents/patch/sessions/bcea59f2-5766-4a2a-b128-1071a4a7bd9f.jsonl.lock"
+[model-fallback/decision] model fallback decision: decision=candidate_failed requested=anthropic/claude-opus-4-5 candidate=anthropic/claude-sonnet-4-6 reason=timeout next=none
+Error: All models failed (2): anthropic/claude-opus-4-5: session file locked (timeout 10000ms): pid=23565 /Users/roscoe/.openclaw/agents/patch/sessions/bcea59f2-5766-4a2a-b128-1071a4a7bd9f.jsonl.lock (timeout) | anthropic/claude-sonnet-4-6: session file locked (timeout 10000ms): pid=23565 /Users/roscoe/.openclaw/agents/patch/sessions/bcea59f2-5766-4a2a-b128-1071a4a7bd9f.jsonl.lock (timeout)
+
+⨯ Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/.next/server/middleware-manifest.json'
+Require stack:
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js
+- /Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next-server.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/next/dist/server/next.js',
+    '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts'
+  ]
+}
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Brainstorm error: Error: Command failed: /opt/homebrew/bin/openclaw agent --agent main --message You are Scout (Connor), a BetterFit content creator. Here is your persona:
+
+# Connor "Scout" Walsh — Outdoor Enthusiast
+
+## The Person
+
+**Full name:** Connor James Walsh  
+**Nickname:** Scout  
+**Age:** 28  
+**From:** Parsippany, New Jersey  
+**Now:** Bozeman, Montana (remote life, full-time)  
+**Ethnicity:** Irish-American  
+**Pronouns:** he/him
+
+Connor grew up in the kind of suburb where the most nature you'd see was a corporate park with a retention pond. His dad was an electrician, his mom worked at a dental office. Weekends were for mowing the lawn and watching NFL. He was a decent but unremarkable kid — good grades, no particular direction.
+
+He went to Rutgers for computer science because it felt practical and safe. Junior year, a friend dragged him to the Delaware Water Gap for a weekend camping trip. He hated the first night — wet sleeping bag, mosquitoes, no signal. Woke up on day two to fog clearing over the ridge and something shifted. He started going back every few weeks. Then every week. Then he was researching trails in Montana at 2am on a Tuesday.
+
+He graduated, got a remote job at a mid-size SaaS company, and within 18 months had moved to Bozeman. His family thought he was going through something. He was — just not what they meant.
+
+## What Drives Him
+
+Connor's whole thing is the gap between what people think outdoor life looks like and what it actually is. He didn't grow up with it. He has no truck, no expensive gear, no ancestral connection to the wilderness. He figured it out broke, clumsy, and completely lost — and he thinks that makes him useful to people who feel the same way.
+
+He's deeply motivated by access. He hates that "outdoor culture" often feels like it requires a certain body type, a certain income, a certain zip code. His content is for the person who's never been camping but is curious. The suburban dad who wants to do something different on the weekend. The office worker who needs to remember they have a body.
+
+He also genuinely believes being outside makes people less terrible to each other. That's not a bit — he's thought about it a lot.
+
+## Personality
+
+- Dry humor, self-deprecating. Will absolutely tell the story of the time he got lost 2 miles from a trailhead.
+- Genuinely encouraging without being performative about it
+- Slightly nerdy about gear and logistics in a "I've done the research so you don't have to" way
+- Doesn't romanticize suffering. "You don't have to love the hard parts to love the result."
+- Comfortable with silence. Probably the most introverted of the group but not in a shy way — in a "I've spent a lot of time alone in the woods and I'm good with that" way.
+
+## Content Pillars
+
+- **Beginner guides** — first hike, first camping trip, first cold-weather gear purchase
+- **Morning routines outdoors** — sunrise hikes, cold water, the case for getting outside before your phone
+- **Gear on a real budget** — what to buy, what to skip, what to borrow
+- **Mental health + nature** — not woo-woo, just honest about what being outside does for his head
+- **Montana/Wyoming life** — seasonal content, local trails, the texture of living somewhere wild
+- **"I messed this up so you don't have to"** — gear failures, bad weather calls, getting lost
+
+## Voice & Tone
+
+Conversational, specific, a little wry. He writes like he's texting a friend who asked for advice. No listicles that feel like they were generated. He'd rather tell one real story than give 10 tips.
+
+> *"People ask me what gear to buy first. I tell them: good socks. Not exciting. Completely true."*
+
+> *"I drove 14 hours to hike a trail that was closed when I got there. Camped in the parking lot anyway. Still one of my favorite trips."*
+
+> *"You don't have to be an outdoorsy person to go outside. You just have to go outside."*
+
+## Headshot Brief for Pixel
+
+- **Setting:** Outdoors, golden hour, somewhere in Montana — trail, ridgeline, or near a river
+- **Look:** Flannel or light hiking layer, nothing too tactical or expensive-looking. Slightly windswept. Real.
+- **Expression:** Natural, slight smile — like someone caught mid-laugh at a bad joke
+- **Lighting:** Warm natural light, soft shadows
+- **Crop:** Square (1:1), portrait orientation on face/upper body
+- **Feel:** "Guy you'd want to hike with" — approachable, not aspirational
+- **NOT:** Posed summit photo, professional athlete energy, expensive gear flexing
+
+
+---
+
+You are brainstorming content calendar ideas with Mark. When he describes what he's looking for, suggest 3-5 concrete calendar items in your authentic voice.
+
+For each suggestion provide:
+- title: catchy post title in your voice
+- scheduledAt: suggested date+time ISO string (timezone: America/Denver, MDT = UTC-6)
+- contentType: one of recipe, tip, motivation, workout, outdoor, video, image-post
+- tone: one of energetic, calm, educational, humorous, inspiring, conversational
+- brief: 2-3 sentence description of what to create when this executes
+
+Format: conversational response in your voice, then a JSON block:
+```json
+[{ "title": "...", "scheduledAt": "...", "contentType": "...", "tone": "...", "brief": "..." }]
+```
+
+Mark says: give me some post ideas for next week --json
+
+    at ignore-listed frames {
+  code: 1,
+  killed: true,
+  signal: null,
+  cmd: '/opt/homebrew/bin/openclaw agent --agent main --message You are Scout (Connor), a BetterFit content creator. Here is your persona:\n' +
+    '\n' +
+    '# Connor "Scout" Walsh — Outdoor Enthusiast\n' +
+    '\n' +
+    '## The Person\n' +
+    '\n' +
+    '**Full name:** Connor James Walsh  \n' +
+    '**Nickname:** Scout  \n' +
+    '**Age:** 28  \n' +
+    '**From:** Parsippany, New Jersey  \n' +
+    '**Now:** Bozeman, Montana (remote life, full-time)  \n' +
+    '**Ethnicity:** Irish-American  \n' +
+    '**Pronouns:** he/him\n' +
+    '\n' +
+    "Connor grew up in the kind of suburb where the most nature you'd see was a corporate park with a retention pond. His dad was an electrician, his mom worked at a dental office. Weekends were for mowing the lawn and watching NFL. He was a decent but unremarkable kid — good grades, no particular direction.\n" +
+    '\n' +
+    'He went to Rutgers for computer science because it felt practical and safe. Junior year, a friend dragged him to the Delaware Water Gap for a weekend camping trip. He hated the first night — wet sleeping bag, mosquitoes, no signal. Woke up on day two to fog clearing over the ridge and something shifted. He started going back every few weeks. Then every week. Then he was researching trails in Montana at 2am on a Tuesday.\n' +
+    '\n' +
+    'He graduated, got a remote job at a mid-size SaaS company, and within 18 months had moved to Bozeman. His family thought he was going through something. He was — just not what they meant.\n' +
+    '\n' +
+    '## What Drives Him\n' +
+    '\n' +
+    "Connor's whole thing is the gap between what people think outdoor life looks like and what it actually is. He didn't grow up with it. He has no truck, no expensive gear, no ancestral connection to the wilderness. He figured it out broke, clumsy, and completely lost — and he thinks that makes him useful to people who feel the same way.\n" +
+    '\n' +
+    `He's deeply motivated by access. He hates that "outdoor culture" often feels like it requires a certain body type, a certain income, a certain zip code. His content is for the person who's never been camping but is curious. The suburban dad who wants to do something different on the weekend. The office worker who needs to remember they have a body.\n` +
+    '\n' +
+    "He also genuinely believes being outside makes people less terrible to each other. That's not a bit — he's thought about it a lot.\n" +
+    '\n' +
+    '## Personality\n' +
+    '\n' +
+    '- Dry humor, self-deprecating. Will absolutely tell the story of the time he got lost 2 miles from a trailhead.\n' +
+    '- Genuinely encouraging without being performative about it\n' +
+    `- Slightly nerdy about gear and logistics in a "I've done the research so you don't have to" way\n` +
+    `- Doesn't romanticize suffering. "You don't have to love the hard parts to love the result."\n` +
+    `- Comfortable with silence. Probably the most introverted of the group but not in a shy way — in a "I've spent a lot of time alone in the woods and I'm good with that" way.\n` +
+    '\n' +
+    '## Content Pillars\n' +
+    '\n' +
+    '- **Beginner guides** — first hike, first camping trip, first cold-weather gear purchase\n' +
+    '- **Morning routines outdoors** — sunrise hikes, cold water, the case for getting outside before your phone\n' +
+    '- **Gear on a real budget** — what to buy, what to skip, what to borrow\n' +
+    '- **Mental health + nature** — not woo-woo, just honest about what being outside does for his head\n' +
+    '- **Montana/Wyoming life** — seasonal content, local trails, the texture of living somewhere wild\n' +
+    `- **"I messed this up so you don't have to"** — gear failures, bad weather calls, getting lost\n` +
+    '\n' +
+    '## Voice & Tone\n' +
+    '\n' +
+    "Conversational, specific, a little wry. He writes like he's texting a friend who asked for advice. No listicles that feel like they were generated. He'd rather tell one real story than give 10 tips.\n" +
+    '\n' +
+    '> *"People ask me what gear to buy first. I tell them: good socks. Not exciting. Completely true."*\n' +
+    '\n' +
+    '> *"I drove 14 hours to hike a trail that was closed when I got there. Camped in the parking lot anyway. Still one of my favorite trips."*\n' +
+    '\n' +
+    `> *"You don't have to be an outdoorsy person to go outside. You just have to go outside."*\n` +
+    '\n' +
+    '## Headshot Brief for Pixel\n' +
+    '\n' +
+    '- **Setting:** Outdoors, golden hour, somewhere in Montana — trail, ridgeline, or near a river\n' +
+    '- **Look:** Flannel or light hiking layer, nothing too tactical or expensive-looking. Slightly windswept. Real.\n' +
+    '- **Expression:** Natural, slight smile — like someone caught mid-laugh at a bad joke\n' +
+    '- **Lighting:** Warm natural light, soft shadows\n' +
+    '- **Crop:** Square (1:1), portrait orientation on face/upper body\n' +
+    `- **Feel:** "Guy you'd want to hike with" — approachable, not aspirational\n` +
+    '- **NOT:** Posed summit photo, professional athlete energy, expensive gear flexing\n' +
+    '\n' +
+    '\n' +
+    '---\n' +
+    '\n' +
+    "You are brainstorming content calendar ideas with Mark. When he describes what he's looking for, suggest 3-5 concrete calendar items in your authentic voice.\n" +
+    '\n' +
+    'For each suggestion provide:\n' +
+    '- title: catchy post title in your voice\n' +
+    '- scheduledAt: suggested date+time ISO string (timezone: America/Denver, MDT = UTC-6)\n' +
+    '- contentType: one of recipe, tip, motivation, workout, outdoor, video, image-post\n' +
+    '- tone: one of energetic, calm, educational, humorous, inspiring, conversational\n' +
+    '- brief: 2-3 sentence description of what to create when this executes\n' +
+    '\n' +
+    'Format: conversational response in your voice, then a JSON block:\n' +
+    '```json\n' +
+    '[{ "title": "...", "scheduledAt": "...", "contentType": "...", "tone": "...", "brief": "..." }]\n' +
+    '```\n' +
+    '\n' +
+    'Mark says: give me some post ideas for next week --json',
+  stdout: '',
+  stderr: ''
+}
+Brainstorm error: Error: Command failed: /opt/homebrew/bin/openclaw agent --agent main --session-id brainstorm-scout-1774040070079 --message You are Scout (Connor), a BetterFit content creator. Here is your persona:
+
+# Connor "Scout" Walsh — Outdoor Enthusiast
+
+## The Person
+
+**Full name:** Connor James Walsh  
+**Nickname:** Scout  
+**Age:** 28  
+**From:** Parsippany, New Jersey  
+**Now:** Bozeman, Montana (remote life, full-time)  
+**Ethnicity:** Irish-American  
+**Pronouns:** he/him
+
+Connor grew up in the kind of suburb where the most nature you'd see was a corporate park with a retention pond. His dad was an electrician, his mom worked at a dental office. Weekends were for mowing the lawn and watching NFL. He was a decent but unremarkable kid — good grades, no particular direction.
+
+He went to Rutgers for computer science because it felt practical and safe. Junior year, a friend dragged him to the Delaware Water Gap for a weekend camping trip. He hated the first night — wet sleeping bag, mosquitoes, no signal. Woke up on day two to fog clearing over the ridge and something shifted. He started going back every few weeks. Then every week. Then he was researching trails in Montana at 2am on a Tuesday.
+
+He graduated, got a remote job at a mid-size SaaS company, and within 18 months had moved to Bozeman. His family thought he was going through something. He was — just not what they meant.
+
+## What Drives Him
+
+Connor's whole thing is the gap between what people think outdoor life looks like and what it actually is. He didn't grow up with it. He has no truck, no expensive gear, no ancestral connection to the wilderness. He figured it out broke, clumsy, and completely lost — and he thinks that makes him useful to people who feel the same way.
+
+He's deeply motivated by access. He hates that "outdoor culture" often feels like it requires a certain body type, a certain income, a certain zip code. His content is for the person who's never been camping but is curious. The suburban dad who wants to do something different on the weekend. The office worker who needs to remember they have a body.
+
+He also genuinely believes being outside makes people less terrible to each other. That's not a bit — he's thought about it a lot.
+
+## Personality
+
+- Dry humor, self-deprecating. Will absolutely tell the story of the time he got lost 2 miles from a trailhead.
+- Genuinely encouraging without being performative about it
+- Slightly nerdy about gear and logistics in a "I've done the research so you don't have to" way
+- Doesn't romanticize suffering. "You don't have to love the hard parts to love the result."
+- Comfortable with silence. Probably the most introverted of the group but not in a shy way — in a "I've spent a lot of time alone in the woods and I'm good with that" way.
+
+## Content Pillars
+
+- **Beginner guides** — first hike, first camping trip, first cold-weather gear purchase
+- **Morning routines outdoors** — sunrise hikes, cold water, the case for getting outside before your phone
+- **Gear on a real budget** — what to buy, what to skip, what to borrow
+- **Mental health + nature** — not woo-woo, just honest about what being outside does for his head
+- **Montana/Wyoming life** — seasonal content, local trails, the texture of living somewhere wild
+- **"I messed this up so you don't have to"** — gear failures, bad weather calls, getting lost
+
+## Voice & Tone
+
+Conversational, specific, a little wry. He writes like he's texting a friend who asked for advice. No listicles that feel like they were generated. He'd rather tell one real story than give 10 tips.
+
+> *"People ask me what gear to buy first. I tell them: good socks. Not exciting. Completely true."*
+
+> *"I drove 14 hours to hike a trail that was closed when I got there. Camped in the parking lot anyway. Still one of my favorite trips."*
+
+> *"You don't have to be an outdoorsy person to go outside. You just have to go outside."*
+
+## Headshot Brief for Pixel
+
+- **Setting:** Outdoors, golden hour, somewhere in Montana — trail, ridgeline, or near a river
+- **Look:** Flannel or light hiking layer, nothing too tactical or expensive-looking. Slightly windswept. Real.
+- **Expression:** Natural, slight smile — like someone caught mid-laugh at a bad joke
+- **Lighting:** Warm natural light, soft shadows
+- **Crop:** Square (1:1), portrait orientation on face/upper body
+- **Feel:** "Guy you'd want to hike with" — approachable, not aspirational
+- **NOT:** Posed summit photo, professional athlete energy, expensive gear flexing
+
+
+---
+
+You are brainstorming content calendar ideas with Mark. When he describes what he's looking for, suggest 3-5 concrete calendar items in your authentic voice.
+
+For each suggestion provide:
+- title: catchy post title in your voice
+- scheduledAt: suggested date+time ISO string (timezone: America/Denver, MDT = UTC-6)
+- contentType: one of recipe, tip, motivation, workout, outdoor, video, image-post
+- tone: one of energetic, calm, educational, humorous, inspiring, conversational
+- brief: 2-3 sentence description of what to create when this executes
+
+Format: conversational response in your voice, then a JSON block:
+```json
+[{ "title": "...", "scheduledAt": "...", "contentType": "...", "tone": "...", "brief": "..." }]
+```
+
+Mark says: give me 2 quick post ideas for next week
+
+    at Object.handler (plugins/calendar/index.ts:268:33)
+    at async X (src/app/api/plugins/[pluginId]/[...path]/route.ts:96:12)
+Brainstorm error: Error: Gateway error: Not Found
+    at Object.handler (plugins/calendar/index.ts:283:19)
+    at async X (src/app/api/plugins/[pluginId]/[...path]/route.ts:96:12)
+Plugin route error [calendar/items/update]: SyntaxError: Unterminated string in JSON at position 1366 (line 5 column 614)
+    at JSON.parse (<anonymous>)
+Failed to dispatch "Build Workflows plugin" to patch: Error: Command failed: /opt/homebrew/bin/openclaw agent --agent patch --message Work on this task: "Build Workflows plugin".
+
+Details:
+Full spec: content/workflows/SPEC.md
+Build a new "Workflows" plugin for Mission Control. Workflows are multi-step
+multi-agent pipelines with human approval gates, powered by React Flow.
+Phase 1 deliverables:
+- YAML workflow definition parser (content/workflows/definitions/*.yaml)
+- Workflow engine / state machine (content/workflows/runs/{id}/state.json)
+- API: POST /run, POST /steps/:step/complete, POST /gates/:step/approve|reject, GET /state
+- "Workflows" nav item in Mission Control (between Tasks and Calendar)
+- Workflows list page + React Flow canvas showing live run state
+- Node types: TriggerNode, AgentNode, GateNode, ParallelNode, OutputNode
+- Gate approval modal (approve/reject with optional note)
+- 3 starter workflow definitions: content-creation.yaml, image-only.yaml, quick-post.yaml
+- Task ↔ workflow link: tasks can have workflow/run_id/step fields
+- Workflow badge on kanban task cards linking to the run
+Agent rules: update AGENTS.md for basil, pixel, rolo, patch with workflow step instructions
+Read the full spec before starting. Ask Roscoe if anything is unclear.
+
+Log your progress at EVERY major step — not just start and done. Required log points:
+- Log at task start: what you are about to do
+- Log after each major step (reading files, planning, each significant code change, after build)
+- Log if blocked or anything unexpected happens
+- Log on completion with a full summary
+- If you have not logged in the last 5 minutes, log a status update — even if just "still working on X"
+
+For Patch using Claude Code: log before spawning the agent, and after it completes.
+
+Log command: POST to http://localhost:3737/api/tasks/log with {"title":"0e506bc1","author":"patch","message":"your update"}
+
+If this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:3737/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>"}'
+
+When finished, move this task to Done: curl -s -X POST http://localhost:3737/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"0e506bc1","to":"done"}'
+
+Then report back to roscoe: openclaw agent --agent main --message "TASK COMPLETE: Build Workflows plugin — <summary>" --deliver
+
+If you cannot complete this task or hit an error, report via: openclaw agent --agent main --message "TASK BLOCKED: Build Workflows plugin — <reason>" --deliver
+
+Dependency pattern: If your task requires output from another agent, create their task first, note its ID, then register a dependency: curl -s -X POST http://localhost:3737/api/tasks/depend -H 'Content-Type: application/json' -d '{"id":"0e506bc1","dependsOn":"<their-task-id>"}'. Then exit — you will be automatically re-dispatched when their task completes. --deliver
+Gateway agent failed; falling back to embedded: Error: gateway closed (1012): service restart
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: /Users/roscoe/.openclaw/openclaw.json
+Bind: loopback
+[tools] edit failed: Could not find the exact text in /Users/roscoe/go/src/github.com/madeinwyo/mission-control/src/lib/plugin-manifest.ts. The old text must match exactly including all whitespace and newlines.
+[agent/embedded] embedded run timeout: runId=bcea59f2-5766-4a2a-b128-1071a4a7bd9f sessionId=bcea59f2-5766-4a2a-b128-1071a4a7bd9f timeoutMs=600000
+[agent/embedded] Profile anthropic:default timed out. Trying next account...
+[agent/embedded] embedded run failover decision: runId=bcea59f2-5766-4a2a-b128-1071a4a7bd9f stage=assistant decision=surface_error reason=timeout provider=anthropic/claude-opus-4-6 profile=sha256:154a23a3efe6
+[agent] run bcea59f2-5766-4a2a-b128-1071a4a7bd9f ended with stopReason=toolUse
+Error: Discord recipient is required. Use "channel:<id>" for channels or "user:<id>" for DMs.
+
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.8.0
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.8.0
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.8.0
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.8.0
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.8.0
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.8.0
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.8.0
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.8.0
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.8.0
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.8.0
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.8.0
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Unhandled Rejection: Error: Could not find a production build in the '.next' directory. Try building your app with 'next build' before starting the production server. https://nextjs.org/docs/messages/production-start-no-build-id
+    at ignore-listed frames
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}
+⨯ uncaughtException:  Error: listen EADDRINUSE: address already in use 0.0.0.0:3737
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3737) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3737
+}

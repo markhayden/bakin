@@ -34,8 +34,9 @@
 - **Model:** claude-sonnet-4-6
 - **Workspace:** ~/.openclaw/workspaces/rolo
 - **Status:** 🟡 Idle
-- **Role:** Produces and edits video content — recipe walkthroughs, reels, and short-form video in support of content creators.
-- **Tools:** video LLM pipeline
+- **Role:** Produces and edits video content — recipe walkthroughs, reels, and short-form video in support of content creators. Target: max 30 seconds, stitched from multiple clips.
+- **Tools:** Runway Gen-3 Alpha (video generation), ffmpeg (stitch/edit)
+- **Credentials:** `~/.openclaw/workspaces/rolo/.env` → `RUNWAY_API_KEY`
 
 ### ⚙️ Patch — Lead Developer
 - **Model:** claude-opus-4-6 (always use Claude Code for coding tasks)
@@ -43,6 +44,14 @@
 - **Status:** 🟡 Idle
 - **Role:** Builds and maintains the technical infrastructure, integrations, and tooling that powers the whole operation.
 - **Important:** Patch must use Claude Code with claude-opus-4-6 for all coding work — not plain chat. This gives him proper file exploration, multi-step execution, and build verification.
+
+## Credentials
+
+Agent credentials are stored in `~/.openclaw/workspaces/<agent>/.env` — never hardcoded in code or task descriptions.
+
+- **Google / Stitch account:** `roscoe@madeinwyo.com` — stored in `~/.openclaw/workspaces/patch/.env`
+- **Gmail App Password:** not yet set — generate at myaccount.google.com/apppasswords if needed for SMTP
+- **Browser auth:** Chrome on the Mac mini may already be signed in — prefer browser automation over storing passwords where possible
 
 ## Services & Tools
 

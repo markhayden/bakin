@@ -1,0 +1,38 @@
+id: content-creation
+name: Content Post with Assets
+description: Full pipeline — copy, image, video, review gate, then publish
+steps:
+  - id: write-copy
+    type: agent
+    label: Write Copy
+    agent: basil
+    description: Write caption, recipe/tip copy, and post brief
+
+  - id: create-image
+    type: agent
+    label: Generate Image
+    agent: pixel
+    description: Generate hero image from copy brief
+    dependsOn: write-copy
+
+  - id: create-video
+    type: agent
+    label: Generate Video
+    agent: rolo
+    description: Generate short-form video clip
+    dependsOn: write-copy
+
+  - id: review-gate
+    type: gate
+    label: Mark Reviews
+    description: Review all assets before publishing
+    dependsOn:
+      - create-image
+      - create-video
+
+  - id: publish
+    type: agent
+    label: Publish
+    agent: roscoe
+    description: Post caption + assets to Discord channel
+    dependsOn: review-gate

@@ -1,0 +1,16 @@
+id: quick-post
+name: Quick Post
+description: Write and publish immediately — no assets, no gate
+steps:
+  - id: write-copy
+    type: agent
+    label: Write Copy
+    agent: basil
+    description: Write caption or short tip
+
+  - id: publish
+    type: agent
+    label: Publish
+    agent: roscoe
+    description: Post to Discord channel
+    dependsOn: write-copy

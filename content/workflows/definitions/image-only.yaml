@@ -1,0 +1,29 @@
+id: image-only
+name: Image Post
+description: Caption + hero image, review gate, then publish
+steps:
+  - id: write-copy
+    type: agent
+    label: Write Copy
+    agent: basil
+    description: Write caption and image brief
+
+  - id: create-image
+    type: agent
+    label: Generate Image
+    agent: pixel
+    description: Generate hero image from brief
+    dependsOn: write-copy
+
+  - id: review-gate
+    type: gate
+    label: Mark Reviews
+    description: Review copy and image before publishing
+    dependsOn: create-image
+
+  - id: publish
+    type: agent
+    label: Publish
+    agent: roscoe
+    description: Post caption + image to Discord channel
+    dependsOn: review-gate

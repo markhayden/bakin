@@ -1,7 +1,7 @@
 'use client'
 
-import { MemoryLog } from '@/components/memory/memory-log'
+import { MemoryTabs } from '@mc/memory/components/memory-tabs'
 
 export default function MemoryPage() {
-  return <MemoryLog />
+  return <MemoryTabs />
 }

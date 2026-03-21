@@ -1,19 +1,21 @@
+import { AGENT_PROFILES, AGENT_MAP } from './agents-data'
 import type { AgentMeta } from '@/types'
 
-export const AGENTS: AgentMeta[] = [
-  { id: 'roscoe', emoji: '🐾', name: 'Roscoe', role: 'Orchestrator · Lead Agent' },
-  { id: 'basil', emoji: '🥗', name: 'Basil', role: 'Nutritionist & Culinary Expert · Content Creator' },
-  { id: 'pixel', emoji: '🖼️', name: 'Pixel', role: 'Image Generation · Visual Content' },
-  { id: 'rolo', emoji: '🎬', name: 'Rolo', role: 'Videographer & Editor · Video Content' },
-  { id: 'patch', emoji: '⚙️', name: 'Patch', role: 'Lead Developer' },
-]
+/** Lightweight agent list for badges/dropdowns (derived from single source) */
+export const AGENTS: AgentMeta[] = AGENT_PROFILES.map(a => ({
+  id: a.id,
+  emoji: a.emoji,
+  name: a.name,
+  role: a.role,
+}))
 
-export const AGENT_MAP = Object.fromEntries(AGENTS.map(a => [a.id, a]))
+export { AGENT_MAP }
 
 export const COLUMN_CONFIG = {
   inProgress: { label: 'In Progress', emoji: '🔵' },
   todo: { label: 'Todo', emoji: '📋' },
   done: { label: 'Done', emoji: '✅' },
+  confirmed: { label: 'Confirmed', emoji: '🟣' },
   blocked: { label: 'Blocked', emoji: '🔴' },
 } as const
 
@@ -21,12 +23,11 @@ export const COLUMN_HEADERS: Record<string, string> = {
   '🔵 In Progress': 'inProgress',
   '📋 Todo': 'todo',
   '✅ Done': 'done',
+  '🟣 Confirmed': 'confirmed',
   '🔴 Blocked': 'blocked',
 }
 
-export const CONTENT_DIR = process.env.CONTENT_DIR || 'content'
-export const PORT = Number(process.env.PORT || 3737)
-
+/** @deprecated Use allNavItems from plugin-manifest.ts instead */
 export const NAV_ITEMS = [
   { id: 'tasks', label: 'Tasks', icon: 'CheckSquare', href: '/tasks' },
   { id: 'calendar', label: 'Calendar', icon: 'Calendar', href: '/calendar' },

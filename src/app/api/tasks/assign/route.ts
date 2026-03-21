@@ -1,18 +1,19 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { assignTask } from '@/lib/taskboard'
+import { assignTask } from '@mc/tasks/taskboard'
 import { appendAudit } from '@/lib/audit'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { title, agent } = body
+  const { title, id, agent } = body
+  const identifier = id || title
 
-  if (!title) {
-    return NextResponse.json({ error: 'title required' }, { status: 400 })
+  if (!identifier) {
+    return NextResponse.json({ error: 'title or id required' }, { status: 400 })
   }
 
   try {
-    assignTask(title, agent || '')
-    appendAudit('task.assigned', 'dashboard', { title, agent })
+    await assignTask(identifier, agent || '')
+    appendAudit('task.assigned', 'dashboard', { id, title, agent })
     return NextResponse.json({ ok: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

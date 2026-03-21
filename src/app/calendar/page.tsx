@@ -1,7 +1,7 @@
 'use client'
 
-import { CalendarView } from '@/components/calendar/calendar-view'
+import { ContentCalendar } from '@mc/calendar/components/content-calendar'
 
 export default function CalendarPage() {
-  return <CalendarView />
+  return <ContentCalendar />
 }
