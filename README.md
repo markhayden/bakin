@@ -134,7 +134,7 @@ Beacon exposes a REST API on the same port as the dashboard. Full documentation 
 | `POST` | `/api/agents/:id/message` | Send message to agent |
 | `GET` | `/api/agents/:id/tasks` | Tasks assigned to agent |
 | `GET` | `/api/doctor` | Run health checks |
-| `GET` | `/api/search` | Search indexed content (`?q=<query>`) |
+| `GET` | `/api/search` | Search indexed content (`?q=<query>&table=&agent=&limit=`) |
 | `GET` | `/api/docs` | API documentation (JSON) |
 | `POST` | `/api/reindex` | Reindex all content to Antfly |
 | `POST` | `/api/plugins/install` | Install a plugin |
@@ -178,9 +178,12 @@ beacon plugins install github:user/repo  # Install from GitHub
 beacon plugins remove my-plugin      # Remove plugin
 
 # Search & Docs
-beacon search "runway video"         # Search indexed content
-beacon docs                          # Print API docs
-beacon reindex                       # Reindex content to Antfly
+beacon search "runway video"                    # Search all indexed content
+beacon search "tacos" --table=content           # Filter by table
+beacon search "deploy fix" --agent=patch        # Filter by agent
+beacon search "photos" --table=content --limit=5  # Combine filters
+beacon docs                                     # Print API docs
+beacon reindex                                  # Reindex content to Antfly
 ```
 
 ---
@@ -218,19 +221,50 @@ openclaw skills list
 
 ---
 
-## Antfly (Optional)
+## Antfly (Vector Search)
 
-[AntflyDB](https://antfly.dev) integration provides hybrid search (full-text + vector) across all content. Beacon works without it — file-only mode is the default.
+[AntflyDB](https://antfly.dev) provides hybrid search (full-text BM25 + semantic vector) across all content. Beacon works without it — file-only mode is the default. When enabled, Beacon auto-manages the entire lifecycle: installs the binary, starts the server, creates tables with embeddings, indexes content, and stops it on shutdown.
 
-### Enable
-
-Update settings to enable:
+### Quick Setup
 
 ```bash
-beacon settings set antfly.enabled true
-beacon settings set antfly.url http://localhost:8080
-beacon reindex   # Backfill existing content
+beacon setup antfly    # Install binary + enable + reindex (one command)
 ```
+
+This will:
+1. Install AntflyDB via Homebrew (`brew install --cask antflydb/antfly/antfly`)
+2. Enable Antfly in settings
+3. Start the Antfly server
+4. Create all tables with full-text + embeddings indexes
+5. Reindex existing content
+
+### Manual Setup
+
+If you prefer to set it up yourself:
+
+```bash
+# Install the binary
+brew install --cask antflydb/antfly/antfly
+
+# Enable in Beacon
+beacon settings set antfly.enabled true
+
+# Restart Beacon (Antfly auto-starts, creates tables, waits for shards)
+npm run dev
+
+# Backfill existing content
+beacon reindex
+```
+
+### How It Works
+
+- **Auto-start:** Beacon spawns `antfly swarm` as a child process on boot (port 8080)
+- **Auto-stop:** Killed gracefully on Beacon shutdown (SIGTERM, force after 5s)
+- **Auto-tables:** 5 tables created on first run with full-text + embeddings indexes
+- **Embeddings:** Built-in all-MiniLM-L6-v2 model (384-dim, INT8-quantized) — no external model server needed
+- **Dual-write sync:** File watcher indexes content to Antfly on every write
+- **Fire-and-forget:** All indexing is non-blocking — file writes succeed even if Antfly is down
+- **External Antfly:** If Antfly is already running on port 8080 (started externally), Beacon detects it and skips spawning a child process
 
 ### What Gets Indexed
 
@@ -240,16 +274,23 @@ beacon reindex   # Backfill existing content
 | `beacon_decisions` | `MEMORY-LOG.md` | On file write |
 | `beacon_audit` | `audit.jsonl` | On every audit event |
 | `beacon_content` | Project docs, personas, calendar | On file write |
-
-All indexing is fire-and-forget — file writes succeed even if Antfly is down.
+| `beacon_assets` | Generated assets | On create |
 
 ### Search
 
 ```bash
-beacon search "runway video clips"
-# or
-curl "http://localhost:3737/api/search?q=runway+video&limit=5"
+beacon search "runway video clips"                   # All tables
+beacon search "landscape shots" --table=content       # Single table
+beacon search "deploy fix" --agent=patch              # By agent
+beacon search "portraits" --table=assets --limit=20   # Combined filters
+
+# API
+curl "http://localhost:3737/api/search?q=runway+video&table=content&agent=pixel&limit=5"
 ```
+
+### Antfly Dashboard
+
+When running, Antfly serves its own dashboard at `http://localhost:11433` for inspecting tables, shards, and indexes directly.
 
 ---
 

@@ -208,8 +208,72 @@ async function cmdDocs(): Promise<void> {
   }
 }
 
-async function cmdSearch(query: string): Promise<void> {
-  const result = await apiGet(`/api/search?q=${encodeURIComponent(query)}`)
+// ---------------------------------------------------------------------------
+// Setup commands (run shell commands, not API wrappers)
+// ---------------------------------------------------------------------------
+
+async function cmdSetupAntfly(): Promise<void> {
+  const { execSync } = await import('child_process')
+  const { existsSync } = await import('fs')
+
+  // Step 1: Check if binary exists
+  const binaryPaths = [
+    '/opt/homebrew/bin/antfly',
+    '/usr/local/bin/antfly',
+    `${process.env.HOME}/.antfly/bin/antfly`,
+  ]
+  const installed = binaryPaths.some(p => existsSync(p))
+
+  if (installed) {
+    console.log('[OK] Antfly binary already installed')
+  } else {
+    console.log('[..] Installing AntflyDB via Homebrew...')
+    try {
+      execSync('brew install --cask antflydb/antfly/antfly', { stdio: 'inherit' })
+      console.log('[OK] Antfly installed')
+    } catch (err) {
+      console.error('[FAIL] Homebrew install failed. Install manually:')
+      console.error('  brew install --cask antflydb/antfly/antfly')
+      process.exit(1)
+    }
+  }
+
+  // Step 2: Enable in settings
+  console.log('[..] Enabling Antfly in Beacon settings...')
+  try {
+    await apiPost('/api/settings', { antfly: { enabled: true, url: 'http://localhost:8080/api/v1' } })
+    console.log('[OK] Antfly enabled')
+  } catch {
+    console.log('[WARN] Could not reach Beacon API — is the server running?')
+    console.log('  Start Beacon first: npm run dev')
+    console.log('  Then re-run: beacon setup antfly')
+    process.exit(1)
+  }
+
+  // Step 3: Reindex
+  console.log('[..] Reindexing content (this may take a moment on first run)...')
+  try {
+    // Give Antfly time to start and create tables
+    await new Promise(r => setTimeout(r, 5000))
+    const result = await apiPost('/api/reindex', {}) as { indexed?: number }
+    console.log(`[OK] Indexed ${result?.indexed || 0} documents`)
+  } catch (err) {
+    console.log('[WARN] Reindex failed — Antfly may still be starting. Try: beacon reindex')
+  }
+
+  console.log('')
+  console.log('Antfly setup complete! Beacon will auto-start Antfly on boot.')
+  console.log('  Search:     beacon search "your query"')
+  console.log('  Dashboard:  http://localhost:11433')
+  console.log('  Reindex:    beacon reindex')
+}
+
+async function cmdSearch(query: string, options: { table?: string; limit?: number; agent?: string } = {}): Promise<void> {
+  let url = `/api/search?q=${encodeURIComponent(query)}`
+  if (options.table) url += `&table=${encodeURIComponent(options.table)}`
+  if (options.agent) url += `&agent=${encodeURIComponent(options.agent)}`
+  if (options.limit) url += `&limit=${options.limit}`
+  const result = await apiGet(url)
   print(result)
 }
 
@@ -264,10 +328,14 @@ Commands:
   plugins list                     List installed plugins
   plugins install <path|repo>      Install plugin (local path or github:user/repo)
   plugins remove <id>              Remove an installed plugin
+  setup antfly                     Install AntflyDB + enable + reindex (one command)
   doctor                           Run health checks (agent sync, skill, gateway, etc.)
   reindex                          Reindex all content to Antfly
   docs                             Print API documentation
-  search <query>                   Search across indexed content
+  search <query> [options]          Search across indexed content
+    --table=<name>                   Filter by table (tasks, decisions, audit, content, assets)
+    --agent=<name>                   Filter by agent (e.g. patch, pixel, rolo)
+    --limit=<n>                      Max results (default: 10)
 
 Environment:
   BEACON_URL    Base URL (default: http://localhost:3737)
@@ -355,6 +423,16 @@ async function main(): Promise<void> {
         }
         break
 
+      case 'setup':
+        if (sub === 'antfly') {
+          await cmdSetupAntfly()
+        } else {
+          console.error(`Unknown setup target: ${sub}`)
+          console.error('Available: beacon setup antfly')
+          process.exit(1)
+        }
+        break
+
       case 'doctor':
         await cmdDoctor()
         break
@@ -367,10 +445,22 @@ async function main(): Promise<void> {
         await cmdDocs()
         break
 
-      case 'search':
-        if (!args[1]) { console.error('Usage: beacon search <query>'); process.exit(1) }
-        await cmdSearch(args.slice(1).join(' '))
+      case 'search': {
+        const searchOpts: { table?: string; limit?: number; agent?: string } = {}
+        const queryParts: string[] = []
+        for (let i = 1; i < args.length; i++) {
+          if (args[i].startsWith('--table=')) searchOpts.table = args[i].split('=')[1]
+          else if (args[i] === '--table' && args[i + 1]) searchOpts.table = args[++i]
+          else if (args[i].startsWith('--agent=')) searchOpts.agent = args[i].split('=')[1]
+          else if (args[i] === '--agent' && args[i + 1]) searchOpts.agent = args[++i]
+          else if (args[i].startsWith('--limit=')) searchOpts.limit = Number(args[i].split('=')[1])
+          else if (args[i] === '--limit' && args[i + 1]) searchOpts.limit = Number(args[++i])
+          else queryParts.push(args[i])
+        }
+        if (!queryParts.length) { console.error('Usage: beacon search <query> [--table=content] [--agent=patch] [--limit=10]'); process.exit(1) }
+        await cmdSearch(queryParts.join(' '), searchOpts)
         break
+      }
 
       default:
         console.error(`Unknown command: ${cmd}`)
