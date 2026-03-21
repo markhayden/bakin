@@ -10,6 +10,7 @@ import * as watchdog from './watchdog'
 import * as calendarCron from './calendar-cron'
 import * as watcher from './watcher'
 import * as doctor from './doctor'
+import * as antflyServer from './antfly-server'
 
 const log = createLogger('lifecycle')
 
@@ -30,6 +31,9 @@ export function registerShutdownHandlers(server: Server, contentDir: string): vo
 
     // Stop file watching
     await watcher.stop()
+
+    // Stop Antfly server (if we started it)
+    antflyServer.stop()
 
     // Drain SSE clients
     sse.stop()
