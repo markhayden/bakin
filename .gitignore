@@ -47,3 +47,6 @@ mc-server-error.log
 
 # claude code
 .claude/
+
+# playwright mcp
+.playwright-mcp/
