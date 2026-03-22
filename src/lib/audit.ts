@@ -1,10 +1,10 @@
-import fs from 'fs'
-import path from 'path'
+import { appendAudit as coreAppend } from '../core/audit'
 import { getContentDir } from '../core/content-dir'
 
-const AUDIT_FILE = path.join(getContentDir(), 'audit.jsonl')
-
+/**
+ * Convenience wrapper around core/audit that resolves contentDir automatically.
+ * Writes to audit.jsonl, broadcasts via SSE, and indexes to Antfly.
+ */
 export function appendAudit(event: string, agent: string, data: Record<string, unknown> = {}) {
-  const entry = JSON.stringify({ ts: new Date().toISOString(), event, agent, data })
-  fs.appendFileSync(AUDIT_FILE, entry + '\n')
+  coreAppend(getContentDir(), event, agent, data)
 }

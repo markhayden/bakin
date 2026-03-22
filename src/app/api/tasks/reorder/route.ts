@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await reorderTasks(columnId, orderedIds)
-    appendAudit('task.reordered', 'dashboard', { columnId, orderedIds })
+    appendAudit('task.reordered', 'roscoe', { columnId, orderedIds })
     return NextResponse.json({ ok: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

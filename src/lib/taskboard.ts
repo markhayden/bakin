@@ -24,4 +24,5 @@ export {
   clearDependency,
   readAllColumns,
   KNOWN_AGENTS,
+  VALID_TRANSITIONS,
 } from '../../plugins/tasks/taskboard'

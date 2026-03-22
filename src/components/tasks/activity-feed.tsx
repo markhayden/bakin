@@ -7,9 +7,12 @@ import { useActivityContext } from '@/context/activity-context'
 interface ActivityEvent {
   id: string
   ts: string
-  type: 'log' | 'audit'
+  type: 'log' | 'audit' | 'alert'
   agent: string
   message: string
+  taskId?: string
+  taskTitle?: string
+  eventName?: string
 }
 
 const AGENT_EMOJI: Record<string, string> = {
@@ -18,6 +21,9 @@ const AGENT_EMOJI: Record<string, string> = {
   pixel: '🖼️',
   rolo: '🎬',
   patch: '⚙️',
+  scout: '🔭',
+  dashboard: '📊',
+  api: '🔌',
   system: '⚡',
 }
 
@@ -27,6 +33,9 @@ const AGENT_COLOR: Record<string, string> = {
   pixel: 'text-violet-400',
   rolo: 'text-orange-400',
   patch: 'text-zinc-400',
+  scout: 'text-amber-400',
+  dashboard: 'text-cyan-400',
+  api: 'text-teal-400',
   system: 'text-slate-400',
 }
 
@@ -53,6 +62,7 @@ function AgentAvatar({ agent, size = 24 }: { agent: string; size?: number }) {
 
 function relativeTime(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime()
+  if (isNaN(diff) || diff < 0) return 'just now'
   const seconds = Math.floor(diff / 1000)
   if (seconds < 10) return 'just now'
   if (seconds < 60) return `${seconds}s ago`
@@ -64,16 +74,39 @@ function relativeTime(ts: string): string {
   return `${days}d ago`
 }
 
+/** Map an audit entry from SSE into a display message (mirrors server-side mapAuditMessage) */
+function mapAuditMessage(event: string, data: Record<string, unknown>): string {
+  switch (event) {
+    case 'task.dispatched': return `Dispatched: ${data.title}`
+    case 'task.triaged': return `Triaged: ${data.title}`
+    case 'task.created': return `Created task: ${data.title}`
+    case 'task.deleted': return `Deleted task: ${data.title}`
+    case 'task.moved': return `Moved "${data.title}" → ${data.to}`
+    case 'task.assigned': return `Assigned "${data.title}" to ${data.assignee}`
+    case 'task.blocked': return `Blocked: ${data.title} — ${data.reason || 'no reason'}`
+    case 'task.updated': return `Updated: ${data.title}`
+    case 'system.init': return 'Beacon started'
+    case 'system.dispatch_error': return `Dispatch failed: ${data.error || 'unknown error'}`
+    default: return event
+  }
+}
+
 export function ActivityFeed() {
   const { open, toggle } = useActivityContext()
   const [events, setEvents] = useState<ActivityEvent[]>([])
   const [connected, setConnected] = useState(false)
+  const [, setTick] = useState(0)
   const esRef = useRef<EventSource | null>(null)
+
+  // Force re-render every 30s to keep relative timestamps fresh
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 30_000)
+    return () => clearInterval(timer)
+  }, [])
 
   /** Filter out infrastructure noise that isn't useful in the user-facing feed */
   function isNoisyEvent(evt: ActivityEvent): boolean {
     if (evt.agent === 'system' && evt.message.startsWith('Dispatch failed')) return true
-    if (evt.agent === 'system' && evt.message.startsWith('ALERT: No progress')) return true
     return false
   }
 
@@ -116,13 +149,37 @@ export function ActivityFeed() {
           return
         }
 
+        // Inline audit events directly from SSE payload instead of re-fetching
         if (data.type === 'audit' && data.entry) {
-          fetchEvents()
+          const entry = data.entry
+          const entryData = entry.data || {}
+          const evt: ActivityEvent = {
+            id: `${entry.ts}-${entry.event}-${entry.agent}`,
+            ts: entry.ts,
+            type: 'audit',
+            agent: entry.agent || 'system',
+            message: mapAuditMessage(entry.event, entryData),
+            taskId: entryData.taskId,
+            taskTitle: entryData.title,
+            eventName: entry.event,
+          }
+          if (!isNoisyEvent(evt)) {
+            setEvents((prev) => [evt, ...prev].slice(0, 100))
+          }
           return
         }
 
-        if (data.file === 'audit.jsonl') {
-          fetchEvents()
+        // Watchdog alerts
+        if (data.type === 'alert') {
+          const evt: ActivityEvent = {
+            id: `${data.timestamp || new Date().toISOString()}-alert-system`,
+            ts: data.timestamp || new Date().toISOString(),
+            type: 'alert',
+            agent: 'system',
+            message: data.message || 'Watchdog alert',
+          }
+          setEvents((prev) => [evt, ...prev].slice(0, 100))
+          return
         }
       } catch { /* keep-alive or invalid */ }
     }
@@ -174,7 +231,12 @@ export function ActivityFeed() {
             <p className="text-xs text-zinc-500 text-center mt-8">No activity yet</p>
           )}
           {events.map((evt, i) => (
-            <div key={`${evt.id}-${i}`} className="flex gap-2.5 px-3 py-2.5 hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/60 last:border-0">
+            <div
+              key={`${evt.id}-${i}`}
+              className={`flex gap-2.5 px-3 py-2.5 hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/60 last:border-0 ${
+                evt.type === 'alert' ? 'bg-amber-950/20' : ''
+              }`}
+            >
               <AgentAvatar agent={evt.agent} size={24} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1.5 mb-0.5">
@@ -183,7 +245,12 @@ export function ActivityFeed() {
                   </span>
                   <span className="text-zinc-500 text-[10px] shrink-0 tabular-nums">{relativeTime(evt.ts)}</span>
                 </div>
-                <p className="text-[12px] text-zinc-300 leading-snug break-words">{evt.message}</p>
+                {evt.taskTitle && evt.type === 'log' && (
+                  <p className="text-[10px] text-zinc-500 mb-0.5 truncate">{evt.taskTitle}</p>
+                )}
+                <p className={`text-[12px] leading-snug break-words ${
+                  evt.type === 'alert' ? 'text-amber-400' : 'text-zinc-300'
+                }`}>{evt.message}</p>
               </div>
             </div>
           ))}

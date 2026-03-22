@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await deleteTask(identifier)
-    appendAudit('task.deleted', 'dashboard', { id, title })
+    appendAudit('task.deleted', 'roscoe', { id, title })
     return NextResponse.json({ ok: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

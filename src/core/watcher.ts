@@ -68,7 +68,12 @@ function handleFileEvent(deps: WatcherDeps, fullPath: string, event: string): vo
 
 export function start(deps: WatcherDeps): void {
   watcher = watch(deps.contentDir, {
-    ignored: /(^|[/\\])\./,
+    ignored: (path: string) => {
+      // Ignore dotfiles/dotdirs WITHIN the content dir, but not the content dir itself
+      if (path === deps.contentDir) return false
+      const basename = path.split('/').pop() || ''
+      return basename.startsWith('.')
+    },
     persistent: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 50 },
   })

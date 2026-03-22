@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await assignTask(identifier, agent || '')
-    appendAudit('task.assigned', 'dashboard', { id, title, agent })
+    appendAudit('task.assigned', 'roscoe', { id, title, agent })
     return NextResponse.json({ ok: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

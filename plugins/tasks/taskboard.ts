@@ -36,6 +36,17 @@ const COLUMN_TO_HEADER: Record<ColumnId, string> = {
 const KNOWN_AGENTS = ['roscoe', 'patch', 'pixel', 'rolo', 'basil']
 
 // ---------------------------------------------------------------------------
+// Valid state transitions — prevents invalid column moves
+// ---------------------------------------------------------------------------
+export const VALID_TRANSITIONS: Record<ColumnId, ColumnId[]> = {
+  todo:       ['inProgress', 'blocked', 'done'],
+  inProgress: ['done', 'blocked', 'todo'],
+  blocked:    ['todo', 'inProgress'],
+  done:       ['confirmed', 'todo'],
+  confirmed:  [],
+}
+
+// ---------------------------------------------------------------------------
 // Column normalization
 // ---------------------------------------------------------------------------
 function normalizeColumn(col: string): ColumnId | null {
@@ -104,7 +115,8 @@ export function readTaskboard() {
 }
 
 export function writeTaskboard(columns: TaskColumns) {
-  writeContentFile('TASKBOARD.md', serializeTaskboard(columns))
+  const content = serializeTaskboard(columns)
+  writeContentFile('TASKBOARD.md', content)
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +167,18 @@ export function moveTask(identifier: string, to: string, from?: string): Promise
     if (!found) throw new Error(`Task not found: ${identifier}`)
 
     const { task, colId, idx } = found
+
+    // State transition guard
+    const allowed = VALID_TRANSITIONS[colId]
+    if (allowed && !allowed.includes(toCol)) {
+      throw new Error(`Invalid transition: ${colId} → ${toCol}. Allowed: ${allowed.join(', ') || 'none'}`)
+    }
+
+    // Require at least one log entry before moving to done
+    if (toCol === 'done' && (!task.log || task.log.length === 0)) {
+      throw new Error('Cannot move to done: task has no log entries. Log your work first via POST /api/tasks/log')
+    }
+
     columns[colId].splice(idx, 1)
     task.checked = toCol === 'done'
     if (toCol === 'inProgress' || toCol === 'done') {
@@ -194,7 +218,7 @@ export function addTaskLog(identifier: string, author: string, message: string):
     const found = findTask(columns, identifier)
     if (!found) throw new Error(`Task not found: ${identifier}`)
     if (!found.task.log) found.task.log = []
-    const ts = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    const ts = new Date().toISOString()
     found.task.log.push({ timestamp: ts, author, message })
     writeTaskboard(columns)
   })
@@ -232,6 +256,13 @@ export function updateTask(
     if (updates.workflowId !== undefined) task.workflowId = updates.workflowId || undefined
 
     if (updates.column !== undefined && updates.column !== colId) {
+      const allowed = VALID_TRANSITIONS[colId]
+      if (allowed && !allowed.includes(updates.column)) {
+        throw new Error(`Invalid transition: ${colId} → ${updates.column}. Allowed: ${allowed.join(', ') || 'none'}`)
+      }
+      if (updates.column === 'done' && (!task.log || task.log.length === 0)) {
+        throw new Error('Cannot move to done: task has no log entries. Log your work first via POST /api/tasks/log')
+      }
       columns[colId].splice(idx, 1)
       task.checked = updates.column === 'done'
       if (updates.column === 'inProgress' || updates.column === 'done') {
