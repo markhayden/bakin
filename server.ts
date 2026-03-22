@@ -1,7 +1,7 @@
 /**
  * Beacon — Mission Control Server
  * Version: 1.0.0
- * Last updated: 2025-03-21
+ * Last updated: 2026-03-21
  * 
  * Main entry point for the Beacon server. Bootstraps Next.js,
  * registers plugins, and starts the HTTP server with API routing.
