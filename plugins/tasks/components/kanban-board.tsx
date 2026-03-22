@@ -211,8 +211,8 @@ export function KanbanBoard() {
 
   return (
     <WithLoading>
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col h-full min-w-0 min-h-0">
+        <div className="flex items-center justify-between px-[25px] pt-[25px] pb-4">
           <div>
             <h1 className="text-lg font-semibold text-foreground">Tasks</h1>
             {timestamp && (
@@ -224,9 +224,9 @@ export function KanbanBoard() {
           <NewTaskDialog />
         </div>
 
-        <div className="flex-1 overflow-x-auto">
+        <div className="flex-1 overflow-auto min-h-0">
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex gap-4 pb-4 min-w-0 items-start h-full">
+          <div className="inline-flex gap-4 items-start p-[25px] pt-0">
             {COLUMN_ORDER.map((colId) => (
               <div key={colId} className="w-72 shrink-0">
               <KanbanColumn

@@ -207,9 +207,7 @@ export function ActivityFeed() {
 
       {/* Full-height panel */}
       <div
-        className={`fixed right-0 top-14 bottom-0 z-40 flex w-[360px] flex-col border-l border-zinc-800 bg-background transition-transform duration-150 ease-in-out ${
-          open ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        className="flex w-[360px] h-full flex-col bg-background"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
