@@ -35,7 +35,9 @@ interface DispatchState {
 }
 
 let dispatching = false
+let dispatchStartedAt = 0
 let dispatchTimer: NodeJS.Timeout | null = null
+const DISPATCH_TIMEOUT_MS = 3 * 60 * 1000 // 3 minutes max per dispatch cycle
 
 function getStateFile(contentDir: string): string {
   return join(contentDir, '.dispatch-state.json')
@@ -68,8 +70,14 @@ function saveDispatchState(contentDir: string, state: DispatchState): void {
 }
 
 export async function dispatchTasks(contentDir: string, port: number): Promise<void> {
+  // If a previous dispatch is stuck (>3min), force-release the mutex
+  if (dispatching && dispatchStartedAt > 0 && (Date.now() - dispatchStartedAt) > DISPATCH_TIMEOUT_MS) {
+    log.warn('Dispatch mutex stuck — force-releasing after timeout', { stuckSinceMs: Date.now() - dispatchStartedAt })
+    dispatching = false
+  }
   if (dispatching) return
   dispatching = true
+  dispatchStartedAt = Date.now()
 
   const settings = getSettings()
 
@@ -399,16 +407,27 @@ export function getDispatchInfo(contentDir: string): Record<string, unknown> {
   const settings = getSettings()
   const state = loadDispatchState(contentDir)
   const now = Date.now()
+  const interval = settings.dispatch.intervalMs
   const baseline = state.lastRun || state.serverStart || now
-  const nextRun = baseline + settings.dispatch.intervalMs
+
+  // Calculate the next run time that's actually in the future.
+  // If we've missed one or more intervals (e.g. dispatch was stuck),
+  // advance to the next upcoming tick rather than showing 0:00.
+  let nextRun = baseline + interval
+  if (nextRun <= now) {
+    const elapsed = now - baseline
+    const missedIntervals = Math.floor(elapsed / interval)
+    nextRun = baseline + (missedIntervals + 1) * interval
+  }
   const secondsUntilNext = Math.max(0, Math.round((nextRun - now) / 1000))
 
   return {
-    intervalMs: settings.dispatch.intervalMs,
-    intervalMin: settings.dispatch.intervalMs / 60000,
+    intervalMs: interval,
+    intervalMin: interval / 60000,
     lastRun: state.lastRun ? new Date(state.lastRun).toISOString() : null,
     nextRun: new Date(nextRun).toISOString(),
     secondsUntilNext,
+    dispatching,
     dispatchedCount: state.dispatched.length,
   }
 }

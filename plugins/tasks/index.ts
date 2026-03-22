@@ -76,9 +76,19 @@ const tasksPlugin: MCPlugin = {
             } catch { /* best effort */ }
           }
           appendAudit('task.moved', agent, { id, title: resolvedTitle || id, from, to })
-          // Index completed tasks to Antfly for historical search
+          // When moved to done: index and trigger dependency continuation
           if (to.toLowerCase() === 'done') {
             indexCompletedTask({ id: identifier, title: resolvedTitle || identifier }).catch(() => {})
+            if (id) {
+              const PORT = process.env.PORT || '3737'
+              fetch(`http://localhost:${PORT}/api/internal/continuation`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ completedTaskId: id, completedTitle: resolvedTitle || id }),
+              }).catch((err) => {
+                console.error('Continuation trigger failed from plugin move', err)
+              })
+            }
           }
           return Response.json({ ok: true })
         } catch (err) {
