@@ -1,3 +1,12 @@
+/**
+ * Beacon — Mission Control Server
+ * Version: 1.0.0
+ * Last updated: 2025-03-21
+ * 
+ * Main entry point for the Beacon server. Bootstraps Next.js,
+ * registers plugins, and starts the HTTP server with API routing.
+ */
+
 import { createServer } from 'http'
 import next from 'next'
 import { join } from 'path'
@@ -304,6 +313,7 @@ app.prepare().then(async () => {
   // Start all subsystems
   watcher.start({ contentDir: CONTENT_DIR, eventBus, onInboxFile: handleInboxFile })
   dispatch.start(CONTENT_DIR, port)
+  dispatch.reconcileOnStartup(CONTENT_DIR)
   calendarCron.start(CONTENT_DIR, port)
   watchdog.start(CONTENT_DIR, port)
   doctor.start(CONTENT_DIR, process.cwd())
