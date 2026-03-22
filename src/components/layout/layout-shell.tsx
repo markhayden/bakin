@@ -25,16 +25,26 @@ export function LayoutShell({
         {sidebar}
       </aside>
 
-      <main
-        className={`fixed top-14 bottom-0 overflow-hidden transition-all duration-150 ease-in-out ${
+      {/* Content + drawer row */}
+      <div
+        className={`fixed top-14 bottom-0 right-0 flex transition-all duration-150 ease-in-out ${
           collapsed ? 'left-[52px]' : 'left-52'
-        } ${activityOpen ? 'right-[360px]' : 'right-0'}`}
+        }`}
       >
-        <div className="h-full overflow-auto flex flex-col flex-1">{children}</div>
-      </main>
+        {/* Main content — fills remaining space */}
+        <main className="flex-1 min-w-0 overflow-hidden">
+          <div className="h-full overflow-y-auto flex flex-col">{children}</div>
+        </main>
 
-      {/* Activity feed panel */}
-      <ActivityFeed />
+        {/* Activity feed panel — fixed width column */}
+        <div
+          className={`shrink-0 border-l border-zinc-800 bg-background transition-all duration-150 ease-in-out overflow-hidden ${
+            activityOpen ? 'w-[360px]' : 'w-0'
+          }`}
+        >
+          <ActivityFeed />
+        </div>
+      </div>
     </>
   )
 }
