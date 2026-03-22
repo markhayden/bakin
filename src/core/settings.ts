@@ -14,11 +14,14 @@ export interface BeaconSettings {
     intervalMs: number
     failureCooldownMs: number
     maxDispatched: number
+    maxRetries: number
   }
   watchdog: {
     intervalMs: number
     stuckThresholdMs: number
     alertChannelId: string
+    autoRecover: boolean
+    maxAutoRecoveries: number
   }
   calendar: {
     intervalMs: number
@@ -57,11 +60,14 @@ const DEFAULTS: BeaconSettings = {
     intervalMs: 5 * 60 * 1000,
     failureCooldownMs: 30 * 60 * 1000,
     maxDispatched: 500,
+    maxRetries: 5,
   },
   watchdog: {
     intervalMs: 5 * 60 * 1000,
     stuckThresholdMs: 30 * 60 * 1000,
     alertChannelId: '1483917792745885768',
+    autoRecover: true,
+    maxAutoRecoveries: 3,
   },
   calendar: {
     intervalMs: 5 * 60 * 1000,

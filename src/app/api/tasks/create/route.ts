@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const task = await createTask(title, column, assignee, description, workflowId)
-    appendAudit('task.created', 'dashboard', { id: task.id, title, column: column || 'todo', assignee, workflowId })
+    appendAudit('task.created', 'main-operator', { id: task.id, title, column: column || 'todo', assignee, workflowId })
     return NextResponse.json({ ok: true, id: task.id })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

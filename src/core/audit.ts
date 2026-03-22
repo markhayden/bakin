@@ -4,7 +4,6 @@
  */
 import { appendFileSync, mkdirSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
-import { broadcastAuditEvent } from './sse'
 import { createLogger } from './logger'
 import { indexAuditEvent } from './antfly'
 
@@ -32,7 +31,15 @@ export function appendAudit(
     log.error('Failed to write audit entry', err, { event, agent })
   }
 
-  broadcastAuditEvent(entry)
+  // Use globalThis to reach the real SSE clients. Next.js API routes get a
+  // separate webpack module instance of sse.ts with an empty clients Set.
+  // The custom server's sse.ts registers the real broadcast on globalThis.
+  const broadcastFn = (globalThis as any).__beaconBroadcastAudit
+  if (broadcastFn) {
+    broadcastFn(entry)
+  } else {
+    log.warn('SSE broadcast not available — audit event written to disk only', { event })
+  }
 
   // Index to Antfly (fire-and-forget)
   indexAuditEvent(entry).catch(() => {

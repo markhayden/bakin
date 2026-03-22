@@ -50,6 +50,21 @@ async function apiFetch(url: string, body: Record<string, unknown>): Promise<boo
   }
 }
 
+/** Re-fetch TASKBOARD.md and push it into the Zustand store so the board re-renders */
+async function refreshTaskboard() {
+  // Wait for chokidar's stabilityThreshold (300ms) + margin before fetching
+  await new Promise(r => setTimeout(r, 400))
+  try {
+    const res = await fetch('/api/state')
+    if (res.ok) {
+      const files = await res.json()
+      if (files['TASKBOARD.md']) {
+        useContentStore.getState().updateFile('TASKBOARD.md', files['TASKBOARD.md'])
+      }
+    }
+  } catch { /* SSE will eventually sync */ }
+}
+
 export function KanbanBoard() {
   const files = useContentStore((s) => s.files)
   const taskboardContent = files['TASKBOARD.md'] || ''
@@ -135,6 +150,7 @@ export function KanbanBoard() {
       if (!ok) {
         toast(`Failed to reorder tasks`, 'error')
       }
+      await refreshTaskboard()
       setOptimistic(null)
     } else {
       // Cross-column move
@@ -160,19 +176,24 @@ export function KanbanBoard() {
       })
 
       const ok = await apiFetch('/api/tasks/move', {
-        id: task.id, title: task.title, from: fromCol, to: targetCol,
+        id: task.id, title: task.title, from: fromCol, to: targetCol, agent: 'main-operator',
       })
 
       if (!ok) {
         toast(`Failed to move "${task.title}"`, 'error')
       }
+      await refreshTaskboard()
       setOptimistic(null)
     }
   }, [parsed.columns, optimistic])
 
   const handleAssign = useCallback(async (task: Task, agent: string) => {
     const ok = await apiFetch('/api/tasks/assign', { id: task.id, title: task.title, agent })
-    if (!ok) toast(`Failed to assign "${task.title}"`, 'error')
+    if (ok) {
+      await refreshTaskboard()
+    } else {
+      toast(`Failed to assign "${task.title}"`, 'error')
+    }
   }, [])
 
   const [detailTask, setDetailTask] = useState<{ task: Task; columnId: ColumnId } | null>(null)
@@ -183,6 +204,7 @@ export function KanbanBoard() {
     const ok = await apiFetch('/api/tasks/delete', { id: deleteTarget.id, title: deleteTarget.title })
     if (ok) {
       toast(`Deleted "${deleteTarget.title}"`, 'success')
+      await refreshTaskboard()
     }
     setDeleteTarget(null)
   }, [deleteTarget])

@@ -12,7 +12,7 @@ const COLUMN_HEADER_MAP: Record<string, ColumnId> = {
   '🔴 Blocked': 'blocked',
 }
 
-const LOG_RE = /^\[(\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2})?)\s+([\w.-]+)\]\s*(.+)/
+const LOG_RE = /^\[(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?Z?)?)\s+([\w.-]+)\]\s*(.+)/
 
 const TRAILING_AGENT_RE = /\s+@(\w+)\s*(?=—|$)/
 const TRAILING_DATE_RE = /\s+—\s+.*$/

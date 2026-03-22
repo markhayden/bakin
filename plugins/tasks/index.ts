@@ -6,6 +6,7 @@ import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
 import {
   createTask,
   moveTask,
+  readTaskboard,
   deleteTask,
   assignTask,
   addTaskLog,
@@ -13,6 +14,7 @@ import {
   updateTask,
 } from './taskboard'
 import { indexCompletedTask } from '../../src/core/antfly'
+import { appendAudit } from '../../src/lib/audit'
 
 const tasksPlugin: MCPlugin = {
   id: 'tasks',
@@ -34,12 +36,12 @@ const tasksPlugin: MCPlugin = {
       method: 'POST',
       handler: async (req) => {
         const body = await req.json()
-        const { title, description, column, assignee, createdBy } = body
+        const { title, description, column, assignee, workflowId, createdBy } = body
         if (!title) {
           return Response.json({ error: 'title required' }, { status: 400 })
         }
         try {
-          const task = await createTask(title, column, assignee, description, undefined, createdBy)
+          const task = await createTask(title, column, assignee, description, workflowId, createdBy)
           return Response.json({ ok: true, id: task.id })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -52,16 +54,31 @@ const tasksPlugin: MCPlugin = {
       method: 'POST',
       handler: async (req) => {
         const body = await req.json()
-        const { title, id, from, to } = body
+        const { title, id, from, to, agent } = body
         const identifier = id || title
         if (!identifier || !to) {
           return Response.json({ error: 'title/id and to required' }, { status: 400 })
         }
+        if (!agent) {
+          return Response.json({ error: 'agent field required — who is moving this task?' }, { status: 400 })
+        }
         try {
           await moveTask(identifier, to, from)
+          // Resolve title for audit/indexing (agents often only send id)
+          let resolvedTitle = title
+          if (!resolvedTitle && id) {
+            try {
+              const { columns } = readTaskboard()
+              for (const col of Object.values(columns)) {
+                const found = (col as Array<{ id: string; title: string }>).find(t => t.id === id)
+                if (found) { resolvedTitle = found.title; break }
+              }
+            } catch { /* best effort */ }
+          }
+          appendAudit('task.moved', agent, { id, title: resolvedTitle || id, from, to })
           // Index completed tasks to Antfly for historical search
           if (to.toLowerCase() === 'done') {
-            indexCompletedTask({ id: identifier, title: identifier }).catch(() => {})
+            indexCompletedTask({ id: identifier, title: resolvedTitle || identifier }).catch(() => {})
           }
           return Response.json({ ok: true })
         } catch (err) {
@@ -151,13 +168,13 @@ const tasksPlugin: MCPlugin = {
       method: 'POST',
       handler: async (req) => {
         const body = await req.json()
-        const { originalTitle, id, title, description, agent, column } = body
+        const { originalTitle, id, title, description, agent, column, workflowId } = body
         const identifier = id || originalTitle
         if (!identifier) {
           return Response.json({ error: 'originalTitle or id required' }, { status: 400 })
         }
         try {
-          await updateTask(identifier, { title, description, agent, column })
+          await updateTask(identifier, { title, description, agent, column, workflowId })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })

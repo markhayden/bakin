@@ -109,7 +109,7 @@ async function cmdTasksCreate(title: string, assignee?: string): Promise<void> {
 }
 
 async function cmdTasksMove(id: string, to: string): Promise<void> {
-  const result = await apiPost('/api/tasks/move', { id, to })
+  const result = await apiPost('/api/tasks/move', { id, to, agent: 'cli' })
   print(result)
 }
 
@@ -459,7 +459,7 @@ function generatePlist(opts: {
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>NODE_ENV</key>
-    <string>production</string>
+    <string>development</string>
   </dict>
   <key>WorkingDirectory</key>
   <string>${opts.workingDir}</string>
@@ -579,6 +579,89 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
   console.log('  Uninstall: beacon setup service --uninstall')
 }
 
+async function cmdReboot(): Promise<void> {
+  const { execSync } = await import('child_process')
+  const { existsSync } = await import('fs')
+  const { join } = await import('path')
+  const { homedir } = await import('os')
+
+  const uid = execSync('id -u', { encoding: 'utf-8' }).trim()
+  const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
+  const isService = existsSync(plistPath)
+
+  if (isService) {
+    // Managed by launchctl — kickstart with -k flag to kill + restart
+    console.log('[..] Restarting Beacon via launchctl...')
+    try {
+      execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_LABEL}`, { stdio: 'pipe' })
+      console.log('[OK] Beacon restarting')
+    } catch {
+      // kickstart failed — try bootout + bootstrap
+      console.log('[..] Kickstart failed, trying bootout + bootstrap...')
+      try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* ok */ }
+      await new Promise(r => setTimeout(r, 1000))
+      try {
+        execSync(`launchctl bootstrap gui/${uid} ${plistPath}`, { stdio: 'pipe' })
+        console.log('[OK] Beacon restarting')
+      } catch (err) {
+        console.error('[FAIL] Could not restart:', err instanceof Error ? err.message : String(err))
+        process.exit(1)
+      }
+    }
+  } else {
+    // Not a service — find and kill the process, then start fresh
+    console.log('[..] No LaunchAgent found — restarting via process signal...')
+    try {
+      const pids = execSync("pgrep -f 'tsx.*server\\.ts'", { encoding: 'utf-8' }).trim()
+      if (pids) {
+        for (const pid of pids.split('\n')) {
+          if (pid && pid !== String(process.pid)) {
+            process.kill(Number(pid), 'SIGTERM')
+          }
+        }
+        console.log('[OK] Sent SIGTERM to Beacon server')
+        console.log('[..] Waiting for shutdown...')
+        await new Promise(r => setTimeout(r, 2000))
+      }
+    } catch {
+      console.log('[..] No running Beacon process found')
+    }
+
+    // Start the server in background
+    const { resolve, dirname } = await import('path')
+    const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+    const serverPath = join(projectDir, 'server.ts')
+    const logPath = join(projectDir, 'mc-server.log')
+
+    console.log('[..] Starting Beacon server...')
+    const { spawn } = await import('child_process')
+    const child = spawn('npx', ['tsx', serverPath], {
+      cwd: projectDir,
+      detached: true,
+      stdio: ['ignore', 'ignore', 'ignore'],
+      env: { ...process.env },
+    })
+    child.unref()
+    console.log(`[OK] Beacon starting (pid ${child.pid})`)
+    console.log(`  Logs: tail -f ${logPath}`)
+  }
+
+  // Wait and verify
+  console.log('[..] Waiting for server to come up...')
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, 1000))
+    try {
+      const res = await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(2000) })
+      if (res.ok) {
+        const data = await res.json() as { version: string }
+        console.log(`[OK] Beacon is up (${data.version})`)
+        return
+      }
+    } catch { /* not ready yet */ }
+  }
+  console.log('[WARN] Server not responding after 15s — check logs')
+}
+
 async function cmdReindex(): Promise<void> {
   console.log('Reindexing all content to Antfly...')
   const result = await apiPost('/api/reindex') as { ok: boolean; indexed: number }
@@ -612,6 +695,7 @@ Commands:
   init                             Initialize ~/.beacon/ directory with defaults
   agent-rules [--apply|--check]    Manage orchestrator rules block in AGENTS.md
   doctor                           Run health checks (agent sync, skill, gateway, etc.)
+  reboot                           Restart Beacon server (works with launchctl or standalone)
   reindex                          Reindex all content to Antfly
   docs                             Print API documentation
   search <query> [options]          Search across indexed content
@@ -735,6 +819,11 @@ async function main(): Promise<void> {
 
       case 'doctor':
         await cmdDoctor()
+        break
+
+      case 'reboot':
+      case 'restart':
+        await cmdReboot()
         break
 
       case 'reindex':

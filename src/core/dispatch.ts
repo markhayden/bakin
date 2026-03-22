@@ -8,6 +8,8 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import * as openclaw from './openclaw-client'
+import { readTaskboard, blockTask, addTaskLog as taskLog } from '../../plugins/tasks/taskboard'
+import { isStale } from '../lib/format'
 import {
   loadInstance,
   createInstance,
@@ -20,11 +22,16 @@ const log = createLogger('dispatch')
 const AGENT_ID_MAP: Record<string, string> = { main-operator: 'main' }
 const resolveId = (name: string) => AGENT_ID_MAP[name] || name
 
+interface FailureRecord {
+  lastAttempt: number
+  count: number
+}
+
 interface DispatchState {
   lastRun: number | null
   serverStart: number
   dispatched: string[]
-  failedDispatches: Record<string, number>
+  failedDispatches: Record<string, FailureRecord | number>  // number = legacy format
 }
 
 let dispatching = false
@@ -32,6 +39,13 @@ let dispatchTimer: NodeJS.Timeout | null = null
 
 function getStateFile(contentDir: string): string {
   return join(contentDir, '.dispatch-state.json')
+}
+
+function getFailureRecord(entry: FailureRecord | number | undefined): FailureRecord | null {
+  if (!entry) return null
+  // Migrate legacy format (plain timestamp number)
+  if (typeof entry === 'number') return { lastAttempt: entry, count: 1 }
+  return entry
 }
 
 export function loadDispatchState(contentDir: string): DispatchState {
@@ -63,16 +77,49 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     const { getTodoTasks, moveTaskToInProgress, addTaskLog } = await import('../lib/taskboard')
 
     const { todoTasks } = getTodoTasks()
-    if (todoTasks.length === 0) return
-
     const state = loadDispatchState(contentDir)
     const dispatchedSet = new Set(state.dispatched)
+
+    // Reconcile dispatch state with taskboard reality
+    const { columns } = readTaskboard()
+    const activeIds = new Set([
+      ...columns.inProgress.map(t => t.id),
+      ...columns.done.map(t => t.id),
+      ...columns.confirmed.map(t => t.id),
+    ])
+    state.dispatched = state.dispatched.filter(id => activeIds.has(id))
+    for (const task of columns.inProgress) {
+      if (!dispatchedSet.has(task.id)) {
+        dispatchedSet.add(task.id)
+        state.dispatched.push(task.id)
+      }
+    }
+
+    if (todoTasks.length === 0) {
+      saveDispatchState(contentDir, state)
+      return
+    }
 
     for (const task of todoTasks) {
       if (dispatchedSet.has(task.id)) continue
 
-      const lastFailure = state.failedDispatches?.[task.id]
-      if (lastFailure && Date.now() - lastFailure < settings.dispatch.failureCooldownMs) continue
+      // Check failure history with max retries
+      const failure = getFailureRecord(state.failedDispatches?.[task.id])
+      if (failure) {
+        if (failure.count >= settings.dispatch.maxRetries) {
+          // Escalate to blocked
+          try {
+            await blockTask(task.id, `Dispatch failed ${failure.count} times — agent may be unavailable`)
+            await addTaskLog(task.id, 'system', `Dispatch exhausted: ${failure.count} failed attempts. Task moved to blocked.`)
+            appendAudit(contentDir, 'task.dispatch_exhausted', 'system', { id: task.id, title: task.title, count: failure.count })
+            log.warn('Task blocked after max dispatch retries', { id: task.id, count: failure.count })
+          } catch (err) {
+            log.error('Failed to block exhausted task', err)
+          }
+          continue
+        }
+        if (Date.now() - failure.lastAttempt < settings.dispatch.failureCooldownMs) continue
+      }
 
       if (task.agent && !settings.agents.includes(task.agent)) continue
 
@@ -103,15 +150,16 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         log.error(`Failed to dispatch "${task.title}" to ${targetAgent}`, err)
 
         if (!state.failedDispatches) state.failedDispatches = {}
-        state.failedDispatches[task.id] = Date.now()
+        const prev = getFailureRecord(state.failedDispatches[task.id])
+        state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1 }
 
         try {
-          await addTaskLog(task.id, 'system', `Dispatch failed: agent "${targetAgent}" not found or unavailable`)
+          await addTaskLog(task.id, 'system', `Dispatch failed (attempt ${(prev?.count || 0) + 1}): agent "${targetAgent}" not found or unavailable`)
         } catch {
           // best effort
         }
 
-        appendAudit(contentDir, 'task.dispatch_failed', targetAgent, { id: task.id, title: task.title, error: String(err) })
+        appendAudit(contentDir, 'task.dispatch_failed', targetAgent, { id: task.id, title: task.title, error: String(err), attempt: (prev?.count || 0) + 1 })
       }
     }
 
@@ -146,7 +194,7 @@ function buildDispatchMessage(
     return `Work on this task: "${task.title}".${detailsBlock}\n\n${contactsRef} When done, move it to the Done column in ${taskboardRef} and log what you did.\n\nLog progress by POSTing to ${logEndpoint} with {"title":"${task.title}","author":"main-operator","message":"your update"}\n\n${failureInstructions}`
   }
 
-  return `Work on this task: "${task.title}".${detailsBlock}\n\nLog your progress at EVERY major step — not just start and done. Required log points:\n- Log at task start: what you are about to do\n- Log after each major step (reading files, planning, each significant code change, after build)\n- Log if blocked or anything unexpected happens\n- Log on completion with a full summary\n- If you have not logged in the last 5 minutes, log a status update — even if just "still working on X"\n\nFor Patch using Claude Code: log before spawning the agent, and after it completes.\n\nLog command: POST to ${logEndpoint} with {"title":"${task.id}","author":"${agentName}","message":"your update"}\n\nIf this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:${port}/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>"}'\n\nWhen finished, move this task to Done: curl -s -X POST http://localhost:${port}/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"${task.id}","to":"done"}'\n\nThen report back to main-operator: openclaw agent --agent main --message "TASK COMPLETE: ${task.title} — <summary>" --deliver\n\n${failureInstructions}\n\nDependency pattern: If your task requires output from another agent, create their task first, note its ID, then register a dependency: curl -s -X POST http://localhost:${port}/api/tasks/depend -H 'Content-Type: application/json' -d '{"id":"${task.id}","dependsOn":"<their-task-id>"}'. Then exit — you will be automatically re-dispatched when their task completes.`
+  return `Work on this task: "${task.title}".${detailsBlock}\n\nFIRST: Move this task to In Progress before doing anything else:\ncurl -s -X POST http://localhost:${port}/api/plugins/tasks/move -H 'Content-Type: application/json' -d '{"id":"${task.id}","to":"inProgress","agent":"${agentName}"}'\n\nLog your progress at EVERY major step — not just start and done. Required log points:\n- Log at task start: what you are about to do\n- Log after each major step (reading files, planning, each significant code change, after build)\n- Log if blocked or anything unexpected happens\n- Log on completion with a full summary\n- If you have not logged in the last 5 minutes, log a status update — even if just "still working on X"\n\nFor Patch using Claude Code: log before spawning the agent, and after it completes.\n\nLog command: POST to ${logEndpoint} with {"title":"${task.id}","author":"${agentName}","message":"your update"}\n\nIf this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:${port}/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>"}'\n\nWhen finished, move this task to Done: curl -s -X POST http://localhost:${port}/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"${task.id}","to":"done","agent":"${agentName}"}'\n\nThen report back to main-operator: openclaw agent --agent main --message "TASK COMPLETE: ${task.title} — <summary>" --deliver\n\n${failureInstructions}\n\nDependency pattern: If your task requires output from another agent, create their task first, note its ID, then register a dependency: curl -s -X POST http://localhost:${port}/api/tasks/depend -H 'Content-Type: application/json' -d '{"id":"${task.id}","dependsOn":"<their-task-id>"}'. Then exit — you will be automatically re-dispatched when their task completes.`
 }
 
 export function start(contentDir: string, port: number): void {
@@ -292,6 +340,59 @@ function buildWorkflowDispatchMessage(
   lines.push(`Log progress: curl -s -X POST http://localhost:${port}/api/tasks/log -H 'Content-Type: application/json' -d '{"title":"${task.id}","author":"${agentName}","message":"your update"}'`)
 
   return lines.join('\n')
+}
+
+/**
+ * Run once on server startup to recover orphaned in-progress tasks.
+ * If an agent's heartbeat is stale and the task has no recent logs, move back to todo.
+ */
+export async function reconcileOnStartup(contentDir: string): Promise<void> {
+  const settings = getSettings()
+  try {
+    const { columns } = readTaskboard()
+    let recovered = 0
+
+    for (const task of [...columns.inProgress]) {
+      const agentStale = isAgentHeartbeatStale(contentDir, task.agent)
+      const hasRecentLog = task.log?.some(e => {
+        const ts = new Date(e.timestamp).getTime()
+        return !isNaN(ts) && (Date.now() - ts) < settings.watchdog.stuckThresholdMs
+      })
+
+      if (agentStale && !hasRecentLog) {
+        try {
+          await taskLog(task.id, 'system', 'Recovered on server restart: agent heartbeat stale and no recent task logs.')
+          const { moveTask: doMove } = await import('../lib/taskboard')
+          await doMove(task.id, 'todo')
+          appendAudit(contentDir, 'task.startup_recovered', 'system', { id: task.id, title: task.title, agent: task.agent })
+          recovered++
+          log.info('Startup recovery: task moved to todo', { id: task.id, title: task.title })
+        } catch (err) {
+          log.error('Startup recovery failed for task', err, { id: task.id })
+        }
+      }
+    }
+
+    if (recovered > 0) {
+      log.info('Startup reconciliation complete', { recovered })
+    }
+  } catch (err) {
+    log.error('Startup reconciliation failed', err)
+  }
+}
+
+function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): boolean {
+  if (!agent) return true
+  const heartbeatPath = join(contentDir, 'heartbeats', `${agent}.json`)
+  try {
+    if (!existsSync(heartbeatPath)) return true
+    const data = JSON.parse(readFileSync(heartbeatPath, 'utf-8'))
+    const ts = data.timestamp || data.ts
+    if (!ts) return true
+    return isStale(ts, 15 * 60 * 1000)
+  } catch {
+    return true
+  }
 }
 
 export function getDispatchInfo(contentDir: string): Record<string, unknown> {

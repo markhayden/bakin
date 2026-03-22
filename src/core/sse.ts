@@ -44,6 +44,10 @@ export function broadcastAuditEvent(entry: Record<string, unknown>): void {
   broadcast({ type: 'audit', entry, timestamp: new Date().toISOString() })
 }
 
+// Expose broadcast on globalThis so Next.js API routes (which get a separate
+// module instance due to webpack bundling) can still reach the real SSE clients.
+;(globalThis as any).__beaconBroadcastAudit = broadcastAuditEvent
+
 function removeClient(res: ServerResponse): void {
   clients.delete(res)
   const timer = keepAliveTimers.get(res)

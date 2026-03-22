@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await updateTask(identifier, { title, description, agent, column: column as ColumnId, workflowId })
-    appendAudit('task.updated', 'dashboard', { id, originalTitle, title, agent, column })
+    appendAudit('task.updated', 'main-operator', { id, originalTitle, title, agent, column })
     return NextResponse.json({ ok: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

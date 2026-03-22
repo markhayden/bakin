@@ -17,6 +17,13 @@ import { COLUMN_CONFIG } from '../constants'
 import { toast } from '@/hooks/use-toast'
 import type { Task, ColumnId } from '../types'
 
+interface Workflow {
+  filename: string
+  name: string
+  description?: string
+  stepCount: number
+}
+
 interface TaskDetailDrawerProps {
   task: Task | null
   columnId: ColumnId | null
@@ -30,10 +37,19 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
   const [description, setDescription] = useState('')
   const [agent, setAgent] = useState('')
   const [column, setColumn] = useState<ColumnId>('todo')
+  const [workflowId, setWorkflowId] = useState('')
+  const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [logMessage, setLogMessage] = useState('')
   const [addingLog, setAddingLog] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/plugins/workflows/list')
+      .then((r) => r.ok ? r.json() : { workflows: [] })
+      .then((d) => setWorkflows(d.workflows ?? []))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (task && columnId) {
@@ -41,6 +57,7 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
       setDescription(task.description || '')
       setAgent(task.agent || '')
       setColumn(columnId)
+      setWorkflowId(task.workflowId || '')
       setDirty(false)
       setLogMessage('')
     }
@@ -63,6 +80,7 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
           description: description.trim(),
           agent,
           column,
+          workflowId: workflowId || undefined,
         }),
       })
       if (!res.ok) {
@@ -164,6 +182,28 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-workflow">Workflow</Label>
+            <select
+              id="edit-workflow"
+              value={workflowId}
+              onChange={(e) => { setWorkflowId(e.target.value); markDirty() }}
+              className="h-8 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+            >
+              <option value="">None</option>
+              {workflows.map((w) => (
+                <option key={w.filename} value={w.filename.replace('.yaml', '')}>
+                  {w.name} ({w.stepCount} steps)
+                </option>
+              ))}
+            </select>
+            {workflowId && (
+              <p className="text-xs text-muted-foreground">
+                {workflows.find((w) => w.filename.replace('.yaml', '') === workflowId)?.description}
+              </p>
+            )}
           </div>
 
           <div className="flex justify-end gap-2">

@@ -16,6 +16,7 @@ import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { isUsingBeaconHome, getContentDir } from './content-dir'
 import * as openclaw from './openclaw-client'
+import { readTaskboard, clearDependency } from '../../plugins/tasks/taskboard'
 
 const log = createLogger('doctor')
 
@@ -452,6 +453,81 @@ function checkService(projectRoot: string): DiagnosticResult[] {
   return results
 }
 
+/**
+ * Task consistency: detect orphaned, overloaded, or stale in-progress tasks.
+ * Auto-fixes orphaned dependencies on done tasks (clears dependsOn + re-triggers continuation).
+ */
+function checkTaskConsistency(contentDir: string, autoFix: boolean): DiagnosticResult[] {
+  const results: DiagnosticResult[] = []
+  const settings = getSettings()
+
+  try {
+    const { columns } = readTaskboard()
+    const now = Date.now()
+
+    // Known agents from settings
+    const knownAgents = new Set(settings.agents)
+
+    // Count tasks per agent
+    const agentTaskCount: Record<string, number> = {}
+
+    for (const task of columns.inProgress) {
+      // Track agent load
+      if (task.agent) {
+        agentTaskCount[task.agent] = (agentTaskCount[task.agent] || 0) + 1
+      }
+
+      // In-progress task assigned to unknown agent
+      if (task.agent && !knownAgents.has(task.agent) && task.agent !== 'main-operator') {
+        results.push(warn('task-consistency', `In-progress task "${task.title}" assigned to unknown agent "${task.agent}"`))
+      }
+
+      // In-progress task with no heartbeat file
+      const heartbeatPath = join(contentDir, 'heartbeats', `${task.agent || 'unknown'}.json`)
+      if (!existsSync(heartbeatPath)) {
+        results.push(warn('task-consistency', `In-progress task "${task.title}" — no heartbeat file for agent "${task.agent || 'unassigned'}"`))
+      }
+
+      // In-progress task > 2 hours with zero logs
+      if (!task.log || task.log.length === 0) {
+        // Check if there's metadata suggesting how long it's been in progress
+        results.push(warn('task-consistency', `In-progress task "${task.title}" has zero log entries`))
+      }
+    }
+
+    // Agent with > 3 concurrent in-progress tasks
+    for (const [agent, count] of Object.entries(agentTaskCount)) {
+      if (count > 3) {
+        results.push(warn('task-consistency', `Agent "${agent}" has ${count} concurrent in-progress tasks — may be overloaded`))
+      }
+    }
+
+    // Done tasks with orphaned dependsOn
+    for (const task of columns.done) {
+      if (task.dependsOn) {
+        if (autoFix) {
+          try {
+            clearDependency(task.id)
+            results.push(fixed('task-consistency', `Cleared orphaned dependsOn on done task "${task.title}"`))
+          } catch {
+            results.push(warn('task-consistency', `Done task "${task.title}" has orphaned dependsOn="${task.dependsOn}" — failed to clear`))
+          }
+        } else {
+          results.push(warn('task-consistency', `Done task "${task.title}" has orphaned dependsOn="${task.dependsOn}"`, true))
+        }
+      }
+    }
+
+    if (results.length === 0) {
+      results.push(ok('task-consistency', `${columns.inProgress.length} in-progress, ${columns.done.length} done — all consistent`))
+    }
+  } catch (err) {
+    results.push(error('task-consistency', `Failed to check task consistency: ${err}`))
+  }
+
+  return results
+}
+
 // ---------------------------------------------------------------------------
 // Notification — escalate unfixable issues to main-operator
 // ---------------------------------------------------------------------------
@@ -508,6 +584,7 @@ export async function runDiagnostics(
   results.push(...checkTaskboard(contentDir, autoFix))
   results.push(...checkAndSyncSkill(projectRoot, autoFix))
   results.push(...checkOrchestratorRules(autoFix))
+  results.push(...checkTaskConsistency(contentDir, autoFix))
   results.push(...checkService(projectRoot))
 
   // Async checks (network, not auto-fixable) — run in parallel

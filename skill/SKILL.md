@@ -16,10 +16,21 @@ All API calls go to `http://localhost:3737` (or the value of `BEACON_URL` if set
 Tasks flow through columns: **TODO** -> **In Progress** -> **Done** (or **Blocked**).
 
 When you receive a task:
-1. Log that you've started working on it
-2. Log progress at every major step (not just start and done)
-3. If blocked, log why and move to Blocked
-4. When done, move to Done and report to main-operator
+1. **Move it to In Progress immediately** (before doing any work)
+2. Log that you've started working on it
+3. Log progress at every major step (not just start and done)
+4. If blocked, log why and move to Blocked
+5. When done, move to Done and report to main-operator
+
+### Move Task to In Progress (FIRST THING)
+
+Before doing ANY work on a task, move it to In Progress so the board reflects reality:
+
+```bash
+curl -s -X POST http://localhost:3737/api/plugins/tasks/move \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"<task-id>","to":"inProgress","agent":"<your-agent-name>"}'
+```
 
 ### Log Progress (REQUIRED)
 
@@ -31,13 +42,17 @@ curl -s -X POST http://localhost:3737/api/tasks/log \
   -d '{"title":"<task-id-or-title>","author":"<your-agent-name>","message":"<what you did or are doing>"}'
 ```
 
-### Move Task to Done
+### Move Task
+
+All moves require your `agent` name. The API enforces valid transitions and rejects invalid ones.
 
 ```bash
 curl -s -X POST http://localhost:3737/api/plugins/tasks/move \
   -H 'Content-Type: application/json' \
-  -d '{"id":"<task-id>","to":"done"}'
+  -d '{"id":"<task-id>","to":"done","agent":"<your-agent-name>"}'
 ```
+
+Valid transitions: todo→inProgress/blocked/done, inProgress→done/blocked/todo, blocked→todo/inProgress, done→confirmed/todo. The `confirmed` column is terminal — nothing leaves it.
 
 ### Report Completion to Main Operator
 
@@ -126,32 +141,71 @@ ASSETS_DIR=$(curl -s 'http://localhost:3737/api/paths?key=assets' | jq -r '.path
 # Now use $ASSETS_DIR/my-image.png
 ```
 
-## Rules
+## Rules — SERVER ENFORCED
 
-1. **Always log progress.** The watchdog monitors for stuck tasks. Log before, during, and after major steps.
-2. **Use the API, not file edits.** Don't edit TASKBOARD.md directly — use the task API endpoints. The system handles locking and formatting.
-3. **Discover paths via the API.** Never hardcode `content/`, `~/.beacon/`, or any absolute path. Always use `curl http://localhost:3737/api/paths?key=<key>` to find where to read or write files.
-4. **Report back.** Always notify main-operator when done or blocked.
-5. **Check API docs.** If you're unsure about an endpoint, `curl http://localhost:3737/api/docs`.
+These rules are not suggestions. The API enforces them. Violations are logged, tracked, and escalated.
+
+### Mandatory: Block on ANY error
+
+If you encounter ANY error, unexpected result, missing file, failed API call, or situation you weren't briefed on — you MUST block the task immediately. Do NOT attempt workarounds, fallbacks, or creative alternatives. Block first, then explain.
+
+```bash
+curl -s -X POST http://localhost:3737/api/plugins/tasks/block \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"<task-id>","reason":"<what went wrong>","agent":"<your-name>"}'
+```
+
+### Mandatory: Log before Done
+
+The API will reject any attempt to move a task to Done if it has zero log entries. You must log your work before completing. This is enforced server-side — there is no workaround.
+
+### Mandatory: Agent identity on moves
+
+Every move request requires your `agent` name. The API rejects moves without it. Use your real agent name — never impersonate another agent.
+
+### Mandatory: Use the API, never edit files
+
+Always use the task API endpoints to manage tasks. Direct edits to TASKBOARD.md bypass locking, validation, and audit logging. The API enforces state transitions, agent identity, and log-before-done rules — direct edits do not.
+
+### Mandatory: Discover paths via the API
+
+Never hardcode `content/`, `~/.beacon/`, or any absolute path. Always use `curl http://localhost:3737/api/paths?key=<key>`. Paths change between environments.
+
+### Mandatory: Log progress every major step
+
+The watchdog monitors for stuck tasks. If no log update in 30 minutes and your heartbeat is stale, the task is automatically moved back to Todo for re-dispatch. After 3 auto-recoveries, the task is escalated to Blocked. Keep logs flowing to prevent this.
+
+### Mandatory: Report back
+
+Always notify main-operator when done or blocked. Use `openclaw agent --agent main --message "..." --deliver`.
+
+### What happens when you violate these rules
+
+- **Invalid state transition** → API returns 400 error with allowed transitions
+- **Move without agent** → API returns 400 error
+- **Done without logs** → API returns 400 error
+- **Direct TASKBOARD.md edit** → Bypasses all validation, breaks locking
+- **Bypass patterns detected** (workaround language in logs) → Alert sent to main-operator, audit logged
+- **Stuck task + stale heartbeat** → Auto-recovered to Todo, then Blocked after 3 recoveries
 
 ## Subagent Rules
 
 These rules apply to ALL subagents (Chef, Pixel, Rolo, Patch, etc.). Violating them breaks the pipeline.
 
-1. **Never edit TASKBOARD.md directly.** Always use the Beacon task API. The API handles locking and prevents conflicts.
+1. **Never edit TASKBOARD.md directly.** Direct edits are auto-reverted. Always use the API.
 
-2. **Never hardcode filesystem paths.** Always use the paths API (`/api/paths?key=<key>`) to discover content locations. Paths change between environments and after migrations. Constructing paths like `content/assets/` or `~/.beacon/assets/` will break.
+2. **Never hardcode filesystem paths.** Always use the paths API (`/api/paths?key=<key>`).
 
-3. **Stay in your lane.** Don't do work assigned to another agent inline. Chef doesn't generate images — she creates a task for Pixel. Pixel doesn't write copy — that's Chef's job.
+3. **Stay in your lane.** Don't do work assigned to another agent. Create subtasks instead.
 
-4. **Only spawn agents when you have a concrete brief.** Don't speculatively create subtasks. Wait until you have real, ready-to-hand-off work.
+4. **Only spawn agents when you have a concrete brief.** Don't speculatively create subtasks.
 
-5. **Use your own agent name when logging.** Log as `chef`, `pixel`, `patch`, etc. — never as `system`, `main-operator`, or another agent's name.
+5. **Use your own agent name.** Log as `chef`, `pixel`, `patch`, etc. — never as `system`, `main-operator`, or another agent.
 
-6. **Never send messages directly to Mark.** All communication goes through Main Operator (the orchestrator). When done, report to `main` — Main Operator decides what to surface.
+6. **Never send messages directly to Mark.** Report to `main` — Main Operator decides what to surface.
 
-7. **Never mark a task done prematurely.** Only move to Done after output is delivered and confirmed. "I generated the image" is not done — "the image is saved and Chef has the path" is done.
+7. **Never mark a task done prematurely.** Only move to Done after output is delivered and confirmed.
 
-8. **Always exit after registering a dependency.** If you're waiting on another agent, register the dependency and stop. You'll be re-dispatched when it completes.
+8. **Always exit after registering a dependency.** Register it and stop. You'll be re-dispatched automatically.
 
-9. **Log progress every major step.** If you haven't logged in 5 minutes, the watchdog will flag you as stuck. Keep the logs flowing.
+9. **Block immediately on errors.** Do NOT work around blockers. Block the task and explain.
