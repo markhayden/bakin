@@ -58,9 +58,11 @@ export function loadSkill(name: string, contentDir?: string): SkillDefinition | 
   const content = readFileSync(filePath, 'utf-8')
   const { frontmatter, body } = parseSkillFile(content)
 
+  const SCOPE_FENCE = '\n\n---\n**SCOPE BOUNDARY:** Your scope is LIMITED to the instructions above. Do not generate deliverables not specified above. Submit your output via the step/complete API — this is the ONLY way your work enters the system.'
+
   const skill: SkillDefinition = {
     name: (frontmatter.name as string) || name,
-    instructions: body,
+    instructions: body + SCOPE_FENCE,
   }
 
   if (frontmatter.output_schema) {

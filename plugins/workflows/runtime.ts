@@ -30,7 +30,7 @@ import type {
 } from './types'
 import { loadDefinition } from './parser'
 import { loadSkill } from './skill-loader'
-import { validateStepOutput } from './schema-validator'
+import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
 import { getContentDir } from './content-dir'
 
 function generateId(): string {
@@ -190,6 +190,8 @@ export interface StepContext {
   output_schema?: Record<string, unknown>
   status: string
   rejectionReason?: string
+  previousOutput?: Record<string, unknown>
+  deny_tools?: string[]
 }
 
 /**
@@ -284,10 +286,21 @@ function buildStepContext(
     ctx.instructions = description
   }
 
-  // Include rejection reason if step was previously rejected
+  // Include rejection context if step was previously rejected
   const stepState = instance.stepStates[step.id]
   if (stepState?.rejectionReason) {
     ctx.rejectionReason = stepState.rejectionReason
+  }
+  if (stepState?.previousOutput) {
+    ctx.previousOutput = stepState.previousOutput
+  }
+
+  // Include tool restrictions from step definition
+  if (step.type === 'agent' || step.type === 'output') {
+    const denyTools = (step as AgentStep | OutputStep).deny_tools
+    if (denyTools?.length) {
+      ctx.deny_tools = denyTools
+    }
   }
 
   return ctx
@@ -309,6 +322,7 @@ export function completeStep(
   taskId: string,
   stepId: string,
   output: Record<string, unknown>,
+  callerAgentId?: string,
   contentDir?: string
 ): CompleteStepResult {
   const dir = contentDir || getContentDir()
@@ -328,6 +342,14 @@ export function completeStep(
   const step = findStep(def, stepId)
   if (!step) return { success: false, errors: [`Step not found in definition: ${stepId}`] }
 
+  // Agent-scoping: verify the caller is the agent assigned to this step
+  if (callerAgentId) {
+    const assignedAgent = (step as AgentStep | OutputStep).agent
+    if (assignedAgent && callerAgentId !== assignedAgent) {
+      return { success: false, errors: [`Step "${stepId}" is assigned to "${assignedAgent}", not "${callerAgentId}". Stay in your lane.`] }
+    }
+  }
+
   let outputSchema: Record<string, unknown> | undefined
   const skillName = (step as AgentStep | OutputStep).skill
   if (skillName) {
@@ -335,10 +357,18 @@ export function completeStep(
     if (skill?.output_schema) outputSchema = skill.output_schema
   }
 
-  // Validate output
+  // Validate output against schema
   const validation = validateStepOutput(outputSchema, output)
   if (!validation.valid) {
     return { success: false, errors: validation.errors }
+  }
+
+  // Rejection-repeat detection: reject near-duplicate resubmissions
+  if (stepState.previousOutput) {
+    const repeatError = detectRejectionRepeat(stepState.previousOutput, output)
+    if (repeatError) {
+      return { success: false, errors: [repeatError] }
+    }
   }
 
   // Mark step complete
@@ -534,6 +564,9 @@ export function rejectGate(
   // Reset: mark gate as rejected
   stepState.status = 'rejected'
 
+  // Capture previous output from the rewind target before resetting
+  const targetPreviousOutput = instance.stepStates[targetId]?.output
+
   // Reset all steps from target onward to pending, except the target itself
   const targetTopIdx = getTopLevelIndex(def, targetId)
   const gateTopIdx = getTopLevelIndex(def, stepId)
@@ -548,7 +581,7 @@ export function rejectGate(
     }
   }
 
-  // Set the target step to in_progress with rejection context
+  // Set the target step to in_progress with rejection context + previous output
   instance.currentStepId = targetId
   instance.status = 'in_progress'
 
@@ -562,6 +595,7 @@ export function rejectGate(
       status: 'in_progress',
       startedAt: now,
       rejectionReason: gateStep.on_reject?.note_to_agent ? reason : undefined,
+      previousOutput: targetPreviousOutput,
     }
   }
 

@@ -190,7 +190,7 @@ Write a great caption.
     it('returns blocked status when at a gate with pending_approval', () => {
       createInstance('task-gate', 'gate', testDir)
       // Complete the first step
-      completeStep('task-gate', 'write-copy', { result: 'done' }, testDir)
+      completeStep('task-gate', 'write-copy', { result: 'done' }, undefined, testDir)
       const step = getCurrentStep('task-gate', undefined, testDir)
       expect(step).not.toBeNull()
       expect((step as Record<string, unknown>).status).toBe('pending_approval')
@@ -198,9 +198,9 @@ Write a great caption.
 
     it('returns completion status when workflow is done', () => {
       createInstance('task-done', 'linear', testDir)
-      completeStep('task-done', 'step-one', { result: 'a' }, testDir)
-      completeStep('task-done', 'step-two', { result: 'b' }, testDir)
-      completeStep('task-done', 'step-three', { result: 'c' }, testDir)
+      completeStep('task-done', 'step-one', { result: 'a' }, undefined, testDir)
+      completeStep('task-done', 'step-two', { result: 'b' }, undefined, testDir)
+      completeStep('task-done', 'step-three', { result: 'c' }, undefined, testDir)
       const step = getCurrentStep('task-done', undefined, testDir)
       expect((step as Record<string, unknown>).status).toBe('complete')
     })
@@ -215,7 +215,7 @@ Write a great caption.
   describe('completeStep', () => {
     it('advances to next step on valid output', () => {
       createInstance('task-adv', 'linear', testDir)
-      const result = completeStep('task-adv', 'step-one', { result: 'done' }, testDir)
+      const result = completeStep('task-adv', 'step-one', { result: 'done' }, undefined, testDir)
       expect(result.success).toBe(true)
       const instance = loadInstance('task-adv', testDir)
       expect(instance!.currentStepId).toBe('step-two')
@@ -226,7 +226,7 @@ Write a great caption.
     it('rejects invalid output and does not advance', () => {
       createInstance('task-schema', 'skill-test', testDir)
       // Step 'write' has a skill with output_schema requiring caption: string
-      const result = completeStep('task-schema', 'write', {}, testDir)
+      const result = completeStep('task-schema', 'write', {}, undefined, testDir)
       expect(result.success).toBe(false)
       expect(result.errors).toBeDefined()
       const instance = loadInstance('task-schema', testDir)
@@ -235,9 +235,9 @@ Write a great caption.
 
     it('marks workflow complete on final step', () => {
       createInstance('task-final', 'linear', testDir)
-      completeStep('task-final', 'step-one', { r: 1 }, testDir)
-      completeStep('task-final', 'step-two', { r: 2 }, testDir)
-      const result = completeStep('task-final', 'step-three', { r: 3 }, testDir)
+      completeStep('task-final', 'step-one', { r: 1 }, undefined, testDir)
+      completeStep('task-final', 'step-two', { r: 2 }, undefined, testDir)
+      const result = completeStep('task-final', 'step-three', { r: 3 }, undefined, testDir)
       expect(result.success).toBe(true)
       expect(result.workflowComplete).toBe(true)
       const instance = loadInstance('task-final', testDir)
@@ -246,7 +246,7 @@ Write a great caption.
 
     it('returns error for non-in_progress step', () => {
       createInstance('task-nip', 'linear', testDir)
-      const result = completeStep('task-nip', 'step-two', { r: 1 }, testDir)
+      const result = completeStep('task-nip', 'step-two', { r: 1 }, undefined, testDir)
       expect(result.success).toBe(false)
       expect(result.errors![0]).toContain('not in_progress')
     })
@@ -262,19 +262,19 @@ Write a great caption.
       let step = getCurrentStep('task-linear', undefined, testDir)
       expect((step as Record<string, unknown>).stepId).toBe('step-one')
 
-      completeStep('task-linear', 'step-one', { data: 'one' }, testDir)
+      completeStep('task-linear', 'step-one', { data: 'one' }, undefined, testDir)
 
       // Step 2
       step = getCurrentStep('task-linear', undefined, testDir)
       expect((step as Record<string, unknown>).stepId).toBe('step-two')
 
-      completeStep('task-linear', 'step-two', { data: 'two' }, testDir)
+      completeStep('task-linear', 'step-two', { data: 'two' }, undefined, testDir)
 
       // Step 3
       step = getCurrentStep('task-linear', undefined, testDir)
       expect((step as Record<string, unknown>).stepId).toBe('step-three')
 
-      const result = completeStep('task-linear', 'step-three', { data: 'three' }, testDir)
+      const result = completeStep('task-linear', 'step-three', { data: 'three' }, undefined, testDir)
       expect(result.workflowComplete).toBe(true)
 
       // Verify history
@@ -288,7 +288,7 @@ Write a great caption.
   describe('parallel group', () => {
     it('dispatches all children when parallel group becomes active', () => {
       createInstance('task-par', 'parallel', testDir)
-      completeStep('task-par', 'write-copy', { brief: 'test' }, testDir)
+      completeStep('task-par', 'write-copy', { brief: 'test' }, undefined, testDir)
 
       const instance = loadInstance('task-par', testDir)
       expect(instance!.currentStepId).toBe('create-assets')
@@ -298,8 +298,8 @@ Write a great caption.
 
     it('does not advance past group when only one child completes', () => {
       createInstance('task-par1', 'parallel', testDir)
-      completeStep('task-par1', 'write-copy', { brief: 'test' }, testDir)
-      completeStep('task-par1', 'create-image', { image_path: '/img.png' }, testDir)
+      completeStep('task-par1', 'write-copy', { brief: 'test' }, undefined, testDir)
+      completeStep('task-par1', 'create-image', { image_path: '/img.png' }, undefined, testDir)
 
       const instance = loadInstance('task-par1', testDir)
       expect(instance!.currentStepId).toBe('create-assets')
@@ -308,9 +308,9 @@ Write a great caption.
 
     it('advances past group when all children complete', () => {
       createInstance('task-par2', 'parallel', testDir)
-      completeStep('task-par2', 'write-copy', { brief: 'test' }, testDir)
-      completeStep('task-par2', 'create-image', { image_path: '/img.png' }, testDir)
-      completeStep('task-par2', 'create-video', { video_path: '/vid.mp4' }, testDir)
+      completeStep('task-par2', 'write-copy', { brief: 'test' }, undefined, testDir)
+      completeStep('task-par2', 'create-image', { image_path: '/img.png' }, undefined, testDir)
+      completeStep('task-par2', 'create-video', { video_path: '/vid.mp4' }, undefined, testDir)
 
       const instance = loadInstance('task-par2', testDir)
       expect(instance!.currentStepId).toBe('publish')
@@ -319,7 +319,7 @@ Write a great caption.
 
     it('returns correct step for specific agent in parallel group', () => {
       createInstance('task-par3', 'parallel', testDir)
-      completeStep('task-par3', 'write-copy', { brief: 'test' }, testDir)
+      completeStep('task-par3', 'write-copy', { brief: 'test' }, undefined, testDir)
 
       const pixelStep = getCurrentStep('task-par3', 'pixel', testDir)
       expect((pixelStep as Record<string, unknown>).stepId).toBe('create-image')
@@ -334,7 +334,7 @@ Write a great caption.
   describe('gate operations', () => {
     it('approveGate advances past gate to next step', () => {
       createInstance('task-gate-a', 'gate', testDir)
-      completeStep('task-gate-a', 'write-copy', { text: 'hello' }, testDir)
+      completeStep('task-gate-a', 'write-copy', { text: 'hello' }, undefined, testDir)
 
       const approveResult = approveGate('task-gate-a', 'review-gate', testDir)
       expect(approveResult.success).toBe(true)
@@ -346,7 +346,7 @@ Write a great caption.
 
     it('rejectGate rewinds to target step', () => {
       createInstance('task-gate-r', 'gate', testDir)
-      completeStep('task-gate-r', 'write-copy', { text: 'hello' }, testDir)
+      completeStep('task-gate-r', 'write-copy', { text: 'hello' }, undefined, testDir)
 
       const rejectResult = rejectGate('task-gate-r', 'review-gate', 'Not good enough', undefined, testDir)
       expect(rejectResult.success).toBe(true)
@@ -359,7 +359,7 @@ Write a great caption.
 
     it('rejectGate with note_to_agent includes reason in step context', () => {
       createInstance('task-gate-n', 'gate', testDir)
-      completeStep('task-gate-n', 'write-copy', { text: 'hello' }, testDir)
+      completeStep('task-gate-n', 'write-copy', { text: 'hello' }, undefined, testDir)
 
       rejectGate('task-gate-n', 'review-gate', 'Caption too long', undefined, testDir)
 
@@ -390,7 +390,7 @@ Write a great caption.
   describe('rewind', () => {
     it('resets rewound step to in_progress and all steps after to pending', () => {
       createInstance('task-rew', 'gate', testDir)
-      completeStep('task-rew', 'write-copy', { text: 'hello' }, testDir)
+      completeStep('task-rew', 'write-copy', { text: 'hello' }, undefined, testDir)
 
       rejectGate('task-rew', 'review-gate', 'redo it', undefined, testDir)
 
@@ -413,7 +413,7 @@ Write a great caption.
 
     it('uses description for step without skill field', () => {
       createInstance('task-skill-plain', 'skill-test', testDir)
-      completeStep('task-skill-plain', 'write', { caption: 'test' }, testDir)
+      completeStep('task-skill-plain', 'write', { caption: 'test' }, undefined, testDir)
       const step = getCurrentStep('task-skill-plain', undefined, testDir) as Record<string, unknown>
       expect(step.stepId).toBe('plain')
       expect(step.instructions).toBe('No skill, just description')
@@ -447,9 +447,9 @@ Write a great caption.
       createInstance('t3', 'linear', testDir)
       createInstance('t4', 'linear', testDir)
       // Complete t4
-      completeStep('t4', 'step-one', { r: 1 }, testDir)
-      completeStep('t4', 'step-two', { r: 2 }, testDir)
-      completeStep('t4', 'step-three', { r: 3 }, testDir)
+      completeStep('t4', 'step-one', { r: 1 }, undefined, testDir)
+      completeStep('t4', 'step-two', { r: 2 }, undefined, testDir)
+      completeStep('t4', 'step-three', { r: 3 }, undefined, testDir)
 
       const inProgress = listInstances('in_progress', testDir)
       expect(inProgress.length).toBe(1)
@@ -469,10 +469,104 @@ Write a great caption.
 
     it('returns multiple agents for parallel step', () => {
       createInstance('task-agents-par', 'parallel', testDir)
-      completeStep('task-agents-par', 'write-copy', { brief: 'x' }, testDir)
+      completeStep('task-agents-par', 'write-copy', { brief: 'x' }, undefined, testDir)
       const agents = getActiveAgents('task-agents-par', testDir)
       expect(agents.length).toBe(2)
       expect(agents.map(a => a.agent).sort()).toEqual(['pixel', 'rolo'])
+    })
+  })
+
+  // ─── Agent-scoping on step/complete ─────────────────────────────────
+
+  describe('agent-scoping', () => {
+    it('allows the assigned agent to complete their step', () => {
+      createInstance('task-scope-ok', 'linear', testDir)
+      const result = completeStep('task-scope-ok', 'step-one', { data: 'done' }, 'chef', testDir)
+      expect(result.success).toBe(true)
+    })
+
+    it('rejects a different agent completing a step not assigned to them', () => {
+      createInstance('task-scope-bad', 'linear', testDir)
+      const result = completeStep('task-scope-bad', 'step-one', { data: 'done' }, 'pixel', testDir)
+      expect(result.success).toBe(false)
+      expect(result.errors![0]).toContain('assigned to "chef"')
+      expect(result.errors![0]).toContain('"pixel"')
+    })
+
+    it('rejects orchestrator completing a subagent step', () => {
+      createInstance('task-scope-orch', 'linear', testDir)
+      const result = completeStep('task-scope-orch', 'step-one', { data: 'done' }, 'main-operator', testDir)
+      expect(result.success).toBe(false)
+      expect(result.errors![0]).toContain('assigned to "chef"')
+    })
+
+    it('skips agent-scoping when callerAgentId is undefined (backwards compat)', () => {
+      createInstance('task-scope-undef', 'linear', testDir)
+      const result = completeStep('task-scope-undef', 'step-one', { data: 'done' }, undefined, testDir)
+      expect(result.success).toBe(true)
+    })
+  })
+
+  // ─── previousOutput on rejection ────────────────────────────────────
+
+  describe('previousOutput on rejection', () => {
+    it('preserves previousOutput when gate rejects and rewinds', () => {
+      createInstance('task-prev', 'gate', testDir)
+      completeStep('task-prev', 'write-copy', { text: 'original work' }, undefined, testDir)
+
+      // Gate is pending_approval — reject it
+      rejectGate('task-prev', 'review-gate', 'Too short', undefined, testDir)
+
+      const instance = loadInstance('task-prev', testDir)
+      expect(instance!.stepStates['write-copy'].previousOutput).toEqual({ text: 'original work' })
+    })
+
+    it('passes previousOutput through getCurrentStep context', () => {
+      createInstance('task-prev-ctx', 'gate', testDir)
+      completeStep('task-prev-ctx', 'write-copy', { text: 'original work' }, undefined, testDir)
+      rejectGate('task-prev-ctx', 'review-gate', 'Redo it', undefined, testDir)
+
+      const step = getCurrentStep('task-prev-ctx', undefined, testDir) as Record<string, unknown>
+      expect(step.previousOutput).toEqual({ text: 'original work' })
+    })
+  })
+
+  // ─── deny_tools in StepContext ──────────────────────────────────────
+
+  describe('deny_tools', () => {
+    const denyToolsWorkflow = `
+name: Deny Tools Test
+description: Test deny_tools flow
+version: 1
+steps:
+  - id: write
+    type: agent
+    label: Write Copy
+    agent: chef
+    description: Write the copy
+    deny_tools:
+      - image_generation
+      - video_generation
+  - id: review
+    type: agent
+    label: Review
+    agent: main-operator
+    description: Review it
+`
+
+    it('includes deny_tools in step context', () => {
+      writeFileSync(join(defsDir, 'deny-tools.yaml'), denyToolsWorkflow)
+      createInstance('task-deny', 'deny-tools', testDir)
+      const step = getCurrentStep('task-deny', undefined, testDir) as Record<string, unknown>
+      expect(step.deny_tools).toEqual(['image_generation', 'video_generation'])
+    })
+
+    it('does not include deny_tools when not defined on step', () => {
+      writeFileSync(join(defsDir, 'deny-tools.yaml'), denyToolsWorkflow)
+      createInstance('task-deny2', 'deny-tools', testDir)
+      completeStep('task-deny2', 'write', { data: 'done' }, undefined, testDir)
+      const step = getCurrentStep('task-deny2', undefined, testDir) as Record<string, unknown>
+      expect(step.deny_tools).toBeUndefined()
     })
   })
 })

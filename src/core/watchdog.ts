@@ -11,6 +11,7 @@ import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
 import * as openclaw from './openclaw-client'
 import { readTaskboard, moveTask, addTaskLog, blockTask } from '../../plugins/tasks/taskboard'
+import { listInstances } from '../../plugins/workflows/runtime'
 
 const log = createLogger('watchdog')
 
@@ -24,6 +25,12 @@ const BYPASS_PATTERNS = [
   /skip(?:ping)?\s+(?:the\s+)?(?:check|validation|test)/i,
   /instead\s+(?:i'll|I will|we can|let me)/i,
   /can't\s+(?:use|access|reach)\s+.*(?:so|instead)/i,
+  // Workflow scope violations — agents doing extra work beyond their step
+  /I(?:'ll| will) also (?:generate|create|write|produce)/i,
+  /let me (?:also|additionally)/i,
+  /while I(?:'m| am) at it/i,
+  /moving (?:the )?task to done/i,
+  /I(?:'ve| have) (?:also|additionally) (?:generated|created|written|produced)/i,
 ]
 
 function getLastLogTimestamp(task: { log?: { timestamp: string }[] }): Date | null {
@@ -128,6 +135,50 @@ export function start(contentDir: string, port: number): void {
 
           log.warn('Stuck task detected', { title: task.title, agent: task.agent, minutesStuck, agentStale })
         }
+      }
+      // ─── Workflow step timeout detection ─────────────────────────────
+      try {
+        const wfSettings = settings.workflow
+        const activeInstances = listInstances('in_progress', contentDir)
+
+        for (const instance of activeInstances) {
+          const stepState = instance.stepStates[instance.currentStepId]
+          if (!stepState || stepState.status !== 'in_progress' || !stepState.startedAt) continue
+
+          const stepAge = now - new Date(stepState.startedAt).getTime()
+          if (stepAge <= wfSettings.stepTimeoutMs) continue
+
+          const minutesStuck = Math.round(stepAge / 60000)
+          const taskId = instance.taskId
+
+          // Count how many times we've already timed-out this step
+          const timeoutLogs = instance.history.filter(
+            h => h.stepId === instance.currentStepId && h.rejectionReason?.startsWith('TIMEOUT:')
+          ).length
+
+          if (timeoutLogs >= wfSettings.maxRedispatches) {
+            // Escalate — block the task
+            try {
+              await blockTask(taskId, `Workflow step "${instance.currentStepId}" timed out after ${wfSettings.maxRedispatches} re-dispatches. Agent never submitted output via step/complete API.`)
+              await addTaskLog(taskId, 'watchdog', `Workflow step timeout escalated to blocked after ${wfSettings.maxRedispatches} re-dispatches`)
+              appendAudit(contentDir, 'workflow.step_timeout_blocked', 'watchdog', { taskId, stepId: instance.currentStepId, timeoutLogs })
+              log.warn('Workflow step blocked after max timeouts', { taskId, stepId: instance.currentStepId })
+            } catch (err) {
+              log.error('Failed to block timed-out workflow step', err, { taskId })
+            }
+          } else {
+            // Alert — the step will be re-dispatched on next dispatch cycle
+            try {
+              await addTaskLog(taskId, 'watchdog', `TIMEOUT: Workflow step "${instance.currentStepId}" has been in_progress for ${minutesStuck}+ minutes with no output submitted via step/complete API.`)
+              appendAudit(contentDir, 'workflow.step_timeout', 'watchdog', { taskId, stepId: instance.currentStepId, minutesStuck })
+              log.warn('Workflow step timeout', { taskId, stepId: instance.currentStepId, minutesStuck })
+            } catch (err) {
+              log.error('Failed to log workflow step timeout', err, { taskId })
+            }
+          }
+        }
+      } catch (err) {
+        log.error('Workflow step timeout check failed', err)
       }
     } catch (err) {
       log.error('Watchdog error', err)

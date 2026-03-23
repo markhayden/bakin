@@ -17,6 +17,8 @@ import { appendAudit } from './audit'
 import { isUsingBeaconHome, getContentDir } from './content-dir'
 import * as openclaw from './openclaw-client'
 import { readTaskboard, clearDependency } from '../../plugins/tasks/taskboard'
+import { listDefinitions } from '../../plugins/workflows/parser'
+import { listInstances } from '../../plugins/workflows/runtime'
 
 const log = createLogger('doctor')
 
@@ -353,7 +355,9 @@ These rules govern Main Operator as orchestrator of the Beacon multi-agent syste
 
 7. **One task per agent per piece of content.** Don't assign the same content to multiple agents in parallel. Let the assigned agent drive.
 
-8. **AGENTS.md is your rulebook, not the subagents'.** The Beacon skill (SKILL.md) governs subagents. AGENTS.md governs you.`
+8. **AGENTS.md is your rulebook, not the subagents'.** The Beacon skill (SKILL.md) governs subagents. AGENTS.md governs you.
+
+9. **Workflow tasks are hands-off.** If a task has a \`workflowId\`, the workflow engine manages step progression. Do not manually move workflow tasks between columns, do not produce step output yourself, and do not interfere with gates outside the Beacon UI.`
 
 function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
   const agentsPath = join(process.env.HOME || '~', '.openclaw', 'workspace', 'AGENTS.md')
@@ -402,6 +406,11 @@ function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
  * NOT auto-fixable — stale paths require human judgment.
  */
 function checkService(projectRoot: string): DiagnosticResult[] {
+  const settings = getSettings()
+  if (!settings.service.enabled) {
+    return [ok('service', 'Skipped — service management disabled in settings')]
+  }
+
   if (process.platform !== 'darwin') {
     return [ok('service', 'Skipped — macOS only')]
   }
@@ -561,6 +570,195 @@ async function notifyUnfixableIssues(results: DiagnosticResult[]): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
+// Per-agent workflow rules
+// ---------------------------------------------------------------------------
+
+const AGENT_WORKFLOW_BLOCK_START = '<!-- beacon:workflow-rules:start -->'
+const AGENT_WORKFLOW_BLOCK_END = '<!-- beacon:workflow-rules:end -->'
+
+const AGENT_WORKFLOW_RULES_CONTENT = `## Beacon Workflow Rules
+
+> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+
+When Beacon dispatches a workflow step to you, the dispatch message contains everything you need: step instructions, output schema, and the exact API call to submit.
+
+1. **The dispatch message is your single source of truth.** Follow it exactly for workflow steps.
+
+2. **Submit output ONLY via the step/complete API.** Include your \`agentId\` in the request. Conversational output does NOT complete the step.
+
+3. **Do NOT move the task, create subtasks, or message main-operator** for workflow tasks — the workflow engine handles all coordination.
+
+4. **Address rejection feedback specifically.** If re-dispatched with "REVISION REQUIRED", read the feedback and produce genuinely revised output. The server rejects near-duplicate resubmissions.
+
+5. **After submitting, STOP.** Do not generate additional outputs, start work on future steps, or send completion messages.
+
+6. **Respect tool restrictions.** If the dispatch message lists "TOOL RESTRICTIONS", do NOT use those tools. Block the task if you need them.`
+
+function checkAgentWorkflowRules(autoFix: boolean): DiagnosticResult[] {
+  const settings = getSettings()
+  const results: DiagnosticResult[] = []
+  const openclawBase = join(process.env.HOME || '~', '.openclaw')
+
+  for (const agentId of settings.agents) {
+    // Skip main-operator — orchestrator rules cover that
+    if (agentId === 'main-operator') continue
+
+    const agentsPath = join(openclawBase, 'workspaces', agentId, 'AGENTS.md')
+
+    if (!existsSync(agentsPath)) {
+      results.push(warn('agent-workflow-rules', `AGENTS.md not found for ${agentId} — cannot verify workflow rules`))
+      continue
+    }
+
+    const current = readFileSync(agentsPath, 'utf-8')
+    const startIdx = current.indexOf(AGENT_WORKFLOW_BLOCK_START)
+    const endIdx = current.indexOf(AGENT_WORKFLOW_BLOCK_END)
+    const hasBlock = startIdx !== -1
+
+    if (!hasBlock) {
+      if (!autoFix) {
+        results.push(warn('agent-workflow-rules', `Workflow rules block missing from ${agentId}/AGENTS.md`, true))
+        continue
+      }
+      const block = `${AGENT_WORKFLOW_BLOCK_START}\n${AGENT_WORKFLOW_RULES_CONTENT}\n${AGENT_WORKFLOW_BLOCK_END}\n`
+      writeFileSync(agentsPath, current.trimEnd() + '\n\n' + block, 'utf-8')
+      results.push(fixed('agent-workflow-rules', `Added workflow rules block to ${agentId}/AGENTS.md`))
+      continue
+    }
+
+    if (endIdx === -1) {
+      results.push(error('agent-workflow-rules', `Workflow rules block start marker found in ${agentId}/AGENTS.md but no end marker`))
+      continue
+    }
+
+    const blockContent = current.slice(startIdx + AGENT_WORKFLOW_BLOCK_START.length, endIdx).trim()
+    const expected = AGENT_WORKFLOW_RULES_CONTENT.trim()
+
+    if (blockContent === expected) {
+      results.push(ok('agent-workflow-rules', `Workflow rules in ${agentId}/AGENTS.md are up to date`))
+    } else if (autoFix) {
+      const block = `${AGENT_WORKFLOW_BLOCK_START}\n${AGENT_WORKFLOW_RULES_CONTENT}\n${AGENT_WORKFLOW_BLOCK_END}`
+      const updated = current.slice(0, startIdx) + block + current.slice(endIdx + AGENT_WORKFLOW_BLOCK_END.length)
+      writeFileSync(agentsPath, updated, 'utf-8')
+      results.push(fixed('agent-workflow-rules', `Updated workflow rules block in ${agentId}/AGENTS.md`))
+    } else {
+      results.push(warn('agent-workflow-rules', `Workflow rules block is outdated in ${agentId}/AGENTS.md`, true))
+    }
+  }
+
+  return results
+}
+
+// ---------------------------------------------------------------------------
+// Workflow health checks
+// ---------------------------------------------------------------------------
+
+/**
+ * Workflow skills: warn if skills referenced by workflow steps are missing output_schema.
+ * Without output_schema, server-side validation is bypassed.
+ */
+function checkWorkflowSkills(contentDir: string): DiagnosticResult[] {
+  const results: DiagnosticResult[] = []
+  const skillsDir = join(contentDir, 'workflows', 'skills')
+
+  if (!existsSync(skillsDir)) return results
+
+  try {
+    const files = readdirSync(skillsDir).filter(f => f.endsWith('.md'))
+    for (const file of files) {
+      try {
+        const content = readFileSync(join(skillsDir, file), 'utf-8')
+        const match = content.match(/^---\n([\s\S]*?)\n---/)
+        if (!match) {
+          results.push(warn('workflow-skills', `Skill ${file} has no YAML frontmatter — output will not be validated`))
+          continue
+        }
+        if (!content.includes('output_schema')) {
+          results.push(warn('workflow-skills', `Skill ${file} has no output_schema — step output will not be validated server-side`))
+        }
+      } catch {
+        results.push(warn('workflow-skills', `Could not read skill file: ${file}`))
+      }
+    }
+  } catch {
+    // skills dir exists but can't be read
+  }
+
+  if (results.length === 0) {
+    results.push(ok('workflow-skills', 'All workflow skills have output_schema'))
+  }
+
+  return results
+}
+
+/**
+ * Workflow definitions: verify all step skill references resolve to existing skill files.
+ */
+function checkWorkflowDefinitions(contentDir: string): DiagnosticResult[] {
+  const results: DiagnosticResult[] = []
+  const skillsDir = join(contentDir, 'workflows', 'skills')
+
+  try {
+    const defs = listDefinitions(contentDir)
+    for (const { name, definition } of defs) {
+      for (const step of definition.steps) {
+        const skillName = (step as { skill?: string }).skill
+        if (skillName && !existsSync(join(skillsDir, `${skillName}.md`))) {
+          results.push(warn('workflow-definitions', `Workflow "${name}" step "${step.id}" references skill "${skillName}" which does not exist`))
+        }
+        // Check parallel children too
+        if (step.type === 'parallel' && 'steps' in step) {
+          for (const child of (step as { steps: Array<{ id: string; skill?: string }> }).steps) {
+            if (child.skill && !existsSync(join(skillsDir, `${child.skill}.md`))) {
+              results.push(warn('workflow-definitions', `Workflow "${name}" parallel step "${child.id}" references skill "${child.skill}" which does not exist`))
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // No definitions or parser error — non-fatal
+  }
+
+  if (results.length === 0) {
+    results.push(ok('workflow-definitions', 'All workflow skill references resolve'))
+  }
+
+  return results
+}
+
+/**
+ * Stale workflow instances: flag instances stuck in_progress for > 2 hours.
+ */
+function checkStaleWorkflowInstances(contentDir: string): DiagnosticResult[] {
+  const results: DiagnosticResult[] = []
+
+  try {
+    const instances = listInstances('in_progress', contentDir)
+    const now = Date.now()
+    const staleThreshold = 2 * 60 * 60 * 1000 // 2 hours
+
+    for (const instance of instances) {
+      const updated = new Date(instance.updatedAt).getTime()
+      if (isNaN(updated)) continue
+      const age = now - updated
+      if (age > staleThreshold) {
+        const hours = Math.round(age / (60 * 60 * 1000) * 10) / 10
+        results.push(warn('workflow-instances', `Workflow instance for task "${instance.taskId}" has been in_progress on step "${instance.currentStepId}" for ${hours}h with no updates`))
+      }
+    }
+  } catch {
+    // No instances directory — non-fatal
+  }
+
+  if (results.length === 0) {
+    results.push(ok('workflow-instances', 'No stale workflow instances'))
+  }
+
+  return results
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -584,6 +782,10 @@ export async function runDiagnostics(
   results.push(...checkTaskboard(contentDir, autoFix))
   results.push(...checkAndSyncSkill(projectRoot, autoFix))
   results.push(...checkOrchestratorRules(autoFix))
+  results.push(...checkAgentWorkflowRules(autoFix))
+  results.push(...checkWorkflowSkills(contentDir))
+  results.push(...checkWorkflowDefinitions(contentDir))
+  results.push(...checkStaleWorkflowInstances(contentDir))
   results.push(...checkTaskConsistency(contentDir, autoFix))
   results.push(...checkService(projectRoot))
 

@@ -13,6 +13,7 @@ import {
   blockTask,
   updateTask,
 } from './taskboard'
+import { loadInstance } from '../workflows/runtime'
 import { indexCompletedTask } from '../../src/core/antfly'
 import { appendAudit } from '../../src/lib/audit'
 
@@ -63,6 +64,25 @@ const tasksPlugin: MCPlugin = {
           return Response.json({ error: 'agent field required — who is moving this task?' }, { status: 400 })
         }
         try {
+          // Workflow done-guard: workflow tasks can only reach Done via the workflow engine
+          if (to.toLowerCase() === 'done') {
+            const { columns } = readTaskboard()
+            for (const col of Object.values(columns)) {
+              const task = (col as Array<{ id: string; title: string; workflowId?: string }>).find(
+                t => t.id === identifier || t.title === identifier
+              )
+              if (task?.workflowId) {
+                const instance = loadInstance(task.id)
+                if (instance && instance.status !== 'complete') {
+                  return Response.json({
+                    error: 'Workflow tasks cannot be moved to Done directly. Submit step output via POST /api/plugins/workflows/step/complete — the workflow engine manages task completion.',
+                  }, { status: 403 })
+                }
+                break
+              }
+            }
+          }
+
           await moveTask(identifier, to, from)
           // Resolve title for audit/indexing (agents often only send id)
           let resolvedTitle = title
