@@ -31,6 +31,7 @@ import type {
 import { loadDefinition } from './parser'
 import { loadSkill } from './skill-loader'
 import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
+import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete } from './notifications'
 import { getContentDir } from './content-dir'
 
 function generateId(): string {
@@ -389,6 +390,17 @@ export function completeStep(
   saveInstance(instance, dir)
 
   if (instance.status === 'complete') {
+    notifyWorkflowComplete(instance)
+    // Auto-move the task to done on the taskboard + emit audit event
+    Promise.all([
+      import('../../plugins/tasks/taskboard'),
+      import('../../src/core/audit'),
+    ]).then(([{ moveTask, addTaskLog }, { appendAudit }]) => {
+      addTaskLog(instance.taskId, 'workflow', `Workflow "${instance.workflowId}" completed — all steps done.`)
+        .then(() => moveTask(instance.taskId, 'done'))
+        .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: instance.taskId, from: 'inProgress', to: 'done' }))
+        .catch(() => {})
+    }).catch(() => {})
     return { success: true, workflowComplete: true }
   }
 
@@ -455,6 +467,11 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     // Gates go to pending_approval
     instance.stepStates[nextStep.id] = { status: 'pending_approval', startedAt: now }
     instance.status = 'pending_approval'
+
+    // Gather prior step output for reviewer context
+    const priorStep = def.steps[nextIdx - 1]
+    const priorOutput = priorStep ? instance.stepStates[priorStep.id]?.output : undefined
+    notifyGateReached(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput)
   } else {
     instance.stepStates[nextStep.id] = { status: 'in_progress', startedAt: now }
   }
@@ -504,7 +521,27 @@ export function approveGate(
   advanceWorkflow(instance, def, dir)
   saveInstance(instance, dir)
 
+  // Emit SSE event and clear notification tracking
+  notifyGateApproved(instance, stepId, step.label || stepId)
+  clearGateNotified(taskId, stepId, dir)
+
+  // Log gate approval to the task so watchdog sees recent activity
+  import('../../plugins/tasks/taskboard').then(({ addTaskLog }) => {
+    addTaskLog(taskId, 'workflow', `Gate "${step.label || stepId}" approved — advancing workflow.`).catch(() => {})
+  }).catch(() => {})
+
   if ((instance.status as string) === 'complete') {
+    notifyWorkflowComplete(instance)
+    // Auto-move the task to done on the taskboard + emit audit event
+    Promise.all([
+      import('../../plugins/tasks/taskboard'),
+      import('../../src/core/audit'),
+    ]).then(([{ moveTask, addTaskLog }, { appendAudit }]) => {
+      addTaskLog(instance.taskId, 'workflow', `Workflow "${instance.workflowId}" completed — all steps done.`)
+        .then(() => moveTask(instance.taskId, 'done'))
+        .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: instance.taskId, from: 'inProgress', to: 'done' }))
+        .catch(() => {})
+    }).catch(() => {})
     return { success: true, nextStep: { status: 'complete' } }
   }
 
@@ -600,6 +637,16 @@ export function rejectGate(
   }
 
   saveInstance(instance, dir)
+
+  // Emit SSE event and clear notification tracking
+  notifyGateRejected(instance, stepId, step.label || stepId, reason)
+  clearGateNotified(taskId, stepId, dir)
+
+  // Log gate rejection to the task
+  import('../../plugins/tasks/taskboard').then(({ addTaskLog }) => {
+    addTaskLog(taskId, 'workflow', `Gate "${step.label || stepId}" rejected: ${reason}`).catch(() => {})
+  }).catch(() => {})
+
   return { success: true, rewoundTo: targetId }
 }
 
@@ -665,4 +712,45 @@ export function getActiveAgents(
   }
 
   return agents
+}
+
+// ─── Gate Notification Tracking ──────────────────────────────────────────────
+
+function getNotifiedGatesPath(contentDir: string): string {
+  return join(contentDir, 'workflows', '.notified-gates.json')
+}
+
+function loadNotifiedGates(contentDir: string): Record<string, string> {
+  const p = getNotifiedGatesPath(contentDir)
+  try {
+    if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf-8'))
+  } catch { /* start fresh */ }
+  return {}
+}
+
+function saveNotifiedGates(data: Record<string, string>, contentDir: string): void {
+  const p = getNotifiedGatesPath(contentDir)
+  const dir = join(contentDir, 'workflows')
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(p, JSON.stringify(data, null, 2), 'utf-8')
+}
+
+export function isGateNotified(taskId: string, stepId: string, contentDir?: string): boolean {
+  const dir = contentDir || getContentDir()
+  const gates = loadNotifiedGates(dir)
+  return `${taskId}:${stepId}` in gates
+}
+
+export function markGateNotified(taskId: string, stepId: string, contentDir?: string): void {
+  const dir = contentDir || getContentDir()
+  const gates = loadNotifiedGates(dir)
+  gates[`${taskId}:${stepId}`] = new Date().toISOString()
+  saveNotifiedGates(gates, dir)
+}
+
+export function clearGateNotified(taskId: string, stepId: string, contentDir?: string): void {
+  const dir = contentDir || getContentDir()
+  const gates = loadNotifiedGates(dir)
+  delete gates[`${taskId}:${stepId}`]
+  saveNotifiedGates(gates, dir)
 }

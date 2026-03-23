@@ -241,6 +241,84 @@ const workflowsPlugin: MCPlugin = {
       },
     })
 
+    // GET /api/plugins/workflows/pending-gates — list all gates awaiting approval
+    ctx.registerRoute({
+      path: '/pending-gates',
+      method: 'GET',
+      description: 'List all workflow instances with pending gate approvals.',
+      handler: async () => {
+        const instances = listInstances('pending_approval')
+        const gates = instances.map((inst) => {
+          const def = loadDefinition(inst.workflowId)
+          const gateStep = def?.steps.find(s => s.id === inst.currentStepId)
+
+          // Gather prior step outputs for review
+          let priorStepOutputs: Record<string, unknown> = {}
+          if (def && gateStep) {
+            const gateIdx = def.steps.findIndex(s => s.id === gateStep.id)
+            const preview = (gateStep as { preview?: string[] }).preview
+            if (preview && preview.length > 0) {
+              for (const pid of preview) {
+                if (inst.stepStates[pid]?.output) {
+                  priorStepOutputs[pid] = inst.stepStates[pid].output
+                }
+              }
+            } else if (gateIdx > 0) {
+              const priorStep = def.steps[gateIdx - 1]
+              if (inst.stepStates[priorStep.id]?.output) {
+                priorStepOutputs[priorStep.id] = inst.stepStates[priorStep.id].output
+              }
+            }
+          }
+
+          return {
+            taskId: inst.taskId,
+            workflowId: inst.workflowId,
+            stepId: inst.currentStepId,
+            label: gateStep?.label || inst.currentStepId,
+            description: (gateStep as { description?: string })?.description,
+            priorStepOutputs,
+            gateDefinition: gateStep ? {
+              on_approve: (gateStep as { on_approve?: string }).on_approve,
+              on_reject: (gateStep as { on_reject?: { goto: string; note_to_agent?: boolean } }).on_reject,
+            } : undefined,
+          }
+        })
+
+        return Response.json({ gates })
+      },
+    })
+
+    // GET /api/plugins/workflows/gate-status — batch check gate status for tasks
+    ctx.registerRoute({
+      path: '/gate-status',
+      method: 'GET',
+      description: 'Batch check gate status for multiple tasks. Returns map of taskId → gate info.',
+      params: '?taskIds=id1,id2,...',
+      handler: async (req) => {
+        const url = new URL(req.url)
+        const taskIds = (url.searchParams.get('taskIds') || '').split(',').filter(Boolean)
+
+        const result: Record<string, { stepId: string; label: string; description?: string } | null> = {}
+        for (const taskId of taskIds) {
+          const instance = loadInstance(taskId)
+          if (instance && instance.status === 'pending_approval') {
+            const def = loadDefinition(instance.workflowId)
+            const gateStep = def?.steps.find(s => s.id === instance.currentStepId)
+            result[taskId] = {
+              stepId: instance.currentStepId,
+              label: gateStep?.label || instance.currentStepId,
+              description: (gateStep as { description?: string })?.description,
+            }
+          } else {
+            result[taskId] = null
+          }
+        }
+
+        return Response.json({ gates: result })
+      },
+    })
+
     // POST /api/plugins/workflows/start — start a workflow for a task
     ctx.registerRoute({
       path: '/start',
@@ -262,6 +340,15 @@ const workflowsPlugin: MCPlugin = {
 
         try {
           const instance = createInstance(taskId, workflowId)
+
+          // Ensure the task's workflowId is persisted in TASKBOARD.md
+          try {
+            const { updateTask } = await import('../../plugins/tasks/taskboard')
+            await updateTask(taskId, { workflowId })
+          } catch {
+            // Non-fatal — instance is created regardless
+          }
+
           return Response.json({ instance })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 400 })

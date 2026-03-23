@@ -49,7 +49,7 @@ function AgentAvatar({ agent, imgError, onError }: {
 }
 
 /** Presentational card — used by DragOverlay */
-export function TaskCardContent({ task, columnId, className }: { task: Task; columnId: string; className?: string }) {
+export function TaskCardContent({ task, columnId, className, gateLabel }: { task: Task; columnId: string; className?: string; gateLabel?: string }) {
   const [imgError, setImgError] = useState(false)
   const agent = AGENTS.find((a) => a.id === task.agent)
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
@@ -85,6 +85,14 @@ export function TaskCardContent({ task, columnId, className }: { task: Task; col
         <span className="text-xs text-blue-400/70 mt-1">⚡ {task.workflowId}</span>
       )}
 
+      {/* Gate approval indicator */}
+      {gateLabel && (
+        <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20">
+          <span className="text-amber-400 text-[11px] font-semibold">Awaiting Approval</span>
+          <span className="text-amber-400/60 text-[10px] truncate">{gateLabel}</span>
+        </div>
+      )}
+
       {/* Dependency indicator */}
       {task.dependsOn && (
         <p className="text-xs text-amber-500/70 mt-1 pl-[18px]">waiting on #{task.dependsOn.slice(0, 6).toUpperCase()}</p>
@@ -111,12 +119,13 @@ export function TaskCardContent({ task, columnId, className }: { task: Task; col
 interface TaskCardProps {
   task: Task
   columnId: string
+  gateLabel?: string
   onAssign: (task: Task, agent: string) => void
   onDelete: (task: { id: string; title: string }) => void
   onClick: (task: Task, columnId: ColumnId) => void
 }
 
-export function TaskCard({ task, columnId, onAssign, onDelete, onClick }: TaskCardProps) {
+export function TaskCard({ task, columnId, gateLabel, onAssign, onDelete, onClick }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `${columnId}::${task.id}`,
     data: { task, columnId },
@@ -157,6 +166,7 @@ export function TaskCard({ task, columnId, onAssign, onDelete, onClick }: TaskCa
       <TaskCardContent
         task={task}
         columnId={columnId}
+        gateLabel={gateLabel}
         className="p-4"
       />
       </div>

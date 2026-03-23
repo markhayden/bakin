@@ -357,7 +357,50 @@ These rules govern Main Operator as orchestrator of the Beacon multi-agent syste
 
 8. **AGENTS.md is your rulebook, not the subagents'.** The Beacon skill (SKILL.md) governs subagents. AGENTS.md governs you.
 
-9. **Workflow tasks are hands-off.** If a task has a \`workflowId\`, the workflow engine manages step progression. Do not manually move workflow tasks between columns, do not produce step output yourself, and do not interfere with gates outside the Beacon UI.`
+9. **Workflow tasks are hands-off.** If a task has a \`workflowId\`, the workflow engine manages step progression. Do not manually move workflow tasks between columns, do not produce step output yourself, and do not interfere with gates outside the Beacon UI.
+
+10. **Match tasks to workflows automatically.** Before creating a task, evaluate whether an existing workflow fits. If the task involves content that matches a workflow's purpose, start that workflow — don't wait for Mark to specify one. The available workflows are:
+WORKFLOW_CATALOG_PLACEHOLDER
+
+To start: \`POST /api/plugins/workflows/start\` with \`{"taskId":"...","workflowId":"..."}\`. This creates the instance AND writes the workflow ID to the taskboard. After starting, dispatch the first step's assigned agent — they'll query their step via the API. If no workflow fits, just create a normal task.
+
+11. **Gate approvals go through the UI.** When a workflow gate is reached, a notification is sent and the task card shows "Awaiting Approval" in the Beacon UI. Tell Mark a gate is waiting — do NOT approve or reject gates yourself. Mark handles gates in the task drawer.
+
+### Workflow API Reference (Main Operator only)
+
+These are the ONLY valid workflow endpoints. Do NOT guess at other paths.
+
+| Action | Method | Path |
+|--------|--------|------|
+| List templates | GET | \`/api/plugins/workflows/list\` |
+| Get definition | GET | \`/api/plugins/workflows/definition?name=<id>\` |
+| Start workflow | POST | \`/api/plugins/workflows/start\` — body: \`{"taskId":"...","workflowId":"..."}\` |
+| List instances | GET | \`/api/plugins/workflows/instances?status=<optional>\` |
+| Get instance | GET | \`/api/plugins/workflows/instance?taskId=<id>\` |
+| Pending gates | GET | \`/api/plugins/workflows/pending-gates\` |
+| Gate status | GET | \`/api/plugins/workflows/gate-status?taskIds=id1,id2\` |
+
+Do NOT use \`/api/tasks\`, \`/api/tasks/list\`, \`/api/plugins/workflows/runs\`, or \`/api/plugins/workflows/run\` — these do not exist.`
+
+/** Build the workflow catalog from available definitions for embedding in rules */
+function buildWorkflowCatalog(): string {
+  try {
+    const defs = listDefinitions()
+    if (defs.length === 0) return '   (no workflows defined yet)'
+    return defs.map(d => {
+      const steps = d.definition.steps || []
+      const agents = [...new Set(steps.filter((s) => 'agent' in s && (s as { agent?: string }).agent).map((s) => (s as { agent?: string }).agent))]
+      return `   - \`${d.name}\`: ${d.definition.description || d.definition.name}${agents.length ? ` (agents: ${agents.join(', ')})` : ''}`
+    }).join('\n')
+  } catch {
+    return '   (query GET /api/plugins/workflows/list at runtime)'
+  }
+}
+
+/** Resolve the orchestrator rules template with the current workflow catalog */
+function resolveOrchestratorRules(): string {
+  return ORCHESTRATOR_RULES_CONTENT.replace('WORKFLOW_CATALOG_PLACEHOLDER', buildWorkflowCatalog())
+}
 
 function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
   const agentsPath = join(process.env.HOME || '~', '.openclaw', 'workspace', 'AGENTS.md')
@@ -366,6 +409,7 @@ function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
     return [warn('orchestrator-rules', 'AGENTS.md not found — cannot verify orchestrator rules')]
   }
 
+  const resolvedContent = resolveOrchestratorRules()
   const current = readFileSync(agentsPath, 'utf-8')
   const startIdx = current.indexOf(AGENT_RULES_BLOCK_START)
   const endIdx = current.indexOf(AGENT_RULES_BLOCK_END)
@@ -375,7 +419,7 @@ function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
     if (!autoFix) {
       return [warn('orchestrator-rules', 'Orchestrator rules block missing from AGENTS.md — run: beacon agent-rules --apply', true)]
     }
-    const block = `${AGENT_RULES_BLOCK_START}\n${ORCHESTRATOR_RULES_CONTENT}\n${AGENT_RULES_BLOCK_END}\n`
+    const block = `${AGENT_RULES_BLOCK_START}\n${resolvedContent}\n${AGENT_RULES_BLOCK_END}\n`
     writeFileSync(agentsPath, current.trimEnd() + '\n\n' + block, 'utf-8')
     return [fixed('orchestrator-rules', 'Added orchestrator rules block to AGENTS.md')]
   }
@@ -385,7 +429,7 @@ function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
   }
 
   const blockContent = current.slice(startIdx + AGENT_RULES_BLOCK_START.length, endIdx).trim()
-  const expected = ORCHESTRATOR_RULES_CONTENT.trim()
+  const expected = resolvedContent.trim()
 
   if (blockContent === expected) {
     return [ok('orchestrator-rules', 'Orchestrator rules block present and up to date')]
@@ -395,7 +439,7 @@ function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
     return [warn('orchestrator-rules', 'Orchestrator rules block is outdated — run: beacon agent-rules --apply', true)]
   }
 
-  const block = `${AGENT_RULES_BLOCK_START}\n${ORCHESTRATOR_RULES_CONTENT}\n${AGENT_RULES_BLOCK_END}`
+  const block = `${AGENT_RULES_BLOCK_START}\n${resolvedContent}\n${AGENT_RULES_BLOCK_END}`
   const updated = current.slice(0, startIdx) + block + current.slice(endIdx + AGENT_RULES_BLOCK_END.length)
   writeFileSync(agentsPath, updated, 'utf-8')
   return [fixed('orchestrator-rules', 'Updated orchestrator rules block in AGENTS.md')]
@@ -730,15 +774,43 @@ function checkWorkflowDefinitions(contentDir: string): DiagnosticResult[] {
 /**
  * Stale workflow instances: flag instances stuck in_progress for > 2 hours.
  */
-function checkStaleWorkflowInstances(contentDir: string): DiagnosticResult[] {
+function checkStaleWorkflowInstances(contentDir: string, autoFix: boolean): DiagnosticResult[] {
   const results: DiagnosticResult[] = []
 
   try {
-    const instances = listInstances('in_progress', contentDir)
+    // Check all instances (not just in_progress) for orphans
+    const allInstances = listInstances(undefined, contentDir)
+    const { columns } = readTaskboard()
+    const allTaskIds = new Set<string>()
+    for (const col of Object.values(columns)) {
+      for (const task of (col as Array<{ id: string }>)) {
+        allTaskIds.add(task.id)
+      }
+    }
+
     const now = Date.now()
     const staleThreshold = 2 * 60 * 60 * 1000 // 2 hours
 
-    for (const instance of instances) {
+    for (const instance of allInstances) {
+      // Check for orphaned instances — task deleted from board
+      if (!allTaskIds.has(instance.taskId)) {
+        if (autoFix) {
+          const instancePath = join(contentDir, 'workflows', 'instances', `${instance.taskId}.json`)
+          try {
+            const { unlinkSync } = require('fs')
+            unlinkSync(instancePath)
+            results.push(fixed('workflow-instances', `Removed orphaned workflow instance for deleted task "${instance.taskId}"`))
+          } catch {
+            results.push(warn('workflow-instances', `Orphaned workflow instance for deleted task "${instance.taskId}" — could not remove`))
+          }
+        } else {
+          results.push(warn('workflow-instances', `Orphaned workflow instance for deleted task "${instance.taskId}" — task no longer on board`, true))
+        }
+        continue
+      }
+
+      // Check for stale in_progress instances
+      if (instance.status !== 'in_progress') continue
       const updated = new Date(instance.updatedAt).getTime()
       if (isNaN(updated)) continue
       const age = now - updated
@@ -785,7 +857,7 @@ export async function runDiagnostics(
   results.push(...checkAgentWorkflowRules(autoFix))
   results.push(...checkWorkflowSkills(contentDir))
   results.push(...checkWorkflowDefinitions(contentDir))
-  results.push(...checkStaleWorkflowInstances(contentDir))
+  results.push(...checkStaleWorkflowInstances(contentDir, autoFix))
   results.push(...checkTaskConsistency(contentDir, autoFix))
   results.push(...checkService(projectRoot))
 

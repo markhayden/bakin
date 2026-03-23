@@ -44,6 +44,10 @@ export function useSSE() {
           if (data.type === 'audit' && data.entry) {
             appendAuditEntry(data.entry)
           }
+          // Workflow gate events — trigger a full refresh so task cards update
+          if (data.type === 'plugin-event' && typeof data.event === 'string' && data.event.startsWith('workflow.gate')) {
+            initialize()
+          }
           if (data.file && data.content !== undefined) {
             updateFile(data.file, data.content)
 

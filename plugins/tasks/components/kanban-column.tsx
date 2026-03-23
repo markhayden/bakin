@@ -9,13 +9,14 @@ import type { Task, ColumnId } from '../types'
 interface KanbanColumnProps {
   id: ColumnId
   tasks: Task[]
+  gateLabels?: Record<string, string>
   onAssign: (task: Task, agent: string) => void
   onDelete: (task: { id: string; title: string }) => void
   onTaskClick: (task: Task, columnId: ColumnId) => void
   onAddTask?: (columnId: ColumnId) => void
 }
 
-export function KanbanColumn({ id, tasks, onAssign, onDelete, onTaskClick, onAddTask }: KanbanColumnProps) {
+export function KanbanColumn({ id, tasks, gateLabels, onAssign, onDelete, onTaskClick, onAddTask }: KanbanColumnProps) {
   const { setNodeRef, isOver, active } = useDroppable({ id })
   const config = COLUMN_CONFIG[id]
   const dotColor = STATUS_DOT_COLORS[id]
@@ -54,6 +55,7 @@ export function KanbanColumn({ id, tasks, onAssign, onDelete, onTaskClick, onAdd
               key={task.id}
               task={task}
               columnId={id}
+              gateLabel={gateLabels?.[task.id]}
               onAssign={onAssign}
               onDelete={onDelete}
               onClick={onTaskClick}
