@@ -55,6 +55,7 @@ export interface BeaconSettings {
   notifications: {
     channel: 'discord' | 'slack' | 'none'
     target: string
+    gateAlerts: boolean
   }
   workflow: {
     stepTimeoutMs: number
@@ -107,6 +108,7 @@ const DEFAULTS: BeaconSettings = {
   notifications: {
     channel: 'none',
     target: '',
+    gateAlerts: true,
   },
   workflow: {
     stepTimeoutMs: 60 * 60 * 1000,       // 1 hour

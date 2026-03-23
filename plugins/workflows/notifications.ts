@@ -66,6 +66,46 @@ export function notifyWorkflowComplete(instance: WorkflowInstance): void {
 }
 
 /**
+ * Notify that a gate step has been approved.
+ */
+export function notifyGateApproved(
+  instance: WorkflowInstance,
+  stepId: string,
+  label: string
+): void {
+  if (!eventBus) return
+
+  eventBus.emit('workflow.gate_approved', {
+    instanceId: instance.instanceId,
+    taskId: instance.taskId,
+    workflowId: instance.workflowId,
+    stepId,
+    label,
+  })
+}
+
+/**
+ * Notify that a gate step has been rejected.
+ */
+export function notifyGateRejected(
+  instance: WorkflowInstance,
+  stepId: string,
+  label: string,
+  reason: string
+): void {
+  if (!eventBus) return
+
+  eventBus.emit('workflow.gate_rejected', {
+    instanceId: instance.instanceId,
+    taskId: instance.taskId,
+    workflowId: instance.workflowId,
+    stepId,
+    label,
+    reason,
+  })
+}
+
+/**
  * Notify that a workflow step has been dispatched to an agent.
  */
 export function notifyStepDispatched(

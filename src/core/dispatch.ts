@@ -103,6 +103,30 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       }
     }
 
+    // ─── Dispatch in-progress workflow tasks that changed step agents ──
+    // After gate approval, the workflow advances to a new agent's step but
+    // the task stays in inProgress. We need to dispatch the new agent.
+    for (const task of columns.inProgress) {
+      const wfTask = task as typeof task & { workflowId?: string }
+      if (!wfTask.workflowId) continue
+
+      // Check if the current workflow step agent has been dispatched
+      const activeAgents = getActiveAgents(task.id, contentDir)
+      const needsDispatch = activeAgents.some(({ stepId }) => !dispatchedSet.has(`${task.id}:${stepId}`))
+      if (!needsDispatch) continue
+
+      try {
+        await dispatchWorkflowTask(
+          { ...wfTask, workflowId: wfTask.workflowId },
+          contentDir, port, dispatchedSet, state,
+          async () => {}, // already in progress, no column move needed
+          addTaskLog
+        )
+      } catch (err) {
+        log.error(`Failed to re-dispatch workflow task "${task.title}"`, err)
+      }
+    }
+
     if (todoTasks.length === 0) {
       saveDispatchState(contentDir, state)
       return
@@ -152,6 +176,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         await moveTaskToInProgress(task.id, agentName)
         dispatchedSet.add(task.id)
 
+        appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
         appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title })
         log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent })
       } catch (err) {
@@ -293,6 +318,7 @@ async function dispatchWorkflowTask(
   if (!dispatchedSet.has(task.id)) {
     const firstAgent = activeAgents[0]?.agent || task.agent || 'roscoe'
     await moveTaskToInProgress(task.id, firstAgent)
+    appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
     dispatchedSet.add(task.id)
   }
 }

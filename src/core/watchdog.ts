@@ -11,7 +11,8 @@ import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
 import * as openclaw from './openclaw-client'
 import { readTaskboard, moveTask, addTaskLog, blockTask } from '../../plugins/tasks/taskboard'
-import { listInstances } from '../../plugins/workflows/runtime'
+import { listInstances, loadInstance, isGateNotified, markGateNotified, getActiveAgents } from '../../plugins/workflows/runtime'
+import { loadDefinition } from '../../plugins/workflows/parser'
 
 const log = createLogger('watchdog')
 
@@ -74,6 +75,13 @@ export function start(contentDir: string, port: number): void {
       const now = Date.now()
 
       for (const task of inProgressTasks) {
+        // Skip workflow tasks waiting on a gate or already complete — they're legitimately idle
+        const wfCheck = task as typeof task & { workflowId?: string }
+        if (wfCheck.workflowId) {
+          const wfInstance = loadInstance(task.id, contentDir)
+          if (wfInstance && (wfInstance.status === 'pending_approval' || wfInstance.status === 'complete')) continue
+        }
+
         const lastLogTs = getLastLogTimestamp(task)
         const lastActivity = lastLogTs ? lastLogTs.getTime() : (now - settings.watchdog.stuckThresholdMs - 1)
         const stuckMs = now - lastActivity
@@ -85,7 +93,17 @@ export function start(contentDir: string, port: number): void {
         }
 
         const minutesStuck = Math.round(stuckMs / 60000)
-        const agentStale = isAgentHeartbeatStale(contentDir, task.agent)
+
+        // For workflow tasks, check the workflow step's assigned agent — not the card's task.agent
+        const wfTask = task as typeof task & { workflowId?: string }
+        let effectiveAgent = task.agent
+        if (wfTask.workflowId) {
+          const activeAgents = getActiveAgents(task.id, contentDir)
+          if (activeAgents.length > 0) {
+            effectiveAgent = activeAgents[0].agent
+          }
+        }
+        const agentStale = isAgentHeartbeatStale(contentDir, effectiveAgent)
 
         if (settings.watchdog.autoRecover && agentStale) {
           // Both task and agent are stale — auto-recover
@@ -141,7 +159,16 @@ export function start(contentDir: string, port: number): void {
         const wfSettings = settings.workflow
         const activeInstances = listInstances('in_progress', contentDir)
 
+        // Build set of task IDs on the board for orphan detection
+        const boardTaskIds = new Set<string>()
+        for (const col of Object.values(columns)) {
+          for (const t of (col as Array<{ id: string }>)) boardTaskIds.add(t.id)
+        }
+
         for (const instance of activeInstances) {
+          // Skip orphaned instances — task was deleted from the board
+          if (!boardTaskIds.has(instance.taskId)) continue
+
           const stepState = instance.stepStates[instance.currentStepId]
           if (!stepState || stepState.status !== 'in_progress' || !stepState.startedAt) continue
 
@@ -179,6 +206,63 @@ export function start(contentDir: string, port: number): void {
         }
       } catch (err) {
         log.error('Workflow step timeout check failed', err)
+      }
+
+      // ─── Gate notification check (Discord alert) ──────────────────────
+      if (settings.notifications.channel !== 'none' && settings.notifications.gateAlerts !== false) {
+        try {
+          const pendingGates = listInstances('pending_approval', contentDir)
+
+          for (const instance of pendingGates) {
+            const { taskId, currentStepId, workflowId } = instance
+            if (isGateNotified(taskId, currentStepId, contentDir)) continue
+
+            const def = loadDefinition(workflowId, contentDir)
+            const gateStep = def?.steps.find(s => s.id === currentStepId)
+            const label = gateStep?.label || currentStepId
+
+            // Find task title from taskboard
+            const { columns } = readTaskboard()
+            let taskTitle = taskId
+            for (const col of Object.values(columns)) {
+              const task = (col as Array<{ id: string; title: string }>).find(t => t.id === taskId)
+              if (task) { taskTitle = task.title; break }
+            }
+
+            const shortId = taskId.slice(0, 6).toUpperCase()
+            const description = (gateStep as { description?: string })?.description
+            let msg = `🚦 **Gate Approval Needed**\nTask: "${taskTitle}" (#${shortId})\nGate: "${label}"`
+            if (description) msg += `\n${description}`
+
+            // Include prior step output preview
+            if (def) {
+              const gateIdx = def.steps.findIndex(s => s.id === currentStepId)
+              if (gateIdx > 0) {
+                const priorStep = def.steps[gateIdx - 1]
+                const priorOutput = instance.stepStates[priorStep.id]?.output
+                if (priorOutput) {
+                  const preview = JSON.stringify(priorOutput, null, 2).slice(0, 500)
+                  msg += `\n\nPrior output:\n\`\`\`json\n${preview}\n\`\`\``
+                }
+              }
+            }
+
+            msg += `\n\nApprove or reject in Beacon UI.`
+
+            openclaw.sendChannelMessage(
+              settings.notifications.channel,
+              settings.notifications.target || `channel:${settings.watchdog.alertChannelId}`,
+              msg
+            ).catch(err => {
+              log.error('Gate Discord notification failed', err, { taskId })
+            })
+
+            markGateNotified(taskId, currentStepId, contentDir)
+            log.info('Gate notification sent', { taskId, stepId: currentStepId, label })
+          }
+        } catch (err) {
+          log.error('Gate notification check failed', err)
+        }
       }
     } catch (err) {
       log.error('Watchdog error', err)

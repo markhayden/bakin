@@ -21,6 +21,7 @@ import { WithLoading } from '@/components/layout/skeleton-loader'
 import { useContentStore } from '@/hooks/use-content-store'
 import { parseTasks } from '../parser'
 import { toast } from '@/hooks/use-toast'
+import { useGateStatus } from './use-gate-status'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
 const COLUMN_ORDER: ColumnId[] = ['todo', 'blocked', 'inProgress', 'done', 'confirmed']
@@ -78,6 +79,27 @@ export function KanbanBoard() {
   const [optimistic, setOptimistic] = useState<{ columns: TaskColumns } | null>(null)
   const columns = optimistic?.columns ?? parsed.columns
   const { timestamp } = parsed
+
+  // Collect workflow task IDs for gate status polling
+  const workflowTaskIds = useMemo(() => {
+    const ids: string[] = []
+    for (const col of Object.values(columns)) {
+      for (const task of col) {
+        if (task.workflowId) ids.push(task.id)
+      }
+    }
+    return ids
+  }, [columns])
+  const gateStatuses = useGateStatus(workflowTaskIds)
+
+  // Build a taskId → gate label map for cards
+  const gateLabels = useMemo(() => {
+    const labels: Record<string, string> = {}
+    for (const [taskId, status] of Object.entries(gateStatuses)) {
+      if (status) labels[taskId] = status.label
+    }
+    return labels
+  }, [gateStatuses])
 
   // Drag overlay state
   const [activeTask, setActiveTask] = useState<Task | null>(null)
@@ -232,6 +254,7 @@ export function KanbanBoard() {
               <KanbanColumn
                 id={colId}
                 tasks={columns[colId]}
+                gateLabels={gateLabels}
                 onAssign={handleAssign}
                 onDelete={setDeleteTarget}
                 onTaskClick={(task, colId) => setDetailTask({ task, columnId: colId })}
