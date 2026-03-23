@@ -49,9 +49,19 @@ export interface BeaconSettings {
     intervalMs: number
     autoFixSkill: boolean
   }
+  service: {
+    enabled: boolean
+  }
   notifications: {
     channel: 'discord' | 'slack' | 'none'
     target: string
+  }
+  workflow: {
+    stepTimeoutMs: number
+    maxRedispatches: number
+    rejectRepeatThreshold: number
+    enforceAgentScoping: boolean
+    enforceWorkflowDoneGuard: boolean
   }
 }
 
@@ -91,9 +101,19 @@ const DEFAULTS: BeaconSettings = {
     intervalMs: 30 * 60 * 1000, // 30 minutes
     autoFixSkill: true,
   },
+  service: {
+    enabled: false,
+  },
   notifications: {
     channel: 'none',
     target: '',
+  },
+  workflow: {
+    stepTimeoutMs: 60 * 60 * 1000,       // 1 hour
+    maxRedispatches: 2,
+    rejectRepeatThreshold: 0.95,
+    enforceAgentScoping: true,
+    enforceWorkflowDoneGuard: true,
   },
 }
 

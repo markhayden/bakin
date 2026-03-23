@@ -120,19 +120,22 @@ const workflowsPlugin: MCPlugin = {
       description: 'Submit step output. Validates against schema, advances workflow.',
       params: '{"taskId":"string","stepId":"string","output":{}}',
       handler: async (req) => {
-        let body: { taskId?: string; stepId?: string; output?: Record<string, unknown> }
+        let body: { taskId?: string; stepId?: string; agentId?: string; output?: Record<string, unknown> }
         try {
           body = await req.json()
         } catch {
           return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
         }
 
-        const { taskId, stepId, output } = body
+        const { taskId, stepId, agentId, output } = body
         if (!taskId || !stepId || !output) {
           return Response.json({ error: 'taskId, stepId, and output are required' }, { status: 400 })
         }
+        if (!agentId) {
+          return Response.json({ error: 'agentId required — which agent is submitting this output?' }, { status: 400 })
+        }
 
-        const result = completeStep(taskId, stepId, output)
+        const result = completeStep(taskId, stepId, output, agentId)
 
         if (!result.success) {
           return Response.json({ error: 'Step completion failed', errors: result.errors }, { status: 400 })

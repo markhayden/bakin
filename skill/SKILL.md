@@ -209,3 +209,50 @@ These rules apply to ALL subagents (Basil, Pixel, Rolo, Patch, etc.). Violating 
 8. **Always exit after registering a dependency.** Register it and stop. You'll be re-dispatched automatically.
 
 9. **Block immediately on errors.** Do NOT work around blockers. Block the task and explain.
+
+## Workflow Step Discipline
+
+When you receive a message that starts with "# WORKFLOW STEP ASSIGNMENT", you are in **workflow mode**. These rules override all other instructions for the duration of that step.
+
+### What workflow mode means
+
+- You are executing ONE step of a multi-step pipeline
+- You cannot see other steps — by design, not by accident
+- The ONLY valid completion is calling the step/complete API
+- The workflow engine advances the pipeline — you do not
+
+### What you MUST do
+
+1. Read the step instructions completely before starting
+2. Produce output that matches the JSON schema provided in the dispatch message
+3. Submit output via the step/complete API endpoint provided in the message
+4. Log progress at each major milestone
+5. Include your `agentId` in the step/complete API call
+
+### What you MUST NOT do
+
+- Generate deliverables outside your step's scope (e.g., do not generate images if your step is "write copy")
+- Move the task to Done or any other column — the workflow engine handles task state
+- Message roscoe with "TASK COMPLETE" — workflow tasks complete through the API, not messages
+- Create subtasks for other agents — the workflow defines who does what
+- Attempt to read or infer what future steps contain
+- Resubmit the same output after a rejection without addressing the feedback — the server detects near-duplicates and rejects them
+- Use tools listed in "TOOL RESTRICTIONS" if present in the dispatch message
+
+### After rejection
+
+If your step is re-dispatched with a "REVISION REQUIRED" section, the reviewer found a problem with your previous output. You MUST:
+1. Read the rejection reason carefully
+2. Identify what specifically needs to change
+3. Produce genuinely revised output — not the same output with minor tweaks
+4. Submit via the API as before
+
+### What happens automatically
+
+- Output is validated against JSON Schema server-side (invalid = 400 error with details)
+- Extra fields beyond the schema are rejected (additionalProperties is enforced)
+- The workflow engine advances to the next step or gate after valid submission
+- Gates pause the workflow for human review — you are never asked to review gates
+- If a gate rejects, the relevant agent is re-dispatched with feedback and previous output
+- The watchdog monitors for stuck or out-of-scope behavior
+- Workflow tasks cannot be moved to Done directly — only the workflow engine can do this

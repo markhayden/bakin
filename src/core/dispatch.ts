@@ -257,7 +257,11 @@ async function dispatchWorkflowTask(
       continue
     }
 
-    const ctx = stepContext as { stepId: string; label: string; instructions?: string; output_schema?: Record<string, unknown>; rejectionReason?: string }
+    const ctx = stepContext as {
+      stepId: string; label: string; instructions?: string;
+      output_schema?: Record<string, unknown>; rejectionReason?: string;
+      previousOutput?: Record<string, unknown>; deny_tools?: string[]
+    }
     const targetAgent = resolveId(agent)
     const message = buildWorkflowDispatchMessage(task, ctx, agent, port)
 
@@ -296,56 +300,105 @@ async function dispatchWorkflowTask(
 /**
  * Build a dispatch message for a workflow step.
  * Contains ONLY the current step instructions — never future steps.
+ *
+ * Structure: identity frame → hard constraints → revision context → task → output → commands → stop.
+ * Rules come BEFORE instructions (position primacy — LLMs weight early text more).
  */
 function buildWorkflowDispatchMessage(
   task: { id: string; title: string },
-  stepContext: { stepId: string; label: string; instructions?: string; output_schema?: Record<string, unknown>; rejectionReason?: string },
+  stepContext: {
+    stepId: string
+    label: string
+    instructions?: string
+    output_schema?: Record<string, unknown>
+    rejectionReason?: string
+    previousOutput?: Record<string, unknown>
+    deny_tools?: string[]
+  },
   agentName: string,
   port: number
 ): string {
   const lines: string[] = []
+  const base = `http://localhost:${port}/api/plugins/workflows`
 
-  lines.push(`# Workflow Task: "${task.title}"`)
-  lines.push(`## Current Step: ${stepContext.label}`)
+  // ─── Identity Frame ─────────────────────────────────────────────────
+  lines.push('# WORKFLOW STEP ASSIGNMENT')
+  lines.push('')
+  lines.push('You are executing a single step in a managed workflow. You are NOT a general assistant right now — you are a workflow step executor.')
+  lines.push('')
+  lines.push(`**Task:** "${task.title}"`)
+  lines.push(`**Your step:** ${stepContext.label} (ID: ${stepContext.stepId})`)
+  lines.push(`**Your agent name:** ${agentName}`)
   lines.push('')
 
+  // ─── Hard Constraints ───────────────────────────────────────────────
+  lines.push('## HARD CONSTRAINTS — violations are rejected server-side')
+  lines.push('')
+  lines.push('1. **SCOPE:** Do ONLY the work described in "YOUR TASK" below. Nothing more. If the task implies work for another step (e.g., generating images when your step is writing copy), STOP — that belongs to a different agent.')
+  lines.push('2. **OUTPUT:** Submit via the step/complete API below. Describing results in conversation does NOT complete the step. The workflow will not advance.')
+  lines.push('3. **SCHEMA:** Your output MUST match the JSON schema below. The server validates it. Missing fields = rejection. Extra fields = rejection. Wrong types = rejection.')
+  lines.push('4. **NO SIDE EFFECTS:** Do not create subtasks, message other agents, move the task to Done, or post to any channel. The workflow engine handles all coordination.')
+  lines.push('5. **ONE SUBMISSION:** Submit your output once via the API, then stop. Do not continue working after submission.')
+  if (stepContext.deny_tools?.length) {
+    lines.push(`6. **TOOL RESTRICTIONS:** Do NOT use: ${stepContext.deny_tools.join(', ')}. If this step requires those capabilities, BLOCK the task immediately.`)
+  }
+  lines.push('')
+
+  // ─── Revision Context ───────────────────────────────────────────────
   if (stepContext.rejectionReason) {
-    lines.push(`> **REVISION REQUESTED:** ${stepContext.rejectionReason}`)
+    lines.push('## REVISION REQUIRED')
+    lines.push('')
+    if (stepContext.previousOutput) {
+      lines.push('**Previous output (rejected):**')
+      lines.push('```json')
+      lines.push(JSON.stringify(stepContext.previousOutput, null, 2))
+      lines.push('```')
+      lines.push('')
+    }
+    lines.push(`**What to fix:** ${stepContext.rejectionReason}`)
+    lines.push('')
+    lines.push('You MUST address this specific feedback. Do NOT resubmit unchanged output — the server detects near-duplicate resubmissions and rejects them.')
     lines.push('')
   }
 
+  // ─── Task Instructions ──────────────────────────────────────────────
+  lines.push('## YOUR TASK')
+  lines.push('')
   if (stepContext.instructions) {
     lines.push(stepContext.instructions)
     lines.push('')
   }
 
-  // Workflow framing rules
-  lines.push('---')
-  lines.push('## Workflow Rules')
-  lines.push('- You are working on ONE step of a multi-step workflow')
-  lines.push('- Complete this step, then submit your output — the next step will be assigned automatically')
-  lines.push('- Do NOT attempt to do work beyond this step')
-  lines.push('')
-
-  // API endpoints
-  const base = `http://localhost:${port}/api/plugins/workflows`
-  lines.push('## Commands')
-  lines.push(`Check current step: curl -s "${base}/step?taskId=${task.id}&agentId=${agentName}"`)
-  lines.push('')
-
+  // ─── Required Output ────────────────────────────────────────────────
   if (stepContext.output_schema) {
-    lines.push(`Submit output: curl -s -X POST ${base}/step/complete -H 'Content-Type: application/json' -d '${JSON.stringify({ taskId: task.id, stepId: stepContext.stepId, output: '{{YOUR_OUTPUT}}' })}'`)
+    lines.push('## REQUIRED OUTPUT')
     lines.push('')
-    lines.push('Expected output format:')
+    lines.push('Your output must be valid JSON matching this schema:')
     lines.push('```json')
     lines.push(JSON.stringify(stepContext.output_schema, null, 2))
     lines.push('```')
-  } else {
-    lines.push(`Submit output: curl -s -X POST ${base}/step/complete -H 'Content-Type: application/json' -d '{"taskId":"${task.id}","stepId":"${stepContext.stepId}","output":{"result":"your output here"}}'`)
+    lines.push('')
   }
 
+  // ─── Commands ───────────────────────────────────────────────────────
+  lines.push('## COMMANDS')
   lines.push('')
-  lines.push(`Log progress: curl -s -X POST http://localhost:${port}/api/tasks/log -H 'Content-Type: application/json' -d '{"title":"${task.id}","author":"${agentName}","message":"your update"}'`)
+  const submitPayload = JSON.stringify({ taskId: task.id, stepId: stepContext.stepId, agentId: agentName, output: '{{YOUR_OUTPUT_JSON}}' })
+  lines.push(`**Submit output:** \`curl -s -X POST ${base}/step/complete -H 'Content-Type: application/json' -d '${submitPayload}'\``)
+  lines.push('')
+  lines.push(`**Check current step:** \`curl -s "${base}/step?taskId=${task.id}&agentId=${agentName}"\``)
+  lines.push('')
+  lines.push(`**Log progress:** \`curl -s -X POST http://localhost:${port}/api/tasks/log -H 'Content-Type: application/json' -d '{"title":"${task.id}","author":"${agentName}","message":"your update"}'\``)
+  lines.push('')
+
+  // ─── Stop Instruction ───────────────────────────────────────────────
+  lines.push('## AFTER SUBMITTING')
+  lines.push('')
+  lines.push('After the step/complete API returns `{"success":true}`, your work is done. Do NOT:')
+  lines.push('- Generate additional outputs or deliverables')
+  lines.push('- Start work on what you think the next step might be')
+  lines.push('- Send messages about what should happen next')
+  lines.push('- Move the task to Done (the workflow engine handles this)')
 
   return lines.join('\n')
 }

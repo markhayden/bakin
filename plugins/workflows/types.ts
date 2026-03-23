@@ -35,6 +35,7 @@ export interface AgentStep extends BaseStep {
   description?: string
   outputs?: StepOutput[]
   dependsOn?: string | string[]
+  deny_tools?: string[]
 }
 
 export interface GateStep extends BaseStep {
@@ -65,6 +66,7 @@ export interface OutputStep extends BaseStep {
   content?: Record<string, string>
   schedule?: string
   dependsOn?: string | string[]
+  deny_tools?: string[]
 }
 
 export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep
@@ -117,6 +119,7 @@ export interface StepState {
   startedAt?: string
   completedAt?: string
   output?: Record<string, unknown>
+  previousOutput?: Record<string, unknown>
   rejectionReason?: string
 }
 

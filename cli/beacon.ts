@@ -486,7 +486,7 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
   const plistPath = join(launchAgentsDir, `${SERVICE_LABEL}.plist`)
   const uid = execSync('id -u', { encoding: 'utf-8' }).trim()
 
-  // Uninstall
+  // Uninstall (always allowed even if service is disabled)
   if (options.uninstall) {
     console.log('[..] Stopping service...')
     try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* may not be loaded */ }
@@ -496,6 +496,15 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
     } else {
       console.log('[OK] Service was not installed')
     }
+    return
+  }
+
+  // Check if service management is enabled
+  const { getSettings } = await import('../src/core/settings')
+  const settings = getSettings()
+  if (!settings.service.enabled) {
+    console.error('[SKIP] Service management is disabled in settings.')
+    console.error('  Enable with: beacon settings set service.enabled true')
     return
   }
 
