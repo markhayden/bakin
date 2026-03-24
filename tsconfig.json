@@ -29,7 +29,9 @@
       "@mc/calendar": ["./plugins/calendar"],
       "@mc/calendar/*": ["./plugins/calendar/*"],
       "@mc/workflows": ["./plugins/workflows"],
-      "@mc/workflows/*": ["./plugins/workflows/*"]
+      "@mc/workflows/*": ["./plugins/workflows/*"],
+      "@mc/assets": ["./plugins/assets"],
+      "@mc/assets/*": ["./plugins/assets/*"]
     }
   },
   "include": [

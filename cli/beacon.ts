@@ -330,7 +330,7 @@ These rules govern Main Operator as orchestrator of the Beacon multi-agent syste
 
 8. **AGENTS.md is your rulebook, not the subagents'.** The Beacon skill (SKILL.md) governs subagents. AGENTS.md governs you.`
 
-async function cmdAgentRules(options: { apply?: boolean; check?: boolean } = {}): Promise<void> {
+async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
   const { readFileSync, writeFileSync, existsSync } = await import('fs')
   const { join } = await import('path')
 
@@ -368,9 +368,30 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean } = {})
     return
   }
 
-  if (!options.apply) {
-    console.log('Usage: beacon agent-rules --apply    # Write orchestrator rules block to AGENTS.md')
-    console.log('       beacon agent-rules --check    # Check if rules block is present and current')
+  if (!options.apply && !options.applyAll && !options.checkAll) {
+    console.log('Usage: beacon agent-rules --apply       # Write orchestrator rules block to AGENTS.md')
+    console.log('       beacon agent-rules --check       # Check if rules block is present and current')
+    console.log('       beacon agent-rules --apply-all   # Apply all managed blocks to all agent AGENTS.md files')
+    console.log('       beacon agent-rules --check-all   # Check all managed blocks across all agents')
+    return
+  }
+
+  // Handle --apply-all and --check-all for all agents
+  if (options.applyAll || options.checkAll) {
+    const { applyAllManagedBlocks } = await import('../src/core/doctor')
+    const results = applyAllManagedBlocks(!!options.applyAll)
+    const errors = results.filter(r => r.status === 'error')
+    const warnings = results.filter(r => r.status === 'warn')
+    const fixes = results.filter(r => r.status === 'fixed')
+    const oks = results.filter(r => r.status === 'ok')
+
+    for (const r of results) {
+      const icon = r.status === 'ok' ? '[OK]' : r.status === 'fixed' ? '[FIXED]' : r.status === 'warn' ? '[WARN]' : '[ERROR]'
+      console.log(`${icon} ${r.check}: ${r.message}`)
+    }
+
+    console.log(`\n${oks.length} up to date, ${fixes.length} fixed, ${warnings.length} warnings, ${errors.length} errors`)
+    if (errors.length > 0 || warnings.length > 0) process.exit(1)
     return
   }
 
@@ -703,6 +724,8 @@ Commands:
   paths [key]                      Show content directory paths (keys: home, taskboard, assets, etc.)
   init                             Initialize ~/.beacon/ directory with defaults
   agent-rules [--apply|--check]    Manage orchestrator rules block in AGENTS.md
+  agent-rules --apply-all          Apply all managed blocks to all agent AGENTS.md files
+  agent-rules --check-all          Check all managed blocks across all agents
   doctor                           Run health checks (agent sync, skill, gateway, etc.)
   reboot                           Restart Beacon server (works with launchctl or standalone)
   reindex                          Reindex all content to Antfly
@@ -818,7 +841,9 @@ async function main(): Promise<void> {
       case 'agent-rules': {
         const apply = args.includes('--apply')
         const check = args.includes('--check')
-        await cmdAgentRules({ apply, check })
+        const applyAll = args.includes('--apply-all')
+        const checkAll = args.includes('--check-all')
+        await cmdAgentRules({ apply, check, applyAll, checkAll })
         break
       }
 

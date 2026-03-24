@@ -76,10 +76,21 @@ export interface ProjectMeta {
   content: string
 }
 
-export interface DocMeta {
+export interface AssetMeta {
+  path: string
   filename: string
-  title: string
-  content: string
+  type: 'text' | 'images' | 'video' | 'audio' | 'plans' | 'data' | 'other'
+  mimeType: string
+  size: number
+  metadata: {
+    agent: string
+    taskId: string | null
+    created: string
+    tool?: string
+    description?: string
+    tags?: string[]
+    originalFilename?: string
+  }
 }
 
 export interface OfficeData {

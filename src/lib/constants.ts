@@ -34,6 +34,6 @@ export const NAV_ITEMS = [
   { id: 'calendar', label: 'Calendar', icon: 'Calendar', href: '/calendar' },
   { id: 'projects', label: 'Projects', icon: 'FolderOpen', href: '/projects' },
   { id: 'memory', label: 'Memory', icon: 'Brain', href: '/memory' },
-  { id: 'docs', label: 'Docs', icon: 'FileText', href: '/docs' },
+  { id: 'assets', label: 'Assets', icon: 'FolderOpen', href: '/assets' },
   { id: 'team', label: 'Team', icon: 'Users', href: '/team' },
 ] as const

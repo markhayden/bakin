@@ -5,5 +5,5 @@
 import type { NavItem } from '../../src/lib/plugin-types'
 
 export const navItems: NavItem[] = [
-  { id: 'models', label: 'Models', icon: 'Cpu', href: '/models', order: 65 },
+  { id: 'models', label: 'Models', icon: 'Cpu', href: '/models', order: 70 },
 ]

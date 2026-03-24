@@ -78,33 +78,44 @@ export interface BeaconPaths {
   calendar: string
   audit: string
   assets: string
+  'assets.text': string
+  'assets.images': string
+  'assets.video': string
+  'assets.audio': string
+  'assets.plans': string
+  'assets.data': string
+  'assets.other': string
   personas: string
   team: string
   heartbeats: string
   inbox: string
-  posts: string
   projects: string
-  docs: string
   workflows: string
   settings: string
 }
 
 export function getBeaconPaths(): BeaconPaths {
   const home = getContentDir()
+  const assets = join(home, 'assets')
   return {
     home,
     taskboard: join(home, 'TASKBOARD.md'),
     memoryLog: join(home, 'MEMORY-LOG.md'),
     calendar: join(home, 'calendar.json'),
     audit: join(home, 'audit.jsonl'),
-    assets: join(home, 'assets'),
+    assets,
+    'assets.text': join(assets, 'text'),
+    'assets.images': join(assets, 'images'),
+    'assets.video': join(assets, 'video'),
+    'assets.audio': join(assets, 'audio'),
+    'assets.plans': join(assets, 'plans'),
+    'assets.data': join(assets, 'data'),
+    'assets.other': join(assets, 'other'),
     personas: join(home, 'team', 'personas'),
     team: join(home, 'team'),
     heartbeats: join(home, 'heartbeats'),
     inbox: join(home, 'inbox'),
-    posts: join(home, 'posts'),
     projects: join(home, 'projects'),
-    docs: join(home, 'docs'),
     workflows: join(home, 'workflows'),
     settings: join(home, '.beacon', 'settings.json'),
   }
@@ -120,15 +131,22 @@ export function initBeaconHome(targetDir?: string): { created: string[]; seeded:
   const seeded: string[] = []
 
   // Create full directory structure matching what content/ contains
+  const assetTypes = ['text', 'images', 'video', 'audio', 'plans', 'data', 'other']
+  const assetDirs = assetTypes.flatMap(t => [
+    join(home, 'assets', t),
+    join(home, 'assets', t, '_unlinked'),
+    join(home, 'assets', t, 'library'),
+  ])
+
   const dirs = [
     home,
     join(home, '.beacon'),
     join(home, 'assets'),
-    join(home, 'docs'),
+    join(home, 'assets', '.trash'),
+    ...assetDirs,
     join(home, 'heartbeats'),
     join(home, 'inbox'),
     join(home, 'plugins'),
-    join(home, 'posts'),
     join(home, 'projects'),
     join(home, 'team'),
     join(home, 'team', 'personas'),
