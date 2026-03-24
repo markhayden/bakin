@@ -40,12 +40,36 @@ interface WatcherDeps {
 }
 
 function handleFileEvent(deps: WatcherDeps, fullPath: string, event: string): void {
-  if (!/\.(md|json|jsonl)$/.test(fullPath)) return
   const rel = relative(deps.contentDir, fullPath)
 
   // Skip audit.jsonl — it's append-only and grows large.
-  // Audit events are broadcast individually via broadcastAuditEvent().
   if (rel === 'audit.jsonl') return
+
+  // Asset files (binary) — notify sync hooks but don't broadcast content via SSE
+  if (rel.startsWith('assets/') && !rel.includes('.trash/')) {
+    if (rel.endsWith('.meta.json')) {
+      // Sidecar metadata is text — read and broadcast
+      try {
+        const content = readFileSync(fullPath, 'utf-8')
+        broadcast({ file: rel, content, event, timestamp: new Date().toISOString() })
+        runSyncHooks(rel, content).catch(err => {
+          log.error('Sync hooks error', err, { file: rel })
+        })
+      } catch (err) {
+        log.warn('Failed to read sidecar file', err, { file: rel })
+      }
+    } else {
+      // Binary asset — broadcast a notification (no content) and fire sync hooks
+      broadcast({ file: rel, content: '', event: 'asset.' + event, timestamp: new Date().toISOString() })
+      runSyncHooks(rel, '').catch(err => {
+        log.error('Sync hooks error', err, { file: rel })
+      })
+    }
+    return
+  }
+
+  // Non-asset files: only handle text formats
+  if (!/\.(md|json|jsonl)$/.test(fullPath)) return
 
   try {
     const content = readFileSync(fullPath, 'utf-8')
@@ -72,6 +96,8 @@ export function start(deps: WatcherDeps): void {
       // Ignore dotfiles/dotdirs WITHIN the content dir, but not the content dir itself
       if (path === deps.contentDir) return false
       const basename = path.split('/').pop() || ''
+      // Allow .trash inside assets (we handle skipping in handleFileEvent)
+      if (basename === '.trash' && path.includes('/assets/')) return false
       return basename.startsWith('.')
     },
     persistent: true,

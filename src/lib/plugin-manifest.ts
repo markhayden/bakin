@@ -7,6 +7,7 @@ import { navItems as memoryNav } from '../../plugins/memory/client'
 import { navItems as workflowsNav } from '../../plugins/workflows/client'
 import { navItems as modelsNav } from '../../plugins/models/client'
 import { navItems as calendarNav } from '../../plugins/calendar/client'
+import { navItems as assetsNav } from '../../plugins/assets/client'
 import type { NavItem } from './plugin-types'
 
 export const allNavItems: NavItem[] = [
@@ -15,4 +16,5 @@ export const allNavItems: NavItem[] = [
   ...modelsNav,
   ...calendarNav,
   ...workflowsNav,
+  ...assetsNav,
 ].sort((a, b) => (a.order ?? 100) - (b.order ?? 100))

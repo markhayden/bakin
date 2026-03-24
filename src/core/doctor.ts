@@ -614,13 +614,174 @@ async function notifyUnfixableIssues(results: DiagnosticResult[]): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
-// Per-agent workflow rules
+// Generic managed block helper
 // ---------------------------------------------------------------------------
 
-const AGENT_WORKFLOW_BLOCK_START = '<!-- beacon:workflow-rules:start -->'
-const AGENT_WORKFLOW_BLOCK_END = '<!-- beacon:workflow-rules:end -->'
+interface ManagedBlockDef {
+  blockId: string
+  contentFn: (agentId: string) => string
+  agentFilter?: (agentId: string) => boolean // defaults to all non-roscoe
+}
 
-const AGENT_WORKFLOW_RULES_CONTENT = `## Beacon Workflow Rules
+/**
+ * Check/inject/update a managed block in each agent's AGENTS.md.
+ * All managed blocks follow the same marker pattern:
+ *   <!-- beacon:{blockId}:start -->
+ *   {content}
+ *   <!-- beacon:{blockId}:end -->
+ */
+function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): DiagnosticResult[] {
+  const settings = getSettings()
+  const results: DiagnosticResult[] = []
+  const openclawBase = join(process.env.HOME || '~', '.openclaw')
+  const startMarker = `<!-- beacon:${def.blockId}:start -->`
+  const endMarker = `<!-- beacon:${def.blockId}:end -->`
+  const checkName = `agent-${def.blockId}`
+
+  for (const agentId of settings.agents) {
+    if (agentId === 'roscoe') continue
+    if (def.agentFilter && !def.agentFilter(agentId)) continue
+
+    const agentsPath = join(openclawBase, 'workspaces', agentId, 'AGENTS.md')
+
+    if (!existsSync(agentsPath)) {
+      results.push(warn(checkName, `AGENTS.md not found for ${agentId} — cannot verify ${def.blockId}`))
+      continue
+    }
+
+    const current = readFileSync(agentsPath, 'utf-8')
+    const startIdx = current.indexOf(startMarker)
+    const endIdx = current.indexOf(endMarker)
+    const expectedContent = def.contentFn(agentId).trim()
+
+    if (startIdx === -1) {
+      if (!autoFix) {
+        results.push(warn(checkName, `${def.blockId} block missing from ${agentId}/AGENTS.md`, true))
+        continue
+      }
+      const block = `${startMarker}\n${expectedContent}\n${endMarker}\n`
+      writeFileSync(agentsPath, current.trimEnd() + '\n\n' + block, 'utf-8')
+      results.push(fixed(checkName, `Added ${def.blockId} block to ${agentId}/AGENTS.md`))
+      continue
+    }
+
+    if (endIdx === -1) {
+      results.push(error(checkName, `${def.blockId} block start marker found in ${agentId}/AGENTS.md but no end marker`))
+      continue
+    }
+
+    const blockContent = current.slice(startIdx + startMarker.length, endIdx).trim()
+
+    if (blockContent === expectedContent) {
+      results.push(ok(checkName, `${def.blockId} in ${agentId}/AGENTS.md is up to date`))
+    } else if (autoFix) {
+      const block = `${startMarker}\n${expectedContent}\n${endMarker}`
+      const updated = current.slice(0, startIdx) + block + current.slice(endIdx + endMarker.length)
+      writeFileSync(agentsPath, updated, 'utf-8')
+      results.push(fixed(checkName, `Updated ${def.blockId} block in ${agentId}/AGENTS.md`))
+    } else {
+      results.push(warn(checkName, `${def.blockId} block is outdated in ${agentId}/AGENTS.md`, true))
+    }
+  }
+
+  return results
+}
+
+// ---------------------------------------------------------------------------
+// Managed block definitions
+// ---------------------------------------------------------------------------
+
+const MANAGED_BLOCKS: ManagedBlockDef[] = [
+  {
+    blockId: 'mission-control',
+    contentFn: () => `## Beacon Mission Control
+
+> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+
+### Session Start
+1. Check your tasks via the Beacon task API
+2. Load the Beacon skill for full conventions and API reference
+
+### Path Discovery
+All content paths are resolved via the Beacon API — never hardcode paths:
+\`\`\`bash
+curl -s http://localhost:3737/api/paths              # all paths
+curl -s 'http://localhost:3737/api/paths?key=assets.images'  # specific path
+\`\`\`
+
+### Task Changes
+- Notify Roscoe via agent-to-agent message when tasks start, complete, or block
+- Do NOT write to TASKBOARD.md directly — use the Beacon task API only
+
+### Heartbeat (every 10 minutes)
+- Write your heartbeat JSON to the heartbeats path (discover via \`curl -s 'http://localhost:3737/api/paths?key=heartbeats'\`)
+- Check for new tasks via the Beacon API`,
+  },
+
+  {
+    blockId: 'hard-rules',
+    contentFn: () => `## Beacon Hard Rules
+
+> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+
+- **NEVER use \`openclaw agent\` to spawn or message other agents directly.** Always create a Beacon task via \`POST http://localhost:3737/api/tasks/create\` instead. Direct spawning bypasses the pipeline.
+- **NEVER edit TASKBOARD.md directly.** Use the Beacon task API only.
+- **NEVER post to Discord without explicit instruction.** Content goes through Mark's review first.
+- **NEVER hardcode file paths.** Always discover paths via the Beacon API (\`/api/paths\`). Hardcoded paths break when the content directory moves.`,
+  },
+
+  {
+    blockId: 'dependency-pattern',
+    contentFn: () => `## Beacon Dependency Pattern
+
+> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+
+If your task requires output from another agent, create their task first, note its task ID, then register a dependency:
+\`\`\`bash
+curl -s -X POST http://localhost:3737/api/tasks/depend \\
+  -H 'Content-Type: application/json' \\
+  -d '{"id":"<your-task-id>","dependsOn":"<their-task-id>"}'
+\`\`\`
+Then exit — you will be automatically re-dispatched when their task completes.`,
+  },
+
+  {
+    blockId: 'media-delegation',
+    contentFn: (agentId: string) => {
+      const canImage = agentId === 'pixel'
+      const canVideo = agentId === 'rolo'
+      const createsSubtasks = !canImage // everyone except pixel creates pixel subtasks
+
+      let content = `## Beacon Media Delegation Rules
+
+> Auto-managed by \`beacon doctor\`. Do not edit this block manually.\n`
+
+      if (!canImage) {
+        content += `\n**IMAGES:** You cannot generate images. Ever. Not with nano-banana-pro, not with any other tool. All image generation goes through Pixel. Create a Pixel task via the Beacon API and wait.\n`
+      }
+
+      if (!canVideo) {
+        content += `\n**VIDEO:** You cannot generate video. Ever. Not with Runway, not with any other tool. All video generation goes through Rolo. Create a Rolo task via the Beacon API and wait.\n`
+      }
+
+      if (!canImage && !canVideo) {
+        content += `\nIf you find yourself about to run an image or video generation tool — stop. Create a subtask for the right agent instead.\n`
+      }
+
+      if (createsSubtasks) {
+        content += `\n### When Creating Pixel or Rolo Tasks\n`
+        content += `\n- **NEVER include posting instructions in a Pixel or Rolo brief.** They generate assets only — they do not post.`
+        content += `\n- Task descriptions for Pixel/Rolo should end with asset delivery: "Save to the assets directory (discover path via Beacon API) and report the file path."`
+        content += `\n- YOU are responsible for posting the finished content. Not Pixel. Not Rolo.`
+      }
+
+      return content
+    },
+  },
+
+  {
+    blockId: 'workflow-rules',
+    contentFn: () => `## Beacon Workflow Rules
 
 > Auto-managed by \`beacon doctor\`. Do not edit this block manually.
 
@@ -636,60 +797,38 @@ When Beacon dispatches a workflow step to you, the dispatch message contains eve
 
 5. **After submitting, STOP.** Do not generate additional outputs, start work on future steps, or send completion messages.
 
-6. **Respect tool restrictions.** If the dispatch message lists "TOOL RESTRICTIONS", do NOT use those tools. Block the task if you need them.`
+6. **Respect tool restrictions.** If the dispatch message lists "TOOL RESTRICTIONS", do NOT use those tools. Block the task if you need them.`,
+  },
 
-function checkAgentWorkflowRules(autoFix: boolean): DiagnosticResult[] {
-  const settings = getSettings()
+  {
+    blockId: 'asset-rules',
+    contentFn: () => `## Beacon Asset Rules
+
+> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+
+All created content (images, video, audio, text, plans, data) MUST go to the assets directory. Use the Beacon skill for full conventions, but here's the minimum:
+
+1. **Discover paths via API:** \`curl -s http://localhost:3737/api/paths?key=assets.images\`
+2. **Organize by task:** \`\$ASSETS_DIR/<task-id>/filename.ext\`
+   - **No task?** Write to \`\$ASSETS_DIR/_unlinked/\` — NEVER place files directly in the type root (e.g. \`assets/text/file.md\` is WRONG, use \`assets/text/_unlinked/file.md\`)
+   - **Shared/reusable?** Write to \`\$ASSETS_DIR/library/\`
+3. **Write sidecar FIRST, then the asset.** Sidecar filename = full asset filename + \`.meta.json\` (e.g. \`20260323-hero.png.meta.json\`, NOT \`hero.meta.json\`)
+4. **Sidecar fields — use these EXACT names:**
+   - \`agent\` (required, string — NOT \`author\`), \`taskId\` (required, string or null), \`created\` (required, ISO 8601 — NOT \`createdAt\`)
+   - Optional: \`tool\`, \`description\`, \`tags\` (string[]), \`originalFilename\`
+   - Do NOT add custom fields (e.g. \`prompt\`, \`resolution\`)
+5. **Version with timestamps:** \`20260323-hero-image.png\` for revisions.`,
+  },
+]
+
+/**
+ * Apply all managed blocks. Called by both doctor and the CLI.
+ */
+export function applyAllManagedBlocks(autoFix: boolean): DiagnosticResult[] {
   const results: DiagnosticResult[] = []
-  const openclawBase = join(process.env.HOME || '~', '.openclaw')
-
-  for (const agentId of settings.agents) {
-    // Skip roscoe — orchestrator rules cover that
-    if (agentId === 'roscoe') continue
-
-    const agentsPath = join(openclawBase, 'workspaces', agentId, 'AGENTS.md')
-
-    if (!existsSync(agentsPath)) {
-      results.push(warn('agent-workflow-rules', `AGENTS.md not found for ${agentId} — cannot verify workflow rules`))
-      continue
-    }
-
-    const current = readFileSync(agentsPath, 'utf-8')
-    const startIdx = current.indexOf(AGENT_WORKFLOW_BLOCK_START)
-    const endIdx = current.indexOf(AGENT_WORKFLOW_BLOCK_END)
-    const hasBlock = startIdx !== -1
-
-    if (!hasBlock) {
-      if (!autoFix) {
-        results.push(warn('agent-workflow-rules', `Workflow rules block missing from ${agentId}/AGENTS.md`, true))
-        continue
-      }
-      const block = `${AGENT_WORKFLOW_BLOCK_START}\n${AGENT_WORKFLOW_RULES_CONTENT}\n${AGENT_WORKFLOW_BLOCK_END}\n`
-      writeFileSync(agentsPath, current.trimEnd() + '\n\n' + block, 'utf-8')
-      results.push(fixed('agent-workflow-rules', `Added workflow rules block to ${agentId}/AGENTS.md`))
-      continue
-    }
-
-    if (endIdx === -1) {
-      results.push(error('agent-workflow-rules', `Workflow rules block start marker found in ${agentId}/AGENTS.md but no end marker`))
-      continue
-    }
-
-    const blockContent = current.slice(startIdx + AGENT_WORKFLOW_BLOCK_START.length, endIdx).trim()
-    const expected = AGENT_WORKFLOW_RULES_CONTENT.trim()
-
-    if (blockContent === expected) {
-      results.push(ok('agent-workflow-rules', `Workflow rules in ${agentId}/AGENTS.md are up to date`))
-    } else if (autoFix) {
-      const block = `${AGENT_WORKFLOW_BLOCK_START}\n${AGENT_WORKFLOW_RULES_CONTENT}\n${AGENT_WORKFLOW_BLOCK_END}`
-      const updated = current.slice(0, startIdx) + block + current.slice(endIdx + AGENT_WORKFLOW_BLOCK_END.length)
-      writeFileSync(agentsPath, updated, 'utf-8')
-      results.push(fixed('agent-workflow-rules', `Updated workflow rules block in ${agentId}/AGENTS.md`))
-    } else {
-      results.push(warn('agent-workflow-rules', `Workflow rules block is outdated in ${agentId}/AGENTS.md`, true))
-    }
+  for (const block of MANAGED_BLOCKS) {
+    results.push(...checkManagedBlock(block, autoFix))
   }
-
   return results
 }
 
@@ -831,6 +970,246 @@ function checkStaleWorkflowInstances(contentDir: string, autoFix: boolean): Diag
 }
 
 // ---------------------------------------------------------------------------
+// Assets
+// ---------------------------------------------------------------------------
+
+/**
+ * Assets: verify directory structure, sidecars, disk usage, and trash cleanup.
+ */
+function checkAssets(contentDir: string, autoFix: boolean): DiagnosticResult[] {
+  const results: DiagnosticResult[] = []
+  const assetsRoot = join(contentDir, 'assets')
+  const assetTypes = ['text', 'images', 'video', 'audio', 'plans', 'data', 'other']
+
+  // Check assets/ directory exists with all type subdirs
+  if (!existsSync(assetsRoot)) {
+    if (autoFix) {
+      mkdirSync(assetsRoot, { recursive: true })
+      results.push(fixed('assets', 'Created assets/ directory'))
+    } else {
+      results.push(warn('assets', 'assets/ directory not found', true))
+      return results
+    }
+  }
+
+  for (const typeName of assetTypes) {
+    const typeDir = join(assetsRoot, typeName)
+    if (!existsSync(typeDir)) {
+      if (autoFix) {
+        mkdirSync(typeDir, { recursive: true })
+        mkdirSync(join(typeDir, '_unlinked'), { recursive: true })
+        mkdirSync(join(typeDir, 'library'), { recursive: true })
+        results.push(fixed('assets', `Created assets/${typeName}/ with _unlinked/ and library/`))
+      } else {
+        results.push(warn('assets', `Missing assets/${typeName}/ directory`, true))
+      }
+    }
+  }
+
+  // Check for .trash/ directory
+  const trashDir = join(assetsRoot, '.trash')
+  if (!existsSync(trashDir)) {
+    if (autoFix) {
+      mkdirSync(trashDir, { recursive: true })
+      results.push(fixed('assets', 'Created assets/.trash/ directory'))
+    }
+  }
+
+  // Scan for missing sidecars, orphaned meta files, and mismatched sidecars
+  let missingMetaCount = 0
+  let orphanedMetaCount = 0
+  let mismatchedMetaCount = 0
+  let totalAssets = 0
+
+  for (const typeName of assetTypes) {
+    const typeDir = join(assetsRoot, typeName)
+    if (!existsSync(typeDir)) continue
+
+    try {
+      const subdirs = readdirSync(typeDir).filter(d => {
+        if (d.startsWith('.')) return false
+        try { return require('fs').statSync(join(typeDir, d)).isDirectory() } catch { return false }
+      })
+
+      for (const subdir of subdirs) {
+        const dirPath = join(typeDir, subdir)
+        try {
+          const files = readdirSync(dirPath)
+          const assetFiles = files.filter(f => !f.endsWith('.meta.json') && !f.startsWith('.'))
+          const metaFiles = files.filter(f => f.endsWith('.meta.json'))
+
+          totalAssets += assetFiles.length
+
+          // Check for assets missing sidecar
+          for (const assetFile of assetFiles) {
+            const expectedMeta = assetFile + '.meta.json'
+            if (!metaFiles.includes(expectedMeta)) {
+              missingMetaCount++
+              if (autoFix) {
+                // Import sidecar module to create stub
+                try {
+                  const { createStub } = require('../../plugins/assets/lib/sidecar')
+                  createStub(join(dirPath, assetFile))
+                } catch {
+                  // Plugin may not be loaded yet — create minimal stub
+                  writeFileSync(
+                    join(dirPath, expectedMeta),
+                    JSON.stringify({
+                      agent: 'unknown',
+                      taskId: subdir === '_unlinked' || subdir === 'library' ? null : subdir,
+                      created: new Date().toISOString(),
+                    }, null, 2),
+                    'utf-8'
+                  )
+                }
+              }
+            }
+          }
+
+          // Check for orphaned or mismatched meta files
+          for (const metaFile of metaFiles) {
+            const assetName = metaFile.replace('.meta.json', '')
+            if (!assetFiles.includes(assetName)) {
+              // Check if this is a near-miss: meta basename matches part of an asset filename
+              const nearMatch = assetFiles.find(af => {
+                // Case 1: asset filename contains the meta base (e.g., "20250727-pop-tart.png" contains "pop-tart")
+                if (af.includes(assetName)) return true
+                // Case 2: meta base matches asset without extension (e.g., "hero-image" matches "hero-image.png")
+                const afBase = af.substring(0, af.lastIndexOf('.'))
+                if (afBase === assetName) return true
+                return false
+              })
+
+              if (nearMatch) {
+                mismatchedMetaCount++
+                const expectedMeta = nearMatch + '.meta.json'
+                log.warn('Mismatched sidecar', { metaFile, likelyAsset: nearMatch, expectedMeta, dir: dirPath })
+
+                if (autoFix) {
+                  // Check if the correctly-named sidecar is a stub (agent: "unknown")
+                  const correctMetaPath = join(dirPath, expectedMeta)
+                  const mismatchedMetaPath = join(dirPath, metaFile)
+                  try {
+                    let isStub = false
+                    if (existsSync(correctMetaPath)) {
+                      const correctContent = JSON.parse(readFileSync(correctMetaPath, 'utf-8'))
+                      isStub = correctContent.agent === 'unknown'
+                    }
+
+                    if (isStub || !existsSync(correctMetaPath)) {
+                      // Merge: read mismatched sidecar, normalize field names, write to correct path
+                      const richMeta = JSON.parse(readFileSync(mismatchedMetaPath, 'utf-8'))
+
+                      // Normalize common field name mistakes
+                      const ALIASES: Record<string, string> = {
+                        author: 'agent', createdAt: 'created', created_at: 'created',
+                        timestamp: 'created', task: 'taskId', task_id: 'taskId', name: 'agent',
+                      }
+                      for (const [alias, canonical] of Object.entries(ALIASES)) {
+                        if (richMeta[alias] !== undefined && richMeta[canonical] === undefined) {
+                          richMeta[canonical] = richMeta[alias]
+                          delete richMeta[alias]
+                        }
+                      }
+
+                      writeFileSync(correctMetaPath, JSON.stringify(richMeta, null, 2), 'utf-8')
+                      require('fs').unlinkSync(mismatchedMetaPath)
+                      log.info('Merged mismatched sidecar', { from: metaFile, to: expectedMeta })
+                    } else {
+                      // Correct sidecar has real content — just remove the orphan
+                      require('fs').unlinkSync(mismatchedMetaPath)
+                      log.info('Removed orphaned mismatched sidecar', { metaFile })
+                    }
+                  } catch (err) {
+                    log.warn('Failed to auto-fix mismatched sidecar', err, { metaFile })
+                  }
+                }
+              } else {
+                orphanedMetaCount++
+              }
+            }
+          }
+        } catch { /* skip unreadable dirs */ }
+      }
+    } catch { /* skip unreadable type dirs */ }
+  }
+
+  if (missingMetaCount > 0) {
+    if (autoFix) {
+      results.push(fixed('assets', `Created ${missingMetaCount} stub sidecar(s) for assets missing .meta.json`))
+    } else {
+      results.push(warn('assets', `${missingMetaCount} asset(s) missing .meta.json sidecar`, true))
+    }
+  }
+
+  if (orphanedMetaCount > 0) {
+    results.push(warn('assets', `${orphanedMetaCount} orphaned .meta.json file(s) with no matching asset`))
+  }
+
+  if (mismatchedMetaCount > 0) {
+    if (autoFix) {
+      results.push(fixed('assets', `Merged ${mismatchedMetaCount} misnamed .meta.json file(s) into correctly-named sidecars`))
+    } else {
+      results.push(warn('assets', `${mismatchedMetaCount} misnamed .meta.json file(s) — sidecar name doesn't match {filename}.meta.json pattern`, true))
+    }
+  }
+
+  // Disk usage check
+  try {
+    let totalSize = 0
+    const { statSync: fsStat, readdirSync: fsReaddir } = require('fs')
+
+    function walkSize(dir: string): void {
+      try {
+        for (const entry of fsReaddir(dir)) {
+          const fullPath = join(dir, entry)
+          try {
+            const stat = fsStat(fullPath)
+            if (stat.isFile()) totalSize += stat.size
+            else if (stat.isDirectory() && !entry.startsWith('.')) walkSize(fullPath)
+          } catch { /* skip */ }
+        }
+      } catch { /* skip */ }
+    }
+    walkSize(assetsRoot)
+
+    const sizeGB = totalSize / (1024 * 1024 * 1024)
+    if (sizeGB > 5) {
+      results.push(warn('assets', `Assets directory is ${sizeGB.toFixed(1)} GB — consider cleanup`))
+    }
+  } catch { /* skip size check */ }
+
+  // Trash cleanup
+  try {
+    if (existsSync(trashDir)) {
+      const trashFiles = readdirSync(trashDir)
+      const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000) // 7 days
+      let purged = 0
+      for (const file of trashFiles) {
+        try {
+          const stat = require('fs').statSync(join(trashDir, file))
+          if (stat.mtimeMs < cutoff) {
+            if (autoFix) {
+              require('fs').rmSync(join(trashDir, file))
+              purged++
+            }
+          }
+        } catch { /* skip */ }
+      }
+      if (purged > 0) {
+        results.push(fixed('assets', `Purged ${purged} expired item(s) from .trash/ (>7 days old)`))
+      }
+    }
+  } catch { /* skip */ }
+
+  if (results.length === 0) {
+    results.push(ok('assets', `${totalAssets} asset(s), all sidecars present`))
+  }
+
+  return results
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -854,11 +1233,12 @@ export async function runDiagnostics(
   results.push(...checkTaskboard(contentDir, autoFix))
   results.push(...checkAndSyncSkill(projectRoot, autoFix))
   results.push(...checkOrchestratorRules(autoFix))
-  results.push(...checkAgentWorkflowRules(autoFix))
+  results.push(...applyAllManagedBlocks(autoFix))
   results.push(...checkWorkflowSkills(contentDir))
   results.push(...checkWorkflowDefinitions(contentDir))
   results.push(...checkStaleWorkflowInstances(contentDir, autoFix))
   results.push(...checkTaskConsistency(contentDir, autoFix))
+  results.push(...checkAssets(contentDir, autoFix))
   results.push(...checkService(projectRoot))
 
   // Async checks (network, not auto-fixable) — run in parallel

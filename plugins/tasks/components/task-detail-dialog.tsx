@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Send, Check, X } from 'lucide-react'
+import { TaskAssets } from '@/components/assets/task-assets'
 import { AGENTS } from '@/lib/constants'
 import { COLUMN_CONFIG } from '../constants'
 import { toast } from '@/hooks/use-toast'
@@ -425,6 +426,9 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
               )}
             </div>
           )}
+
+          {/* Linked Assets */}
+          <TaskAssets taskId={task.id} />
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={onClose}>

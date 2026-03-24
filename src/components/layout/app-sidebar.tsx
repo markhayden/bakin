@@ -11,6 +11,7 @@ import {
   Users,
   Cpu,
   Zap,
+  Layers,
 } from 'lucide-react'
 import { allNavItems } from '@/lib/plugin-manifest'
 import { useSidebarContext } from '@/context/sidebar-context'
@@ -29,6 +30,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Users,
   Cpu,
   Zap,
+  Layers,
 }
 
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {

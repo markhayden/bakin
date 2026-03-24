@@ -13,6 +13,7 @@ import memoryPlugin from '@mc/memory'
 import modelsPlugin from '@mc/models'
 import calendarPlugin from '@mc/calendar'
 import workflowsPlugin from '@mc/workflows'
+import assetsPlugin from '@mc/assets'
 
 interface PluginState {
   plugin: MCPlugin
@@ -46,7 +47,7 @@ function ensureInitialized() {
   const storage = new MarkdownStorageAdapter()
   const events = new MCEventBus(relayBroadcast)
 
-  const plugins = [tasksPlugin, memoryPlugin, modelsPlugin, calendarPlugin, workflowsPlugin]
+  const plugins = [tasksPlugin, memoryPlugin, modelsPlugin, calendarPlugin, workflowsPlugin, assetsPlugin]
 
   for (const plugin of plugins) {
     if (!plugin.id || !plugin.activate) continue

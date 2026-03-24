@@ -65,9 +65,20 @@ describe('initBeaconHome', () => {
     // Verify settings.json was created inside .beacon/ subdir
     expect(existsSync(join(testDir, '.beacon', 'settings.json'))).toBe(true)
 
-    // Verify new directories (assets, posts, projects, team/personas)
+    // Verify asset directories
     expect(existsSync(join(testDir, 'assets'))).toBe(true)
-    expect(existsSync(join(testDir, 'posts'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', '.trash'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', 'images'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', 'images', '_unlinked'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', 'images', 'library'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', 'text'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', 'video'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', 'audio'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', 'plans'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', 'data'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', 'other'))).toBe(true)
+
+    // Verify other directories
     expect(existsSync(join(testDir, 'projects'))).toBe(true)
     expect(existsSync(join(testDir, 'team', 'personas'))).toBe(true)
 

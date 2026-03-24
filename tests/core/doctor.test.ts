@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -10,6 +10,7 @@ vi.mock('@/core/settings', () => ({
     antfly: { enabled: false },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
     openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+    service: { enabled: false },
   })),
 }))
 
@@ -83,5 +84,88 @@ describe('doctor', () => {
     const results = await doctor.runDiagnostics(contentDir, tempDir)
     const gwResults = results.filter(r => r.check === 'gateway')
     expect(gwResults[0].status).toBe('error')
+  })
+
+  describe('asset sidecar mismatch detection', () => {
+    it('should detect mismatched sidecar naming', async () => {
+      const doctor = await import('@/core/doctor')
+
+      // Create the assets directory structure
+      const taskDir = join(contentDir, 'assets', 'images', 'task-abc')
+      mkdirSync(taskDir, { recursive: true })
+
+      // Create asset file
+      writeFileSync(join(taskDir, '20250727-pop-tart.png'), 'fake-image')
+
+      // Create misnamed sidecar (wrong name — missing date prefix and extension)
+      writeFileSync(join(taskDir, 'pop-tart.meta.json'), JSON.stringify({
+        author: 'pixel',
+        taskId: 'task-abc',
+        createdAt: '2026-03-23T14:00:00Z',
+        tool: 'dall-e-3',
+        description: 'A pop tart',
+      }))
+
+      // Run without autoFix to detect the mismatch
+      const results = await doctor.runDiagnostics(contentDir, tempDir)
+      const assetResults = results.filter(r => r.check === 'assets')
+
+      // Should report misnamed sidecar and missing sidecar for the asset
+      const warnings = assetResults.filter(r => r.status === 'warn')
+      expect(warnings.some(r => r.message.includes('misnamed') || r.message.includes('missing'))).toBe(true)
+    })
+
+    it('should auto-fix mismatched sidecar by merging into stub', async () => {
+      // Override settings to enable autoFix
+      const { getSettings } = await import('@/core/settings')
+      vi.mocked(getSettings).mockReturnValue({
+        agents: ['roscoe', 'patch', 'pixel'],
+        antfly: { enabled: false },
+        doctor: { intervalMs: 1800000, autoFixSkill: true },
+        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+        service: { enabled: false },
+      } as ReturnType<typeof getSettings>)
+
+      const doctor = await import('@/core/doctor')
+
+      const taskDir = join(contentDir, 'assets', 'images', 'task-abc')
+      mkdirSync(taskDir, { recursive: true })
+
+      // Create asset file
+      writeFileSync(join(taskDir, '20250727-pop-tart.png'), 'fake-image')
+
+      // Create stub sidecar (correct name, agent: "unknown")
+      writeFileSync(join(taskDir, '20250727-pop-tart.png.meta.json'), JSON.stringify({
+        agent: 'unknown',
+        taskId: 'task-abc',
+        created: '2026-03-23T00:00:00Z',
+        description: 'Auto-generated sidecar for 20250727-pop-tart.png',
+        tags: [],
+      }, null, 2))
+
+      // Create mismatched sidecar (wrong name, rich content with wrong field names)
+      writeFileSync(join(taskDir, 'pop-tart.meta.json'), JSON.stringify({
+        author: 'pixel',
+        taskId: 'task-abc',
+        createdAt: '2026-03-23T14:00:00Z',
+        tool: 'dall-e-3',
+        description: 'A delicious pop tart image',
+      }))
+
+      const results = await doctor.runDiagnostics(contentDir, tempDir)
+      const assetResults = results.filter(r => r.check === 'assets')
+      const fixes = assetResults.filter(r => r.status === 'fixed')
+      expect(fixes.some(r => r.message.includes('misnamed') || r.message.includes('Merged'))).toBe(true)
+
+      // Verify the correctly-named sidecar now has the rich content with normalized fields
+      const correctMeta = JSON.parse(readFileSync(join(taskDir, '20250727-pop-tart.png.meta.json'), 'utf-8'))
+      expect(correctMeta.agent).toBe('pixel') // normalized from author
+      expect(correctMeta.created).toBe('2026-03-23T14:00:00Z') // normalized from createdAt
+      expect(correctMeta.tool).toBe('dall-e-3')
+      expect(correctMeta.description).toBe('A delicious pop tart image')
+
+      // Verify the mismatched sidecar was removed
+      expect(existsSync(join(taskDir, 'pop-tart.meta.json'))).toBe(false)
+    })
   })
 })

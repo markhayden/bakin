@@ -308,9 +308,33 @@ export async function syncFile(relativePath: string, content: string): Promise<v
     return
   }
 
-  if (relativePath.startsWith('docs/') && relativePath.endsWith('.md')) {
-    const id = relativePath.replace(/\//g, '-').replace('.md', '')
-    await index('content', { id, content, metadata: { source: relativePath, type: 'doc' } })
+  if (relativePath.startsWith('assets/') && !relativePath.endsWith('.meta.json')) {
+    // Index asset sidecar metadata to beacon_assets table
+    const metaPath = relativePath + '.meta.json' // will be handled when .meta.json is written
+    return
+  }
+
+  if (relativePath.startsWith('assets/') && relativePath.endsWith('.meta.json')) {
+    // Sidecar metadata file — index to beacon_assets
+    try {
+      const meta = JSON.parse(content)
+      const assetPath = relativePath.replace('.meta.json', '')
+      const pathParts = assetPath.split('/')
+      const assetType = pathParts[1] || 'other'
+      await index('assets', {
+        id: assetPath,
+        content: [meta.description || '', (meta.tags || []).join(' '), pathParts[pathParts.length - 1]].join(' '),
+        metadata: {
+          source: assetPath,
+          type: assetType,
+          agent: meta.agent || 'unknown',
+          taskId: meta.taskId || null,
+          tool: meta.tool || null,
+        },
+      })
+    } catch {
+      // Malformed sidecar — skip indexing
+    }
     return
   }
 
@@ -387,11 +411,26 @@ export async function reindexAll(contentDir: string): Promise<number> {
     }
   }
 
-  const docsDir = join(contentDir, 'docs')
-  if (existsSync(docsDir)) {
-    for (const file of readdirSync(docsDir).filter(f => f.endsWith('.md'))) {
-      await syncFile(`docs/${file}`, readFileSync(join(docsDir, file), 'utf-8'))
-      count++
+  // Reindex asset sidecar metadata
+  const assetsDir = join(contentDir, 'assets')
+  if (existsSync(assetsDir)) {
+    const assetTypes = readdirSync(assetsDir).filter(d => !d.startsWith('.'))
+    for (const assetType of assetTypes) {
+      const typeDir = join(assetsDir, assetType)
+      try {
+        const taskDirs = readdirSync(typeDir)
+        for (const taskDir of taskDirs) {
+          const fullTaskDir = join(typeDir, taskDir)
+          try {
+            const files = readdirSync(fullTaskDir).filter(f => f.endsWith('.meta.json'))
+            for (const file of files) {
+              const content = readFileSync(join(fullTaskDir, file), 'utf-8')
+              await syncFile(`assets/${assetType}/${taskDir}/${file}`, content)
+              count++
+            }
+          } catch { /* not a directory or unreadable */ }
+        }
+      } catch { /* empty type dir */ }
     }
   }
 
