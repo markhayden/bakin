@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Workflow, Zap } from 'lucide-react'
 import { useActivityContext } from '@/context/activity-context'
 import { useContentStore } from '@/hooks/use-content-store'
 
@@ -15,7 +15,7 @@ const AGENT_EMOJI: Record<string, string> = {
   watchdog: '🐕',
   dashboard: '📊',
   api: '🔌',
-  system: '⚡',
+  system: '',
   workflow: '🔀',
   dispatch: '📡',
 }
@@ -55,6 +55,20 @@ function AgentAvatar({ agent, size = 24 }: { agent: string; size?: number }) {
         onError={() => setImgError(true)}
         className={`${sizeClass} rounded-full object-cover object-top ring-1 ring-zinc-700/50 shrink-0`}
       />
+    )
+  }
+  if (agent === 'workflow') {
+    return (
+      <span className={`${sizeClass} rounded-full bg-zinc-800 flex items-center justify-center shrink-0`}>
+        <Workflow className="size-3.5 text-cyan-400" />
+      </span>
+    )
+  }
+  if (agent === 'system') {
+    return (
+      <span className={`${sizeClass} rounded-full bg-zinc-800 flex items-center justify-center shrink-0`}>
+        <Zap className="size-3.5 text-slate-400" />
+      </span>
     )
   }
   return (
