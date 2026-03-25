@@ -6,6 +6,7 @@ export interface GateStatus {
   stepId: string
   label: string
   description?: string
+  childTaskId?: string
 }
 
 /**

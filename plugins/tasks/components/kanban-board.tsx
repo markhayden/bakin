@@ -92,11 +92,19 @@ export function KanbanBoard() {
   }, [columns])
   const gateStatuses = useGateStatus(workflowTaskIds)
 
-  // Build a taskId → gate label map for cards
+  // Build a taskId → gate label map and childTask map for cards
   const gateLabels = useMemo(() => {
     const labels: Record<string, string> = {}
     for (const [taskId, status] of Object.entries(gateStatuses)) {
-      if (status) labels[taskId] = status.label
+      if (status && !status.childTaskId) labels[taskId] = status.label
+    }
+    return labels
+  }, [gateStatuses])
+
+  const childTaskLabels = useMemo(() => {
+    const labels: Record<string, string> = {}
+    for (const [taskId, status] of Object.entries(gateStatuses)) {
+      if (status?.childTaskId) labels[taskId] = status.childTaskId
     }
     return labels
   }, [gateStatuses])
@@ -255,6 +263,7 @@ export function KanbanBoard() {
                 id={colId}
                 tasks={columns[colId]}
                 gateLabels={gateLabels}
+                childTaskLabels={childTaskLabels}
                 onAssign={handleAssign}
                 onDelete={setDeleteTarget}
                 onTaskClick={(task, colId) => setDetailTask({ task, columnId: colId })}

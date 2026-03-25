@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { FolderOpen, Image, Video, Music, FileText, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import type { AssetMeta } from '@/types'
@@ -19,14 +19,37 @@ interface TaskAssetsProps {
 export function TaskAssets({ taskId }: TaskAssetsProps) {
   const [assets, setAssets] = useState<AssetMeta[]>([])
   const [loading, setLoading] = useState(true)
+  const esRef = useRef<EventSource | null>(null)
 
-  useEffect(() => {
-    fetch(`/api/plugins/assets/list?taskId=${encodeURIComponent(taskId)}`)
+  const fetchAssets = useCallback(() => {
+    fetch(`/api/plugins/assets/list?taskId=${encodeURIComponent(taskId)}&includeChildren=true`)
       .then(r => r.ok ? r.json() : { assets: [] })
       .then(d => setAssets(d.assets || []))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [taskId])
+
+  useEffect(() => {
+    fetchAssets()
+  }, [fetchAssets])
+
+  // Listen for workflow step completions to auto-refresh assets
+  useEffect(() => {
+    const es = new EventSource('/api/events')
+    esRef.current = es
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        if (data.type === 'plugin-event' && data.event === 'workflow.step_complete') {
+          // Refresh assets when any step completes (asset may have been created)
+          if (data.taskId === taskId || data.taskId?.startsWith(taskId + '--')) {
+            fetchAssets()
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    return () => { es.close(); esRef.current = null }
+  }, [taskId, fetchAssets])
 
   if (loading) return null
   if (assets.length === 0) return null

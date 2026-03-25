@@ -1,19 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useActivityContext } from '@/context/activity-context'
-
-interface ActivityEvent {
-  id: string
-  ts: string
-  type: 'log' | 'audit' | 'alert'
-  agent: string
-  message: string
-  taskId?: string
-  taskTitle?: string
-  eventName?: string
-}
+import { useContentStore } from '@/hooks/use-content-store'
 
 const AGENT_EMOJI: Record<string, string> = {
   main-operator: '🐾',
@@ -26,6 +16,8 @@ const AGENT_EMOJI: Record<string, string> = {
   dashboard: '📊',
   api: '🔌',
   system: '⚡',
+  workflow: '🔀',
+  dispatch: '📡',
 }
 
 const AGENT_COLOR: Record<string, string> = {
@@ -39,13 +31,23 @@ const AGENT_COLOR: Record<string, string> = {
   dashboard: 'text-cyan-400',
   api: 'text-teal-400',
   system: 'text-slate-400',
+  workflow: 'text-cyan-400',
+  dispatch: 'text-emerald-400',
 }
+
+/** Normalize agent IDs for display — "main" is the main-operator process */
+const DISPLAY_AGENT: Record<string, string> = {
+  main: 'system',
+}
+
+/** Non-agent sources that will never have a headshot image */
+const SYSTEM_SOURCES = new Set(['system', 'workflow', 'dispatch', 'watchdog', 'dashboard', 'api'])
 
 function AgentAvatar({ agent, size = 24 }: { agent: string; size?: number }) {
   const [imgError, setImgError] = useState(false)
   const sizeClass = size === 24 ? 'size-6' : 'size-8'
 
-  if (!imgError) {
+  if (!imgError && !SYSTEM_SOURCES.has(agent)) {
     return (
       <img
         src={`/headshots/${agent}.png`}
@@ -76,121 +78,17 @@ function relativeTime(ts: string): string {
   return `${days}d ago`
 }
 
-/** Map an audit entry from SSE into a display message (mirrors server-side mapAuditMessage) */
-function mapAuditMessage(event: string, data: Record<string, unknown>): string {
-  switch (event) {
-    case 'task.dispatched': return `Dispatched: ${data.title}`
-    case 'task.triaged': return `Triaged: ${data.title}`
-    case 'task.created': return `Created task: ${data.title}`
-    case 'task.deleted': return `Deleted task: ${data.title}`
-    case 'task.moved': return `Moved "${data.title}" → ${data.to}`
-    case 'task.assigned': return `Assigned "${data.title}" to ${data.assignee}`
-    case 'task.blocked': return `Blocked: ${data.title} — ${data.reason || 'no reason'}`
-    case 'task.updated': return `Updated: ${data.title}`
-    case 'system.init': return 'Beacon started'
-    case 'system.dispatch_error': return `Dispatch failed: ${data.error || 'unknown error'}`
-    default: return event
-  }
-}
-
 export function ActivityFeed() {
   const { open, toggle } = useActivityContext()
-  const [events, setEvents] = useState<ActivityEvent[]>([])
-  const [connected, setConnected] = useState(false)
+  const events = useContentStore((s) => s.activityEvents)
+  const connected = useContentStore((s) => s.sseConnected)
   const [, setTick] = useState(0)
-  const esRef = useRef<EventSource | null>(null)
 
   // Force re-render every 30s to keep relative timestamps fresh
   useEffect(() => {
     const timer = setInterval(() => setTick((t) => t + 1), 30_000)
     return () => clearInterval(timer)
   }, [])
-
-  /** Filter out infrastructure noise that isn't useful in the user-facing feed */
-  function isNoisyEvent(evt: ActivityEvent): boolean {
-    if (evt.agent === 'system' && evt.message.startsWith('Dispatch failed')) return true
-    return false
-  }
-
-  const fetchEvents = useCallback(async () => {
-    try {
-      const res = await fetch('/api/activity')
-      if (res.ok) {
-        const data = await res.json()
-        setEvents((data.events ?? []).filter((e: ActivityEvent) => !isNoisyEvent(e)))
-      }
-    } catch { /* best effort */ }
-  }, [])
-
-  useEffect(() => {
-    fetchEvents()
-  }, [fetchEvents])
-
-  useEffect(() => {
-    const es = new EventSource('/api/events')
-    esRef.current = es
-
-    es.onopen = () => setConnected(true)
-    es.onerror = () => setConnected(false)
-
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data)
-
-        if (data.type === 'activity') {
-          const evt: ActivityEvent = {
-            id: `${data.ts}-activity-${data.agent}`,
-            ts: data.ts,
-            type: 'log',
-            agent: data.agent || 'system',
-            message: data.message,
-          }
-          if (!isNoisyEvent(evt)) {
-            setEvents((prev) => [evt, ...prev].slice(0, 100))
-          }
-          return
-        }
-
-        // Inline audit events directly from SSE payload instead of re-fetching
-        if (data.type === 'audit' && data.entry) {
-          const entry = data.entry
-          const entryData = entry.data || {}
-          const evt: ActivityEvent = {
-            id: `${entry.ts}-${entry.event}-${entry.agent}`,
-            ts: entry.ts,
-            type: 'audit',
-            agent: entry.agent || 'system',
-            message: mapAuditMessage(entry.event, entryData),
-            taskId: entryData.taskId,
-            taskTitle: entryData.title,
-            eventName: entry.event,
-          }
-          if (!isNoisyEvent(evt)) {
-            setEvents((prev) => [evt, ...prev].slice(0, 100))
-          }
-          return
-        }
-
-        // Watchdog alerts
-        if (data.type === 'alert') {
-          const evt: ActivityEvent = {
-            id: `${data.timestamp || new Date().toISOString()}-alert-system`,
-            ts: data.timestamp || new Date().toISOString(),
-            type: 'alert',
-            agent: 'system',
-            message: data.message || 'Watchdog alert',
-          }
-          setEvents((prev) => [evt, ...prev].slice(0, 100))
-          return
-        }
-      } catch { /* keep-alive or invalid */ }
-    }
-
-    return () => {
-      es.close()
-      esRef.current = null
-    }
-  }, [fetchEvents])
 
   return (
     <>
@@ -237,11 +135,11 @@ export function ActivityFeed() {
                 evt.type === 'alert' ? 'bg-amber-950/20' : ''
               }`}
             >
-              <AgentAvatar agent={evt.agent} size={24} />
+              <AgentAvatar agent={DISPLAY_AGENT[evt.agent] ?? evt.agent} size={24} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1.5 mb-0.5">
-                  <span className={`text-[11px] font-medium ${AGENT_COLOR[evt.agent] ?? 'text-slate-400'}`}>
-                    {evt.agent}
+                  <span className={`text-[11px] font-medium ${AGENT_COLOR[DISPLAY_AGENT[evt.agent] ?? evt.agent] ?? 'text-slate-400'}`}>
+                    {DISPLAY_AGENT[evt.agent] ?? evt.agent}
                   </span>
                   <span className="text-zinc-500 text-[10px] shrink-0 tabular-nums">{relativeTime(evt.ts)}</span>
                 </div>

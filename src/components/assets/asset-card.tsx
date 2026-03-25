@@ -66,7 +66,7 @@ export function AssetCard({ asset, onClick }: AssetCardProps) {
       <div className="h-32 bg-zinc-900/50 flex items-center justify-center relative overflow-hidden">
         {showPreview ? (
           <img
-            src={`/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}`}
+            src={`/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}&v=${asset.mtimeMs || ''}`}
             alt={asset.filename}
             onError={() => setImgError(true)}
             className="w-full h-full object-cover"

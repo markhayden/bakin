@@ -111,7 +111,8 @@ export function notifyGateRejected(
 export function notifyStepDispatched(
   instance: WorkflowInstance,
   stepId: string,
-  agent: string
+  agent: string,
+  label?: string
 ): void {
   if (!eventBus) return
 
@@ -121,5 +122,6 @@ export function notifyStepDispatched(
     workflowId: instance.workflowId,
     stepId,
     agent,
+    label: label || stepId,
   })
 }

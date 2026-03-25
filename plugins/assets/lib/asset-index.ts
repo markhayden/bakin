@@ -18,6 +18,7 @@ export interface IndexedAsset {
   type: AssetType
   mimeType: string
   size: number
+  mtimeMs: number      // file mtime for cache busting
   metadata: SidecarMeta
 }
 
@@ -72,6 +73,7 @@ export function buildIndex(): void {
               type: typeName as AssetType,
               mimeType: getMimeType(file),
               size: stat.size,
+              mtimeMs: stat.mtimeMs,
               metadata: meta,
             })
             count++
@@ -112,6 +114,7 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
       type: typeName,
       mimeType: getMimeType(filename),
       size: stat.size,
+      mtimeMs: stat.mtimeMs,
       metadata: meta,
     }
 
@@ -137,6 +140,7 @@ export function listAssets(filters?: {
   type?: string
   agent?: string
   taskId?: string
+  includeChildren?: boolean
   tag?: string
 }): IndexedAsset[] {
   let results = Array.from(index.values())
@@ -148,7 +152,13 @@ export function listAssets(filters?: {
     results = results.filter(a => a.metadata.agent === filters.agent)
   }
   if (filters?.taskId) {
-    results = results.filter(a => a.metadata.taskId === filters.taskId)
+    if (filters.includeChildren) {
+      // Match exact taskId OR child tasks (taskId--*)
+      const prefix = filters.taskId + '--'
+      results = results.filter(a => a.metadata.taskId === filters.taskId || a.metadata.taskId?.startsWith(prefix))
+    } else {
+      results = results.filter(a => a.metadata.taskId === filters.taskId)
+    }
   }
   if (filters?.tag) {
     const tag = filters.tag.toLowerCase()

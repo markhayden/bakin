@@ -454,227 +454,236 @@ async function cmdInit(): Promise<void> {
 
 const SERVICE_LABEL = 'com.openclaw.mc'
 
-function generatePlist(opts: {
-  nodePath: string
-  tsxPath: string
-  serverPath: string
-  workingDir: string
-  stdoutPath: string
-  stderrPath: string
-}): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${SERVICE_LABEL}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${opts.nodePath}</string>
-    <string>${opts.tsxPath}</string>
-    <string>${opts.serverPath}</string>
-  </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-    <key>NODE_ENV</key>
-    <string>development</string>
-  </dict>
-  <key>WorkingDirectory</key>
-  <string>${opts.workingDir}</string>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>${opts.stdoutPath}</string>
-  <key>StandardErrorPath</key>
-  <string>${opts.stderrPath}</string>
-</dict>
-</plist>
-`
-}
+// ---------------------------------------------------------------------------
+// LaunchAgent auto-start — commented out for now, run manually instead.
+// To re-enable: uncomment generatePlist, the install path in cmdSetupService,
+// and the launchctl path in cmdReboot.
+// ---------------------------------------------------------------------------
+
+// function generatePlist(opts: {
+//   nodePath: string
+//   tsxPath: string
+//   serverPath: string
+//   workingDir: string
+//   stdoutPath: string
+//   stderrPath: string
+// }): string {
+//   return `<?xml version="1.0" encoding="UTF-8"?>
+// <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+//   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+// <plist version="1.0">
+// <dict>
+//   <key>Label</key>
+//   <string>${SERVICE_LABEL}</string>
+//   <key>ProgramArguments</key>
+//   <array>
+//     <string>${opts.nodePath}</string>
+//     <string>${opts.tsxPath}</string>
+//     <string>${opts.serverPath}</string>
+//   </array>
+//   <key>EnvironmentVariables</key>
+//   <dict>
+//     <key>PATH</key>
+//     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+//     <key>NODE_ENV</key>
+//     <string>development</string>
+//   </dict>
+//   <key>WorkingDirectory</key>
+//   <string>${opts.workingDir}</string>
+//   <key>RunAtLoad</key>
+//   <true/>
+//   <key>KeepAlive</key>
+//   <true/>
+//   <key>StandardOutPath</key>
+//   <string>${opts.stdoutPath}</string>
+//   <key>StandardErrorPath</key>
+//   <string>${opts.stderrPath}</string>
+// </dict>
+// </plist>
+// `
+// }
 
 async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<void> {
   const { execSync } = await import('child_process')
-  const { writeFileSync, existsSync, unlinkSync, mkdirSync } = await import('fs')
-  const { join, resolve, dirname } = await import('path')
+  const { existsSync, unlinkSync } = await import('fs')
+  const { join } = await import('path')
   const { homedir } = await import('os')
 
-  const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')
-  const plistPath = join(launchAgentsDir, `${SERVICE_LABEL}.plist`)
+  const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
   const uid = execSync('id -u', { encoding: 'utf-8' }).trim()
 
-  // Uninstall (always allowed even if service is disabled)
-  if (options.uninstall) {
-    console.log('[..] Stopping service...')
+  // Always clean up any existing LaunchAgent
+  if (options.uninstall || existsSync(plistPath)) {
+    console.log('[..] Removing LaunchAgent...')
     try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* may not be loaded */ }
     if (existsSync(plistPath)) {
       unlinkSync(plistPath)
       console.log('[OK] Removed plist and stopped service')
     } else {
-      console.log('[OK] Service was not installed')
+      console.log('[OK] No LaunchAgent found')
     }
-    return
+    if (options.uninstall) return
   }
 
-  // Check if service management is enabled
-  const { getSettings } = await import('../src/core/settings')
-  const settings = getSettings()
-  if (!settings.service.enabled) {
-    console.error('[SKIP] Service management is disabled in settings.')
-    console.error('  Enable with: beacon settings set service.enabled true')
-    return
-  }
-
-  // Detect paths
-  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
-  console.log(`[..] Detecting paths for ${projectDir}`)
-
-  let nodePath: string
-  try {
-    nodePath = execSync('which node', { encoding: 'utf-8' }).trim()
-  } catch {
-    console.error('[FAIL] Could not find node binary. Is Node.js installed?')
-    process.exit(1)
-  }
-
-  const tsxPath = join(projectDir, 'node_modules', '.bin', 'tsx')
-  if (!existsSync(tsxPath)) {
-    console.error('[FAIL] tsx not found at node_modules/.bin/tsx — run: npm install')
-    process.exit(1)
-  }
-
-  const serverPath = join(projectDir, 'server.ts')
-  if (!existsSync(serverPath)) {
-    console.error('[FAIL] server.ts not found — are you in the beacon project directory?')
-    process.exit(1)
-  }
-
-  console.log(`  node:    ${nodePath}`)
-  console.log(`  tsx:     ${tsxPath}`)
-  console.log(`  server:  ${serverPath}`)
-  console.log(`  workdir: ${projectDir}`)
-
-  // Unload existing service (idempotent)
-  try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* ignore */ }
-
-  // Generate and write plist
-  if (!existsSync(launchAgentsDir)) {
-    mkdirSync(launchAgentsDir, { recursive: true })
-  }
-
-  const plist = generatePlist({
-    nodePath,
-    tsxPath,
-    serverPath,
-    workingDir: projectDir,
-    stdoutPath: join(projectDir, 'mc-server.log'),
-    stderrPath: join(projectDir, 'mc-server-error.log'),
-  })
-
-  writeFileSync(plistPath, plist, 'utf-8')
-  console.log(`[OK] Wrote ${plistPath}`)
-
-  // Load the service
-  console.log('[..] Loading service...')
-  try {
-    execSync(`launchctl bootstrap gui/${uid} ${plistPath}`, { stdio: 'pipe' })
-    console.log('[OK] Service loaded')
-  } catch (err) {
-    // bootstrap can fail if already loaded — try kickstart instead
-    try {
-      execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_LABEL}`, { stdio: 'pipe' })
-      console.log('[OK] Service restarted')
-    } catch {
-      console.error('[FAIL] Could not load service:', err instanceof Error ? err.message : String(err))
-      console.error(`  Try manually: launchctl bootstrap gui/${uid} ${plistPath}`)
-      process.exit(1)
-    }
-  }
-
-  // Verify
-  try {
-    execSync(`launchctl list ${SERVICE_LABEL}`, { encoding: 'utf-8', stdio: 'pipe' })
-    console.log('[OK] Service is running')
-  } catch {
-    console.log('[WARN] Service loaded but may not be running yet — check: beacon status')
-  }
+  // --- LaunchAgent install path commented out — run manually for now ---
+  // const { writeFileSync, mkdirSync } = await import('fs')
+  // const { resolve, dirname } = await import('path')
+  // const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')
+  //
+  // const { getSettings } = await import('../src/core/settings')
+  // const settings = getSettings()
+  // if (!settings.service.enabled) {
+  //   console.error('[SKIP] Service management is disabled in settings.')
+  //   console.error('  Enable with: beacon settings set service.enabled true')
+  //   return
+  // }
+  //
+  // const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+  // console.log(`[..] Detecting paths for ${projectDir}`)
+  //
+  // let nodePath: string
+  // try {
+  //   nodePath = execSync('which node', { encoding: 'utf-8' }).trim()
+  // } catch {
+  //   console.error('[FAIL] Could not find node binary. Is Node.js installed?')
+  //   process.exit(1)
+  // }
+  //
+  // const tsxPath = join(projectDir, 'node_modules', '.bin', 'tsx')
+  // if (!existsSync(tsxPath)) {
+  //   console.error('[FAIL] tsx not found at node_modules/.bin/tsx — run: npm install')
+  //   process.exit(1)
+  // }
+  //
+  // const serverPath = join(projectDir, 'server.ts')
+  // if (!existsSync(serverPath)) {
+  //   console.error('[FAIL] server.ts not found — are you in the beacon project directory?')
+  //   process.exit(1)
+  // }
+  //
+  // console.log(`  node:    ${nodePath}`)
+  // console.log(`  tsx:     ${tsxPath}`)
+  // console.log(`  server:  ${serverPath}`)
+  // console.log(`  workdir: ${projectDir}`)
+  //
+  // try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* ignore */ }
+  //
+  // if (!existsSync(launchAgentsDir)) {
+  //   mkdirSync(launchAgentsDir, { recursive: true })
+  // }
+  //
+  // const plist = generatePlist({
+  //   nodePath,
+  //   tsxPath,
+  //   serverPath,
+  //   workingDir: projectDir,
+  //   stdoutPath: join(projectDir, 'mc-server.log'),
+  //   stderrPath: join(projectDir, 'mc-server-error.log'),
+  // })
+  //
+  // writeFileSync(plistPath, plist, 'utf-8')
+  // console.log(`[OK] Wrote ${plistPath}`)
+  //
+  // console.log('[..] Loading service...')
+  // try {
+  //   execSync(`launchctl bootstrap gui/${uid} ${plistPath}`, { stdio: 'pipe' })
+  //   console.log('[OK] Service loaded')
+  // } catch (err) {
+  //   try {
+  //     execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_LABEL}`, { stdio: 'pipe' })
+  //     console.log('[OK] Service restarted')
+  //   } catch {
+  //     console.error('[FAIL] Could not load service:', err instanceof Error ? err.message : String(err))
+  //     console.error(`  Try manually: launchctl bootstrap gui/${uid} ${plistPath}`)
+  //     process.exit(1)
+  //   }
+  // }
+  //
+  // try {
+  //   execSync(`launchctl list ${SERVICE_LABEL}`, { encoding: 'utf-8', stdio: 'pipe' })
+  //   console.log('[OK] Service is running')
+  // } catch {
+  //   console.log('[WARN] Service loaded but may not be running yet — check: beacon status')
+  // }
+  //
+  // console.log('')
+  // console.log('Beacon service installed. It will auto-start on login.')
+  // console.log('  Status:    beacon status')
+  // console.log('  Uninstall: beacon setup service --uninstall')
 
   console.log('')
-  console.log('Beacon service installed. It will auto-start on login.')
-  console.log('  Status:    beacon status')
-  console.log('  Uninstall: beacon setup service --uninstall')
+  console.log('LaunchAgent auto-start is disabled. Run Beacon manually:')
+  console.log('  cd /Users/dev/go/src/github.com/markhayden/beacon && npx tsx server.ts')
+  console.log('')
+  console.log('Or use: beacon reboot')
 }
 
 async function cmdReboot(): Promise<void> {
   const { execSync } = await import('child_process')
-  const { existsSync } = await import('fs')
-  const { join } = await import('path')
-  const { homedir } = await import('os')
+  const { join, resolve, dirname } = await import('path')
 
-  const uid = execSync('id -u', { encoding: 'utf-8' }).trim()
-  const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
-  const isService = existsSync(plistPath)
+  // --- launchctl restart path commented out — manual process management only ---
+  // const { existsSync } = await import('fs')
+  // const { homedir } = await import('os')
+  // const uid = execSync('id -u', { encoding: 'utf-8' }).trim()
+  // const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
+  // const isService = existsSync(plistPath)
+  //
+  // if (isService) {
+  //   console.log('[..] Restarting Beacon via launchctl...')
+  //   try {
+  //     execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_LABEL}`, { stdio: 'pipe' })
+  //     console.log('[OK] Beacon restarting')
+  //   } catch {
+  //     console.log('[..] Kickstart failed, trying bootout + bootstrap...')
+  //     try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* ok */ }
+  //     await new Promise(r => setTimeout(r, 1000))
+  //     try {
+  //       execSync(`launchctl bootstrap gui/${uid} ${plistPath}`, { stdio: 'pipe' })
+  //       console.log('[OK] Beacon restarting')
+  //     } catch (err) {
+  //       console.error('[FAIL] Could not restart:', err instanceof Error ? err.message : String(err))
+  //       process.exit(1)
+  //     }
+  //   }
+  // } else {
 
-  if (isService) {
-    // Managed by launchctl — kickstart with -k flag to kill + restart
-    console.log('[..] Restarting Beacon via launchctl...')
-    try {
-      execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_LABEL}`, { stdio: 'pipe' })
-      console.log('[OK] Beacon restarting')
-    } catch {
-      // kickstart failed — try bootout + bootstrap
-      console.log('[..] Kickstart failed, trying bootout + bootstrap...')
-      try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* ok */ }
-      await new Promise(r => setTimeout(r, 1000))
-      try {
-        execSync(`launchctl bootstrap gui/${uid} ${plistPath}`, { stdio: 'pipe' })
-        console.log('[OK] Beacon restarting')
-      } catch (err) {
-        console.error('[FAIL] Could not restart:', err instanceof Error ? err.message : String(err))
-        process.exit(1)
-      }
-    }
-  } else {
-    // Not a service — find and kill the process, then start fresh
-    console.log('[..] No LaunchAgent found — restarting via process signal...')
-    try {
-      const pids = execSync("pgrep -f 'tsx.*server\\.ts'", { encoding: 'utf-8' }).trim()
-      if (pids) {
-        for (const pid of pids.split('\n')) {
-          if (pid && pid !== String(process.pid)) {
-            process.kill(Number(pid), 'SIGTERM')
-          }
+  // Kill any running Beacon server processes
+  console.log('[..] Stopping Beacon server...')
+  try {
+    const pids = execSync("pgrep -f 'tsx.*server\\.ts'", { encoding: 'utf-8' }).trim()
+    if (pids) {
+      for (const pid of pids.split('\n')) {
+        if (pid && pid !== String(process.pid)) {
+          process.kill(Number(pid), 'SIGTERM')
         }
-        console.log('[OK] Sent SIGTERM to Beacon server')
-        console.log('[..] Waiting for shutdown...')
-        await new Promise(r => setTimeout(r, 2000))
       }
-    } catch {
-      console.log('[..] No running Beacon process found')
+      console.log('[OK] Sent SIGTERM to Beacon server')
+      console.log('[..] Waiting for shutdown...')
+      await new Promise(r => setTimeout(r, 2000))
     }
-
-    // Start the server in background
-    const { resolve, dirname } = await import('path')
-    const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
-    const serverPath = join(projectDir, 'server.ts')
-    const logPath = join(projectDir, 'mc-server.log')
-
-    console.log('[..] Starting Beacon server...')
-    const { spawn } = await import('child_process')
-    const child = spawn('npx', ['tsx', serverPath], {
-      cwd: projectDir,
-      detached: true,
-      stdio: ['ignore', 'ignore', 'ignore'],
-      env: { ...process.env },
-    })
-    child.unref()
-    console.log(`[OK] Beacon starting (pid ${child.pid})`)
-    console.log(`  Logs: tail -f ${logPath}`)
+  } catch {
+    console.log('[..] No running Beacon process found')
   }
+
+  // Start the server in background
+  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+  const serverPath = join(projectDir, 'server.ts')
+  const logPath = join(projectDir, 'mc-server.log')
+
+  console.log('[..] Starting Beacon server...')
+  const { spawn } = await import('child_process')
+  const child = spawn('npx', ['tsx', serverPath], {
+    cwd: projectDir,
+    detached: true,
+    stdio: ['ignore', 'ignore', 'ignore'],
+    env: { ...process.env },
+  })
+  child.unref()
+  console.log(`[OK] Beacon starting (pid ${child.pid})`)
+  console.log(`  Logs: tail -f ${logPath}`)
+
+  // } // end of else branch for non-service path
 
   // Wait and verify
   console.log('[..] Waiting for server to come up...')

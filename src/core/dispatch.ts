@@ -13,6 +13,7 @@ import { isStale } from '../lib/format'
 import {
   loadInstance,
   createInstance,
+  saveInstance,
   getCurrentStep,
   getActiveAgents,
 } from '../../plugins/workflows/runtime'
@@ -227,7 +228,38 @@ function buildDispatchMessage(
     return `Work on this task: "${task.title}".${detailsBlock}\n\n${contactsRef} When done, move it to the Done column in ${taskboardRef} and log what you did.\n\nLog progress by POSTing to ${logEndpoint} with {"title":"${task.title}","author":"main-operator","message":"your update"}\n\n${failureInstructions}`
   }
 
-  return `Work on this task: "${task.title}".${detailsBlock}\n\nFIRST: Move this task to In Progress before doing anything else:\ncurl -s -X POST http://localhost:${port}/api/plugins/tasks/move -H 'Content-Type: application/json' -d '{"id":"${task.id}","to":"inProgress","agent":"${agentName}"}'\n\nLog your progress at EVERY major step — not just start and done. Required log points:\n- Log at task start: what you are about to do\n- Log after each major step (reading files, planning, each significant code change, after build)\n- Log if blocked or anything unexpected happens\n- Log on completion with a full summary\n- If you have not logged in the last 5 minutes, log a status update — even if just "still working on X"\n\nFor Patch using Claude Code: log before spawning the agent, and after it completes.\n\nLog command: POST to ${logEndpoint} with {"title":"${task.id}","author":"${agentName}","message":"your update"}\n\nIf this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:${port}/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>"}'\n\nWhen finished, move this task to Done: curl -s -X POST http://localhost:${port}/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"${task.id}","to":"done","agent":"${agentName}"}'\n\nThen report back to main-operator: openclaw agent --agent main --message "TASK COMPLETE: ${task.title} — <summary>" --deliver\n\n${failureInstructions}\n\nDependency pattern: If your task requires output from another agent, create their task first, note its ID, then register a dependency: curl -s -X POST http://localhost:${port}/api/tasks/depend -H 'Content-Type: application/json' -d '{"id":"${task.id}","dependsOn":"<their-task-id>"}'. Then exit — you will be automatically re-dispatched when their task completes.`
+  return `Work on this task: "${task.title}".${detailsBlock}
+
+FIRST: Move this task to In Progress before doing anything else:
+curl -s -X POST http://localhost:${port}/api/plugins/tasks/move -H 'Content-Type: application/json' -d '{"id":"${task.id}","to":"inProgress","agent":"${agentName}"}'
+
+## PROGRESS LOGGING — MANDATORY
+
+You MUST log your progress at EVERY major step — not just start and done. These updates appear in the live activity feed so humans can monitor your work in real-time.
+
+Required log points:
+- Log at task start: what you are about to do and your approach
+- Log after each major step (reading files, planning, each significant code change, after build)
+- Share your reasoning and decisions as you go
+- Log if blocked or anything unexpected happens
+- Log on completion with a full summary
+- If you have not logged in the last 2 minutes, log a status update — even if just "still working on X"
+
+For Patch using Claude Code: log before spawning the agent, and after it completes.
+
+Log command: curl -s -X POST ${logEndpoint} -H 'Content-Type: application/json' -d '{"title":"${task.id}","author":"${agentName}","message":"your update"}'
+
+## COMMANDS
+
+If this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:${port}/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>"}'
+
+When finished, move this task to Done: curl -s -X POST http://localhost:${port}/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"${task.id}","to":"done","agent":"${agentName}"}'
+
+Then report back to main-operator: openclaw agent --agent main --message "TASK COMPLETE: ${task.title} — <summary>" --deliver
+
+${failureInstructions}
+
+Dependency pattern: If your task requires output from another agent, create their task first, note its ID, then register a dependency: curl -s -X POST http://localhost:${port}/api/tasks/depend -H 'Content-Type: application/json' -d '{"id":"${task.id}","dependsOn":"<their-task-id>"}'. Then exit — you will be automatically re-dispatched when their task completes.`
 }
 
 export function start(contentDir: string, port: number): void {
@@ -262,11 +294,17 @@ async function dispatchWorkflowTask(
   moveTaskToInProgress: (id: string, agent: string) => Promise<void>,
   addTaskLog: (id: string, author: string, message: string) => Promise<void>,
 ): Promise<void> {
-  // Load or create workflow instance
+  // Load or create workflow instance.
+  // Pass the task assignee so $assigned steps resolve to whoever owns the task at start time.
   let instance = loadInstance(task.id, contentDir)
   if (!instance) {
-    instance = createInstance(task.id, task.workflowId, contentDir)
-    log.info('Created workflow instance', { taskId: task.id, workflowId: task.workflowId })
+    instance = createInstance(task.id, task.workflowId, contentDir, task.agent)
+    log.info('Created workflow instance', { taskId: task.id, workflowId: task.workflowId, resolvedAgent: task.agent })
+  } else if (!instance.resolvedAgent && task.agent) {
+    // Backfill resolvedAgent if instance was created before $assigned resolution was wired up
+    instance.resolvedAgent = task.agent
+    saveInstance(instance, contentDir)
+    log.info('Backfilled resolvedAgent on existing instance', { taskId: task.id, resolvedAgent: task.agent })
   }
 
   // Get agents for current step
@@ -276,8 +314,10 @@ async function dispatchWorkflowTask(
     return
   }
 
-  for (const { agent, stepId } of activeAgents) {
-    const stepContext = getCurrentStep(task.id, agent, contentDir)
+  for (const { agent, stepId, effectiveTaskId } of activeAgents) {
+    // For nested workflows, use the child's taskId for step context resolution
+    const contextTaskId = effectiveTaskId || task.id
+    const stepContext = getCurrentStep(contextTaskId, agent, contentDir)
     if (!stepContext || 'status' in stepContext && (stepContext.status === 'complete' || stepContext.status === 'pending_approval')) {
       continue
     }
@@ -285,10 +325,12 @@ async function dispatchWorkflowTask(
     const ctx = stepContext as {
       stepId: string; label: string; instructions?: string;
       output_schema?: Record<string, unknown>; rejectionReason?: string;
-      previousOutput?: Record<string, unknown>; deny_tools?: string[]
+      previousOutput?: Record<string, unknown>; priorStepOutput?: Record<string, unknown>;
+      stepOutputs?: Record<string, Record<string, unknown>>; deny_tools?: string[]
     }
     const targetAgent = resolveId(agent)
-    const message = buildWorkflowDispatchMessage(task, ctx, agent, port)
+    // Pass contextTaskId so the step/complete API targets the right instance
+    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port)
 
     try {
       await openclaw.sendMessage(targetAgent, message)
@@ -331,7 +373,7 @@ async function dispatchWorkflowTask(
  * Rules come BEFORE instructions (position primacy — LLMs weight early text more).
  */
 function buildWorkflowDispatchMessage(
-  task: { id: string; title: string },
+  task: { id: string; title: string; description?: string },
   stepContext: {
     stepId: string
     label: string
@@ -339,6 +381,8 @@ function buildWorkflowDispatchMessage(
     output_schema?: Record<string, unknown>
     rejectionReason?: string
     previousOutput?: Record<string, unknown>
+    priorStepOutput?: Record<string, unknown>
+    stepOutputs?: Record<string, Record<string, unknown>>
     deny_tools?: string[]
   },
   agentName: string,
@@ -353,6 +397,9 @@ function buildWorkflowDispatchMessage(
   lines.push('You are executing a single step in a managed workflow. You are NOT a general assistant right now — you are a workflow step executor.')
   lines.push('')
   lines.push(`**Task:** "${task.title}"`)
+  if (task.description) {
+    lines.push(`**Context:** ${task.description}`)
+  }
   lines.push(`**Your step:** ${stepContext.label} (ID: ${stepContext.stepId})`)
   lines.push(`**Your agent name:** ${agentName}`)
   lines.push('')
@@ -363,7 +410,7 @@ function buildWorkflowDispatchMessage(
   lines.push('1. **SCOPE:** Do ONLY the work described in "YOUR TASK" below. Nothing more. If the task implies work for another step (e.g., generating images when your step is writing copy), STOP — that belongs to a different agent.')
   lines.push('2. **OUTPUT:** Submit via the step/complete API below. Describing results in conversation does NOT complete the step. The workflow will not advance.')
   lines.push('3. **SCHEMA:** Your output MUST match the JSON schema below. The server validates it. Missing fields = rejection. Extra fields = rejection. Wrong types = rejection.')
-  lines.push('4. **NO SIDE EFFECTS:** Do not create subtasks, message other agents, move the task to Done, or post to any channel. The workflow engine handles all coordination.')
+  lines.push('4. **NO SIDE EFFECTS:** Do not create subtasks, dispatch other agents, move the task to Done, or post to any channel. The workflow engine handles ALL downstream handoffs — the next agent is already defined in the workflow and will be dispatched automatically when your step is approved. Creating a subtask would duplicate the workflow\'s job.')
   lines.push('5. **ONE SUBMISSION:** Submit your output once via the API, then stop. Do not continue working after submission.')
   if (stepContext.deny_tools?.length) {
     lines.push(`6. **TOOL RESTRICTIONS:** Do NOT use: ${stepContext.deny_tools.join(', ')}. If this step requires those capabilities, BLOCK the task immediately.`)
@@ -387,6 +434,48 @@ function buildWorkflowDispatchMessage(
     lines.push('')
   }
 
+  // ─── Workflow Context (all prior step outputs) ─────────────────────
+  if (stepContext.stepOutputs && Object.keys(stepContext.stepOutputs).length > 0) {
+    lines.push('## WORKFLOW CONTEXT')
+    lines.push('')
+    lines.push('All completed step outputs from this workflow. Use as context for your work:')
+    lines.push('')
+    for (const [sid, output] of Object.entries(stepContext.stepOutputs)) {
+      const label = sid === '__parentContext' ? 'Parent Workflow (upstream handoff)' : `Step: ${sid}`
+      lines.push(`### ${label}`)
+      // Surface parent task metadata prominently for child workflows
+      if (sid === '__parentContext' && output && typeof output === 'object') {
+        const ctx = output as Record<string, unknown>
+        if (ctx._parentTaskTitle) {
+          lines.push(`**Parent Task:** ${ctx._parentTaskTitle}`)
+        }
+        if (ctx._parentTaskDescription) {
+          lines.push(`**Description:** ${ctx._parentTaskDescription}`)
+        }
+        // Show remaining output data (excluding internal metadata keys)
+        const rest = Object.fromEntries(Object.entries(ctx).filter(([k]) => !k.startsWith('_parent')))
+        if (Object.keys(rest).length > 0) {
+          lines.push('```json')
+          lines.push(JSON.stringify(rest, null, 2))
+          lines.push('```')
+        }
+      } else {
+        lines.push('```json')
+        lines.push(JSON.stringify(output, null, 2))
+        lines.push('```')
+      }
+      lines.push('')
+    }
+  } else if (stepContext.priorStepOutput) {
+    lines.push('## PRIOR STEP OUTPUT')
+    lines.push('')
+    lines.push('The previous step in this workflow produced the following output. Use this as context for your work:')
+    lines.push('```json')
+    lines.push(JSON.stringify(stepContext.priorStepOutput, null, 2))
+    lines.push('```')
+    lines.push('')
+  }
+
   // ─── Task Instructions ──────────────────────────────────────────────
   lines.push('## YOUR TASK')
   lines.push('')
@@ -406,6 +495,30 @@ function buildWorkflowDispatchMessage(
     lines.push('')
   }
 
+  // ─── Progress Logging ──────────────────────────────────────────────
+  lines.push('## PROGRESS LOGGING — MANDATORY')
+  lines.push('')
+  lines.push('You MUST log your progress throughout this workflow step. These updates appear in the live activity feed so humans can monitor your work in real-time.')
+  lines.push('')
+  lines.push('**When to log:**')
+  lines.push('- IMMEDIATELY when you start working (what you are about to do and your approach)')
+  lines.push('- After each significant action (reading files, generating content, making API calls, reviewing output)')
+  lines.push('- Share your reasoning ("The brief calls for warm tones, going with golden hour lighting")')
+  lines.push('- If anything unexpected happens or you are blocked')
+  lines.push('- When you complete and submit your output (summary of what you produced)')
+  lines.push('- If more than 2 minutes have passed since your last log, send a status update — even if just "Still working on X, currently Y"')
+  lines.push('')
+  lines.push('**Log command:**')
+  lines.push(`\`curl -s -X POST http://localhost:${port}/api/tasks/log -H 'Content-Type: application/json' -d '{"title":"${task.id}","author":"${agentName}","message":"your update"}'\``)
+  lines.push('')
+  lines.push('**Example log messages:**')
+  lines.push(`- "Starting step: ${stepContext.label}"`)
+  lines.push('- "Reading project context and prior step outputs"')
+  lines.push('- "Generating initial draft..."')
+  lines.push('- "Reviewing output against schema requirements"')
+  lines.push(`- "Submitting final output for step ${stepContext.stepId}"`)
+  lines.push('')
+
   // ─── Commands ───────────────────────────────────────────────────────
   lines.push('## COMMANDS')
   lines.push('')
@@ -413,8 +526,6 @@ function buildWorkflowDispatchMessage(
   lines.push(`**Submit output:** \`curl -s -X POST ${base}/step/complete -H 'Content-Type: application/json' -d '${submitPayload}'\``)
   lines.push('')
   lines.push(`**Check current step:** \`curl -s "${base}/step?taskId=${task.id}&agentId=${agentName}"\``)
-  lines.push('')
-  lines.push(`**Log progress:** \`curl -s -X POST http://localhost:${port}/api/tasks/log -H 'Content-Type: application/json' -d '{"title":"${task.id}","author":"${agentName}","message":"your update"}'\``)
   lines.push('')
 
   // ─── Stop Instruction ───────────────────────────────────────────────

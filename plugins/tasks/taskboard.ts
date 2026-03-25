@@ -5,6 +5,7 @@
 import { readContentFile, writeContentFile } from '../../src/lib/content'
 import { parseTasks } from './parser'
 import { generateTaskId } from './ids'
+import { cancelInstance } from '../workflows/runtime'
 import type { Task, TaskColumns, ColumnId } from './types'
 
 // Re-export for convenience
@@ -135,12 +136,12 @@ function findTask(columns: TaskColumns, identifier: string): { task: Task; colId
 // ---------------------------------------------------------------------------
 // Mutations — all wrapped in the mutex
 // ---------------------------------------------------------------------------
-export function createTask(title: string, column?: string, assignee?: string, description?: string, workflowId?: string, createdBy?: string): Promise<Task> {
+export function createTask(title: string, column?: string, assignee?: string, description?: string, workflowId?: string, createdBy?: string, id?: string): Promise<Task> {
   return withTaskboardLock(() => {
     const { columns } = readTaskboard()
     const colId = column ? (normalizeColumn(column) || 'todo') : 'todo'
     const task: Task = {
-      id: generateTaskId(),
+      id: id || generateTaskId(),
       title,
       agent: assignee,
       createdBy,
@@ -189,6 +190,11 @@ export function moveTask(identifier: string, to: string, from?: string): Promise
     }
     columns[toCol].push(task)
     writeTaskboard(columns)
+
+    // Cancel active workflow instances when task leaves in-progress outside the workflow
+    if ((toCol === 'done' || toCol === 'blocked') && colId === 'inProgress') {
+      try { cancelInstance(task.id) } catch { /* best effort */ }
+    }
   })
 }
 
@@ -207,8 +213,12 @@ export function deleteTask(identifier: string): Promise<void> {
     const { columns } = readTaskboard()
     const found = findTask(columns, identifier)
     if (!found) throw new Error(`Task not found: ${identifier}`)
+    const taskId = found.task.id
     columns[found.colId].splice(found.idx, 1)
     writeTaskboard(columns)
+
+    // Cancel any active workflow instances
+    try { cancelInstance(taskId) } catch { /* best effort */ }
   })
 }
 

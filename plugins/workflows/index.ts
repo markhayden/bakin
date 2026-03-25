@@ -15,7 +15,7 @@ import {
   listInstances,
 } from './runtime'
 import { setEventBus } from './notifications'
-import type { WorkflowTemplate } from './types'
+import type { WorkflowTemplate, WorkflowDefinition, NestedWorkflowStep } from './types'
 
 function countSteps(steps: { type: string; steps?: unknown[] }[]): number {
   let count = 0
@@ -50,17 +50,39 @@ const workflowsPlugin: MCPlugin = {
     ctx.registerRoute({
       path: '/list',
       method: 'GET',
-      description: 'List all workflow templates with step counts',
+      description: 'List all workflow templates with step counts and resolved sub-workflows',
       handler: async () => {
         const defs = listDefinitions()
-        const templates: WorkflowTemplate[] = defs.map(d => ({
-          name: d.definition.name,
-          filename: d.name,
-          description: d.definition.description,
-          stepCount: countSteps(d.definition.steps),
-          definition: d.definition,
-        }))
-        return Response.json({ templates })
+
+        // Collect all referenced sub-workflow definitions
+        const subWorkflows: Record<string, WorkflowDefinition> = {}
+        function resolveSubWorkflows(steps: WorkflowDefinition['steps']) {
+          for (const step of steps) {
+            if (step.type === 'workflow') {
+              const nested = step as NestedWorkflowStep
+              if (nested.workflow_id && !subWorkflows[nested.workflow_id]) {
+                const subDef = loadDefinition(nested.workflow_id)
+                if (subDef) {
+                  subWorkflows[nested.workflow_id] = subDef
+                  // Recursively resolve nested sub-workflows
+                  resolveSubWorkflows(subDef.steps)
+                }
+              }
+            }
+          }
+        }
+
+        const templates: WorkflowTemplate[] = defs.map(d => {
+          resolveSubWorkflows(d.definition.steps)
+          return {
+            name: d.definition.name,
+            filename: d.name,
+            description: d.definition.description,
+            stepCount: countSteps(d.definition.steps),
+            definition: d.definition,
+          }
+        })
+        return Response.json({ templates, subWorkflows })
       },
     })
 
@@ -299,7 +321,7 @@ const workflowsPlugin: MCPlugin = {
         const url = new URL(req.url)
         const taskIds = (url.searchParams.get('taskIds') || '').split(',').filter(Boolean)
 
-        const result: Record<string, { stepId: string; label: string; description?: string } | null> = {}
+        const result: Record<string, { stepId: string; label: string; description?: string; childTaskId?: string } | null> = {}
         for (const taskId of taskIds) {
           const instance = loadInstance(taskId)
           if (instance && instance.status === 'pending_approval') {
@@ -309,6 +331,22 @@ const workflowsPlugin: MCPlugin = {
               stepId: instance.currentStepId,
               label: gateStep?.label || instance.currentStepId,
               description: (gateStep as { description?: string })?.description,
+            }
+          } else if (instance && instance.status === 'in_progress') {
+            // Check if any step has an active child workflow
+            const childEntry = Object.entries(instance.stepStates).find(
+              ([, state]) => state.status === 'in_progress' && state.childTaskId
+            )
+            if (childEntry) {
+              const def = loadDefinition(instance.workflowId)
+              const step = def?.steps.find(s => s.id === childEntry[0])
+              result[taskId] = {
+                stepId: childEntry[0],
+                label: step?.label || childEntry[0],
+                childTaskId: childEntry[1].childTaskId,
+              }
+            } else {
+              result[taskId] = null
             }
           } else {
             result[taskId] = null
@@ -339,7 +377,18 @@ const workflowsPlugin: MCPlugin = {
         }
 
         try {
-          const instance = createInstance(taskId, workflowId)
+          // Look up task assignee so $assigned steps resolve correctly
+          let assignee: string | undefined
+          try {
+            const { readTaskboard } = await import('../../plugins/tasks/taskboard')
+            const { columns } = readTaskboard()
+            for (const col of Object.values(columns)) {
+              const task = col.find((t: { id: string; agent?: string }) => t.id === taskId)
+              if (task?.agent) { assignee = task.agent; break }
+            }
+          } catch { /* best effort */ }
+
+          const instance = createInstance(taskId, workflowId, undefined, assignee)
 
           // Ensure the task's workflowId is persisted in TASKBOARD.md
           try {

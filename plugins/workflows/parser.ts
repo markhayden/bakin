@@ -5,7 +5,7 @@
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import yaml from 'js-yaml'
-import type { WorkflowDefinition, WorkflowStep, ParallelStep } from './types'
+import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep } from './types'
 import { getContentDir } from './content-dir'
 
 function getDefinitionsDir(contentDir?: string): string {
@@ -75,6 +75,21 @@ export function validateDefinition(def: WorkflowDefinition): string[] {
       for (const dep of deps) {
         if (!idSet.has(dep)) {
           errors.push(`Step "${step.id}": dependsOn references nonexistent step "${dep}"`)
+        }
+      }
+    }
+
+    // Validate workflow step references
+    if (step.type === 'workflow') {
+      const nested = step as NestedWorkflowStep
+      if (!nested.workflow_id) {
+        errors.push(`Step "${step.id}": workflow step requires workflow_id`)
+      } else {
+        // Check that referenced workflow exists
+        const defsDir = join(getContentDir(), 'workflows', 'definitions')
+        const nestedPath = join(defsDir, `${nested.workflow_id}.yaml`)
+        if (!existsSync(nestedPath)) {
+          errors.push(`Step "${step.id}": workflow_id "${nested.workflow_id}" not found in definitions`)
         }
       }
     }

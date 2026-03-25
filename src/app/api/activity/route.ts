@@ -3,35 +3,10 @@ import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { readTaskboard } from '@mc/tasks/taskboard'
 import { getContentDir } from '@/core/content-dir'
-
-export interface ActivityEvent {
-  id: string
-  ts: string
-  type: 'log' | 'audit'
-  agent: string
-  message: string
-  taskId?: string
-  taskTitle?: string
-  eventName?: string
-}
+import { mapAuditMessage } from '@/lib/map-audit-message'
+import type { ActivityEvent } from '@/types'
 
 const AUDIT_PATH = join(getContentDir(), 'audit.jsonl')
-
-function mapAuditMessage(event: string, data: Record<string, unknown>): string {
-  switch (event) {
-    case 'task.dispatched': return `Dispatched: ${data.title}`
-    case 'task.triaged': return `Triaged: ${data.title}`
-    case 'task.created': return `Created task: ${data.title}`
-    case 'task.deleted': return `Deleted task: ${data.title}`
-    case 'task.moved': return `Moved "${data.title}" → ${data.to}`
-    case 'task.assigned': return `Assigned "${data.title}" to ${data.assignee}`
-    case 'task.blocked': return `Blocked: ${data.title} — ${data.reason || 'no reason'}`
-    case 'task.updated': return `Updated: ${data.title}`
-    case 'system.init': return 'Beacon started'
-    case 'system.dispatch_error': return `Dispatch failed: ${data.error || 'unknown error'}`
-    default: return event
-  }
-}
 
 /** Normalize old truncated UTC timestamps (e.g. "2026-03-21 21:37") to proper ISO 8601 */
 function normalizeTimestamp(ts: string): string {

@@ -10,18 +10,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'title/id and message required' }, { status: 400 })
   }
 
+  const agent = author || 'system'
+
+  // Broadcast activity event via SSE immediately (before persistence, so live feed is never blocked)
+  const broadcastFn = (globalThis as any).__beaconBroadcast
+  if (broadcastFn) {
+    broadcastFn({ type: 'activity', agent, message, ts: new Date().toISOString(), taskId: identifier })
+  }
+
   try {
-    const agent = author || 'system'
     await addTaskLog(identifier, agent, message)
-
-    // Fire-and-forget: emit activity event via SSE
-    const port = process.env.PORT || 3737
-    fetch(`http://localhost:${port}/api/activity/emit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent, message, ts: new Date().toISOString() }),
-    }).catch(() => { /* best effort */ })
-
     return NextResponse.json({ ok: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

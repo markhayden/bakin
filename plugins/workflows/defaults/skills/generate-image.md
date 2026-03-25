@@ -24,9 +24,18 @@ Generate a hero image for the content post based on the copy brief.
 4. Save to the assets directory
 5. Write descriptive alt text for accessibility
 
+## Size & Format Defaults
+
+Unless the brief specifies otherwise:
+- **Resolution**: 1080px wide (never exceed 1200px on any edge)
+- **Aspect ratio**: 9:16 vertical (1080x1920) — optimized for Stories, Reels, TikTok
+- **Format**: PNG for graphics, JPEG for photography
+
+Only use larger sizes or different ratios when explicitly requested in the brief.
+These defaults minimize generation costs while covering all major social platforms.
+
 ## Style Guidelines
 
 - Clean, modern aesthetic
 - Natural lighting preferred
 - On-brand color palette
-- Minimum 1080x1080 for social media

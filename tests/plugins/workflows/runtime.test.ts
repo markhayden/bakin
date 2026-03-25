@@ -11,6 +11,7 @@ import {
   rejectGate,
   listInstances,
   getActiveAgents,
+  cancelInstance,
 } from '@mc/workflows/runtime'
 import { invalidateSkillCache } from '@mc/workflows/skill-loader'
 
@@ -567,6 +568,170 @@ steps:
       completeStep('task-deny2', 'write', { data: 'done' }, undefined, testDir)
       const step = getCurrentStep('task-deny2', undefined, testDir) as Record<string, unknown>
       expect(step.deny_tools).toBeUndefined()
+    })
+  })
+
+  // ─── Nested Workflows ───────────────────────────────────────────────
+
+  describe('nested workflows', () => {
+    const childWorkflow = `
+name: Child Workflow
+description: A child workflow for nesting tests
+version: 1
+steps:
+  - id: child-step-1
+    type: agent
+    label: Child Step One
+    agent: pixel
+    description: Do child work
+  - id: child-step-2
+    type: agent
+    label: Child Step Two
+    agent: rolo
+    description: Finish child work
+`
+    const parentWorkflow = `
+name: Parent Workflow
+description: A workflow that invokes a child workflow
+version: 1
+steps:
+  - id: parent-step-1
+    type: agent
+    label: Parent Step One
+    agent: chef
+    description: Do parent work
+  - id: nested-child
+    type: workflow
+    label: Run Child
+    workflow_id: child-wf
+  - id: parent-step-3
+    type: agent
+    label: Parent Step Three
+    agent: chef
+    description: Final parent step
+`
+
+    beforeEach(() => {
+      writeFileSync(join(defsDir, 'child-wf.yaml'), childWorkflow)
+      writeFileSync(join(defsDir, 'parent-wf.yaml'), parentWorkflow)
+    })
+
+    it('creates a child instance when workflow step is reached', () => {
+      const parent = createInstance('task-nested', 'parent-wf', testDir)
+      // Complete parent step 1 to advance to nested workflow step
+      completeStep('task-nested', 'parent-step-1', { result: 'done' }, undefined, testDir)
+
+      // Child instance should exist with synthetic taskId
+      const child = loadInstance('task-nested--nested-child', testDir)
+      expect(child).not.toBeNull()
+      expect(child!.workflowId).toBe('child-wf')
+      expect(child!.parentTaskId).toBe('task-nested')
+      expect(child!.parentStepId).toBe('nested-child')
+      expect(child!.status).toBe('in_progress')
+
+      // Parent step should reference the child
+      const parentReloaded = loadInstance('task-nested', testDir)
+      expect(parentReloaded!.stepStates['nested-child'].childTaskId).toBe('task-nested--nested-child')
+      expect(parentReloaded!.stepStates['nested-child'].status).toBe('in_progress')
+    })
+
+    it('delegates getCurrentStep to child instance', () => {
+      createInstance('task-nested2', 'parent-wf', testDir)
+      completeStep('task-nested2', 'parent-step-1', { result: 'done' }, undefined, testDir)
+
+      // getCurrentStep on parent should return the child's current step
+      const step = getCurrentStep('task-nested2', undefined, testDir) as Record<string, unknown>
+      expect(step).not.toBeNull()
+      expect(step.stepId).toBe('child-step-1')
+      expect(step.agent).toBe('pixel')
+    })
+
+    it('delegates getActiveAgents to child instance', () => {
+      createInstance('task-nested3', 'parent-wf', testDir)
+      completeStep('task-nested3', 'parent-step-1', { result: 'done' }, undefined, testDir)
+
+      const agents = getActiveAgents('task-nested3', testDir)
+      expect(agents).toHaveLength(1)
+      expect(agents[0].agent).toBe('pixel')
+      expect(agents[0].stepId).toBe('child-step-1')
+      expect(agents[0].effectiveTaskId).toBe('task-nested3--nested-child')
+    })
+
+    it('propagates child completion to parent and advances', () => {
+      createInstance('task-nested4', 'parent-wf', testDir)
+      completeStep('task-nested4', 'parent-step-1', { result: 'done' }, undefined, testDir)
+
+      // Complete child steps
+      completeStep('task-nested4--nested-child', 'child-step-1', { art: 'created' }, undefined, testDir)
+      completeStep('task-nested4--nested-child', 'child-step-2', { video: 'done' }, undefined, testDir)
+
+      // Child should be complete
+      const child = loadInstance('task-nested4--nested-child', testDir)
+      expect(child!.status).toBe('complete')
+
+      // Parent should have advanced past the nested step
+      const parent = loadInstance('task-nested4', testDir)
+      expect(parent!.currentStepId).toBe('parent-step-3')
+      expect(parent!.stepStates['nested-child'].status).toBe('complete')
+      expect(parent!.stepStates['nested-child'].output).toBeDefined()
+
+      // Parent's nested step output should contain child outputs + finalOutput
+      const nestedOutput = parent!.stepStates['nested-child'].output as Record<string, unknown>
+      expect(nestedOutput.childWorkflowId).toBe('child-wf')
+      expect(nestedOutput.finalOutput).toEqual({ video: 'done' }) // last step's output promoted
+      expect((nestedOutput.outputs as Record<string, unknown>)['child-step-1']).toEqual({ art: 'created' })
+    })
+
+    it('completes parent workflow when child is last-but-one step', () => {
+      createInstance('task-nested5', 'parent-wf', testDir)
+      completeStep('task-nested5', 'parent-step-1', { result: 'done' }, undefined, testDir)
+      completeStep('task-nested5--nested-child', 'child-step-1', { art: 'created' }, undefined, testDir)
+      completeStep('task-nested5--nested-child', 'child-step-2', { video: 'done' }, undefined, testDir)
+
+      // Now complete parent step 3
+      completeStep('task-nested5', 'parent-step-3', { final: 'published' }, undefined, testDir)
+      const parent = loadInstance('task-nested5', testDir)
+      expect(parent!.status).toBe('complete')
+    })
+
+    it('inherits resolvedAgent from parent to child', () => {
+      createInstance('task-nested6', 'parent-wf', testDir, 'explorer')
+      completeStep('task-nested6', 'parent-step-1', { result: 'done' }, undefined, testDir)
+
+      const child = loadInstance('task-nested6--nested-child', testDir)
+      expect(child!.resolvedAgent).toBe('explorer')
+    })
+
+    it('cancels child instances when parent is cancelled', () => {
+      createInstance('task-nested7', 'parent-wf', testDir)
+      completeStep('task-nested7', 'parent-step-1', { result: 'done' }, undefined, testDir)
+
+      // Child should be active
+      const child = loadInstance('task-nested7--nested-child', testDir)
+      expect(child!.status).toBe('in_progress')
+
+      // Cancel the parent
+      cancelInstance('task-nested7', testDir)
+
+      const parentAfter = loadInstance('task-nested7', testDir)
+      expect(parentAfter!.status).toBe('cancelled')
+
+      const childAfter = loadInstance('task-nested7--nested-child', testDir)
+      expect(childAfter!.status).toBe('cancelled')
+    })
+
+    it('getCurrentStep returns complete for cancelled instances', () => {
+      createInstance('task-nested8', 'parent-wf', testDir)
+      cancelInstance('task-nested8', testDir)
+      const step = getCurrentStep('task-nested8', undefined, testDir) as { status: string }
+      expect(step.status).toBe('complete')
+    })
+
+    it('getActiveAgents returns empty for cancelled instances', () => {
+      createInstance('task-nested9', 'parent-wf', testDir)
+      cancelInstance('task-nested9', testDir)
+      const agents = getActiveAgents('task-nested9', testDir)
+      expect(agents).toHaveLength(0)
     })
   })
 })

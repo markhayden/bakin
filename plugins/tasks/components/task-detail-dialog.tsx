@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Sheet,
   SheetContent,
@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { Send, Check, X } from 'lucide-react'
+import { Send, Check, X, RefreshCw } from 'lucide-react'
+import { MarkdownContent } from '@/components/markdown-content'
 import { TaskAssets } from '@/components/assets/task-assets'
 import { AGENTS } from '@/lib/constants'
 import { COLUMN_CONFIG } from '../constants'
@@ -31,7 +32,7 @@ interface WorkflowInstance {
   taskId: string
   currentStepId: string
   status: string
-  stepStates: Record<string, { status: string; output?: Record<string, unknown> }>
+  stepStates: Record<string, { status: string; output?: Record<string, unknown>; childTaskId?: string }>
 }
 
 interface WorkflowDefinition {
@@ -75,6 +76,11 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
   const [showRejectInput, setShowRejectInput] = useState(false)
   const [gateLoading, setGateLoading] = useState(false)
 
+  // Prior step output for gate review (must be before early return to satisfy Rules of Hooks)
+  const [priorStepOutput, setPriorStepOutput] = useState<Record<string, unknown> | null>(null)
+  const [outputLoading, setOutputLoading] = useState(false)
+  const [outputUnavailable, setOutputUnavailable] = useState(false)
+
   useEffect(() => {
     fetch('/api/plugins/workflows/list')
       .then((r) => r.ok ? r.json() : { workflows: [] })
@@ -110,6 +116,49 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
       }
     }
   }, [task, columnId])
+
+  // Derived workflow state (needed by hooks below, so must be before early return)
+  const isGatePending = wfInstance?.status === 'pending_approval'
+
+  const fetchPriorOutput = useCallback(async () => {
+    if (!wfInstance || !wfDefinition || !isGatePending) {
+      setPriorStepOutput(null)
+      return
+    }
+    const gateIdx = wfDefinition.steps.findIndex(s => s.id === wfInstance.currentStepId)
+    if (gateIdx <= 0) { setPriorStepOutput(null); return }
+    const priorStep = wfDefinition.steps[gateIdx - 1]
+    const output = wfInstance.stepStates[priorStep.id]?.output || null
+    if (output) { setPriorStepOutput(output); return }
+
+    // Output not yet persisted — retry up to 3 times at 500ms intervals
+    setOutputLoading(true)
+    setOutputUnavailable(false)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await new Promise(r => setTimeout(r, 500))
+      try {
+        const res = await fetch(`/api/plugins/workflows/instance?taskId=${wfInstance.taskId}`)
+        if (!res.ok) continue
+        const d = await res.json()
+        const inst = d?.instance as WorkflowInstance | undefined
+        if (inst) {
+          const retried = inst.stepStates[priorStep.id]?.output || null
+          if (retried) {
+            setPriorStepOutput(retried)
+            setWfInstance(inst)
+            setOutputLoading(false)
+            return
+          }
+        }
+      } catch { /* retry */ }
+    }
+    setOutputLoading(false)
+    setOutputUnavailable(true)
+  }, [wfInstance, wfDefinition, isGatePending])
+
+  useEffect(() => {
+    fetchPriorOutput()
+  }, [fetchPriorOutput])
 
   if (!task || !columnId) return null
 
@@ -231,16 +280,6 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
 
   // Find gate step info from definition
   const gateStep = wfDefinition?.steps.find(s => s.id === wfInstance?.currentStepId)
-  const isGatePending = wfInstance?.status === 'pending_approval'
-
-  // Get prior step output for review
-  const priorStepOutput = (() => {
-    if (!wfInstance || !wfDefinition || !isGatePending) return null
-    const gateIdx = wfDefinition.steps.findIndex(s => s.id === wfInstance.currentStepId)
-    if (gateIdx <= 0) return null
-    const priorStep = wfDefinition.steps[gateIdx - 1]
-    return wfInstance.stepStates[priorStep.id]?.output || null
-  })()
 
   return (
     <Sheet open={!!task} onOpenChange={(open) => { if (!open) onClose() }}>
@@ -338,14 +377,21 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
                   const dotColor = STEP_DOT_COLORS[status] || STEP_DOT_COLORS.pending
                   const isGate = step.type === 'gate'
                   return (
-                    <div key={step.id} className="flex items-center gap-1">
-                      {i > 0 && <span className="text-zinc-600 text-[10px]">&rarr;</span>}
-                      <div className="flex items-center gap-1 group relative">
-                        <span className={`size-2 rounded-full ${dotColor} shrink-0`} />
-                        <span className={`text-[10px] ${status === 'pending_approval' ? 'text-amber-400 font-semibold' : 'text-zinc-500'}`}>
-                          {isGate ? '⏳' : ''}{step.label || step.id}
-                        </span>
+                    <div key={step.id} className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1">
+                        {i > 0 && <span className="text-zinc-600 text-[10px]">&rarr;</span>}
+                        <div className="flex items-center gap-1 group relative">
+                          <span className={`size-2 rounded-full ${dotColor} shrink-0`} />
+                          <span className={`text-[10px] ${status === 'pending_approval' ? 'text-amber-400 font-semibold' : 'text-zinc-500'}`}>
+                            {isGate ? '⏳' : ''}{step.label || step.id}
+                          </span>
+                        </div>
                       </div>
+                      {state?.childTaskId && status === 'in_progress' && (
+                        <span className="text-[10px] text-cyan-400 ml-3">
+                          ↳ sub-task #{state.childTaskId.split('--').pop()?.slice(0, 8) || state.childTaskId.slice(0, 6)}
+                        </span>
+                      )}
                     </div>
                   )
                 })}
@@ -363,12 +409,49 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
                 </h3>
               </div>
 
+              {outputLoading && (
+                <div className="flex items-center gap-2 text-xs text-zinc-400">
+                  <RefreshCw className="size-3 animate-spin" />
+                  Loading step output...
+                </div>
+              )}
+
+              {outputUnavailable && !priorStepOutput && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500">Step output unavailable</span>
+                  <button
+                    onClick={() => fetchPriorOutput()}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                  >
+                    <RefreshCw className="size-2.5" /> Retry
+                  </button>
+                </div>
+              )}
+
               {priorStepOutput && (
                 <div>
                   <p className="text-[11px] text-zinc-400 uppercase tracking-wider mb-1.5">Prior Step Output</p>
-                  <pre className="rounded-md border border-border bg-zinc-900 px-3 py-2 text-xs text-zinc-300 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap">
-                    {JSON.stringify(priorStepOutput, null, 2)}
-                  </pre>
+                  <div className="rounded-md border border-border bg-zinc-900 px-3 py-2 max-h-64 overflow-y-auto space-y-2">
+                    {Object.entries(priorStepOutput).map(([key, value]) => (
+                      <div key={key}>
+                        <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{key}</p>
+                        {typeof value === 'string' && value.includes('\n') ? (
+                          <div className="text-xs text-zinc-300 mt-0.5">
+                            <MarkdownContent content={value} />
+                          </div>
+                        ) : typeof value === 'string' ? (
+                          <p className="text-xs text-zinc-300 mt-0.5">{value}</p>
+                        ) : (
+                          <details className="mt-0.5">
+                            <summary className="text-[10px] text-zinc-500 cursor-pointer hover:text-zinc-400">
+                              {Array.isArray(value) ? `Array (${value.length})` : 'Object'}
+                            </summary>
+                            <pre className="text-xs text-zinc-400 mt-1 whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</pre>
+                          </details>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
