@@ -17,6 +17,12 @@ import {
 import { setEventBus } from './notifications'
 import type { WorkflowTemplate, WorkflowDefinition, NestedWorkflowStep } from './types'
 
+/** Fire-and-forget dispatch trigger so the next workflow step's agent starts immediately. */
+function triggerDispatch() {
+  const port = Number(process.env.PORT || 3737)
+  fetch(`http://localhost:${port}/api/dispatch`, { method: 'POST' }).catch(() => {})
+}
+
 function countSteps(steps: { type: string; steps?: unknown[] }[]): number {
   let count = 0
   for (const step of steps) {
@@ -35,7 +41,7 @@ const workflowsPlugin: MCPlugin = {
   version: '2.0.0',
 
   navItems: [
-    { id: 'workflows', label: 'Workflows', icon: 'Zap', href: '/workflows', order: 15 },
+    { id: 'workflows', label: 'Workflows', icon: 'Workflow', href: '/workflows', order: 15 },
   ],
 
   contentFiles: [],
@@ -163,6 +169,11 @@ const workflowsPlugin: MCPlugin = {
           return Response.json({ error: 'Step completion failed', errors: result.errors }, { status: 400 })
         }
 
+        // Kick dispatch so the next step's agent starts immediately
+        if (!result.workflowComplete) {
+          triggerDispatch()
+        }
+
         return Response.json(result)
       },
     })
@@ -191,6 +202,9 @@ const workflowsPlugin: MCPlugin = {
         if (!result.success) {
           return Response.json({ error: result.errors?.[0], errors: result.errors }, { status: 400 })
         }
+
+        // Kick dispatch so the next step's agent starts immediately
+        triggerDispatch()
 
         return Response.json(result)
       },

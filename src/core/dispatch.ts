@@ -40,6 +40,14 @@ let dispatchStartedAt = 0
 let dispatchTimer: NodeJS.Timeout | null = null
 const DISPATCH_TIMEOUT_MS = 3 * 60 * 1000 // 3 minutes max per dispatch cycle
 
+// Async mutex for .dispatch-state.json — serializes all reads/writes
+let stateQueue = Promise.resolve() as Promise<unknown>
+function withStateLock<T>(fn: () => T | Promise<T>): Promise<T> {
+  const next = stateQueue.then(fn, fn) as Promise<T>
+  stateQueue = next.then(() => {}, () => {})
+  return next
+}
+
 function getStateFile(contentDir: string): string {
   return join(contentDir, '.dispatch-state.json')
 }
@@ -83,6 +91,8 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
   const settings = getSettings()
 
   try {
+    // Acquire state lock for the entire cycle to prevent races with dispatchSingleTask
+    await withStateLock(async () => {
     const { getTodoTasks, moveTaskToInProgress, addTaskLog } = await import('../lib/taskboard')
 
     const { todoTasks } = getTodoTasks()
@@ -174,10 +184,16 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
       try {
         await openclaw.sendMessage(targetAgent, message)
-        await moveTaskToInProgress(task.id, agentName)
+
+        // Re-read task state — fast agents may have already moved it
+        const { columns: fresh } = readTaskboard()
+        const stillInTodo = fresh.todo.some(t => t.id === task.id)
+        if (stillInTodo) {
+          await moveTaskToInProgress(task.id, agentName)
+          appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
+        }
         dispatchedSet.add(task.id)
 
-        appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
         appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title })
         log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent })
       } catch (err) {
@@ -203,9 +219,114 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       state.dispatched = state.dispatched.slice(-200)
     }
     saveDispatchState(contentDir, state)
+    }) // end withStateLock
   } finally {
     dispatching = false
   }
+}
+
+/**
+ * Immediately dispatch a single task by ID, bypassing the 5-minute cycle.
+ * Used for kick (explicit) and auto-kick (subtask with parentId).
+ */
+export async function dispatchSingleTask(
+  taskId: string,
+  contentDir: string,
+  port: number,
+  source: 'kick' | 'subtask' = 'kick'
+): Promise<void> {
+  const settings = getSettings()
+
+  await withStateLock(async () => {
+    const { columns } = readTaskboard()
+    const task = columns.todo.find(t => t.id === taskId)
+    if (!task) {
+      log.debug('dispatchSingleTask: task not in todo, skipping', { taskId })
+      return
+    }
+
+    if (task.agent && !settings.agents.includes(task.agent)) {
+      log.warn('dispatchSingleTask: agent not in allowed list', { taskId, agent: task.agent })
+      return
+    }
+
+    const state = loadDispatchState(contentDir)
+    if (state.dispatched.includes(taskId)) {
+      log.debug('dispatchSingleTask: already dispatched', { taskId })
+      return
+    }
+
+    // Check failure history
+    const failure = getFailureRecord(state.failedDispatches?.[taskId])
+    if (failure) {
+      if (failure.count >= settings.dispatch.maxRetries) {
+        log.warn('dispatchSingleTask: task exhausted retries', { taskId, count: failure.count })
+        return
+      }
+      if (Date.now() - failure.lastAttempt < settings.dispatch.failureCooldownMs) {
+        log.debug('dispatchSingleTask: task in cooldown', { taskId })
+        return
+      }
+    }
+
+    const { moveTaskToInProgress, addTaskLog } = await import('../lib/taskboard')
+
+    // Workflow-aware dispatch path
+    const taskWithWorkflow = task as typeof task & { workflowId?: string }
+    if (taskWithWorkflow.workflowId) {
+      const dispatchedSet = new Set(state.dispatched)
+      try {
+        await dispatchWorkflowTask(
+          { ...taskWithWorkflow, workflowId: taskWithWorkflow.workflowId },
+          contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog,
+        )
+        state.dispatched = [...dispatchedSet]
+        saveDispatchState(contentDir, state)
+        appendAudit(contentDir, 'task.kicked', source, { id: taskId, title: task.title, workflow: true })
+        log.info('Single-task dispatch (workflow)', { id: taskId, title: task.title, source })
+      } catch (err) {
+        log.error(`dispatchSingleTask: workflow dispatch failed for "${task.title}"`, err)
+      }
+      return
+    }
+
+    // Regular task dispatch
+    const targetAgent = task.agent ? resolveId(task.agent) : 'main'
+    const agentName = task.agent || 'main-operator'
+    const message = buildDispatchMessage(task, agentName, contentDir, port)
+
+    try {
+      await openclaw.sendMessage(targetAgent, message)
+
+      // Re-read task state — fast agents may have already moved it
+      const { columns: fresh } = readTaskboard()
+      const stillInTodo = fresh.todo.some(t => t.id === task.id)
+      if (stillInTodo) {
+        await moveTaskToInProgress(task.id, agentName)
+        appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
+      }
+
+      state.dispatched.push(task.id)
+      saveDispatchState(contentDir, state)
+
+      appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title })
+      appendAudit(contentDir, 'task.kicked', source, { id: task.id, title: task.title })
+      log.info('Single-task dispatch', { id: task.id, title: task.title, agent: targetAgent, source })
+    } catch (err) {
+      log.error(`dispatchSingleTask: failed to dispatch "${task.title}" to ${targetAgent}`, err)
+
+      if (!state.failedDispatches) state.failedDispatches = {}
+      const prev = getFailureRecord(state.failedDispatches[task.id])
+      state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1 }
+      saveDispatchState(contentDir, state)
+
+      try {
+        await addTaskLog(task.id, 'system', `Immediate dispatch failed (attempt ${(prev?.count || 0) + 1}): agent "${targetAgent}" not found or unavailable`)
+      } catch {
+        // best effort
+      }
+    }
+  })
 }
 
 function buildDispatchMessage(
@@ -251,7 +372,8 @@ Log command: curl -s -X POST ${logEndpoint} -H 'Content-Type: application/json' 
 
 ## COMMANDS
 
-If this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:${port}/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>"}'
+If this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:${port}/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>","parentId":"${task.id}"}'
+Subtasks with parentId are dispatched immediately — no waiting for the next cycle. To kick any task immediately (even without a parent), add "kick":true to the create payload.
 
 When finished, move this task to Done: curl -s -X POST http://localhost:${port}/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"${task.id}","to":"done","agent":"${agentName}"}'
 
@@ -259,7 +381,7 @@ Then report back to main-operator: openclaw agent --agent main --message "TASK C
 
 ${failureInstructions}
 
-Dependency pattern: If your task requires output from another agent, create their task first, note its ID, then register a dependency: curl -s -X POST http://localhost:${port}/api/tasks/depend -H 'Content-Type: application/json' -d '{"id":"${task.id}","dependsOn":"<their-task-id>"}'. Then exit — you will be automatically re-dispatched when their task completes.`
+Dependency pattern: If your task requires output from another agent, create their task first (with parentId to kick it off immediately), note its ID, then register a dependency: curl -s -X POST http://localhost:${port}/api/tasks/depend -H 'Content-Type: application/json' -d '{"id":"${task.id}","dependsOn":"<their-task-id>"}'. Then exit — you will be automatically re-dispatched when their task completes.`
 }
 
 export function start(contentDir: string, port: number): void {
@@ -356,11 +478,15 @@ async function dispatchWorkflowTask(
     }
   }
 
-  // Move task to in_progress on first dispatch
+  // Move task to in_progress on first dispatch (if agent hasn't already moved it)
   if (!dispatchedSet.has(task.id)) {
-    const firstAgent = activeAgents[0]?.agent || task.agent || 'main-operator'
-    await moveTaskToInProgress(task.id, firstAgent)
-    appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
+    const { columns: fresh } = readTaskboard()
+    const stillInTodo = fresh.todo.some(t => t.id === task.id)
+    if (stillInTodo) {
+      const firstAgent = activeAgents[0]?.agent || task.agent || 'main-operator'
+      await moveTaskToInProgress(task.id, firstAgent)
+      appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
+    }
     dispatchedSet.add(task.id)
   }
 }

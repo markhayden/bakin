@@ -527,10 +527,19 @@ export function completeStep(
     Promise.all([
       import('../../plugins/tasks/taskboard'),
       import('../../src/core/audit'),
-    ]).then(([{ moveTask, addTaskLog }, { appendAudit }]) => {
+    ]).then(([{ moveTask, addTaskLog, readTaskboard }, { appendAudit }]) => {
+      // Resolve task title for the audit message
+      let title = instance.taskId
+      try {
+        const { columns } = readTaskboard()
+        for (const col of Object.values(columns)) {
+          const found = (col as Array<{ id: string; title: string }>).find(t => t.id === instance.taskId)
+          if (found) { title = found.title; break }
+        }
+      } catch { /* best effort */ }
       addTaskLog(instance.taskId, 'workflow', `Workflow "${instance.workflowId}" completed — all steps done.`)
         .then(() => moveTask(instance.taskId, 'done'))
-        .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: instance.taskId, from: 'inProgress', to: 'done' }))
+        .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: instance.taskId, title, from: 'inProgress', to: 'done' }))
         .catch(() => {})
     }).catch(() => {})
     return { success: true, workflowComplete: true }
@@ -603,10 +612,18 @@ function propagateChildCompletion(childInstance: WorkflowInstance, contentDir: s
       Promise.all([
         import('../../plugins/tasks/taskboard'),
         import('../../src/core/audit'),
-      ]).then(([{ moveTask, addTaskLog }, { appendAudit }]) => {
+      ]).then(([{ moveTask, addTaskLog, readTaskboard }, { appendAudit }]) => {
+        let title = parentInstance.taskId
+        try {
+          const { columns } = readTaskboard()
+          for (const col of Object.values(columns)) {
+            const found = (col as Array<{ id: string; title: string }>).find(t => t.id === parentInstance.taskId)
+            if (found) { title = found.title; break }
+          }
+        } catch { /* best effort */ }
         addTaskLog(parentInstance.taskId, 'workflow', `Workflow "${parentInstance.workflowId}" completed — all steps done.`)
           .then(() => moveTask(parentInstance.taskId, 'done'))
-          .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: parentInstance.taskId, from: 'inProgress', to: 'done' }))
+          .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: parentInstance.taskId, title, from: 'inProgress', to: 'done' }))
           .catch(() => {})
       }).catch(() => {})
     }
