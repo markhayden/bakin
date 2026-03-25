@@ -26,13 +26,48 @@ import type {
   AgentStep,
   GateStep,
   OutputStep,
+  NestedWorkflowStep,
   SkillDefinition,
 } from './types'
 import { loadDefinition } from './parser'
 import { loadSkill } from './skill-loader'
 import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
-import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete } from './notifications'
+import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyStepDispatched, notifyStepComplete } from './notifications'
 import { getContentDir } from './content-dir'
+
+/**
+ * Create a board task for a nested workflow so it's visible in the UI.
+ * Fire-and-forget — the workflow instance is the source of truth;
+ * the board task is just for visibility and gate approvals.
+ */
+function createBoardTaskForChild(
+  childTaskId: string,
+  parentTaskId: string,
+  nestedStep: NestedWorkflowStep,
+  childDef: WorkflowDefinition | null,
+  assignee?: string,
+) {
+  import('../../plugins/tasks/taskboard').then(({ createTask, addTaskLog }) => {
+    const title = `${nestedStep.label || nestedStep.workflow_id} (sub-workflow)`
+    const description = nestedStep.description || childDef?.description || undefined
+    // Find the first agent step in the child workflow for the assignee
+    const childAgent = childDef?.steps.find(s => s.type === 'agent')
+    const agent = childAgent ? (childAgent as AgentStep).agent : assignee
+    const resolvedAgent = agent === '$assigned' ? assignee : agent
+
+    createTask(
+      title,
+      'inProgress',
+      resolvedAgent,
+      description?.trim(),
+      nestedStep.workflow_id,
+      'workflow',
+      childTaskId,
+    ).then(() => {
+      addTaskLog(childTaskId, 'workflow', `Sub-workflow of task ${parentTaskId}`).catch(() => {})
+    }).catch(() => {})
+  }).catch(() => {})
+}
 
 function generateId(): string {
   return 'wf_' + randomBytes(6).toString('hex')
@@ -134,7 +169,11 @@ export function saveInstance(instance: WorkflowInstance, contentDir?: string): v
 export function createInstance(
   taskId: string,
   workflowId: string,
-  contentDir?: string
+  contentDir?: string,
+  /** Snapshot the task assignee at workflow start for $assigned resolution */
+  assignee?: string,
+  /** Context from parent workflow — prior step output at spawn time */
+  parentContext?: Record<string, unknown>,
 ): WorkflowInstance {
   const dir = contentDir || getContentDir()
   const def = loadDefinition(workflowId, dir)
@@ -174,10 +213,38 @@ export function createInstance(
     history: [],
     createdAt: now,
     updatedAt: now,
+    resolvedAgent: assignee,
+    parentContext,
   }
 
   saveInstance(instance, dir)
+
+  // If the first step is a nested workflow, spawn the child instance now
+  if (firstStep.type === 'workflow') {
+    const nested = firstStep as NestedWorkflowStep
+    const childTaskId = `${taskId}--${nested.id}`
+    const childInstance = createInstance(childTaskId, nested.workflow_id, dir, assignee, parentContext)
+    childInstance.parentTaskId = taskId
+    childInstance.parentStepId = nested.id
+    saveInstance(childInstance, dir)
+    instance.stepStates[firstStepId] = { status: 'in_progress', startedAt: now, childTaskId }
+    saveInstance(instance, dir)
+
+    // Create a board task so the child workflow's gates are visible in the UI
+    const childDef = loadDefinition(nested.workflow_id, dir)
+    createBoardTaskForChild(childTaskId, taskId, nested, childDef, assignee)
+  }
+
   return instance
+}
+
+/**
+ * Resolve a step's agent value, replacing `$assigned` with the instance's
+ * snapshotted assignee (locked at workflow start to prevent mid-workflow drift).
+ */
+function resolveAgent(agentValue: string | undefined, instance: WorkflowInstance): string | undefined {
+  if (agentValue === '$assigned') return instance.resolvedAgent || agentValue
+  return agentValue
 }
 
 // ─── Step Context ───────────────────────────────────────────────────────────
@@ -192,6 +259,10 @@ export interface StepContext {
   status: string
   rejectionReason?: string
   previousOutput?: Record<string, unknown>
+  /** Output from the immediately prior step — gives this step the context of what came before */
+  priorStepOutput?: Record<string, unknown>
+  /** All completed step outputs keyed by step ID — accumulated context across the workflow */
+  stepOutputs?: Record<string, Record<string, unknown>>
   deny_tools?: string[]
 }
 
@@ -211,7 +282,7 @@ export function getCurrentStep(
   const instance = loadInstance(taskId, dir)
   if (!instance) return null
 
-  if (instance.status === 'complete') {
+  if (instance.status === 'complete' || instance.status === 'cancelled') {
     return { status: 'complete' }
   }
 
@@ -231,12 +302,21 @@ export function getCurrentStep(
     }
   }
 
+  // Nested workflow step — delegate to the child instance
+  if (step.type === 'workflow') {
+    const stepState = instance.stepStates[currentId]
+    if (stepState?.childTaskId) {
+      return getCurrentStep(stepState.childTaskId, agentId, dir)
+    }
+    return null
+  }
+
   // Parallel step — find the right child for this agent
   if (step.type === 'parallel') {
     const parallel = step as ParallelStep
     if (agentId) {
       const childStep = parallel.steps.find(
-        c => c.type === 'agent' && (c as AgentStep).agent === agentId
+        c => c.type === 'agent' && resolveAgent((c as AgentStep).agent, instance) === agentId
       )
       if (childStep && instance.stepStates[childStep.id]?.status === 'in_progress') {
         return buildStepContext(childStep, instance, dir)
@@ -265,9 +345,9 @@ function buildStepContext(
     status: instance.stepStates[step.id]?.status || 'pending',
   }
 
-  // Resolve agent
-  if (step.type === 'agent') ctx.agent = (step as AgentStep).agent
-  if (step.type === 'output' && (step as OutputStep).agent) ctx.agent = (step as OutputStep).agent
+  // Resolve agent (handles $assigned → snapshotted assignee)
+  if (step.type === 'agent') ctx.agent = resolveAgent((step as AgentStep).agent, instance)
+  if (step.type === 'output' && (step as OutputStep).agent) ctx.agent = resolveAgent((step as OutputStep).agent, instance)
 
   // Resolve instructions from skill or description
   const skillName = (step as AgentStep | OutputStep).skill
@@ -285,6 +365,47 @@ function buildStepContext(
     }
   } else {
     ctx.instructions = description
+  }
+
+  // Collect all completed step outputs and find the most recent one
+  const def = loadDefinition(instance.workflowId, contentDir)
+  if (def) {
+    const flatSteps = def.steps.flatMap(s =>
+      s.type === 'parallel' ? (s as ParallelStep).steps : [s]
+    )
+    const stepIdx = flatSteps.findIndex(s => s.id === step.id)
+
+    // Build accumulated outputs map from all prior completed steps
+    const stepOutputs: Record<string, Record<string, unknown>> = {}
+    for (let i = 0; i < stepIdx; i++) {
+      const priorState = instance.stepStates[flatSteps[i].id]
+      if (priorState?.output) {
+        stepOutputs[flatSteps[i].id] = priorState.output
+      }
+    }
+
+    // Include parent context as a special key so child workflows see upstream data
+    if (instance.parentContext) {
+      stepOutputs['__parentContext'] = instance.parentContext
+    }
+
+    if (Object.keys(stepOutputs).length > 0) {
+      ctx.stepOutputs = stepOutputs
+    }
+
+    // Also set priorStepOutput to the most recent completed step with output
+    for (let i = stepIdx - 1; i >= 0; i--) {
+      const priorState = instance.stepStates[flatSteps[i].id]
+      if (priorState?.output) {
+        ctx.priorStepOutput = priorState.output
+        break
+      }
+    }
+
+    // If no prior step output but we have parent context, use that
+    if (!ctx.priorStepOutput && instance.parentContext) {
+      ctx.priorStepOutput = instance.parentContext
+    }
   }
 
   // Include rejection context if step was previously rejected
@@ -345,8 +466,9 @@ export function completeStep(
 
   // Agent-scoping: verify the caller is the agent assigned to this step
   if (callerAgentId) {
-    const assignedAgent = (step as AgentStep | OutputStep).agent
-    if (assignedAgent && callerAgentId !== assignedAgent) {
+    const rawAgent = (step as AgentStep | OutputStep).agent
+    const assignedAgent = resolveAgent(rawAgent, instance)
+    if (assignedAgent && assignedAgent !== '$assigned' && callerAgentId !== assignedAgent) {
       return { success: false, errors: [`Step "${stepId}" is assigned to "${assignedAgent}", not "${callerAgentId}". Stay in your lane.`] }
     }
   }
@@ -385,12 +507,22 @@ export function completeStep(
     output,
   })
 
+  // Notify step completion
+  notifyStepComplete(instance, stepId, step.label || stepId)
+
   // Advance the workflow
   const advanced = advanceWorkflow(instance, def, dir)
   saveInstance(instance, dir)
 
   if (instance.status === 'complete') {
     notifyWorkflowComplete(instance)
+
+    // If this is a child workflow, propagate completion to parent
+    if (instance.parentTaskId && instance.parentStepId) {
+      propagateChildCompletion(instance, dir)
+      return { success: true, workflowComplete: true }
+    }
+
     // Auto-move the task to done on the taskboard + emit audit event
     Promise.all([
       import('../../plugins/tasks/taskboard'),
@@ -406,6 +538,79 @@ export function completeStep(
 
   const nextStep = getCurrentStep(taskId, undefined, dir)
   return { success: true, nextStep: nextStep || undefined }
+}
+
+/**
+ * When a child workflow completes, mark the parent's workflow step as complete
+ * and advance the parent workflow. Collects the child's final step outputs
+ * as the workflow step's output.
+ */
+function propagateChildCompletion(childInstance: WorkflowInstance, contentDir: string): void {
+  const parentInstance = loadInstance(childInstance.parentTaskId!, contentDir)
+  if (!parentInstance) return
+
+  const parentDef = loadDefinition(parentInstance.workflowId, contentDir)
+  if (!parentDef) return
+
+  const stepId = childInstance.parentStepId!
+  const stepState = parentInstance.stepStates[stepId]
+  if (!stepState || stepState.status !== 'in_progress') return
+
+  // Collect child workflow outputs in definition order.
+  // `finalOutput` is the last agent step's output (gates don't produce output).
+  const childDef = loadDefinition(childInstance.workflowId, contentDir)
+  const childOutputs: Record<string, unknown> = {}
+  let finalOutput: Record<string, unknown> | undefined
+  const defStepIds = childDef
+    ? childDef.steps.map(s => s.id)
+    : Object.keys(childInstance.stepStates)
+  for (const sid of defStepIds) {
+    const state = childInstance.stepStates[sid]
+    if (state?.output) {
+      childOutputs[sid] = state.output
+      finalOutput = state.output
+    }
+  }
+
+  const now = new Date().toISOString()
+  stepState.status = 'complete'
+  stepState.completedAt = now
+  stepState.output = { childWorkflowId: childInstance.workflowId, finalOutput, outputs: childOutputs }
+
+  parentInstance.history.push({
+    stepId,
+    status: 'complete',
+    completedAt: now,
+    output: stepState.output,
+  })
+
+  // Move the child's board task to Done
+  import('../../plugins/tasks/taskboard').then(({ moveTask, addTaskLog }) => {
+    addTaskLog(childInstance.taskId, 'workflow', `Sub-workflow "${childInstance.workflowId}" completed.`)
+      .then(() => moveTask(childInstance.taskId, 'done'))
+      .catch(() => {})
+  }).catch(() => {})
+
+  advanceWorkflow(parentInstance, parentDef, contentDir)
+  saveInstance(parentInstance, contentDir)
+
+  // If parent also completed, recurse (handles deeply nested workflows)
+  if (parentInstance.status === 'complete') {
+    if (parentInstance.parentTaskId && parentInstance.parentStepId) {
+      propagateChildCompletion(parentInstance, contentDir)
+    } else {
+      notifyWorkflowComplete(parentInstance)
+      Promise.all([
+        import('../../plugins/tasks/taskboard'),
+        import('../../src/core/audit'),
+      ]).then(([{ moveTask, addTaskLog }, { appendAudit }]) => {
+        addTaskLog(parentInstance.taskId, 'workflow', `Workflow "${parentInstance.workflowId}" completed — all steps done.`)
+          .then(() => moveTask(parentInstance.taskId, 'done'))
+          .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: parentInstance.taskId, from: 'inProgress', to: 'done' }))
+          .catch(() => {})
+      }).catch(() => {})
+    }
+  }
 }
 
 // ─── Workflow Advancement ───────────────────────────────────────────────────
@@ -462,7 +667,62 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     instance.stepStates[nextStep.id] = { status: 'in_progress', startedAt: now }
     for (const child of (nextStep as ParallelStep).steps) {
       instance.stepStates[child.id] = { status: 'in_progress', startedAt: now }
+      if (child.type === 'agent') {
+        const agentName = (child as AgentStep).agent || instance.resolvedAgent || 'unknown'
+        notifyStepDispatched(instance, child.id, agentName, child.label)
+      }
     }
+  } else if (nextStep.type === 'workflow') {
+    // Nested workflow — spawn a child instance with parent context
+    const nested = nextStep as NestedWorkflowStep
+    const childTaskId = `${instance.taskId}--${nested.id}`
+
+    // Collect the most recent prior step output to inject as parent context
+    let priorStepOutput: Record<string, unknown> | undefined
+    const allSteps = def.steps.flatMap(s => s.type === 'parallel' ? (s as ParallelStep).steps : [s])
+    const nextIdx = allSteps.findIndex(s => s.id === nextStep.id)
+    for (let i = nextIdx - 1; i >= 0; i--) {
+      const priorState = instance.stepStates[allSteps[i].id]
+      if (priorState?.output) {
+        priorStepOutput = priorState.output
+        break
+      }
+    }
+
+    // Always include parent task metadata so child has full context
+    let parentTaskTitle: string | undefined
+    let parentTaskDescription: string | undefined
+    try {
+      const tbPath = join(contentDir, 'TASKBOARD.md')
+      if (existsSync(tbPath)) {
+        const { parseTasks } = require('../../plugins/tasks/parser')
+        const board = parseTasks(readFileSync(tbPath, 'utf8'))
+        for (const tasks of Object.values(board.columns)) {
+          const found = (tasks as Array<{ id: string; title?: string; description?: string }>).find(t => t.id === instance.taskId)
+          if (found) {
+            parentTaskTitle = found.title
+            parentTaskDescription = found.description
+            break
+          }
+        }
+      }
+    } catch { /* best effort */ }
+
+    const childParentContext: Record<string, unknown> = {
+      ...(priorStepOutput || {}),
+      _parentTaskTitle: parentTaskTitle,
+      _parentTaskDescription: parentTaskDescription,
+    }
+
+    const childInstance = createInstance(childTaskId, nested.workflow_id, contentDir, instance.resolvedAgent, childParentContext)
+    childInstance.parentTaskId = instance.taskId
+    childInstance.parentStepId = nested.id
+    saveInstance(childInstance, contentDir)
+    instance.stepStates[nextStep.id] = { status: 'in_progress', startedAt: now, childTaskId }
+
+    // Create a board task so the child workflow's gates are visible in the UI
+    const childDef = loadDefinition(nested.workflow_id, contentDir)
+    createBoardTaskForChild(childTaskId, instance.taskId, nested, childDef, instance.resolvedAgent)
   } else if (nextStep.type === 'gate') {
     // Gates go to pending_approval
     instance.stepStates[nextStep.id] = { status: 'pending_approval', startedAt: now }
@@ -474,6 +734,11 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     notifyGateReached(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput)
   } else {
     instance.stepStates[nextStep.id] = { status: 'in_progress', startedAt: now }
+    // Notify that a step has been dispatched to an agent
+    if (nextStep.type === 'agent' || nextStep.type === 'output') {
+      const agentName = (nextStep as AgentStep).agent || instance.resolvedAgent || 'unknown'
+      notifyStepDispatched(instance, nextStep.id, agentName, nextStep.label)
+    }
   }
 
   return true
@@ -532,6 +797,13 @@ export function approveGate(
 
   if ((instance.status as string) === 'complete') {
     notifyWorkflowComplete(instance)
+
+    // If this is a child workflow, propagate completion to parent
+    if (instance.parentTaskId && instance.parentStepId) {
+      propagateChildCompletion(instance, dir)
+      return { success: true, nextStep: { status: 'complete' } }
+    }
+
     // Auto-move the task to done on the taskboard + emit audit event
     Promise.all([
       import('../../plugins/tasks/taskboard'),
@@ -651,6 +923,33 @@ export function rejectGate(
 }
 
 /**
+ * Cancel a workflow instance and any active child instances.
+ * Called when a task is moved to done/blocked/deleted outside the workflow.
+ */
+export function cancelInstance(taskId: string, contentDir?: string): void {
+  const dir = contentDir || getContentDir()
+  const instance = loadInstance(taskId, dir)
+  if (!instance) return
+  if (instance.status === 'complete' || instance.status === 'cancelled') return
+
+  instance.status = 'cancelled'
+  instance.updatedAt = new Date().toISOString()
+
+  // Cancel any active child instances and their board tasks
+  for (const [, state] of Object.entries(instance.stepStates)) {
+    if (state.childTaskId && state.status === 'in_progress') {
+      cancelInstance(state.childTaskId, dir)
+      // Remove the child's board task
+      import('../../plugins/tasks/taskboard').then(({ moveTask }) => {
+        moveTask(state.childTaskId!, 'done').catch(() => {})
+      }).catch(() => {})
+    }
+  }
+
+  saveInstance(instance, dir)
+}
+
+/**
  * List active workflow instances.
  */
 export function listInstances(
@@ -682,11 +981,15 @@ export function listInstances(
 /**
  * Get all agents that should be dispatched for the current step of a workflow.
  * Used by the dispatch system to know who to send work to.
+ *
+ * `effectiveTaskId` is the task ID to use when communicating with the workflow
+ * runtime (e.g., step/complete). For nested workflows this will be the child's
+ * synthetic task ID, not the top-level task.
  */
 export function getActiveAgents(
   taskId: string,
   contentDir?: string
-): { agent: string; stepId: string }[] {
+): { agent: string; stepId: string; effectiveTaskId?: string }[] {
   const dir = contentDir || getContentDir()
   const instance = loadInstance(taskId, dir)
   if (!instance || instance.status !== 'in_progress') return []
@@ -697,18 +1000,31 @@ export function getActiveAgents(
   const currentStep = findStep(def, instance.currentStepId)
   if (!currentStep) return []
 
-  const agents: { agent: string; stepId: string }[] = []
+  const agents: { agent: string; stepId: string; effectiveTaskId?: string }[] = []
 
-  if (currentStep.type === 'parallel') {
+  if (currentStep.type === 'workflow') {
+    // Delegate to child instance — child results include effectiveTaskId
+    const stepState = instance.stepStates[currentStep.id]
+    if (stepState?.childTaskId) {
+      return getActiveAgents(stepState.childTaskId, dir).map(a => ({
+        ...a,
+        effectiveTaskId: a.effectiveTaskId || stepState.childTaskId,
+      }))
+    }
+    return []
+  } else if (currentStep.type === 'parallel') {
     for (const child of (currentStep as ParallelStep).steps) {
       if (child.type === 'agent' && instance.stepStates[child.id]?.status === 'in_progress') {
-        agents.push({ agent: (child as AgentStep).agent, stepId: child.id })
+        const resolved = resolveAgent((child as AgentStep).agent, instance)
+        if (resolved && resolved !== '$assigned') agents.push({ agent: resolved, stepId: child.id })
       }
     }
   } else if (currentStep.type === 'agent') {
-    agents.push({ agent: (currentStep as AgentStep).agent, stepId: currentStep.id })
+    const resolved = resolveAgent((currentStep as AgentStep).agent, instance)
+    if (resolved && resolved !== '$assigned') agents.push({ agent: resolved, stepId: currentStep.id })
   } else if (currentStep.type === 'output' && (currentStep as OutputStep).agent) {
-    agents.push({ agent: (currentStep as OutputStep).agent!, stepId: currentStep.id })
+    const resolved = resolveAgent((currentStep as OutputStep).agent, instance)
+    if (resolved && resolved !== '$assigned') agents.push({ agent: resolved, stepId: currentStep.id })
   }
 
   return agents

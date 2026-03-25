@@ -101,6 +101,8 @@ export const AGENT_PROFILES: AgentProfile[] = [
     shouldDo: [
       'Generate high-quality images from detailed briefs',
       'Match the style, mood, and crop specified in the brief',
+      'Default to 1080x1920 (9:16 vertical) for social unless the brief specifies otherwise — optimized for Stories, Reels, TikTok',
+      'Never exceed 1200px on any edge unless explicitly requested — conserve image generation credits',
       'Discover the assets directory via the paths API (GET /api/paths?key=assets) and save outputs there with descriptive filenames',
       'Move your own task to Done when complete (POST /api/tasks/move with {"id":"<task-id>","to":"done"})',
       'Report back to Roscoe with file paths when done',
@@ -108,6 +110,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     ],
     shouldNotDo: [
       'Start generating without a brief — wait for Basil or Roscoe',
+      'Generate images larger than 1200px unless the brief explicitly requests it',
       'Write copy or captions — that\'s Basil',
       'Post images directly to Discord — let Roscoe assemble',
       'Build or fix code — that\'s Patch',

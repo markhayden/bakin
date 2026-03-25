@@ -8,16 +8,22 @@ import { getSettings } from './settings'
 
 const log = createLogger('sse')
 
-const clients = new Set<ServerResponse>()
-const keepAliveTimers = new Map<ServerResponse, NodeJS.Timeout>()
+// Shared state lives on globalThis so that if this module is evaluated multiple
+// times (custom server vs Next.js webpack bundle), all instances share the same
+// client set, event buffer, and counter.  The first evaluation creates them;
+// subsequent evaluations reuse them.
+const g = globalThis as any
+const clients: Set<ServerResponse> = g.__beaconSSEClients ?? (g.__beaconSSEClients = new Set<ServerResponse>())
+const keepAliveTimers: Map<ServerResponse, NodeJS.Timeout> = g.__beaconSSEKeepAlive ?? (g.__beaconSSEKeepAlive = new Map<ServerResponse, NodeJS.Timeout>())
 
-// Event ID and replay buffer
-let eventCounter = 0
 const EVENT_BUFFER_SIZE = 200
-const eventBuffer: { id: number; data: string }[] = []
+if (!g.__beaconSSEState) {
+  g.__beaconSSEState = { eventCounter: 0, eventBuffer: [] as { id: number; data: string }[] }
+}
+const sseState: { eventCounter: number; eventBuffer: { id: number; data: string }[] } = g.__beaconSSEState
 
 function nextEventId(): number {
-  return ++eventCounter
+  return ++sseState.eventCounter
 }
 
 export function broadcast(data: Record<string, unknown>): void {
@@ -26,9 +32,9 @@ export function broadcast(data: Record<string, unknown>): void {
   const msg = `id: ${id}\ndata: ${payload}\n\n`
 
   // Store in replay buffer
-  eventBuffer.push({ id, data: payload })
-  if (eventBuffer.length > EVENT_BUFFER_SIZE) {
-    eventBuffer.splice(0, eventBuffer.length - EVENT_BUFFER_SIZE)
+  sseState.eventBuffer.push({ id, data: payload })
+  if (sseState.eventBuffer.length > EVENT_BUFFER_SIZE) {
+    sseState.eventBuffer.splice(0, sseState.eventBuffer.length - EVENT_BUFFER_SIZE)
   }
 
   for (const client of clients) {
@@ -47,6 +53,7 @@ export function broadcastAuditEvent(entry: Record<string, unknown>): void {
 // Expose broadcast on globalThis so Next.js API routes (which get a separate
 // module instance due to webpack bundling) can still reach the real SSE clients.
 ;(globalThis as any).__beaconBroadcastAudit = broadcastAuditEvent
+;(globalThis as any).__beaconBroadcast = broadcast
 
 function removeClient(res: ServerResponse): void {
   clients.delete(res)
@@ -63,7 +70,7 @@ function removeClient(res: ServerResponse): void {
  */
 function replayEvents(res: ServerResponse, lastEventId: number): void {
   let replayed = 0
-  for (const event of eventBuffer) {
+  for (const event of sseState.eventBuffer) {
     if (event.id > lastEventId) {
       try {
         res.write(`id: ${event.id}\ndata: ${event.data}\n\n`)
@@ -128,7 +135,7 @@ export function getClientCount(): number {
 }
 
 export function getCurrentEventId(): number {
-  return eventCounter
+  return sseState.eventCounter
 }
 
 export function stop(): void {

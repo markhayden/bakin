@@ -15,12 +15,25 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
+/** Strip default ReactFlow node chrome so only our styled components show */
+const RESET_NODE_STYLES = `
+  .react-flow__node {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+`
+
 import { TriggerNode } from './nodes/trigger-node'
 import { AgentNode } from './nodes/agent-node'
 import { GateNode } from './nodes/gate-node'
 import { ParallelNode } from './nodes/parallel-node'
 import { OutputNode } from './nodes/output-node'
-import type { WorkflowDefinition } from '../types'
+import { WorkflowNode } from './nodes/workflow-node'
+import { SubflowGroupNode } from './nodes/subflow-group-node'
+import type { WorkflowDefinition, WorkflowStep } from '../types'
 
 const nodeTypes: NodeTypes = {
   trigger: TriggerNode,
@@ -28,23 +41,91 @@ const nodeTypes: NodeTypes = {
   gate: GateNode,
   parallel: ParallelNode,
   output: OutputNode,
+  workflow: WorkflowNode,
+  subflowGroup: SubflowGroupNode,
 }
 
-const NODE_WIDTH = 320
-const NODE_HEIGHT = 140
-const X_SPACING = 400
-const Y_SPACING = 200
-const PARALLEL_PADDING = 40
+const NODE_WIDTH = 280
+const NODE_HEIGHT = 100
+const Y_SPACING = 130
+const X_SPACING = 380
+const SUBFLOW_PADDING_X = 30
+const SUBFLOW_PADDING_TOP = 48
+const SUBFLOW_PADDING_BOTTOM = 32
 
 interface WorkflowCanvasProps {
   definition: WorkflowDefinition
+  subWorkflows?: Record<string, WorkflowDefinition>
 }
 
-function buildGraph(definition: WorkflowDefinition) {
+/** Map a step type to its ReactFlow node type */
+function stepNodeType(step: WorkflowStep): string {
+  if (step.type === 'gate') return 'gate'
+  if (step.type === 'output') return 'output'
+  if (step.type === 'workflow') return 'workflow'
+  return 'agent'
+}
+
+/** Build node data from a step */
+function stepNodeData(step: WorkflowStep) {
+  return {
+    label: step.label,
+    agent: step.type === 'agent' ? step.agent : undefined,
+    task: step.type === 'agent' ? step.task : undefined,
+    channels: step.type === 'output' ? step.channels : undefined,
+    description: step.type === 'gate' ? step.description
+      : step.type === 'workflow' ? step.description
+      : step.type === 'output' ? step.description
+      : undefined,
+    workflow_id: step.type === 'workflow' ? (step as { workflow_id?: string }).workflow_id : undefined,
+  }
+}
+
+/**
+ * Measure the height a sub-workflow's inline expansion will take.
+ * Counts its steps (skipping 'done'-targeted gate outputs) vertically.
+ */
+function measureSubWorkflowHeight(def: WorkflowDefinition, subWorkflows: Record<string, WorkflowDefinition>): number {
+  let count = 0
+  for (const step of def.steps) {
+    if (step.type === 'workflow') {
+      const wfId = (step as { workflow_id?: string }).workflow_id
+      const subDef = wfId ? subWorkflows[wfId] : undefined
+      if (subDef) {
+        count += measureSubWorkflowStepCount(subDef, subWorkflows)
+        continue
+      }
+    }
+    count++
+  }
+  return count
+}
+
+function measureSubWorkflowStepCount(def: WorkflowDefinition, subWorkflows: Record<string, WorkflowDefinition>): number {
+  let count = 0
+  for (const step of def.steps) {
+    if (step.type === 'workflow') {
+      const wfId = (step as { workflow_id?: string }).workflow_id
+      const subDef = wfId ? subWorkflows[wfId] : undefined
+      if (subDef) {
+        count += measureSubWorkflowStepCount(subDef, subWorkflows)
+        continue
+      }
+    }
+    count++
+  }
+  return count
+}
+
+function buildGraph(
+  definition: WorkflowDefinition,
+  subWorkflows: Record<string, WorkflowDefinition> = {},
+) {
   const nodes: Node[] = []
   const edges: Edge[] = []
 
-  let x = 0
+  let y = 0
+  const centerX = 0
 
   // Trigger node
   const inputDesc = definition.inputs
@@ -54,95 +135,194 @@ function buildGraph(definition: WorkflowDefinition) {
   nodes.push({
     id: '__trigger',
     type: 'trigger',
-    position: { x, y: 0 },
+    position: { x: centerX, y },
     data: { description: inputDesc },
+    style: { width: NODE_WIDTH },
   })
 
   let prevNodeIds = ['__trigger']
-  x += X_SPACING
+  y += Y_SPACING
 
-  for (const step of definition.steps) {
-    if (step.type === 'parallel') {
-      const subSteps = step.steps
-      const totalHeight = subSteps.length * Y_SPACING
-      const startY = -(totalHeight - Y_SPACING) / 2
+  /**
+   * Emit steps for a definition, optionally inside a parent group.
+   * Returns the IDs of the last emitted node(s).
+   */
+  function emitSteps(
+    steps: WorkflowStep[],
+    startY: number,
+    parentId?: string,
+    idPrefix?: string,
+  ): { lastNodeIds: string[]; endY: number } {
+    let cy = startY
+    let prevIds = [...prevNodeIds]
 
-      const containerHeight = totalHeight + PARALLEL_PADDING * 2
-      const containerWidth = NODE_WIDTH + PARALLEL_PADDING * 2 + 30
-      nodes.push({
-        id: step.id,
-        type: 'parallel',
-        position: { x: x - 20, y: -(containerHeight - NODE_HEIGHT) / 2 },
-        data: { label: step.label, width: containerWidth, height: containerHeight },
-        style: { width: containerWidth, height: containerHeight },
-      })
+    for (const step of steps) {
+      const nodeId = idPrefix ? `${idPrefix}__${step.id}` : step.id
 
-      const subNodeIds: string[] = []
-      subSteps.forEach((sub, i) => {
-        const subX = x + 30
-        const subY = startY + i * Y_SPACING
+      // Check if this is a workflow step with a resolvable sub-definition
+      if (step.type === 'workflow') {
+        const wfId = (step as { workflow_id?: string }).workflow_id
+        const subDef = wfId ? subWorkflows[wfId] : undefined
 
-        nodes.push({
-          id: sub.id,
-          type: sub.type === 'gate' ? 'gate' : 'agent',
-          position: { x: subX, y: subY },
-          data: {
-            label: sub.label,
-            agent: sub.type === 'agent' ? sub.agent : undefined,
-            task: sub.type === 'agent' ? sub.task : undefined,
-            description: sub.type === 'gate' ? sub.description : undefined,
-          },
-        })
-        subNodeIds.push(sub.id)
+        if (subDef) {
+          // Inline expansion — create a group node and emit sub-workflow steps inside it
+          const subStepCount = measureSubWorkflowStepCount(subDef, subWorkflows)
+          const groupHeight = SUBFLOW_PADDING_TOP + subStepCount * Y_SPACING + SUBFLOW_PADDING_BOTTOM
+          const groupWidth = NODE_WIDTH + SUBFLOW_PADDING_X * 2
+          const groupId = nodeId
 
-        for (const prevId of prevNodeIds) {
-          edges.push({
-            id: `${prevId}-${sub.id}`,
-            source: prevId,
-            target: sub.id,
+          const groupPosition = parentId
+            ? { x: -SUBFLOW_PADDING_X, y: cy - startY }
+            : { x: centerX - SUBFLOW_PADDING_X, y: cy }
+
+          nodes.push({
+            id: groupId,
+            type: 'subflowGroup',
+            position: groupPosition,
+            data: { label: step.label, workflow_id: wfId, width: groupWidth, height: groupHeight },
+            style: { width: groupWidth, height: groupHeight },
+            ...(parentId ? { parentId, extent: 'parent' as const } : {}),
           })
-        }
-      })
 
-      prevNodeIds = subNodeIds
-      x += containerWidth + X_SPACING - 40
-    } else {
-      let nodeType: string = step.type
-      if (nodeType !== 'gate' && nodeType !== 'output') {
-        nodeType = 'agent'
+          // Edge from previous nodes to the group
+          for (const prevId of prevIds) {
+            edges.push({
+              id: `${prevId}-${groupId}`,
+              source: prevId,
+              target: groupId,
+            })
+          }
+
+          // Save prevNodeIds, emit children inside the group
+          const savedPrev = prevNodeIds
+          // First child node inside the group connects from group entry (no explicit edges — they flow through group handles)
+          // We'll emit the sub-steps and wire them internally
+          const innerStartY = SUBFLOW_PADDING_TOP
+          let innerY = innerStartY
+          let innerPrevIds: string[] = []
+
+          for (const subStep of subDef.steps) {
+            const subNodeId = `${groupId}__${subStep.id}`
+            const subNodeType = stepNodeType(subStep)
+
+            // Nested sub-workflow inside sub-workflow
+            if (subStep.type === 'workflow') {
+              const nestedWfId = (subStep as { workflow_id?: string }).workflow_id
+              const nestedDef = nestedWfId ? subWorkflows[nestedWfId] : undefined
+              if (nestedDef) {
+                const nestedCount = measureSubWorkflowStepCount(nestedDef, subWorkflows)
+                const nestedGroupHeight = SUBFLOW_PADDING_TOP + nestedCount * Y_SPACING + SUBFLOW_PADDING_BOTTOM
+                const nestedGroupWidth = NODE_WIDTH + SUBFLOW_PADDING_X * 2
+
+                nodes.push({
+                  id: subNodeId,
+                  type: 'subflowGroup',
+                  position: { x: 0, y: innerY },
+                  data: { label: subStep.label, workflow_id: nestedWfId, width: nestedGroupWidth, height: nestedGroupHeight },
+                  style: { width: nestedGroupWidth, height: nestedGroupHeight },
+                  parentId: groupId,
+                  extent: 'parent' as const,
+                })
+
+                for (const pId of innerPrevIds) {
+                  edges.push({ id: `${pId}-${subNodeId}`, source: pId, target: subNodeId })
+                }
+
+                // Emit nested steps inside
+                let nestedY = SUBFLOW_PADDING_TOP
+                let nestedPrevIds: string[] = []
+
+                for (const nestedStep of nestedDef.steps) {
+                  const nestedNodeId = `${subNodeId}__${nestedStep.id}`
+                  nodes.push({
+                    id: nestedNodeId,
+                    type: stepNodeType(nestedStep),
+                    position: { x: SUBFLOW_PADDING_X, y: nestedY },
+                    data: stepNodeData(nestedStep),
+                    style: { width: NODE_WIDTH },
+                    parentId: subNodeId,
+                    extent: 'parent' as const,
+                  })
+                  for (const nPId of nestedPrevIds) {
+                    edges.push({ id: `${nPId}-${nestedNodeId}`, source: nPId, target: nestedNodeId })
+                  }
+                  nestedPrevIds = [nestedNodeId]
+                  nestedY += Y_SPACING
+                }
+
+                innerPrevIds = nestedPrevIds
+                innerY += nestedGroupHeight + (Y_SPACING - NODE_HEIGHT)
+                continue
+              }
+            }
+
+            nodes.push({
+              id: subNodeId,
+              type: subNodeType,
+              position: { x: SUBFLOW_PADDING_X, y: innerY },
+              data: stepNodeData(subStep),
+              style: { width: NODE_WIDTH },
+              parentId: groupId,
+              extent: 'parent' as const,
+            })
+
+            for (const pId of innerPrevIds) {
+              edges.push({ id: `${pId}-${subNodeId}`, source: pId, target: subNodeId })
+            }
+
+            innerPrevIds = [subNodeId]
+            innerY += Y_SPACING
+          }
+
+          prevNodeIds = savedPrev
+          prevIds = [groupId]
+          cy += groupHeight + (Y_SPACING - NODE_HEIGHT)
+          continue
+        }
       }
 
+      // Regular step (or unresolvable workflow step — falls back to workflow node)
+      const nodeType = stepNodeType(step)
+
+      const position = parentId
+        ? { x: SUBFLOW_PADDING_X, y: cy - startY }
+        : { x: centerX, y: cy }
+
       nodes.push({
-        id: step.id,
+        id: nodeId,
         type: nodeType,
-        position: { x, y: 0 },
-        data: {
-          label: step.label,
-          agent: step.type === 'agent' ? step.agent : undefined,
-          task: step.type === 'agent' ? step.task : undefined,
-          channels: step.type === 'output' ? step.channels : undefined,
-          description: step.type === 'gate' ? step.description : undefined,
-        },
+        position,
+        data: stepNodeData(step),
+        style: { width: NODE_WIDTH },
+        ...(parentId ? { parentId, extent: 'parent' as const } : {}),
       })
 
-      for (const prevId of prevNodeIds) {
+      for (const prevId of prevIds) {
         edges.push({
-          id: `${prevId}-${step.id}`,
+          id: `${prevId}-${nodeId}`,
           source: prevId,
-          target: step.id,
+          target: nodeId,
         })
       }
 
-      prevNodeIds = [step.id]
-      x += X_SPACING
+      prevIds = [nodeId]
+      cy += Y_SPACING
     }
+
+    return { lastNodeIds: prevIds, endY: cy }
   }
+
+  const result = emitSteps(definition.steps, y)
+  prevNodeIds = result.lastNodeIds
 
   return { nodes, edges }
 }
 
-export function WorkflowCanvas({ definition }: WorkflowCanvasProps) {
-  const { nodes: initialNodes, edges } = useMemo(() => buildGraph(definition), [definition])
+export function WorkflowCanvas({ definition, subWorkflows }: WorkflowCanvasProps) {
+  const { nodes: initialNodes, edges } = useMemo(
+    () => buildGraph(definition, subWorkflows),
+    [definition, subWorkflows],
+  )
   const [nodes, setNodes] = useState<Node[]>(initialNodes)
 
   const onNodesChange = useCallback(
@@ -157,6 +337,7 @@ export function WorkflowCanvas({ definition }: WorkflowCanvasProps) {
 
   return (
     <div className="h-full w-full bg-zinc-950">
+      <style dangerouslySetInnerHTML={{ __html: RESET_NODE_STYLES }} />
       <ReactFlow
         nodes={nodes}
         edges={edges}

@@ -11,7 +11,7 @@ export function OutputNode({ data }: NodeProps) {
   const { label, channels } = data as OutputNodeData
 
   return (
-    <div className="w-[320px] rounded-lg border-2 border-zinc-700 bg-zinc-900 p-4 shadow-lg">
+    <div className="w-[280px] rounded-lg border border-purple-500/40 bg-zinc-900 p-4 shadow-lg">
       <div className="mb-0.5 text-xs font-bold uppercase tracking-wider text-purple-400">
         📤 {label}
       </div>
@@ -20,7 +20,7 @@ export function OutputNode({ data }: NodeProps) {
           {channels.join(', ')}
         </div>
       )}
-      <Handle type="target" position={Position.Left} className="!bg-zinc-500" />
+      <Handle type="target" position={Position.Top} className="!bg-zinc-500" />
     </div>
   )
 }

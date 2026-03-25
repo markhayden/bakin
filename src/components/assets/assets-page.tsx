@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { useAssets } from '@/hooks/use-assets'
 import { AssetsGrid } from './assets-grid'
 import { AssetDetail } from './asset-detail'
@@ -11,8 +12,26 @@ export function AssetsPage() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [selectedAsset, setSelectedAsset] = useState<AssetMeta | null>(null)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const highlightHandled = useRef(false)
 
   const { assets, loading, deleteAsset } = useAssets({ type: typeFilter })
+
+  // Auto-open asset from ?highlight= deep link
+  useEffect(() => {
+    if (loading || highlightHandled.current) return
+    const highlight = searchParams.get('highlight')
+    if (!highlight) return
+
+    const match = assets.find(a => a.path === highlight)
+    if (match) {
+      setSelectedAsset(match)
+      highlightHandled.current = true
+      // Clear the param so refresh doesn't re-open
+      router.replace('/assets', { scroll: false })
+    }
+  }, [assets, loading, searchParams, router])
 
   const filtered = search
     ? assets.filter(a => {

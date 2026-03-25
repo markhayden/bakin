@@ -27,7 +27,7 @@ interface AssetDetailProps {
 }
 
 function AssetRenderer({ asset }: { asset: AssetMeta }) {
-  const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}`
+  const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}&v=${asset.mtimeMs || ''}`
 
   switch (asset.type) {
     case 'images':
@@ -159,7 +159,7 @@ export function AssetDetail({ asset, onClose, onDelete }: AssetDetailProps) {
 
   if (!asset) return null
 
-  const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}`
+  const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}&v=${asset.mtimeMs || ''}`
 
   return (
     <Dialog open={!!asset} onOpenChange={() => { onClose(); setConfirmDelete(false) }}>

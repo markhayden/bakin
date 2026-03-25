@@ -69,7 +69,14 @@ export interface OutputStep extends BaseStep {
   deny_tools?: string[]
 }
 
-export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep
+export interface NestedWorkflowStep extends BaseStep {
+  type: 'workflow'
+  workflow_id: string
+  description?: string
+  dependsOn?: string | string[]
+}
+
+export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep | NestedWorkflowStep
 
 export interface WorkflowDefinition {
   id?: string
@@ -113,6 +120,7 @@ export type InstanceStatus =
   | 'pending_approval'
   | 'complete'
   | 'failed'
+  | 'cancelled'
 
 export interface StepState {
   status: StepStatus
@@ -121,6 +129,8 @@ export interface StepState {
   output?: Record<string, unknown>
   previousOutput?: Record<string, unknown>
   rejectionReason?: string
+  /** For nested workflow steps — the child instance's task ID (used as instance key) */
+  childTaskId?: string
 }
 
 export interface StepHistoryEntry {
@@ -141,4 +151,11 @@ export interface WorkflowInstance {
   history: StepHistoryEntry[]
   createdAt: string
   updatedAt: string
+  /** Snapshot of the task assignee at workflow start, used to resolve `$assigned` agent steps */
+  resolvedAgent?: string
+  /** If this instance was spawned by a parent workflow step */
+  parentTaskId?: string
+  parentStepId?: string
+  /** Context injected from parent workflow — the prior step's output at the point the child was spawned */
+  parentContext?: Record<string, unknown>
 }

@@ -16,7 +16,7 @@ const LOG_RE = /^\[(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?Z?)?)\s+
 
 const TRAILING_AGENT_RE = /\s+@(\w+)\s*(?=—|$)/
 const TRAILING_DATE_RE = /\s+—\s+.*$/
-const TASK_ID_RE = /^\[([a-f0-9]{8})\]\s*/
+const TASK_ID_RE = /^\[([a-f0-9]{8}(?:--[\w-]+)?)\]\s*/
 
 function extractTitle(line: string): { title: string; id?: string } {
   let text = line.replace(/^- \[[ x]\] /, '')

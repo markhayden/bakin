@@ -35,7 +35,8 @@ export async function handleFile(req: Request): Promise<Response> {
       headers: {
         'Content-Type': mimeType,
         'Content-Length': String(stat.size),
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'no-cache',
+        'ETag': `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}"`,
       },
     })
   } catch (err) {

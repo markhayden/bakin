@@ -10,13 +10,14 @@ interface KanbanColumnProps {
   id: ColumnId
   tasks: Task[]
   gateLabels?: Record<string, string>
+  childTaskLabels?: Record<string, string>
   onAssign: (task: Task, agent: string) => void
   onDelete: (task: { id: string; title: string }) => void
   onTaskClick: (task: Task, columnId: ColumnId) => void
   onAddTask?: (columnId: ColumnId) => void
 }
 
-export function KanbanColumn({ id, tasks, gateLabels, onAssign, onDelete, onTaskClick, onAddTask }: KanbanColumnProps) {
+export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign, onDelete, onTaskClick, onAddTask }: KanbanColumnProps) {
   const { setNodeRef, isOver, active } = useDroppable({ id })
   const config = COLUMN_CONFIG[id]
   const dotColor = STATUS_DOT_COLORS[id]
@@ -56,6 +57,7 @@ export function KanbanColumn({ id, tasks, gateLabels, onAssign, onDelete, onTask
               task={task}
               columnId={id}
               gateLabel={gateLabels?.[task.id]}
+              childTaskId={childTaskLabels?.[task.id]}
               onAssign={onAssign}
               onDelete={onDelete}
               onClick={onTaskClick}

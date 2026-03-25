@@ -82,6 +82,7 @@ export interface AssetMeta {
   type: 'text' | 'images' | 'video' | 'audio' | 'plans' | 'data' | 'other'
   mimeType: string
   size: number
+  mtimeMs?: number
   metadata: {
     agent: string
     taskId: string | null
@@ -97,6 +98,17 @@ export interface OfficeData {
   asciiMap: string
   statusTable: { agent: string; status: string; task: string; heartbeat: string }[]
   history: string[]
+}
+
+export interface ActivityEvent {
+  id: string
+  ts: string
+  type: 'log' | 'audit' | 'alert'
+  agent: string
+  message: string
+  taskId?: string
+  taskTitle?: string
+  eventName?: string
 }
 
 export interface ContentState {

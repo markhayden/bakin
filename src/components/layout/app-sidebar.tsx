@@ -11,6 +11,7 @@ import {
   Users,
   Cpu,
   Zap,
+  Workflow,
   Layers,
 } from 'lucide-react'
 import { allNavItems } from '@/lib/plugin-manifest'
@@ -30,6 +31,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Users,
   Cpu,
   Zap,
+  Workflow,
   Layers,
 }
 
