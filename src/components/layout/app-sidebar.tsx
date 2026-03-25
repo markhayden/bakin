@@ -13,6 +13,7 @@ import {
   Zap,
   Workflow,
   Layers,
+  AlarmClock,
 } from 'lucide-react'
 import { allNavItems } from '@/lib/plugin-manifest'
 import { useSidebarContext } from '@/context/sidebar-context'
@@ -33,6 +34,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Zap,
   Workflow,
   Layers,
+  AlarmClock,
 }
 
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
