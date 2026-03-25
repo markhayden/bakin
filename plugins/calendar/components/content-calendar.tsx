@@ -409,7 +409,7 @@ export function ContentCalendar() {
       {/* Top bar */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
-          <h1 className="text-lg font-semibold text-foreground">Content Calendar</h1>
+          <h1 className="text-lg font-semibold text-foreground">Calendar</h1>
           {view === 'calendar' && (
             <div className="flex items-center gap-1">
               <Button size="icon-xs" variant="ghost" onClick={prevMonth}>
