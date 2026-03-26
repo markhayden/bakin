@@ -136,7 +136,7 @@ function findTask(columns: TaskColumns, identifier: string): { task: Task; colId
 // ---------------------------------------------------------------------------
 // Mutations — all wrapped in the mutex
 // ---------------------------------------------------------------------------
-export function createTask(title: string, column?: string, assignee?: string, description?: string, workflowId?: string, createdBy?: string, id?: string): Promise<Task> {
+export function createTask(title: string, column?: string, assignee?: string, description?: string, workflowId?: string, createdBy?: string, id?: string, parentId?: string): Promise<Task> {
   return withTaskboardLock(() => {
     const { columns } = readTaskboard()
     const colId = column ? (normalizeColumn(column) || 'todo') : 'todo'
@@ -147,6 +147,7 @@ export function createTask(title: string, column?: string, assignee?: string, de
       createdBy,
       checked: colId === 'done',
       description,
+      parentId,
       workflowId,
     }
     if (colId === 'inProgress' || colId === 'done') {

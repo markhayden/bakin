@@ -87,8 +87,8 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
 
       {/* Gate approval indicator */}
       {gateLabel && (
-        <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20">
-          <span className="text-amber-400 text-[11px] font-semibold">Awaiting Approval</span>
+        <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 whitespace-nowrap overflow-hidden">
+          <span className="text-amber-400 text-[11px] font-semibold shrink-0">Needs Approval</span>
           <span className="text-amber-400/60 text-[10px] truncate">{gateLabel}</span>
         </div>
       )}
