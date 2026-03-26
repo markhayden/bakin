@@ -15,6 +15,7 @@ export interface Task {
   description?: string
   log?: TaskLogEntry[]
   dependsOn?: string
+  parentId?: string
   workflowId?: string
 }
 
