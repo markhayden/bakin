@@ -25,6 +25,23 @@ vi.mock('@/core/audit', () => ({
   appendAudit: vi.fn(),
 }))
 
+// Mock mcporter (avoid install/config in tests)
+vi.mock('@/core/mcporter', () => ({
+  isMcporterInstalled: vi.fn(() => true),
+  installMcporter: vi.fn(() => true),
+  verifyConfig: vi.fn(() => ({
+    installed: true,
+    configExists: true,
+    agentEntries: [
+      { agent: 'main-operator', name: 'beacon-main-operator', url: 'http://localhost:3737/mcp?agent=main-operator', correct: true },
+      { agent: 'patch', name: 'beacon-patch', url: 'http://localhost:3737/mcp?agent=patch', correct: true },
+      { agent: 'pixel', name: 'beacon-pixel', url: 'http://localhost:3737/mcp?agent=pixel', correct: true },
+    ],
+    staleEntries: [],
+  })),
+  syncConfig: vi.fn(() => []),
+}))
+
 describe('doctor', () => {
   let tempDir: string
   let contentDir: string

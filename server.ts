@@ -38,6 +38,9 @@ import * as antflyServer from './src/core/antfly-server'
 import * as agents from './src/core/agents'
 import * as pluginInstaller from './src/core/plugin-installer'
 import * as doctor from './src/core/doctor'
+import { handleMcpRequest } from './src/core/mcp-server'
+import * as mcporter from './src/core/mcporter'
+import { recordRequest } from './src/core/request-log'
 
 const log = createLogger('server')
 
@@ -100,6 +103,36 @@ app.prepare().then(async () => {
 
   const server = createServer((req, res) => {
     const url = new URL(req.url || '/', `http://localhost:${port}`)
+    const reqStart = Date.now()
+
+    // Track API requests (skip static assets and Next.js internals)
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/mcp')) {
+      const origEnd = res.end.bind(res)
+      res.end = function (...args: Parameters<typeof res.end>) {
+        const path = url.pathname.replace(/\?.*/, '')
+        recordRequest({
+          ts: new Date().toISOString(),
+          method: req.method || 'GET',
+          path,
+          status: res.statusCode,
+          durationMs: Date.now() - reqStart,
+          agent: url.searchParams.get('agent') || undefined,
+        })
+        return origEnd(...args)
+      } as typeof res.end
+    }
+
+    // MCP endpoint — agent-facing tool server
+    if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
+      handleMcpRequest(req, res).catch((err) => {
+        log.error('MCP request error', err)
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Internal MCP error' }))
+        }
+      })
+      return
+    }
 
     // SSE endpoint
     if (url.pathname === '/api/events') {
@@ -309,6 +342,13 @@ app.prepare().then(async () => {
     // Let Next.js handle everything else
     handle(req, res)
   })
+
+  // Setup mcporter (install if needed + sync per-agent config)
+  try {
+    mcporter.setup(port)
+  } catch (err) {
+    log.warn('mcporter setup failed — agents can still use REST/CLI', err)
+  }
 
   // Start all subsystems
   watcher.start({ contentDir: CONTENT_DIR, eventBus, onInboxFile: handleInboxFile })

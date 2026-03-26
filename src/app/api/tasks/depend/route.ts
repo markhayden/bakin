@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { setDependency } from '@mc/tasks/taskboard'
-import { appendAudit } from '@/lib/audit'
+import { setDependencyWithEffects } from '@/core/task-service'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -11,8 +10,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await setDependency(id, dependsOn)
-    appendAudit('task.dependency_set', 'api', { id, dependsOn })
+    await setDependencyWithEffects(id, dependsOn, 'rest')
     return NextResponse.json({ ok: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

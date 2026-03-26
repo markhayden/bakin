@@ -5,17 +5,17 @@
 import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
 import {
   createTask,
-  moveTask,
-  readTaskboard,
   deleteTask,
   assignTask,
   addTaskLog,
   blockTask,
   updateTask,
 } from './taskboard'
-import { loadInstance } from '../workflows/runtime'
-import { indexCompletedTask } from '../../src/core/antfly'
-import { appendAudit } from '../../src/lib/audit'
+import {
+  moveTaskWithEffects,
+  blockTaskWithEffects,
+  logProgress,
+} from '../../src/core/task-service'
 
 const tasksPlugin: MCPlugin = {
   id: 'tasks',
@@ -64,55 +64,14 @@ const tasksPlugin: MCPlugin = {
           return Response.json({ error: 'agent field required — who is moving this task?' }, { status: 400 })
         }
         try {
-          // Workflow done-guard: workflow tasks can only reach Done via the workflow engine
-          if (to.toLowerCase() === 'done') {
-            const { columns } = readTaskboard()
-            for (const col of Object.values(columns)) {
-              const task = (col as Array<{ id: string; title: string; workflowId?: string }>).find(
-                t => t.id === identifier || t.title === identifier
-              )
-              if (task?.workflowId) {
-                const instance = loadInstance(task.id)
-                if (instance && instance.status !== 'complete') {
-                  return Response.json({
-                    error: 'Workflow tasks cannot be moved to Done directly. Submit step output via POST /api/plugins/workflows/step/complete — the workflow engine manages task completion.',
-                  }, { status: 403 })
-                }
-                break
-              }
-            }
-          }
-
-          await moveTask(identifier, to, from)
-          // Resolve title for audit/indexing (agents often only send id)
-          let resolvedTitle = title
-          if (!resolvedTitle && id) {
-            try {
-              const { columns } = readTaskboard()
-              for (const col of Object.values(columns)) {
-                const found = (col as Array<{ id: string; title: string }>).find(t => t.id === id)
-                if (found) { resolvedTitle = found.title; break }
-              }
-            } catch { /* best effort */ }
-          }
-          appendAudit('task.moved', agent, { id, title: resolvedTitle || id, from, to })
-          // When moved to done: index and trigger dependency continuation
-          if (to.toLowerCase() === 'done') {
-            indexCompletedTask({ id: identifier, title: resolvedTitle || identifier }).catch(() => {})
-            if (id) {
-              const PORT = process.env.PORT || '3737'
-              fetch(`http://localhost:${PORT}/api/internal/continuation`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ completedTaskId: id, completedTitle: resolvedTitle || id }),
-              }).catch((err) => {
-                console.error('Continuation trigger failed from plugin move', err)
-              })
-            }
-          }
+          await moveTaskWithEffects(identifier, to, agent, { from, channel: 'rest' })
           return Response.json({ ok: true })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          const msg = (err as Error).message
+          if (msg.includes('Workflow tasks cannot be moved')) {
+            return Response.json({ error: msg }, { status: 403 })
+          }
+          return Response.json({ error: msg }, { status: 500 })
         }
       },
     })
@@ -166,7 +125,7 @@ const tasksPlugin: MCPlugin = {
           return Response.json({ error: 'title/id and message required' }, { status: 400 })
         }
         try {
-          await addTaskLog(identifier, author || 'system', message)
+          await logProgress(identifier, author || 'system', message, 'rest')
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -185,7 +144,7 @@ const tasksPlugin: MCPlugin = {
           return Response.json({ error: 'title/id and reason required' }, { status: 400 })
         }
         try {
-          await blockTask(identifier, reason, agent)
+          await blockTaskWithEffects(identifier, reason, agent || 'system', 'rest')
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })

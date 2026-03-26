@@ -314,21 +314,47 @@ const ORCHESTRATOR_RULES_CONTENT = `## Beacon Orchestrator Rules
 
 These rules govern Main Operator as orchestrator of the Beacon multi-agent system.
 
-1. **Every task gets logged before work begins.** Use \`beacon tasks create\` before spawning any subagent or producing any deliverable. No exceptions.
+1. **Every task gets logged before work begins.** Use \`beacon tasks create "<title>" <agent>\` before producing any deliverable. No exceptions.
 
 2. **Never do subagent work inline.** Main Operator delegates — Main Operator does not generate images, write long-form copy, or produce video. That's what the team is for.
 
-3. **High-level tasks only on the board.** Don't break tasks into subtasks yourself. Create one task, assign it, let the subagent decompose it.
+3. **Let Beacon dispatch — NEVER spawn subagents directly.** After \`beacon tasks create\`, Beacon's dispatch system sends the task to the agent automatically. Do NOT use \`openclaw agent\`, \`sessions_spawn\`, or agent-to-agent messages to assign work. That bypasses the entire pipeline (task tracking, audit, MCP tools, continuation).
 
-4. **Subagents own their handoffs.** If Chef needs Pixel, Chef creates that task — not Main Operator. Let the pipeline flow naturally.
+4. **High-level tasks only on the board.** Don't break tasks into subtasks yourself. Create one task, assign it, let the subagent decompose it.
 
-5. **Approval gates are non-negotiable.** Before publishing, sending, or any external action: pause and confirm with Mark unless pre-approved.
+5. **Subagents own their handoffs.** If Chef needs Pixel, Chef creates that task via mcporter — not Main Operator. Let the pipeline flow naturally.
 
-6. **Monitor the pipeline, don't micromanage.** Check heartbeats, watch for blocked tasks, intervene when stuck — but don't shadow-execute tasks that are in flight.
+6. **Approval gates are non-negotiable.** Before publishing, sending, or any external action: pause and confirm with Mark unless pre-approved.
 
-7. **One task per agent per piece of content.** Don't assign the same content to multiple agents in parallel. Let the assigned agent drive.
+7. **Monitor the pipeline, don't micromanage.** Use \`beacon tasks list\`, \`beacon logs\`, or the dashboard. Don't shadow-execute tasks that are in flight.
 
-8. **AGENTS.md is your rulebook, not the subagents'.** The Beacon skill (SKILL.md) governs subagents. AGENTS.md governs you.`
+8. **One task per agent per piece of content.** Don't assign the same content to multiple agents in parallel. Let the assigned agent drive.
+
+9. **AGENTS.md is your rulebook, not the subagents'.** The Beacon skill (SKILL.md) governs subagents. AGENTS.md governs you.
+
+10. **Workflow tasks are hands-off.** If a task has a \`workflowId\`, the workflow engine manages step progression. Do not manually move workflow tasks between columns, do not produce step output yourself, and do not interfere with gates outside the Beacon UI.
+
+11. **Match tasks to workflows automatically.** Before creating a task, evaluate whether an existing workflow fits. If the task involves content that matches a workflow's purpose, start that workflow. Use \`beacon workflows list\` to see available workflows, then start with:
+    \`\`\`bash
+    beacon workflows start <taskId> <workflowId>
+    \`\`\`
+
+12. **Gate approvals go through the UI.** When a workflow gate is reached, tell Mark a gate is waiting — do NOT approve or reject gates yourself. Mark handles gates in the task drawer.
+
+### Beacon CLI Quick Reference
+
+\`\`\`bash
+beacon tasks create "<title>" <agent>   # Create + auto-dispatch
+beacon tasks list                       # See all tasks
+beacon tasks get <id>                   # Task details
+beacon tasks log <id> "<message>"       # Log progress
+beacon tasks complete <id> "<summary>"  # Mark done
+beacon tasks block <id> "<reason>"      # Block task
+beacon workflows step <taskId>          # Get workflow step
+beacon workflows submit <t> <s> <json>  # Submit step output
+beacon status                           # System health
+beacon logs [filter]                    # Tail audit log
+\`\`\``
 
 async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
   const { readFileSync, writeFileSync, existsSync } = await import('fs')
@@ -708,8 +734,273 @@ async function cmdReindex(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Start / Setup mcporter
+// ---------------------------------------------------------------------------
+
+async function cmdStart(): Promise<void> {
+  const { resolve, dirname, join } = await import('path')
+  const { execSync, spawn } = await import('child_process')
+
+  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+  const port = Number(process.env.PORT || 3737)
+
+  // Step 1: Setup mcporter
+  console.log('[..] Checking mcporter...')
+  const mcporter = await import('../src/core/mcporter')
+
+  if (!mcporter.isMcporterInstalled()) {
+    console.log('[..] Installing mcporter...')
+    if (!mcporter.installMcporter()) {
+      console.error('[FAIL] Could not install mcporter. Run manually: npm i -g mcporter')
+      process.exit(1)
+    }
+    console.log('[OK] mcporter installed')
+  } else {
+    console.log('[OK] mcporter available')
+  }
+
+  // Step 2: Sync mcporter config
+  console.log('[..] Syncing mcporter config...')
+  const changes = mcporter.syncConfig(port)
+  if (changes.length > 0) {
+    for (const c of changes) console.log(`  ${c}`)
+    console.log(`[OK] mcporter config updated (${changes.length} changes)`)
+  } else {
+    console.log('[OK] mcporter config up to date')
+  }
+
+  // Step 3: Kill any existing Beacon server
+  console.log('[..] Checking for running Beacon...')
+  try {
+    const pids = execSync("pgrep -f 'tsx.*server\\.ts'", { encoding: 'utf-8' }).trim()
+    if (pids) {
+      for (const pid of pids.split('\n')) {
+        if (pid && pid !== String(process.pid)) {
+          process.kill(Number(pid), 'SIGTERM')
+        }
+      }
+      console.log('[OK] Stopped existing Beacon server')
+      await new Promise(r => setTimeout(r, 2000))
+    }
+  } catch {
+    // No running process
+  }
+
+  // Step 4: Start the server
+  const serverPath = join(projectDir, 'server.ts')
+  console.log('[..] Starting Beacon server...')
+  const child = spawn('npx', ['tsx', serverPath], {
+    cwd: projectDir,
+    detached: true,
+    stdio: ['ignore', 'ignore', 'ignore'],
+    env: { ...process.env },
+  })
+  child.unref()
+  console.log(`[OK] Beacon starting (pid ${child.pid})`)
+
+  // Step 5: Wait for server to come up
+  console.log('[..] Waiting for server...')
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, 1000))
+    try {
+      const res = await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(2000) })
+      if (res.ok) {
+        const data = await res.json() as { version: string }
+        console.log(`[OK] Beacon is up (${data.version})`)
+        console.log('')
+        console.log('MCP endpoints:')
+        const settings = await (await fetch(`${BASE_URL}/api/settings`)).json() as { agents?: string[] }
+        const agents = (settings as any).agents || []
+        for (const agent of agents as string[]) {
+          console.log(`  ${agent}: mcporter call beacon-${agent}.<tool> ...`)
+        }
+        console.log('')
+        console.log(`Stats: curl ${BASE_URL}/mcp/stats`)
+        console.log(`Audit: tail -f ~/.beacon/audit.jsonl | jq '{event,agent,channel}'`)
+        return
+      }
+    } catch { /* not ready yet */ }
+  }
+  console.log('[WARN] Server not responding after 15s — check logs')
+}
+
+async function cmdLogs(filter?: string): Promise<void> {
+  const { spawn, execSync } = await import('child_process')
+  const { join } = await import('path')
+  const { existsSync } = await import('fs')
+  const auditPath = join(process.env.HOME || '~', '.beacon', 'audit.jsonl')
+
+  if (!existsSync(auditPath)) {
+    console.error(`Audit log not found: ${auditPath}`)
+    console.error('Is Beacon initialized? Run: beacon init')
+    process.exit(1)
+  }
+
+  // Build jq filter
+  let jqFilter = '{ts,event,agent,channel,data}'
+  if (filter === 'mcp') jqFilter = 'select(.channel=="mcp") | {ts,event,agent,data}'
+  else if (filter === 'rest') jqFilter = 'select(.channel=="rest") | {ts,event,agent,data}'
+  else if (filter) jqFilter = `select(.agent=="${filter}" or .channel=="${filter}") | {ts,event,agent,channel,data}`
+
+  // Show last 20 entries first so there's immediate output
+  console.log(`Tailing ${auditPath} (filter: ${filter || 'all'})`)
+  console.log('--- recent entries ---')
+  try {
+    execSync(`tail -20 "${auditPath}" | jq '${jqFilter}'`, { stdio: ['ignore', 'inherit', 'ignore'] })
+  } catch { /* filter may exclude all 20 lines — that's fine */ }
+  console.log('--- live tail (Ctrl-C to stop) ---\n')
+
+  // Now tail -f for new entries (start from end, 0 lines of history to avoid dupes)
+  const child = spawn('tail', ['-f', '-n', '0', auditPath], { stdio: ['ignore', 'pipe', 'inherit'] })
+  const jq = spawn('jq', ['--unbuffered', jqFilter], { stdio: ['pipe', 'inherit', 'inherit'] })
+
+  child.stdout.pipe(jq.stdin)
+
+  // Clean up on exit
+  process.on('SIGINT', () => {
+    child.kill()
+    jq.kill()
+    process.exit(0)
+  })
+
+  await new Promise(() => {}) // block until killed
+}
+
+async function cmdStop(): Promise<void> {
+  const { execSync } = await import('child_process')
+
+  console.log('[..] Stopping Beacon server...')
+  try {
+    const pids = execSync("pgrep -f 'tsx.*server\\.ts'", { encoding: 'utf-8' }).trim()
+    if (pids) {
+      for (const pid of pids.split('\n')) {
+        if (pid && pid !== String(process.pid)) {
+          process.kill(Number(pid), 'SIGTERM')
+        }
+      }
+      console.log('[OK] Sent SIGTERM to Beacon server')
+
+      // Wait and verify it's actually down
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 500))
+        try {
+          await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(1000) })
+        } catch {
+          console.log('[OK] Beacon stopped')
+          return
+        }
+      }
+      console.log('[WARN] Server may still be shutting down')
+    } else {
+      console.log('[OK] No running Beacon process found')
+    }
+  } catch {
+    console.log('[OK] No running Beacon process found')
+  }
+}
+
+async function cmdSetupMcporter(): Promise<void> {
+  const port = Number(process.env.PORT || 3737)
+  const mcporter = await import('../src/core/mcporter')
+
+  console.log('[..] Checking mcporter installation...')
+  if (!mcporter.isMcporterInstalled()) {
+    console.log('[..] Installing mcporter...')
+    if (!mcporter.installMcporter()) {
+      console.error('[FAIL] Could not install mcporter. Run manually: npm i -g mcporter')
+      process.exit(1)
+    }
+    console.log('[OK] mcporter installed')
+  } else {
+    console.log('[OK] mcporter already installed')
+  }
+
+  console.log('[..] Syncing mcporter config...')
+  const changes = mcporter.syncConfig(port)
+  if (changes.length > 0) {
+    for (const c of changes) console.log(`  ${c}`)
+    console.log(`[OK] Config updated`)
+  } else {
+    console.log('[OK] Config already up to date')
+  }
+
+  // Verify
+  const status = mcporter.verifyConfig(port)
+  console.log('')
+  console.log('Agent MCP entries:')
+  for (const entry of status.agentEntries) {
+    console.log(`  ${entry.correct ? '[OK]' : '[!!]'} ${entry.name} → ${entry.url}`)
+  }
+  if (status.staleEntries.length > 0) {
+    console.log(`\nStale entries removed: ${status.staleEntries.join(', ')}`)
+  }
+
+  console.log('')
+  console.log('Test with:')
+  console.log('  mcporter call beacon-pixel.beacon_get_paths --allow-http')
+}
+
+// ---------------------------------------------------------------------------
 // CLI router
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// New commands for MCP tool parity
+// ---------------------------------------------------------------------------
+
+async function cmdTasksLog(id: string, message: string): Promise<void> {
+  const result = await apiPost('/api/tasks/log', { id, author: 'cli', message })
+  print(result)
+}
+
+async function cmdTasksBlock(id: string, reason: string): Promise<void> {
+  const result = await apiPost('/api/tasks/block', { id, reason, agent: 'cli' })
+  print(result)
+}
+
+async function cmdTasksDepend(id: string, dependsOn: string): Promise<void> {
+  const result = await apiPost('/api/tasks/depend', { id, dependsOn })
+  print(result)
+}
+
+async function cmdTasksComplete(id: string, summary: string): Promise<void> {
+  // Log the summary, then move to done
+  await apiPost('/api/tasks/log', { id, author: 'cli', message: `Task complete: ${summary}` })
+  const result = await apiPost('/api/tasks/move', { id, to: 'done', agent: 'cli' })
+  print(result)
+}
+
+async function cmdTasksGet(id: string): Promise<void> {
+  const result = await apiGet('/api/plugins/tasks/board') as { columns: Record<string, Array<Record<string, unknown>>> }
+  const columns = result.columns || {}
+  for (const [colName, tasks] of Object.entries(columns)) {
+    const task = (tasks as Array<Record<string, unknown>>).find(t => t.id === id)
+    if (task) {
+      console.log(`Column: ${colName}`)
+      print(task)
+      return
+    }
+  }
+  console.error(`Task ${id} not found`)
+  process.exit(1)
+}
+
+async function cmdWorkflowsStep(taskId: string): Promise<void> {
+  const result = await apiGet(`/api/plugins/workflows/step?taskId=${encodeURIComponent(taskId)}`)
+  print(result)
+}
+
+async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: string): Promise<void> {
+  let output: Record<string, unknown>
+  try {
+    output = JSON.parse(outputJson)
+  } catch {
+    console.error('Invalid JSON for output. Usage: beacon workflows submit <taskId> <stepId> \'{"key":"value"}\'')
+    process.exit(1)
+  }
+  const result = await apiPost('/api/plugins/workflows/step/complete', { taskId, stepId, agentId: 'cli', output })
+  print(result)
+}
+
 const USAGE = `
 Usage: beacon <command> [options]
 
@@ -717,8 +1008,15 @@ Commands:
   status                           System health, agents, dispatch timer
   dispatch                         Trigger immediate task dispatch
   tasks list [--column=X]          List tasks (optionally filter by column)
+  tasks get <id>                   Get task details
   tasks create <title> [agent]     Create a new task
   tasks move <id> <column>         Move task to column
+  tasks log <id> <message>         Log a progress update
+  tasks block <id> <reason>        Block a task with reason
+  tasks depend <id> <dependsOn>    Register a task dependency
+  tasks complete <id> <summary>    Mark task done with summary
+  workflows step <taskId>          Get current workflow step details
+  workflows submit <t> <s> <json>  Submit workflow step output
   agents list                      List all agents with status
   agents status <id>               Get detailed agent status
   agents tasks <id>                List tasks assigned to agent
@@ -728,8 +1026,12 @@ Commands:
   plugins list                     List installed plugins
   plugins install <path|repo>      Install plugin (local path or github:user/repo)
   plugins remove <id>              Remove an installed plugin
+  start                             Start Beacon (setup mcporter + launch server)
+  stop                              Stop Beacon server
+  logs [filter]                     Tail audit log (filter: mcp, rest, or agent name)
   setup service [--uninstall]       Install/remove macOS LaunchAgent for auto-start
   setup antfly                     Install AntflyDB + enable + reindex (one command)
+  setup mcporter                   Install mcporter + sync per-agent MCP config
   paths [key]                      Show content directory paths (keys: home, taskboard, assets, etc.)
   init                             Initialize ~/.beacon/ directory with defaults
   agent-rules [--apply|--check]    Manage orchestrator rules block in AGENTS.md
@@ -773,14 +1075,42 @@ async function main(): Promise<void> {
         if (sub === 'list') {
           const colFlag = args.find(a => a.startsWith('--column='))
           await cmdTasksList(colFlag?.split('=')[1])
+        } else if (sub === 'get') {
+          if (!args[2]) { console.error('Usage: beacon tasks get <id>'); process.exit(1) }
+          await cmdTasksGet(args[2])
         } else if (sub === 'create') {
           if (!args[2]) { console.error('Usage: beacon tasks create <title> [agent]'); process.exit(1) }
           await cmdTasksCreate(args[2], args[3])
         } else if (sub === 'move') {
           if (!args[2] || !args[3]) { console.error('Usage: beacon tasks move <id> <column>'); process.exit(1) }
           await cmdTasksMove(args[2], args[3])
+        } else if (sub === 'log') {
+          if (!args[2] || !args[3]) { console.error('Usage: beacon tasks log <id> <message>'); process.exit(1) }
+          await cmdTasksLog(args[2], args.slice(3).join(' '))
+        } else if (sub === 'block') {
+          if (!args[2] || !args[3]) { console.error('Usage: beacon tasks block <id> <reason>'); process.exit(1) }
+          await cmdTasksBlock(args[2], args.slice(3).join(' '))
+        } else if (sub === 'depend') {
+          if (!args[2] || !args[3]) { console.error('Usage: beacon tasks depend <id> <dependsOn>'); process.exit(1) }
+          await cmdTasksDepend(args[2], args[3])
+        } else if (sub === 'complete') {
+          if (!args[2] || !args[3]) { console.error('Usage: beacon tasks complete <id> <summary>'); process.exit(1) }
+          await cmdTasksComplete(args[2], args.slice(3).join(' '))
         } else {
           console.error(`Unknown tasks subcommand: ${sub}`)
+          process.exit(1)
+        }
+        break
+
+      case 'workflows':
+        if (sub === 'step') {
+          if (!args[2]) { console.error('Usage: beacon workflows step <taskId>'); process.exit(1) }
+          await cmdWorkflowsStep(args[2])
+        } else if (sub === 'submit') {
+          if (!args[2] || !args[3] || !args[4]) { console.error('Usage: beacon workflows submit <taskId> <stepId> \'<json>\''); process.exit(1) }
+          await cmdWorkflowsSubmit(args[2], args[3], args[4])
+        } else {
+          console.error(`Unknown workflows subcommand: ${sub}`)
           process.exit(1)
         }
         break
@@ -830,15 +1160,29 @@ async function main(): Promise<void> {
         }
         break
 
+      case 'start':
+        await cmdStart()
+        break
+
+      case 'stop':
+        await cmdStop()
+        break
+
+      case 'logs':
+        await cmdLogs(args[1])
+        break
+
       case 'setup':
         if (sub === 'service') {
           const uninstall = args.includes('--uninstall')
           await cmdSetupService({ uninstall })
         } else if (sub === 'antfly') {
           await cmdSetupAntfly()
+        } else if (sub === 'mcporter') {
+          await cmdSetupMcporter()
         } else {
           console.error(`Unknown setup target: ${sub}`)
-          console.error('Available: beacon setup service | beacon setup antfly')
+          console.error('Available: beacon setup service | beacon setup antfly | beacon setup mcporter')
           process.exit(1)
         }
         break

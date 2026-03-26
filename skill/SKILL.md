@@ -1,15 +1,54 @@
 ---
 name: beacon
-description: Mission control integration for multi-agent coordination. Provides task management, logging, search, and agent communication via the Beacon API. Required for all agents in the Beacon ecosystem.
+description: Mission control integration for multi-agent coordination. Provides task management, logging, search, and agent communication via mcporter MCP tools. Required for all agents in the Beacon ecosystem.
 ---
 
 # Beacon Mission Control
 
-You are part of a multi-agent team coordinated by Beacon. Follow these rules to stay in sync with the system.
+You are part of a multi-agent team coordinated by Beacon. You interact with Beacon through **mcporter** — a CLI that calls Beacon's MCP server.
 
-## API Base
+Your Beacon MCP server is `beacon-<your-agent-name>` (e.g., `beacon-pixel`, `beacon-chef`). Your dispatch message will tell you which server to use.
 
-All API calls go to `http://localhost:3737` (or the value of `BEACON_URL` if set).
+## Quick Reference
+
+```bash
+# Log progress (mandatory, every major step)
+mcporter call beacon-<agent>.beacon_log_progress taskId=<id> message="<update>"
+# Report complete (moves to done + notifies orchestrator)
+mcporter call beacon-<agent>.beacon_report_complete taskId=<id> summary="<what you did>"
+# Block task (if stuck)
+mcporter call beacon-<agent>.beacon_block_task taskId=<id> reason="<what went wrong>"
+# Move task between columns
+mcporter call beacon-<agent>.beacon_move_task taskId=<id> to=inProgress
+# Create subtask for another agent
+mcporter call beacon-<agent>.beacon_create_task title="<subtask>" assignee="<agent>" description="<brief>"
+# Register dependency (then stop — you'll be re-dispatched)
+mcporter call beacon-<agent>.beacon_register_dependency taskId=<id> dependsOn="<other-id>"
+# Check your task details
+mcporter call beacon-<agent>.beacon_get_task taskId=<id>
+# Discover filesystem paths (never hardcode)
+mcporter call beacon-<agent>.beacon_get_paths
+# Workflow: submit step output
+mcporter call beacon-<agent>.beacon_submit_step taskId=<id> stepId=<step> --args '<json>'
+# Workflow: check current step
+mcporter call beacon-<agent>.beacon_get_step taskId=<id>```
+
+## MCP Tools
+
+| Tool | Purpose |
+|------|---------|
+| `beacon_log_progress` | Log what you're doing (mandatory, every major step) |
+| `beacon_move_task` | Move task between columns |
+| `beacon_create_task` | Create subtasks for other agents |
+| `beacon_block_task` | Block a task with a reason |
+| `beacon_report_complete` | Mark task done + notify orchestrator (includes summary) |
+| `beacon_get_task` | Check your task details |
+| `beacon_get_step` | Get current workflow step details |
+| `beacon_submit_step` | Submit workflow step output |
+| `beacon_get_paths` | Discover filesystem paths (never hardcode) |
+| `beacon_register_dependency` | Register a dependency on another task |
+
+Your agent identity is automatically injected by the MCP server — you do not need to specify it.
 
 ## Task Lifecycle
 
@@ -19,76 +58,24 @@ When you receive a task:
 1. **Move it to In Progress immediately** (before doing any work)
 2. Log that you've started working on it
 3. Log progress at every major step (not just start and done)
-4. If blocked, log why and move to Blocked
-5. When done, move to Done and report to main-operator
-
-### Move Task to In Progress (FIRST THING)
-
-Before doing ANY work on a task, move it to In Progress so the board reflects reality:
-
-```bash
-curl -s -X POST http://localhost:3737/api/plugins/tasks/move \
-  -H 'Content-Type: application/json' \
-  -d '{"id":"<task-id>","to":"inProgress","agent":"<your-agent-name>"}'
-```
-
-### Log Progress (REQUIRED)
-
-You MUST log progress frequently. If you haven't logged in 5 minutes, the watchdog will flag you as stuck.
-
-```bash
-curl -s -X POST http://localhost:3737/api/tasks/log \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"<task-id-or-title>","author":"<your-agent-name>","message":"<what you did or are doing>"}'
-```
-
-### Move Task
-
-All moves require your `agent` name. The API enforces valid transitions and rejects invalid ones.
-
-```bash
-curl -s -X POST http://localhost:3737/api/plugins/tasks/move \
-  -H 'Content-Type: application/json' \
-  -d '{"id":"<task-id>","to":"done","agent":"<your-agent-name>"}'
-```
+4. If blocked, block the task with a clear reason
+5. When done, report complete with a summary
 
 Valid transitions: todo→inProgress/blocked/done, inProgress→done/blocked/todo, blocked→todo/inProgress, done→confirmed/todo. The `confirmed` column is terminal — nothing leaves it.
 
-### Report Completion to Main Operator
+### Report Completion
 
-After moving to Done, always notify:
-```bash
-openclaw agent --agent main --message "TASK COMPLETE: <title> -- <summary>" --deliver
-```
+Use `beacon_report_complete` — it moves the task to Done, logs the summary, and notifies the orchestrator automatically.
 
-### Report Failure
-
-If you cannot complete a task:
-```bash
-openclaw agent --agent main --message "TASK BLOCKED: <title> -- <reason>" --deliver
-```
+**Do NOT use this for workflow tasks.** Workflow tasks complete via `beacon_submit_step`.
 
 ## Creating Subtasks
 
-If your task requires work from another agent (e.g., images from Pixel, code from Patch), always include `createdBy` with your own agent name so the assigned agent knows who to report back to:
-
-```bash
-curl -s -X POST http://localhost:3737/api/plugins/tasks/create \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"<subtask>","assignee":"<agent>","description":"<brief>","createdBy":"<your-agent-name>"}'
-```
+If your task requires work from another agent, create a subtask with `beacon_create_task`. Include `parentId` for immediate dispatch.
 
 ## Dependencies
 
-Register a dependency so you get re-dispatched when another task completes:
-
-```bash
-curl -s -X POST http://localhost:3737/api/plugins/tasks/depend \
-  -H 'Content-Type: application/json' \
-  -d '{"id":"<your-task-id>","dependsOn":"<their-task-id>"}'
-```
-
-Then exit. You will be automatically re-dispatched when the dependency completes.
+Register a dependency with `beacon_register_dependency`, then **stop**. You will be automatically re-dispatched when the dependency completes.
 
 ## Search
 
@@ -119,18 +106,7 @@ curl -s http://localhost:3737/api/docs
 
 ## Discovering Paths (REQUIRED)
 
-**NEVER hardcode or construct filesystem paths.** The content directory location is managed by Beacon and can change. Always use the paths API to discover where files live.
-
-Get all paths:
-```bash
-curl -s http://localhost:3737/api/paths
-```
-
-Get a specific path:
-```bash
-curl -s 'http://localhost:3737/api/paths?key=assets'
-curl -s 'http://localhost:3737/api/paths?key=personas'
-```
+**NEVER hardcode or construct filesystem paths.** Always use `beacon_get_paths` to discover where files live.
 
 Available path keys: `home`, `taskboard`, `memoryLog`, `calendar`, `audit`, `assets`, `assets.text`, `assets.images`, `assets.video`, `assets.audio`, `assets.plans`, `assets.data`, `assets.other`, `personas`, `team`, `heartbeats`, `inbox`, `projects`, `workflows`, `settings`.
 
@@ -161,10 +137,7 @@ curl -s -X POST 'http://localhost:3737/api/plugins/assets/delete?path=assets/ima
 
 All agent-created content (images, video, audio, text, plans, data) MUST be written to the assets directory. Assets are organized by type and task ID.
 
-**Step 1: Get the asset path**
-```bash
-ASSETS_DIR=$(curl -s 'http://localhost:3737/api/paths?key=assets.images' | jq -r '.path')
-```
+**Step 1: Get the asset path** via `beacon_get_paths`
 
 **Step 2: Create the task directory**
 ```bash
@@ -235,27 +208,21 @@ These rules are not suggestions. The API enforces them. Violations are logged, t
 
 If you encounter ANY error, unexpected result, missing file, failed API call, or situation you weren't briefed on — you MUST block the task immediately. Do NOT attempt workarounds, fallbacks, or creative alternatives. Block first, then explain.
 
-```bash
-curl -s -X POST http://localhost:3737/api/plugins/tasks/block \
-  -H 'Content-Type: application/json' \
-  -d '{"id":"<task-id>","reason":"<what went wrong>","agent":"<your-name>"}'
-```
-
 ### Mandatory: Log before Done
 
 The API will reject any attempt to move a task to Done if it has zero log entries. You must log your work before completing. This is enforced server-side — there is no workaround.
 
 ### Mandatory: Agent identity on moves
 
-Every move request requires your `agent` name. The API rejects moves without it. Use your real agent name — never impersonate another agent.
+Your agent identity is automatically injected by the MCP server. Use your real agent name when connecting — never impersonate another agent.
 
 ### Mandatory: Use the API, never edit files
 
-Always use the task API endpoints to manage tasks. Direct edits to TASKBOARD.md bypass locking, validation, and audit logging. The API enforces state transitions, agent identity, and log-before-done rules — direct edits do not.
+Always use Beacon tools (via mcporter) to manage tasks. Direct edits to TASKBOARD.md bypass locking, validation, and audit logging.
 
-### Mandatory: Discover paths via the API
+### Mandatory: Discover paths via beacon_get_paths
 
-Never hardcode `content/`, `~/.beacon/`, or any absolute path. Always use `curl http://localhost:3737/api/paths?key=<key>`. Paths change between environments.
+Never hardcode `content/`, `~/.beacon/`, or any absolute path. Always use `beacon_get_paths`. Paths change between environments.
 
 ### Mandatory: Log progress every major step
 
@@ -263,13 +230,13 @@ The watchdog monitors for stuck tasks. If no log update in 30 minutes and your h
 
 ### Mandatory: Report back
 
-Always notify main-operator when done or blocked. Use `openclaw agent --agent main --message "..." --deliver`.
+Always use `beacon_report_complete` when done — it handles notification automatically. For blocks, use `beacon_block_task`.
 
 ### What happens when you violate these rules
 
-- **Invalid state transition** → API returns 400 error with allowed transitions
-- **Move without agent** → API returns 400 error
-- **Done without logs** → API returns 400 error
+- **Invalid state transition** → Tool returns error with allowed transitions
+- **Move without agent** → Tool returns error
+- **Done without logs** → Tool returns error
 - **Direct TASKBOARD.md edit** → Bypasses all validation, breaks locking
 - **Bypass patterns detected** (workaround language in logs) → Alert sent to main-operator, audit logged
 - **Stuck task + stale heartbeat** → Auto-recovered to Todo, then Blocked after 3 recoveries
@@ -278,9 +245,9 @@ Always notify main-operator when done or blocked. Use `openclaw agent --agent ma
 
 These rules apply to ALL subagents (Chef, Pixel, Rolo, Patch, etc.). Violating them breaks the pipeline.
 
-1. **Never edit TASKBOARD.md directly.** Direct edits are auto-reverted. Always use the API.
+1. **Never edit TASKBOARD.md directly.** Direct edits are auto-reverted. Always use Beacon tools.
 
-2. **Never hardcode filesystem paths.** Always use the paths API (`/api/paths?key=<key>`).
+2. **Never hardcode filesystem paths.** Always use `beacon_get_paths`.
 
 3. **Stay in your lane.** Don't do work assigned to another agent. Create subtasks instead.
 
@@ -304,22 +271,22 @@ When you receive a message that starts with "# WORKFLOW STEP ASSIGNMENT", you ar
 
 - You are executing ONE step of a multi-step pipeline
 - You cannot see other steps — by design, not by accident
-- The ONLY valid completion is calling the step/complete API
+- The ONLY valid completion is calling `beacon_submit_step` via mcporter
 - The workflow engine advances the pipeline — you do not
 
 ### What you MUST do
 
 1. Read the step instructions completely before starting
 2. Produce output that matches the JSON schema provided in the dispatch message
-3. Submit output via the step/complete API endpoint provided in the message
-4. Log progress at each major milestone
-5. Include your `agentId` in the step/complete API call
+3. Submit output via `beacon_submit_step`
+4. Log progress at each major milestone via `beacon_log_progress`
+5. Your `agentId` is automatically included in tool calls
 
 ### What you MUST NOT do
 
 - Generate deliverables outside your step's scope (e.g., do not generate images if your step is "write copy")
 - Move the task to Done or any other column — the workflow engine handles task state
-- Message main-operator with "TASK COMPLETE" — workflow tasks complete through the API, not messages
+- Message main-operator with "TASK COMPLETE" — workflow tasks complete through `beacon_submit_step`, not messages
 - Create subtasks for other agents — the workflow defines who does what
 - Attempt to read or infer what future steps contain
 - Resubmit the same output after a rejection without addressing the feedback — the server detects near-duplicates and rejects them
@@ -331,11 +298,11 @@ If your step is re-dispatched with a "REVISION REQUIRED" section, the reviewer f
 1. Read the rejection reason carefully
 2. Identify what specifically needs to change
 3. Produce genuinely revised output — not the same output with minor tweaks
-4. Submit via the API as before
+4. Submit via `beacon_submit_step` as before
 
 ### What happens automatically
 
-- Output is validated against JSON Schema server-side (invalid = 400 error with details)
+- Output is validated against JSON Schema server-side (invalid = error with details)
 - Extra fields beyond the schema are rejected (additionalProperties is enforced)
 - The workflow engine advances to the next step or gate after valid submission
 - Gates pause the workflow for human review — you are never asked to review gates

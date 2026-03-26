@@ -31,7 +31,9 @@
       "@mc/workflows": ["./plugins/workflows"],
       "@mc/workflows/*": ["./plugins/workflows/*"],
       "@mc/assets": ["./plugins/assets"],
-      "@mc/assets/*": ["./plugins/assets/*"]
+      "@mc/assets/*": ["./plugins/assets/*"],
+      "@mc/health": ["./plugins/health"],
+      "@mc/health/*": ["./plugins/health/*"]
     }
   },
   "include": [
