@@ -13,12 +13,14 @@ export function appendAudit(
   contentDir: string,
   event: string,
   agent: string,
-  data: Record<string, unknown> = {}
+  data: Record<string, unknown> = {},
+  channel?: 'mcp' | 'rest' | 'cli' | 'system',
 ): void {
-  const entry = {
+  const entry: Record<string, unknown> = {
     ts: new Date().toISOString(),
     event,
     agent,
+    ...(channel ? { channel } : {}),
     data,
   }
 

@@ -19,6 +19,7 @@ import * as openclaw from './openclaw-client'
 import { readTaskboard, clearDependency } from '../../plugins/tasks/taskboard'
 import { listDefinitions } from '../../plugins/workflows/parser'
 import { listInstances } from '../../plugins/workflows/runtime'
+import * as mcporter from './mcporter'
 
 const log = createLogger('doctor')
 
@@ -446,6 +447,46 @@ function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
 }
 
 /**
+ * mcporter: verify installation and per-agent config entries.
+ * Auto-fixable — safe because it only installs a CLI tool and writes config.
+ */
+function checkMcporter(port: number, autoFix: boolean): DiagnosticResult[] {
+  const results: DiagnosticResult[] = []
+
+  if (!mcporter.isMcporterInstalled()) {
+    if (!autoFix) {
+      return [warn('mcporter', 'mcporter not installed — run: beacon setup mcporter', true)]
+    }
+    if (!mcporter.installMcporter()) {
+      return [error('mcporter', 'Failed to install mcporter — run: npm i -g mcporter')]
+    }
+    results.push(fixed('mcporter', 'Installed mcporter globally'))
+  }
+
+  const status = mcporter.verifyConfig(port)
+
+  const missing = status.agentEntries.filter(e => !e.correct)
+  if (missing.length > 0) {
+    if (!autoFix) {
+      return [
+        ...results,
+        warn('mcporter', `${missing.length} agent(s) missing or outdated in mcporter config — run: beacon setup mcporter`, true),
+      ]
+    }
+    const changes = mcporter.syncConfig(port)
+    results.push(fixed('mcporter', `Config updated: ${changes.join(', ')}`))
+  } else {
+    results.push(ok('mcporter', `All ${status.agentEntries.length} agent entries configured`))
+  }
+
+  if (status.staleEntries.length > 0 && autoFix) {
+    mcporter.syncConfig(port) // syncConfig already removes stale
+  }
+
+  return results
+}
+
+/**
  * Service: verify the macOS LaunchAgent is installed with correct paths.
  * NOT auto-fixable — stale paths require human judgment.
  */
@@ -694,53 +735,52 @@ function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): DiagnosticRe
 const MANAGED_BLOCKS: ManagedBlockDef[] = [
   {
     blockId: 'mission-control',
-    contentFn: () => `## Beacon Mission Control
+    contentFn: (agentId: string) => `## Beacon Mission Control
 
 > Auto-managed by \`beacon doctor\`. Do not edit this block manually.
 
+All Beacon interactions use **mcporter**. Your MCP server is \`beacon-${agentId}\`.
+
 ### Session Start
-1. Check your tasks via the Beacon task API
-2. Load the Beacon skill for full conventions and API reference
+1. Check your tasks: \`mcporter call beacon-${agentId}.beacon_get_task taskId=<id>\`
+2. Load the Beacon skill for full conventions and tool reference
 
 ### Path Discovery
-All content paths are resolved via the Beacon API — never hardcode paths:
+All content paths are resolved via mcporter — never hardcode paths:
 \`\`\`bash
-curl -s http://localhost:3737/api/paths              # all paths
-curl -s 'http://localhost:3737/api/paths?key=assets.images'  # specific path
+mcporter call beacon-${agentId}.beacon_get_paths
 \`\`\`
 
 ### Task Changes
-- Notify Roscoe via agent-to-agent message when tasks start, complete, or block
-- Do NOT write to TASKBOARD.md directly — use the Beacon task API only
+- Use \`beacon_report_complete\` when done, \`beacon_block_task\` when stuck
+- Do NOT write to TASKBOARD.md directly — use Beacon tools via mcporter only
 
 ### Heartbeat (every 10 minutes)
-- Write your heartbeat JSON to the heartbeats path (discover via \`curl -s 'http://localhost:3737/api/paths?key=heartbeats'\`)
-- Check for new tasks via the Beacon API`,
+- Write your heartbeat JSON to the heartbeats path (discover via \`beacon_get_paths\`)
+- Check for new tasks via mcporter`,
   },
 
   {
     blockId: 'hard-rules',
-    contentFn: () => `## Beacon Hard Rules
+    contentFn: (agentId: string) => `## Beacon Hard Rules
 
 > Auto-managed by \`beacon doctor\`. Do not edit this block manually.
 
-- **NEVER use \`openclaw agent\` to spawn or message other agents directly.** Always create a Beacon task via \`POST http://localhost:3737/api/tasks/create\` instead. Direct spawning bypasses the pipeline.
-- **NEVER edit TASKBOARD.md directly.** Use the Beacon task API only.
+- **NEVER use \`openclaw agent\` to spawn or message other agents directly.** Always create a Beacon task via \`mcporter call beacon-${agentId}.beacon_create_task title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
+- **NEVER edit TASKBOARD.md directly.** Use Beacon tools via mcporter only.
 - **NEVER post to Discord without explicit instruction.** Content goes through Mark's review first.
-- **NEVER hardcode file paths.** Always discover paths via the Beacon API (\`/api/paths\`). Hardcoded paths break when the content directory moves.`,
+- **NEVER hardcode file paths.** Always discover paths via \`mcporter call beacon-${agentId}.beacon_get_paths\`. Hardcoded paths break when the content directory moves.`,
   },
 
   {
     blockId: 'dependency-pattern',
-    contentFn: () => `## Beacon Dependency Pattern
+    contentFn: (agentId: string) => `## Beacon Dependency Pattern
 
 > Auto-managed by \`beacon doctor\`. Do not edit this block manually.
 
 If your task requires output from another agent, create their task first, note its task ID, then register a dependency:
 \`\`\`bash
-curl -s -X POST http://localhost:3737/api/tasks/depend \\
-  -H 'Content-Type: application/json' \\
-  -d '{"id":"<your-task-id>","dependsOn":"<their-task-id>"}'
+mcporter call beacon-${agentId}.beacon_register_dependency taskId=<your-task-id> dependsOn=<their-task-id>
 \`\`\`
 Then exit — you will be automatically re-dispatched when their task completes.`,
   },
@@ -757,11 +797,11 @@ Then exit — you will be automatically re-dispatched when their task completes.
 > Auto-managed by \`beacon doctor\`. Do not edit this block manually.\n`
 
       if (!canImage) {
-        content += `\n**IMAGES:** You cannot generate images. Ever. Not with nano-banana-pro, not with any other tool. All image generation goes through Pixel. Create a Pixel task via the Beacon API and wait.\n`
+        content += `\n**IMAGES:** You cannot generate images. Ever. Not with nano-banana-pro, not with any other tool. All image generation goes through Pixel. Create a Pixel task via \`mcporter call beacon-${agentId}.beacon_create_task\` and wait.\n`
       }
 
       if (!canVideo) {
-        content += `\n**VIDEO:** You cannot generate video. Ever. Not with Runway, not with any other tool. All video generation goes through Rolo. Create a Rolo task via the Beacon API and wait.\n`
+        content += `\n**VIDEO:** You cannot generate video. Ever. Not with Runway, not with any other tool. All video generation goes through Rolo. Create a Rolo task via \`mcporter call beacon-${agentId}.beacon_create_task\` and wait.\n`
       }
 
       if (!canImage && !canVideo) {
@@ -771,7 +811,7 @@ Then exit — you will be automatically re-dispatched when their task completes.
       if (createsSubtasks) {
         content += `\n### When Creating Pixel or Rolo Tasks\n`
         content += `\n- **NEVER include posting instructions in a Pixel or Rolo brief.** They generate assets only — they do not post.`
-        content += `\n- Task descriptions for Pixel/Rolo should end with asset delivery: "Save to the assets directory (discover path via Beacon API) and report the file path."`
+        content += `\n- Task descriptions for Pixel/Rolo should end with asset delivery: "Save to the assets directory (discover path via \`beacon_get_paths\`) and report the file path."`
         content += `\n- YOU are responsible for posting the finished content. Not Pixel. Not Rolo.`
       }
 
@@ -781,15 +821,15 @@ Then exit — you will be automatically re-dispatched when their task completes.
 
   {
     blockId: 'workflow-rules',
-    contentFn: () => `## Beacon Workflow Rules
+    contentFn: (agentId: string) => `## Beacon Workflow Rules
 
 > Auto-managed by \`beacon doctor\`. Do not edit this block manually.
 
-When Beacon dispatches a workflow step to you, the dispatch message contains everything you need: step instructions, output schema, and the exact API call to submit.
+When Beacon dispatches a workflow step to you, the dispatch message contains everything you need: step instructions, output schema, and the mcporter command to submit.
 
 1. **The dispatch message is your single source of truth.** Follow it exactly for workflow steps.
 
-2. **Submit output ONLY via the step/complete API.** Include your \`agentId\` in the request. Conversational output does NOT complete the step.
+2. **Submit output ONLY via mcporter:** \`mcporter call beacon-${agentId}.beacon_submit_step taskId=<id> stepId=<step> --args '<json>'\`. Conversational output does NOT complete the step.
 
 3. **Do NOT move the task, create subtasks, or message roscoe** for workflow tasks — the workflow engine handles all coordination.
 
@@ -802,13 +842,13 @@ When Beacon dispatches a workflow step to you, the dispatch message contains eve
 
   {
     blockId: 'asset-rules',
-    contentFn: () => `## Beacon Asset Rules
+    contentFn: (agentId: string) => `## Beacon Asset Rules
 
 > Auto-managed by \`beacon doctor\`. Do not edit this block manually.
 
 All created content (images, video, audio, text, plans, data) MUST go to the assets directory. Use the Beacon skill for full conventions, but here's the minimum:
 
-1. **Discover paths via API:** \`curl -s http://localhost:3737/api/paths?key=assets.images\`
+1. **Discover paths via mcporter:** \`mcporter call beacon-${agentId}.beacon_get_paths\`
 2. **Organize by task:** \`\$ASSETS_DIR/<task-id>/filename.ext\`
    - **No task?** Write to \`\$ASSETS_DIR/_unlinked/\` — NEVER place files directly in the type root (e.g. \`assets/text/file.md\` is WRONG, use \`assets/text/_unlinked/file.md\`)
    - **Shared/reusable?** Write to \`\$ASSETS_DIR/library/\`
@@ -1239,6 +1279,7 @@ export async function runDiagnostics(
   results.push(...checkStaleWorkflowInstances(contentDir, autoFix))
   results.push(...checkTaskConsistency(contentDir, autoFix))
   results.push(...checkAssets(contentDir, autoFix))
+  results.push(...checkMcporter(Number(process.env.PORT || 3737), autoFix))
   results.push(...checkService(projectRoot))
 
   // Async checks (network, not auto-fixable) — run in parallel

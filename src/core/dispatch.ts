@@ -183,15 +183,12 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       const message = buildDispatchMessage(task, agentName, contentDir, port)
 
       try {
-        await openclaw.sendMessage(targetAgent, message)
+        // Move to inProgress BEFORE sending message to eliminate race condition
+        // where fast agents complete before dispatch moves the task
+        await moveTaskToInProgress(task.id, agentName)
+        appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-        // Re-read task state — fast agents may have already moved it
-        const { columns: fresh } = readTaskboard()
-        const stillInTodo = fresh.todo.some(t => t.id === task.id)
-        if (stillInTodo) {
-          await moveTaskToInProgress(task.id, agentName)
-          appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
-        }
+        await openclaw.sendMessage(targetAgent, message)
         dispatchedSet.add(task.id)
 
         appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title })
@@ -296,15 +293,11 @@ export async function dispatchSingleTask(
     const message = buildDispatchMessage(task, agentName, contentDir, port)
 
     try {
-      await openclaw.sendMessage(targetAgent, message)
+      // Move to inProgress BEFORE sending message to eliminate race condition
+      await moveTaskToInProgress(task.id, agentName)
+      appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-      // Re-read task state — fast agents may have already moved it
-      const { columns: fresh } = readTaskboard()
-      const stillInTodo = fresh.todo.some(t => t.id === task.id)
-      if (stillInTodo) {
-        await moveTaskToInProgress(task.id, agentName)
-        appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
-      }
+      await openclaw.sendMessage(targetAgent, message)
 
       state.dispatched.push(task.id)
       saveDispatchState(contentDir, state)
@@ -333,26 +326,24 @@ function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string },
   agentName: string,
   contentDir: string,
-  port: number
+  _port: number
 ): string {
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
   const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
   const taskboardRef = join(contentDir, 'TASKBOARD.md')
-  const logEndpoint = `http://localhost:${port}/api/tasks/log`
-  const failureInstructions = `If you cannot complete this task or hit an error, report via: openclaw agent --agent main --message "TASK BLOCKED: ${task.title} — <reason>" --deliver`
+
+  const server = `beacon-${agentName}`
+  const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
 
   if (!task.agent) {
-    return `Triage this task: "${task.title}".${detailsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, basil=research/strategy) by updating ${taskboardRef}. ${contactsRef}\n\nLog progress by POSTing to ${logEndpoint} with {"title":"${task.title}","author":"roscoe","message":"your update"}`
+    return `Triage this task: "${task.title}".${detailsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, basil=research/strategy) by updating ${taskboardRef}. ${contactsRef}\n\nLog progress: \`${mc('beacon_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   if (task.agent === 'roscoe') {
-    return `Work on this task: "${task.title}".${detailsBlock}\n\n${contactsRef} When done, move it to the Done column in ${taskboardRef} and log what you did.\n\nLog progress by POSTing to ${logEndpoint} with {"title":"${task.title}","author":"roscoe","message":"your update"}\n\n${failureInstructions}`
+    return `Work on this task: "${task.title}".${detailsBlock}\n\n${contactsRef} When done: \`${mc('beacon_report_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('beacon_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   return `Work on this task: "${task.title}".${detailsBlock}
-
-FIRST: Move this task to In Progress before doing anything else:
-curl -s -X POST http://localhost:${port}/api/plugins/tasks/move -H 'Content-Type: application/json' -d '{"id":"${task.id}","to":"inProgress","agent":"${agentName}"}'
 
 ## PROGRESS LOGGING — MANDATORY
 
@@ -368,20 +359,39 @@ Required log points:
 
 For Patch using Claude Code: log before spawning the agent, and after it completes.
 
-Log command: curl -s -X POST ${logEndpoint} -H 'Content-Type: application/json' -d '{"title":"${task.id}","author":"${agentName}","message":"your update"}'
+## BEACON TOOLS — via mcporter
 
-## COMMANDS
+All Beacon interactions use mcporter. Your server is \`${server}\`.
 
-If this task requires assets from another agent (e.g. images from Pixel, video from Rolo), create a subtask for them using: curl -s -X POST http://localhost:${port}/api/tasks/create -H 'Content-Type: application/json' -d '{"title":"<subtask title>","assignee":"<agent>","description":"<brief>","parentId":"${task.id}"}'
-Subtasks with parentId are dispatched immediately — no waiting for the next cycle. To kick any task immediately (even without a parent), add "kick":true to the create payload.
+\`\`\`bash
+# Log progress (mandatory, every major step)
+${mc('beacon_log_progress', `taskId=${task.id} message="<what you did or are doing>"`)}
 
-When finished, move this task to Done: curl -s -X POST http://localhost:${port}/api/tasks/move -H 'Content-Type: application/json' -d '{"id":"${task.id}","to":"done","agent":"${agentName}"}'
+# Report complete (when finished — includes summary + notifies orchestrator)
+${mc('beacon_report_complete', `taskId=${task.id} summary="<what you accomplished>"`)}
 
-Then report back to roscoe: openclaw agent --agent main --message "TASK COMPLETE: ${task.title} — <summary>" --deliver
+# Block task (if stuck or cannot proceed)
+${mc('beacon_block_task', `taskId=${task.id} reason="<what went wrong>"`)}
 
-${failureInstructions}
+# Create subtask for another agent
+${mc('beacon_create_task', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
 
-Dependency pattern: If your task requires output from another agent, create their task first (with parentId to kick it off immediately), note its ID, then register a dependency: curl -s -X POST http://localhost:${port}/api/tasks/depend -H 'Content-Type: application/json' -d '{"id":"${task.id}","dependsOn":"<their-task-id>"}'. Then exit — you will be automatically re-dispatched when their task completes.`
+# Register dependency (then stop — you'll be re-dispatched)
+${mc('beacon_register_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
+
+# Check your task details
+${mc('beacon_get_task', `taskId=${task.id}`)}
+
+# Find content directories (assets, team, etc.)
+${mc('beacon_get_paths', '')}
+\`\`\`
+
+## DEPENDENCY PATTERN
+
+If your task requires output from another agent:
+1. Create their task with beacon_create_task (use parentId for immediate dispatch)
+2. Register the dependency with beacon_register_dependency
+3. Stop — you will be automatically re-dispatched when their task completes`
 }
 
 export function start(contentDir: string, port: number): void {
@@ -512,10 +522,9 @@ function buildWorkflowDispatchMessage(
     deny_tools?: string[]
   },
   agentName: string,
-  port: number
+  _port: number
 ): string {
   const lines: string[] = []
-  const base = `http://localhost:${port}/api/plugins/workflows`
 
   // ─── Identity Frame ─────────────────────────────────────────────────
   lines.push('# WORKFLOW STEP ASSIGNMENT')
@@ -534,7 +543,7 @@ function buildWorkflowDispatchMessage(
   lines.push('## HARD CONSTRAINTS — violations are rejected server-side')
   lines.push('')
   lines.push('1. **SCOPE:** Do ONLY the work described in "YOUR TASK" below. Nothing more. If the task implies work for another step (e.g., generating images when your step is writing copy), STOP — that belongs to a different agent.')
-  lines.push('2. **OUTPUT:** Submit via the step/complete API below. Describing results in conversation does NOT complete the step. The workflow will not advance.')
+  lines.push('2. **OUTPUT:** Submit via beacon_submit_step. Describing results in conversation does NOT complete the step. The workflow will not advance.')
   lines.push('3. **SCHEMA:** Your output MUST match the JSON schema below. The server validates it. Missing fields = rejection. Extra fields = rejection. Wrong types = rejection.')
   lines.push('4. **NO SIDE EFFECTS:** Do not create subtasks, dispatch other agents, move the task to Done, or post to any channel. The workflow engine handles ALL downstream handoffs — the next agent is already defined in the workflow and will be dispatched automatically when your step is approved. Creating a subtask would duplicate the workflow\'s job.')
   lines.push('5. **ONE SUBMISSION:** Submit your output once via the API, then stop. Do not continue working after submission.')
@@ -624,6 +633,9 @@ function buildWorkflowDispatchMessage(
   // ─── Progress Logging ──────────────────────────────────────────────
   lines.push('## PROGRESS LOGGING — MANDATORY')
   lines.push('')
+  const wfServer = `beacon-${agentName}`
+  const wfMc = (tool: string, args: string) => `mcporter call ${wfServer}.${tool} ${args}`
+
   lines.push('You MUST log your progress throughout this workflow step. These updates appear in the live activity feed so humans can monitor your work in real-time.')
   lines.push('')
   lines.push('**When to log:**')
@@ -634,30 +646,28 @@ function buildWorkflowDispatchMessage(
   lines.push('- When you complete and submit your output (summary of what you produced)')
   lines.push('- If more than 2 minutes have passed since your last log, send a status update — even if just "Still working on X, currently Y"')
   lines.push('')
-  lines.push('**Log command:**')
-  lines.push(`\`curl -s -X POST http://localhost:${port}/api/tasks/log -H 'Content-Type: application/json' -d '{"title":"${task.id}","author":"${agentName}","message":"your update"}'\``)
-  lines.push('')
-  lines.push('**Example log messages:**')
-  lines.push(`- "Starting step: ${stepContext.label}"`)
-  lines.push('- "Reading project context and prior step outputs"')
-  lines.push('- "Generating initial draft..."')
-  lines.push('- "Reviewing output against schema requirements"')
-  lines.push(`- "Submitting final output for step ${stepContext.stepId}"`)
-  lines.push('')
 
   // ─── Commands ───────────────────────────────────────────────────────
   lines.push('## COMMANDS')
   lines.push('')
-  const submitPayload = JSON.stringify({ taskId: task.id, stepId: stepContext.stepId, agentId: agentName, output: '{{YOUR_OUTPUT_JSON}}' })
-  lines.push(`**Submit output:** \`curl -s -X POST ${base}/step/complete -H 'Content-Type: application/json' -d '${submitPayload}'\``)
+  lines.push(`Your Beacon MCP server is \`${wfServer}\`. Use mcporter for all interactions:`)
   lines.push('')
-  lines.push(`**Check current step:** \`curl -s "${base}/step?taskId=${task.id}&agentId=${agentName}"\``)
+  lines.push('```bash')
+  lines.push(`# Submit your output (must match the schema above)`)
+  lines.push(`${wfMc('beacon_submit_step', `taskId=${task.id} stepId=${stepContext.stepId} --args '<json output>'`)}`)
+  lines.push('')
+  lines.push(`# Log progress (mandatory, every major step)`)
+  lines.push(`${wfMc('beacon_log_progress', `taskId=${task.id} message="<update>"`)}`)
+  lines.push('')
+  lines.push(`# Check your current step details if needed`)
+  lines.push(`${wfMc('beacon_get_step', `taskId=${task.id}`)}`)
+  lines.push('```')
   lines.push('')
 
   // ─── Stop Instruction ───────────────────────────────────────────────
   lines.push('## AFTER SUBMITTING')
   lines.push('')
-  lines.push('After the step/complete API returns `{"success":true}`, your work is done. Do NOT:')
+  lines.push('After beacon_submit_step returns success, your work is done. Do NOT:')
   lines.push('- Generate additional outputs or deliverables')
   lines.push('- Start work on what you think the next step might be')
   lines.push('- Send messages about what should happen next')

@@ -1,19 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { moveTask, readTaskboard } from '@mc/tasks/taskboard'
-import { appendAudit } from '@/lib/audit'
-
-function resolveTitle(title: string | undefined, id: string | undefined): string {
-  if (title) return title
-  if (!id) return 'unknown'
-  try {
-    const { columns } = readTaskboard()
-    for (const col of Object.values(columns)) {
-      const found = (col as Array<{ id: string; title: string }>).find(t => t.id === id)
-      if (found) return found.title
-    }
-  } catch { /* best effort */ }
-  return id
-}
+import { moveTaskWithEffects } from '@/core/task-service'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -28,26 +14,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await moveTask(identifier, to, from)
-    const resolvedTitle = resolveTitle(title, id)
-    appendAudit('task.moved', agent, { id, title: resolvedTitle, from, to })
-
-    // Check for dependent tasks when moved to done
-    if (to === 'done' && id) {
-      const PORT = process.env.PORT || '3737'
-      try {
-        await fetch(`http://localhost:${PORT}/api/internal/continuation`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ completedTaskId: id, completedTitle: resolvedTitle }),
-        })
-      } catch (err) {
-        console.error('Continuation trigger failed', err)
-      }
-    }
-
+    await moveTaskWithEffects(identifier, to, agent, { from, channel: 'rest' })
     return NextResponse.json({ ok: true })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    const msg = (err as Error).message
+    if (msg.includes('Workflow tasks cannot be moved')) {
+      return NextResponse.json({ error: msg }, { status: 403 })
+    }
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
