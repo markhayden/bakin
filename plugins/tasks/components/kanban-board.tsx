@@ -24,7 +24,7 @@ import { toast } from '@/hooks/use-toast'
 import { useGateStatus } from './use-gate-status'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
-const COLUMN_ORDER: ColumnId[] = ['todo', 'blocked', 'inProgress', 'done', 'confirmed']
+const COLUMN_ORDER: ColumnId[] = ['todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
 
 function parseCompositeId(id: string): { columnId: ColumnId; taskId: string } | null {
   const parts = String(id).split('::')
@@ -71,7 +71,7 @@ export function KanbanBoard() {
   const taskboardContent = files['TASKBOARD.md'] || ''
 
   const parsed = useMemo(() => {
-    if (!taskboardContent) return { columns: { inProgress: [], todo: [], done: [], confirmed: [], blocked: [] } as TaskColumns, timestamp: undefined }
+    if (!taskboardContent) return { columns: { inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] } as TaskColumns, timestamp: undefined }
     return parseTasks(taskboardContent)
   }, [taskboardContent])
 

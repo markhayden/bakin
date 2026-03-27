@@ -749,6 +749,11 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     const priorStep = def.steps[nextIdx - 1]
     const priorOutput = priorStep ? instance.stepStates[priorStep.id]?.output : undefined
     notifyGateReached(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput)
+
+    // Move the task to the review column while awaiting approval
+    import('../../plugins/tasks/taskboard').then(({ moveTask }) => {
+      moveTask(instance.taskId, 'review').catch(() => {})
+    }).catch(() => {})
   } else {
     instance.stepStates[nextStep.id] = { status: 'in_progress', startedAt: now }
     // Notify that a step has been dispatched to an agent
@@ -808,8 +813,15 @@ export function approveGate(
   clearGateNotified(taskId, stepId, dir)
 
   // Log gate approval to the task so watchdog sees recent activity
-  import('../../plugins/tasks/taskboard').then(({ addTaskLog }) => {
-    addTaskLog(taskId, 'workflow', `Gate "${step.label || stepId}" approved — advancing workflow.`).catch(() => {})
+  // and move it back to inProgress (from review) unless the workflow just completed
+  import('../../plugins/tasks/taskboard').then(({ addTaskLog, moveTask }) => {
+    addTaskLog(taskId, 'workflow', `Gate "${step.label || stepId}" approved — advancing workflow.`)
+      .then(() => {
+        if ((instance.status as string) !== 'complete') {
+          return moveTask(taskId, 'inProgress').catch(() => {})
+        }
+      })
+      .catch(() => {})
   }).catch(() => {})
 
   if ((instance.status as string) === 'complete') {
@@ -828,7 +840,7 @@ export function approveGate(
     ]).then(([{ moveTask, addTaskLog }, { appendAudit }]) => {
       addTaskLog(instance.taskId, 'workflow', `Workflow "${instance.workflowId}" completed — all steps done.`)
         .then(() => moveTask(instance.taskId, 'done'))
-        .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: instance.taskId, from: 'inProgress', to: 'done' }))
+        .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: instance.taskId, from: 'review', to: 'done' }))
         .catch(() => {})
     }).catch(() => {})
     return { success: true, nextStep: { status: 'complete' } }
@@ -931,9 +943,11 @@ export function rejectGate(
   notifyGateRejected(instance, stepId, step.label || stepId, reason)
   clearGateNotified(taskId, stepId, dir)
 
-  // Log gate rejection to the task
-  import('../../plugins/tasks/taskboard').then(({ addTaskLog }) => {
-    addTaskLog(taskId, 'workflow', `Gate "${step.label || stepId}" rejected: ${reason}`).catch(() => {})
+  // Log gate rejection and move task back to inProgress (from review)
+  import('../../plugins/tasks/taskboard').then(({ addTaskLog, moveTask }) => {
+    addTaskLog(taskId, 'workflow', `Gate "${step.label || stepId}" rejected: ${reason}`)
+      .then(() => moveTask(taskId, 'inProgress'))
+      .catch(() => {})
   }).catch(() => {})
 
   return { success: true, rewoundTo: targetId }

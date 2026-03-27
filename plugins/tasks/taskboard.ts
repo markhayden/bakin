@@ -29,6 +29,7 @@ export function withTaskboardLock<T>(fn: () => T | Promise<T>): Promise<T> {
 const COLUMN_TO_HEADER: Record<ColumnId, string> = {
   inProgress: '🔵 In Progress',
   todo: '📋 Todo',
+  review: '🔍 Review',
   done: '✅ Done',
   confirmed: '🟣 Confirmed',
   blocked: '🔴 Blocked',
@@ -41,8 +42,9 @@ const KNOWN_AGENTS = ['roscoe', 'patch', 'pixel', 'rolo', 'basil']
 // ---------------------------------------------------------------------------
 export const VALID_TRANSITIONS: Record<ColumnId, ColumnId[]> = {
   todo:       ['inProgress', 'blocked', 'done'],
-  inProgress: ['done', 'blocked', 'todo'],
+  inProgress: ['review', 'done', 'blocked', 'todo'],
   blocked:    ['todo', 'inProgress'],
+  review:     ['inProgress', 'todo'],
   done:       ['confirmed', 'todo'],
   confirmed:  [],
 }
@@ -54,6 +56,7 @@ function normalizeColumn(col: string): ColumnId | null {
   const lower = col.toLowerCase().replace(/[^a-z]/g, '')
   if (lower === 'inprogress' || lower === 'in_progress') return 'inProgress'
   if (lower === 'todo') return 'todo'
+  if (lower === 'review') return 'review'
   if (lower === 'done') return 'done'
   if (lower === 'confirmed') return 'confirmed'
   if (lower === 'blocked') return 'blocked'
@@ -72,7 +75,7 @@ export function serializeTaskboard(columns: TaskColumns): string {
   })
   let md = `# Task Board\n_Last updated: ${ts}_\n`
 
-  for (const colId of ['inProgress', 'todo', 'done', 'confirmed', 'blocked'] as ColumnId[]) {
+  for (const colId of ['inProgress', 'todo', 'review', 'done', 'confirmed', 'blocked'] as ColumnId[]) {
     const header = COLUMN_TO_HEADER[colId]
     md += `\n## ${header}\n`
     for (const task of columns[colId]) {
@@ -111,7 +114,7 @@ export function serializeTaskboard(columns: TaskColumns): string {
 // ---------------------------------------------------------------------------
 export function readTaskboard() {
   const content = readContentFile('TASKBOARD.md')
-  if (!content) return { columns: { inProgress: [], todo: [], done: [], confirmed: [], blocked: [] } as TaskColumns }
+  if (!content) return { columns: { inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] } as TaskColumns }
   return parseTasks(content)
 }
 
@@ -183,7 +186,7 @@ export function moveTask(identifier: string, to: string, from?: string): Promise
 
     columns[colId].splice(idx, 1)
     task.checked = toCol === 'done'
-    if (toCol === 'inProgress' || toCol === 'done') {
+    if (toCol === 'inProgress' || toCol === 'review' || toCol === 'done') {
       task.date = new Date().toISOString().split('T')[0]
     }
     if (toCol !== 'blocked') {
@@ -276,7 +279,7 @@ export function updateTask(
       }
       columns[colId].splice(idx, 1)
       task.checked = updates.column === 'done'
-      if (updates.column === 'inProgress' || updates.column === 'done') {
+      if (updates.column === 'inProgress' || updates.column === 'review' || updates.column === 'done') {
         task.date = new Date().toISOString().split('T')[0]
       }
       columns[updates.column].push(task)

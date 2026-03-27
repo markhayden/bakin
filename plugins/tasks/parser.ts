@@ -7,6 +7,7 @@ import { generateTaskId } from './ids'
 const COLUMN_HEADER_MAP: Record<string, ColumnId> = {
   '🔵 In Progress': 'inProgress',
   '📋 Todo': 'todo',
+  '🔍 Review': 'review',
   '✅ Done': 'done',
   '🟣 Confirmed': 'confirmed',
   '🔴 Blocked': 'blocked',
@@ -52,7 +53,7 @@ function parseLine(line: string): Task | null {
 }
 
 export function parseTasks(content: string): TaskBoard {
-  const columns: TaskColumns = { inProgress: [], todo: [], done: [], confirmed: [], blocked: [] }
+  const columns: TaskColumns = { inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] }
   let currentCol: ColumnId | null = null
   let currentTask: Task | null = null
   let descLines: string[] = []

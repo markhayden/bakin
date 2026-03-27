@@ -19,6 +19,11 @@ _Last updated: 03/20/2026, 14:30 MDT_
 - [ ] Create documentation
   No agent assigned
 
+## 🔍 Review
+
+- [ ] [ccc33333] Review script @pixel — 03/20/2026
+  Awaiting gate approval
+
 ## ✅ Done
 
 - [x] [aaa11111] Setup project @patch — 03/18/2026
@@ -36,6 +41,7 @@ describe('Task Parser', () => {
 
     expect(board.columns.inProgress).toHaveLength(1)
     expect(board.columns.todo).toHaveLength(2)
+    expect(board.columns.review).toHaveLength(1)
     expect(board.columns.done).toHaveLength(1)
     expect(board.columns.confirmed).toHaveLength(0)
     expect(board.columns.blocked).toHaveLength(1)
@@ -85,6 +91,15 @@ describe('Task Parser', () => {
     const noIdTask = board.columns.todo[1]
     expect(noIdTask.id).toBeDefined()
     expect(noIdTask.id.length).toBe(8)
+  })
+
+  it('parses review column', () => {
+    const board = parseTasks(SAMPLE_TASKBOARD)
+    const task = board.columns.review[0]
+    expect(task.id).toBe('ccc33333')
+    expect(task.title).toBe('Review script')
+    expect(task.agent).toBe('pixel')
+    expect(task.description).toBe('Awaiting gate approval')
   })
 
   it('handles empty taskboard', () => {
