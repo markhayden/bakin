@@ -1,7 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+
+// Mock taskboard so tests don't leak child-workflow tasks into the real board
+vi.mock('../../plugins/tasks/taskboard', () => ({
+  createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
+  addTaskLog: vi.fn(() => Promise.resolve()),
+  moveTask: vi.fn(() => Promise.resolve()),
+  readTaskboard: vi.fn(() => ({
+    columns: { inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] },
+  })),
+}))
+
 import {
   createInstance,
   loadInstance,
