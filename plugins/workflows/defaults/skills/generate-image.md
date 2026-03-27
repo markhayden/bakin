@@ -38,4 +38,4 @@ These defaults minimize generation costs while covering all major social platfor
 
 - Clean, modern aesthetic
 - Natural lighting preferred
-- On-brand color palette
+- Color palette should match the mood and subject

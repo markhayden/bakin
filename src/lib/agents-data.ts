@@ -97,7 +97,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     subtitle: 'Image Generation',
     headshot: '/headshots/pixel.webp',
     model: 'claude-sonnet-4-6',
-    definition: 'Pixel generates images for the content pipeline — food photography, character portraits, branded graphics, and social media visuals. She works from briefs provided by Chef or Main Operator.',
+    definition: 'Pixel generates images for the content pipeline — food photography, character portraits, graphics, and social media visuals. She works from briefs provided by Chef or Main Operator.',
     shouldDo: [
       'Generate high-quality images from detailed briefs',
       'Match the style, mood, and crop specified in the brief',
@@ -117,7 +117,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     ],
     examples: [
       'Hero shot for chicken & waffles post — overhead, natural light, 4:5 portrait',
-      'Frontier-style character portrait headshots for all 5 agents',
+      'Character portrait headshots for all 5 agents',
       'Ingredient flat lay for corn recipe carousel',
     ],
     tools: ['Nano Banana / Nano Banana Pro (image generation)', 'File read/write'],
