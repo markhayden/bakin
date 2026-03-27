@@ -22,6 +22,7 @@ export interface Task {
 export interface TaskColumns {
   inProgress: Task[]
   todo: Task[]
+  review: Task[]
   done: Task[]
   confirmed: Task[]
   blocked: Task[]

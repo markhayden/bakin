@@ -1,8 +1,15 @@
 import { create } from 'zustand'
+import type { ReactNode } from 'react'
+
+const DEFAULT_DURATION: Record<Toast['type'], number> = {
+  success: 4000,
+  info: 4000,
+  error: 10000,
+}
 
 export interface Toast {
   id: string
-  message: string
+  message: ReactNode
   type: 'success' | 'error' | 'info'
   duration?: number
 }
@@ -22,12 +29,12 @@ export const useToastStore = create<ToastStore>((set) => ({
     set((s) => ({ toasts: [...s.toasts, { ...toast, id }] }))
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
-    }, toast.duration ?? 4000)
+    }, toast.duration ?? DEFAULT_DURATION[toast.type])
   },
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }))
 
 /** Convenience: call from anywhere without hooks */
-export function toast(message: string, type: Toast['type'] = 'info') {
-  useToastStore.getState().add({ message, type })
+export function toast(message: ReactNode, type: Toast['type'] = 'info', duration?: number) {
+  useToastStore.getState().add({ message, type, ...(duration ? { duration } : {}) })
 }

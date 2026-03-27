@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useContentStore } from './use-content-store'
 import type { Heartbeat } from '@/types'
 import { mapAuditMessage } from '@/lib/map-audit-message'
+import { sendBrowserNotification } from '@/lib/browser-notify'
 
 const MAX_RETRIES = 20
 const BASE_DELAY = 1000
@@ -80,6 +81,13 @@ export function useSSE() {
             // Trigger full UI refresh for gate events so task cards update
             if (data.event.startsWith('workflow.gate') || data.event === 'workflow.complete') {
               initialize()
+            }
+            // Browser notification for gates needing approval
+            if (data.event === 'workflow.gate_reached') {
+              sendBrowserNotification(
+                'Approval needed',
+                data.label || 'A workflow gate needs your review'
+              )
             }
             // Synthesize an audit entry so other consumers see it
             appendAuditEntry({

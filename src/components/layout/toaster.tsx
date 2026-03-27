@@ -11,8 +11,8 @@ const ICONS = {
 
 const COLORS = {
   success: 'border-green-500/50 bg-green-500/80 text-green-100',
-  error: 'border-destructive/50 bg-destructive/80 text-destructive',
-  info: 'border-accent/50 bg-accent/80 text-accent',
+  error: 'border-red-500/50 bg-red-500/80 text-red-100',
+  info: 'border-zinc-500/50 bg-zinc-700/90 text-zinc-100',
 } as const
 
 export function Toaster() {
@@ -31,7 +31,7 @@ export function Toaster() {
             className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm shadow-lg animate-in fade-in slide-in-from-bottom-2 ${COLORS[t.type]}`}
           >
             <Icon className="size-4 shrink-0 mt-0.5" />
-            <span className="flex-1">{t.message}</span>
+            <div className="flex-1">{t.message}</div>
             <button
               onClick={() => dismiss(t.id)}
               className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"

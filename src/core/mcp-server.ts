@@ -124,7 +124,7 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     'Move a task to a different column on the task board.',
     {
       taskId: z.string().describe('Task ID'),
-      to: z.enum(['todo', 'inProgress', 'done', 'blocked', 'confirmed']).describe('Target column'),
+      to: z.enum(['todo', 'inProgress', 'review', 'done', 'blocked', 'confirmed']).describe('Target column'),
       reason: z.string().optional().describe('Required when moving to "blocked"'),
     },
     async ({ taskId, to, reason }) => {

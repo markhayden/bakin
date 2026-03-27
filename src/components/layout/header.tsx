@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Menu, X, PanelLeftClose, PanelLeft } from 'lucide-react'
 import { ConnectionDot } from './connection-dot'
 import { DispatchTimer } from './dispatch-timer'
+import { NotificationToggle } from './notification-toggle'
 import { AppSidebar } from './app-sidebar'
 import { useSidebarContext } from '@/context/sidebar-context'
 
@@ -42,6 +43,7 @@ export function Header() {
         </div>
         <div className="ml-auto flex items-center gap-4">
           <DispatchTimer />
+          <NotificationToggle />
           <ConnectionDot />
         </div>
       </header>

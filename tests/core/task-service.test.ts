@@ -34,6 +34,7 @@ const mockReadTaskboard = vi.fn(() => ({
   columns: {
     todo: [],
     inProgress: [{ id: 'task-1', title: 'Test Task' }],
+    review: [],
     done: [],
     blocked: [],
     confirmed: [],
@@ -143,6 +144,7 @@ describe('task-service', () => {
         columns: {
           todo: [],
           inProgress: [{ id: 'wf-task', title: 'Workflow Task', workflowId: 'image-gen' } as any],
+          review: [],
           done: [],
           blocked: [],
           confirmed: [],
@@ -219,6 +221,7 @@ describe('task-service', () => {
         columns: {
           todo: [],
           inProgress: [{ id: 'wf-task', title: 'WF Task', workflowId: 'img-gen' } as any],
+          review: [],
           done: [],
           blocked: [],
           confirmed: [],
