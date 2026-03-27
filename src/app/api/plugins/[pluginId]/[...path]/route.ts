@@ -65,6 +65,8 @@ function ensureInitialized() {
       registerNav: () => {},
       registerRoute: (route) => { state.routes.push(route) },
       registerSlot: () => {},
+      registerExecTool: () => {},
+      registerSkill: () => {},
       watchFiles: () => {},
     }
 
@@ -90,6 +92,8 @@ function buildContext(pluginId: string): PluginContext {
     registerNav: () => {},
     registerRoute: () => {},
     registerSlot: () => {},
+    registerExecTool: () => {},
+    registerSkill: () => {},
     watchFiles: () => {},
   }
 }

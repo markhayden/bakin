@@ -28,6 +28,17 @@ import {
 import { getCurrentStep, completeStep } from '../../plugins/workflows/runtime'
 import { listDefinitions } from '../../plugins/workflows/parser'
 import { appendAudit } from './audit'
+import { getAllExecTools, recordExecToolCall } from '../../scripts/lib/registry'
+
+// Core execution tools — self-register via addExecTool() on import.
+// Must be imported AFTER registry.ts so the Map is initialized.
+import '../../scripts/lib/save-asset'
+import '../../scripts/lib/log-progress'
+import '../../scripts/lib/get-step'
+import '../../scripts/lib/submit-step'
+import '../../scripts/lib/check-gates'
+import '../../scripts/lib/generate-image'
+import '../../scripts/lib/post-discord'
 
 const log = createLogger('mcp')
 
@@ -68,18 +79,23 @@ function recordToolCall(toolName: string, agent: string): void {
   stats.totalRequests++
 }
 
-// Clean up stale sessions every 30 minutes
-const SESSION_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours
+// Clean up stale sessions every 5 minutes. mcporter creates a new session per
+// request (doesn't reuse session IDs), so these accumulate quickly.
+const SESSION_TTL_MS = 30 * 60 * 1000 // 30 minutes
 setInterval(() => {
   const now = Date.now()
+  let cleaned = 0
   for (const [id, session] of sessions) {
     if (now - session.createdAt > SESSION_TTL_MS) {
-      log.info('Cleaning up stale MCP session', { sessionId: id, agent: session.agentId })
       session.transport.close?.()
       sessions.delete(id)
+      cleaned++
     }
   }
-}, 30 * 60 * 1000)
+  if (cleaned > 0) {
+    log.info('Cleaned up stale MCP sessions', { cleaned, remaining: sessions.size })
+  }
+}, 5 * 60 * 1000)
 
 // ---------------------------------------------------------------------------
 // Tool registration
@@ -340,6 +356,44 @@ function registerTools(server: McpServer, getAgent: () => string): void {
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
     },
   )
+
+  // -- Execution tools (from scripts/lib/registry) --
+  for (const tool of getAllExecTools()) {
+    server.tool(
+      tool.name,
+      tool.description,
+      tool.parameters as Record<string, import('zod').ZodType>,
+      async (params) => {
+        const agent = getAgent()
+        recordToolCall(tool.name, agent)
+        recordExecToolCall(tool.name)
+
+        const taskId = (params as Record<string, unknown>).taskId as string | undefined
+        log.info('Exec tool called', { tool: tool.name, agent, taskId })
+
+        try {
+          const result = await tool.handler(params as Record<string, unknown>, agent)
+
+          // Audit log for exec tool calls (success and failure)
+          appendAudit(
+            getContentDir(),
+            result.ok ? `exec.${tool.name}.ok` : `exec.${tool.name}.fail`,
+            agent,
+            { taskId, ...(result.ok ? {} : { error: result.error }) },
+            'mcp',
+          )
+
+          const text = result.ok
+            ? JSON.stringify(result, null, 2)
+            : `ERROR: ${result.error}${result.details ? '\n' + JSON.stringify(result.details, null, 2) : ''}`
+          return { content: [{ type: 'text' as const, text }], isError: !result.ok }
+        } catch (err) {
+          appendAudit(getContentDir(), `exec.${tool.name}.error`, agent, { taskId, error: String(err) }, 'mcp')
+          return { content: [{ type: 'text' as const, text: `Exec tool error: ${String(err)}` }], isError: true }
+        }
+      },
+    )
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -394,11 +448,28 @@ export async function handleMcpRequest(
 
   // /mcp/stats — lightweight observability endpoint
   if (url.pathname === '/mcp/stats' && method === 'GET') {
-    const activeSessions = Array.from(sessions.entries()).map(([id, s]) => ({
-      sessionId: id,
-      agent: s.agentId,
-      connectedAt: new Date(s.createdAt).toISOString(),
-      toolCalls: stats.sessionsByAgent[s.agentId] || 0,
+    // Aggregate sessions by agent — mcporter creates a new session per request,
+    // so showing every session individually is noisy. Group by agent and show
+    // the latest connection time, total sessions, and total tool calls.
+    const agentMap = new Map<string, { sessions: number; latestAt: number; toolCalls: number }>()
+    for (const [, s] of sessions) {
+      const existing = agentMap.get(s.agentId)
+      if (existing) {
+        existing.sessions++
+        existing.latestAt = Math.max(existing.latestAt, s.createdAt)
+      } else {
+        agentMap.set(s.agentId, {
+          sessions: 1,
+          latestAt: s.createdAt,
+          toolCalls: stats.sessionsByAgent[s.agentId] || 0,
+        })
+      }
+    }
+    const activeSessions = Array.from(agentMap.entries()).map(([agent, info]) => ({
+      agent,
+      sessions: info.sessions,
+      connectedAt: new Date(info.latestAt).toISOString(),
+      toolCalls: info.toolCalls,
     }))
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({

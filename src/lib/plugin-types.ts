@@ -53,6 +53,39 @@ export interface ContentFile {
 }
 
 // ---------------------------------------------------------------------------
+// Execution Tools (scripts exposed as MCP tools)
+// ---------------------------------------------------------------------------
+
+/** Result returned by execution tool handlers */
+export interface ExecToolResult {
+  ok: boolean
+  error?: string
+  details?: unknown
+  [key: string]: unknown
+}
+
+/** Definition for a registerable execution tool */
+export interface ExecToolDefinition {
+  name: string
+  description: string
+  parameters: Record<string, unknown> // Zod schema shape
+  handler: (params: Record<string, unknown>, agent: string) => Promise<ExecToolResult>
+  source?: string // 'core' | 'plugin:<id>' — set automatically on registration
+}
+
+// ---------------------------------------------------------------------------
+// Skill Definitions (multi-source)
+// ---------------------------------------------------------------------------
+
+/** A skill that can be registered by plugins or loaded from disk */
+export interface SkillDefinition {
+  name: string
+  instructions: string
+  output_schema?: Record<string, unknown>
+  source?: string // 'built-in' | 'user' | 'plugin:<id>' — set automatically
+}
+
+// ---------------------------------------------------------------------------
 // Plugin Context (provided to activate())
 // ---------------------------------------------------------------------------
 export interface PluginContext {
@@ -62,6 +95,8 @@ export interface PluginContext {
   registerNav(items: NavItem[]): void
   registerRoute(route: APIRoute): void
   registerSlot(registration: UISlotRegistration): void
+  registerExecTool(tool: ExecToolDefinition): void
+  registerSkill(skill: SkillDefinition): void
   watchFiles(patterns: string[]): void
 }
 
