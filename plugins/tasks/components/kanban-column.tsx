@@ -15,9 +15,10 @@ interface KanbanColumnProps {
   onDelete: (task: { id: string; title: string }) => void
   onTaskClick: (task: Task, columnId: ColumnId) => void
   onAddTask?: (columnId: ColumnId) => void
+  footer?: React.ReactNode
 }
 
-export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign, onDelete, onTaskClick, onAddTask }: KanbanColumnProps) {
+export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign, onDelete, onTaskClick, onAddTask, footer }: KanbanColumnProps) {
   const { setNodeRef, isOver, active } = useDroppable({ id })
   const config = COLUMN_CONFIG[id]
   const dotColor = STATUS_DOT_COLORS[id]
@@ -68,6 +69,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign,
           )}
         </div>
       </SortableContext>
+      {footer}
     </div>
   )
 }

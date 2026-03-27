@@ -17,11 +17,16 @@ import { TaskCardOverlay } from './task-card'
 import { NewTaskDialog } from './new-task-dialog'
 import { DeleteTaskDialog } from './delete-task-dialog'
 import { TaskDetailDrawer } from './task-detail-dialog'
+import { TaskMetrics } from './task-metrics'
+import { TaskFilters } from './task-filters'
+import { TaskLogTable } from './task-log-table'
+import { useTaskFilters } from '../hooks/use-task-filters'
 import { WithLoading } from '@/components/layout/skeleton-loader'
 import { useContentStore } from '@/hooks/use-content-store'
 import { parseTasks } from '../parser'
 import { toast } from '@/hooks/use-toast'
 import { useGateStatus } from './use-gate-status'
+import { Kanban, Table2 } from 'lucide-react'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
 const COLUMN_ORDER: ColumnId[] = ['todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
@@ -79,6 +84,31 @@ export function KanbanBoard() {
   const [optimistic, setOptimistic] = useState<{ columns: TaskColumns } | null>(null)
   const columns = optimistic?.columns ?? parsed.columns
   const { timestamp } = parsed
+
+  // Filter confirmed column to last 24 hours for kanban display
+  const displayColumns = useMemo(() => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000
+    return {
+      ...columns,
+      confirmed: columns.confirmed.filter(t => {
+        if (!t.date) return true
+        return new Date(t.date).getTime() >= cutoff
+      }),
+    }
+  }, [columns])
+
+  const hiddenConfirmedCount = columns.confirmed.length - displayColumns.confirmed.length
+
+  // Search / filter
+  const {
+    search, setSearch,
+    agentFilter, setAgentFilter,
+    filteredColumns,
+    allTasksFlat,
+  } = useTaskFilters(displayColumns)
+
+  // View mode: kanban or table
+  const [view, setView] = useState<'kanban' | 'table'>('kanban')
 
   // Collect workflow task IDs for gate status polling
   const workflowTaskIds = useMemo(() => {
@@ -242,7 +272,13 @@ export function KanbanBoard() {
   return (
     <WithLoading>
       <div className="flex flex-col h-full min-w-0 min-h-0">
-        <div className="flex items-center justify-between px-[25px] pt-[25px] pb-4">
+        {/* Metrics bar — visually distinct from task content */}
+        <div className="px-[25px] pt-[25px] pb-2 border-b border-border/50">
+          <TaskMetrics columns={columns} />
+        </div>
+
+        {/* Title row with view toggle */}
+        <div className="flex items-center justify-between px-[25px] pt-4 pb-2">
           <div>
             <h1 className="text-lg font-semibold text-foreground">Tasks</h1>
             {timestamp && (
@@ -251,34 +287,90 @@ export function KanbanBoard() {
               </p>
             )}
           </div>
-          <NewTaskDialog />
-        </div>
-
-        <div className="flex-1 overflow-auto min-h-0">
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="inline-flex gap-4 items-start p-[25px] pt-0">
-            {COLUMN_ORDER.map((colId) => (
-              <div key={colId} className="w-72 shrink-0">
-              <KanbanColumn
-                id={colId}
-                tasks={columns[colId]}
-                gateLabels={gateLabels}
-                childTaskLabels={childTaskLabels}
-                onAssign={handleAssign}
-                onDelete={setDeleteTarget}
-                onTaskClick={(task, colId) => setDetailTask({ task, columnId: colId })}
-              />
-              </div>
-            ))}
+          <div className="flex items-center gap-2">
+            {/* View toggle */}
+            <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
+              <button
+                onClick={() => setView('kanban')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                  view === 'kanban'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Kanban className="size-3.5" />
+                Board
+              </button>
+              <button
+                onClick={() => setView('table')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                  view === 'table'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Table2 className="size-3.5" />
+                Log
+              </button>
+            </div>
+            <NewTaskDialog />
           </div>
-
-          <DragOverlay dropAnimation={null}>
-            {activeTask && activeColumnId ? (
-              <TaskCardOverlay task={activeTask} columnId={activeColumnId} />
-            ) : null}
-          </DragOverlay>
-        </DndContext>
         </div>
+
+        {/* Filters */}
+        <div className="px-[25px] pb-3">
+          <TaskFilters
+            search={search}
+            onSearchChange={setSearch}
+            agentFilter={agentFilter}
+            onAgentChange={setAgentFilter}
+            taskCount={view === 'kanban'
+              ? Object.values(filteredColumns).reduce((s, c) => s + c.length, 0)
+              : allTasksFlat.length
+            }
+          />
+        </div>
+
+        {/* Content — kanban or table */}
+        {view === 'kanban' ? (
+          <div className="flex-1 overflow-auto min-h-0">
+          <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <div className="inline-flex gap-4 items-start p-[25px] pt-0">
+              {COLUMN_ORDER.map((colId) => (
+                <div key={colId} className="w-72 shrink-0">
+                <KanbanColumn
+                  id={colId}
+                  tasks={filteredColumns[colId]}
+                  gateLabels={gateLabels}
+                  childTaskLabels={childTaskLabels}
+                  onAssign={handleAssign}
+                  onDelete={setDeleteTarget}
+                  onTaskClick={(task, colId) => setDetailTask({ task, columnId: colId })}
+                  footer={colId === 'confirmed' && hiddenConfirmedCount > 0 ? (
+                    <button
+                      onClick={() => setView('table')}
+                      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors mt-2"
+                    >
+                      {hiddenConfirmedCount} older task{hiddenConfirmedCount !== 1 ? 's' : ''} — View Log
+                    </button>
+                  ) : undefined}
+                />
+                </div>
+              ))}
+            </div>
+
+            <DragOverlay dropAnimation={null}>
+              {activeTask && activeColumnId ? (
+                <TaskCardOverlay task={activeTask} columnId={activeColumnId} />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto min-h-0 px-[25px] pb-[25px]">
+            <TaskLogTable currentTasks={allTasksFlat} />
+          </div>
+        )}
 
         <TaskDetailDrawer
           task={detailTask?.task ?? null}
