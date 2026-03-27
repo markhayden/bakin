@@ -5,6 +5,19 @@
 import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { getRequestStats } from '../../src/core/request-log'
 import { getLastResults } from '../../src/core/doctor'
+import { getAllAgentUsage } from '../../src/core/agent-usage'
+// Registry accessors live on globalThis because Next.js API routes get
+// separate webpack-compiled module instances with empty Maps. The custom
+// server (server.ts) registers the real accessors after plugin init.
+function getRegistrySnapshot() {
+  const fn = (globalThis as any).__beaconGetRegistrySnapshot
+  return fn ? fn() : []
+}
+
+function getExecToolStats() {
+  const fn = (globalThis as any).__beaconGetExecToolStats
+  return fn ? fn() : []
+}
 
 const healthPlugin: MCPlugin = {
   id: 'health',
@@ -68,6 +81,27 @@ const healthPlugin: MCPlugin = {
       method: 'GET',
       handler: async () => {
         return Response.json(getRequestStats())
+      },
+    })
+
+    // Agent context/token usage from OpenClaw sessions
+    ctx.registerRoute({
+      path: '/usage',
+      method: 'GET',
+      handler: async () => {
+        return Response.json(getAllAgentUsage())
+      },
+    })
+
+    // Registry: all registered plugins, exec tools, and skills
+    ctx.registerRoute({
+      path: '/registry',
+      method: 'GET',
+      handler: async () => {
+        return Response.json({
+          plugins: getRegistrySnapshot(),
+          execTools: getExecToolStats(),
+        })
       },
     })
   },

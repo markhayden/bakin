@@ -446,6 +446,20 @@ async function dispatchWorkflowTask(
     return
   }
 
+  // Move task to in_progress BEFORE dispatching to agents — same pattern as
+  // non-workflow tasks. Prevents the task from sitting in "todo" while the
+  // agent is already working on it.
+  if (!dispatchedSet.has(task.id)) {
+    const { columns: fresh } = readTaskboard()
+    const stillInTodo = fresh.todo.some(t => t.id === task.id)
+    if (stillInTodo) {
+      const firstAgent = activeAgents[0]?.agent || task.agent || 'main-operator'
+      await moveTaskToInProgress(task.id, firstAgent)
+      appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
+    }
+    dispatchedSet.add(task.id)
+  }
+
   for (const { agent, stepId, effectiveTaskId } of activeAgents) {
     // For nested workflows, use the child's taskId for step context resolution
     const contextTaskId = effectiveTaskId || task.id
@@ -486,18 +500,6 @@ async function dispatchWorkflowTask(
         // best effort
       }
     }
-  }
-
-  // Move task to in_progress on first dispatch (if agent hasn't already moved it)
-  if (!dispatchedSet.has(task.id)) {
-    const { columns: fresh } = readTaskboard()
-    const stillInTodo = fresh.todo.some(t => t.id === task.id)
-    if (stillInTodo) {
-      const firstAgent = activeAgents[0]?.agent || task.agent || 'main-operator'
-      await moveTaskToInProgress(task.id, firstAgent)
-      appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
-    }
-    dispatchedSet.add(task.id)
   }
 }
 

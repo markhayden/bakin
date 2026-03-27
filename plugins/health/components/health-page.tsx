@@ -6,8 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
 interface McpSession {
-  sessionId: string
   agent: string
+  sessions: number
   connectedAt: string
   toolCalls: number
 }
@@ -61,6 +61,48 @@ interface RequestsData {
   recent: RecentRequest[]
 }
 
+interface PluginInfo {
+  id: string
+  name: string
+  version: string
+  source: 'built-in' | 'user'
+  routes: number
+}
+
+interface ExecToolStat {
+  name: string
+  source: string
+  calls: number
+  lastUsed: string | null
+}
+
+interface RegistryData {
+  plugins: PluginInfo[]
+  execTools: ExecToolStat[]
+}
+
+interface AgentUsage {
+  agent: string
+  sessionId: string
+  sessionStarted: string
+  model: string
+  messages: number
+  tokens: {
+    input: number
+    output: number
+    cacheRead: number
+    cacheWrite: number
+    total: number
+  }
+  cost: {
+    input: number
+    output: number
+    cacheRead: number
+    cacheWrite: number
+    total: number
+  }
+}
+
 interface HealthSummary {
   mcp: McpData | null
   doctor: DoctorData | null
@@ -84,6 +126,73 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString()
 }
 
+function formatAge(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(ms / 60_000)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
+}
+
+// ---------------------------------------------------------------------------
+// Horizontal bar chart component (pure CSS, no dependencies)
+// ---------------------------------------------------------------------------
+
+interface BarItem {
+  label: string
+  value: number
+  sublabel?: string
+}
+
+const BAR_COLORS = [
+  'bg-blue-500',
+  'bg-emerald-500',
+  'bg-violet-500',
+  'bg-amber-500',
+  'bg-rose-500',
+  'bg-cyan-500',
+  'bg-pink-500',
+  'bg-teal-500',
+]
+
+function HorizontalBars({ items, unit = '' }: { items: BarItem[]; unit?: string }) {
+  const max = Math.max(...items.map(i => i.value), 1)
+
+  return (
+    <div className="space-y-2.5">
+      {items.map((item, i) => (
+        <div key={item.label}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-mono text-muted-foreground truncate mr-2">
+              {item.label}
+            </span>
+            <span className="text-xs font-mono font-medium shrink-0">
+              {item.value}{unit}
+              {item.sublabel && (
+                <span className="text-muted-foreground font-normal ml-1.5">{item.sublabel}</span>
+              )}
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+            <div
+              className={`h-full rounded-full ${BAR_COLORS[i % BAR_COLORS.length]} transition-all duration-500`}
+              style={{ width: `${(item.value / max) * 100}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const STATUS_STYLES: Record<string, string> = {
   ok: 'bg-green-500/10 text-green-400',
   warn: 'bg-yellow-500/10 text-yellow-400',
@@ -93,14 +202,28 @@ const STATUS_STYLES: Record<string, string> = {
 
 export function HealthPage() {
   const [data, setData] = useState<HealthSummary | null>(null)
+  const [registry, setRegistry] = useState<RegistryData | null>(null)
+  const [usage, setUsage] = useState<AgentUsage[]>([])
   const [loading, setLoading] = useState(true)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/api/plugins/health/summary')
-      const json = await res.json()
+      const [summaryRes, registryRes, usageRes] = await Promise.all([
+        fetch('/api/plugins/health/summary'),
+        fetch('/api/plugins/health/registry'),
+        fetch('/api/plugins/health/usage'),
+      ])
+      const json = await summaryRes.json()
       setData(json)
+      try {
+        const regJson = await registryRes.json()
+        setRegistry(regJson)
+      } catch { /* registry endpoint optional */ }
+      try {
+        const usageJson = await usageRes.json()
+        if (Array.isArray(usageJson)) setUsage(usageJson)
+      } catch { /* usage endpoint optional */ }
       setLastRefresh(new Date())
     } catch (err) {
       console.error('Failed to fetch health data:', err)
@@ -199,7 +322,7 @@ export function HealthPage() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
-        {/* MCP Tool Calls */}
+        {/* MCP Tool Calls — horizontal bar chart */}
         <Card>
           <CardHeader>
             <CardTitle>MCP Tool Calls</CardTitle>
@@ -208,46 +331,108 @@ export function HealthPage() {
             {sortedTools.length === 0 ? (
               <p className="text-sm text-muted-foreground">No MCP calls yet this session</p>
             ) : (
-              <div className="space-y-2">
-                {sortedTools.map(([tool, count]) => (
-                  <div key={tool} className="flex items-center justify-between">
-                    <span className="text-sm font-mono text-muted-foreground">{tool}</span>
-                    <span className="text-sm font-mono font-medium">{count}</span>
-                  </div>
-                ))}
-              </div>
+              <HorizontalBars
+                items={sortedTools.map(([tool, count]) => ({
+                  label: tool.replace('beacon_', ''),
+                  value: count,
+                }))}
+              />
             )}
           </CardContent>
         </Card>
 
-        {/* Active MCP Sessions */}
+        {/* Agent Usage — horizontal bar chart */}
         <Card>
           <CardHeader>
-            <CardTitle>Active MCP Sessions</CardTitle>
+            <CardTitle>Agent Usage</CardTitle>
           </CardHeader>
           <CardContent>
             {!mcp?.activeSessions.length ? (
               <p className="text-sm text-muted-foreground">No active sessions</p>
             ) : (
-              <div className="space-y-3">
-                {mcp.activeSessions.map((s) => (
-                  <div key={s.sessionId} className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm font-medium">{s.agent}</span>
-                      <span className="text-xs text-muted-foreground ml-2">
-                        since {formatTime(s.connectedAt)}
-                      </span>
-                    </div>
-                    <Badge variant="secondary" className="font-mono">
-                      {s.toolCalls} calls
-                    </Badge>
-                  </div>
-                ))}
-              </div>
+              <HorizontalBars
+                items={mcp.activeSessions
+                  .sort((a, b) => b.toolCalls - a.toolCalls)
+                  .map((s) => ({
+                    label: s.agent,
+                    value: s.toolCalls,
+                    sublabel: `${s.sessions} session${s.sessions !== 1 ? 's' : ''}`,
+                  }))}
+                unit=" calls"
+              />
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Agent Context Usage */}
+      {usage.length > 0 && (
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Token usage bar chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Context Usage</span>
+                <span className="text-xs font-normal text-muted-foreground">latest session per agent</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <HorizontalBars
+                items={usage.map((u) => ({
+                  label: u.agent,
+                  value: u.tokens.total,
+                  sublabel: u.sessionStarted ? formatAge(u.sessionStarted) : `${u.messages} msg`,
+                }))}
+                unit=" tokens"
+              />
+            </CardContent>
+          </Card>
+
+          {/* Cost breakdown table */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Session Cost</span>
+                <Badge variant="secondary" className="font-mono text-xs">
+                  ${usage.reduce((sum, u) => sum + u.cost.total, 0).toFixed(2)} total
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1.5">
+                <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+                  <span className="flex-1">Agent</span>
+                  <span className="w-14 text-right">In</span>
+                  <span className="w-14 text-right">Out</span>
+                  <span className="w-16 text-right">Cache R</span>
+                  <span className="w-16 text-right">Cache W</span>
+                  <span className="w-16 text-right">Cost</span>
+                </div>
+                {usage.map((u) => (
+                  <div key={u.agent} className="flex items-center text-sm">
+                    <span className="flex-1 font-medium">{u.agent}</span>
+                    <span className="w-14 text-right font-mono text-xs text-muted-foreground">
+                      {formatTokenCount(u.tokens.input)}
+                    </span>
+                    <span className="w-14 text-right font-mono text-xs text-muted-foreground">
+                      {formatTokenCount(u.tokens.output)}
+                    </span>
+                    <span className="w-16 text-right font-mono text-xs text-muted-foreground">
+                      {formatTokenCount(u.tokens.cacheRead)}
+                    </span>
+                    <span className="w-16 text-right font-mono text-xs text-muted-foreground">
+                      {formatTokenCount(u.tokens.cacheWrite)}
+                    </span>
+                    <span className="w-16 text-right font-mono text-xs font-medium">
+                      ${u.cost.total.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* API Endpoints */}
       {requests && requests.endpoints.length > 0 && (
@@ -316,6 +501,77 @@ export function HealthPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Registry — Plugins & Exec Tools */}
+      {registry && (
+        <div className="grid md:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Plugins</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {registry.plugins.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No plugins loaded</p>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+                    <span className="flex-1">Plugin</span>
+                    <span className="w-16 text-right">Version</span>
+                    <span className="w-16 text-right">Source</span>
+                    <span className="w-14 text-right">Routes</span>
+                  </div>
+                  {registry.plugins.map((p) => (
+                    <div key={p.id} className="flex items-center text-sm">
+                      <span className="flex-1 font-medium">{p.name}</span>
+                      <span className="w-16 text-right font-mono text-xs text-muted-foreground">{p.version}</span>
+                      <span className="w-16 text-right">
+                        <Badge variant="secondary" className="text-[10px] px-1.5">
+                          {p.source}
+                        </Badge>
+                      </span>
+                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">{p.routes}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Exec Tools</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {registry.execTools.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No exec tools registered</p>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+                    <span className="flex-1">Tool</span>
+                    <span className="w-16 text-right">Source</span>
+                    <span className="w-14 text-right">Calls</span>
+                    <span className="w-20 text-right">Last Used</span>
+                  </div>
+                  {registry.execTools.map((t) => (
+                    <div key={t.name} className="flex items-center text-sm">
+                      <span className="flex-1 font-mono text-muted-foreground truncate">{t.name.replace('beacon_exec_', '')}</span>
+                      <span className="w-16 text-right">
+                        <Badge variant="secondary" className="text-[10px] px-1.5">
+                          {t.source}
+                        </Badge>
+                      </span>
+                      <span className="w-14 text-right font-mono">{t.calls}</span>
+                      <span className="w-20 text-right text-xs text-muted-foreground">
+                        {t.lastUsed ? formatTime(t.lastUsed) : '—'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Diagnostics */}

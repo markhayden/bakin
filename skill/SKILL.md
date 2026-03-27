@@ -133,72 +133,11 @@ Soft-delete an asset (moves to .trash/):
 curl -s -X POST 'http://localhost:3737/api/plugins/assets/delete?path=assets/images/task-abc/hero.png'
 ```
 
-### Writing Assets (REQUIRED CONVENTION)
+### Writing Assets
 
-All agent-created content (images, video, audio, text, plans, data) MUST be written to the assets directory. Assets are organized by type and task ID.
-
-**Step 1: Get the asset path** via `beacon_get_paths`
-
-**Step 2: Create the task directory**
-```bash
-mkdir -p "$ASSETS_DIR/<task-id>"
-```
-
-**Step 3: Write the sidecar FIRST, then the asset**
-
-Always write the `.meta.json` sidecar file BEFORE the asset file. This ensures intent is captured even if the asset write fails.
-
-**NAMING RULE:** The sidecar filename is ALWAYS the full asset filename (including extension) + `.meta.json`.
-- Asset: `20260323-hero-image.png` → Sidecar: `20260323-hero-image.png.meta.json`
-- Asset: `intro-clip.mp4` → Sidecar: `intro-clip.mp4.meta.json`
-- WRONG: `hero-image.meta.json` (missing date prefix and file extension)
-- WRONG: `pop-tart.meta.json` for asset `20250727-pop-tart.png`
-
-**EXACT FIELDS — use these names verbatim, do not rename or add custom fields:**
-
-| Field             | Required | Type     | Notes                                          |
-|-------------------|----------|----------|-------------------------------------------------|
-| `agent`           | YES      | string   | Your agent name. NOT `author` or `name`.        |
-| `taskId`          | YES      | string   | The task ID. Use `null` if no task context.      |
-| `created`         | YES      | string   | ISO 8601 UTC timestamp. NOT `createdAt`.         |
-| `tool`            | no       | string   | Tool used to generate (e.g. `"dall-e-3"`)        |
-| `description`     | no       | string   | Brief human-readable description of the asset    |
-| `tags`            | no       | string[] | Tags for filtering and search                   |
-| `originalFilename`| no       | string   | Original filename if the file was renamed        |
-
-Do NOT add custom fields (e.g. `prompt`, `resolution`, `aspectRatio`). Use `description` and `tags` for additional context.
-
-```bash
-# Sidecar filename = full asset filename + .meta.json
-cat > "$ASSETS_DIR/<task-id>/hero-image.png.meta.json" <<EOF
-{
-  "agent": "<your-agent-name>",
-  "taskId": "<task-id>",
-  "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "tool": "dall-e-3",
-  "description": "Hero image for the blog post",
-  "tags": ["hero", "blog"]
-}
-EOF
-
-# Then write the actual asset file
-# (your image generation/download writes to $ASSETS_DIR/<task-id>/hero-image.png)
-```
-
-**Versioning convention:** Use timestamp-prefix filenames for revisions: `20260323-hero-image.png`, `20260324-hero-image.png`.
-
-**Shared/reusable assets:** Write to the `library/` subdirectory instead of a task ID: `$ASSETS_DIR/library/brand-logo.png`.
-
-**Assets without a task:** Write to `_unlinked/`: `$ASSETS_DIR/_unlinked/exploratory-sketch.png`.
-
-**Asset type directories:**
-- `assets.text` — markdown, txt (blog posts, briefs, scripts)
-- `assets.images` — png, jpg, gif, webp, svg
-- `assets.video` — mp4, mov, webm
-- `assets.audio` — mp3, wav, m4a
-- `assets.plans` — yaml, markdown strategy docs
-- `assets.data` — json, csv, xml
-- `assets.other` — anything else
+Use `beacon_exec_save_asset` to save any agent-created content. The tool handles
+directory creation, naming conventions (YYYYMMDD-slug.ext), and sidecar metadata
+automatically. Never write assets manually.
 
 ## Rules — SERVER ENFORCED
 

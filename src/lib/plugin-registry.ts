@@ -14,8 +14,11 @@ import type {
   NavItem,
   APIRoute,
   UISlotRegistration,
+  ExecToolDefinition,
+  SkillDefinition,
 } from './plugin-types'
 import { registerRouteDoc } from '../core/api-docs'
+import { addExecTool } from '../../scripts/lib/registry'
 
 interface PluginState {
   plugin: MCPlugin
@@ -23,6 +26,13 @@ interface PluginState {
   routes: APIRoute[]
   slots: UISlotRegistration[]
   watchPatterns: string[]
+}
+
+/** Skills registered by plugins (keyed by name, first-registered wins) */
+const pluginSkills = new Map<string, SkillDefinition>()
+
+export function getPluginSkills(): Map<string, SkillDefinition> {
+  return pluginSkills
 }
 
 class PluginRegistryImpl {
@@ -43,6 +53,36 @@ class PluginRegistryImpl {
     await this.loadUserPlugins(storage, events)
   }
 
+  private buildContext(
+    pluginId: string,
+    state: PluginState,
+    storage: StorageAdapter,
+    events: EventBus,
+  ): PluginContext {
+    return {
+      storage,
+      events,
+      pluginId,
+      registerNav: (items) => { state.navItems.push(...items) },
+      registerRoute: (route) => {
+        state.routes.push(route)
+        registerRouteDoc(pluginId, route)
+      },
+      registerSlot: (reg) => { state.slots.push(reg) },
+      registerExecTool: (tool) => {
+        tool.source = `plugin:${pluginId}`
+        addExecTool(tool)
+      },
+      registerSkill: (skill) => {
+        skill.source = `plugin:${pluginId}`
+        if (!pluginSkills.has(skill.name)) {
+          pluginSkills.set(skill.name, skill)
+        }
+      },
+      watchFiles: (patterns) => { state.watchPatterns.push(...patterns) },
+    }
+  }
+
   private async loadPlugin(pluginPath: string, storage: StorageAdapter, events: EventBus): Promise<void> {
     try {
       const mod = await import(/* webpackIgnore: true */ `../../${pluginPath}`)
@@ -61,19 +101,7 @@ class PluginRegistryImpl {
         watchPatterns: [],
       }
 
-      const ctx: PluginContext = {
-        storage,
-        events,
-        pluginId: plugin.id,
-        registerNav: (items) => { state.navItems.push(...items) },
-        registerRoute: (route) => {
-          state.routes.push(route)
-          registerRouteDoc(plugin.id, route)
-        },
-        registerSlot: (reg) => { state.slots.push(reg) },
-        watchFiles: (patterns) => { state.watchPatterns.push(...patterns) },
-      }
-
+      const ctx = this.buildContext(plugin.id, state, storage, events)
       await plugin.activate(ctx)
       this.plugins.set(plugin.id, state)
       console.log(`  ✓ Plugin loaded: ${plugin.name} v${plugin.version}`)
@@ -129,19 +157,7 @@ class PluginRegistryImpl {
             watchPatterns: [],
           }
 
-          const ctx: PluginContext = {
-            storage,
-            events,
-            pluginId: plugin.id,
-            registerNav: (items) => { state.navItems.push(...items) },
-            registerRoute: (route) => {
-              state.routes.push(route)
-              registerRouteDoc(plugin.id, route)
-            },
-            registerSlot: (reg) => { state.slots.push(reg) },
-            watchFiles: (patterns) => { state.watchPatterns.push(...patterns) },
-          }
-
+          const ctx = this.buildContext(plugin.id, state, storage, events)
           await plugin.activate(ctx)
           this.plugins.set(plugin.id, state)
           console.log(`  ✓ User plugin loaded: ${plugin.name} v${plugin.version}`)
@@ -184,6 +200,25 @@ class PluginRegistryImpl {
 
   getPluginState(pluginId: string): PluginState | undefined {
     return this.plugins.get(pluginId)
+  }
+
+  /**
+   * Snapshot of all registered plugins for the health dashboard.
+   */
+  getRegistrySnapshot(): Array<{
+    id: string
+    name: string
+    version: string
+    source: 'built-in' | 'user'
+    routes: number
+  }> {
+    return [...this.plugins.entries()].map(([id, state]) => ({
+      id,
+      name: state.plugin.name,
+      version: state.plugin.version,
+      source: id.startsWith('user:') ? 'user' as const : 'built-in' as const,
+      routes: state.routes.length,
+    }))
   }
 }
 

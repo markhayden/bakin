@@ -16,7 +16,7 @@ export function appendAudit(
   data: Record<string, unknown> = {},
   channel?: 'mcp' | 'rest' | 'cli' | 'system',
 ): void {
-  const entry: Record<string, unknown> = {
+  const entry = {
     ts: new Date().toISOString(),
     event,
     agent,

@@ -36,6 +36,8 @@ function createMockContext(pluginId: string): {
     registerNav: (items) => navItems.push(...items),
     registerRoute: (route) => routes.push(route),
     registerSlot: () => {},
+    registerExecTool: () => {},
+    registerSkill: () => {},
     watchFiles: () => {},
   }
 
