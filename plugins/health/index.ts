@@ -4,6 +4,7 @@
  */
 import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { getRequestStats } from '../../src/core/request-log'
+import { getLastResults } from '../../src/core/doctor'
 
 const healthPlugin: MCPlugin = {
   id: 'health',
@@ -25,13 +26,26 @@ const healthPlugin: MCPlugin = {
         const port = process.env.PORT || 3737
         const base = `http://localhost:${port}`
 
-        const [mcpRes, doctorRes] = await Promise.allSettled([
-          fetch(`${base}/mcp/stats`).then(r => r.json()),
-          fetch(`${base}/api/doctor`).then(r => r.json()),
-        ])
+        // Use cached doctor results instead of triggering a full re-run.
+        // The doctor timer runs every 30 minutes; this avoids re-running
+        // diagnostics on every dashboard poll (every 10s).
+        const cached = getLastResults()
+        const doctor = cached ? {
+          results: cached.results,
+          summary: {
+            total: cached.results.length,
+            errors: cached.results.filter(r => r.status === 'error').length,
+            warnings: cached.results.filter(r => r.status === 'warn').length,
+          },
+          cachedAt: new Date(cached.timestamp).toISOString(),
+        } : null
 
-        const mcp = mcpRes.status === 'fulfilled' ? mcpRes.value : null
-        const doctor = doctorRes.status === 'fulfilled' ? doctorRes.value : null
+        let mcp = null
+        try {
+          const mcpRes = await fetch(`${base}/mcp/stats`)
+          mcp = await mcpRes.json()
+        } catch { /* MCP stats are optional */ }
+
         const requests = getRequestStats()
 
         return Response.json({

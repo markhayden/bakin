@@ -26,6 +26,7 @@ import {
   triggerDispatch,
 } from './task-service'
 import { getCurrentStep, completeStep } from '../../plugins/workflows/runtime'
+import { listDefinitions } from '../../plugins/workflows/parser'
 import { appendAudit } from './audit'
 
 const log = createLogger('mcp')
@@ -128,21 +129,34 @@ function registerTools(server: McpServer, getAgent: () => string): void {
   // -- beacon_create_task --
   server.tool(
     'beacon_create_task',
-    'Create a new task on the task board. Use for subtasks when your work requires another agent.',
+    'Create a new task on the task board. For top-level tasks, you MUST provide either workflowId or skipWorkflowReason. Subtasks (with parentId) are exempt.',
     {
       title: z.string().describe('Task title'),
       assignee: z.string().optional().describe('Agent to assign (basil, pixel, rolo, patch, nemo, etc.)'),
       description: z.string().optional().describe('Task description and context'),
       parentId: z.string().optional().describe('Parent task ID if this is a subtask'),
+      workflowId: z.string().optional().describe('Workflow to start (e.g. image-social-post, video-script). Use beacon_list_workflows to see options.'),
+      skipWorkflowReason: z.string().optional().describe('Reason no workflow applies (required if workflowId is not set and this is not a subtask)'),
     },
-    async ({ title, assignee, description, parentId }) => {
+    async ({ title, assignee, description, parentId, workflowId, skipWorkflowReason }) => {
       const agent = getAgent()
       recordToolCall('beacon_create_task', agent)
+
+      // Enforce workflow decision for top-level tasks
+      if (!parentId && !workflowId && !skipWorkflowReason) {
+        return {
+          content: [{ type: 'text' as const, text: 'Error: Top-level tasks require either workflowId or skipWorkflowReason. Use beacon_list_workflows to see available workflows.' }],
+          isError: true,
+        }
+      }
+
       try {
-        const { id } = await createTaskWithEffects({
+        const result = await createTaskWithEffects({
           title,
           assignee,
           description,
+          workflowId,
+          skipWorkflowReason,
           createdBy: agent,
           parentId,
           channel: 'mcp',
@@ -151,7 +165,35 @@ function registerTools(server: McpServer, getAgent: () => string): void {
         if (parentId || assignee) {
           triggerDispatch()
         }
-        return { content: [{ type: 'text' as const, text: `Task created: ${id}` }] }
+        const parts = [`Task created: ${result.id}`]
+        if (result.workflowId) parts.push(`(workflow: ${result.workflowId})`)
+        if (result.suggestedWorkflow && !result.workflowId) parts.push(`(suggested workflow: ${result.suggestedWorkflow})`)
+        return { content: [{ type: 'text' as const, text: parts.join(' ') }] }
+      } catch (err) {
+        return { content: [{ type: 'text' as const, text: `Error: ${(err as Error).message}` }], isError: true }
+      }
+    },
+  )
+
+  // -- beacon_list_workflows --
+  server.tool(
+    'beacon_list_workflows',
+    'List available workflow definitions. Use before creating a task to check if a workflow fits.',
+    {},
+    async () => {
+      const agent = getAgent()
+      recordToolCall('beacon_list_workflows', agent)
+      try {
+        const defs = listDefinitions()
+        if (defs.length === 0) {
+          return { content: [{ type: 'text' as const, text: 'No workflow definitions found.' }] }
+        }
+        const lines = defs.map(d => {
+          const steps = d.definition.steps || []
+          const agents = [...new Set(steps.filter((s) => 'agent' in s && (s as { agent?: string }).agent).map((s) => (s as { agent?: string }).agent))]
+          return `- ${d.name}: ${d.definition.description || d.definition.name}${agents.length ? ` (agents: ${agents.join(', ')})` : ''}`
+        })
+        return { content: [{ type: 'text' as const, text: `Available workflows:\n${lines.join('\n')}` }] }
       } catch (err) {
         return { content: [{ type: 'text' as const, text: `Error: ${(err as Error).message}` }], isError: true }
       }
