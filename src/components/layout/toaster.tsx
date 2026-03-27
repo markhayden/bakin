@@ -10,9 +10,9 @@ const ICONS = {
 } as const
 
 const COLORS = {
-  success: 'border-green-500/30 bg-green-500/10 text-green-400',
-  error: 'border-destructive/30 bg-destructive/10 text-destructive',
-  info: 'border-accent/30 bg-accent/10 text-accent',
+  success: 'border-green-500/50 bg-green-500/80 text-green-100',
+  error: 'border-destructive/50 bg-destructive/80 text-destructive',
+  info: 'border-accent/50 bg-accent/80 text-accent',
 } as const
 
 export function Toaster() {
@@ -22,7 +22,7 @@ export function Toaster() {
   if (toasts.length === 0) return null
 
   return (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
+    <div className="fixed bottom-4 left-4 z-[100] flex flex-col gap-2 max-w-sm">
       {toasts.map((t) => {
         const Icon = ICONS[t.type]
         return (

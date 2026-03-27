@@ -803,9 +803,9 @@ openclaw agents delete patch
 
 **🖼️ Pixel — The Image Artist**
 - Receives image briefs from content agents (primarily Basil)
-- Crafts detailed prompts for nanobanan to generate on-brand imagery
+- Crafts detailed prompts for nanobanan to generate high-quality imagery
 - Iterates on outputs until quality bar is met
-- Maintains a visual style guide and brand consistency
+- Maintains a visual style guide and visual consistency
 - Delivers final assets back to the requesting agent
 - Archives all generated assets with metadata
 
