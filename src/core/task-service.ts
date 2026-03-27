@@ -21,7 +21,9 @@ import {
   readTaskboard,
   setDependency,
 } from '../../plugins/tasks/taskboard'
-import { loadInstance } from '../../plugins/workflows/runtime'
+import { createInstance, loadInstance } from '../../plugins/workflows/runtime'
+import { matchWorkflow } from '../../plugins/workflows/matcher'
+import { updateTask } from '../../plugins/tasks/taskboard'
 
 const log = createLogger('task-service')
 
@@ -137,26 +139,48 @@ export async function createTaskWithEffects(opts: {
   assignee?: string
   description?: string
   workflowId?: string
+  skipWorkflowReason?: string
   createdBy?: string
   parentId?: string
   channel?: Channel
-}): Promise<{ id: string }> {
+}): Promise<{ id: string; workflowId?: string; suggestedWorkflow?: string }> {
+  // Auto-match workflow if none was explicitly provided
+  const suggested = !opts.workflowId ? (matchWorkflow(opts.title, opts.description) || undefined) : undefined
+  const effectiveWorkflowId = opts.workflowId || undefined
+
   const task = await createTask(
     opts.title,
     opts.column,
     opts.assignee,
     opts.description,
-    opts.workflowId,
+    effectiveWorkflowId,
     opts.createdBy,
     undefined, // id — let it auto-generate
     opts.parentId,
   )
+
+  // Start workflow instance if one was specified
+  if (effectiveWorkflowId) {
+    try {
+      const contentDir = getContentDir()
+      createInstance(task.id, effectiveWorkflowId, contentDir, opts.assignee)
+      log.info('Started workflow', { taskId: task.id, workflowId: effectiveWorkflowId })
+      broadcast({ type: 'workflow_started', taskId: task.id, workflowId: effectiveWorkflowId })
+    } catch (err) {
+      log.error('Failed to start workflow', { taskId: task.id, workflowId: effectiveWorkflowId, error: (err as Error).message })
+      await updateTask(task.id, { workflowId: undefined })
+    }
+  }
+
   appendAudit(getContentDir(), 'task.created', opts.createdBy || 'system', {
     id: task.id,
     title: opts.title,
     assignee: opts.assignee,
+    workflowId: effectiveWorkflowId,
+    skipWorkflowReason: opts.skipWorkflowReason,
+    suggestedWorkflow: suggested,
   }, opts.channel)
-  return { id: task.id }
+  return { id: task.id, workflowId: effectiveWorkflowId, suggestedWorkflow: suggested }
 }
 
 /**

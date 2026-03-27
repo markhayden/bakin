@@ -40,6 +40,7 @@ const mockReadTaskboard = vi.fn(() => ({
   }
 }))
 const mockSetDependency = vi.fn(() => Promise.resolve())
+const mockUpdateTask = vi.fn(() => Promise.resolve())
 
 vi.mock('@mc/tasks/taskboard', () => ({
   addTaskLog: mockAddTaskLog,
@@ -48,10 +49,16 @@ vi.mock('@mc/tasks/taskboard', () => ({
   moveTask: mockMoveTask,
   readTaskboard: mockReadTaskboard,
   setDependency: mockSetDependency,
+  updateTask: mockUpdateTask,
 }))
 
 vi.mock('@mc/workflows/runtime', () => ({
+  createInstance: vi.fn(),
   loadInstance: vi.fn(() => null),
+}))
+
+vi.mock('@mc/workflows/matcher', () => ({
+  matchWorkflow: vi.fn(() => null),
 }))
 
 describe('task-service', () => {
@@ -135,7 +142,7 @@ describe('task-service', () => {
       mockReadTaskboard.mockReturnValueOnce({
         columns: {
           todo: [],
-          inProgress: [{ id: 'wf-task', title: 'Workflow Task', workflowId: 'image-gen' }],
+          inProgress: [{ id: 'wf-task', title: 'Workflow Task', workflowId: 'image-gen' } as any],
           done: [],
           blocked: [],
           confirmed: [],
@@ -211,7 +218,7 @@ describe('task-service', () => {
       mockReadTaskboard.mockReturnValueOnce({
         columns: {
           todo: [],
-          inProgress: [{ id: 'wf-task', title: 'WF Task', workflowId: 'img-gen' }],
+          inProgress: [{ id: 'wf-task', title: 'WF Task', workflowId: 'img-gen' } as any],
           done: [],
           blocked: [],
           confirmed: [],

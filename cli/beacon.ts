@@ -101,10 +101,25 @@ async function cmdTasksList(column?: string): Promise<void> {
   }
 }
 
-async function cmdTasksCreate(title: string, assignee?: string): Promise<void> {
+async function cmdTasksCreate(title: string, assignee?: string, workflowId?: string, skipWorkflowReason?: string): Promise<void> {
   const body: Record<string, string> = { title }
   if (assignee) body.assignee = assignee
-  const result = await apiPost('/api/tasks/create', body)
+  if (workflowId) body.workflowId = workflowId
+  if (skipWorkflowReason) body.skipWorkflowReason = skipWorkflowReason
+  const result = await apiPost('/api/tasks/create', body) as { ok?: boolean; id?: string; workflowId?: string; suggestedWorkflow?: string; error?: string }
+
+  if (result.error) {
+    console.error(`Error: ${result.error}`)
+    process.exit(1)
+  }
+
+  // Warn if a workflow was suggested but not used and no reason given
+  if (result.suggestedWorkflow && !workflowId && !skipWorkflowReason) {
+    console.warn(`\n⚠  Workflow "${result.suggestedWorkflow}" matches this task but was not started.`)
+    console.warn(`   Re-run with --workflow=${result.suggestedWorkflow} to use it,`)
+    console.warn(`   or --no-workflow="<reason>" to skip with an audit trail.\n`)
+  }
+
   print(result)
 }
 
@@ -278,7 +293,7 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
 }
 
 async function cmdDoctor(): Promise<void> {
-  const result = await apiGet('/api/doctor') as {
+  const result = await apiGet('/api/doctor?fresh=true') as {
     results: Array<{ check: string; status: string; message: string }>
     summary: { total: number; errors: number; warnings: number }
   }
@@ -334,22 +349,24 @@ These rules govern Main Operator as orchestrator of the Beacon multi-agent syste
 
 10. **Workflow tasks are hands-off.** If a task has a \`workflowId\`, the workflow engine manages step progression. Do not manually move workflow tasks between columns, do not produce step output yourself, and do not interfere with gates outside the Beacon UI.
 
-11. **Match tasks to workflows automatically.** Before creating a task, evaluate whether an existing workflow fits. If the task involves content that matches a workflow's purpose, start that workflow. Use \`beacon workflows list\` to see available workflows, then start with:
-    \`\`\`bash
-    beacon workflows start <taskId> <workflowId>
-    \`\`\`
+11. **Every task requires a workflow decision.** When creating a task, you MUST either specify a workflow or explain why none applies:
+    - With workflow: \`beacon tasks create "<title>" <agent> --workflow=<id>\`
+    - Without workflow: \`beacon tasks create "<title>" <agent> --no-workflow="<reason>"\`
+    Use \`beacon workflows list\` to see available workflows. The skip reason is logged to the audit trail.
 
 12. **Gate approvals go through the UI.** When a workflow gate is reached, tell Mark a gate is waiting — do NOT approve or reject gates yourself. Mark handles gates in the task drawer.
 
 ### Beacon CLI Quick Reference
 
 \`\`\`bash
-beacon tasks create "<title>" <agent>   # Create + auto-dispatch
+beacon tasks create "<title>" <agent> [--workflow=<id>|--no-workflow="<reason>"]
 beacon tasks list                       # See all tasks
 beacon tasks get <id>                   # Task details
 beacon tasks log <id> "<message>"       # Log progress
 beacon tasks complete <id> "<summary>"  # Mark done
 beacon tasks block <id> "<reason>"      # Block task
+beacon workflows list                   # List available workflow definitions
+beacon workflows start <taskId> <wfId>  # Manually start a workflow for a task
 beacon workflows step <taskId>          # Get workflow step
 beacon workflows submit <t> <s> <json>  # Submit step output
 beacon status                           # System health
@@ -984,6 +1001,21 @@ async function cmdTasksGet(id: string): Promise<void> {
   process.exit(1)
 }
 
+async function cmdWorkflowsList(): Promise<void> {
+  const result = await apiGet('/api/plugins/workflows/list') as { templates?: Array<Record<string, unknown>> }
+  const templates = result?.templates || []
+  if (templates.length === 0) {
+    console.log('No workflow definitions found.')
+    return
+  }
+  printTable(templates, ['filename', 'name', 'description', 'stepCount'])
+}
+
+async function cmdWorkflowsStart(taskId: string, workflowId: string): Promise<void> {
+  const result = await apiPost('/api/plugins/workflows/start', { taskId, workflowId })
+  print(result)
+}
+
 async function cmdWorkflowsStep(taskId: string): Promise<void> {
   const result = await apiGet(`/api/plugins/workflows/step?taskId=${encodeURIComponent(taskId)}`)
   print(result)
@@ -1009,12 +1041,14 @@ Commands:
   dispatch                         Trigger immediate task dispatch
   tasks list [--column=X]          List tasks (optionally filter by column)
   tasks get <id>                   Get task details
-  tasks create <title> [agent]     Create a new task
+  tasks create <title> [agent]     Create a task (--workflow=<id> or --no-workflow="reason")
   tasks move <id> <column>         Move task to column
   tasks log <id> <message>         Log a progress update
   tasks block <id> <reason>        Block a task with reason
   tasks depend <id> <dependsOn>    Register a task dependency
   tasks complete <id> <summary>    Mark task done with summary
+  workflows list                    List available workflow definitions
+  workflows start <taskId> <wfId>  Start a workflow for a task
   workflows step <taskId>          Get current workflow step details
   workflows submit <t> <s> <json>  Submit workflow step output
   agents list                      List all agents with status
@@ -1079,8 +1113,18 @@ async function main(): Promise<void> {
           if (!args[2]) { console.error('Usage: beacon tasks get <id>'); process.exit(1) }
           await cmdTasksGet(args[2])
         } else if (sub === 'create') {
-          if (!args[2]) { console.error('Usage: beacon tasks create <title> [agent]'); process.exit(1) }
-          await cmdTasksCreate(args[2], args[3])
+          if (!args[2]) { console.error('Usage: beacon tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]'); process.exit(1) }
+          // Parse flags from remaining args
+          const createArgs = args.slice(2)
+          const wfFlag = createArgs.find(a => a.startsWith('--workflow='))
+          const noWfFlag = createArgs.find(a => a.startsWith('--no-workflow='))
+          const positional = createArgs.filter(a => !a.startsWith('--'))
+          const createTitle = positional[0]
+          const createAssignee = positional[1]
+          const createWorkflowId = wfFlag?.split('=').slice(1).join('=')
+          const createSkipReason = noWfFlag?.split('=').slice(1).join('=')
+          if (!createTitle) { console.error('Usage: beacon tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]'); process.exit(1) }
+          await cmdTasksCreate(createTitle, createAssignee, createWorkflowId, createSkipReason)
         } else if (sub === 'move') {
           if (!args[2] || !args[3]) { console.error('Usage: beacon tasks move <id> <column>'); process.exit(1) }
           await cmdTasksMove(args[2], args[3])
@@ -1103,7 +1147,12 @@ async function main(): Promise<void> {
         break
 
       case 'workflows':
-        if (sub === 'step') {
+        if (sub === 'list') {
+          await cmdWorkflowsList()
+        } else if (sub === 'start') {
+          if (!args[2] || !args[3]) { console.error('Usage: beacon workflows start <taskId> <workflowId>'); process.exit(1) }
+          await cmdWorkflowsStart(args[2], args[3])
+        } else if (sub === 'step') {
           if (!args[2]) { console.error('Usage: beacon workflows step <taskId>'); process.exit(1) }
           await cmdWorkflowsStep(args[2])
         } else if (sub === 'submit') {

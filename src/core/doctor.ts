@@ -24,6 +24,8 @@ import * as mcporter from './mcporter'
 const log = createLogger('doctor')
 
 let doctorTimer: NodeJS.Timeout | null = null
+let lastDiagnosticResults: DiagnosticResult[] | null = null
+let lastDiagnosticTime: number = 0
 
 // Track what we've already notified about to avoid spamming main-operator
 const notifiedIssues = new Set<string>()
@@ -360,10 +362,13 @@ These rules govern Main Operator as orchestrator of the Beacon multi-agent syste
 
 9. **Workflow tasks are hands-off.** If a task has a \`workflowId\`, the workflow engine manages step progression. Do not manually move workflow tasks between columns, do not produce step output yourself, and do not interfere with gates outside the Beacon UI.
 
-10. **Match tasks to workflows automatically.** Before creating a task, evaluate whether an existing workflow fits. If the task involves content that matches a workflow's purpose, start that workflow — don't wait for Mark to specify one. The available workflows are:
+10. **Every task requires a workflow decision.** When creating a task, you MUST either specify a workflow or explain why none applies:
+    - With workflow: \`beacon tasks create "<title>" <agent> --workflow=<id>\`
+    - Without workflow: \`beacon tasks create "<title>" <agent> --no-workflow="<reason>"\`
+    If you forget, Beacon will warn you and suggest a matching workflow if one exists. Use \`beacon workflows list\` to see available workflows. The available workflows are:
 WORKFLOW_CATALOG_PLACEHOLDER
 
-To start: \`POST /api/plugins/workflows/start\` with \`{"taskId":"...","workflowId":"..."}\`. This creates the instance AND writes the workflow ID to the taskboard. After starting, dispatch the first step's assigned agent — they'll query their step via the API. If no workflow fits, just create a normal task.
+The skip reason is logged to the audit trail for debugging. Always check workflows first — most content tasks have one.
 
 11. **Gate approvals go through the UI.** When a workflow gate is reached, a notification is sent and the task card shows "Awaiting Approval" in the Beacon UI. Tell Mark a gate is waiting — do NOT approve or reject gates yourself. Mark handles gates in the task drawer.
 
@@ -1310,7 +1315,20 @@ export async function runDiagnostics(
   // Notify main-operator about things we can't auto-fix
   await notifyUnfixableIssues(results)
 
+  // Cache results for lightweight reads (e.g. health plugin polling)
+  lastDiagnosticResults = results
+  lastDiagnosticTime = Date.now()
+
   return results
+}
+
+/**
+ * Return the most recent diagnostic results without re-running checks.
+ * Returns null if diagnostics have never run.
+ */
+export function getLastResults(): { results: DiagnosticResult[]; timestamp: number } | null {
+  if (!lastDiagnosticResults) return null
+  return { results: lastDiagnosticResults, timestamp: lastDiagnosticTime }
 }
 
 // ---------------------------------------------------------------------------
