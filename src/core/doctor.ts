@@ -20,6 +20,7 @@ import { readTaskboard, clearDependency } from '../../plugins/tasks/taskboard'
 import { listDefinitions } from '../../plugins/workflows/parser'
 import { listInstances } from '../../plugins/workflows/runtime'
 import * as mcporter from './mcporter'
+import { getAllExecTools } from '../../scripts/lib/registry'
 
 const log = createLogger('doctor')
 
@@ -774,7 +775,8 @@ mcporter call beacon-${agentId}.beacon_get_paths
 - **NEVER use \`openclaw agent\` to spawn or message other agents directly.** Always create a Beacon task via \`mcporter call beacon-${agentId}.beacon_create_task title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
 - **NEVER edit TASKBOARD.md directly.** Use Beacon tools via mcporter only.
 - **NEVER post to Discord without explicit instruction.** Content goes through Mark's review first.
-- **NEVER hardcode file paths.** Always discover paths via \`mcporter call beacon-${agentId}.beacon_get_paths\`. Hardcoded paths break when the content directory moves.`,
+- **NEVER hardcode file paths.** Always discover paths via \`mcporter call beacon-${agentId}.beacon_get_paths\`. Hardcoded paths break when the content directory moves.
+- **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Beacon tracking — no MCP call, no Health metrics, no audit log. Always use the MCP tool via \`mcporter call beacon-${agentId}.beacon_exec_<tool> ...\` instead.`,
   },
 
   {
@@ -1258,6 +1260,86 @@ function checkAssets(contentDir: string, autoFix: boolean): DiagnosticResult[] {
 // Main
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Exec tools block in SKILL.md
+// ---------------------------------------------------------------------------
+
+/**
+ * Check/update the exec-tools managed block in skill/SKILL.md.
+ * Generates the tool table dynamically from the registry so it stays in sync.
+ * Auto-fixable — safe because it only overwrites our own managed block.
+ */
+function checkExecToolsBlock(projectRoot: string, autoFix: boolean): DiagnosticResult[] {
+  const skillPath = join(projectRoot, 'skill', 'SKILL.md')
+  if (!existsSync(skillPath)) return []
+
+  const checkName = 'skill-exec-tools'
+  const startMarker = '<!-- beacon:exec-tools:start -->'
+  const endMarker = '<!-- beacon:exec-tools:end -->'
+
+  const tools = getAllExecTools().filter(t => t.source === 'core' || !t.source)
+  if (tools.length === 0) return [ok(checkName, 'No core exec tools registered')]
+
+  const toolLines = tools
+    .map(t => `| \`${t.name}\` | ${t.description} |`)
+    .join('\n')
+
+  const expectedContent = `## Execution Tools
+
+> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+
+Use these tools to accomplish actual work — saving files, posting content, generating images. Called the same way as MCP tools via mcporter.
+
+| Tool | Purpose |
+|------|---------|
+${toolLines}
+
+### Quick Reference
+
+\`\`\`bash
+# Save a file as a managed asset (handles naming + sidecar automatically)
+mcporter call beacon-<agent>.beacon_exec_save_asset taskId=<id> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<desc>"
+# Post to Discord (with optional image/video attachment)
+mcporter call beacon-<agent>.beacon_exec_post_discord channel="<name>" content="<msg>" taskId=<id>
+# Generate image via Nano Banana
+mcporter call beacon-<agent>.beacon_exec_gen_image taskId=<id> prompt="<text>" preset=social-portrait model=flash
+# Check workflow gate statuses
+mcporter call beacon-<agent>.beacon_exec_check_gates taskId=<id>
+\`\`\``
+
+  const current = readFileSync(skillPath, 'utf-8')
+  const startIdx = current.indexOf(startMarker)
+  const endIdx = current.indexOf(endMarker)
+
+  if (startIdx === -1) {
+    if (!autoFix) return [warn(checkName, 'exec-tools block missing from skill/SKILL.md', true)]
+    // Insert after "Your agent identity is automatically injected..." line
+    const insertAfter = 'you do not need to specify it.'
+    const insertIdx = current.indexOf(insertAfter)
+    if (insertIdx === -1) return [error(checkName, 'Cannot find insertion point in skill/SKILL.md')]
+    const block = `\n\n${startMarker}\n${expectedContent}\n${endMarker}\n`
+    const updated = current.slice(0, insertIdx + insertAfter.length) + block + current.slice(insertIdx + insertAfter.length)
+    writeFileSync(skillPath, updated, 'utf-8')
+    return [fixed(checkName, 'Added exec-tools block to skill/SKILL.md')]
+  }
+
+  if (endIdx === -1) {
+    return [error(checkName, 'exec-tools start marker found but no end marker in skill/SKILL.md')]
+  }
+
+  const blockContent = current.slice(startIdx + startMarker.length, endIdx).trim()
+  if (blockContent === expectedContent.trim()) {
+    return [ok(checkName, 'exec-tools block in skill/SKILL.md is up to date')]
+  }
+
+  if (!autoFix) return [warn(checkName, 'exec-tools block is outdated in skill/SKILL.md', true)]
+
+  const block = `${startMarker}\n${expectedContent}\n${endMarker}`
+  const updated = current.slice(0, startIdx) + block + current.slice(endIdx + endMarker.length)
+  writeFileSync(skillPath, updated, 'utf-8')
+  return [fixed(checkName, 'Updated exec-tools block in skill/SKILL.md')]
+}
+
 /**
  * Run all health checks with auto-fix for safe issues.
  * Notifies main-operator via OpenClaw about issues that need human judgment.
@@ -1276,6 +1358,7 @@ export async function runDiagnostics(
   results.push(...checkAgentRoster(contentDir))
   results.push(...checkPersonas(contentDir, autoFix))
   results.push(...checkTaskboard(contentDir, autoFix))
+  results.push(...checkExecToolsBlock(projectRoot, autoFix))
   results.push(...checkAndSyncSkill(projectRoot, autoFix))
   results.push(...checkOrchestratorRules(autoFix))
   results.push(...applyAllManagedBlocks(autoFix))

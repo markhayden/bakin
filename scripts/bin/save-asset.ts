@@ -9,6 +9,10 @@
 import { parseArgs } from 'util'
 import { saveAsset } from '../lib/save-asset'
 
+console.error('⚠  WARNING: This CLI script bypasses Beacon tracking (no MCP call, no Health metrics, no audit log).')
+console.error('   Agents should use: mcporter call beacon-<agent>.beacon_exec_save_asset ...')
+console.error('')
+
 const { values } = parseArgs({
   options: {
     filePath:    { type: 'string' },

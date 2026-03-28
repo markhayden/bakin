@@ -113,10 +113,40 @@ export async function moveTaskWithEffects(
       log.error('Continuation trigger failed', err)
     })
   }
+
+  // Auto-unblock parent when a child workflow task moves out of blocked
+  const toLower = to.toLowerCase()
+  if (toLower !== 'blocked') {
+    const dashIdx = taskId.indexOf('--')
+    if (dashIdx > 0) {
+      const fromLower = opts?.from?.toLowerCase()
+      if (fromLower === 'blocked') {
+        const parentTaskId = taskId.slice(0, dashIdx)
+        try {
+          const { columns } = readTaskboard()
+          const parentBlocked = (columns.blocked as Array<{ id: string; blockedReason?: string }>)
+            .find(t => t.id === parentTaskId)
+          if (parentBlocked?.blockedReason?.startsWith('Child workflow blocked:')) {
+            await moveTask(parentTaskId, 'todo', 'blocked')
+            const parentTitle = resolveTitle(parentTaskId)
+            appendAudit(getContentDir(), 'task.moved', 'system', {
+              id: parentTaskId, title: parentTitle, from: 'blocked', to: 'todo',
+              reason: 'Auto-unblocked: child task unblocked',
+            }, opts?.channel)
+            log.info('Parent task auto-unblocked', { parentTaskId, childTaskId: taskId })
+          }
+        } catch (err) {
+          log.debug('Could not auto-unblock parent', { parentTaskId, err: String(err) })
+        }
+      }
+    }
+  }
 }
 
 /**
  * Block a task with a reason.
+ * If the task is a child workflow task (id contains '--'), also blocks the
+ * parent task so the whole pipeline stops and the user sees it on the board.
  */
 export async function blockTaskWithEffects(
   taskId: string,
@@ -126,7 +156,24 @@ export async function blockTaskWithEffects(
 ): Promise<void> {
   await blockTask(taskId, reason, agent)
   const title = resolveTitle(taskId)
-  appendAudit(getContentDir(), 'task.blocked', agent, { id: taskId, title, reason }, channel)
+  const contentDir = getContentDir()
+  appendAudit(contentDir, 'task.blocked', agent, { id: taskId, title, reason }, channel)
+
+  // Propagate block to parent task for child workflow tasks (e.g., "parentId--stepId")
+  const dashIdx = taskId.indexOf('--')
+  if (dashIdx > 0) {
+    const parentTaskId = taskId.slice(0, dashIdx)
+    const parentTitle = resolveTitle(parentTaskId)
+    const childReason = `Child workflow blocked: ${reason}`
+    try {
+      await blockTask(parentTaskId, childReason, 'system')
+      appendAudit(contentDir, 'task.blocked', 'system', { id: parentTaskId, title: parentTitle, reason: childReason, blockedBy: taskId }, channel)
+      log.info('Parent task blocked due to child', { parentTaskId, childTaskId: taskId })
+    } catch (err) {
+      // Parent may already be blocked or in a state that can't transition — that's fine
+      log.debug('Could not propagate block to parent', { parentTaskId, err: String(err) })
+    }
+  }
 }
 
 /**
