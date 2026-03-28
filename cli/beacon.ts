@@ -1033,6 +1033,59 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
   print(result)
 }
 
+// ---------------------------------------------------------------------------
+// Trash commands
+// ---------------------------------------------------------------------------
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function daysUntil(dateStr: string): string {
+  const diff = new Date(dateStr).getTime() - Date.now()
+  const days = Math.ceil(diff / (24 * 60 * 60 * 1000))
+  if (days <= 0) return 'expiring'
+  return `${days}d`
+}
+
+async function cmdTrashList(): Promise<void> {
+  const data = await apiGet('/api/plugins/assets/list-trash') as { assets: Array<{ filename: string; originalFilename: string; type: string; size: number; deletedAt: string; expiresAt: string; metadata: { agent?: string } | null }>; count: number }
+  if (data.count === 0) {
+    console.log('Trash is empty.')
+    return
+  }
+  console.log(`${data.count} item${data.count !== 1 ? 's' : ''} in trash:\n`)
+  const rows = data.assets.map(a => ({
+    filename: a.originalFilename,
+    type: a.type,
+    size: formatBytes(a.size),
+    deleted: new Date(a.deletedAt).toLocaleString(),
+    expires: daysUntil(a.expiresAt),
+    agent: a.metadata?.agent ?? 'unknown',
+    trashName: a.filename,
+  }))
+  printTable(rows, ['filename', 'type', 'size', 'deleted', 'expires', 'agent'])
+  console.log(`\nTo restore: beacon trash restore <trashName>`)
+  console.log('Use the full trash filename (with __deleted- suffix) from the list above.')
+}
+
+async function cmdTrashRestore(filename: string): Promise<void> {
+  const data = await apiPost(`/api/plugins/assets/restore?file=${encodeURIComponent(filename)}`) as { ok: boolean; restoredPath: string }
+  console.log(`Restored → ${data.restoredPath}`)
+}
+
+async function cmdTrashEmpty(): Promise<void> {
+  const check = await apiGet('/api/plugins/assets/list-trash') as { count: number }
+  if (check.count === 0) {
+    console.log('Trash is already empty.')
+    return
+  }
+  const data = await apiPost('/api/plugins/assets/empty-trash') as { ok: boolean; deleted: number }
+  console.log(`Permanently deleted ${data.deleted} item${data.deleted !== 1 ? 's' : ''}.`)
+}
+
 const USAGE = `
 Usage: beacon <command> [options]
 
@@ -1075,6 +1128,9 @@ Commands:
   reboot                           Restart Beacon server (works with launchctl or standalone)
   reindex                          Reindex all content to Antfly
   docs                             Print API documentation
+  trash [list]                       List trashed assets (7-day soft-delete window)
+  trash restore <filename>           Restore a trashed asset to its original location
+  trash empty                        Permanently delete all items in trash
   search <query> [options]          Search across indexed content
     --table=<name>                   Filter by table (tasks, decisions, audit, content, assets)
     --agent=<name>                   Filter by agent (e.g. patch, pixel, rolo)
@@ -1286,6 +1342,20 @@ async function main(): Promise<void> {
         await cmdSearch(queryParts.join(' '), searchOpts)
         break
       }
+
+      case 'trash':
+        if (!sub || sub === 'list') {
+          await cmdTrashList()
+        } else if (sub === 'restore') {
+          if (!args[2]) { console.error('Usage: beacon trash restore <filename>'); process.exit(1) }
+          await cmdTrashRestore(args[2])
+        } else if (sub === 'empty') {
+          await cmdTrashEmpty()
+        } else {
+          console.error(`Unknown trash subcommand: ${sub}`)
+          process.exit(1)
+        }
+        break
 
       default:
         console.error(`Unknown command: ${cmd}`)

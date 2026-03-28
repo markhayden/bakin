@@ -7,6 +7,10 @@ import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { handleList } from './routes/list'
 import { handleFile } from './routes/file'
 import { handleDelete } from './routes/delete'
+import { handleListTrash } from './routes/list-trash'
+import { handleRestore } from './routes/restore'
+import { handlePermanentDelete } from './routes/permanent-delete'
+import { handleEmptyTrash } from './routes/empty-trash'
 import { buildIndex, upsertAsset, removeAsset } from './lib/asset-index'
 import { registerSyncHook } from '../../src/core/watcher'
 
@@ -56,6 +60,34 @@ const assetsPlugin: MCPlugin = {
       path: '/delete',
       method: 'POST',
       handler: async (req) => handleDelete(req),
+    })
+
+    // List trashed assets
+    ctx.registerRoute({
+      path: '/list-trash',
+      method: 'GET',
+      handler: handleListTrash,
+    })
+
+    // Restore a trashed asset
+    ctx.registerRoute({
+      path: '/restore',
+      method: 'POST',
+      handler: async (req) => handleRestore(req),
+    })
+
+    // Permanently delete a trashed asset
+    ctx.registerRoute({
+      path: '/permanent-delete',
+      method: 'POST',
+      handler: async (req) => handlePermanentDelete(req),
+    })
+
+    // Empty entire trash
+    ctx.registerRoute({
+      path: '/empty-trash',
+      method: 'POST',
+      handler: handleEmptyTrash,
     })
   },
 }

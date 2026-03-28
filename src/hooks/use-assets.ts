@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { AssetMeta } from '@/types'
+import type { AssetMeta, TrashedAssetMeta } from '@/types'
 
 interface UseAssetsOptions {
   type?: string
@@ -74,4 +74,84 @@ export function useAssets(options: UseAssetsOptions = {}) {
   }, [])
 
   return { assets, loading, refresh: fetchAssets, deleteAsset }
+}
+
+export function useTrash() {
+  const [items, setItems] = useState<TrashedAssetMeta[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchTrash = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/assets/list-trash')
+      if (res.ok) {
+        const data = await res.json()
+        setItems(data.assets || [])
+      }
+    } catch {
+      // Network error — keep existing state
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchTrash()
+  }, [fetchTrash])
+
+  // Listen for SSE trash events
+  useEffect(() => {
+    const es = new EventSource('/api/events')
+    const handler = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (data.file?.includes('.trash/') || data.event?.startsWith('asset.')) {
+          fetchTrash()
+        }
+      } catch { /* ignore */ }
+    }
+    es.addEventListener('message', handler)
+    return () => {
+      es.removeEventListener('message', handler)
+      es.close()
+    }
+  }, [fetchTrash])
+
+  const restoreAsset = useCallback(async (filename: string) => {
+    try {
+      const res = await fetch(`/api/plugins/assets/restore?file=${encodeURIComponent(filename)}`, {
+        method: 'POST',
+      })
+      if (res.ok) {
+        setItems(prev => prev.filter(i => i.filename !== filename))
+        return true
+      }
+    } catch { /* ignore */ }
+    return false
+  }, [])
+
+  const permanentDeleteAsset = useCallback(async (filename: string) => {
+    try {
+      const res = await fetch(`/api/plugins/assets/permanent-delete?file=${encodeURIComponent(filename)}`, {
+        method: 'POST',
+      })
+      if (res.ok) {
+        setItems(prev => prev.filter(i => i.filename !== filename))
+        return true
+      }
+    } catch { /* ignore */ }
+    return false
+  }, [])
+
+  const emptyTrash = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/assets/empty-trash', { method: 'POST' })
+      if (res.ok) {
+        setItems([])
+        return true
+      }
+    } catch { /* ignore */ }
+    return false
+  }, [])
+
+  return { items, loading, refresh: fetchTrash, restoreAsset, permanentDeleteAsset, emptyTrash }
 }

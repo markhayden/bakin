@@ -25,6 +25,14 @@ vi.mock('@/core/audit', () => ({
   appendAudit: vi.fn(),
 }))
 
+// Mock taskboard so doctor checks don't read/write the real ~/.beacon/TASKBOARD.md
+vi.mock('../../plugins/tasks/taskboard', () => ({
+  readTaskboard: vi.fn(() => ({
+    columns: { inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] },
+  })),
+  clearDependency: vi.fn(),
+}))
+
 // Mock mcporter (avoid install/config in tests)
 vi.mock('@/core/mcporter', () => ({
   isMcporterInstalled: vi.fn(() => true),

@@ -1,8 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { FileText, Image, Video, Music, Map, Database, Package, Clock } from 'lucide-react'
+import { FileText, Image, Video, Music, Map, Database, Package, Clock, MoreHorizontal, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
+import { DeleteAssetDialog } from './delete-asset-dialog'
 import type { AssetMeta } from '@/types'
 
 function formatSize(bytes: number): string {
@@ -46,27 +53,35 @@ const TYPE_COLORS: Record<string, string> = {
 interface AssetCardProps {
   asset: AssetMeta
   onClick: () => void
+  onDelete: (path: string) => void
 }
 
-export function AssetCard({ asset, onClick }: AssetCardProps) {
+export function AssetCard({ asset, onClick, onDelete }: AssetCardProps) {
   const [imgError, setImgError] = useState(false)
   const [agentImgError, setAgentImgError] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const Icon = TYPE_ICONS[asset.type] || Package
   const iconColor = TYPE_COLORS[asset.type] || 'text-zinc-400'
 
   const isImage = asset.type === 'images'
   const showPreview = isImage && !imgError
 
+  // Prefer thumbnail variant for grid preview (much smaller file size)
+  const thumbnailVariant = asset.variants?.find(v => v.role === 'thumbnail')
+  const previewPath = thumbnailVariant ? thumbnailVariant.path : asset.path
+  const previewUrl = `/api/plugins/assets/file?path=${encodeURIComponent(previewPath)}&v=${asset.mtimeMs || ''}`
+
   return (
-    <button
+    <>
+    <div
       onClick={onClick}
-      className="text-left rounded-lg border border-border bg-card hover:border-[rgba(255,255,255,0.15)] transition-all duration-150 hover:-translate-y-0.5 overflow-hidden flex flex-col"
+      className="text-left rounded-lg border border-border bg-card hover:border-[rgba(255,255,255,0.15)] transition-all duration-150 hover:-translate-y-0.5 overflow-hidden flex flex-col cursor-pointer"
     >
       {/* Preview area */}
       <div className="h-32 bg-zinc-900/50 flex items-center justify-center relative overflow-hidden">
         {showPreview ? (
           <img
-            src={`/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}&v=${asset.mtimeMs || ''}`}
+            src={previewUrl}
             alt={asset.filename}
             onError={() => setImgError(true)}
             className="w-full h-full object-cover"
@@ -74,6 +89,25 @@ export function AssetCard({ asset, onClick }: AssetCardProps) {
         ) : (
           <Icon className={`size-10 ${iconColor} opacity-40`} />
         )}
+
+        {/* Action menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            className="absolute top-1.5 right-1.5 size-6 rounded bg-black/60 hover:bg-black/80 flex items-center justify-center text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            <MoreHorizontal className="size-3.5" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-36">
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConfirmOpen(true) }}
+            >
+              <Trash2 className="size-3.5 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Size badge */}
         <span className="absolute bottom-1.5 right-1.5 text-[10px] text-zinc-400 bg-black/60 px-1.5 py-0.5 rounded">
@@ -147,6 +181,14 @@ export function AssetCard({ asset, onClick }: AssetCardProps) {
           </div>
         )}
       </div>
-    </button>
+    </div>
+
+    <DeleteAssetDialog
+      open={confirmOpen}
+      filename={asset.filename}
+      onConfirm={() => { setConfirmOpen(false); onDelete(asset.path) }}
+      onCancel={() => setConfirmOpen(false)}
+    />
+    </>
   )
 }
