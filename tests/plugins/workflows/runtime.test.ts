@@ -9,7 +9,7 @@ vi.mock('../../plugins/tasks/taskboard', () => ({
   addTaskLog: vi.fn(() => Promise.resolve()),
   moveTask: vi.fn(() => Promise.resolve()),
   readTaskboard: vi.fn(() => ({
-    columns: { inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] },
+    columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] },
   })),
 }))
 

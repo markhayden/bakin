@@ -20,6 +20,7 @@ export interface Task {
 }
 
 export interface TaskColumns {
+  backlog: Task[]
   inProgress: Task[]
   todo: Task[]
   review: Task[]

@@ -1,6 +1,7 @@
 import type { ColumnId } from './types'
 
 export const COLUMN_CONFIG = {
+  backlog: { label: 'Backlog', emoji: '📦' },
   inProgress: { label: 'In Progress', emoji: '🔵' },
   todo: { label: 'Todo', emoji: '📋' },
   review: { label: 'Review', emoji: '🔍' },
@@ -10,6 +11,7 @@ export const COLUMN_CONFIG = {
 } as const
 
 export const COLUMN_HEADERS: Record<string, ColumnId> = {
+  '📦 Backlog': 'backlog',
   '🔵 In Progress': 'inProgress',
   '📋 Todo': 'todo',
   '🔍 Review': 'review',
@@ -19,6 +21,7 @@ export const COLUMN_HEADERS: Record<string, ColumnId> = {
 }
 
 export const STATUS_DOT_COLORS: Record<ColumnId, string> = {
+  backlog: 'bg-zinc-400',
   inProgress: 'bg-blue-400',
   todo: 'bg-purple-400',
   review: 'bg-amber-400',
@@ -28,6 +31,7 @@ export const STATUS_DOT_COLORS: Record<ColumnId, string> = {
 }
 
 export const STATUS_BADGE_STYLES: Record<ColumnId, { bg: string; label: string }> = {
+  backlog: { bg: 'bg-zinc-500/10 text-zinc-400 border border-zinc-500/20', label: 'Backlog' },
   todo: { bg: 'bg-purple-500/10 text-purple-400 border border-purple-500/20', label: 'Todo' },
   inProgress: { bg: 'bg-blue-500/10 text-blue-400 border border-blue-500/20', label: 'In Progress' },
   review: { bg: 'bg-amber-500/10 text-amber-400 border border-amber-500/20', label: 'Review' },

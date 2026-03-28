@@ -28,7 +28,7 @@ vi.mock('@/core/audit', () => ({
 // Mock taskboard so doctor checks don't read/write the real ~/.beacon/TASKBOARD.md
 vi.mock('../../plugins/tasks/taskboard', () => ({
   readTaskboard: vi.fn(() => ({
-    columns: { inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] },
+    columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] },
   })),
   clearDependency: vi.fn(),
 }))
