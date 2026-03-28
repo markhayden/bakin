@@ -3,8 +3,31 @@
  * Beacon CLI — command-line interface for Beacon mission control.
  * All commands are thin wrappers around the Beacon HTTP API.
  */
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
 const BASE_URL = process.env.BEACON_URL || 'http://localhost:3737'
+
+// Resolve the orchestrator agent name from openclaw config.
+// Convention: 'main' in openclaw.json maps to the orchestrator display name.
+// Matches the resolution logic in src/core/models.ts — checks identity.name
+// first, falls back to the AGENT_META mapping ('main' → 'roscoe').
+function getCliAgent(): string {
+  try {
+    const configPath = join(process.env.HOME || '~', '.openclaw', 'openclaw.json')
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
+    const mainAgent = (config.agents?.list as Array<{ id: string; identity?: { name?: string } }>)
+      ?.find(a => a.id === 'main')
+    // identity.name takes precedence; otherwise use the standard main→roscoe mapping
+    if (mainAgent?.identity?.name) return mainAgent.identity.name.toLowerCase()
+    // Same default as models.ts AGENT_META for 'main'
+    return 'roscoe'
+  } catch {
+    return 'roscoe'
+  }
+}
+
+const CLI_AGENT = getCliAgent()
 
 // ---------------------------------------------------------------------------
 // HTTP helpers
@@ -124,7 +147,7 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
 }
 
 async function cmdTasksMove(id: string, to: string): Promise<void> {
-  const result = await apiPost('/api/tasks/move', { id, to, agent: 'cli' })
+  const result = await apiPost('/api/tasks/move', { id, to, agent: CLI_AGENT })
   print(result)
 }
 
@@ -965,12 +988,12 @@ async function cmdSetupMcporter(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdTasksLog(id: string, message: string): Promise<void> {
-  const result = await apiPost('/api/tasks/log', { id, author: 'cli', message })
+  const result = await apiPost('/api/tasks/log', { id, author: CLI_AGENT, message })
   print(result)
 }
 
 async function cmdTasksBlock(id: string, reason: string): Promise<void> {
-  const result = await apiPost('/api/tasks/block', { id, reason, agent: 'cli' })
+  const result = await apiPost('/api/tasks/block', { id, reason, agent: CLI_AGENT })
   print(result)
 }
 
@@ -981,8 +1004,8 @@ async function cmdTasksDepend(id: string, dependsOn: string): Promise<void> {
 
 async function cmdTasksComplete(id: string, summary: string): Promise<void> {
   // Log the summary, then move to done
-  await apiPost('/api/tasks/log', { id, author: 'cli', message: `Task complete: ${summary}` })
-  const result = await apiPost('/api/tasks/move', { id, to: 'done', agent: 'cli' })
+  await apiPost('/api/tasks/log', { id, author: CLI_AGENT, message: `Task complete: ${summary}` })
+  const result = await apiPost('/api/tasks/move', { id, to: 'done', agent: CLI_AGENT })
   print(result)
 }
 
@@ -1029,7 +1052,7 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
     console.error('Invalid JSON for output. Usage: beacon workflows submit <taskId> <stepId> \'{"key":"value"}\'')
     process.exit(1)
   }
-  const result = await apiPost('/api/plugins/workflows/step/complete', { taskId, stepId, agentId: 'cli', output })
+  const result = await apiPost('/api/plugins/workflows/step/complete', { taskId, stepId, agentId: CLI_AGENT, output })
   print(result)
 }
 

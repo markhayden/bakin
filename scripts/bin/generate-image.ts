@@ -11,6 +11,10 @@
 import { parseArgs } from 'util'
 import { generateImage } from '../lib/generate-image'
 
+console.error('⚠  WARNING: This CLI script bypasses Beacon tracking (no MCP call, no Health metrics, no audit log).')
+console.error('   Agents should use: mcporter call beacon-<agent>.beacon_exec_gen_image ...')
+console.error('')
+
 const { values } = parseArgs({
   options: {
     prompt:  { type: 'string' },

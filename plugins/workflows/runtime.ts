@@ -1037,6 +1037,17 @@ export function getActiveAgents(
     // Delegate to child instance — child results include effectiveTaskId
     const stepState = instance.stepStates[currentStep.id]
     if (stepState?.childTaskId) {
+      // Check if the child task has been blocked — if so, don't dispatch.
+      // Avoids an infinite retry loop where dispatch keeps re-dispatching
+      // a blocked child (e.g., API spending cap, external service down).
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { readTaskboard } = require('../../plugins/tasks/taskboard') as { readTaskboard: () => { columns: { blocked: Array<{ id: string }> } } }
+        const { columns } = readTaskboard()
+        if (columns.blocked.some(t => t.id === stepState.childTaskId)) return []
+      } catch {
+        // If taskboard read fails, fall through to normal delegation
+      }
       return getActiveAgents(stepState.childTaskId, dir).map(a => ({
         ...a,
         effectiveTaskId: a.effectiveTaskId || stepState.childTaskId,

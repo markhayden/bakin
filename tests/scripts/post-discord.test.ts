@@ -7,25 +7,47 @@ vi.mock('../../scripts/lib/registry', () => ({
   addExecTool: vi.fn(),
 }))
 
-import { postDiscord } from '../../scripts/lib/post-discord'
+import { postDiscord, _resetChannelCache } from '../../scripts/lib/post-discord'
+
+// Discord channel discovery response for tests
+const MOCK_CHANNELS = [
+  { id: '111111111111', name: 'general', type: 0 },
+  { id: '222222222222', name: 'approvals', type: 0 },
+  { id: '333333333333', name: 'content', type: 0 },
+]
 
 describe('postDiscord', () => {
   const originalEnv = { ...process.env }
 
   beforeEach(() => {
     process.env.DISCORD_BOT_TOKEN = 'test-bot-token'
-    process.env.DISCORD_CHANNEL_GENERAL = '111111111111'
-    process.env.DISCORD_CHANNEL_APPROVALS = '222222222222'
-    process.env.DISCORD_CHANNEL_CONTENT = '333333333333'
     process.env.DISCORD_GUILD_ID = '999999999999'
   })
 
   afterEach(() => {
     process.env = { ...originalEnv }
+    _resetChannelCache()
     vi.restoreAllMocks()
   })
 
+  /**
+   * Helper: mock fetch to handle both channel discovery and message posting.
+   * First call to /guilds/.../channels returns the channel list.
+   * Subsequent calls to /channels/.../messages return a posted message.
+   */
+  function mockFetchWithDiscovery(msgResponse?: { id: string; channel_id: string }) {
+    const msg = msgResponse || { id: 'msg-1', channel_id: '111111111111' }
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const urlStr = typeof url === 'string' ? url : url.toString()
+      if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
+        return { ok: true, json: async () => MOCK_CHANNELS } as Response
+      }
+      return { ok: true, json: async () => msg } as Response
+    })
+  }
+
   it('fails for unknown channel', async () => {
+    mockFetchWithDiscovery()
     const result = await postDiscord({
       channel: 'nonexistent',
       content: 'hello',
@@ -36,23 +58,27 @@ describe('postDiscord', () => {
     expect(result.error).toContain('general')
   })
 
-  it('fails when DISCORD_BOT_TOKEN is missing', async () => {
+  it('fails when Discord is not configured', async () => {
     delete process.env.DISCORD_BOT_TOKEN
-    const result = await postDiscord({
-      channel: 'general',
-      content: 'hello',
-      agent: 'basil',
-    })
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('DISCORD_BOT_TOKEN')
+    delete process.env.DISCORD_GUILD_ID
+    // Prevent fallback to openclaw.json on this machine
+    const origHome = process.env.HOME
+    process.env.HOME = '/tmp/nonexistent-home'
+    try {
+      const result = await postDiscord({
+        channel: 'general',
+        content: 'hello',
+        agent: 'basil',
+      })
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('Discord not configured')
+    } finally {
+      process.env.HOME = origHome
+    }
   })
 
   it('strips # prefix from channel name', async () => {
-    // Mock fetch to verify channel resolution works with #
-    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'msg-1', channel_id: '111111111111' }),
-    } as Response)
+    const mockFetch = mockFetchWithDiscovery({ id: 'msg-1', channel_id: '111111111111' })
 
     const result = await postDiscord({
       channel: '#general',
@@ -61,17 +87,15 @@ describe('postDiscord', () => {
     })
     expect(result.ok).toBe(true)
     expect(result.channel).toBe('#general')
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://discord.com/api/v10/channels/111111111111/messages',
-      expect.objectContaining({ method: 'POST' }),
+    // Verify message was posted to the correct channel
+    const postCall = mockFetch.mock.calls.find(c =>
+      (typeof c[0] === 'string' ? c[0] : c[0].toString()).includes('/channels/111111111111/messages')
     )
+    expect(postCall).toBeTruthy()
   })
 
   it('posts successfully and returns message info', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'msg-42', channel_id: '111111111111' }),
-    } as Response)
+    mockFetchWithDiscovery({ id: 'msg-42', channel_id: '111111111111' })
 
     const result = await postDiscord({
       channel: 'general',
@@ -87,11 +111,13 @@ describe('postDiscord', () => {
   })
 
   it('handles Discord API error response', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: false,
-      status: 403,
-      text: async () => 'Missing Permissions',
-    } as Response)
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const urlStr = typeof url === 'string' ? url : url.toString()
+      if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
+        return { ok: true, json: async () => MOCK_CHANNELS } as Response
+      }
+      return { ok: false, status: 403, text: async () => 'Missing Permissions' } as Response
+    })
 
     const result = await postDiscord({
       channel: 'general',
@@ -103,8 +129,15 @@ describe('postDiscord', () => {
     expect(result.error).toContain('Missing Permissions')
   })
 
-  it('handles fetch error', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network unreachable'))
+  it('handles fetch error on message post', async () => {
+    let callCount = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const urlStr = typeof url === 'string' ? url : url.toString()
+      if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
+        return { ok: true, json: async () => MOCK_CHANNELS } as Response
+      }
+      throw new Error('network unreachable')
+    })
 
     const result = await postDiscord({
       channel: 'general',
@@ -115,24 +148,6 @@ describe('postDiscord', () => {
     expect(result.error).toContain('network unreachable')
   })
 
-  it('uses BEACON_DISCORD_CHANNELS env for custom mapping', async () => {
-    process.env.BEACON_DISCORD_CHANNELS = JSON.stringify({
-      custom: '444444444444',
-    })
-
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'msg-99', channel_id: '444444444444' }),
-    } as Response)
-
-    const result = await postDiscord({
-      channel: 'custom',
-      content: 'test',
-      agent: 'basil',
-    })
-    expect(result.ok).toBe(true)
-  })
-
   it('attaches image and video files', async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'discord-test-'))
     const imgPath = join(tmpDir, 'hero.png')
@@ -140,10 +155,7 @@ describe('postDiscord', () => {
     writeFileSync(imgPath, 'fake-image')
     writeFileSync(vidPath, 'fake-video')
 
-    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'msg-att', channel_id: '111111111111' }),
-    } as Response)
+    const mockFetch = mockFetchWithDiscovery({ id: 'msg-att', channel_id: '111111111111' })
 
     const result = await postDiscord({
       channel: 'general',
@@ -154,20 +166,16 @@ describe('postDiscord', () => {
     })
 
     expect(result.ok).toBe(true)
-    // Verify FormData was sent (fetch was called with a body)
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('channels/111111111111'),
-      expect.objectContaining({ method: 'POST' }),
+    const postCall = mockFetch.mock.calls.find(c =>
+      (typeof c[0] === 'string' ? c[0] : c[0].toString()).includes('/channels/111111111111/messages')
     )
+    expect(postCall).toBeTruthy()
 
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
   it('skips nonexistent attachment files', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'msg-skip', channel_id: '111111111111' }),
-    } as Response)
+    mockFetchWithDiscovery({ id: 'msg-skip', channel_id: '111111111111' })
 
     const result = await postDiscord({
       channel: 'general',
@@ -180,20 +188,21 @@ describe('postDiscord', () => {
     expect(result.ok).toBe(true)
   })
 
-  it('omits url when DISCORD_GUILD_ID is not set', async () => {
-    delete process.env.DISCORD_GUILD_ID
-
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'msg-1', channel_id: '111111111111' }),
-    } as Response)
+  it('handles channel discovery failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const urlStr = typeof url === 'string' ? url : url.toString()
+      if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
+        return { ok: false, status: 401, text: async () => 'Unauthorized' } as Response
+      }
+      return { ok: true, json: async () => ({ id: 'msg-1', channel_id: '111' }) } as Response
+    })
 
     const result = await postDiscord({
       channel: 'general',
       content: 'test',
       agent: 'basil',
     })
-    expect(result.ok).toBe(true)
-    expect(result.url).toBeUndefined()
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Unknown Discord channel')
   })
 })

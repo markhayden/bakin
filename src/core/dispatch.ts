@@ -386,6 +386,24 @@ ${mc('beacon_get_task', `taskId=${task.id}`)}
 ${mc('beacon_get_paths', '')}
 \`\`\`
 
+## EXECUTION TOOLS — for doing actual work
+
+These tools help you accomplish the work. Use them as your primary way to save files, post content, and generate assets.
+
+\`\`\`bash
+# Save any file as a managed asset (handles naming + sidecar metadata)
+${mc('beacon_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
+
+# Post to Discord (with optional image/video attachment)
+${mc('beacon_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}
+
+# Generate image via Nano Banana
+${mc('beacon_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}
+
+# Check workflow gate statuses
+${mc('beacon_exec_check_gates', `taskId=${task.id}`)}
+\`\`\`
+
 ## DEPENDENCY PATTERN
 
 If your task requires output from another agent:
@@ -469,7 +487,7 @@ async function dispatchWorkflowTask(
     }
 
     const ctx = stepContext as {
-      stepId: string; label: string; instructions?: string;
+      stepId: string; label: string; type?: string; instructions?: string;
       output_schema?: Record<string, unknown>; rejectionReason?: string;
       previousOutput?: Record<string, unknown>; priorStepOutput?: Record<string, unknown>;
       stepOutputs?: Record<string, Record<string, unknown>>; deny_tools?: string[]
@@ -515,6 +533,7 @@ function buildWorkflowDispatchMessage(
   stepContext: {
     stepId: string
     label: string
+    type?: string
     instructions?: string
     output_schema?: Record<string, unknown>
     rejectionReason?: string
@@ -663,6 +682,23 @@ function buildWorkflowDispatchMessage(
   lines.push('')
   lines.push(`# Check your current step details if needed`)
   lines.push(`${wfMc('beacon_get_step', `taskId=${task.id}`)}`)
+  lines.push('')
+  lines.push('# --- Execution tools for doing actual work ---')
+  lines.push('')
+  lines.push(`# Save any file as a managed asset`)
+  lines.push(`${wfMc('beacon_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what>"`)}`);
+  lines.push('')
+  lines.push(`# Generate image via Nano Banana`)
+  lines.push(`${wfMc('beacon_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}`);
+  lines.push('')
+  lines.push(`# Check workflow gate statuses`)
+  lines.push(`${wfMc('beacon_exec_check_gates', `taskId=${task.id}`)}`);
+  // Only include post_discord for output/publish steps (non-output steps have "NO SIDE EFFECTS" constraint)
+  if (stepContext.type === 'output') {
+    lines.push('')
+    lines.push(`# Post to Discord (with optional image/video attachment)`)
+    lines.push(`${wfMc('beacon_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}`);
+  }
   lines.push('```')
   lines.push('')
 

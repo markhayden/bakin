@@ -9,6 +9,10 @@
 import { parseArgs } from 'util'
 import { submitStepValidated } from '../lib/submit-step'
 
+console.error('⚠  WARNING: This CLI script bypasses Beacon tracking (no MCP call, no Health metrics, no audit log).')
+console.error('   Agents should use: mcporter call beacon-<agent>.beacon_exec_submit_step ...')
+console.error('')
+
 const { values } = parseArgs({
   options: {
     taskId: { type: 'string' },

@@ -1,38 +1,89 @@
 /**
  * beacon_exec_post_discord — Standardized Discord posting via Roscoe's bot.
  *
- * Resolves channel names to IDs, handles attachments, and formats messages
- * according to channel conventions.
+ * Auto-discovers channels from the Discord API using bot token and guild ID
+ * from openclaw config. Caches the channel map for the process lifetime.
  */
 import { z } from 'zod'
 import { readFileSync, existsSync } from 'fs'
+import { join } from 'path'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
 
-// Channel name → ID mapping (loaded from env or settings)
-function getChannelMap(): Record<string, string> {
-  const mapStr = process.env.BEACON_DISCORD_CHANNELS
-  if (mapStr) {
-    try {
-      return JSON.parse(mapStr)
-    } catch {
-      // Fall through to defaults
-    }
+// ---------------------------------------------------------------------------
+// Discord config resolution
+// ---------------------------------------------------------------------------
+
+interface DiscordConfig {
+  botToken: string
+  guildId: string
+}
+
+function loadDiscordConfig(): DiscordConfig | null {
+  // 1. Check env vars first
+  if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID) {
+    return { botToken: process.env.DISCORD_BOT_TOKEN, guildId: process.env.DISCORD_GUILD_ID }
   }
-  // Default channel mapping — update with real IDs
-  return {
-    general: process.env.DISCORD_CHANNEL_GENERAL || '',
-    approvals: process.env.DISCORD_CHANNEL_APPROVALS || '',
-    content: process.env.DISCORD_CHANNEL_CONTENT || '',
+
+  // 2. Read from openclaw.json
+  try {
+    const configPath = join(process.env.HOME || '~', '.openclaw', 'openclaw.json')
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
+    const discord = config.channels?.discord
+    if (!discord?.token) return null
+    const guildId = discord.guilds ? Object.keys(discord.guilds)[0] : null
+    if (!guildId) return null
+    return { botToken: discord.token, guildId }
+  } catch {
+    return null
   }
 }
 
-function resolveChannelId(channel: string): string | null {
-  const map = getChannelMap()
-  // Try direct lookup, stripping # prefix
+// ---------------------------------------------------------------------------
+// Channel discovery — cached per process
+// ---------------------------------------------------------------------------
+
+let channelCache: Record<string, string> | null = null
+
+/** Reset the channel cache — used by tests */
+export function _resetChannelCache(): void { channelCache = null }
+
+async function discoverChannels(config: DiscordConfig): Promise<Record<string, string>> {
+  if (channelCache) return channelCache
+
+  try {
+    const response = await fetch(
+      `https://discord.com/api/v10/guilds/${config.guildId}/channels`,
+      { headers: { Authorization: `Bot ${config.botToken}` } },
+    )
+    if (!response.ok) {
+      console.error(`Discord channel discovery failed (${response.status}): ${await response.text()}`)
+      return {}
+    }
+    const channels = await response.json() as Array<{ id: string; name: string; type: number }>
+    // type 0 = text channel, type 5 = announcement
+    const map: Record<string, string> = {}
+    for (const ch of channels) {
+      if (ch.type === 0 || ch.type === 5) {
+        map[ch.name] = ch.id
+      }
+    }
+    channelCache = map
+    return map
+  } catch (err) {
+    console.error('Discord channel discovery error:', err)
+    return {}
+  }
+}
+
+async function resolveChannelId(channel: string): Promise<{ id: string | null; available: string[] }> {
+  const config = loadDiscordConfig()
+  if (!config) return { id: null, available: [] }
+
+  const map = await discoverChannels(config)
   const name = channel.replace(/^#/, '')
-  return map[name] || null
+  return { id: map[name] || null, available: Object.keys(map) }
 }
 
 export interface PostDiscordParams {
@@ -45,18 +96,32 @@ export interface PostDiscordParams {
   taskId?: string
 }
 
+// When BEACON_DISCORD_TEST_MODE=1 (or "true"), all posts are routed to
+// the testing-ground channel regardless of what the caller requested.
+// Set this in your environment during development to avoid spamming real channels.
+const TEST_CHANNEL = 'testing-ground'
+
+function isTestMode(): boolean {
+  const val = process.env.BEACON_DISCORD_TEST_MODE
+  return val === '1' || val === 'true'
+}
+
 export async function postDiscord(params: PostDiscordParams): Promise<ExecToolResult> {
-  const { channel, content, imagePath, videoPath, embed, taskId } = params
+  const requestedChannel = params.channel
+  const channel = isTestMode() ? TEST_CHANNEL : requestedChannel
+  const { content, imagePath, videoPath, embed, taskId } = params
 
-  const channelId = resolveChannelId(channel)
+  const config = loadDiscordConfig()
+  if (!config) {
+    return fail('Discord not configured. Set DISCORD_BOT_TOKEN + DISCORD_GUILD_ID env vars, or configure channels.discord in ~/.openclaw/openclaw.json')
+  }
+
+  const { id: channelId, available } = await resolveChannelId(channel)
   if (!channelId) {
-    return fail(`Unknown Discord channel: "${channel}". Available channels: ${Object.keys(getChannelMap()).join(', ')}`)
+    return fail(`Unknown Discord channel: "${channel}". Available channels: ${available.join(', ')}`)
   }
 
-  const botToken = process.env.DISCORD_BOT_TOKEN
-  if (!botToken) {
-    return fail('DISCORD_BOT_TOKEN not configured')
-  }
+  const botToken = config.botToken
 
   // Build multipart form data for attachments
   const formData = new FormData()
@@ -98,17 +163,19 @@ export async function postDiscord(params: PostDiscordParams): Promise<ExecToolRe
     }
 
     const msg = await response.json() as { id: string; channel_id: string }
-    const guildId = process.env.DISCORD_GUILD_ID || ''
-    const url = guildId
-      ? `https://discord.com/channels/${guildId}/${msg.channel_id}/${msg.id}`
-      : undefined
+    const url = `https://discord.com/channels/${config.guildId}/${msg.channel_id}/${msg.id}`
 
-    return succeed({
+    const result: Record<string, unknown> = {
       messageId: msg.id,
       channel: `#${channel.replace(/^#/, '')}`,
       url,
       taskId,
-    })
+    }
+    if (isTestMode() && channel !== requestedChannel) {
+      result.testMode = true
+      result.requestedChannel = `#${requestedChannel.replace(/^#/, '')}`
+    }
+    return succeed(result)
   } catch (err) {
     return fail(`Discord post failed: ${String(err)}`)
   }
