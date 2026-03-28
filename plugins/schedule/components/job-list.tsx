@@ -11,6 +11,9 @@ export function JobList({
   onResume,
   onRunNow,
   onDelete,
+  onEdit,
+  onDuplicate,
+  onSkipNext,
 }: {
   jobs: ScheduleJob[]
   onSelect: (job: ScheduleJob) => void
@@ -18,6 +21,9 @@ export function JobList({
   onResume: (jobId: string) => void
   onRunNow: (jobId: string) => void
   onDelete: (jobId: string) => void
+  onEdit: (job: ScheduleJob) => void
+  onDuplicate: (job: ScheduleJob) => void
+  onSkipNext: (jobId: string) => void
 }) {
   if (jobs.length === 0) {
     return (
@@ -48,6 +54,9 @@ export function JobList({
             onResume={() => onResume(job.id)}
             onRunNow={() => onRunNow(job.id)}
             onDelete={() => onDelete(job.id)}
+            onEdit={() => onEdit(job)}
+            onDuplicate={() => onDuplicate(job)}
+            onSkipNext={() => onSkipNext(job.id)}
           />
         ))}
       </TableBody>

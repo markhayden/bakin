@@ -130,7 +130,7 @@ export function CalendarMonthly({
   const goToday = () => { setYear(now.getFullYear()); setMonth(now.getMonth()) }
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3 h-full min-h-0">
       {/* Navigation */}
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={prev}><ChevronLeft className="size-4" /></Button>
@@ -140,7 +140,7 @@ export function CalendarMonthly({
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-7 gap-px rounded-lg overflow-hidden border border-border/20 bg-border/10">
+      <div className="grid grid-cols-7 gap-px rounded-lg overflow-auto flex-1 min-h-0 border border-border/20 bg-border/10">
         {/* Headers */}
         {DOW_LABELS.map(d => (
           <div key={d} className="bg-muted/20 text-center text-[9px] text-zinc-500 uppercase tracking-widest py-2 font-medium">

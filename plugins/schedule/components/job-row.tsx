@@ -1,6 +1,6 @@
 'use client'
 
-import { MoreHorizontal, Play, Pause, RotateCcw, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Play, Pause, RotateCcw, Trash2, Pencil, Copy, SkipForward } from 'lucide-react'
 import { TableRow, TableCell } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -41,6 +41,9 @@ export function JobRow({
   onResume,
   onRunNow,
   onDelete,
+  onEdit,
+  onDuplicate,
+  onSkipNext,
 }: {
   job: ScheduleJob
   onClick: () => void
@@ -48,6 +51,9 @@ export function JobRow({
   onResume: () => void
   onRunNow: () => void
   onDelete: () => void
+  onEdit: () => void
+  onDuplicate: () => void
+  onSkipNext: () => void
 }) {
   return (
     <TableRow className="cursor-pointer group" onClick={onClick}>
@@ -83,6 +89,16 @@ export function JobRow({
             <DropdownMenuItem onClick={onRunNow}>
               <Play className="size-4" /> Run Now
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={onEdit}>
+              <Pencil className="size-4" /> Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onDuplicate}>
+              <Copy className="size-4" /> Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onSkipNext}>
+              <SkipForward className="size-4" /> Skip Next
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             {job.paused ? (
               <DropdownMenuItem onClick={onResume}>
                 <RotateCcw className="size-4" /> Resume

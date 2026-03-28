@@ -34,6 +34,23 @@ export function readOpenClawJobs(jobsPath?: string): OpenClawJob[] {
   }
 }
 
+/** Extract best-effort context from an orphaned OpenClaw job's payload. */
+function extractOrphanContext(job: OpenClawJob): { prompt?: string } {
+  if (!job.payload) return {}
+  // OpenClaw stores the message in payload.message
+  const msg = job.payload.message
+  if (typeof msg === 'string' && msg.length > 0) {
+    // If it starts with beacon:schedule:, it's a Beacon job that lost its sidecar
+    // Otherwise surface the raw message as prompt context
+    const beaconPrefix = 'beacon:schedule:'
+    if (msg.startsWith(beaconPrefix)) {
+      return { prompt: msg.slice(beaconPrefix.length) }
+    }
+    return { prompt: msg }
+  }
+  return {}
+}
+
 /** Merge a single OpenClaw job with its sidecar entry (if any). */
 export function mergeJob(job: OpenClawJob, sidecar: BeaconJobMeta | undefined): MergedJob {
   const meta = sidecar ? withDefaults(sidecar) : null
@@ -42,6 +59,9 @@ export function mergeJob(job: OpenClawJob, sidecar: BeaconJobMeta | undefined): 
   const schedType = job.schedule.type ?? job.schedule.kind ?? 'cron'
   const schedValue = job.schedule.value ?? job.schedule.expr ?? ''
   const normalised = { type: schedType, value: schedValue, tz: job.schedule.tz }
+
+  // For orphaned jobs (no sidecar), extract what we can from the payload
+  const orphanContext = !meta ? extractOrphanContext(job) : {}
 
   return {
     // OpenClaw fields (normalised)
@@ -55,11 +75,11 @@ export function mergeJob(job: OpenClawJob, sidecar: BeaconJobMeta | undefined): 
     isBeaconJob: meta?.isBeaconJob ?? false,
     displayName: meta?.displayName ?? job.name,
     description: meta?.description,
-    agentId: meta?.agentId,
+    agentId: meta?.agentId,  // null for orphans — don't guess, flag for triage
     owner: meta?.owner ?? 'main-operator',
-    requireTriage: meta?.requireTriage ?? false,
+    requireTriage: meta?.requireTriage ?? (!meta), // orphans need triage
     workflowId: meta?.workflowId,
-    taskPrompt: meta?.taskPrompt,
+    taskPrompt: meta?.taskPrompt ?? orphanContext.prompt,
     taskTitle: meta?.taskTitle,
     paused: meta?.paused ?? false,
     pauseUntil: meta?.pauseUntil,

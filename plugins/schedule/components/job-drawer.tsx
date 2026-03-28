@@ -1,7 +1,10 @@
 'use client'
 
+import { useState } from 'react'
+import { Play, Pencil, Copy, Trash2, SkipForward } from 'lucide-react'
 import { BeaconDrawer } from '@/components/beacon-drawer'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { AgentBadge } from './agent-badge'
 import { RunHistory } from './run-history'
@@ -23,19 +26,46 @@ export function JobDrawer({
   onClose,
   onPause,
   onResume,
+  onDelete,
+  onRunNow,
+  onEdit,
+  onDuplicate,
+  onSkipNext,
 }: {
   job: ScheduleJob | null
   open: boolean
   onClose: () => void
   onPause: (jobId: string, pauseUntil?: string) => Promise<boolean>
   onResume: (jobId: string) => Promise<boolean>
+  onDelete: (jobId: string) => Promise<boolean>
+  onRunNow: (jobId: string) => Promise<boolean>
+  onEdit: (job: ScheduleJob) => void
+  onDuplicate: (job: ScheduleJob) => void
+  onSkipNext: (jobId: string, n?: number) => Promise<boolean>
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
   if (!job) return null
+
+  const handleDelete = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
+    const ok = await onDelete(job.id)
+    if (ok) onClose()
+    setConfirmDelete(false)
+  }
 
   return (
     <BeaconDrawer
       open={open}
-      onOpenChange={(o) => { if (!o) onClose() }}
+      onOpenChange={(o) => {
+        if (!o) {
+          onClose()
+          setConfirmDelete(false)
+        }
+      }}
       title={
         <span className="flex items-center gap-2">
           {job.displayName || job.id}
@@ -46,6 +76,32 @@ export function JobDrawer({
       }
     >
       <div className="space-y-6">
+        {/* Quick actions */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => onRunNow(job.id)}>
+            <Play className="size-3.5 mr-1.5" /> Run Now
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onEdit(job)}>
+            <Pencil className="size-3.5 mr-1.5" /> Edit
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onDuplicate(job)}>
+            <Copy className="size-3.5 mr-1.5" /> Duplicate
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onSkipNext(job.id, 1)}>
+            <SkipForward className="size-3.5 mr-1.5" /> Skip Next
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleDelete}
+          >
+            <Trash2 className="size-3.5 mr-1.5" />
+            {confirmDelete ? 'Confirm Delete' : 'Delete'}
+          </Button>
+        </div>
+
+        <Separator />
+
         {/* Details */}
         <div className="space-y-3">
           <DetailRow label="Agent">
