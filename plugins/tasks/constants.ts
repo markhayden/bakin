@@ -46,4 +46,7 @@ export const AGENT_AVATAR_COLORS: Record<string, string> = {
   pixel: 'bg-violet-400',
   rolo: 'bg-orange-400',
   patch: 'bg-zinc-400',
+  scout: 'bg-emerald-400',
+  nemo: 'bg-cyan-400',
+  zen: 'bg-amber-400',
 }

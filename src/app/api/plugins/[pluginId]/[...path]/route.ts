@@ -15,6 +15,7 @@ import calendarPlugin from '@mc/calendar'
 import workflowsPlugin from '@mc/workflows'
 import assetsPlugin from '@mc/assets'
 import healthPlugin from '@mc/health'
+import schedulePlugin from '@mc/schedule'
 
 interface PluginState {
   plugin: MCPlugin
@@ -48,7 +49,7 @@ function ensureInitialized() {
   const storage = new MarkdownStorageAdapter()
   const events = new MCEventBus(relayBroadcast)
 
-  const plugins = [tasksPlugin, memoryPlugin, modelsPlugin, calendarPlugin, workflowsPlugin, assetsPlugin, healthPlugin]
+  const plugins = [tasksPlugin, memoryPlugin, modelsPlugin, calendarPlugin, workflowsPlugin, assetsPlugin, healthPlugin, schedulePlugin]
 
   for (const plugin of plugins) {
     if (!plugin.id || !plugin.activate) continue

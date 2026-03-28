@@ -8,6 +8,7 @@ const config: MCConfig = {
     { path: 'plugins/calendar' },
     { path: 'plugins/workflows' },
     { path: 'plugins/assets' },
+    { path: 'plugins/schedule' },
   ],
   theme: {},
 }
