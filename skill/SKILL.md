@@ -55,7 +55,7 @@ Your agent identity is automatically injected by the MCP server — you do not n
 
 > Auto-managed by `beacon doctor`. Do not edit this block manually.
 
-Use these tools to accomplish actual work — saving files, posting content, generating images. Called the same way as MCP tools via mcporter.
+Use these tools to accomplish actual work — saving files, posting content, generating images, scheduling jobs. Called the same way as MCP tools via mcporter.
 
 | Tool | Purpose |
 |------|---------|
@@ -70,6 +70,12 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `beacon_exec_list_trash` | List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge. |
 | `beacon_exec_restore_trash` | Restore a trashed asset back to its original location. Use beacon_exec_list_trash first to get the filename. |
 | `beacon_exec_empty_trash` | Permanently delete all items from trash. This cannot be undone. |
+| `beacon_exec_schedule_list` | List all scheduled jobs (merged OpenClaw + Beacon view) |
+| `beacon_exec_schedule_create` | Create a new scheduled job that creates tasks on the board |
+| `beacon_exec_schedule_update` | Update an existing scheduled job |
+| `beacon_exec_schedule_pause` | Pause, resume, or skip runs for a scheduled job |
+| `beacon_exec_schedule_delete` | Delete a scheduled job |
+| `beacon_exec_schedule_briefing` | Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing. |
 
 ### Quick Reference
 
@@ -82,6 +88,10 @@ mcporter call beacon-<agent>.beacon_exec_post_discord channel="<name>" content="
 mcporter call beacon-<agent>.beacon_exec_gen_image taskId=<id> prompt="<text>" preset=social-portrait model=flash
 # Check workflow gate statuses
 mcporter call beacon-<agent>.beacon_exec_check_gates taskId=<id>
+# Create a recurring scheduled job (NEVER use openclaw cron directly)
+mcporter call beacon-<agent>.beacon_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="basil" taskPrompt="Post a short recipe"
+# List all scheduled jobs
+mcporter call beacon-<agent>.beacon_exec_schedule_list
 ```
 <!-- beacon:exec-tools:end -->
 

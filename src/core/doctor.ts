@@ -10,7 +10,7 @@
  * Unsafe issues are reported to roscoe via OpenClaw so they show up in conversation.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
@@ -776,7 +776,8 @@ mcporter call beacon-${agentId}.beacon_get_paths
 - **NEVER edit TASKBOARD.md directly.** Use Beacon tools via mcporter only.
 - **NEVER post to Discord without explicit instruction.** Content goes through Mark's review first.
 - **NEVER hardcode file paths.** Always discover paths via \`mcporter call beacon-${agentId}.beacon_get_paths\`. Hardcoded paths break when the content directory moves.
-- **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Beacon tracking — no MCP call, no Health metrics, no audit log. Always use the MCP tool via \`mcporter call beacon-${agentId}.beacon_exec_<tool> ...\` instead.`,
+- **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Beacon tracking — no MCP call, no Health metrics, no audit log. Always use the MCP tool via \`mcporter call beacon-${agentId}.beacon_exec_<tool> ...\` instead.
+- **NEVER use \`openclaw cron\` directly for recurring tasks.** Use \`mcporter call beacon-${agentId}.beacon_exec_schedule_create name="..." schedule="every day at 9am" agentId="..." taskPrompt="..."\` instead. Direct cron jobs bypass Beacon — no agent context, no task creation, no audit trail.`,
   },
 
   {
@@ -845,6 +846,34 @@ When Beacon dispatches a workflow step to you, the dispatch message contains eve
 5. **After submitting, STOP.** Do not generate additional outputs, start work on future steps, or send completion messages.
 
 6. **Respect tool restrictions.** If the dispatch message lists "TOOL RESTRICTIONS", do NOT use those tools. Block the task if you need them.`,
+  },
+
+  {
+    blockId: 'scheduling-rules',
+    contentFn: (agentId: string) => `## Beacon Scheduling Rules
+
+> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+
+**NEVER use \`openclaw cron\` directly for recurring tasks.** Always use Beacon's schedule tools via mcporter. Direct cron jobs bypass Beacon tracking — no agent avatar, no prompt context, no task creation, no run history.
+
+### Creating Scheduled Jobs
+\`\`\`bash
+mcporter call beacon-${agentId}.beacon_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="basil" taskPrompt="Post a short recipe into #general"
+\`\`\`
+- \`schedule\` accepts natural language ("every weekday at 9am", "every Monday and Thursday at 10am") or raw cron ("0 9 * * 1-5")
+- Each scheduled run creates a Beacon task on the board, assigned to the specified agent
+- Timezone is auto-detected (system IANA tz)
+
+### Other Schedule Tools
+- \`beacon_exec_schedule_list\` — View all jobs (filter by agent or beacon-only)
+- \`beacon_exec_schedule_update\` — Change schedule, agent, prompt, etc.
+- \`beacon_exec_schedule_pause\` — Pause, resume, or skip N runs
+- \`beacon_exec_schedule_delete\` — Remove a job
+- \`beacon_exec_schedule_briefing\` — Today's schedule summary (for daily standup)
+
+### When to Use Scheduling vs One-Off Tasks
+- **Recurring work** (daily posts, weekly reports, periodic checks) → \`beacon_exec_schedule_create\`
+- **One-time deliverables** → \`beacon_create_task\``,
   },
 
   {
@@ -1257,6 +1286,108 @@ function checkAssets(contentDir: string, autoFix: boolean): DiagnosticResult[] {
 }
 
 // ---------------------------------------------------------------------------
+// Schedule sync — detect orphaned OpenClaw cron jobs not tracked in sidecar
+// ---------------------------------------------------------------------------
+
+function checkScheduleSync(autoFix: boolean): DiagnosticResult[] {
+  const checkName = 'schedule-sync'
+  const results: DiagnosticResult[] = []
+
+  // Resolve OpenClaw jobs path — configurable, absent on fresh installs
+  let jobsPath: string
+  try {
+    const configPath = join(process.env.HOME || '~', '.openclaw', 'config.json')
+    if (existsSync(configPath)) {
+      const config = JSON.parse(readFileSync(configPath, 'utf-8'))
+      jobsPath = config?.cron?.store ?? join(process.env.HOME || '~', '.openclaw', 'cron', 'jobs.json')
+    } else {
+      jobsPath = join(process.env.HOME || '~', '.openclaw', 'cron', 'jobs.json')
+    }
+  } catch {
+    jobsPath = join(process.env.HOME || '~', '.openclaw', 'cron', 'jobs.json')
+  }
+
+  if (!existsSync(jobsPath)) {
+    // Fresh install or no cron jobs yet — nothing to sync
+    return [ok(checkName, 'No OpenClaw cron jobs file found (fresh install)')]
+  }
+
+  let openclawJobs: Array<{ id: string; name: string; payload?: Record<string, unknown> }>
+  try {
+    const raw = JSON.parse(readFileSync(jobsPath, 'utf-8'))
+    openclawJobs = raw?.jobs ?? []
+  } catch (err) {
+    return [warn(checkName, `Failed to read OpenClaw jobs: ${err}`)]
+  }
+
+  if (openclawJobs.length === 0) {
+    return [ok(checkName, 'No OpenClaw cron jobs to sync')]
+  }
+
+  // Read Beacon sidecar
+  let sidecar: { version: number; jobs: Record<string, unknown> }
+  try {
+    const sidecarPath = join(getContentDir(), 'schedule', 'sidecar.json')
+    if (existsSync(sidecarPath)) {
+      sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
+    } else {
+      sidecar = { version: 1, jobs: {} }
+    }
+  } catch {
+    sidecar = { version: 1, jobs: {} }
+  }
+
+  const orphans: typeof openclawJobs = []
+  for (const job of openclawJobs) {
+    if (!sidecar.jobs[job.id]) {
+      orphans.push(job)
+    }
+  }
+
+  if (orphans.length === 0) {
+    return [ok(checkName, `${openclawJobs.length} cron job(s), all tracked in Beacon sidecar`)]
+  }
+
+  for (const orphan of orphans) {
+    if (autoFix) {
+      // Auto-adopt: create minimal sidecar entry flagged for manual triage
+      const now = new Date().toISOString()
+      const entry = {
+        jobId: orphan.id,
+        isBeaconJob: false,
+        displayName: orphan.name,
+        agentId: undefined, // Don't guess — flag for triage
+        owner: 'roscoe',
+        requireTriage: true,
+        createdAt: now,
+        updatedAt: now,
+      }
+      sidecar.jobs[orphan.id] = entry
+      results.push(fixed(checkName, `Auto-adopted orphan cron job "${orphan.name}" (id: ${orphan.id})`))
+      log.info('Auto-adopted orphan cron job', { jobId: orphan.id, name: orphan.name })
+    } else {
+      results.push(warn(checkName, `Orphan cron job "${orphan.name}" (id: ${orphan.id}) — not tracked in Beacon sidecar`, true))
+    }
+  }
+
+  // Write updated sidecar if we adopted anything
+  if (autoFix && results.some(r => r.status === 'fixed')) {
+    try {
+      const sidecarPath = join(getContentDir(), 'schedule', 'sidecar.json')
+      const dir = dirname(sidecarPath)
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true })
+      }
+      writeFileSync(sidecarPath, JSON.stringify(sidecar, null, 2), 'utf-8')
+    } catch (err) {
+      results.push(error(checkName, `Failed to write updated sidecar: ${err}`))
+    }
+  }
+
+  return results
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -1277,8 +1408,8 @@ function checkExecToolsBlock(projectRoot: string, autoFix: boolean): DiagnosticR
   const startMarker = '<!-- beacon:exec-tools:start -->'
   const endMarker = '<!-- beacon:exec-tools:end -->'
 
-  const tools = getAllExecTools().filter(t => t.source === 'core' || !t.source)
-  if (tools.length === 0) return [ok(checkName, 'No core exec tools registered')]
+  const tools = getAllExecTools()
+  if (tools.length === 0) return [ok(checkName, 'No exec tools registered')]
 
   const toolLines = tools
     .map(t => `| \`${t.name}\` | ${t.description} |`)
@@ -1288,7 +1419,7 @@ function checkExecToolsBlock(projectRoot: string, autoFix: boolean): DiagnosticR
 
 > Auto-managed by \`beacon doctor\`. Do not edit this block manually.
 
-Use these tools to accomplish actual work — saving files, posting content, generating images. Called the same way as MCP tools via mcporter.
+Use these tools to accomplish actual work — saving files, posting content, generating images, scheduling jobs. Called the same way as MCP tools via mcporter.
 
 | Tool | Purpose |
 |------|---------|
@@ -1305,6 +1436,10 @@ mcporter call beacon-<agent>.beacon_exec_post_discord channel="<name>" content="
 mcporter call beacon-<agent>.beacon_exec_gen_image taskId=<id> prompt="<text>" preset=social-portrait model=flash
 # Check workflow gate statuses
 mcporter call beacon-<agent>.beacon_exec_check_gates taskId=<id>
+# Create a recurring scheduled job (NEVER use openclaw cron directly)
+mcporter call beacon-<agent>.beacon_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="basil" taskPrompt="Post a short recipe"
+# List all scheduled jobs
+mcporter call beacon-<agent>.beacon_exec_schedule_list
 \`\`\``
 
   const current = readFileSync(skillPath, 'utf-8')
@@ -1367,6 +1502,7 @@ export async function runDiagnostics(
   results.push(...checkStaleWorkflowInstances(contentDir, autoFix))
   results.push(...checkTaskConsistency(contentDir, autoFix))
   results.push(...checkAssets(contentDir, autoFix))
+  results.push(...checkScheduleSync(autoFix))
   results.push(...checkMcporter(Number(process.env.PORT || 3737), autoFix))
   results.push(...checkService(projectRoot))
 

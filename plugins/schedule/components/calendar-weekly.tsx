@@ -8,7 +8,7 @@ import type { ScheduleJob } from '@/hooks/use-schedule'
 
 // Agent-keyed style tokens — each entry is a self-contained visual identity
 // Uses inline style objects for gradient backgrounds (Tailwind can't do arbitrary gradients)
-const AGENT_STYLES: Record<string, {
+export const AGENT_STYLES: Record<string, {
   border: string
   bg: string         // Tailwind bg for the card surface
   glow: string       // box-shadow color token (rgba)
@@ -26,7 +26,7 @@ const AGENT_STYLES: Record<string, {
   zen:     { border: 'border-amber-500/30',   bg: 'bg-amber-500/[0.06]',   glow: 'rgba(251,191,36,0.10)',  accent: 'text-amber-400',   dot: 'bg-amber-400',   gradient: 'linear-gradient(135deg, rgba(251,191,36,0.4), rgba(251,191,36,0.08))' },
 }
 
-const FALLBACK_STYLE = AGENT_STYLES.patch!
+export const FALLBACK_STYLE = AGENT_STYLES.patch!
 
 const HOURS = Array.from({ length: 17 }, (_, i) => i + 6) // 6am–10pm
 const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -46,7 +46,7 @@ function getWeekDates(weekStart: Date): Date[] {
   })
 }
 
-function getJobHour(job: ScheduleJob): number | null {
+export function getJobHour(job: ScheduleJob): number | null {
   if (!job.cron) return null
   const parts = job.cron.split(/\s+/)
   if (parts.length < 5) return null
@@ -56,7 +56,7 @@ function getJobHour(job: ScheduleJob): number | null {
   return isNaN(h) ? null : h
 }
 
-function getJobMinute(job: ScheduleJob): number {
+export function getJobMinute(job: ScheduleJob): number {
   if (!job.cron) return 0
   const parts = job.cron.split(/\s+/)
   if (parts.length < 5) return 0
@@ -66,7 +66,7 @@ function getJobMinute(job: ScheduleJob): number {
   return isNaN(m) ? 0 : m
 }
 
-function formatJobTime(job: ScheduleJob): string {
+export function formatJobTime(job: ScheduleJob): string {
   const h = getJobHour(job)
   if (h === null) return ''
   const m = getJobMinute(job)
@@ -75,7 +75,7 @@ function formatJobTime(job: ScheduleJob): string {
   return m === 0 ? `${display}${period}` : `${display}:${m.toString().padStart(2, '0')}${period}`
 }
 
-function jobOnDow(job: ScheduleJob, dow: number): boolean {
+export function jobOnDow(job: ScheduleJob, dow: number): boolean {
   if (!job.cron) return false
   const parts = job.cron.split(/\s+/)
   if (parts.length < 5) return false
@@ -108,15 +108,15 @@ function expandDow(field: string): number[] {
   return result
 }
 
-function formatHour(h: number): string {
+export function formatHour(h: number): string {
   if (h === 0) return '12 AM'
   if (h < 12) return `${h} AM`
   if (h === 12) return '12 PM'
   return `${h - 12} PM`
 }
 
-/** A single job card in the weekly calendar grid */
-function JobCard({ job, onClick }: { job: ScheduleJob; onClick: () => void }) {
+/** A single job card — used in weekly grid and today timeline */
+export function JobCard({ job, onClick, expanded }: { job: ScheduleJob; onClick: () => void; expanded?: boolean }) {
   const s = AGENT_STYLES[job.agentId || ''] || FALLBACK_STYLE
   const time = formatJobTime(job)
 
@@ -131,15 +131,15 @@ function JobCard({ job, onClick }: { job: ScheduleJob; onClick: () => void }) {
       `}
       style={{ boxShadow: `0 1px 6px -1px ${s.glow}` }}
     >
-      <div className="px-2 py-1.5">
+      <div className={expanded ? 'px-3 py-2.5' : 'px-2 py-1.5'}>
         {/* Row 1: avatar + name + time pill */}
         <div className="flex items-center gap-1.5 min-w-0">
-          <AgentBadge agentId={job.agentId} size="sm" showName={false} />
-          <span className="text-[11px] font-medium text-zinc-200 truncate flex-1 leading-tight">
+          <AgentBadge agentId={job.agentId} size="sm" showName={expanded} />
+          <span className={`font-medium text-zinc-200 truncate flex-1 leading-tight ${expanded ? 'text-sm' : 'text-[11px]'}`}>
             {job.displayName || job.id}
           </span>
           {time && (
-            <span className={`text-[9px] font-mono ${s.accent} opacity-70 shrink-0 tabular-nums`}>
+            <span className={`font-mono ${s.accent} opacity-70 shrink-0 tabular-nums ${expanded ? 'text-xs' : 'text-[9px]'}`}>
               {time}
             </span>
           )}
@@ -147,8 +147,15 @@ function JobCard({ job, onClick }: { job: ScheduleJob; onClick: () => void }) {
 
         {/* Row 2: prompt snippet */}
         {job.taskPrompt && (
-          <p className="text-[10px] text-zinc-500 leading-snug mt-1 pl-[26px] line-clamp-5">
+          <p className={`text-zinc-500 leading-snug mt-1 ${expanded ? 'text-xs pl-0 line-clamp-3' : 'text-[10px] pl-[26px] line-clamp-5'}`}>
             {job.taskPrompt}
+          </p>
+        )}
+
+        {/* Row 3: schedule (expanded only) */}
+        {expanded && job.humanSchedule && (
+          <p className={`text-[10px] ${s.accent} opacity-50 mt-1.5 font-mono`}>
+            {job.humanSchedule}
           </p>
         )}
       </div>
@@ -192,7 +199,7 @@ export function CalendarWeekly({
   }, [jobs])
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3 h-full min-h-0">
       {/* Navigation */}
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={prev}><ChevronLeft className="size-4" /></Button>
@@ -206,7 +213,7 @@ export function CalendarWeekly({
       </div>
 
       {/* Timeline grid */}
-      <div className="overflow-auto max-h-[600px] border border-border/30 rounded-lg bg-background/50">
+      <div className="overflow-auto flex-1 min-h-0 border border-border/30 rounded-lg bg-background/50">
         <div className="grid" style={{ gridTemplateColumns: '56px repeat(7, 250px)' }}>
           {/* Header row */}
           <div className="bg-muted/20 sticky top-0 z-10 backdrop-blur-sm" />

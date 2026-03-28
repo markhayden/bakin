@@ -147,7 +147,61 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
     } catch { return false }
   }, [])
 
-  return { jobs: filtered, loading, refresh: fetchJobs, pauseJob, resumeJob, deleteJob, runNow }
+  const updateJob = useCallback(async (jobId: string, data: Record<string, unknown>) => {
+    try {
+      const res = await fetch('/api/plugins/schedule/jobs/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, ...data }),
+      })
+      if (res.ok) fetchJobs()
+      return res.ok
+    } catch { return false }
+  }, [fetchJobs])
+
+  const skipNext = useCallback(async (jobId: string, n = 1) => {
+    try {
+      const res = await fetch('/api/plugins/schedule/jobs/pause', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, action: 'skip', skipN: n }),
+      })
+      if (res.ok) fetchJobs()
+      return res.ok
+    } catch { return false }
+  }, [fetchJobs])
+
+  const duplicateJob = useCallback(async (jobId: string, overrides: Record<string, unknown> = {}) => {
+    // Fetch the current job to copy its data
+    const source = jobs.find(j => j.id === jobId)
+    if (!source) return false
+    try {
+      const res = await fetch('/api/plugins/schedule/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: overrides.name ?? `${source.displayName} (copy)`,
+          schedule: overrides.schedule ?? source.humanSchedule,
+          agentId: overrides.agentId ?? source.agentId,
+          taskPrompt: overrides.taskPrompt ?? source.taskPrompt,
+          taskTitle: overrides.taskTitle ?? source.taskTitle,
+          workflowId: overrides.workflowId ?? source.workflowId,
+          owner: overrides.owner ?? source.owner,
+          requireTriage: overrides.requireTriage ?? source.requireTriage,
+          allowOverlap: overrides.allowOverlap ?? source.allowOverlap,
+          maxFailures: overrides.maxFailures ?? source.maxFailures,
+          ...overrides,
+        }),
+      })
+      if (res.ok) fetchJobs()
+      return res.ok
+    } catch { return false }
+  }, [jobs, fetchJobs])
+
+  return {
+    jobs: filtered, loading, refresh: fetchJobs,
+    pauseJob, resumeJob, deleteJob, runNow, updateJob, skipNext, duplicateJob,
+  }
 }
 
 export function useRunHistory(jobId: string | null, limit = 20) {

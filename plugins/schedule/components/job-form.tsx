@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AGENTS } from '@/lib/constants'
 import { ScheduleInput } from './schedule-input'
 
-interface JobFormData {
+export interface JobFormData {
   name: string
   schedule: string
   agentId?: string
@@ -27,25 +27,52 @@ export function JobForm({
   onSubmit,
   onCancel,
   submitting,
+  initial,
+  mode = 'create',
 }: {
   onSubmit: (data: JobFormData) => Promise<void>
   onCancel: () => void
   submitting: boolean
+  initial?: Partial<JobFormData>
+  mode?: 'create' | 'edit' | 'duplicate'
 }) {
-  const [name, setName] = useState('')
-  const [schedule, setSchedule] = useState('')
-  const [agentId, setAgentId] = useState<string>('')
-  const [prompt, setPrompt] = useState('')
+  const [name, setName] = useState(initial?.name ?? '')
+  const [schedule, setSchedule] = useState(initial?.schedule ?? '')
+  const [agentId, setAgentId] = useState<string>(initial?.agentId ?? '')
+  const [prompt, setPrompt] = useState(initial?.taskPrompt ?? '')
   const [advanced, setAdvanced] = useState(false)
-  const [workflowId, setWorkflowId] = useState('')
-  const [taskTitle, setTaskTitle] = useState('')
-  const [owner, setOwner] = useState('roscoe')
-  const [requireTriage, setRequireTriage] = useState(false)
-  const [allowOverlap, setAllowOverlap] = useState(false)
-  const [maxFailures, setMaxFailures] = useState(3)
-  const [parsedOk, setParsedOk] = useState(false)
+  const [workflowId, setWorkflowId] = useState(initial?.workflowId ?? '')
+  const [taskTitle, setTaskTitle] = useState(initial?.taskTitle ?? '')
+  const [owner, setOwner] = useState(initial?.owner ?? 'roscoe')
+  const [requireTriage, setRequireTriage] = useState(initial?.requireTriage ?? false)
+  const [allowOverlap, setAllowOverlap] = useState(initial?.allowOverlap ?? false)
+  const [maxFailures, setMaxFailures] = useState(initial?.maxFailures ?? 3)
+  const [parsedOk, setParsedOk] = useState(mode === 'edit') // edit mode: assume current schedule is valid
+
+  // Reset form when initial changes (e.g. switching between jobs)
+  useEffect(() => {
+    if (initial) {
+      setName(initial.name ?? '')
+      setSchedule(initial.schedule ?? '')
+      setAgentId(initial.agentId ?? '')
+      setPrompt(initial.taskPrompt ?? '')
+      setWorkflowId(initial.workflowId ?? '')
+      setTaskTitle(initial.taskTitle ?? '')
+      setOwner(initial.owner ?? 'roscoe')
+      setRequireTriage(initial.requireTriage ?? false)
+      setAllowOverlap(initial.allowOverlap ?? false)
+      setMaxFailures(initial.maxFailures ?? 3)
+      setParsedOk(mode === 'edit')
+    }
+  }, [initial, mode])
 
   const canSubmit = name.trim() && schedule.trim() && parsedOk && !submitting
+
+  const labels = {
+    create: { submit: 'Create Job', submitting: 'Creating...' },
+    edit: { submit: 'Save Changes', submitting: 'Saving...' },
+    duplicate: { submit: 'Create Copy', submitting: 'Creating...' },
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -204,7 +231,7 @@ export function JobForm({
       {/* Actions */}
       <div className="flex items-center gap-2 pt-2">
         <Button type="submit" size="sm" disabled={!canSubmit}>
-          {submitting ? 'Creating...' : 'Create Job'}
+          {submitting ? labels[mode].submitting : labels[mode].submit}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel

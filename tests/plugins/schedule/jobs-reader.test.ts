@@ -129,6 +129,44 @@ describe('schedule/jobs-reader', () => {
       const merged = mergeJob(job, undefined)
       expect(merged.humanSchedule).toContain('Once at')
     })
+
+    it('extracts prompt from orphan payload.message', () => {
+      const job = {
+        id: 'j1', name: 'Orphan', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true,
+        payload: { message: 'Post a daily recipe' },
+      }
+      const merged = mergeJob(job, undefined)
+      expect(merged.taskPrompt).toBe('Post a daily recipe')
+      expect(merged.requireTriage).toBe(true)
+      expect(merged.agentId).toBeUndefined()
+    })
+
+    it('extracts prompt from beacon:schedule: prefixed message', () => {
+      const job = {
+        id: 'j1', name: 'Lost Beacon Job', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true,
+        payload: { message: 'beacon:schedule:daily-recipe' },
+      }
+      const merged = mergeJob(job, undefined)
+      expect(merged.taskPrompt).toBe('daily-recipe')
+    })
+
+    it('does not override sidecar prompt with payload', () => {
+      const job = {
+        id: 'j1', name: 'Job', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true,
+        payload: { message: 'raw message' },
+      }
+      const sidecar = makeMeta({ jobId: 'j1', taskPrompt: 'Beacon prompt' })
+      const merged = mergeJob(job, sidecar)
+      expect(merged.taskPrompt).toBe('Beacon prompt')
+      expect(merged.requireTriage).toBe(false) // has sidecar, not an orphan
+    })
+
+    it('normalises OpenClaw kind/expr to type/value', () => {
+      const job = { id: 'j1', name: 'OC Job', schedule: { kind: 'cron' as const, expr: '30 8 * * 1-5' }, enabled: true }
+      const merged = mergeJob(job, undefined)
+      expect(merged.schedule.type).toBe('cron')
+      expect(merged.schedule.value).toBe('30 8 * * 1-5')
+    })
   })
 
   describe('readMergedJobs', () => {

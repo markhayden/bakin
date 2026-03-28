@@ -2,6 +2,7 @@
  * Schedule plugin — server entry point.
  * Registers API routes, exec tools, and the cron→task bridge.
  */
+import { z } from 'zod'
 import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { readMergedJobs } from './lib/jobs-reader'
 import { readSidecar, writeSidecar, upsertJob, removeJob, getJob, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults } from './lib/sidecar'
@@ -431,8 +432,8 @@ const schedulePlugin: MCPlugin = {
       name: 'beacon_exec_schedule_list',
       description: 'List all scheduled jobs (merged OpenClaw + Beacon view)',
       parameters: {
-        filter: { type: 'string', enum: ['beacon', 'all'], description: 'Filter by job type' },
-        agentId: { type: 'string', description: 'Filter by assigned agent' },
+        filter: z.enum(['beacon', 'all']).optional().describe('Filter by job type'),
+        agentId: z.string().optional().describe('Filter by assigned agent'),
       },
       handler: async (params) => {
         let jobs = readMergedJobs()
@@ -457,12 +458,12 @@ const schedulePlugin: MCPlugin = {
       name: 'beacon_exec_schedule_create',
       description: 'Create a new scheduled job that creates tasks on the board',
       parameters: {
-        name: { type: 'string', description: 'Job name (required)' },
-        schedule: { type: 'string', description: 'Schedule expression: NL ("every day at 9am") or raw cron ("0 9 * * *") (required)' },
-        agentId: { type: 'string', description: 'Agent to assign tasks to' },
-        workflowId: { type: 'string', description: 'Workflow to attach to tasks' },
-        taskPrompt: { type: 'string', description: 'Task description template' },
-        taskTitle: { type: 'string', description: 'Task title template (supports {date}, {agent})' },
+        name: z.string().describe('Job name (required)'),
+        schedule: z.string().describe('Schedule expression: NL ("every day at 9am") or raw cron ("0 9 * * *") (required)'),
+        agentId: z.string().optional().describe('Agent to assign tasks to'),
+        workflowId: z.string().optional().describe('Workflow to attach to tasks'),
+        taskPrompt: z.string().optional().describe('Task description template'),
+        taskTitle: z.string().optional().describe('Task title template (supports {date}, {agent})'),
       },
       handler: async (params) => {
         if (!params.name || !params.schedule) {
@@ -508,13 +509,13 @@ const schedulePlugin: MCPlugin = {
       name: 'beacon_exec_schedule_update',
       description: 'Update an existing scheduled job',
       parameters: {
-        jobId: { type: 'string', description: 'Job ID (required)' },
-        name: { type: 'string', description: 'New job name' },
-        schedule: { type: 'string', description: 'New schedule expression' },
-        agentId: { type: 'string', description: 'New agent assignment' },
-        workflowId: { type: 'string', description: 'New workflow binding' },
-        taskPrompt: { type: 'string', description: 'New task prompt template' },
-        taskTitle: { type: 'string', description: 'New task title template' },
+        jobId: z.string().describe('Job ID (required)'),
+        name: z.string().optional().describe('New job name'),
+        schedule: z.string().optional().describe('New schedule expression'),
+        agentId: z.string().optional().describe('New agent assignment'),
+        workflowId: z.string().optional().describe('New workflow binding'),
+        taskPrompt: z.string().optional().describe('New task prompt template'),
+        taskTitle: z.string().optional().describe('New task title template'),
       },
       handler: async (params) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
@@ -544,10 +545,10 @@ const schedulePlugin: MCPlugin = {
       name: 'beacon_exec_schedule_pause',
       description: 'Pause, resume, or skip runs for a scheduled job',
       parameters: {
-        jobId: { type: 'string', description: 'Job ID (required)' },
-        action: { type: 'string', enum: ['pause', 'resume', 'skip'], description: 'Action to take (required)' },
-        pauseUntil: { type: 'string', description: 'ISO date to auto-resume (for pause action)' },
-        skipN: { type: 'number', description: 'Number of runs to skip (for skip action)' },
+        jobId: z.string().describe('Job ID (required)'),
+        action: z.enum(['pause', 'resume', 'skip']).describe('Action to take (required)'),
+        pauseUntil: z.string().optional().describe('ISO date to auto-resume (for pause action)'),
+        skipN: z.number().optional().describe('Number of runs to skip (for skip action)'),
       },
       handler: async (params) => {
         if (!params.jobId || !params.action) return { ok: false, error: 'jobId and action required' }
@@ -584,7 +585,7 @@ const schedulePlugin: MCPlugin = {
       name: 'beacon_exec_schedule_delete',
       description: 'Delete a scheduled job',
       parameters: {
-        jobId: { type: 'string', description: 'Job ID (required)' },
+        jobId: z.string().describe('Job ID (required)'),
       },
       handler: async (params) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
@@ -598,7 +599,7 @@ const schedulePlugin: MCPlugin = {
       name: 'beacon_exec_schedule_briefing',
       description: "Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing.",
       parameters: {
-        date: { type: 'string', description: 'ISO date to check (defaults to today)' },
+        date: z.string().optional().describe('ISO date to check (defaults to today)'),
       },
       handler: async (params) => {
         const jobs = readMergedJobs()
