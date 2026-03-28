@@ -33,7 +33,9 @@
       "@mc/assets": ["./plugins/assets"],
       "@mc/assets/*": ["./plugins/assets/*"],
       "@mc/health": ["./plugins/health"],
-      "@mc/health/*": ["./plugins/health/*"]
+      "@mc/health/*": ["./plugins/health/*"],
+      "@mc/schedule": ["./plugins/schedule"],
+      "@mc/schedule/*": ["./plugins/schedule/*"]
     }
   },
   "include": [

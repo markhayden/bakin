@@ -373,7 +373,7 @@ app.prepare().then(async () => {
   watcher.start({ contentDir: CONTENT_DIR, eventBus, onInboxFile: handleInboxFile })
   dispatch.start(CONTENT_DIR, port)
   dispatch.reconcileOnStartup(CONTENT_DIR)
-  calendarCron.start(CONTENT_DIR, port)
+  // calendarCron.start(CONTENT_DIR, port) — deprecated: schedule plugin bridge replaces this
   watchdog.start(CONTENT_DIR, port)
   doctor.start(CONTENT_DIR, process.cwd())
 

@@ -22,6 +22,7 @@ export default defineConfig({
       '@mc/calendar': path.resolve(__dirname, 'plugins/calendar'),
       '@mc/workflows': path.resolve(__dirname, 'plugins/workflows'),
       '@mc/assets': path.resolve(__dirname, 'plugins/assets'),
+      '@mc/schedule': path.resolve(__dirname, 'plugins/schedule'),
     },
   },
 })
