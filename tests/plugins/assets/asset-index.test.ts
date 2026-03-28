@@ -20,7 +20,7 @@ vi.mock('../../../src/core/logger', () => ({
   }),
 }))
 
-import { buildIndex, upsertAsset, removeAsset, listAssets, getAsset, getCount } from '@mc/assets/lib/asset-index'
+import { buildIndex, upsertAsset, removeAsset, listAssets, listGroupedAssets, detectVariant, getAsset, getCount } from '@mc/assets/lib/asset-index'
 
 describe('assets/asset-index', () => {
   beforeEach(() => {
@@ -183,6 +183,114 @@ describe('assets/asset-index', () => {
       removeAsset('assets/images/task-abc/hero.png')
       expect(getCount()).toBe(2)
       expect(getAsset('assets/images/task-abc/hero.png')).toBeUndefined()
+    })
+  })
+
+  describe('detectVariant', () => {
+    it('detects .thumb.* files as thumbnail variants', () => {
+      const result = detectVariant('20260327-hero.thumb.jpg')
+      expect(result).toEqual({ baseStem: '20260327-hero', role: 'thumbnail' })
+    })
+
+    it('detects .opt.* files as optimized variants', () => {
+      const result = detectVariant('20260327-hero.opt.webp')
+      expect(result).toEqual({ baseStem: '20260327-hero', role: 'optimized' })
+    })
+
+    it('returns null for primary assets', () => {
+      expect(detectVariant('20260327-hero.jpg')).toBeNull()
+      expect(detectVariant('post.md')).toBeNull()
+    })
+
+    it('returns null for .meta.json files', () => {
+      expect(detectVariant('hero.png.meta.json')).toBeNull()
+    })
+
+    it('handles filenames with dots correctly', () => {
+      const result = detectVariant('20260327-hero.png.thumb.jpg')
+      expect(result).toEqual({ baseStem: '20260327-hero.png', role: 'thumbnail' })
+    })
+  })
+
+  describe('listGroupedAssets', () => {
+    it('groups thumbnail variants under their primary', () => {
+      // Add a thumbnail for the existing hero.png
+      const taskDir = join(assetsRoot, 'images', 'task-abc')
+      writeFileSync(join(taskDir, 'hero.thumb.jpg'), 'thumb-data')
+      writeFileSync(join(taskDir, 'hero.thumb.jpg.meta.json'), JSON.stringify({
+        agent: 'unknown',
+        taskId: 'task-abc',
+        created: '2026-03-23T10:00:01Z',
+      }))
+
+      buildIndex()
+      const groups = listGroupedAssets({ type: 'images' })
+
+      expect(groups).toHaveLength(1)
+      expect(groups[0].primary.filename).toBe('hero.png')
+      expect(groups[0].variants).toHaveLength(1)
+      expect(groups[0].variants[0].role).toBe('thumbnail')
+      expect(groups[0].variants[0].asset.filename).toBe('hero.thumb.jpg')
+    })
+
+    it('returns assets without variants as groups with empty variants array', () => {
+      buildIndex()
+      const groups = listGroupedAssets({ type: 'text' })
+
+      expect(groups).toHaveLength(1)
+      expect(groups[0].primary.filename).toBe('post.md')
+      expect(groups[0].variants).toHaveLength(0)
+    })
+
+    it('does not include variant files as separate primary entries', () => {
+      const taskDir = join(assetsRoot, 'images', 'task-abc')
+      writeFileSync(join(taskDir, 'hero.thumb.jpg'), 'thumb-data')
+
+      buildIndex()
+
+      // Flat list includes both
+      const flat = listAssets({ type: 'images' })
+      expect(flat).toHaveLength(2)
+
+      // Grouped list shows only the primary
+      const groups = listGroupedAssets({ type: 'images' })
+      expect(groups).toHaveLength(1)
+      expect(groups[0].primary.filename).toBe('hero.png')
+    })
+
+    it('respects filters when grouping', () => {
+      buildIndex()
+      const groups = listGroupedAssets({ agent: 'pixel' })
+
+      expect(groups).toHaveLength(1)
+      expect(groups[0].primary.metadata.agent).toBe('pixel')
+    })
+
+    it('handles multiple assets with thumbnails in different task dirs', () => {
+      // Add another image in a different task dir
+      const task2Dir = join(assetsRoot, 'images', 'task-zzz')
+      mkdirSync(task2Dir, { recursive: true })
+      writeFileSync(join(task2Dir, 'banner.png'), 'banner-data')
+      writeFileSync(join(task2Dir, 'banner.png.meta.json'), JSON.stringify({
+        agent: 'pixel',
+        taskId: 'task-zzz',
+        created: '2026-03-23T14:00:00Z',
+      }))
+      writeFileSync(join(task2Dir, 'banner.thumb.jpg'), 'thumb-data')
+
+      // And a thumbnail for hero
+      const taskDir = join(assetsRoot, 'images', 'task-abc')
+      writeFileSync(join(taskDir, 'hero.thumb.jpg'), 'thumb-data')
+
+      buildIndex()
+      const groups = listGroupedAssets({ type: 'images' })
+
+      expect(groups).toHaveLength(2)
+      // Each should have exactly one thumbnail variant
+      for (const g of groups) {
+        expect(g.variants).toHaveLength(1)
+        expect(g.variants[0].role).toBe('thumbnail')
+      }
     })
   })
 })

@@ -76,6 +76,14 @@ export interface ProjectMeta {
   content: string
 }
 
+export interface AssetVariantMeta {
+  role: 'thumbnail' | 'optimized' | 'webp'
+  path: string
+  filename: string
+  size: number
+  mimeType: string
+}
+
 export interface AssetMeta {
   path: string
   filename: string
@@ -92,6 +100,25 @@ export interface AssetMeta {
     tags?: string[]
     originalFilename?: string
   }
+  variants?: AssetVariantMeta[]
+}
+
+export interface TrashedAssetMeta {
+  filename: string           // trash filename (with __deleted- suffix)
+  originalFilename: string
+  type: string
+  mimeType: string
+  size: number
+  deletedAt: string
+  expiresAt: string
+  metadata: {
+    agent: string
+    taskId: string | null
+    created: string
+    tool?: string
+    description?: string
+    tags?: string[]
+  } | null
 }
 
 export interface OfficeData {

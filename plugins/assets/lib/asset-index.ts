@@ -22,6 +22,39 @@ export interface IndexedAsset {
   metadata: SidecarMeta
 }
 
+export type VariantRole = 'thumbnail' | 'optimized' | 'webp'
+
+export interface AssetVariant {
+  role: VariantRole
+  asset: IndexedAsset
+}
+
+export interface GroupedAsset {
+  primary: IndexedAsset
+  variants: AssetVariant[]
+}
+
+/**
+ * Variant detection patterns. Order matters — first match wins.
+ * The regex captures the base stem (everything before the variant suffix).
+ */
+const VARIANT_PATTERNS: { regex: RegExp; role: VariantRole }[] = [
+  { regex: /^(.+)\.thumb\.\w+$/, role: 'thumbnail' },
+  { regex: /^(.+)\.opt\.\w+$/, role: 'optimized' },
+]
+
+/**
+ * Detect if a filename is a variant of another asset.
+ * Returns the base stem and role, or null if it's a primary asset.
+ */
+export function detectVariant(filename: string): { baseStem: string; role: VariantRole } | null {
+  for (const { regex, role } of VARIANT_PATTERNS) {
+    const m = filename.match(regex)
+    if (m) return { baseStem: m[1], role }
+  }
+  return null
+}
+
 const index = new Map<string, IndexedAsset>()
 
 function isAssetFile(filename: string): boolean {
@@ -187,4 +220,46 @@ export function getAsset(relativePath: string): IndexedAsset | undefined {
  */
 export function getCount(): number {
   return index.size
+}
+
+/**
+ * List assets with variants grouped under their primary asset.
+ * Thumbnails (*.thumb.*) and other variants are nested instead of
+ * appearing as separate entries.
+ */
+export function listGroupedAssets(filters?: Parameters<typeof listAssets>[0]): GroupedAsset[] {
+  const all = listAssets(filters)
+
+  // Partition into variants and primaries
+  const variantMap = new Map<string, AssetVariant>()
+  const primaries: IndexedAsset[] = []
+
+  for (const asset of all) {
+    const v = detectVariant(asset.filename)
+    if (v) {
+      // Key by directory + base stem so matching is scoped to same task folder
+      const dir = asset.path.substring(0, asset.path.lastIndexOf('/'))
+      variantMap.set(`${dir}/${v.baseStem}`, { role: v.role, asset })
+    } else {
+      primaries.push(asset)
+    }
+  }
+
+  // Attach variants to their primaries
+  return primaries.map(p => {
+    const dir = p.path.substring(0, p.path.lastIndexOf('/'))
+    // Primary stem: filename without extension (e.g., "20260327-foo" from "20260327-foo.jpg")
+    const dotIdx = p.filename.lastIndexOf('.')
+    const stem = dotIdx > 0 ? p.filename.substring(0, dotIdx) : p.filename
+    const key = `${dir}/${stem}`
+
+    const variants: AssetVariant[] = []
+    const variant = variantMap.get(key)
+    if (variant) {
+      variants.push(variant)
+      variantMap.delete(key)
+    }
+
+    return { primary: p, variants }
+  })
 }

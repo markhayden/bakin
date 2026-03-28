@@ -8,9 +8,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/markdown-content'
-import { Trash2, ExternalLink, Download, Clock, User, Wrench, Tag } from 'lucide-react'
+import { Trash2, ExternalLink, Download, Clock, User, Wrench, Tag, Layers } from 'lucide-react'
+import { DeleteAssetDialog } from './delete-asset-dialog'
 import type { AssetMeta } from '@/types'
 
 function formatSize(bytes: number): string {
@@ -162,6 +162,7 @@ export function AssetDetail({ asset, onClose, onDelete }: AssetDetailProps) {
   const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}&v=${asset.mtimeMs || ''}`
 
   return (
+    <>
     <Dialog open={!!asset} onOpenChange={() => { onClose(); setConfirmDelete(false) }}>
       <DialogContent className="bg-card border-border !max-w-[calc(100vw-2rem)] !w-full h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
@@ -242,6 +243,33 @@ export function AssetDetail({ asset, onClose, onDelete }: AssetDetailProps) {
               </div>
             )}
 
+            {/* Variants */}
+            {asset.variants && asset.variants.length > 0 && (
+              <div className="border-t border-border pt-3 mt-1">
+                <div className="flex items-center gap-1 mb-1.5">
+                  <Layers className="size-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Variants</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {asset.variants.map(v => (
+                    <div key={v.path} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground capitalize">{v.role}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">{formatSize(v.size)}</span>
+                        <a
+                          href={`/api/plugins/assets/file?path=${encodeURIComponent(v.path)}`}
+                          download={v.filename}
+                          className="text-blue-400 hover:text-blue-300"
+                        >
+                          <Download className="size-3" />
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Description */}
             {asset.metadata.description && (
               <div className="text-xs text-muted-foreground border-t border-border pt-3 mt-1">
@@ -260,38 +288,25 @@ export function AssetDetail({ asset, onClose, onDelete }: AssetDetailProps) {
                 Download
               </a>
 
-              {confirmDelete ? (
-                <div className="flex gap-1">
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="flex-1 text-xs h-7"
-                    onClick={() => onDelete(asset.path)}
-                  >
-                    Confirm
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-7"
-                    onClick={() => setConfirmDelete(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="flex items-center justify-center gap-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded-md px-3 py-1.5 transition-colors"
-                >
-                  <Trash2 className="size-3.5" />
-                  Delete
-                </button>
-              )}
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="flex items-center justify-center gap-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded-md px-3 py-1.5 transition-colors"
+              >
+                <Trash2 className="size-3.5" />
+                Delete
+              </button>
             </div>
           </div>
         </div>
       </DialogContent>
     </Dialog>
+
+    <DeleteAssetDialog
+      open={confirmDelete}
+      filename={asset.filename}
+      onConfirm={() => { setConfirmDelete(false); onDelete(asset.path) }}
+      onCancel={() => setConfirmDelete(false)}
+    />
+    </>
   )
 }

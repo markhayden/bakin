@@ -39,6 +39,8 @@ import '../../scripts/lib/submit-step'
 import '../../scripts/lib/check-gates'
 import '../../scripts/lib/generate-image'
 import '../../scripts/lib/post-discord'
+import '../../scripts/lib/audit-assets'
+import '../../scripts/lib/trash-assets'
 
 const log = createLogger('mcp')
 

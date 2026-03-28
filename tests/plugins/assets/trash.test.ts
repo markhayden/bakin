@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, rmSync, existsSync, writeFileSync, readdirSync, utimesSync } from 'fs'
+import { mkdirSync, rmSync, existsSync, writeFileSync, readFileSync, readdirSync, utimesSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { softDelete, cleanTrash } from '@mc/assets/lib/trash'
+import { softDelete, cleanTrash, listTrash, restoreAsset, permanentDelete, emptyTrash, parseTrashName } from '@mc/assets/lib/trash'
 
 describe('assets/trash', () => {
   const testDir = join(tmpdir(), `beacon-test-trash-${Date.now()}`)
@@ -93,6 +93,155 @@ describe('assets/trash', () => {
     it('returns 0 for empty or missing trash', () => {
       rmSync(join(assetsRoot, '.trash'), { recursive: true })
       expect(cleanTrash(assetsRoot)).toBe(0)
+    })
+  })
+
+  describe('parseTrashName', () => {
+    it('parses valid trash filename', () => {
+      const result = parseTrashName('hero.png__deleted-1711324800000')
+      expect(result).toEqual({ originalFilename: 'hero.png', deletedAt: 1711324800000 })
+    })
+
+    it('returns null for non-trash filenames', () => {
+      expect(parseTrashName('hero.png')).toBeNull()
+      expect(parseTrashName('hero.png.meta.json')).toBeNull()
+    })
+  })
+
+  describe('listTrash', () => {
+    it('returns parsed trash items with correct fields', () => {
+      const trashDir = join(assetsRoot, '.trash')
+      const ts = Date.now()
+      writeFileSync(join(trashDir, `photo.jpg__deleted-${ts}`), 'image-bytes')
+      writeFileSync(join(trashDir, `photo.jpg__deleted-${ts}.meta.json`), JSON.stringify({
+        agent: 'pixel',
+        taskId: 'task-abc',
+        created: '2026-03-20T10:00:00Z',
+      }))
+
+      const items = listTrash(assetsRoot)
+
+      expect(items.length).toBe(1)
+      expect(items[0].originalFilename).toBe('photo.jpg')
+      expect(items[0].type).toBe('images')
+      expect(items[0].mimeType).toBe('image/jpeg')
+      expect(items[0].metadata?.agent).toBe('pixel')
+      expect(items[0].deletedAt).toBeDefined()
+      expect(items[0].expiresAt).toBeDefined()
+    })
+
+    it('returns empty array when trash is empty', () => {
+      const items = listTrash(assetsRoot)
+      expect(items).toEqual([])
+    })
+
+    it('returns empty array when trash dir does not exist', () => {
+      rmSync(join(assetsRoot, '.trash'), { recursive: true })
+      const items = listTrash(assetsRoot)
+      expect(items).toEqual([])
+    })
+
+    it('skips sidecar files in results', () => {
+      const trashDir = join(assetsRoot, '.trash')
+      const ts = Date.now()
+      writeFileSync(join(trashDir, `doc.md__deleted-${ts}`), 'content')
+      writeFileSync(join(trashDir, `doc.md__deleted-${ts}.meta.json`), '{}')
+
+      const items = listTrash(assetsRoot)
+      expect(items.length).toBe(1)
+      expect(items[0].originalFilename).toBe('doc.md')
+    })
+
+    it('sorts by deletedAt descending', () => {
+      const trashDir = join(assetsRoot, '.trash')
+      writeFileSync(join(trashDir, 'older.txt__deleted-1000000'), 'a')
+      writeFileSync(join(trashDir, 'newer.txt__deleted-2000000'), 'b')
+
+      const items = listTrash(assetsRoot)
+      expect(items[0].originalFilename).toBe('newer.txt')
+      expect(items[1].originalFilename).toBe('older.txt')
+    })
+  })
+
+  describe('restoreAsset', () => {
+    it('moves file and sidecar back to original location', () => {
+      const trashDir = join(assetsRoot, '.trash')
+      const ts = Date.now()
+      const trashFilename = `hero.png__deleted-${ts}`
+      writeFileSync(join(trashDir, trashFilename), 'image-data')
+      writeFileSync(join(trashDir, `${trashFilename}.meta.json`), JSON.stringify({
+        agent: 'pixel',
+        taskId: 'task-xyz',
+        created: '2026-03-20T10:00:00Z',
+      }))
+
+      const result = restoreAsset(trashFilename, assetsRoot)
+
+      expect(result).toBe('assets/images/task-xyz/hero.png')
+      expect(existsSync(join(assetsRoot, 'images', 'task-xyz', 'hero.png'))).toBe(true)
+      expect(existsSync(join(assetsRoot, 'images', 'task-xyz', 'hero.png.meta.json'))).toBe(true)
+      expect(existsSync(join(trashDir, trashFilename))).toBe(false)
+    })
+
+    it('restores to _unlinked when no taskId in sidecar', () => {
+      const trashDir = join(assetsRoot, '.trash')
+      const ts = Date.now()
+      const trashFilename = `doc.md__deleted-${ts}`
+      writeFileSync(join(trashDir, trashFilename), 'text-data')
+
+      const result = restoreAsset(trashFilename, assetsRoot)
+
+      expect(result).toBe('assets/text/_unlinked/doc.md')
+      expect(existsSync(join(assetsRoot, 'text', '_unlinked', 'doc.md'))).toBe(true)
+    })
+
+    it('returns null for nonexistent trash item', () => {
+      const result = restoreAsset('nope.png__deleted-999', assetsRoot)
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('permanentDelete', () => {
+    it('removes file and sidecar from .trash', () => {
+      const trashDir = join(assetsRoot, '.trash')
+      const ts = Date.now()
+      const trashFilename = `photo.jpg__deleted-${ts}`
+      writeFileSync(join(trashDir, trashFilename), 'bytes')
+      writeFileSync(join(trashDir, `${trashFilename}.meta.json`), '{}')
+
+      const result = permanentDelete(trashFilename, assetsRoot)
+
+      expect(result).toBe(true)
+      expect(existsSync(join(trashDir, trashFilename))).toBe(false)
+      expect(existsSync(join(trashDir, `${trashFilename}.meta.json`))).toBe(false)
+    })
+
+    it('returns false for nonexistent item', () => {
+      expect(permanentDelete('nope__deleted-999', assetsRoot)).toBe(false)
+    })
+  })
+
+  describe('emptyTrash', () => {
+    it('purges all items and returns count', () => {
+      const trashDir = join(assetsRoot, '.trash')
+      const ts = Date.now()
+      writeFileSync(join(trashDir, `a.png__deleted-${ts}`), 'a')
+      writeFileSync(join(trashDir, `a.png__deleted-${ts}.meta.json`), '{}')
+      writeFileSync(join(trashDir, `b.txt__deleted-${ts}`), 'b')
+
+      const deleted = emptyTrash(assetsRoot)
+
+      expect(deleted).toBe(2) // 2 asset files, sidecars don't count
+      expect(readdirSync(trashDir).length).toBe(0)
+    })
+
+    it('returns 0 for empty trash', () => {
+      expect(emptyTrash(assetsRoot)).toBe(0)
+    })
+
+    it('returns 0 for missing trash dir', () => {
+      rmSync(join(assetsRoot, '.trash'), { recursive: true })
+      expect(emptyTrash(assetsRoot)).toBe(0)
     })
   })
 })
