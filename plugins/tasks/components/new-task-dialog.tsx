@@ -173,6 +173,7 @@ export function NewTaskDialog() {
                 onChange={(e) => setColumn(e.target.value)}
                 className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
+                <option value="backlog">Backlog</option>
                 <option value="todo">Todo</option>
                 <option value="inProgress">In Progress</option>
                 <option value="blocked">Blocked</option>

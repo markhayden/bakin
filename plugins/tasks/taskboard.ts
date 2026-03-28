@@ -27,6 +27,7 @@ export function withTaskboardLock<T>(fn: () => T | Promise<T>): Promise<T> {
 // Constants
 // ---------------------------------------------------------------------------
 const COLUMN_TO_HEADER: Record<ColumnId, string> = {
+  backlog: '📦 Backlog',
   inProgress: '🔵 In Progress',
   todo: '📋 Todo',
   review: '🔍 Review',
@@ -41,9 +42,10 @@ const KNOWN_AGENTS = ['main-operator', 'patch', 'pixel', 'rolo', 'chef']
 // Valid state transitions — prevents invalid column moves
 // ---------------------------------------------------------------------------
 export const VALID_TRANSITIONS: Record<ColumnId, ColumnId[]> = {
-  todo:       ['inProgress', 'blocked', 'done'],
+  backlog:    ['todo'],
+  todo:       ['inProgress', 'blocked', 'done', 'backlog'],
   inProgress: ['review', 'done', 'blocked', 'todo'],
-  blocked:    ['todo', 'inProgress'],
+  blocked:    ['todo', 'inProgress', 'backlog'],
   review:     ['inProgress', 'todo'],
   done:       ['confirmed', 'todo'],
   confirmed:  [],
@@ -54,6 +56,7 @@ export const VALID_TRANSITIONS: Record<ColumnId, ColumnId[]> = {
 // ---------------------------------------------------------------------------
 function normalizeColumn(col: string): ColumnId | null {
   const lower = col.toLowerCase().replace(/[^a-z]/g, '')
+  if (lower === 'backlog') return 'backlog'
   if (lower === 'inprogress' || lower === 'in_progress') return 'inProgress'
   if (lower === 'todo') return 'todo'
   if (lower === 'review') return 'review'
@@ -75,7 +78,7 @@ export function serializeTaskboard(columns: TaskColumns): string {
   })
   let md = `# Task Board\n_Last updated: ${ts}_\n`
 
-  for (const colId of ['inProgress', 'todo', 'review', 'done', 'confirmed', 'blocked'] as ColumnId[]) {
+  for (const colId of ['backlog', 'inProgress', 'todo', 'review', 'done', 'confirmed', 'blocked'] as ColumnId[]) {
     const header = COLUMN_TO_HEADER[colId]
     md += `\n## ${header}\n`
     for (const task of columns[colId]) {
@@ -114,7 +117,7 @@ export function serializeTaskboard(columns: TaskColumns): string {
 // ---------------------------------------------------------------------------
 export function readTaskboard() {
   const content = readContentFile('TASKBOARD.md')
-  if (!content) return { columns: { inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] } as TaskColumns }
+  if (!content) return { columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] } as TaskColumns }
   return parseTasks(content)
 }
 

@@ -29,7 +29,7 @@ import { useGateStatus } from './use-gate-status'
 import { Kanban, Table2 } from 'lucide-react'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
-const COLUMN_ORDER: ColumnId[] = ['todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
+const COLUMN_ORDER: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
 
 function parseCompositeId(id: string): { columnId: ColumnId; taskId: string } | null {
   const parts = String(id).split('::')
@@ -76,7 +76,7 @@ export function KanbanBoard() {
   const taskboardContent = files['TASKBOARD.md'] || ''
 
   const parsed = useMemo(() => {
-    if (!taskboardContent) return { columns: { inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] } as TaskColumns, timestamp: undefined }
+    if (!taskboardContent) return { columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] } as TaskColumns, timestamp: undefined }
     return parseTasks(taskboardContent)
   }, [taskboardContent])
 

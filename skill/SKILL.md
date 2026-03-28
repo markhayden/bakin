@@ -50,6 +50,41 @@ mcporter call beacon-<agent>.beacon_get_step taskId=<id>```
 
 Your agent identity is automatically injected by the MCP server — you do not need to specify it.
 
+<!-- beacon:exec-tools:start -->
+## Execution Tools
+
+> Auto-managed by `beacon doctor`. Do not edit this block manually.
+
+Use these tools to accomplish actual work — saving files, posting content, generating images. Called the same way as MCP tools via mcporter.
+
+| Tool | Purpose |
+|------|---------|
+| `beacon_exec_save_asset` | Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically. |
+| `beacon_exec_log` | Log a formatted progress update with category and stage tags. Categories: start, progress, milestone, blocked, complete. More structured than raw beacon_log_progress. |
+| `beacon_exec_get_step` | Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure. |
+| `beacon_exec_submit_step` | Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip. |
+| `beacon_exec_check_gates` | Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending. |
+| `beacon_exec_gen_image` | Generate an image via Gemini Imagen (Nano Banana). Default model: flash (cheaper). Use model=pro for higher quality. Default: 1080x1920 portrait (9:16) for Stories/Reels. Presets: social-portrait, social-square, social-landscape, custom. Auto-generates thumbnail. Max 1200px on any edge. |
+| `beacon_exec_post_discord` | Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds. |
+| `beacon_exec_audit_assets` | Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars. |
+| `beacon_exec_list_trash` | List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge. |
+| `beacon_exec_restore_trash` | Restore a trashed asset back to its original location. Use beacon_exec_list_trash first to get the filename. |
+| `beacon_exec_empty_trash` | Permanently delete all items from trash. This cannot be undone. |
+
+### Quick Reference
+
+```bash
+# Save a file as a managed asset (handles naming + sidecar automatically)
+mcporter call beacon-<agent>.beacon_exec_save_asset taskId=<id> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<desc>"
+# Post to Discord (with optional image/video attachment)
+mcporter call beacon-<agent>.beacon_exec_post_discord channel="<name>" content="<msg>" taskId=<id>
+# Generate image via Nano Banana
+mcporter call beacon-<agent>.beacon_exec_gen_image taskId=<id> prompt="<text>" preset=social-portrait model=flash
+# Check workflow gate statuses
+mcporter call beacon-<agent>.beacon_exec_check_gates taskId=<id>
+```
+<!-- beacon:exec-tools:end -->
+
 ## Task Lifecycle
 
 Tasks flow through columns: **TODO** -> **In Progress** -> **Done** (or **Blocked**).
@@ -61,7 +96,7 @@ When you receive a task:
 4. If blocked, block the task with a clear reason
 5. When done, report complete with a summary
 
-Valid transitions: todo→inProgress/blocked/done, inProgress→done/blocked/todo, blocked→todo/inProgress, done→confirmed/todo. The `confirmed` column is terminal — nothing leaves it.
+Valid transitions: backlog→todo, todo→inProgress/blocked/done/backlog, inProgress→done/blocked/todo, blocked→todo/inProgress/backlog, done→confirmed/todo. The `confirmed` column is terminal — nothing leaves it. The `backlog` column is for planning only — tasks there are never auto-dispatched to agents.
 
 ### Report Completion
 
@@ -158,6 +193,10 @@ Your agent identity is automatically injected by the MCP server. Use your real a
 ### Mandatory: Use the API, never edit files
 
 Always use Beacon tools (via mcporter) to manage tasks. Direct edits to TASKBOARD.md bypass locking, validation, and audit logging.
+
+### Mandatory: Never run scripts/bin/*.ts directly
+
+The `scripts/bin/` directory contains debug wrappers that call tool functions directly, bypassing Beacon's MCP server entirely. This means no Health metrics, no audit log, no tracking. Always use the MCP tool via `mcporter call beacon-<agent>.beacon_exec_<tool> ...` instead.
 
 ### Mandatory: Discover paths via beacon_get_paths
 

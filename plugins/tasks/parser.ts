@@ -5,6 +5,7 @@ import type { Task, TaskLogEntry, TaskColumns, TaskBoard, ColumnId } from './typ
 import { generateTaskId } from './ids'
 
 const COLUMN_HEADER_MAP: Record<string, ColumnId> = {
+  '📦 Backlog': 'backlog',
   '🔵 In Progress': 'inProgress',
   '📋 Todo': 'todo',
   '🔍 Review': 'review',
@@ -53,7 +54,7 @@ function parseLine(line: string): Task | null {
 }
 
 export function parseTasks(content: string): TaskBoard {
-  const columns: TaskColumns = { inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] }
+  const columns: TaskColumns = { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] }
   let currentCol: ColumnId | null = null
   let currentTask: Task | null = null
   let descLines: string[] = []

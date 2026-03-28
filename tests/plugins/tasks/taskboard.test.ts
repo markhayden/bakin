@@ -29,6 +29,7 @@ function makeTask(id: string, column: string, opts: { log?: boolean } = {}) {
 function seedColumns(columns: Partial<Record<ColumnId, string[]>>) {
   let md = '# Task Board\n_Last updated: 03/20/2026, 10:00 MDT_\n'
   const allCols: Record<ColumnId, { header: string }> = {
+    backlog: { header: '📦 Backlog' },
     inProgress: { header: '🔵 In Progress' },
     todo: { header: '📋 Todo' },
     review: { header: '🔍 Review' },
