@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { ArrowLeft, Send, Loader2, Paperclip, X, FileText, Image, Film, Music, File, Sparkles, ChevronDown, Search, Pencil } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, Paperclip, X, FileText, Image, Film, Music, File, Sparkles, ChevronDown, Search, Pencil, Trash2 } from 'lucide-react'
 import { AGENTS } from '@/lib/constants'
 import { ProjectChecklist } from './project-checklist'
 import { ProjectEditor } from './project-editor'
@@ -132,6 +132,10 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
   const [assetPickerOpen, setAssetPickerOpen] = useState(false)
   const [assetSearch, setAssetSearch] = useState('')
   const [availableAssets, setAvailableAssets] = useState<Array<{ path: string; filename: string; type: string; description?: string }>>([])
+
+  // Delete confirmation
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // ---------------------------------------------------------------------------
   // Data fetching
@@ -302,6 +306,27 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
   })
 
   // ---------------------------------------------------------------------------
+  // Delete
+  // ---------------------------------------------------------------------------
+
+  const linkedTaskCount = project?.tasks.filter(t => t.taskId).length ?? 0
+
+  const handleDelete = async (deleteLinkedTasks: boolean) => {
+    setDeleting(true)
+    try {
+      await fetch('/api/plugins/projects/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: projectId, deleteLinkedTasks }),
+      })
+      onBack()
+    } finally {
+      setDeleting(false)
+      setDeleteDialogOpen(false)
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
@@ -426,8 +451,75 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
               Edit
             </button>
           )}
+
+          <span className="w-px h-4 bg-[rgba(255,255,255,0.06)]" />
+
+          {/* Delete */}
+          <button
+            onClick={() => setDeleteDialogOpen(true)}
+            className="p-1 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            title="Delete project"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
         </div>
       </div>
+
+      {/* ── Delete confirmation dialog ── */}
+      {deleteDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => !deleting && setDeleteDialogOpen(false)} />
+          <div className="relative bg-zinc-900 border border-[rgba(255,255,255,0.08)] rounded-xl shadow-2xl w-[420px] p-6">
+            <h3 className="text-sm font-semibold text-foreground mb-2">Delete project?</h3>
+            <p className="text-[12px] text-zinc-400 mb-4">
+              This will permanently delete <span className="text-zinc-200 font-medium">{project.title}</span> and all its checklist items.
+            </p>
+
+            {linkedTaskCount > 0 && (
+              <div className="mb-4 p-3 rounded-lg bg-zinc-800/60 border border-[rgba(255,255,255,0.06)]">
+                <p className="text-[11px] text-zinc-300 mb-2">
+                  This project has <span className="font-medium text-foreground">{linkedTaskCount}</span> linked board {linkedTaskCount === 1 ? 'task' : 'tasks'}. What should happen to {linkedTaskCount === 1 ? 'it' : 'them'}?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleDelete(false)}
+                    disabled={deleting}
+                    className="flex-1 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-zinc-700/60 text-zinc-300 hover:text-foreground hover:bg-zinc-700 border border-[rgba(255,255,255,0.06)] transition-colors disabled:opacity-50"
+                  >
+                    {deleting ? 'Deleting...' : 'Keep tasks on board'}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(true)}
+                    disabled={deleting}
+                    className="flex-1 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 border border-red-500/20 transition-colors disabled:opacity-50"
+                  >
+                    {deleting ? 'Deleting...' : 'Delete tasks too'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteDialogOpen(false)}
+                disabled={deleting}
+                className="px-3 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              {linkedTaskCount === 0 && (
+                <button
+                  onClick={() => handleDelete(false)}
+                  disabled={deleting}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 border border-red-500/20 transition-colors disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Two-column body ── */}
       <div className="flex gap-6 pt-5 flex-1 min-h-0 overflow-hidden">
