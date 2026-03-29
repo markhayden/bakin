@@ -323,12 +323,24 @@ export async function dispatchSingleTask(
 }
 
 function buildDispatchMessage(
-  task: { id: string; title: string; description?: string; agent?: string },
+  task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
   agentName: string,
   contentDir: string,
   _port: number
 ): string {
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
+
+  // Project context — lightweight mention if task has a projectId
+  let projectBlock = ''
+  if (task.projectId) {
+    try {
+      const { readProject } = require('../../plugins/projects/lib/parser')
+      const project = readProject(task.projectId)
+      if (project) {
+        projectBlock = `\n\n**Project:** "${project.title}" (id: ${project.id}, ${project.progress}% complete)\nThe project spec contains detailed requirements. Call beacon_exec_project_get to read it before starting work.`
+      }
+    } catch { /* projects plugin may not be loaded */ }
+  }
   const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
   const taskboardRef = join(contentDir, 'TASKBOARD.md')
 
@@ -343,7 +355,7 @@ function buildDispatchMessage(
     return `Work on this task: "${task.title}".${detailsBlock}\n\n${contactsRef} When done: \`${mc('beacon_report_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('beacon_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
-  return `Work on this task: "${task.title}".${detailsBlock}
+  return `Work on this task: "${task.title}".${detailsBlock}${projectBlock}
 
 ## PROGRESS LOGGING — MANDATORY
 
@@ -402,6 +414,12 @@ ${mc('beacon_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-p
 
 # Check workflow gate statuses
 ${mc('beacon_exec_check_gates', `taskId=${task.id}`)}
+${task.projectId ? `
+# Project tools (this task is part of a project)
+${mc('beacon_exec_project_get', `projectId="${task.projectId}"`)}
+${mc('beacon_exec_project_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
+${mc('beacon_exec_project_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : `
+# Projects: beacon_exec_project_list, beacon_exec_project_create, beacon_exec_project_get`}
 \`\`\`
 
 ## DEPENDENCY PATTERN

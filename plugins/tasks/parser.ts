@@ -98,6 +98,8 @@ export function parseTasks(content: string): TaskBoard {
         currentTask.dependsOn = depMatch[1]
       } else if (wfMatch) {
         currentTask.workflowId = wfMatch[1]
+      } else if (trimmed.match(/^projectId:\s*(\S+)/)) {
+        currentTask.projectId = trimmed.match(/^projectId:\s*(\S+)/)![1]
       } else {
         const logMatch = trimmed.match(LOG_RE)
         if (logMatch) {

@@ -35,7 +35,9 @@
       "@mc/health": ["./plugins/health"],
       "@mc/health/*": ["./plugins/health/*"],
       "@mc/schedule": ["./plugins/schedule"],
-      "@mc/schedule/*": ["./plugins/schedule/*"]
+      "@mc/schedule/*": ["./plugins/schedule/*"],
+      "@mc/projects": ["./plugins/projects"],
+      "@mc/projects/*": ["./plugins/projects/*"]
     }
   },
   "include": [

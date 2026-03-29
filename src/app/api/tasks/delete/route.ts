@@ -14,6 +14,14 @@ export async function POST(request: NextRequest) {
   try {
     await deleteTask(identifier)
     appendAudit('task.deleted', 'roscoe', { id, title })
+
+    // Auto-unlink from any project checklist items
+    if (id) {
+      import('@mc/projects/lib/project-service')
+        .then(m => m.autoUnlinkTask(id))
+        .catch(() => {}) // projects plugin may not be loaded
+    }
+
     return NextResponse.json({ ok: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
