@@ -15,6 +15,7 @@ import {
   Layers,
   AlarmClock,
   Activity,
+  Compass,
 } from 'lucide-react'
 import { allNavItems } from '@/lib/plugin-manifest'
 import { useSidebarContext } from '@/context/sidebar-context'
@@ -37,6 +38,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Layers,
   AlarmClock,
   Activity,
+  Compass,
 }
 
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {

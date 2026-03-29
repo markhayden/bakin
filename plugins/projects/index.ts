@@ -136,9 +136,21 @@ const projectsPlugin: MCPlugin = {
       method: 'POST',
       description: 'Delete a project',
       handler: async (req) => {
-        const body = await readBody<{ id: string }>(req)
+        const body = await readBody<{ id: string; deleteLinkedTasks?: boolean }>(req)
         if (!body.id) return json({ error: 'Missing id' }, 400)
         try {
+          // If requested, delete linked board tasks before deleting the project
+          if (body.deleteLinkedTasks) {
+            const project = readProject(body.id)
+            if (project) {
+              const { deleteTask } = await import('../../plugins/tasks/taskboard')
+              for (const item of project.tasks) {
+                if (item.taskId) {
+                  try { await deleteTask(item.taskId) } catch { /* task may already be gone */ }
+                }
+              }
+            }
+          }
           await deleteProject(body.id)
           return json({ ok: true })
         } catch (err: any) {
