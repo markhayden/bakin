@@ -76,6 +76,16 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `beacon_exec_schedule_pause` | Pause, resume, or skip runs for a scheduled job |
 | `beacon_exec_schedule_delete` | Delete a scheduled job |
 | `beacon_exec_schedule_briefing` | Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing. |
+| `beacon_exec_project_list` | List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount. |
+| `beacon_exec_project_get` | Get a project by ID including full spec, checklist, progress, and linked board task statuses. |
+| `beacon_exec_project_create` | Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs. |
+| `beacon_exec_project_update` | Update a project's title, status, body, or owner. Cannot set status to "completed" if unchecked items remain. |
+| `beacon_exec_project_delete` | Delete a project by ID. |
+| `beacon_exec_project_add_item` | Add a new checklist item to a project. |
+| `beacon_exec_project_mark_item` | Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage. |
+| `beacon_exec_project_remove_item` | Remove a checklist item from a project. |
+| `beacon_exec_project_link_item` | Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project. |
+| `beacon_exec_project_promote_item` | Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set. |
 
 ### Quick Reference
 

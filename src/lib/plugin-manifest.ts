@@ -10,6 +10,7 @@ import { navItems as calendarNav } from '../../plugins/calendar/client'
 import { navItems as assetsNav } from '../../plugins/assets/client'
 import { navItems as scheduleNav } from '../../plugins/schedule/client'
 import { navItems as healthNav } from '../../plugins/health/client'
+import { navItems as projectsNav } from '../../plugins/projects/client'
 import type { NavItem } from './plugin-types'
 
 export const allNavItems: NavItem[] = [
@@ -21,4 +22,5 @@ export const allNavItems: NavItem[] = [
   ...assetsNav,
   ...scheduleNav,
   ...healthNav,
+  ...projectsNav,
 ].sort((a, b) => (a.order ?? 100) - (b.order ?? 100))

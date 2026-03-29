@@ -114,6 +114,13 @@ export async function moveTaskWithEffects(
     })
   }
 
+  // Auto-check project checklist items when task reaches done or confirmed
+  if (to.toLowerCase() === 'done' || to.toLowerCase() === 'confirmed') {
+    import('../../plugins/projects/lib/project-service')
+      .then(m => m.autoCheckLinkedItem(taskId))
+      .catch(() => {}) // projects plugin may not be loaded
+  }
+
   // Auto-unblock parent when a child workflow task moves out of blocked
   const toLower = to.toLowerCase()
   if (toLower !== 'blocked') {
@@ -189,6 +196,7 @@ export async function createTaskWithEffects(opts: {
   skipWorkflowReason?: string
   createdBy?: string
   parentId?: string
+  projectId?: string
   channel?: Channel
 }): Promise<{ id: string; workflowId?: string; suggestedWorkflow?: string }> {
   // Auto-match workflow if none was explicitly provided
@@ -204,6 +212,7 @@ export async function createTaskWithEffects(opts: {
     opts.createdBy,
     undefined, // id — let it auto-generate
     opts.parentId,
+    opts.projectId,
   )
 
   // Start workflow instance if one was specified

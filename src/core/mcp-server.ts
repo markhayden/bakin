@@ -155,8 +155,9 @@ function registerTools(server: McpServer, getAgent: () => string): void {
       parentId: z.string().optional().describe('Parent task ID if this is a subtask'),
       workflowId: z.string().optional().describe('Workflow to start (e.g. image-social-post, video-script). Use beacon_list_workflows to see options.'),
       skipWorkflowReason: z.string().optional().describe('Reason no workflow applies (required if workflowId is not set and this is not a subtask)'),
+      projectId: z.string().optional().describe('Project ID to link this task to'),
     },
-    async ({ title, assignee, description, parentId, workflowId, skipWorkflowReason }) => {
+    async ({ title, assignee, description, parentId, workflowId, skipWorkflowReason, projectId }) => {
       const agent = getAgent()
       recordToolCall('beacon_create_task', agent)
 
@@ -177,6 +178,7 @@ function registerTools(server: McpServer, getAgent: () => string): void {
           skipWorkflowReason,
           createdBy: agent,
           parentId,
+          projectId: projectId as string | undefined,
           channel: 'mcp',
         })
         // Auto-dispatch subtasks
@@ -355,6 +357,26 @@ function registerTools(server: McpServer, getAgent: () => string): void {
       if (!result) {
         return { content: [{ type: 'text' as const, text: `Task ${taskId} not found on the board.` }], isError: true }
       }
+
+      // Enrich with project context if task has projectId
+      const pId = (result.task as Record<string, unknown>).projectId as string | undefined
+      if (pId) {
+        try {
+          const { readProject } = await import('../../plugins/projects/lib/parser')
+          const project = readProject(pId)
+          if (project) {
+            ;(result as Record<string, unknown>).projectTitle = project.title
+            ;(result as Record<string, unknown>).projectStatus = project.status
+            ;(result as Record<string, unknown>).projectProgress = project.progress
+            ;(result as Record<string, unknown>).projectExcerpt = project.body.slice(0, 500)
+          } else {
+            ;(result as Record<string, unknown>).projectPluginAvailable = false
+          }
+        } catch {
+          ;(result as Record<string, unknown>).projectPluginAvailable = false
+        }
+      }
+
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
     },
   )

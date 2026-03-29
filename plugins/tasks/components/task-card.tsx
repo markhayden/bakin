@@ -85,6 +85,14 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
         <span className="text-xs text-blue-400/70 mt-1">⚡ {task.workflowId}</span>
       )}
 
+      {/* Project badge */}
+      {task.projectId && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-violet-400/70 mt-1">
+          <span className="size-2 rounded-sm bg-violet-500/30" />
+          {task.projectId.slice(0, 6)}
+        </span>
+      )}
+
       {/* Gate approval indicator */}
       {gateLabel && (
         <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 whitespace-nowrap overflow-hidden">

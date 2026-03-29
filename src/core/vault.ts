@@ -110,8 +110,11 @@ function loadFromAuthProfiles(): void {
 
 /**
  * Get a credential by key. Returns null if not found.
+ * Auto-initializes if not yet loaded (handles Next.js webpack re-evaluation
+ * where the module instance differs from the custom server).
  */
 export function get(key: string): string | null {
+  if (!initialized) initialize()
   const entry = store.get(key)
   return entry?.value ?? null
 }

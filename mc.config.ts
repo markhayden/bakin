@@ -9,6 +9,7 @@ const config: MCConfig = {
     { path: 'plugins/workflows' },
     { path: 'plugins/assets' },
     { path: 'plugins/schedule' },
+    { path: 'plugins/projects' },
   ],
   theme: {},
 }
