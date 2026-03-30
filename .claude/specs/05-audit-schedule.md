@@ -5,7 +5,7 @@
 ## Current Inventory
 
 - **Routes (9):** `GET /jobs`, `POST /jobs`, `PUT /jobs/update`, `POST /jobs/delete`, `POST /jobs/pause`, `POST /jobs/run-now`, `GET /runs`, `POST /parse-schedule`, `POST /bridge`
-- **Exec tools (6):** `beacon_exec_schedule_list`, `_create`, `_update`, `_pause`, `_delete`, `_briefing`
+- **Exec tools (6):** `bakin_exec_schedule_list`, `_create`, `_update`, `_pause`, `_delete`, `_briefing`
 - **Nav items:** Schedule (AlarmClock, order 22)
 - **Client components:** 12 (cron UI, calendar views, job cards, run history, agent badge, etc.)
 - **Cross-plugin deps:** `task-service` (createTaskWithEffects), `audit` (appendAudit), `content-dir`, dynamic imports of `tasks/taskboard`
@@ -48,7 +48,7 @@ Schedule already has failure counting and cooldown — audit for:
 - Major migration: bridge function must use hooks instead of direct task-service import
 
 ### Activity Reporting
-Schedule currently broadcasts directly via `globalThis.__beaconBroadcast`. Replace with `ctx.activity.log()` and `ctx.activity.audit()`.
+Schedule currently broadcasts directly via `globalThis.__bakinBroadcast`. Replace with `ctx.activity.log()` and `ctx.activity.audit()`.
 
 ## Settings Schema
 ```typescript

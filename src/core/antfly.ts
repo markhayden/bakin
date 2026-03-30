@@ -1,6 +1,6 @@
 /**
- * Antfly core module for Beacon.
- * Optional vector database integration — Beacon works without it.
+ * Antfly core module for Bakin.
+ * Optional vector database integration — Bakin works without it.
  * When enabled, provides dual-write sync and hybrid search across all content.
  *
  * Uses direct HTTP calls to the Antfly REST API (no SDK dependency at runtime).
@@ -13,7 +13,7 @@ const log = createLogger('antfly')
 let baseUrl: string | null = null
 let isInitialized = false
 
-// Table names for Beacon content
+// Table names for Bakin content (keeping beacon_ prefix for backward compat with existing indexes)
 export const TABLES = {
   tasks: 'beacon_tasks',
   decisions: 'beacon_decisions',
@@ -101,7 +101,7 @@ async function ensureTables(): Promise<void> {
         method: 'POST',
         body: JSON.stringify({
           num_shards: 1,
-          description: `Beacon ${key} — auto-created`,
+          description: `Bakin ${key} — auto-created`,
           schema: {
             default_type: key,
             document_schemas: {
@@ -222,7 +222,7 @@ export async function search(
       return await searchTable(tableName, query, limit, options.agent)
     }
 
-    // Search all Beacon tables and merge results
+    // Search all Bakin tables and merge results
     const allResults: SearchResult[] = []
     const perTable = Math.ceil(limit / Object.keys(TABLES).length)
 
@@ -385,7 +385,7 @@ export async function indexAuditEvent(entry: {
 
 /**
  * Reindex all content from disk into Antfly.
- * Called by `beacon reindex` or the /api/reindex endpoint.
+ * Called by `bakin reindex` or the /api/reindex endpoint.
  */
 export async function reindexAll(contentDir: string): Promise<number> {
   if (!enabled()) {

@@ -1,5 +1,5 @@
 /**
- * Beacon Doctor — health checks, OpenClaw sync, and auto-repair.
+ * Bakin Doctor — health checks, OpenClaw sync, and auto-repair.
  * Runs on startup and on a configurable cadence to keep systems aligned.
  *
  * Auto-fix policy:
@@ -14,7 +14,7 @@ import { join, dirname } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
-import { isUsingBeaconHome, getContentDir } from './content-dir'
+import { isUsingBakinHome, getContentDir } from './content-dir'
 import * as openclaw from './openclaw-client'
 import { readTaskboard, clearDependency } from '../../plugins/tasks/taskboard'
 import { listDefinitions } from '../../plugins/workflows/parser'
@@ -59,7 +59,7 @@ function fixed(check: string, message: string): DiagnosticResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Agent roster: compare Beacon settings vs openclaw.json.
+ * Agent roster: compare Bakin settings vs openclaw.json.
  * NOT auto-fixable — which system is "right" requires human judgment.
  */
 function checkAgentRoster(contentDir: string): DiagnosticResult[] {
@@ -75,24 +75,24 @@ function checkAgentRoster(contentDir: string): DiagnosticResult[] {
   try {
     const config = JSON.parse(readFileSync(openclawConfigPath, 'utf-8'))
     const openclawAgents = (config.agents?.list || []).map((a: { id: string }) => a.id)
-    const beaconAgents = settings.agents
+    const bakinAgents = settings.agents
 
-    for (const agent of beaconAgents) {
+    for (const agent of bakinAgents) {
       const resolved = agent === 'main-operator' ? 'main' : agent
       if (!openclawAgents.includes(resolved)) {
-        results.push(warn('agent-roster', `Agent "${agent}" is in Beacon but not in OpenClaw`))
+        results.push(warn('agent-roster', `Agent "${agent}" is in Bakin but not in OpenClaw`))
       }
     }
 
     for (const ocAgent of openclawAgents) {
-      const beaconName = ocAgent === 'main' ? 'main-operator' : ocAgent
-      if (!beaconAgents.includes(beaconName)) {
-        results.push(warn('agent-roster', `Agent "${ocAgent}" is in OpenClaw but not in Beacon settings`))
+      const bakinName = ocAgent === 'main' ? 'main-operator' : ocAgent
+      if (!bakinAgents.includes(bakinName)) {
+        results.push(warn('agent-roster', `Agent "${ocAgent}" is in OpenClaw but not in Bakin settings`))
       }
     }
 
     if (results.length === 0) {
-      results.push(ok('agent-roster', `${beaconAgents.length} agents in sync`))
+      results.push(ok('agent-roster', `${bakinAgents.length} agents in sync`))
     }
   } catch (err) {
     results.push(error('agent-roster', `Failed to read openclaw.json: ${err}`))
@@ -203,9 +203,10 @@ function checkTaskboard(contentDir: string, autoFix: boolean): DiagnosticResult[
     }
 
     // Column headers
-    const hasInProgress = content.includes('In Progress')
-    const hasTodo = content.includes('Todo')
-    const hasDone = content.includes('Done')
+    const lower = content.toLowerCase()
+    const hasInProgress = lower.includes('in progress')
+    const hasTodo = lower.includes('todo')
+    const hasDone = lower.includes('done')
     if (!hasInProgress || !hasTodo || !hasDone) {
       results.push(warn('taskboard', 'TASKBOARD.md missing standard column headers'))
     }
@@ -221,33 +222,33 @@ function checkTaskboard(contentDir: string, autoFix: boolean): DiagnosticResult[
 }
 
 /**
- * Skill: install/update the Beacon skill in OpenClaw workspace.
+ * Skill: install/update the Bakin skill in OpenClaw workspace.
  * Auto-fixable — safe because it creates/overwrites only our own skill file.
  */
 function checkAndSyncSkill(projectRoot: string, autoFix: boolean): DiagnosticResult[] {
   const sourceSkill = join(projectRoot, 'skill', 'SKILL.md')
   if (!existsSync(sourceSkill)) {
-    return [error('skill', 'Beacon skill source not found at skill/SKILL.md')]
+    return [error('skill', 'Bakin skill source not found at skill/SKILL.md')]
   }
 
-  const workspaceSkillDir = join(process.env.HOME || '~', '.openclaw', 'workspace', 'skills', 'beacon')
+  const workspaceSkillDir = join(process.env.HOME || '~', '.openclaw', 'workspace', 'skills', 'bakin')
   const targetSkill = join(workspaceSkillDir, 'SKILL.md')
   const sourceContent = readFileSync(sourceSkill, 'utf-8')
 
   if (!existsSync(targetSkill)) {
     if (!autoFix) {
-      return [warn('skill', 'Beacon skill not installed in OpenClaw', true)]
+      return [warn('skill', 'Bakin skill not installed in OpenClaw', true)]
     }
     try {
       mkdirSync(workspaceSkillDir, { recursive: true })
       writeFileSync(targetSkill, sourceContent, 'utf-8')
       writeFileSync(join(workspaceSkillDir, '_meta.json'), JSON.stringify({
-        slug: 'beacon',
+        slug: 'bakin',
         version: '1.0.0',
         installedAt: Date.now(),
-        source: 'beacon-doctor',
+        source: 'bakin-doctor',
       }, null, 2), 'utf-8')
-      return [fixed('skill', 'Beacon skill installed in OpenClaw workspace')]
+      return [fixed('skill', 'Bakin skill installed in OpenClaw workspace')]
     } catch (err) {
       return [error('skill', `Failed to install skill: ${err}`)]
     }
@@ -255,11 +256,11 @@ function checkAndSyncSkill(projectRoot: string, autoFix: boolean): DiagnosticRes
 
   const currentContent = readFileSync(targetSkill, 'utf-8')
   if (currentContent === sourceContent) {
-    return [ok('skill', 'Beacon skill is up to date')]
+    return [ok('skill', 'Bakin skill is up to date')]
   }
 
   if (!autoFix) {
-    return [warn('skill', 'Beacon skill is outdated in OpenClaw', true)]
+    return [warn('skill', 'Bakin skill is outdated in OpenClaw', true)]
   }
 
   try {
@@ -274,9 +275,9 @@ function checkAndSyncSkill(projectRoot: string, autoFix: boolean): DiagnosticRes
     parts[2] = (parts[2] || 0) + 1
     meta.version = parts.join('.')
     meta.updatedAt = Date.now()
-    meta.source = 'beacon-doctor'
+    meta.source = 'bakin-doctor'
     writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8')
-    return [fixed('skill', `Beacon skill updated to v${meta.version}`)]
+    return [fixed('skill', `Bakin skill updated to v${meta.version}`)]
   } catch (err) {
     return [error('skill', `Failed to update skill: ${err}`)]
   }
@@ -294,7 +295,7 @@ async function checkAntfly(): Promise<DiagnosticResult[]> {
     if (!installed()) {
       return [warn('antfly', 'Antfly disabled and binary not installed — install with: brew install --cask antflydb/antfly/antfly')]
     }
-    return [ok('antfly', 'Antfly disabled — binary installed, enable with: beacon settings set antfly.enabled true')]
+    return [ok('antfly', 'Antfly disabled — binary installed, enable with: bakin settings set antfly.enabled true')]
   }
 
   if (!installed()) {
@@ -302,7 +303,7 @@ async function checkAntfly(): Promise<DiagnosticResult[]> {
   }
 
   if (!running()) {
-    return [error('antfly', 'Antfly enabled but server not running — it should auto-start on next Beacon restart')]
+    return [error('antfly', 'Antfly enabled but server not running — it should auto-start on next Bakin restart')]
   }
 
   try {
@@ -319,33 +320,33 @@ async function checkAntfly(): Promise<DiagnosticResult[]> {
 }
 
 /**
- * Content directory: verify content lives in ~/.beacon/ not ./content/.
+ * Content directory: verify content lives in ~/.bakin/ not ./content/.
  * NOT auto-fixable — migration requires user judgment (moving live data).
  */
 function checkContentDir(): DiagnosticResult[] {
   const contentDir = getContentDir()
-  if (isUsingBeaconHome()) {
+  if (isUsingBakinHome()) {
     return [ok('content-dir', `Content directory: ${contentDir}`)]
   }
   return [warn('content-dir',
-    `Content lives at ${contentDir} instead of ~/.beacon/ — run: beacon init && move content/* to ~/.beacon/`
+    `Content lives at ${contentDir} instead of ~/.bakin/ — run: bakin init && move content/* to ~/.bakin/`
   )]
 }
 
 /**
- * Orchestrator rules: verify AGENTS.md has the Beacon rules block and it's current.
+ * Orchestrator rules: verify AGENTS.md has the Bakin rules block and it's current.
  * Auto-fixable — safe to write/update our own block in AGENTS.md.
  */
-const AGENT_RULES_BLOCK_START = '<!-- beacon:orchestrator-rules:start -->'
-const AGENT_RULES_BLOCK_END = '<!-- beacon:orchestrator-rules:end -->'
+const AGENT_RULES_BLOCK_START = '<!-- bakin:orchestrator-rules:start -->'
+const AGENT_RULES_BLOCK_END = '<!-- bakin:orchestrator-rules:end -->'
 
-const ORCHESTRATOR_RULES_CONTENT = `## Beacon Orchestrator Rules
+const ORCHESTRATOR_RULES_CONTENT = `## Bakin Orchestrator Rules
 
-> Auto-managed by \`beacon agent-rules --apply\`. Do not edit this block manually.
+> Auto-managed by \`bakin agent-rules --apply\`. Do not edit this block manually.
 
-These rules govern Main Operator as orchestrator of the Beacon multi-agent system.
+These rules govern Main Operator as orchestrator of the Bakin multi-agent system.
 
-1. **Every task gets logged before work begins.** Use \`beacon tasks create\` before spawning any subagent or producing any deliverable. No exceptions.
+1. **Every task gets logged before work begins.** Use \`bakin tasks create\` before spawning any subagent or producing any deliverable. No exceptions.
 
 2. **Never do subagent work inline.** Main Operator delegates — Main Operator does not generate images, write long-form copy, or produce video. That's what the team is for.
 
@@ -359,19 +360,19 @@ These rules govern Main Operator as orchestrator of the Beacon multi-agent syste
 
 7. **One task per agent per piece of content.** Don't assign the same content to multiple agents in parallel. Let the assigned agent drive.
 
-8. **AGENTS.md is your rulebook, not the subagents'.** The Beacon skill (SKILL.md) governs subagents. AGENTS.md governs you.
+8. **AGENTS.md is your rulebook, not the subagents'.** The Bakin skill (SKILL.md) governs subagents. AGENTS.md governs you.
 
-9. **Workflow tasks are hands-off.** If a task has a \`workflowId\`, the workflow engine manages step progression. Do not manually move workflow tasks between columns, do not produce step output yourself, and do not interfere with gates outside the Beacon UI.
+9. **Workflow tasks are hands-off.** If a task has a \`workflowId\`, the workflow engine manages step progression. Do not manually move workflow tasks between columns, do not produce step output yourself, and do not interfere with gates outside the Bakin UI.
 
 10. **Every task requires a workflow decision.** When creating a task, you MUST either specify a workflow or explain why none applies:
-    - With workflow: \`beacon tasks create "<title>" <agent> --workflow=<id>\`
-    - Without workflow: \`beacon tasks create "<title>" <agent> --no-workflow="<reason>"\`
-    If you forget, Beacon will warn you and suggest a matching workflow if one exists. Use \`beacon workflows list\` to see available workflows. The available workflows are:
+    - With workflow: \`bakin tasks create "<title>" <agent> --workflow=<id>\`
+    - Without workflow: \`bakin tasks create "<title>" <agent> --no-workflow="<reason>"\`
+    If you forget, Bakin will warn you and suggest a matching workflow if one exists. Use \`bakin workflows list\` to see available workflows. The available workflows are:
 WORKFLOW_CATALOG_PLACEHOLDER
 
 The skip reason is logged to the audit trail for debugging. Always check workflows first — most content tasks have one.
 
-11. **Gate approvals go through the UI.** When a workflow gate is reached, a notification is sent and the task card shows "Awaiting Approval" in the Beacon UI. Tell Mark a gate is waiting — do NOT approve or reject gates yourself. Mark handles gates in the task drawer.
+11. **Gate approvals go through the UI.** When a workflow gate is reached, a notification is sent and the task card shows "Awaiting Approval" in the Bakin UI. Tell Mark a gate is waiting — do NOT approve or reject gates yourself. Mark handles gates in the task drawer.
 
 ### Workflow API Reference (Main Operator only)
 
@@ -424,7 +425,7 @@ function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
 
   if (!hasBlock) {
     if (!autoFix) {
-      return [warn('orchestrator-rules', 'Orchestrator rules block missing from AGENTS.md — run: beacon agent-rules --apply', true)]
+      return [warn('orchestrator-rules', 'Orchestrator rules block missing from AGENTS.md — run: bakin agent-rules --apply', true)]
     }
     const block = `${AGENT_RULES_BLOCK_START}\n${resolvedContent}\n${AGENT_RULES_BLOCK_END}\n`
     writeFileSync(agentsPath, current.trimEnd() + '\n\n' + block, 'utf-8')
@@ -443,7 +444,7 @@ function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
   }
 
   if (!autoFix) {
-    return [warn('orchestrator-rules', 'Orchestrator rules block is outdated — run: beacon agent-rules --apply', true)]
+    return [warn('orchestrator-rules', 'Orchestrator rules block is outdated — run: bakin agent-rules --apply', true)]
   }
 
   const block = `${AGENT_RULES_BLOCK_START}\n${resolvedContent}\n${AGENT_RULES_BLOCK_END}`
@@ -461,7 +462,7 @@ function checkMcporter(port: number, autoFix: boolean): DiagnosticResult[] {
 
   if (!mcporter.isMcporterInstalled()) {
     if (!autoFix) {
-      return [warn('mcporter', 'mcporter not installed — run: beacon setup mcporter', true)]
+      return [warn('mcporter', 'mcporter not installed — run: bakin setup mcporter', true)]
     }
     if (!mcporter.installMcporter()) {
       return [error('mcporter', 'Failed to install mcporter — run: npm i -g mcporter')]
@@ -476,7 +477,7 @@ function checkMcporter(port: number, autoFix: boolean): DiagnosticResult[] {
     if (!autoFix) {
       return [
         ...results,
-        warn('mcporter', `${missing.length} agent(s) missing or outdated in mcporter config — run: beacon setup mcporter`, true),
+        warn('mcporter', `${missing.length} agent(s) missing or outdated in mcporter config — run: bakin setup mcporter`, true),
       ]
     }
     const changes = mcporter.syncConfig(port)
@@ -511,7 +512,7 @@ function checkService(projectRoot: string): DiagnosticResult[] {
   const plistPath = join(homedir, 'Library', 'LaunchAgents', 'com.openclaw.mc.plist')
 
   if (!existsSync(plistPath)) {
-    results.push(warn('service', 'LaunchAgent plist not found — run: beacon setup service'))
+    results.push(warn('service', 'LaunchAgent plist not found — run: bakin setup service'))
     return results
   }
 
@@ -522,7 +523,7 @@ function checkService(projectRoot: string): DiagnosticResult[] {
     const wdMatch = plistContent.match(/<key>WorkingDirectory<\/key>\s*<string>([^<]+)<\/string>/)
     if (wdMatch && wdMatch[1] !== projectRoot) {
       results.push(error('service',
-        `LaunchAgent WorkingDirectory is "${wdMatch[1]}" but project is at "${projectRoot}" — run: beacon setup service`
+        `LaunchAgent WorkingDirectory is "${wdMatch[1]}" but project is at "${projectRoot}" — run: bakin setup service`
       ))
     }
 
@@ -530,7 +531,7 @@ function checkService(projectRoot: string): DiagnosticResult[] {
     const serverMatch = plistContent.match(/<string>([^<]*server\.ts)<\/string>/)
     if (serverMatch && serverMatch[1] !== join(projectRoot, 'server.ts')) {
       results.push(error('service',
-        `LaunchAgent references stale server.ts path — run: beacon setup service`
+        `LaunchAgent references stale server.ts path — run: bakin setup service`
       ))
     }
   } catch (err) {
@@ -543,7 +544,7 @@ function checkService(projectRoot: string): DiagnosticResult[] {
     const { execSync } = require('child_process')
     execSync('launchctl list com.openclaw.mc', { encoding: 'utf-8', stdio: 'pipe' })
   } catch {
-    results.push(warn('service', 'LaunchAgent plist exists but service is not loaded — run: beacon setup service'))
+    results.push(warn('service', 'LaunchAgent plist exists but service is not loaded — run: bakin setup service'))
   }
 
   if (results.length === 0) {
@@ -649,7 +650,7 @@ async function notifyUnfixableIssues(results: DiagnosticResult[]): Promise<void>
     return `[${icon}] ${i.check}: ${i.message}`
   })
 
-  const message = `Beacon Doctor found ${issues.length} issue(s) that need your attention:\n\n${lines.join('\n')}\n\nRun \`beacon doctor\` for full details.`
+  const message = `Bakin Doctor found ${issues.length} issue(s) that need your attention:\n\n${lines.join('\n')}\n\nRun \`bakin doctor\` for full details.`
 
   try {
     await openclaw.sendMessage('main', message)
@@ -673,16 +674,16 @@ interface ManagedBlockDef {
 /**
  * Check/inject/update a managed block in each agent's AGENTS.md.
  * All managed blocks follow the same marker pattern:
- *   <!-- beacon:{blockId}:start -->
+ *   <!-- bakin:{blockId}:start -->
  *   {content}
- *   <!-- beacon:{blockId}:end -->
+ *   <!-- bakin:{blockId}:end -->
  */
 function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): DiagnosticResult[] {
   const settings = getSettings()
   const results: DiagnosticResult[] = []
   const openclawBase = join(process.env.HOME || '~', '.openclaw')
-  const startMarker = `<!-- beacon:${def.blockId}:start -->`
-  const endMarker = `<!-- beacon:${def.blockId}:end -->`
+  const startMarker = `<!-- bakin:${def.blockId}:start -->`
+  const endMarker = `<!-- bakin:${def.blockId}:end -->`
   const checkName = `agent-${def.blockId}`
 
   for (const agentId of settings.agents) {
@@ -741,54 +742,54 @@ function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): DiagnosticRe
 const MANAGED_BLOCKS: ManagedBlockDef[] = [
   {
     blockId: 'mission-control',
-    contentFn: (agentId: string) => `## Beacon Mission Control
+    contentFn: (agentId: string) => `## Bakin Mission Control
 
-> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+> Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
-All Beacon interactions use **mcporter**. Your MCP server is \`beacon-${agentId}\`.
+All Bakin interactions use **mcporter**. Your MCP server is \`bakin-${agentId}\`.
 
 ### Session Start
-1. Check your tasks: \`mcporter call beacon-${agentId}.beacon_get_task taskId=<id>\`
-2. Load the Beacon skill for full conventions and tool reference
+1. Check your tasks: \`mcporter call bakin-${agentId}.bakin_get_task taskId=<id>\`
+2. Load the Bakin skill for full conventions and tool reference
 
 ### Path Discovery
 All content paths are resolved via mcporter — never hardcode paths:
 \`\`\`bash
-mcporter call beacon-${agentId}.beacon_get_paths
+mcporter call bakin-${agentId}.bakin_get_paths
 \`\`\`
 
 ### Task Changes
-- Use \`beacon_report_complete\` when done, \`beacon_block_task\` when stuck
-- Do NOT write to TASKBOARD.md directly — use Beacon tools via mcporter only
+- Use \`bakin_report_complete\` when done, \`bakin_block_task\` when stuck
+- Do NOT write to TASKBOARD.md directly — use Bakin tools via mcporter only
 
 ### Heartbeat (every 10 minutes)
-- Write your heartbeat JSON to the heartbeats path (discover via \`beacon_get_paths\`)
+- Write your heartbeat JSON to the heartbeats path (discover via \`bakin_get_paths\`)
 - Check for new tasks via mcporter`,
   },
 
   {
     blockId: 'hard-rules',
-    contentFn: (agentId: string) => `## Beacon Hard Rules
+    contentFn: (agentId: string) => `## Bakin Hard Rules
 
-> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+> Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
-- **NEVER use \`openclaw agent\` to spawn or message other agents directly.** Always create a Beacon task via \`mcporter call beacon-${agentId}.beacon_create_task title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
-- **NEVER edit TASKBOARD.md directly.** Use Beacon tools via mcporter only.
+- **NEVER use \`openclaw agent\` to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-${agentId}.bakin_create_task title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
+- **NEVER edit TASKBOARD.md directly.** Use Bakin tools via mcporter only.
 - **NEVER post to Discord without explicit instruction.** Content goes through Mark's review first.
-- **NEVER hardcode file paths.** Always discover paths via \`mcporter call beacon-${agentId}.beacon_get_paths\`. Hardcoded paths break when the content directory moves.
-- **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Beacon tracking — no MCP call, no Health metrics, no audit log. Always use the MCP tool via \`mcporter call beacon-${agentId}.beacon_exec_<tool> ...\` instead.
-- **NEVER use \`openclaw cron\` directly for recurring tasks.** Use \`mcporter call beacon-${agentId}.beacon_exec_schedule_create name="..." schedule="every day at 9am" agentId="..." taskPrompt="..."\` instead. Direct cron jobs bypass Beacon — no agent context, no task creation, no audit trail.`,
+- **NEVER hardcode file paths.** Always discover paths via \`mcporter call bakin-${agentId}.bakin_get_paths\`. Hardcoded paths break when the content directory moves.
+- **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Bakin tracking — no MCP call, no Health metrics, no audit log. Always use the MCP tool via \`mcporter call bakin-${agentId}.bakin_exec_<tool> ...\` instead.
+- **NEVER use \`openclaw cron\` directly for recurring tasks.** Use \`mcporter call bakin-${agentId}.bakin_exec_schedule_create name="..." schedule="every day at 9am" agentId="..." taskPrompt="..."\` instead. Direct cron jobs bypass Bakin — no agent context, no task creation, no audit trail.`,
   },
 
   {
     blockId: 'dependency-pattern',
-    contentFn: (agentId: string) => `## Beacon Dependency Pattern
+    contentFn: (agentId: string) => `## Bakin Dependency Pattern
 
-> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+> Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
 If your task requires output from another agent, create their task first, note its task ID, then register a dependency:
 \`\`\`bash
-mcporter call beacon-${agentId}.beacon_register_dependency taskId=<your-task-id> dependsOn=<their-task-id>
+mcporter call bakin-${agentId}.bakin_register_dependency taskId=<your-task-id> dependsOn=<their-task-id>
 \`\`\`
 Then exit — you will be automatically re-dispatched when their task completes.`,
   },
@@ -800,16 +801,16 @@ Then exit — you will be automatically re-dispatched when their task completes.
       const canVideo = agentId === 'rolo'
       const createsSubtasks = !canImage // everyone except pixel creates pixel subtasks
 
-      let content = `## Beacon Media Delegation Rules
+      let content = `## Bakin Media Delegation Rules
 
-> Auto-managed by \`beacon doctor\`. Do not edit this block manually.\n`
+> Auto-managed by \`bakin doctor\`. Do not edit this block manually.\n`
 
       if (!canImage) {
-        content += `\n**IMAGES:** You cannot generate images. Ever. Not with nano-banana-pro, not with any other tool. All image generation goes through Pixel. Create a Pixel task via \`mcporter call beacon-${agentId}.beacon_create_task\` and wait.\n`
+        content += `\n**IMAGES:** You cannot generate images. Ever. Not with nano-banana-pro, not with any other tool. All image generation goes through Pixel. Create a Pixel task via \`mcporter call bakin-${agentId}.bakin_create_task\` and wait.\n`
       }
 
       if (!canVideo) {
-        content += `\n**VIDEO:** You cannot generate video. Ever. Not with Runway, not with any other tool. All video generation goes through Rolo. Create a Rolo task via \`mcporter call beacon-${agentId}.beacon_create_task\` and wait.\n`
+        content += `\n**VIDEO:** You cannot generate video. Ever. Not with Runway, not with any other tool. All video generation goes through Rolo. Create a Rolo task via \`mcporter call bakin-${agentId}.bakin_create_task\` and wait.\n`
       }
 
       if (!canImage && !canVideo) {
@@ -819,7 +820,7 @@ Then exit — you will be automatically re-dispatched when their task completes.
       if (createsSubtasks) {
         content += `\n### When Creating Pixel or Rolo Tasks\n`
         content += `\n- **NEVER include posting instructions in a Pixel or Rolo brief.** They generate assets only — they do not post.`
-        content += `\n- Task descriptions for Pixel/Rolo should end with asset delivery: "Save to the assets directory (discover path via \`beacon_get_paths\`) and report the file path."`
+        content += `\n- Task descriptions for Pixel/Rolo should end with asset delivery: "Save to the assets directory (discover path via \`bakin_get_paths\`) and report the file path."`
         content += `\n- YOU are responsible for posting the finished content. Not Pixel. Not Rolo.`
       }
 
@@ -829,15 +830,15 @@ Then exit — you will be automatically re-dispatched when their task completes.
 
   {
     blockId: 'workflow-rules',
-    contentFn: (agentId: string) => `## Beacon Workflow Rules
+    contentFn: (agentId: string) => `## Bakin Workflow Rules
 
-> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+> Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
-When Beacon dispatches a workflow step to you, the dispatch message contains everything you need: step instructions, output schema, and the mcporter command to submit.
+When Bakin dispatches a workflow step to you, the dispatch message contains everything you need: step instructions, output schema, and the mcporter command to submit.
 
 1. **The dispatch message is your single source of truth.** Follow it exactly for workflow steps.
 
-2. **Submit output ONLY via mcporter:** \`mcporter call beacon-${agentId}.beacon_submit_step taskId=<id> stepId=<step> --args '<json>'\`. Conversational output does NOT complete the step.
+2. **Submit output ONLY via mcporter:** \`mcporter call bakin-${agentId}.bakin_submit_step taskId=<id> stepId=<step> --args '<json>'\`. Conversational output does NOT complete the step.
 
 3. **Do NOT move the task, create subtasks, or message main-operator** for workflow tasks — the workflow engine handles all coordination.
 
@@ -850,41 +851,41 @@ When Beacon dispatches a workflow step to you, the dispatch message contains eve
 
   {
     blockId: 'scheduling-rules',
-    contentFn: (agentId: string) => `## Beacon Scheduling Rules
+    contentFn: (agentId: string) => `## Bakin Scheduling Rules
 
-> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+> Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
-**NEVER use \`openclaw cron\` directly for recurring tasks.** Always use Beacon's schedule tools via mcporter. Direct cron jobs bypass Beacon tracking — no agent avatar, no prompt context, no task creation, no run history.
+**NEVER use \`openclaw cron\` directly for recurring tasks.** Always use Bakin's schedule tools via mcporter. Direct cron jobs bypass Bakin tracking — no agent avatar, no prompt context, no task creation, no run history.
 
 ### Creating Scheduled Jobs
 \`\`\`bash
-mcporter call beacon-${agentId}.beacon_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="chef" taskPrompt="Post a short recipe into #general"
+mcporter call bakin-${agentId}.bakin_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="chef" taskPrompt="Post a short recipe into #general"
 \`\`\`
 - \`schedule\` accepts natural language ("every weekday at 9am", "every Monday and Thursday at 10am") or raw cron ("0 9 * * 1-5")
-- Each scheduled run creates a Beacon task on the board, assigned to the specified agent
+- Each scheduled run creates a Bakin task on the board, assigned to the specified agent
 - Timezone is auto-detected (system IANA tz)
 
 ### Other Schedule Tools
-- \`beacon_exec_schedule_list\` — View all jobs (filter by agent or beacon-only)
-- \`beacon_exec_schedule_update\` — Change schedule, agent, prompt, etc.
-- \`beacon_exec_schedule_pause\` — Pause, resume, or skip N runs
-- \`beacon_exec_schedule_delete\` — Remove a job
-- \`beacon_exec_schedule_briefing\` — Today's schedule summary (for daily standup)
+- \`bakin_exec_schedule_list\` — View all jobs (filter by agent or bakin-only)
+- \`bakin_exec_schedule_update\` — Change schedule, agent, prompt, etc.
+- \`bakin_exec_schedule_pause\` — Pause, resume, or skip N runs
+- \`bakin_exec_schedule_delete\` — Remove a job
+- \`bakin_exec_schedule_briefing\` — Today's schedule summary (for daily standup)
 
 ### When to Use Scheduling vs One-Off Tasks
-- **Recurring work** (daily posts, weekly reports, periodic checks) → \`beacon_exec_schedule_create\`
-- **One-time deliverables** → \`beacon_create_task\``,
+- **Recurring work** (daily posts, weekly reports, periodic checks) → \`bakin_exec_schedule_create\`
+- **One-time deliverables** → \`bakin_create_task\``,
   },
 
   {
     blockId: 'asset-rules',
-    contentFn: (agentId: string) => `## Beacon Asset Rules
+    contentFn: (agentId: string) => `## Bakin Asset Rules
 
-> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+> Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
-All created content (images, video, audio, text, plans, data) MUST go to the assets directory. Use the Beacon skill for full conventions, but here's the minimum:
+All created content (images, video, audio, text, plans, data) MUST go to the assets directory. Use the Bakin skill for full conventions, but here's the minimum:
 
-1. **Discover paths via mcporter:** \`mcporter call beacon-${agentId}.beacon_get_paths\`
+1. **Discover paths via mcporter:** \`mcporter call bakin-${agentId}.bakin_get_paths\`
 2. **Organize by task:** \`\$ASSETS_DIR/<task-id>/filename.ext\`
    - **No task?** Write to \`\$ASSETS_DIR/_unlinked/\` — NEVER place files directly in the type root (e.g. \`assets/text/file.md\` is WRONG, use \`assets/text/_unlinked/file.md\`)
    - **Shared/reusable?** Write to \`\$ASSETS_DIR/library/\`
@@ -1324,7 +1325,7 @@ function checkScheduleSync(autoFix: boolean): DiagnosticResult[] {
     return [ok(checkName, 'No OpenClaw cron jobs to sync')]
   }
 
-  // Read Beacon sidecar
+  // Read Bakin sidecar
   let sidecar: { version: number; jobs: Record<string, unknown> }
   try {
     const sidecarPath = join(getContentDir(), 'schedule', 'sidecar.json')
@@ -1345,7 +1346,7 @@ function checkScheduleSync(autoFix: boolean): DiagnosticResult[] {
   }
 
   if (orphans.length === 0) {
-    return [ok(checkName, `${openclawJobs.length} cron job(s), all tracked in Beacon sidecar`)]
+    return [ok(checkName, `${openclawJobs.length} cron job(s), all tracked in Bakin sidecar`)]
   }
 
   for (const orphan of orphans) {
@@ -1354,7 +1355,7 @@ function checkScheduleSync(autoFix: boolean): DiagnosticResult[] {
       const now = new Date().toISOString()
       const entry = {
         jobId: orphan.id,
-        isBeaconJob: false,
+        isBakinJob: false,
         displayName: orphan.name,
         agentId: undefined, // Don't guess — flag for triage
         owner: 'main-operator',
@@ -1366,7 +1367,7 @@ function checkScheduleSync(autoFix: boolean): DiagnosticResult[] {
       results.push(fixed(checkName, `Auto-adopted orphan cron job "${orphan.name}" (id: ${orphan.id})`))
       log.info('Auto-adopted orphan cron job', { jobId: orphan.id, name: orphan.name })
     } else {
-      results.push(warn(checkName, `Orphan cron job "${orphan.name}" (id: ${orphan.id}) — not tracked in Beacon sidecar`, true))
+      results.push(warn(checkName, `Orphan cron job "${orphan.name}" (id: ${orphan.id}) — not tracked in Bakin sidecar`, true))
     }
   }
 
@@ -1405,8 +1406,8 @@ function checkExecToolsBlock(projectRoot: string, autoFix: boolean): DiagnosticR
   if (!existsSync(skillPath)) return []
 
   const checkName = 'skill-exec-tools'
-  const startMarker = '<!-- beacon:exec-tools:start -->'
-  const endMarker = '<!-- beacon:exec-tools:end -->'
+  const startMarker = '<!-- bakin:exec-tools:start -->'
+  const endMarker = '<!-- bakin:exec-tools:end -->'
 
   const tools = getAllExecTools()
   if (tools.length === 0) return [ok(checkName, 'No exec tools registered')]
@@ -1417,7 +1418,7 @@ function checkExecToolsBlock(projectRoot: string, autoFix: boolean): DiagnosticR
 
   const expectedContent = `## Execution Tools
 
-> Auto-managed by \`beacon doctor\`. Do not edit this block manually.
+> Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
 Use these tools to accomplish actual work — saving files, posting content, generating images, scheduling jobs. Called the same way as MCP tools via mcporter.
 
@@ -1429,17 +1430,17 @@ ${toolLines}
 
 \`\`\`bash
 # Save a file as a managed asset (handles naming + sidecar automatically)
-mcporter call beacon-<agent>.beacon_exec_save_asset taskId=<id> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<desc>"
+mcporter call bakin-<agent>.bakin_exec_save_asset taskId=<id> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<desc>"
 # Post to Discord (with optional image/video attachment)
-mcporter call beacon-<agent>.beacon_exec_post_discord channel="<name>" content="<msg>" taskId=<id>
+mcporter call bakin-<agent>.bakin_exec_post_discord channel="<name>" content="<msg>" taskId=<id>
 # Generate image via Nano Banana
-mcporter call beacon-<agent>.beacon_exec_gen_image taskId=<id> prompt="<text>" preset=social-portrait model=flash
+mcporter call bakin-<agent>.bakin_exec_gen_image taskId=<id> prompt="<text>" preset=social-portrait model=flash
 # Check workflow gate statuses
-mcporter call beacon-<agent>.beacon_exec_check_gates taskId=<id>
+mcporter call bakin-<agent>.bakin_exec_check_gates taskId=<id>
 # Create a recurring scheduled job (NEVER use openclaw cron directly)
-mcporter call beacon-<agent>.beacon_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="chef" taskPrompt="Post a short recipe"
+mcporter call bakin-<agent>.bakin_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="chef" taskPrompt="Post a short recipe"
 # List all scheduled jobs
-mcporter call beacon-<agent>.beacon_exec_schedule_list
+mcporter call bakin-<agent>.bakin_exec_schedule_list
 \`\`\``
 
   const current = readFileSync(skillPath, 'utf-8')

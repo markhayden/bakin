@@ -2,7 +2,7 @@
 
 ## Overview
 
-Beacon orchestrates a team of AI agents via the OpenClaw gateway. Each agent has a profile (identity, capabilities, tools), receives tasks through a dispatch engine, reports progress via MCP tools, and maintains a heartbeat for status tracking.
+Bakin orchestrates a team of AI agents via the OpenClaw gateway. Each agent has a profile (identity, capabilities, tools), receives tasks through a dispatch engine, reports progress via MCP tools, and maintains a heartbeat for status tracking.
 
 ## Agent Profiles
 
@@ -29,7 +29,7 @@ interface AgentProfile {
 
 Exported as `AGENT_PROFILES` (array) and `AGENT_MAP` (Record by ID).
 
-**Note:** This is currently hardcoded. Phase 4 migrates to loadable YAML/JSON files in `~/.beacon/agents/` with the main agent ID resolved at runtime from settings.
+**Note:** This is currently hardcoded. Phase 4 migrates to loadable YAML/JSON files in `~/.bakin/agents/` with the main agent ID resolved at runtime from settings.
 
 ### Lightweight agent list: `src/lib/constants.ts`
 Derives `AGENTS: AgentMeta[]` from profiles for use in dropdowns/badges (id, emoji, name, role, headshot only).
@@ -38,9 +38,9 @@ Derives `AGENTS: AgentMeta[]` from profiles for use in dropdowns/badges (id, emo
 
 ### OpenClaw Gateway (`src/core/openclaw-client.ts`)
 Agents run as OpenClaw agent instances. Communication flows:
-1. Beacon → OpenClaw HTTP API → agent receives message/task
-2. Agent → MCP tools (served by Beacon) → reads/writes state
-3. Agent → `beacon_log_progress` → SSE broadcast to dashboard
+1. Bakin → OpenClaw HTTP API → agent receives message/task
+2. Agent → MCP tools (served by Bakin) → reads/writes state
+3. Agent → `bakin_log_progress` → SSE broadcast to dashboard
 
 ### Key functions in `src/core/agents.ts`:
 - `getAgentStatus(agentId)` — reads heartbeat + taskboard to determine status
@@ -57,11 +57,11 @@ The dispatch system assigns tasks to agents:
 4. Moves task to `inProgress` column
 5. Monitors for completion/blocking
 
-Runs on an interval defined in `BeaconSettings.dispatch.intervalMs`.
+Runs on an interval defined in `BakinSettings.dispatch.intervalMs`.
 
 ## Heartbeat System
 
-Each agent writes a heartbeat JSON file to `~/.beacon/heartbeats/{agentId}.json`:
+Each agent writes a heartbeat JSON file to `~/.bakin/heartbeats/{agentId}.json`:
 ```json
 {
   "timestamp": "2026-03-28T10:30:00Z",
@@ -80,25 +80,25 @@ Status values: `working`, `idle`, `error`
 
 ## MCP Tool Access
 
-Agents interact with Beacon through MCP tools served by `src/core/mcp-server.ts`:
+Agents interact with Bakin through MCP tools served by `src/core/mcp-server.ts`:
 
 ### Core MCP tools (hardcoded in mcp-server.ts):
 | Tool | Purpose |
 |------|---------|
-| `beacon_log_progress` | Log progress to activity feed |
-| `beacon_move_task` | Move task between columns |
-| `beacon_create_task` | Create a new task |
-| `beacon_get_task` | Fetch task details |
-| `beacon_block_task` | Mark task as blocked |
-| `beacon_report_complete` | Mark task complete |
-| `beacon_register_dependency` | Set task dependencies |
-| `beacon_list_workflows` | List available workflow templates |
-| `beacon_get_step` / `beacon_submit_step` | Workflow step execution |
-| `beacon_get_paths` | Get content directory paths |
+| `bakin_log_progress` | Log progress to activity feed |
+| `bakin_move_task` | Move task between columns |
+| `bakin_create_task` | Create a new task |
+| `bakin_get_task` | Fetch task details |
+| `bakin_block_task` | Mark task as blocked |
+| `bakin_report_complete` | Mark task complete |
+| `bakin_register_dependency` | Set task dependencies |
+| `bakin_list_workflows` | List available workflow templates |
+| `bakin_get_step` / `bakin_submit_step` | Workflow step execution |
+| `bakin_get_paths` | Get content directory paths |
 
 ### Exec tools (from registry):
-Registered by plugins and core scripts. Naming: `beacon_exec_{source}_{action}`.
-Examples: `beacon_exec_save_asset`, `beacon_exec_project_list`, `beacon_exec_schedule_list`
+Registered by plugins and core scripts. Naming: `bakin_exec_{source}_{action}`.
+Examples: `bakin_exec_save_asset`, `bakin_exec_project_list`, `bakin_exec_schedule_list`
 
 ### Agent identity
 MCP sessions bind agent identity via `?agent=chef` query param at connection time. All tool calls carry the agent ID for audit attribution.
@@ -106,7 +106,7 @@ MCP sessions bind agent identity via `?agent=chef` query param at connection tim
 ## Activity Logging
 
 ### Live activity feed
-`beacon_log_progress` → `logProgress()` in `src/core/task-service.ts`:
+`bakin_log_progress` → `logProgress()` in `src/core/task-service.ts`:
 1. Broadcasts immediately via SSE: `{ type: 'activity', agent, message, ts, taskId, channel }`
 2. Appends to task's log in TASKBOARD.md
 
@@ -116,7 +116,7 @@ Optional stage tags: `[image-gen]`, `[copy-review]`, etc.
 
 ### Audit trail
 `appendAudit()` in `src/core/audit.ts`:
-1. Writes to `~/.beacon/audit.jsonl` (append-only)
+1. Writes to `~/.bakin/audit.jsonl` (append-only)
 2. Broadcasts via SSE: `{ type: 'audit', entry }`
 3. Indexes to Antfly (fire-and-forget)
 
@@ -133,7 +133,7 @@ Audit event format:
 
 ## SSE Broadcasting (`src/core/sse.ts`)
 
-Uses `globalThis.__beaconBroadcast` to survive Next.js webpack re-evaluation.
+Uses `globalThis.__bakinBroadcast` to survive Next.js webpack re-evaluation.
 
 Two broadcast functions:
 - `broadcast(data)` — sends to SSE clients + replay buffer
@@ -163,5 +163,5 @@ Monitors agent health:
 | `src/core/audit.ts` | Audit logging |
 | `src/core/sse.ts` | SSE client management |
 | `src/core/watchdog.ts` | Agent health monitoring |
-| `src/core/settings.ts` | BeaconSettings (agents list, dispatch config, etc.) |
+| `src/core/settings.ts` | BakinSettings (agents list, dispatch config, etc.) |
 | `scripts/lib/log-progress.ts` | Structured activity logging exec tool |

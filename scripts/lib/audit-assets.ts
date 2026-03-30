@@ -1,5 +1,5 @@
 /**
- * beacon_exec_audit_assets — Audit asset health and integrity.
+ * bakin_exec_audit_assets — Audit asset health and integrity.
  *
  * Checks for missing thumbnails, invalid sidecars, orphaned files.
  * Optionally auto-fixes issues like missing thumbnails and stub sidecars.
@@ -178,7 +178,7 @@ async function auditAssets(
 // ---------------------------------------------------------------------------
 
 addExecTool({
-  name: 'beacon_exec_audit_assets',
+  name: 'bakin_exec_audit_assets',
   description:
     'Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. ' +
     'Set fix=true to auto-generate missing thumbnails and create stub sidecars.',

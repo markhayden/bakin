@@ -2,7 +2,7 @@
  * Models plugin — server entry point.
  * API routes for model config, available models, aliases, and defaults.
  */
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
@@ -224,7 +224,7 @@ function readAliases(config: OpenclawConfig): Record<string, string> {
 // ---------------------------------------------------------------------------
 // Plugin definition
 // ---------------------------------------------------------------------------
-const modelsPlugin: MCPlugin = {
+const modelsPlugin: BakinPlugin = {
   id: 'models',
   name: 'Models',
   version: '2.0.0',

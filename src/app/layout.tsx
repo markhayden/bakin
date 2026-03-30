@@ -4,7 +4,7 @@ import { Providers } from '@/components/providers'
 import { Header } from '@/components/layout/header'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { LayoutShell } from '@/components/layout/layout-shell'
-import config from '../../mc.config'
+import config from '../../bakin.config'
 import './globals.css'
 
 const inter = Inter({
@@ -18,7 +18,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Beacon',
+  title: 'Bakin',
   description: 'Multi-agent command dashboard',
 }
 

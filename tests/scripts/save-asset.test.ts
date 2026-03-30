@@ -7,9 +7,9 @@ let testDir: string
 
 // Mock content-dir — uses flat dot-notation keys like 'assets.images'
 vi.mock('../../src/core/content-dir', () => ({
-  getContentDir: vi.fn(() => testDir || '/tmp/beacon-test'),
-  getBeaconPaths: vi.fn(() => {
-    const home = testDir || '/tmp/beacon-test'
+  getContentDir: vi.fn(() => testDir || '/tmp/bakin-test'),
+  getBakinPaths: vi.fn(() => {
+    const home = testDir || '/tmp/bakin-test'
     const assets = join(home, 'assets')
     return {
       home,
@@ -42,7 +42,7 @@ import { saveAsset } from '../../scripts/lib/save-asset'
 
 describe('saveAsset', () => {
   beforeEach(() => {
-    testDir = mkdtempSync(join(tmpdir(), 'beacon-test-'))
+    testDir = mkdtempSync(join(tmpdir(), 'bakin-test-'))
   })
 
   afterEach(() => {

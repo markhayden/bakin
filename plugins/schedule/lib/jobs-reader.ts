@@ -1,12 +1,12 @@
 /**
- * Reads OpenClaw cron jobs and merges with Beacon sidecar metadata.
+ * Reads OpenClaw cron jobs and merges with Bakin sidecar metadata.
  */
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '../../../src/core/logger'
 import { readSidecar, withDefaults } from './sidecar'
 import { cronToHuman } from './cron-parser'
-import type { OpenClawJob, OpenClawJobsFile, MergedJob, BeaconJobMeta } from '../types'
+import type { OpenClawJob, OpenClawJobsFile, MergedJob, BakinJobMeta } from '../types'
 
 const log = createLogger('schedule:jobs')
 
@@ -40,11 +40,11 @@ function extractOrphanContext(job: OpenClawJob): { prompt?: string } {
   // OpenClaw stores the message in payload.message
   const msg = job.payload.message
   if (typeof msg === 'string' && msg.length > 0) {
-    // If it starts with beacon:schedule:, it's a Beacon job that lost its sidecar
+    // If it starts with bakin:schedule:, it's a Bakin job that lost its sidecar
     // Otherwise surface the raw message as prompt context
-    const beaconPrefix = 'beacon:schedule:'
-    if (msg.startsWith(beaconPrefix)) {
-      return { prompt: msg.slice(beaconPrefix.length) }
+    const bakinPrefix = 'bakin:schedule:'
+    if (msg.startsWith(bakinPrefix)) {
+      return { prompt: msg.slice(bakinPrefix.length) }
     }
     return { prompt: msg }
   }
@@ -52,7 +52,7 @@ function extractOrphanContext(job: OpenClawJob): { prompt?: string } {
 }
 
 /** Merge a single OpenClaw job with its sidecar entry (if any). */
-export function mergeJob(job: OpenClawJob, sidecar: BeaconJobMeta | undefined): MergedJob {
+export function mergeJob(job: OpenClawJob, sidecar: BakinJobMeta | undefined): MergedJob {
   const meta = sidecar ? withDefaults(sidecar) : null
 
   // Normalise OpenClaw field names: kind→type, expr→value
@@ -71,8 +71,8 @@ export function mergeJob(job: OpenClawJob, sidecar: BeaconJobMeta | undefined): 
     enabled: job.enabled,
     delivery: job.delivery,
 
-    // Beacon sidecar (with defaults)
-    isBeaconJob: meta?.isBeaconJob ?? false,
+    // Bakin sidecar (with defaults)
+    isBakinJob: meta?.isBakinJob ?? false,
     displayName: meta?.displayName ?? job.name,
     description: meta?.description,
     agentId: meta?.agentId,  // null for orphans — don't guess, flag for triage

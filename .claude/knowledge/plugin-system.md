@@ -7,11 +7,11 @@ Bakin uses a custom plugin architecture where functionality is organized into se
 ## Plugin Lifecycle
 
 ```
-mc.config.ts defines enabled plugins
+bakin.config.ts defines enabled plugins
     ↓
 PluginRegistryImpl.initialize() iterates list
     ↓
-For each plugin: dynamic import → extract MCPlugin → create PluginContext → call activate(ctx)
+For each plugin: dynamic import → extract BakinPlugin → create PluginContext → call activate(ctx)
     ↓
 After built-in plugins: scan ~/.bakin/plugins/ for user plugins (override by ID)
     ↓
@@ -22,9 +22,9 @@ All registrations stored in PluginState per plugin
 
 ## Core Interfaces
 
-### MCPlugin (`src/lib/plugin-types.ts`)
+### BakinPlugin (`packages/core/src/plugin-types.ts`, re-exported via `src/lib/plugin-types.ts`)
 ```typescript
-interface MCPlugin {
+interface BakinPlugin {
   id: string
   name: string
   version: string
@@ -34,7 +34,7 @@ interface MCPlugin {
 }
 ```
 
-### PluginContext (`src/lib/plugin-types.ts`)
+### PluginContext (`packages/core/src/plugin-types.ts`)
 Provided to `activate()`. This is the plugin's only interface to the system:
 
 | Method | Purpose |
@@ -49,13 +49,13 @@ Provided to `activate()`. This is the plugin's only interface to the system:
 | `registerSkill(skill)` | Register AI skill definition |
 | `watchFiles(patterns)` | Request file watcher notifications |
 
-### PluginManifest (`beacon-plugin.json`)
+### PluginManifest (`bakin-plugin.json`)
 ```typescript
 interface PluginManifest {
   id: string
   name: string
   version: string
-  beacon: string              // semver range for compatibility
+  bakin: string               // semver range for compatibility
   description: string
   entry: { server: string; client?: string }
   contentFiles?: string[]
@@ -107,7 +107,7 @@ handler: (params: Record<string, unknown>, agent: string) => Promise<ExecToolRes
 Handlers receive raw params + agent identity. They do NOT receive PluginContext (Phase 4 enhancement).
 
 ### Naming convention
-`beacon_exec_{pluginId}_{action}` — e.g., `beacon_exec_project_list`, `beacon_exec_schedule_fire`
+`bakin_exec_{pluginId}_{action}` — e.g., `bakin_exec_project_list`, `bakin_exec_schedule_fire`
 
 ### Adding a new core tool
 1. Create `scripts/lib/{tool-name}.ts`
@@ -147,7 +147,7 @@ All paths relative to `~/.bakin/` (resolved via `getContentDir()`).
 
 ## Event Bus
 
-`src/lib/events/event-bus.ts` — `MCEventBus` implementing `EventBus`:
+`src/lib/events/event-bus.ts` — `BakinEventBus` implementing `EventBus`:
 
 - `emit(event, data)` — broadcast to all matching subscribers
 - `on(pattern, handler)` — subscribe with exact match or prefix glob (`task.*` matches `task.created`)
@@ -163,10 +163,11 @@ All paths relative to `~/.bakin/` (resolved via `getContentDir()`).
 
 | File | Purpose |
 |------|---------|
-| `src/lib/plugin-types.ts` | All interfaces (MCPlugin, PluginContext, etc.) |
+| `packages/core/src/plugin-types.ts` | All interfaces (BakinPlugin, PluginContext, etc.) |
+| `src/lib/plugin-types.ts` | Re-export shim for backward compat |
 | `src/lib/plugin-registry.ts` | Singleton registry, plugin loading, route/nav/slot lookups |
 | `src/lib/plugin-manifest.ts` | Client-side static imports, allNavItems |
-| `mc.config.ts` | Plugin enable list |
+| `bakin.config.ts` | Plugin enable list |
 | `scripts/lib/registry.ts` | Exec tool registry (addExecTool, getAllExecTools) |
 | `src/core/mcp-server.ts` | MCP server, tool registration, core tool imports |
 | `src/core/plugin-installer.ts` | Install/remove plugins from ~/.bakin/plugins/ |

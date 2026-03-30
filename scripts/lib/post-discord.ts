@@ -1,5 +1,5 @@
 /**
- * beacon_exec_post_discord — Standardized Discord posting via Main Operator's bot.
+ * bakin_exec_post_discord — Standardized Discord posting via Main Operator's bot.
  *
  * Auto-discovers channels from the Discord API using bot token and guild ID
  * from openclaw config. Caches the channel map for the process lifetime.
@@ -182,7 +182,7 @@ export async function postDiscord(params: PostDiscordParams): Promise<ExecToolRe
 }
 
 addExecTool({
-  name: 'beacon_exec_post_discord',
+  name: 'bakin_exec_post_discord',
   description: 'Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds.',
   source: 'core',
   parameters: {

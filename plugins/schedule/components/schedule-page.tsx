@@ -5,7 +5,7 @@ import { AlarmClock, List, CalendarDays, CalendarRange, Clock, Plus, Search } fr
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { BeaconDrawer } from '@/components/beacon-drawer'
+import { BakinDrawer } from '@/components/bakin-drawer'
 import { AGENTS } from '@/lib/constants'
 import { useScheduleJobs, type ScheduleJob } from '@/hooks/use-schedule'
 import { JobList } from './job-list'
@@ -29,7 +29,7 @@ type FormMode = 'create' | 'edit' | 'duplicate'
 export function SchedulePage() {
   const [view, setView] = useState<ViewMode>('week')
   const [agentFilter, setAgentFilter] = useState<string>('all')
-  const [beaconOnly, setBeaconOnly] = useState(false)
+  const [bakinOnly, setBakinOnly] = useState(false)
   const [search, setSearch] = useState('')
   const [selectedJob, setSelectedJob] = useState<ScheduleJob | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -42,7 +42,7 @@ export function SchedulePage() {
     pauseJob, resumeJob, deleteJob, runNow, updateJob, skipNext, duplicateJob,
   } = useScheduleJobs({
     agent: agentFilter === 'all' ? undefined : agentFilter,
-    beaconOnly,
+    bakinOnly,
   })
 
   const filtered = search
@@ -201,13 +201,13 @@ export function SchedulePage() {
 
         <button
           className={`text-xs px-2.5 py-1 rounded border transition-colors ${
-            beaconOnly
+            bakinOnly
               ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
               : 'text-muted-foreground border-border hover:text-foreground'
           }`}
-          onClick={() => setBeaconOnly(!beaconOnly)}
+          onClick={() => setBakinOnly(!bakinOnly)}
         >
-          Beacon only
+          Bakin only
         </button>
       </div>
 
@@ -253,7 +253,7 @@ export function SchedulePage() {
       />
 
       {/* Create / Edit / Duplicate form */}
-      <BeaconDrawer
+      <BakinDrawer
         open={showForm}
         onOpenChange={(o) => {
           if (!o) {
@@ -270,7 +270,7 @@ export function SchedulePage() {
           initial={formInitial}
           mode={formMode === 'duplicate' ? 'duplicate' : formMode}
         />
-      </BeaconDrawer>
+      </BakinDrawer>
     </div>
   )
 }

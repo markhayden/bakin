@@ -333,7 +333,7 @@ export function HealthPage() {
             ) : (
               <HorizontalBars
                 items={sortedTools.map(([tool, count]) => ({
-                  label: tool.replace('beacon_', ''),
+                  label: tool.replace('bakin_', ''),
                   value: count,
                 }))}
               />
@@ -555,7 +555,7 @@ export function HealthPage() {
                   </div>
                   {registry.execTools.map((t) => (
                     <div key={t.name} className="flex items-center text-sm">
-                      <span className="flex-1 font-mono text-muted-foreground truncate">{t.name.replace('beacon_exec_', '')}</span>
+                      <span className="flex-1 font-mono text-muted-foreground truncate">{t.name.replace('bakin_exec_', '')}</span>
                       <span className="w-16 text-right">
                         <Badge variant="secondary" className="text-[10px] px-1.5">
                           {t.source}

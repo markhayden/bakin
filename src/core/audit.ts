@@ -1,5 +1,5 @@
 /**
- * Core audit logging for Beacon.
+ * Core audit logging for Bakin.
  * Append-only JSONL file for system events.
  */
 import { appendFileSync, mkdirSync, existsSync } from 'fs'
@@ -36,7 +36,7 @@ export function appendAudit(
   // Use globalThis to reach the real SSE clients. Next.js API routes get a
   // separate webpack module instance of sse.ts with an empty clients Set.
   // The custom server's sse.ts registers the real broadcast on globalThis.
-  const broadcastFn = (globalThis as any).__beaconBroadcastAudit
+  const broadcastFn = (globalThis as any).__bakinBroadcastAudit
   if (broadcastFn) {
     broadcastFn(entry)
   } else {

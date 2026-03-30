@@ -1,5 +1,5 @@
 /**
- * Request validation middleware for Beacon.
+ * Request validation middleware for Bakin.
  * Validates Content-Type, parses JSON bodies, and provides helpers.
  */
 import type { IncomingMessage, ServerResponse } from 'http'

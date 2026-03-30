@@ -16,13 +16,14 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
-      '@mc/tasks': path.resolve(__dirname, 'plugins/tasks'),
-      '@mc/memory': path.resolve(__dirname, 'plugins/memory'),
-      '@mc/models': path.resolve(__dirname, 'plugins/models'),
-      '@mc/calendar': path.resolve(__dirname, 'plugins/calendar'),
-      '@mc/workflows': path.resolve(__dirname, 'plugins/workflows'),
-      '@mc/assets': path.resolve(__dirname, 'plugins/assets'),
-      '@mc/schedule': path.resolve(__dirname, 'plugins/schedule'),
+      '@bakin/core': path.resolve(__dirname, 'packages/core/src/index.ts'),
+      '@bakin/tasks': path.resolve(__dirname, 'plugins/tasks'),
+      '@bakin/memory': path.resolve(__dirname, 'plugins/memory'),
+      '@bakin/models': path.resolve(__dirname, 'plugins/models'),
+      '@bakin/calendar': path.resolve(__dirname, 'plugins/calendar'),
+      '@bakin/workflows': path.resolve(__dirname, 'plugins/workflows'),
+      '@bakin/assets': path.resolve(__dirname, 'plugins/assets'),
+      '@bakin/schedule': path.resolve(__dirname, 'plugins/schedule'),
     },
   },
 })

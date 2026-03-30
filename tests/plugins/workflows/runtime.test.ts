@@ -23,11 +23,11 @@ import {
   listInstances,
   getActiveAgents,
   cancelInstance,
-} from '@mc/workflows/runtime'
-import { invalidateSkillCache } from '@mc/workflows/skill-loader'
+} from '@bakin/workflows/runtime'
+import { invalidateSkillCache } from '@bakin/workflows/skill-loader'
 
 describe('runtime', () => {
-  const testDir = join(tmpdir(), `beacon-test-runtime-${Date.now()}`)
+  const testDir = join(tmpdir(), `bakin-test-runtime-${Date.now()}`)
   const defsDir = join(testDir, 'workflows', 'definitions')
   const skillsDir = join(testDir, 'workflows', 'skills')
   const instancesDir = join(testDir, 'workflows', 'instances')

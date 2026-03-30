@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getAssetType, getMimeType, ASSET_TYPES, EXTENSION_TO_TYPE } from '@mc/assets/lib/constants'
+import { getAssetType, getMimeType, ASSET_TYPES, EXTENSION_TO_TYPE } from '@bakin/assets/lib/constants'
 
 describe('assets/constants', () => {
   describe('ASSET_TYPES', () => {

@@ -2,7 +2,7 @@
  * Health plugin — server entry point.
  * Aggregates MCP stats, doctor diagnostics, request logs, and system info.
  */
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { getRequestStats } from '../../src/core/request-log'
 import { getLastResults } from '../../src/core/doctor'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
@@ -10,16 +10,16 @@ import { getAllAgentUsage } from '../../src/core/agent-usage'
 // separate webpack-compiled module instances with empty Maps. The custom
 // server (server.ts) registers the real accessors after plugin init.
 function getRegistrySnapshot() {
-  const fn = (globalThis as any).__beaconGetRegistrySnapshot
+  const fn = (globalThis as any).__bakinGetRegistrySnapshot
   return fn ? fn() : []
 }
 
 function getExecToolStats() {
-  const fn = (globalThis as any).__beaconGetExecToolStats
+  const fn = (globalThis as any).__bakinGetExecToolStats
   return fn ? fn() : []
 }
 
-const healthPlugin: MCPlugin = {
+const healthPlugin: BakinPlugin = {
   id: 'health',
   name: 'Health',
   version: '1.0.0',

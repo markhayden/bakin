@@ -5,8 +5,8 @@ import { tmpdir } from 'os'
 
 // Mock dependencies before importing
 vi.mock('@/core/content-dir', () => ({
-  getContentDir: vi.fn(() => '/tmp/beacon-test'),
-  getBeaconPaths: vi.fn(() => ({ home: '/tmp/beacon-test' })),
+  getContentDir: vi.fn(() => '/tmp/bakin-test'),
+  getBakinPaths: vi.fn(() => ({ home: '/tmp/bakin-test' })),
 }))
 
 vi.mock('@/core/audit', () => ({
@@ -43,7 +43,7 @@ const mockReadTaskboard = vi.fn(() => ({
 const mockSetDependency = vi.fn(() => Promise.resolve())
 const mockUpdateTask = vi.fn(() => Promise.resolve())
 
-vi.mock('@mc/tasks/taskboard', () => ({
+vi.mock('@bakin/tasks/taskboard', () => ({
   addTaskLog: mockAddTaskLog,
   blockTask: mockBlockTask,
   createTask: mockCreateTask,
@@ -53,12 +53,12 @@ vi.mock('@mc/tasks/taskboard', () => ({
   updateTask: mockUpdateTask,
 }))
 
-vi.mock('@mc/workflows/runtime', () => ({
+vi.mock('@bakin/workflows/runtime', () => ({
   createInstance: vi.fn(),
   loadInstance: vi.fn(() => null),
 }))
 
-vi.mock('@mc/workflows/matcher', () => ({
+vi.mock('@bakin/workflows/matcher', () => ({
   matchWorkflow: vi.fn(() => null),
 }))
 
@@ -69,12 +69,12 @@ describe('task-service', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     mockBroadcast = vi.fn()
-    ;(globalThis as any).__beaconBroadcast = mockBroadcast
+    ;(globalThis as any).__bakinBroadcast = mockBroadcast
     service = await import('@/core/task-service')
   })
 
   afterEach(() => {
-    delete (globalThis as any).__beaconBroadcast
+    delete (globalThis as any).__bakinBroadcast
   })
 
   describe('logProgress', () => {
@@ -94,7 +94,7 @@ describe('task-service', () => {
     })
 
     it('should broadcast even if no SSE handler registered', async () => {
-      delete (globalThis as any).__beaconBroadcast
+      delete (globalThis as any).__bakinBroadcast
       await service.logProgress('task-1', 'pixel', 'test')
       expect(mockAddTaskLog).toHaveBeenCalledOnce()
     })
@@ -139,7 +139,7 @@ describe('task-service', () => {
     })
 
     it('should enforce workflow done-guard', async () => {
-      const { loadInstance } = await import('@mc/workflows/runtime')
+      const { loadInstance } = await import('@bakin/workflows/runtime')
       mockReadTaskboard.mockReturnValueOnce({
         columns: {
           todo: [],
@@ -197,6 +197,7 @@ describe('task-service', () => {
         'chef',   // createdBy
         undefined, // id
         undefined, // parentId
+        undefined, // projectId
       )
     })
 
@@ -216,7 +217,7 @@ describe('task-service', () => {
 
   describe('reportComplete', () => {
     it('should reject workflow tasks', async () => {
-      const { loadInstance } = await import('@mc/workflows/runtime')
+      const { loadInstance } = await import('@bakin/workflows/runtime')
       mockReadTaskboard.mockReturnValueOnce({
         columns: {
           todo: [],

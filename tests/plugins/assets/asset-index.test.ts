@@ -4,7 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 // Mock content-dir before importing asset-index
-const testDir = join(tmpdir(), `beacon-test-index-${Date.now()}`)
+const testDir = join(tmpdir(), `bakin-test-index-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
 vi.mock('../../../src/core/content-dir', () => ({
@@ -20,7 +20,7 @@ vi.mock('../../../src/core/logger', () => ({
   }),
 }))
 
-import { buildIndex, upsertAsset, removeAsset, listAssets, listGroupedAssets, detectVariant, getAsset, getCount } from '@mc/assets/lib/asset-index'
+import { buildIndex, upsertAsset, removeAsset, listAssets, listGroupedAssets, detectVariant, getAsset, getCount } from '@bakin/assets/lib/asset-index'
 
 describe('assets/asset-index', () => {
   beforeEach(() => {

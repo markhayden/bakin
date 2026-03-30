@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest'
-import type { PluginContext, MCPlugin, APIRoute, NavItem } from '../../src/lib/plugin-types'
-import { MCEventBus } from '../../src/lib/events/event-bus'
+import type { PluginContext, BakinPlugin, APIRoute, NavItem } from '../../src/lib/plugin-types'
+import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import fs from 'fs'
 import path from 'path'
@@ -27,7 +27,7 @@ function createMockContext(pluginId: string): {
   }
 
   const storage = new MarkdownStorageAdapter(TEST_DIR)
-  const events = new MCEventBus(() => {})
+  const events = new BakinEventBus(() => {})
 
   const ctx: PluginContext = {
     storage,
@@ -44,7 +44,7 @@ function createMockContext(pluginId: string): {
   return { ctx, routes, navItems }
 }
 
-const ALL_PLUGINS: MCPlugin[] = [
+const ALL_PLUGINS: BakinPlugin[] = [
   tasksPlugin,
   memoryPlugin,
   modelsPlugin,

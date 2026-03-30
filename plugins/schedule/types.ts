@@ -3,17 +3,17 @@
  */
 
 // ---------------------------------------------------------------------------
-// Sidecar — Beacon-owned metadata for OpenClaw cron jobs
+// Sidecar — Bakin-owned metadata for OpenClaw cron jobs
 // ---------------------------------------------------------------------------
 
 export interface ScheduleSidecar {
   version: 1
-  jobs: Record<string, BeaconJobMeta>
+  jobs: Record<string, BakinJobMeta>
 }
 
-export interface BeaconJobMeta {
+export interface BakinJobMeta {
   jobId: string
-  isBeaconJob: boolean
+  isBakinJob: boolean
   displayName?: string
   description?: string
   agentId?: string
@@ -71,7 +71,7 @@ export interface OpenClawJobsFile {
 }
 
 // ---------------------------------------------------------------------------
-// Merged view — OpenClaw job + Beacon sidecar
+// Merged view — OpenClaw job + Bakin sidecar
 // ---------------------------------------------------------------------------
 
 export interface MergedJob {
@@ -82,8 +82,8 @@ export interface MergedJob {
   enabled: boolean
   delivery?: OpenClawJob['delivery']
 
-  // From Beacon sidecar (defaults applied)
-  isBeaconJob: boolean
+  // From Bakin sidecar (defaults applied)
+  isBakinJob: boolean
   displayName: string
   description?: string
   agentId?: string
@@ -121,7 +121,7 @@ export interface RunEntry {
   status: 'success' | 'failure' | 'skipped'
   duration?: number
   error?: string
-  taskId?: string // Beacon task created by this run
+  taskId?: string // Bakin task created by this run
   skippedReason?: string // 'overlap' | 'paused' | 'auto-paused' | 'skip-count'
 }
 
@@ -151,5 +151,5 @@ export interface BridgePayload {
 export interface BridgeResult {
   ok: boolean
   taskId?: string
-  skipped?: string // reason: 'overlap' | 'paused' | 'auto-paused' | 'skip-count' | 'not-beacon'
+  skipped?: string // reason: 'overlap' | 'paused' | 'auto-paused' | 'skip-count' | 'not-bakin'
 }

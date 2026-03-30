@@ -25,7 +25,7 @@ export function NotificationToggle() {
       toast(
         isInsecure
           ? createElement('span', null,
-              'Notifications require a secure context. Access Beacon at ',
+              'Notifications require a secure context. Access Bakin at ',
               createElement('strong', null, `localhost:${window.location.port || '3737'}`),
               ' instead of ',
               createElement('strong', null, window.location.hostname),
@@ -60,7 +60,7 @@ export function NotificationToggle() {
         setEnabled(true)
         toast('Gate notifications enabled', 'success')
         // Send a test notification so user sees it working
-        new Notification('Beacon notifications enabled', {
+        new Notification('Bakin notifications enabled', {
           body: 'You\'ll be notified when a workflow gate needs approval.',
           icon: '/favicon.ico',
         })

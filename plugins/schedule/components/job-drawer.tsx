@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Play, Pencil, Copy, Trash2, SkipForward } from 'lucide-react'
-import { BeaconDrawer } from '@/components/beacon-drawer'
+import { BakinDrawer } from '@/components/bakin-drawer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -58,7 +58,7 @@ export function JobDrawer({
   }
 
   return (
-    <BeaconDrawer
+    <BakinDrawer
       open={open}
       onOpenChange={(o) => {
         if (!o) {
@@ -69,8 +69,8 @@ export function JobDrawer({
       title={
         <span className="flex items-center gap-2">
           {job.displayName || job.id}
-          {job.isBeaconJob && (
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wider">Beacon</Badge>
+          {job.isBakinJob && (
+            <Badge variant="outline" className="text-[10px] uppercase tracking-wider">Bakin</Badge>
           )}
         </span>
       }
@@ -147,6 +147,6 @@ export function JobDrawer({
           <RunHistory jobId={job.id} />
         </div>
       </div>
-    </BeaconDrawer>
+    </BakinDrawer>
   )
 }

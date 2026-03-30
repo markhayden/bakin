@@ -4,22 +4,22 @@
  */
 import { NextResponse } from 'next/server'
 import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
-import { MCEventBus } from '@/lib/events/event-bus'
-import type { PluginContext, MCPlugin, APIRoute } from '@/lib/plugin-types'
+import { BakinEventBus } from '@/lib/events/event-bus'
+import type { PluginContext, BakinPlugin, APIRoute } from '@/lib/plugin-types'
 
 // Direct plugin imports (can't use dynamic import in Next.js bundle)
-import tasksPlugin from '@mc/tasks'
-import memoryPlugin from '@mc/memory'
-import modelsPlugin from '@mc/models'
-import calendarPlugin from '@mc/calendar'
-import workflowsPlugin from '@mc/workflows'
-import assetsPlugin from '@mc/assets'
-import healthPlugin from '@mc/health'
-import schedulePlugin from '@mc/schedule'
-import projectsPlugin from '@mc/projects'
+import tasksPlugin from '@bakin/tasks'
+import memoryPlugin from '@bakin/memory'
+import modelsPlugin from '@bakin/models'
+import calendarPlugin from '@bakin/calendar'
+import workflowsPlugin from '@bakin/workflows'
+import assetsPlugin from '@bakin/assets'
+import healthPlugin from '@bakin/health'
+import schedulePlugin from '@bakin/schedule'
+import projectsPlugin from '@bakin/projects'
 
 interface PluginState {
-  plugin: MCPlugin
+  plugin: BakinPlugin
   routes: APIRoute[]
 }
 
@@ -48,7 +48,7 @@ function ensureInitialized() {
   console.log('[api-route] Initializing plugin routes...')
 
   const storage = new MarkdownStorageAdapter()
-  const events = new MCEventBus(relayBroadcast)
+  const events = new BakinEventBus(relayBroadcast)
 
   const plugins = [tasksPlugin, memoryPlugin, modelsPlugin, calendarPlugin, workflowsPlugin, assetsPlugin, healthPlugin, schedulePlugin, projectsPlugin]
 
@@ -86,7 +86,7 @@ function findRoute(pluginId: string, path: string, method: string): APIRoute | n
 
 function buildContext(pluginId: string): PluginContext {
   const storage = new MarkdownStorageAdapter()
-  const events = new MCEventBus(relayBroadcast)
+  const events = new BakinEventBus(relayBroadcast)
   return {
     storage,
     events,

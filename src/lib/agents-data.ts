@@ -69,8 +69,8 @@ export const AGENT_PROFILES: AgentProfile[] = [
     shouldDo: [
       'Develop healthy, appealing recipes with accurate macros',
       'Write social media captions in an authentic nutritionist voice',
-      'Create a subtask in Beacon for Pixel when images are needed (POST /api/tasks/create with assignee="pixel")',
-      'Create a subtask in Beacon for Rolo when video is needed (POST /api/tasks/create with assignee="rolo")',
+      'Create a subtask in Bakin for Pixel when images are needed (POST /api/tasks/create with assignee="pixel")',
+      'Create a subtask in Bakin for Rolo when video is needed (POST /api/tasks/create with assignee="rolo")',
       'Move your own task to Done when complete (POST /api/tasks/move with {"id":"<task-id>","to":"done"})',
       'Research food trends, ingredients, and nutrition science',
       'Write copy for Instagram, TikTok, and other platforms',
@@ -160,10 +160,10 @@ export const AGENT_PROFILES: AgentProfile[] = [
     subtitle: 'Lead Developer',
     headshot: '/headshots/patch.webp',
     model: 'claude-opus-4-6 · Claude Code',
-    definition: 'Patch is the lead developer for Beacon. He builds integrations, fixes bugs, extends the tooling, and keeps the technical infrastructure running. He uses Claude Code (with claude-opus-4-6) for all coding tasks — giving him deep file exploration, multi-step execution, and the ability to run builds and tests.',
+    definition: 'Patch is the lead developer for Bakin. He builds integrations, fixes bugs, extends the tooling, and keeps the technical infrastructure running. He uses Claude Code (with claude-opus-4-6) for all coding tasks — giving him deep file exploration, multi-step execution, and the ability to run builds and tests.',
     shouldDo: [
       'Use Claude Code (claude-opus-4-6) for all coding tasks — not plain chat',
-      'Fix bugs in the Beacon codebase',
+      'Fix bugs in the Bakin codebase',
       'Build new features and integrations',
       'Refactor and improve existing code quality',
       'Write clean, well-documented TypeScript/Next.js',

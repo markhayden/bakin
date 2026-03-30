@@ -43,7 +43,7 @@ Major feature gap — currently no thumbnail system:
 - Settings: `maxFileSize: number` (MB)
 
 ### Exec Tools
-The `beacon_exec_save_asset` core script should become a plugin-registered tool:
+The `bakin_exec_save_asset` core script should become a plugin-registered tool:
 - Move from `scripts/lib/save-asset.ts` into `plugins/assets/scripts/`
 - Register via `ctx.registerExecTool()`
 - Add additional tools: `bakin_exec_assets_list`, `bakin_exec_assets_get`, `bakin_exec_assets_delete`

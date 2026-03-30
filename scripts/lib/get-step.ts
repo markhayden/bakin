@@ -128,7 +128,7 @@ export async function getStepFormatted(
 }
 
 addExecTool({
-  name: 'beacon_exec_get_step',
+  name: 'bakin_exec_get_step',
   description: 'Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure.',
   source: 'core',
   parameters: {

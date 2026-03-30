@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { loadSkill, invalidateSkillCache } from '@mc/workflows/skill-loader'
+import { loadSkill, invalidateSkillCache } from '@bakin/workflows/skill-loader'
 
 describe('skill-loader', () => {
-  const testDir = join(tmpdir(), `beacon-test-skills-${Date.now()}`)
+  const testDir = join(tmpdir(), `bakin-test-skills-${Date.now()}`)
   const skillsDir = join(testDir, 'workflows', 'skills')
 
   beforeEach(() => {

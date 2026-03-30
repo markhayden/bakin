@@ -14,7 +14,7 @@ vi.mock('@/core/task-service', () => ({
 
 vi.mock('@/core/content-dir', () => ({
   getContentDir: vi.fn(() => '/tmp/test'),
-  getBeaconPaths: vi.fn(() => ({
+  getBakinPaths: vi.fn(() => ({
     home: '/tmp/test',
     taskboard: '/tmp/test/TASKBOARD.md',
     assets: '/tmp/test/assets',
@@ -25,7 +25,7 @@ vi.mock('@/core/audit', () => ({
   appendAudit: vi.fn(),
 }))
 
-vi.mock('@mc/workflows/runtime', () => ({
+vi.mock('@bakin/workflows/runtime', () => ({
   getCurrentStep: vi.fn(() => ({
     stepId: 'write-copy',
     label: 'Write Copy',

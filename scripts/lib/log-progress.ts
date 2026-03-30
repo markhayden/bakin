@@ -1,5 +1,5 @@
 /**
- * beacon_exec_log — Consistent progress logging with categories and stage tags.
+ * bakin_exec_log — Consistent progress logging with categories and stage tags.
  */
 import { z } from 'zod'
 import { logProgress } from '../../src/core/task-service'
@@ -42,8 +42,8 @@ export async function logProgressFormatted(params: LogProgressParams): Promise<E
 }
 
 addExecTool({
-  name: 'beacon_exec_log',
-  description: 'Log a formatted progress update with category and stage tags. Categories: start, progress, milestone, blocked, complete. More structured than raw beacon_log_progress.',
+  name: 'bakin_exec_log',
+  description: 'Log a formatted progress update with category and stage tags. Categories: start, progress, milestone, blocked, complete. More structured than raw bakin_log_progress.',
   source: 'core',
   parameters: {
     taskId: z.string().describe('Task ID'),

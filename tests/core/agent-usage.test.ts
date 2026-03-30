@@ -4,7 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 // Mock the agents directory before importing
-const testDir = join(tmpdir(), `beacon-usage-test-${Date.now()}`)
+const testDir = join(tmpdir(), `bakin-usage-test-${Date.now()}`)
 
 vi.mock('os', async () => {
   const actual = await vi.importActual<typeof import('os')>('os')

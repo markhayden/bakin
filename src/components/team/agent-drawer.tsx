@@ -1,6 +1,6 @@
 'use client'
 
-import { BeaconDrawer } from '@/components/beacon-drawer'
+import { BakinDrawer } from '@/components/bakin-drawer'
 import { Badge } from '@/components/ui/badge'
 import { AGENT_MAP } from '@/lib/agents-data'
 import { formatAge, isStale } from '@/lib/format'
@@ -20,7 +20,7 @@ export function AgentDrawer({ agentId, heartbeat, open, onClose }: AgentDrawerPr
   const active = heartbeat && !isStale(heartbeat.timestamp)
 
   return (
-    <BeaconDrawer
+    <BakinDrawer
       open={open}
       onOpenChange={(o) => { if (!o) onClose() }}
       title={
@@ -111,6 +111,6 @@ export function AgentDrawer({ agentId, heartbeat, open, onClose }: AgentDrawerPr
           </section>
         )}
       </div>
-    </BeaconDrawer>
+    </BakinDrawer>
   )
 }

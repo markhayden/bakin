@@ -1,5 +1,5 @@
 /**
- * Plugin installer for Beacon (ClawHub — local first).
+ * Plugin installer for Bakin (ClawHub — local first).
  * Handles installing, validating, and removing plugins.
  */
 import { existsSync, readFileSync, writeFileSync, cpSync, rmSync } from 'fs'
@@ -20,7 +20,7 @@ interface InstallResult {
  */
 function validateManifest(manifestPath: string): { valid: boolean; manifest?: PluginManifest; error?: string } {
   if (!existsSync(manifestPath)) {
-    return { valid: false, error: 'No beacon-plugin.json found' }
+    return { valid: false, error: 'No bakin-plugin.json found' }
   }
 
   try {
@@ -45,7 +45,7 @@ function validateManifest(manifestPath: string): { valid: boolean; manifest?: Pl
  * Copies the plugin directory to plugins/ and adds it to mc.config.ts.
  */
 export async function installFromPath(sourcePath: string, projectRoot: string): Promise<InstallResult> {
-  const manifestPath = join(sourcePath, 'beacon-plugin.json')
+  const manifestPath = join(sourcePath, 'bakin-plugin.json')
   const { valid, manifest, error } = validateManifest(manifestPath)
 
   if (!valid || !manifest) {
@@ -105,7 +105,7 @@ export async function installFromGithub(repo: string, projectRoot: string): Prom
   const { mkdtempSync } = await import('fs')
   const { tmpdir } = await import('os')
 
-  const tempDir = mkdtempSync(join(tmpdir(), 'beacon-plugin-'))
+  const tempDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-'))
 
   try {
     // Normalize repo format: "user/repo" -> "https://github.com/user/repo.git"
@@ -177,7 +177,7 @@ export function listInstalled(projectRoot: string): PluginManifest[] {
 
   const manifests: PluginManifest[] = []
   for (const dir of dirs) {
-    const manifestPath = join(pluginsDir, dir.name, 'beacon-plugin.json')
+    const manifestPath = join(pluginsDir, dir.name, 'bakin-plugin.json')
     if (existsSync(manifestPath)) {
       try {
         manifests.push(JSON.parse(readFileSync(manifestPath, 'utf-8')))

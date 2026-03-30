@@ -60,8 +60,8 @@ export function JobRow({
       <TableCell>
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-medium text-foreground">{job.displayName || job.id}</span>
-          {job.isBeaconJob && (
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Beacon</span>
+          {job.isBakinJob && (
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Bakin</span>
           )}
         </div>
       </TableCell>

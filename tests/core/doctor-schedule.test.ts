@@ -55,7 +55,7 @@ describe('doctor: schedule sync', () => {
   let originalHome: string | undefined
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'beacon-doctor-sched-'))
+    tempDir = mkdtempSync(join(tmpdir(), 'bakin-doctor-sched-'))
     contentDir = join(tempDir, 'content')
     openclawDir = join(tempDir, 'openclaw')
 
@@ -85,7 +85,7 @@ describe('doctor: schedule sync', () => {
   it('should report ok when no OpenClaw cron jobs file exists', async () => {
     // Mock content-dir to our temp
     vi.doMock('@/core/content-dir', () => ({
-      isUsingBeaconHome: vi.fn(() => true),
+      isUsingBakinHome: vi.fn(() => true),
       getContentDir: vi.fn(() => contentDir),
     }))
 
@@ -100,7 +100,7 @@ describe('doctor: schedule sync', () => {
 
   it('should report ok when all jobs are tracked in sidecar', async () => {
     vi.doMock('@/core/content-dir', () => ({
-      isUsingBeaconHome: vi.fn(() => true),
+      isUsingBakinHome: vi.fn(() => true),
       getContentDir: vi.fn(() => contentDir),
     }))
 
@@ -119,7 +119,7 @@ describe('doctor: schedule sync', () => {
       jobs: {
         'job-1': {
           jobId: 'job-1',
-          isBeaconJob: true,
+          isBakinJob: true,
           displayName: 'Daily Recipe',
           agentId: 'chef',
           createdAt: '2026-03-28T00:00:00Z',
@@ -139,7 +139,7 @@ describe('doctor: schedule sync', () => {
 
   it('should detect orphaned cron jobs (no autoFix)', async () => {
     vi.doMock('@/core/content-dir', () => ({
-      isUsingBeaconHome: vi.fn(() => true),
+      isUsingBakinHome: vi.fn(() => true),
       getContentDir: vi.fn(() => contentDir),
     }))
 
@@ -167,7 +167,7 @@ describe('doctor: schedule sync', () => {
 
   it('should auto-adopt orphaned cron jobs when autoFix is enabled', async () => {
     vi.doMock('@/core/content-dir', () => ({
-      isUsingBeaconHome: vi.fn(() => true),
+      isUsingBakinHome: vi.fn(() => true),
       getContentDir: vi.fn(() => contentDir),
     }))
 
@@ -204,7 +204,7 @@ describe('doctor: schedule sync', () => {
     // Verify sidecar was updated
     const updatedSidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
     expect(updatedSidecar.jobs['orphan-1']).toBeDefined()
-    expect(updatedSidecar.jobs['orphan-1'].isBeaconJob).toBe(false)
+    expect(updatedSidecar.jobs['orphan-1'].isBakinJob).toBe(false)
     expect(updatedSidecar.jobs['orphan-1'].requireTriage).toBe(true)
     expect(updatedSidecar.jobs['orphan-1'].displayName).toBe('rogue-cron')
     // Agent should NOT be guessed

@@ -1,5 +1,5 @@
 /**
- * Plugin data migration framework for Beacon.
+ * Plugin data migration framework for Bakin.
  * Tracks plugin versions and runs migrations when plugins are updated.
  */
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
@@ -19,7 +19,7 @@ interface Migration {
 }
 
 function getVersionsFile(contentDir: string): string {
-  return join(contentDir, '.beacon', 'plugin-versions.json')
+  return join(contentDir, '.bakin', 'plugin-versions.json')
 }
 
 function loadVersions(contentDir: string): PluginVersions {
@@ -35,7 +35,7 @@ function loadVersions(contentDir: string): PluginVersions {
 }
 
 function saveVersions(contentDir: string, versions: PluginVersions): void {
-  const dir = join(contentDir, '.beacon')
+  const dir = join(contentDir, '.bakin')
   if (!existsSync(dir)) {
     const { mkdirSync } = require('fs')
     mkdirSync(dir, { recursive: true })

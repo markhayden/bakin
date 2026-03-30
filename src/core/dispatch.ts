@@ -1,5 +1,5 @@
 /**
- * Task dispatch system for Beacon.
+ * Task dispatch system for Bakin.
  * Periodically checks for TODO tasks and dispatches them to agents via OpenClaw.
  */
 import { readFileSync, writeFileSync, existsSync } from 'fs'
@@ -337,22 +337,22 @@ function buildDispatchMessage(
       const { readProject } = require('../../plugins/projects/lib/parser')
       const project = readProject(task.projectId)
       if (project) {
-        projectBlock = `\n\n**Project:** "${project.title}" (id: ${project.id}, ${project.progress}% complete)\nThe project spec contains detailed requirements. Call beacon_exec_project_get to read it before starting work.`
+        projectBlock = `\n\n**Project:** "${project.title}" (id: ${project.id}, ${project.progress}% complete)\nThe project spec contains detailed requirements. Call bakin_exec_project_get to read it before starting work.`
       }
     } catch { /* projects plugin may not be loaded */ }
   }
   const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
   const taskboardRef = join(contentDir, 'TASKBOARD.md')
 
-  const server = `beacon-${agentName}`
+  const server = `bakin-${agentName}`
   const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
 
   if (!task.agent) {
-    return `Triage this task: "${task.title}".${detailsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, chef=research/strategy) by updating ${taskboardRef}. ${contactsRef}\n\nLog progress: \`${mc('beacon_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Triage this task: "${task.title}".${detailsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, chef=research/strategy) by updating ${taskboardRef}. ${contactsRef}\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   if (task.agent === 'main-operator') {
-    return `Work on this task: "${task.title}".${detailsBlock}\n\n${contactsRef} When done: \`${mc('beacon_report_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('beacon_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Work on this task: "${task.title}".${detailsBlock}\n\n${contactsRef} When done: \`${mc('bakin_report_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   return `Work on this task: "${task.title}".${detailsBlock}${projectBlock}
@@ -373,29 +373,29 @@ For Patch using Claude Code: log before spawning the agent, and after it complet
 
 ## BEACON TOOLS — via mcporter
 
-All Beacon interactions use mcporter. Your server is \`${server}\`.
+All Bakin interactions use mcporter. Your server is \`${server}\`.
 
 \`\`\`bash
 # Log progress (mandatory, every major step)
-${mc('beacon_log_progress', `taskId=${task.id} message="<what you did or are doing>"`)}
+${mc('bakin_log_progress', `taskId=${task.id} message="<what you did or are doing>"`)}
 
 # Report complete (when finished — includes summary + notifies orchestrator)
-${mc('beacon_report_complete', `taskId=${task.id} summary="<what you accomplished>"`)}
+${mc('bakin_report_complete', `taskId=${task.id} summary="<what you accomplished>"`)}
 
 # Block task (if stuck or cannot proceed)
-${mc('beacon_block_task', `taskId=${task.id} reason="<what went wrong>"`)}
+${mc('bakin_block_task', `taskId=${task.id} reason="<what went wrong>"`)}
 
 # Create subtask for another agent
-${mc('beacon_create_task', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
+${mc('bakin_create_task', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
 
 # Register dependency (then stop — you'll be re-dispatched)
-${mc('beacon_register_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
+${mc('bakin_register_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
 
 # Check your task details
-${mc('beacon_get_task', `taskId=${task.id}`)}
+${mc('bakin_get_task', `taskId=${task.id}`)}
 
 # Find content directories (assets, team, etc.)
-${mc('beacon_get_paths', '')}
+${mc('bakin_get_paths', '')}
 \`\`\`
 
 ## EXECUTION TOOLS — for doing actual work
@@ -404,29 +404,29 @@ These tools help you accomplish the work. Use them as your primary way to save f
 
 \`\`\`bash
 # Save any file as a managed asset (handles naming + sidecar metadata)
-${mc('beacon_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
+${mc('bakin_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
 
 # Post to Discord (with optional image/video attachment)
-${mc('beacon_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}
+${mc('bakin_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}
 
 # Generate image via Nano Banana
-${mc('beacon_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}
+${mc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}
 
 # Check workflow gate statuses
-${mc('beacon_exec_check_gates', `taskId=${task.id}`)}
+${mc('bakin_exec_check_gates', `taskId=${task.id}`)}
 ${task.projectId ? `
 # Project tools (this task is part of a project)
-${mc('beacon_exec_project_get', `projectId="${task.projectId}"`)}
-${mc('beacon_exec_project_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
-${mc('beacon_exec_project_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : `
-# Projects: beacon_exec_project_list, beacon_exec_project_create, beacon_exec_project_get`}
+${mc('bakin_exec_project_get', `projectId="${task.projectId}"`)}
+${mc('bakin_exec_project_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
+${mc('bakin_exec_project_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : `
+# Projects: bakin_exec_project_list, bakin_exec_project_create, bakin_exec_project_get`}
 \`\`\`
 
 ## DEPENDENCY PATTERN
 
 If your task requires output from another agent:
-1. Create their task with beacon_create_task (use parentId for immediate dispatch)
-2. Register the dependency with beacon_register_dependency
+1. Create their task with bakin_create_task (use parentId for immediate dispatch)
+2. Register the dependency with bakin_register_dependency
 3. Stop — you will be automatically re-dispatched when their task completes`
 }
 
@@ -582,7 +582,7 @@ function buildWorkflowDispatchMessage(
   lines.push('## HARD CONSTRAINTS — violations are rejected server-side')
   lines.push('')
   lines.push('1. **SCOPE:** Do ONLY the work described in "YOUR TASK" below. Nothing more. If the task implies work for another step (e.g., generating images when your step is writing copy), STOP — that belongs to a different agent.')
-  lines.push('2. **OUTPUT:** Submit via beacon_submit_step. Describing results in conversation does NOT complete the step. The workflow will not advance.')
+  lines.push('2. **OUTPUT:** Submit via bakin_submit_step. Describing results in conversation does NOT complete the step. The workflow will not advance.')
   lines.push('3. **SCHEMA:** Your output MUST match the JSON schema below. The server validates it. Missing fields = rejection. Extra fields = rejection. Wrong types = rejection.')
   lines.push('4. **NO SIDE EFFECTS:** Do not create subtasks, dispatch other agents, move the task to Done, or post to any channel. The workflow engine handles ALL downstream handoffs — the next agent is already defined in the workflow and will be dispatched automatically when your step is approved. Creating a subtask would duplicate the workflow\'s job.')
   lines.push('5. **ONE SUBMISSION:** Submit your output once via the API, then stop. Do not continue working after submission.')
@@ -672,7 +672,7 @@ function buildWorkflowDispatchMessage(
   // ─── Progress Logging ──────────────────────────────────────────────
   lines.push('## PROGRESS LOGGING — MANDATORY')
   lines.push('')
-  const wfServer = `beacon-${agentName}`
+  const wfServer = `bakin-${agentName}`
   const wfMc = (tool: string, args: string) => `mcporter call ${wfServer}.${tool} ${args}`
 
   lines.push('You MUST log your progress throughout this workflow step. These updates appear in the live activity feed so humans can monitor your work in real-time.')
@@ -689,33 +689,33 @@ function buildWorkflowDispatchMessage(
   // ─── Commands ───────────────────────────────────────────────────────
   lines.push('## COMMANDS')
   lines.push('')
-  lines.push(`Your Beacon MCP server is \`${wfServer}\`. Use mcporter for all interactions:`)
+  lines.push(`Your Bakin MCP server is \`${wfServer}\`. Use mcporter for all interactions:`)
   lines.push('')
   lines.push('```bash')
   lines.push(`# Submit your output (must match the schema above)`)
-  lines.push(`${wfMc('beacon_submit_step', `taskId=${task.id} stepId=${stepContext.stepId} --args '<json output>'`)}`)
+  lines.push(`${wfMc('bakin_submit_step', `taskId=${task.id} stepId=${stepContext.stepId} --args '<json output>'`)}`)
   lines.push('')
   lines.push(`# Log progress (mandatory, every major step)`)
-  lines.push(`${wfMc('beacon_log_progress', `taskId=${task.id} message="<update>"`)}`)
+  lines.push(`${wfMc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}`)
   lines.push('')
   lines.push(`# Check your current step details if needed`)
-  lines.push(`${wfMc('beacon_get_step', `taskId=${task.id}`)}`)
+  lines.push(`${wfMc('bakin_get_step', `taskId=${task.id}`)}`)
   lines.push('')
   lines.push('# --- Execution tools for doing actual work ---')
   lines.push('')
   lines.push(`# Save any file as a managed asset`)
-  lines.push(`${wfMc('beacon_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what>"`)}`);
+  lines.push(`${wfMc('bakin_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what>"`)}`);
   lines.push('')
   lines.push(`# Generate image via Nano Banana`)
-  lines.push(`${wfMc('beacon_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}`);
+  lines.push(`${wfMc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}`);
   lines.push('')
   lines.push(`# Check workflow gate statuses`)
-  lines.push(`${wfMc('beacon_exec_check_gates', `taskId=${task.id}`)}`);
+  lines.push(`${wfMc('bakin_exec_check_gates', `taskId=${task.id}`)}`);
   // Only include post_discord for output/publish steps (non-output steps have "NO SIDE EFFECTS" constraint)
   if (stepContext.type === 'output') {
     lines.push('')
     lines.push(`# Post to Discord (with optional image/video attachment)`)
-    lines.push(`${wfMc('beacon_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}`);
+    lines.push(`${wfMc('bakin_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}`);
   }
   lines.push('```')
   lines.push('')
@@ -723,7 +723,7 @@ function buildWorkflowDispatchMessage(
   // ─── Stop Instruction ───────────────────────────────────────────────
   lines.push('## AFTER SUBMITTING')
   lines.push('')
-  lines.push('After beacon_submit_step returns success, your work is done. Do NOT:')
+  lines.push('After bakin_submit_step returns success, your work is done. Do NOT:')
   lines.push('- Generate additional outputs or deliverables')
   lines.push('- Start work on what you think the next step might be')
   lines.push('- Send messages about what should happen next')

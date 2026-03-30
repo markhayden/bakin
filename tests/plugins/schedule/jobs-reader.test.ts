@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { OpenClawJobsFile, BeaconJobMeta, ScheduleSidecar } from '@mc/schedule/types'
+import type { OpenClawJobsFile, BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
 
-const testDir = join(tmpdir(), `beacon-test-jobs-${Date.now()}`)
+const testDir = join(tmpdir(), `bakin-test-jobs-${Date.now()}`)
 const sidecarDir = join(testDir, 'schedule')
 const sidecarPath = join(sidecarDir, 'sidecar.json')
 const jobsPath = join(testDir, 'jobs.json')
@@ -22,7 +22,7 @@ vi.mock('../../../src/core/logger', () => ({
   }),
 }))
 
-import { readOpenClawJobs, mergeJob, readMergedJobs } from '@mc/schedule/lib/jobs-reader'
+import { readOpenClawJobs, mergeJob, readMergedJobs } from '@bakin/schedule/lib/jobs-reader'
 
 function writeJobs(jobs: OpenClawJobsFile) {
   writeFileSync(jobsPath, JSON.stringify(jobs))
@@ -32,10 +32,10 @@ function writeSidecarFile(sidecar: ScheduleSidecar) {
   writeFileSync(sidecarPath, JSON.stringify(sidecar))
 }
 
-function makeMeta(overrides: Partial<BeaconJobMeta> = {}): BeaconJobMeta {
+function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
   return {
     jobId: 'job-1',
-    isBeaconJob: true,
+    isBakinJob: true,
     createdAt: '2026-03-27T00:00:00Z',
     updatedAt: '2026-03-27T00:00:00Z',
     ...overrides,
@@ -83,7 +83,7 @@ describe('schedule/jobs-reader', () => {
 
       expect(merged.id).toBe('j1')
       expect(merged.name).toBe('Raw Job')
-      expect(merged.isBeaconJob).toBe(false)
+      expect(merged.isBakinJob).toBe(false)
       expect(merged.displayName).toBe('Raw Job')
       expect(merged.owner).toBe('main-operator')
       expect(merged.paused).toBe(false)
@@ -94,14 +94,14 @@ describe('schedule/jobs-reader', () => {
       const job = { id: 'j1', name: 'My Job', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true }
       const sidecar = makeMeta({
         jobId: 'j1',
-        isBeaconJob: true,
+        isBakinJob: true,
         displayName: 'Morning Report',
         agentId: 'chef',
         owner: 'main-operator',
       })
       const merged = mergeJob(job, sidecar)
 
-      expect(merged.isBeaconJob).toBe(true)
+      expect(merged.isBakinJob).toBe(true)
       expect(merged.displayName).toBe('Morning Report')
       expect(merged.agentId).toBe('chef')
       expect(merged.owner).toBe('main-operator')
@@ -141,10 +141,10 @@ describe('schedule/jobs-reader', () => {
       expect(merged.agentId).toBeUndefined()
     })
 
-    it('extracts prompt from beacon:schedule: prefixed message', () => {
+    it('extracts prompt from bakin:schedule: prefixed message', () => {
       const job = {
-        id: 'j1', name: 'Lost Beacon Job', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true,
-        payload: { message: 'beacon:schedule:daily-recipe' },
+        id: 'j1', name: 'Lost Bakin Job', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true,
+        payload: { message: 'bakin:schedule:daily-recipe' },
       }
       const merged = mergeJob(job, undefined)
       expect(merged.taskPrompt).toBe('daily-recipe')
@@ -155,9 +155,9 @@ describe('schedule/jobs-reader', () => {
         id: 'j1', name: 'Job', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true,
         payload: { message: 'raw message' },
       }
-      const sidecar = makeMeta({ jobId: 'j1', taskPrompt: 'Beacon prompt' })
+      const sidecar = makeMeta({ jobId: 'j1', taskPrompt: 'Bakin prompt' })
       const merged = mergeJob(job, sidecar)
-      expect(merged.taskPrompt).toBe('Beacon prompt')
+      expect(merged.taskPrompt).toBe('Bakin prompt')
       expect(merged.requireTriage).toBe(false) // has sidecar, not an orphan
     })
 
@@ -194,12 +194,12 @@ describe('schedule/jobs-reader', () => {
       expect(jobs).toHaveLength(2)
 
       const j1 = jobs.find(j => j.id === 'j1')!
-      expect(j1.isBeaconJob).toBe(true)
+      expect(j1.isBakinJob).toBe(true)
       expect(j1.displayName).toBe('Morning')
       expect(j1.agentId).toBe('chef')
 
       const j2 = jobs.find(j => j.id === 'j2')!
-      expect(j2.isBeaconJob).toBe(false)
+      expect(j2.isBakinJob).toBe(false)
       expect(j2.displayName).toBe('Job 2')
     })
   })

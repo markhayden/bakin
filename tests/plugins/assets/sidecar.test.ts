@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { readSidecar, writeSidecar, createStub, getSidecarPath, validateSidecar } from '@mc/assets/lib/sidecar'
+import { readSidecar, writeSidecar, createStub, getSidecarPath, validateSidecar } from '@bakin/assets/lib/sidecar'
 
 describe('assets/sidecar', () => {
-  const testDir = join(tmpdir(), `beacon-test-sidecar-${Date.now()}`)
+  const testDir = join(tmpdir(), `bakin-test-sidecar-${Date.now()}`)
   const assetsDir = join(testDir, 'assets', 'images', 'task123')
 
   beforeEach(() => {

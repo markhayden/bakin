@@ -1,5 +1,5 @@
 /**
- * Beacon MCP Server.
+ * Bakin MCP Server.
  *
  * Exposes agent-facing operations as MCP tools over Streamable HTTP.
  * Agents connect to /mcp?agent=<name> and get tools for task management,
@@ -14,7 +14,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { z } from 'zod'
 import { createLogger } from './logger'
-import { getContentDir, getBeaconPaths } from './content-dir'
+import { getContentDir, getBakinPaths } from './content-dir'
 import {
   logProgress,
   moveTaskWithEffects,
@@ -104,9 +104,9 @@ setInterval(() => {
 // ---------------------------------------------------------------------------
 
 function registerTools(server: McpServer, getAgent: () => string): void {
-  // -- beacon_log_progress --
+  // -- bakin_log_progress --
   server.tool(
-    'beacon_log_progress',
+    'bakin_log_progress',
     'Log a human-readable progress update to the live activity feed. Call this at every significant step.',
     {
       taskId: z.string().describe('Task ID (e.g. "fe84ac51")'),
@@ -114,15 +114,15 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
     async ({ taskId, message }) => {
       const agent = getAgent()
-      recordToolCall('beacon_log_progress', agent)
+      recordToolCall('bakin_log_progress', agent)
       await logProgress(taskId, agent, message, 'mcp')
       return { content: [{ type: 'text' as const, text: 'Logged.' }] }
     },
   )
 
-  // -- beacon_move_task --
+  // -- bakin_move_task --
   server.tool(
-    'beacon_move_task',
+    'bakin_move_task',
     'Move a task to a different column on the task board.',
     {
       taskId: z.string().describe('Task ID'),
@@ -131,7 +131,7 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
     async ({ taskId, to, reason }) => {
       const agent = getAgent()
-      recordToolCall('beacon_move_task', agent)
+      recordToolCall('bakin_move_task', agent)
       if (to === 'blocked' && !reason) {
         return { content: [{ type: 'text' as const, text: 'Error: reason is required when moving to blocked.' }], isError: true }
       }
@@ -144,27 +144,27 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
   )
 
-  // -- beacon_create_task --
+  // -- bakin_create_task --
   server.tool(
-    'beacon_create_task',
+    'bakin_create_task',
     'Create a new task on the task board. For top-level tasks, you MUST provide either workflowId or skipWorkflowReason. Subtasks (with parentId) are exempt.',
     {
       title: z.string().describe('Task title'),
       assignee: z.string().optional().describe('Agent to assign (chef, pixel, rolo, patch, trainer, etc.)'),
       description: z.string().optional().describe('Task description and context'),
       parentId: z.string().optional().describe('Parent task ID if this is a subtask'),
-      workflowId: z.string().optional().describe('Workflow to start (e.g. image-social-post, video-script). Use beacon_list_workflows to see options.'),
+      workflowId: z.string().optional().describe('Workflow to start (e.g. image-social-post, video-script). Use bakin_list_workflows to see options.'),
       skipWorkflowReason: z.string().optional().describe('Reason no workflow applies (required if workflowId is not set and this is not a subtask)'),
       projectId: z.string().optional().describe('Project ID to link this task to'),
     },
     async ({ title, assignee, description, parentId, workflowId, skipWorkflowReason, projectId }) => {
       const agent = getAgent()
-      recordToolCall('beacon_create_task', agent)
+      recordToolCall('bakin_create_task', agent)
 
       // Enforce workflow decision for top-level tasks
       if (!parentId && !workflowId && !skipWorkflowReason) {
         return {
-          content: [{ type: 'text' as const, text: 'Error: Top-level tasks require either workflowId or skipWorkflowReason. Use beacon_list_workflows to see available workflows.' }],
+          content: [{ type: 'text' as const, text: 'Error: Top-level tasks require either workflowId or skipWorkflowReason. Use bakin_list_workflows to see available workflows.' }],
           isError: true,
         }
       }
@@ -195,14 +195,14 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
   )
 
-  // -- beacon_list_workflows --
+  // -- bakin_list_workflows --
   server.tool(
-    'beacon_list_workflows',
+    'bakin_list_workflows',
     'List available workflow definitions. Use before creating a task to check if a workflow fits.',
     {},
     async () => {
       const agent = getAgent()
-      recordToolCall('beacon_list_workflows', agent)
+      recordToolCall('bakin_list_workflows', agent)
       try {
         const defs = listDefinitions()
         if (defs.length === 0) {
@@ -220,9 +220,9 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
   )
 
-  // -- beacon_block_task --
+  // -- bakin_block_task --
   server.tool(
-    'beacon_block_task',
+    'bakin_block_task',
     'Mark a task as blocked with a reason. Use when you cannot proceed.',
     {
       taskId: z.string().describe('Task ID'),
@@ -230,7 +230,7 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
     async ({ taskId, reason }) => {
       const agent = getAgent()
-      recordToolCall('beacon_block_task', agent)
+      recordToolCall('bakin_block_task', agent)
       try {
         await blockTaskWithEffects(taskId, reason, agent, 'mcp')
         return { content: [{ type: 'text' as const, text: 'Task blocked.' }] }
@@ -240,9 +240,9 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
   )
 
-  // -- beacon_report_complete --
+  // -- bakin_report_complete --
   server.tool(
-    'beacon_report_complete',
+    'bakin_report_complete',
     'Report that your task is complete. Moves the task to Done and notifies the orchestrator.',
     {
       taskId: z.string().describe('Task ID'),
@@ -250,7 +250,7 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
     async ({ taskId, summary }) => {
       const agent = getAgent()
-      recordToolCall('beacon_report_complete', agent)
+      recordToolCall('bakin_report_complete', agent)
       try {
         await reportComplete(taskId, agent, summary, 'mcp')
         return { content: [{ type: 'text' as const, text: 'Task complete. Orchestrator notified.' }] }
@@ -260,16 +260,16 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
   )
 
-  // -- beacon_get_step --
+  // -- bakin_get_step --
   server.tool(
-    'beacon_get_step',
+    'bakin_get_step',
     'Get your current workflow step details — instructions, output schema, prior step context.',
     {
       taskId: z.string().describe('Task ID'),
     },
     async ({ taskId }) => {
       const agent = getAgent()
-      recordToolCall('beacon_get_step', agent)
+      recordToolCall('bakin_get_step', agent)
       const step = getCurrentStep(taskId, agent, getContentDir())
       if (!step) {
         return { content: [{ type: 'text' as const, text: 'No active workflow step found for this task.' }], isError: true }
@@ -278,9 +278,9 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
   )
 
-  // -- beacon_submit_step --
+  // -- bakin_submit_step --
   server.tool(
-    'beacon_submit_step',
+    'bakin_submit_step',
     'Submit your workflow step output. The output must match the step\'s required JSON schema. After successful submission, your work is done — do not continue.',
     {
       taskId: z.string().describe('Task ID'),
@@ -289,7 +289,7 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
     async ({ taskId, stepId, output }) => {
       const agent = getAgent()
-      recordToolCall('beacon_submit_step', agent)
+      recordToolCall('bakin_submit_step', agent)
       const result = completeStep(taskId, stepId, output as Record<string, unknown>, agent, getContentDir())
 
       if (!result.success) {
@@ -313,28 +313,28 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
   )
 
-  // -- beacon_get_paths --
+  // -- bakin_get_paths --
   server.tool(
-    'beacon_get_paths',
-    'Get Beacon content directory paths — where to find assets, team info, docs, etc.',
+    'bakin_get_paths',
+    'Get Bakin content directory paths — where to find assets, team info, docs, etc.',
     {},
     async () => {
-      recordToolCall('beacon_get_paths', getAgent())
-      const paths = getBeaconPaths()
+      recordToolCall('bakin_get_paths', getAgent())
+      const paths = getBakinPaths()
       return { content: [{ type: 'text' as const, text: JSON.stringify(paths, null, 2) }] }
     },
   )
 
-  // -- beacon_register_dependency --
+  // -- bakin_register_dependency --
   server.tool(
-    'beacon_register_dependency',
+    'bakin_register_dependency',
     'Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait.',
     {
       taskId: z.string().describe('Your task ID (the one that depends)'),
       dependsOn: z.string().describe('Task ID you depend on'),
     },
     async ({ taskId, dependsOn }) => {
-      recordToolCall('beacon_register_dependency', getAgent())
+      recordToolCall('bakin_register_dependency', getAgent())
       try {
         await setDependencyWithEffects(taskId, dependsOn, 'mcp')
         return { content: [{ type: 'text' as const, text: `Dependency registered. You will be re-dispatched when ${dependsOn} completes. Stop now.` }] }
@@ -344,15 +344,15 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
   )
 
-  // -- beacon_get_task --
+  // -- bakin_get_task --
   server.tool(
-    'beacon_get_task',
+    'bakin_get_task',
     'Get details about a task — title, description, current column, logs, dependencies.',
     {
       taskId: z.string().describe('Task ID'),
     },
     async ({ taskId }) => {
-      recordToolCall('beacon_get_task', getAgent())
+      recordToolCall('bakin_get_task', getAgent())
       const result = getTaskDetails(taskId)
       if (!result) {
         return { content: [{ type: 'text' as const, text: `Task ${taskId} not found on the board.` }], isError: true }
@@ -426,7 +426,7 @@ function registerTools(server: McpServer, getAgent: () => string): void {
 
 function createSession(agentId: string): McpSession {
   const server = new McpServer(
-    { name: 'beacon', version: '1.0.0' },
+    { name: 'bakin', version: '1.0.0' },
     { capabilities: { logging: {} } },
   )
 

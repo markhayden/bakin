@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { deleteTask } from '@mc/tasks/taskboard'
+import { deleteTask } from '@bakin/tasks/taskboard'
 import { appendAudit } from '@/lib/audit'
 
 export async function POST(request: NextRequest) {
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // Auto-unlink from any project checklist items
     if (id) {
-      import('@mc/projects/lib/project-service')
+      import('@bakin/projects/lib/project-service')
         .then(m => m.autoUnlinkTask(id))
         .catch(() => {}) // projects plugin may not be loaded
     }

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { updateTask } from '@mc/tasks/taskboard'
+import { updateTask } from '@bakin/tasks/taskboard'
 import { appendAudit } from '@/lib/audit'
-import type { ColumnId } from '@mc/tasks/types'
+import type { ColumnId } from '@bakin/tasks/types'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()

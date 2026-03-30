@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { blockTask } from '@mc/tasks/taskboard'
+import { blockTask } from '@bakin/tasks/taskboard'
 import { appendAudit } from '@/lib/audit'
 
 export async function POST(request: NextRequest) {

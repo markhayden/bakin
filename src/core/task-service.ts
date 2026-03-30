@@ -1,5 +1,5 @@
 /**
- * Task service layer for Beacon.
+ * Task service layer for Bakin.
  *
  * Shared functions that both REST route handlers and MCP tool handlers call.
  * Each function wraps core taskboard mutations with their required side effects:
@@ -32,7 +32,7 @@ const log = createLogger('task-service')
 // ---------------------------------------------------------------------------
 
 function broadcast(data: Record<string, unknown>): void {
-  const fn = (globalThis as any).__beaconBroadcast
+  const fn = (globalThis as any).__bakinBroadcast
   if (fn) fn(data)
 }
 
@@ -94,7 +94,7 @@ export async function moveTaskWithEffects(
       if (task?.workflowId) {
         const instance = loadInstance(task.id)
         if (instance && instance.status !== 'complete') {
-          throw new Error('Workflow tasks cannot be moved to Done directly. Use beacon_submit_step — the workflow engine manages task completion.')
+          throw new Error('Workflow tasks cannot be moved to Done directly. Use bakin_submit_step — the workflow engine manages task completion.')
         }
         break
       }
@@ -241,7 +241,7 @@ export async function createTaskWithEffects(opts: {
 
 /**
  * Report a task as complete.
- * Rejects workflow tasks (they must use beacon_submit_step).
+ * Rejects workflow tasks (they must use bakin_submit_step).
  * Moves to done, logs summary, notifies orchestrator.
  */
 export async function reportComplete(
@@ -257,7 +257,7 @@ export async function reportComplete(
     if (task?.workflowId) {
       const instance = loadInstance(task.id)
       if (instance && instance.status !== 'complete') {
-        throw new Error('This is a workflow task — use beacon_submit_step to submit your step output instead of beacon_report_complete.')
+        throw new Error('This is a workflow task — use bakin_submit_step to submit your step output instead of bakin_report_complete.')
       }
       break
     }

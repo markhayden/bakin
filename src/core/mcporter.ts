@@ -1,12 +1,12 @@
 /**
- * mcporter integration for Beacon.
+ * mcporter integration for Bakin.
  *
  * Manages mcporter installation and per-agent MCP server config entries.
- * Each agent gets a `beacon-<agent>` entry in ~/.mcporter/mcporter.json
+ * Each agent gets a `bakin-<agent>` entry in ~/.mcporter/mcporter.json
  * pointing to http://localhost:<port>/mcp?agent=<agent>.
  *
- * This allows agents to call Beacon MCP tools via:
- *   mcporter call beacon-pixel.beacon_log_progress taskId=abc message="hello"
+ * This allows agents to call Bakin MCP tools via:
+ *   mcporter call bakin-pixel.bakin_log_progress taskId=abc message="hello"
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
@@ -87,7 +87,7 @@ function writeConfig(config: McporterConfig): void {
  * Get the expected mcporter server name for an agent.
  */
 export function serverName(agent: string): string {
-  return `beacon-${agent}`
+  return `bakin-${agent}`
 }
 
 /**
@@ -98,7 +98,7 @@ export function mcpUrl(agent: string, port: number): string {
 }
 
 /**
- * Write per-agent Beacon MCP entries to ~/.mcporter/mcporter.json.
+ * Write per-agent Bakin MCP entries to ~/.mcporter/mcporter.json.
  * Idempotent — only writes if entries are missing or outdated.
  * Returns list of changes made.
  */
@@ -118,7 +118,7 @@ export function syncConfig(port: number): string[] {
     if (!existing || existing.url !== url) {
       config.mcpServers[name] = {
         url,
-        description: `Beacon MCP for ${agent}`,
+        description: `Bakin MCP for ${agent}`,
       }
       changes.push(existing ? `updated ${name}` : `added ${name}`)
     }
@@ -126,8 +126,8 @@ export function syncConfig(port: number): string[] {
 
   // Remove stale entries for agents no longer in settings
   for (const key of Object.keys(config.mcpServers)) {
-    if (key.startsWith('beacon-')) {
-      const agentName = key.slice('beacon-'.length)
+    if (key.startsWith('bakin-')) {
+      const agentName = key.slice('bakin-'.length)
       if (!agents.includes(agentName)) {
         delete config.mcpServers[key]
         changes.push(`removed ${key} (agent no longer in settings)`)
@@ -170,7 +170,7 @@ export function verifyConfig(port: number): {
   })
 
   const staleEntries = Object.keys(servers)
-    .filter(k => k.startsWith('beacon-') && !agents.includes(k.slice('beacon-'.length)))
+    .filter(k => k.startsWith('bakin-') && !agents.includes(k.slice('bakin-'.length)))
 
   return {
     installed: isMcporterInstalled(),
@@ -181,7 +181,7 @@ export function verifyConfig(port: number): {
 }
 
 // ---------------------------------------------------------------------------
-// Setup (called from server startup and beacon start)
+// Setup (called from server startup and bakin start)
 // ---------------------------------------------------------------------------
 
 /**

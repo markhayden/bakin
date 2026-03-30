@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testDir = join(tmpdir(), `beacon-test-trash-mcp-${Date.now()}`)
+const testDir = join(tmpdir(), `bakin-test-trash-mcp-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
 vi.mock('../../src/core/content-dir', () => ({
@@ -38,9 +38,9 @@ describe('trash MCP tools', () => {
     rmSync(testDir, { recursive: true, force: true })
   })
 
-  describe('beacon_exec_list_trash', () => {
+  describe('bakin_exec_list_trash', () => {
     it('returns empty list when trash is empty', async () => {
-      const result = await runTool('beacon_exec_list_trash')
+      const result = await runTool('bakin_exec_list_trash')
       expect(result.ok).toBe(true)
       expect(result.count).toBe(0)
       expect(result.items).toEqual([])
@@ -55,7 +55,7 @@ describe('trash MCP tools', () => {
         created: '2026-03-20T10:00:00Z',
       }))
 
-      const result = await runTool('beacon_exec_list_trash') as { ok: boolean; count: number; items: Array<{ originalFilename: string; agent: string }> }
+      const result = await runTool('bakin_exec_list_trash') as { ok: boolean; count: number; items: Array<{ originalFilename: string; agent: string }> }
 
       expect(result.ok).toBe(true)
       expect(result.count).toBe(1)
@@ -64,7 +64,7 @@ describe('trash MCP tools', () => {
     })
   })
 
-  describe('beacon_exec_restore_trash', () => {
+  describe('bakin_exec_restore_trash', () => {
     it('restores and returns path', async () => {
       const ts = Date.now()
       const trashFilename = `photo.jpg__deleted-${ts}`
@@ -75,7 +75,7 @@ describe('trash MCP tools', () => {
         created: '2026-03-21T00:00:00Z',
       }))
 
-      const result = await runTool('beacon_exec_restore_trash', { filename: trashFilename })
+      const result = await runTool('bakin_exec_restore_trash', { filename: trashFilename })
 
       expect(result.ok).toBe(true)
       expect(result.restoredPath).toBe('assets/images/task-abc/photo.jpg')
@@ -83,23 +83,23 @@ describe('trash MCP tools', () => {
     })
 
     it('fails for nonexistent file', async () => {
-      const result = await runTool('beacon_exec_restore_trash', { filename: 'nope__deleted-999' })
+      const result = await runTool('bakin_exec_restore_trash', { filename: 'nope__deleted-999' })
       expect(result.ok).toBe(false)
     })
 
     it('fails when filename is missing', async () => {
-      const result = await runTool('beacon_exec_restore_trash', {})
+      const result = await runTool('bakin_exec_restore_trash', {})
       expect(result.ok).toBe(false)
     })
   })
 
-  describe('beacon_exec_empty_trash', () => {
+  describe('bakin_exec_empty_trash', () => {
     it('empties trash and returns count', async () => {
       const ts = Date.now()
       writeFileSync(join(assetsRoot, '.trash', `a.png__deleted-${ts}`), 'a')
       writeFileSync(join(assetsRoot, '.trash', `b.txt__deleted-${ts}`), 'b')
 
-      const result = await runTool('beacon_exec_empty_trash')
+      const result = await runTool('bakin_exec_empty_trash')
 
       expect(result.ok).toBe(true)
       expect(result.deleted).toBe(2)
@@ -107,7 +107,7 @@ describe('trash MCP tools', () => {
     })
 
     it('returns 0 for empty trash', async () => {
-      const result = await runTool('beacon_exec_empty_trash')
+      const result = await runTool('bakin_exec_empty_trash')
       expect(result.ok).toBe(true)
       expect(result.deleted).toBe(0)
     })

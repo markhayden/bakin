@@ -2,59 +2,59 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { getContentDir, resetContentDir, initBeaconHome } from '@mc/workflows/content-dir'
+import { getContentDir, resetContentDir, initBakinHome } from '@bakin/workflows/content-dir'
 
 describe('content-dir', () => {
-  const testDir = join(tmpdir(), `beacon-test-contentdir-${Date.now()}`)
-  const origBeaconHome = process.env.BEACON_HOME
+  const testDir = join(tmpdir(), `bakin-test-contentdir-${Date.now()}`)
+  const origBakinHome = process.env.BAKIN_HOME
   const origContentDir = process.env.CONTENT_DIR
 
   beforeEach(() => {
     resetContentDir()
-    delete process.env.BEACON_HOME
+    delete process.env.BAKIN_HOME
     delete process.env.CONTENT_DIR
   })
 
   afterEach(() => {
     resetContentDir()
-    if (origBeaconHome) process.env.BEACON_HOME = origBeaconHome
-    else delete process.env.BEACON_HOME
+    if (origBakinHome) process.env.BAKIN_HOME = origBakinHome
+    else delete process.env.BAKIN_HOME
     if (origContentDir) process.env.CONTENT_DIR = origContentDir
     else delete process.env.CONTENT_DIR
     rmSync(testDir, { recursive: true, force: true })
   })
 
-  it('uses BEACON_HOME env var when set', () => {
-    const customDir = join(testDir, 'custom-beacon')
-    process.env.BEACON_HOME = customDir
+  it('uses BAKIN_HOME env var when set', () => {
+    const customDir = join(testDir, 'custom-bakin')
+    process.env.BAKIN_HOME = customDir
     expect(getContentDir()).toBe(customDir)
   })
 
-  it('uses CONTENT_DIR env var when set and BEACON_HOME is not', () => {
+  it('uses CONTENT_DIR env var when set and BAKIN_HOME is not', () => {
     const customDir = join(testDir, 'custom-content')
     process.env.CONTENT_DIR = customDir
     expect(getContentDir()).toBe(customDir)
   })
 
-  it('falls back to ./content/ when ~/.beacon/ does not exist', () => {
+  it('falls back to ./content/ when ~/.bakin/ does not exist', () => {
     // Create a ./content/ directory in a temp working dir
     const contentDir = join(process.cwd(), 'content')
-    // The function should resolve to ./content/ since ~/.beacon/ won't
+    // The function should resolve to ./content/ since ~/.bakin/ won't
     // exist in most test environments. We just verify the function doesn't crash.
     const result = getContentDir()
     expect(typeof result).toBe('string')
   })
 })
 
-describe('initBeaconHome', () => {
-  const testDir = join(tmpdir(), `beacon-test-init-${Date.now()}`)
+describe('initBakinHome', () => {
+  const testDir = join(tmpdir(), `bakin-test-init-${Date.now()}`)
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
   })
 
   it('creates directory structure and seed files', () => {
-    const { created, seeded } = initBeaconHome(testDir)
+    const { created, seeded } = initBakinHome(testDir)
 
     // Verify directories were created
     expect(existsSync(join(testDir, 'workflows', 'definitions'))).toBe(true)
@@ -62,8 +62,8 @@ describe('initBeaconHome', () => {
     expect(existsSync(join(testDir, 'workflows', 'instances'))).toBe(true)
     expect(existsSync(join(testDir, 'plugins'))).toBe(true)
 
-    // Verify settings.json was created inside .beacon/ subdir
-    expect(existsSync(join(testDir, '.beacon', 'settings.json'))).toBe(true)
+    // Verify settings.json was created at root  subdir
+    expect(existsSync(join(testDir, 'settings.json'))).toBe(true)
 
     // Verify asset directories
     expect(existsSync(join(testDir, 'assets'))).toBe(true)
@@ -86,8 +86,8 @@ describe('initBeaconHome', () => {
   })
 
   it('does not overwrite existing files on re-init', () => {
-    initBeaconHome(testDir)
-    const { created: secondCreated, seeded: secondSeeded } = initBeaconHome(testDir)
+    initBakinHome(testDir)
+    const { created: secondCreated, seeded: secondSeeded } = initBakinHome(testDir)
     // Directories already exist, so nothing new should be created
     expect(secondCreated.length).toBe(0)
     expect(secondSeeded.length).toBe(0)
