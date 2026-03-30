@@ -11,6 +11,7 @@ import * as calendarCron from './calendar-cron'
 import * as watcher from './watcher'
 import * as doctor from './doctor'
 import * as antflyServer from './antfly-server'
+import { pluginRegistry } from '../lib/plugin-registry'
 
 const log = createLogger('lifecycle')
 
@@ -22,6 +23,9 @@ export function registerShutdownHandlers(server: Server, contentDir: string): vo
     shutdownInProgress = true
 
     log.info(`Shutdown initiated (${signal})`)
+
+    // Shut down plugins first (reverse activation order)
+    await pluginRegistry.shutdownAll()
 
     // Stop accepting new work
     dispatch.stop()

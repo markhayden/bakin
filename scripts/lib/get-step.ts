@@ -5,7 +5,7 @@
  * can read without parsing JSON.
  */
 import { z } from 'zod'
-import { getCurrentStep } from '../../plugins/workflows/runtime'
+import { getHookRegistry } from '../../src/lib/plugin-registry'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
@@ -116,7 +116,7 @@ export async function getStepFormatted(
   agent: string,
 ): Promise<ExecToolResult> {
   try {
-    const step = await getCurrentStep(taskId, agent)
+    const step = await getHookRegistry().invoke<StepContext>('workflows.getCurrentStep', { taskId, agentId: agent })
     if (!step) {
       return fail('No active step found for this task')
     }

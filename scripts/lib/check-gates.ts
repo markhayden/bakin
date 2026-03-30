@@ -2,7 +2,7 @@
  * bakin_exec_check_gates — Human-readable gate status overview.
  */
 import { z } from 'zod'
-import { loadInstance } from '../../plugins/workflows/runtime'
+import { getHookRegistry } from '../../src/lib/plugin-registry'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
@@ -17,7 +17,7 @@ const STATUS_DISPLAY: Record<string, string> = {
 
 export async function checkGates(taskId: string): Promise<ExecToolResult> {
   try {
-    const instance = loadInstance(taskId)
+    const instance = await getHookRegistry().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId })
     if (!instance) {
       return fail('No workflow instance found for this task')
     }
@@ -31,21 +31,20 @@ export async function checkGates(taskId: string): Promise<ExecToolResult> {
     // We need to check stepStates for gate-type steps
     // stepStates is keyed by stepId with status info
     let hasGates = false
-    for (const [stepId, state] of Object.entries(instance.stepStates)) {
-      // We identify gates by checking if they have pending_approval status
-      // or by naming convention. The stepStates don't carry the step type,
-      // so we check for gate-like statuses and naming patterns.
-      const isGate = state.status === 'pending_approval' ||
+    const stepStates = (instance.stepStates || {}) as Record<string, Record<string, unknown>>
+    for (const [stepId, state] of Object.entries(stepStates)) {
+      const s = state as { status: string; completedAt?: string; startedAt?: string }
+      const isGate = s.status === 'pending_approval' ||
         stepId.includes('gate') || stepId.includes('review') || stepId.includes('approval')
 
       if (!isGate) continue
       hasGates = true
 
-      const display = STATUS_DISPLAY[state.status] || state.status.toUpperCase()
-      const time = state.completedAt
-        ? `  (${new Date(state.completedAt).toLocaleString()})`
-        : state.startedAt
-          ? `  (since ${new Date(state.startedAt).toLocaleString()})`
+      const display = STATUS_DISPLAY[s.status] || s.status.toUpperCase()
+      const time = s.completedAt
+        ? `  (${new Date(s.completedAt).toLocaleString()})`
+        : s.startedAt
+          ? `  (since ${new Date(s.startedAt).toLocaleString()})`
           : ''
       lines.push(`  ${stepId.padEnd(24)} ${display}${time}`)
     }

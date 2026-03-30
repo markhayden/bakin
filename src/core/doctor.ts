@@ -16,11 +16,9 @@ import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { isUsingBakinHome, getContentDir } from './content-dir'
 import * as openclaw from './openclaw-client'
-import { readTaskboard, clearDependency } from '../../plugins/tasks/taskboard'
-import { listDefinitions } from '../../plugins/workflows/parser'
-import { listInstances } from '../../plugins/workflows/runtime'
 import * as mcporter from './mcporter'
 import { getAllExecTools } from '../../scripts/lib/registry'
+import { getHookRegistry } from '../lib/plugin-registry'
 
 const log = createLogger('doctor')
 
@@ -391,13 +389,14 @@ These are the ONLY valid workflow endpoints. Do NOT guess at other paths.
 Do NOT use \`/api/tasks\`, \`/api/tasks/list\`, \`/api/plugins/workflows/runs\`, or \`/api/plugins/workflows/run\` — these do not exist.`
 
 /** Build the workflow catalog from available definitions for embedding in rules */
-function buildWorkflowCatalog(): string {
+async function buildWorkflowCatalog(): Promise<string> {
   try {
-    const defs = listDefinitions()
+    const hooks = getHookRegistry()
+    const defs = await hooks.invoke<Array<{ definition: Record<string, unknown>; name: string }>>('workflows.listDefinitions', {}) ?? []
     if (defs.length === 0) return '   (no workflows defined yet)'
     return defs.map(d => {
-      const steps = d.definition.steps || []
-      const agents = [...new Set(steps.filter((s) => 'agent' in s && (s as { agent?: string }).agent).map((s) => (s as { agent?: string }).agent))]
+      const steps = (d.definition.steps || []) as Array<Record<string, unknown>>
+      const agents = [...new Set(steps.filter((s) => typeof s.agent === 'string').map((s) => s.agent as string))]
       return `   - \`${d.name}\`: ${d.definition.description || d.definition.name}${agents.length ? ` (agents: ${agents.join(', ')})` : ''}`
     }).join('\n')
   } catch {
@@ -406,18 +405,18 @@ function buildWorkflowCatalog(): string {
 }
 
 /** Resolve the orchestrator rules template with the current workflow catalog */
-function resolveOrchestratorRules(): string {
-  return ORCHESTRATOR_RULES_CONTENT.replace('WORKFLOW_CATALOG_PLACEHOLDER', buildWorkflowCatalog())
+async function resolveOrchestratorRules(): Promise<string> {
+  return ORCHESTRATOR_RULES_CONTENT.replace('WORKFLOW_CATALOG_PLACEHOLDER', await buildWorkflowCatalog())
 }
 
-function checkOrchestratorRules(autoFix: boolean): DiagnosticResult[] {
+async function checkOrchestratorRules(autoFix: boolean): Promise<DiagnosticResult[]> {
   const agentsPath = join(process.env.HOME || '~', '.openclaw', 'workspace', 'AGENTS.md')
 
   if (!existsSync(agentsPath)) {
     return [warn('orchestrator-rules', 'AGENTS.md not found — cannot verify orchestrator rules')]
   }
 
-  const resolvedContent = resolveOrchestratorRules()
+  const resolvedContent = await resolveOrchestratorRules()
   const current = readFileSync(agentsPath, 'utf-8')
   const startIdx = current.indexOf(AGENT_RULES_BLOCK_START)
   const endIdx = current.indexOf(AGENT_RULES_BLOCK_END)
@@ -558,12 +557,16 @@ function checkService(projectRoot: string): DiagnosticResult[] {
  * Task consistency: detect orphaned, overloaded, or stale in-progress tasks.
  * Auto-fixes orphaned dependencies on done tasks (clears dependsOn + re-triggers continuation).
  */
-function checkTaskConsistency(contentDir: string, autoFix: boolean): DiagnosticResult[] {
+async function checkTaskConsistency(contentDir: string, autoFix: boolean): Promise<DiagnosticResult[]> {
   const results: DiagnosticResult[] = []
   const settings = getSettings()
+  const hooks = getHookRegistry()
 
   try {
-    const { columns } = readTaskboard()
+    interface TaskEntry { id: string; title: string; agent?: string; dependsOn?: string; log?: unknown[] }
+    const board = await hooks.invoke<{ columns: { inProgress: TaskEntry[]; done: TaskEntry[]; todo: TaskEntry[]; blocked: TaskEntry[] } }>('tasks.readTaskboard', {})
+    if (!board) { return [warn('task-consistency', 'Taskboard not available (tasks plugin not loaded)')] }
+    const { columns } = board
     const now = Date.now()
 
     // Known agents from settings
@@ -608,7 +611,7 @@ function checkTaskConsistency(contentDir: string, autoFix: boolean): DiagnosticR
       if (task.dependsOn) {
         if (autoFix) {
           try {
-            clearDependency(task.id)
+            await hooks.invoke<void>('tasks.clearDependency', { taskId: task.id })
             results.push(fixed('task-consistency', `Cleared orphaned dependsOn on done task "${task.title}"`))
           } catch {
             results.push(warn('task-consistency', `Done task "${task.title}" has orphaned dependsOn="${task.dependsOn}" — failed to clear`))
@@ -954,12 +957,12 @@ function checkWorkflowSkills(contentDir: string): DiagnosticResult[] {
 /**
  * Workflow definitions: verify all step skill references resolve to existing skill files.
  */
-function checkWorkflowDefinitions(contentDir: string): DiagnosticResult[] {
+async function checkWorkflowDefinitions(contentDir: string): Promise<DiagnosticResult[]> {
   const results: DiagnosticResult[] = []
   const skillsDir = join(contentDir, 'workflows', 'skills')
 
   try {
-    const defs = listDefinitions(contentDir)
+    const defs = await getHookRegistry().invoke<Array<{ name: string; definition: { steps: Array<Record<string, unknown>> } }>>('workflows.listDefinitions', {}) ?? []
     for (const { name, definition } of defs) {
       for (const step of definition.steps) {
         const skillName = (step as { skill?: string }).skill
@@ -990,16 +993,21 @@ function checkWorkflowDefinitions(contentDir: string): DiagnosticResult[] {
 /**
  * Stale workflow instances: flag instances stuck in_progress for > 2 hours.
  */
-function checkStaleWorkflowInstances(contentDir: string, autoFix: boolean): DiagnosticResult[] {
+async function checkStaleWorkflowInstances(contentDir: string, autoFix: boolean): Promise<DiagnosticResult[]> {
   const results: DiagnosticResult[] = []
+  const hooks = getHookRegistry()
 
   try {
     // Check all instances (not just in_progress) for orphans
-    const allInstances = listInstances(undefined, contentDir)
-    const { columns } = readTaskboard()
+    interface WfInstance { taskId: string; status: string; currentStepId: string; updatedAt: string }
+    const allInstances = await hooks.invoke<WfInstance[]>('workflows.listInstances', {}) ?? []
+    interface BoardTask { id: string }
+    const board = await hooks.invoke<{ columns: Record<string, BoardTask[]> }>('tasks.readTaskboard', {})
+    if (!board) { return [warn('workflow-instances', 'Taskboard not available')] }
+    const { columns } = board
     const allTaskIds = new Set<string>()
     for (const col of Object.values(columns)) {
-      for (const task of (col as Array<{ id: string }>)) {
+      for (const task of col) {
         allTaskIds.add(task.id)
       }
     }
@@ -1496,12 +1504,12 @@ export async function runDiagnostics(
   results.push(...checkTaskboard(contentDir, autoFix))
   results.push(...checkExecToolsBlock(projectRoot, autoFix))
   results.push(...checkAndSyncSkill(projectRoot, autoFix))
-  results.push(...checkOrchestratorRules(autoFix))
+  results.push(...await checkOrchestratorRules(autoFix))
   results.push(...applyAllManagedBlocks(autoFix))
   results.push(...checkWorkflowSkills(contentDir))
-  results.push(...checkWorkflowDefinitions(contentDir))
-  results.push(...checkStaleWorkflowInstances(contentDir, autoFix))
-  results.push(...checkTaskConsistency(contentDir, autoFix))
+  results.push(...await checkWorkflowDefinitions(contentDir))
+  results.push(...await checkStaleWorkflowInstances(contentDir, autoFix))
+  results.push(...await checkTaskConsistency(contentDir, autoFix))
   results.push(...checkAssets(contentDir, autoFix))
   results.push(...checkScheduleSync(autoFix))
   results.push(...checkMcporter(Number(process.env.PORT || 3737), autoFix))

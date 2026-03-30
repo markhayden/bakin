@@ -268,8 +268,8 @@ describe('task-service', () => {
   })
 
   describe('getTaskDetails', () => {
-    it('should find task by id and return with column name', () => {
-      const result = service.getTaskDetails('task-1')
+    it('should find task by id and return with column name', async () => {
+      const result = await service.getTaskDetails('task-1')
       expect(result).not.toBeNull()
       expect(result!.column).toBe('inProgress')
       expect(result!.task).toEqual(

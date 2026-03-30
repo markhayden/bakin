@@ -13,6 +13,7 @@ import { createTaskWithEffects } from '../../src/core/task-service'
 import { appendAudit } from '../../src/core/audit'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
+import { getHookRegistry } from '../../src/lib/plugin-registry'
 import type { BakinJobMeta, BridgePayload, BridgeResult } from './types'
 
 const log = createLogger('schedule')
@@ -88,13 +89,14 @@ async function handleBridge(req: Request): Promise<Response> {
   // Check overlap
   if (!defaults.allowOverlap && meta.lastTaskId) {
     try {
-      const { readTaskboard } = await import('../../plugins/tasks/taskboard')
-      const board = readTaskboard()
-      const activeColumns = ['todo', 'inProgress', 'review', 'blocked'] as const
-      for (const col of activeColumns) {
-        const tasks = board.columns[col as keyof typeof board.columns] ?? []
-        if (tasks.some(t => t.id === meta.lastTaskId)) {
-          return json({ ok: true, skipped: 'overlap' } satisfies BridgeResult)
+      const board = await getHookRegistry().invoke<{ columns: Record<string, Array<{ id: string }>> }>('tasks.readTaskboard', {})
+      if (board) {
+        const activeColumns = ['todo', 'inProgress', 'review', 'blocked'] as const
+        for (const col of activeColumns) {
+          const tasks = board.columns[col] ?? []
+          if (tasks.some(t => t.id === meta.lastTaskId)) {
+            return json({ ok: true, skipped: 'overlap' } satisfies BridgeResult)
+          }
         }
       }
     } catch {
@@ -106,18 +108,19 @@ async function handleBridge(req: Request): Promise<Response> {
   // Check last task outcome for failure tracking
   if (meta.lastTaskId) {
     try {
-      const { readTaskboard } = await import('../../plugins/tasks/taskboard')
-      const board = readTaskboard()
-      const doneOrConfirmed = [...(board.columns.done ?? []), ...(board.columns.confirmed ?? [])]
-      if (doneOrConfirmed.some(t => t.id === meta.lastTaskId)) {
-        recordSuccess(meta)
-      } else {
-        const blocked = board.columns.blocked ?? []
-        if (blocked.some(t => t.id === meta.lastTaskId)) {
-          const autoPaused = recordFailure(meta)
-          if (autoPaused) {
-            upsertJob(meta)
-            return json({ ok: true, skipped: 'auto-paused' } satisfies BridgeResult)
+      const board2 = await getHookRegistry().invoke<{ columns: Record<string, Array<{ id: string }>> }>('tasks.readTaskboard', {})
+      if (board2) {
+        const doneOrConfirmed = [...(board2.columns.done ?? []), ...(board2.columns.confirmed ?? [])]
+        if (doneOrConfirmed.some(t => t.id === meta.lastTaskId)) {
+          recordSuccess(meta)
+        } else {
+          const blocked = board2.columns.blocked ?? []
+          if (blocked.some(t => t.id === meta.lastTaskId)) {
+            const autoPaused = recordFailure(meta)
+            if (autoPaused) {
+              upsertJob(meta)
+              return json({ ok: true, skipped: 'auto-paused' } satisfies BridgeResult)
+            }
           }
         }
       }

@@ -377,6 +377,9 @@ app.prepare().then(async () => {
   watchdog.start(CONTENT_DIR, port)
   doctor.start(CONTENT_DIR, process.cwd())
 
+  // Notify all plugins that every plugin is now active
+  await pluginRegistry.onAllReady()
+
   // Register graceful shutdown
   registerShutdownHandlers(server, CONTENT_DIR)
 

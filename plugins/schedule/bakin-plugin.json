@@ -1,0 +1,15 @@
+{
+  "id": "schedule",
+  "name": "Schedule",
+  "version": "1.0.0",
+  "bakin": ">=1.0.0",
+  "description": "Cron job scheduling with OpenClaw bridge and task creation",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": ["schedule/"],
+  "secrets": [],
+  "tests": "",
+  "dependencies": ["tasks"],
+  "permissions": ["storage.read", "storage.write", "events.emit"]
+}
