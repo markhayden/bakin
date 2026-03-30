@@ -61,7 +61,7 @@ addExecTool({
     stepId: z.string().describe('Step ID to submit for'),
     output: z.record(z.string(), z.unknown()).describe('JSON output matching the step schema'),
   },
-  handler: async (params, agent) => {
+  handler: async (params: Record<string, unknown>, agent: string) => {
     return submitStepValidated(
       params.taskId as string,
       params.stepId as string,

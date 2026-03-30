@@ -249,7 +249,7 @@ addExecTool({
     model: z.enum(MODEL_NAMES).optional().describe('Model tier: flash (default, cheaper) or pro (higher quality)'),
     thumbnail: z.boolean().optional().describe('Generate a 400px WebP thumbnail for UI previews (default: true)'),
   },
-  handler: async (params, agent) => {
+  handler: async (params: Record<string, unknown>, agent: string) => {
     return generateImage({ ...params, agent } as GenImageParams)
   },
 })

@@ -50,7 +50,7 @@ const calendarPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/items',
       method: 'GET',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const url = new URL(req.url)
         const month = url.searchParams.get('month')
         let items = loadCalendarItems()
@@ -70,7 +70,7 @@ const calendarPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/items',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await req.json()
         const { title, agent, channel, channelTarget, contentType, tone, scheduledAt, brief, status } = body
         
@@ -98,7 +98,7 @@ const calendarPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/items/update',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const url = new URL(req.url)
         const body = await req.json()
         const id = body.id || url.searchParams.get('id')
@@ -134,7 +134,7 @@ const calendarPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/items/delete',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const url = new URL(req.url)
         const body = await req.json().catch(() => ({}))
         const id = body.id || url.searchParams.get('id')
@@ -152,7 +152,7 @@ const calendarPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/items/approve',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await req.json()
         const { id } = body
         
@@ -220,7 +220,7 @@ const calendarPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/items/reject',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await req.json()
         const { id, note } = body
         
@@ -250,7 +250,7 @@ const calendarPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/brainstorm',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await req.json()
         const { agentId, message, history } = body as {
           agentId: string

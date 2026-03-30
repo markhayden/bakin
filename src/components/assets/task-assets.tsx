@@ -78,8 +78,8 @@ export function TaskAssets({ taskId }: TaskAssetsProps) {
                   className="size-8 rounded object-cover shrink-0"
                 />
               ) : (
-                <div className="size-8 rounded bg-zinc-800 flex items-center justify-center shrink-0">
-                  <Icon className="size-4 text-zinc-400" />
+                <div className="size-8 rounded bg-muted flex items-center justify-center shrink-0">
+                  <Icon className="size-4 text-muted-foreground" />
                 </div>
               )}
               <div className="flex-1 min-w-0">

@@ -16,6 +16,7 @@ import {
   AlarmClock,
   Activity,
   Compass,
+  Settings,
 } from 'lucide-react'
 import { allNavItems } from '@/lib/plugin-manifest'
 import { useSidebarContext } from '@/context/sidebar-context'
@@ -45,8 +46,10 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   const { collapsed, toggle } = useSidebarContext()
 
+  const settingsActive = pathname === '/settings'
+
   return (
-    <nav className="flex flex-col gap-0.5 px-2 py-3">
+    <nav className="flex flex-col gap-0.5 px-2 py-3 flex-1">
       {allNavItems.map((item) => {
         const Icon = ICONS[item.icon]
         const active = pathname === item.href || pathname.startsWith(item.href + '/')
@@ -84,6 +87,24 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
 
         return linkContent
       })}
+
+      {/* Settings — pinned to bottom */}
+      <div className="mt-auto pt-2 border-t border-border">
+        <Link
+          href="/settings"
+          onClick={onNavigate}
+          className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+            collapsed ? 'justify-center px-0' : ''
+          } ${
+            settingsActive
+              ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
+          }`}
+        >
+          <Settings className="size-4 shrink-0" />
+          {!collapsed && <span>Settings</span>}
+        </Link>
+      </div>
     </nav>
   )
 }

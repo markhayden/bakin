@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { FileText, Image, Video, Music, Map, Database, Package, Clock, MoreHorizontal, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { AgentAvatar } from '@/components/agent-avatar'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -47,7 +48,7 @@ const TYPE_COLORS: Record<string, string> = {
   audio: 'text-amber-400',
   plans: 'text-cyan-400',
   data: 'text-orange-400',
-  other: 'text-zinc-400',
+  other: 'text-muted-foreground',
 }
 
 interface AssetsListProps {
@@ -58,11 +59,10 @@ interface AssetsListProps {
 
 function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () => void; onDelete: (path: string) => void }) {
   const [imgError, setImgError] = useState(false)
-  const [agentImgError, setAgentImgError] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   const Icon = TYPE_ICONS[asset.type] || Package
-  const iconColor = TYPE_COLORS[asset.type] || 'text-zinc-400'
+  const iconColor = TYPE_COLORS[asset.type] || 'text-muted-foreground'
   const isImage = asset.type === 'images'
   const thumbnailVariant = asset.variants?.find(v => v.role === 'thumbnail')
   const previewPath = thumbnailVariant ? thumbnailVariant.path : asset.path
@@ -108,18 +108,7 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
 
         {/* Agent */}
         <div className="flex items-center gap-1.5 w-24 shrink-0 hidden lg:flex">
-          {!agentImgError ? (
-            <img
-              src={`/headshots/${asset.metadata.agent}.png`}
-              alt={asset.metadata.agent}
-              onError={() => setAgentImgError(true)}
-              className="size-4 rounded-full object-cover object-top ring-1 ring-zinc-700/50"
-            />
-          ) : (
-            <span className="size-4 rounded-full bg-zinc-700 flex items-center justify-center text-[8px] text-zinc-300">
-              {asset.metadata.agent.charAt(0).toUpperCase()}
-            </span>
-          )}
+          <AgentAvatar agentId={asset.metadata.agent} size="xs" />
           <span className="text-xs text-muted-foreground truncate">{asset.metadata.agent}</span>
         </div>
 

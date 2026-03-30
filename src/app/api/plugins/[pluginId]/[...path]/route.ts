@@ -65,7 +65,7 @@ function ensureInitialized() {
       events,
       pluginId: plugin.id,
       registerNav: () => {},
-      registerRoute: (route) => { state.routes.push(route) },
+      registerRoute: (route: APIRoute) => { state.routes.push(route) },
       registerSlot: () => {},
       registerExecTool: () => {},
       registerSkill: () => {},

@@ -44,7 +44,7 @@ const memoryPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/audit',
       method: 'GET',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
           const content = ctx.storage.read('audit.jsonl')
           if (!content) {
@@ -71,7 +71,7 @@ const memoryPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/workspace',
       method: 'GET',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
           const url = new URL(req.url)
           const agentId = url.searchParams.get('agentId')
@@ -123,7 +123,7 @@ const memoryPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/gateway',
       method: 'GET',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
           const url = new URL(req.url)
           const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10)

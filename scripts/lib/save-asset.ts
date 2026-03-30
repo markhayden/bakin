@@ -97,7 +97,7 @@ addExecTool({
     tool: z.string().optional().describe('Tool used to generate (e.g., "dall-e-3", "nano-banana-pro")'),
     slug: z.string().optional().describe('Custom filename slug. Auto-derived from source filename if omitted.'),
   },
-  handler: async (params, agent) => {
+  handler: async (params: Record<string, unknown>, agent: string) => {
     return saveAsset({ ...params, agent } as SaveAssetParams)
   },
 })

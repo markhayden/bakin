@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table'
-import { STATUS_BADGE_STYLES, AGENT_AVATAR_COLORS, COLUMN_CONFIG } from '../constants'
+import { STATUS_BADGE_STYLES, COLUMN_CONFIG } from '../constants'
 import { AGENTS } from '@/lib/constants'
+import { AgentAvatar } from '@/components/agent-avatar'
 import { ArrowUpDown } from 'lucide-react'
 import type { FlatTask } from '../hooks/use-task-filters'
 import type { ColumnId } from '../types'
@@ -252,21 +253,9 @@ export function TaskLogTable({ currentTasks }: TaskLogTableProps) {
 
 function AgentCell({ agentId }: { agentId: string }) {
   const agent = AGENTS.find(a => a.id === agentId)
-  const [imgError, setImgError] = useState(false)
   return (
     <span className="flex items-center gap-1.5">
-      {!imgError ? (
-        <img
-          src={`/headshots/${agentId}.png`}
-          alt={agent?.name ?? agentId}
-          onError={() => setImgError(true)}
-          className="size-5 rounded-full object-cover object-top ring-1 ring-zinc-700 shrink-0"
-        />
-      ) : (
-        <span className={`size-5 rounded-full flex items-center justify-center text-[10px] shrink-0 ${AGENT_AVATAR_COLORS[agentId] || 'bg-zinc-400'}`}>
-          {agent?.emoji ?? '?'}
-        </span>
-      )}
+      <AgentAvatar agentId={agentId} size="xs" />
       <span className="text-xs">{agent?.name ?? agentId}</span>
     </span>
   )

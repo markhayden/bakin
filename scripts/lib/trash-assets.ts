@@ -16,7 +16,7 @@ import { listTrash, restoreAsset, emptyTrash } from '../../plugins/assets/lib/tr
 // Handlers
 // ---------------------------------------------------------------------------
 
-async function handleListTrash(): ReturnType<typeof succeed> {
+async function handleListTrash(): Promise<ReturnType<typeof succeed>> {
   const assetsRoot = join(getContentDir(), 'assets')
   const items = listTrash(assetsRoot)
 
@@ -36,7 +36,7 @@ async function handleListTrash(): ReturnType<typeof succeed> {
 
 async function handleRestoreTrash(
   params: Record<string, unknown>,
-): ReturnType<typeof succeed> {
+): Promise<ReturnType<typeof succeed>> {
   const filename = params.filename
   if (typeof filename !== 'string' || !filename) {
     return fail('filename parameter is required')
@@ -52,7 +52,7 @@ async function handleRestoreTrash(
   return succeed({ restoredPath })
 }
 
-async function handleEmptyTrash(): ReturnType<typeof succeed> {
+async function handleEmptyTrash(): Promise<ReturnType<typeof succeed>> {
   const assetsRoot = join(getContentDir(), 'assets')
   const deleted = emptyTrash(assetsRoot)
   return succeed({ deleted })

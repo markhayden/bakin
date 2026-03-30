@@ -35,7 +35,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/create',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await req.json()
         const { title, description, column, assignee, workflowId, createdBy } = body
         if (!title) {
@@ -53,7 +53,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/move',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await req.json()
         const { title, id, from, to, agent } = body
         const identifier = id || title
@@ -79,7 +79,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/delete',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await req.json()
         const { title, id } = body
         const identifier = id || title
@@ -98,7 +98,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/assign',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await req.json()
         const { title, id, agent } = body
         const identifier = id || title
@@ -117,7 +117,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/log',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await req.json()
         const { title, id, author, message } = body
         const identifier = id || title
@@ -136,7 +136,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/block',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await req.json()
         const { title, id, reason, agent } = body
         const identifier = id || title
@@ -155,7 +155,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/update',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await req.json()
         const { originalTitle, id, title, description, agent, column, workflowId } = body
         const identifier = id || originalTitle

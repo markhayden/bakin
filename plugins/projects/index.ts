@@ -63,7 +63,7 @@ const projectsPlugin: BakinPlugin = {
 
     // Watch project files for index rebuilds
     ctx.watchFiles(['projects/*.md'])
-    ctx.events.on('file.changed', (_event, data) => {
+    ctx.events.on('file.changed', (_event: string, data: Record<string, unknown>) => {
       const path = data.path as string | undefined
       if (path && path.startsWith('projects/') && path.endsWith('.md')) {
         rebuildIndex()
@@ -78,7 +78,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/list',
       method: 'GET',
       description: 'List projects with optional status filter',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const url = new URL(req.url, 'http://localhost')
         const statusFilter = url.searchParams.get('status') as ProjectStatus | null
         let projects = readAllProjects()
@@ -93,7 +93,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/get',
       method: 'GET',
       description: 'Get a project by ID with resolved task statuses',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const url = new URL(req.url, 'http://localhost')
         const id = url.searchParams.get('id')
         if (!id) return json({ error: 'Missing id parameter' }, 400)
@@ -107,7 +107,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/create',
       method: 'POST',
       description: 'Create a new project',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ title: string; body?: string; owner?: string; tasks?: string[] }>(req)
         if (!body.title) return json({ error: 'Missing title' }, 400)
         const result = await createProject(body)
@@ -119,7 +119,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/update',
       method: 'PUT',
       description: 'Update a project',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ id: string; title?: string; status?: ProjectStatus; body?: string; owner?: string }>(req)
         if (!body.id) return json({ error: 'Missing id' }, 400)
         try {
@@ -135,7 +135,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/delete',
       method: 'POST',
       description: 'Delete a project',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ id: string; deleteLinkedTasks?: boolean }>(req)
         if (!body.id) return json({ error: 'Missing id' }, 400)
         try {
@@ -163,7 +163,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/checklist/add',
       method: 'POST',
       description: 'Add a checklist item to a project',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ projectId: string; title: string }>(req)
         if (!body.projectId || !body.title) return json({ error: 'Missing projectId or title' }, 400)
         const result = await addChecklistItem(body.projectId, body.title)
@@ -175,7 +175,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/checklist/toggle',
       method: 'POST',
       description: 'Mark a checklist item as checked or unchecked',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ projectId: string; taskItemId: string; checked: boolean }>(req)
         if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
         const result = await markChecklistItem(body.projectId, body.taskItemId, body.checked)
@@ -187,7 +187,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/checklist/update',
       method: 'POST',
       description: 'Update a checklist item title or description',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ projectId: string; taskItemId: string; title?: string; description?: string }>(req)
         if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
         await updateChecklistItem(body.projectId, body.taskItemId, { title: body.title, description: body.description })
@@ -199,7 +199,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/checklist/remove',
       method: 'POST',
       description: 'Remove a checklist item',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ projectId: string; taskItemId: string }>(req)
         if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
         await removeChecklistItem(body.projectId, body.taskItemId)
@@ -211,7 +211,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/checklist/link',
       method: 'POST',
       description: 'Link a checklist item to an existing board task',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ projectId: string; taskItemId: string; taskId: string }>(req)
         if (!body.projectId || !body.taskItemId || !body.taskId) return json({ error: 'Missing required fields' }, 400)
         await linkChecklistItem(body.projectId, body.taskItemId, body.taskId)
@@ -223,7 +223,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/checklist/promote',
       method: 'POST',
       description: 'Create a board task from a checklist item and auto-link it',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ projectId: string; taskItemId: string; assignee?: string }>(req)
         if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
         const result = await promoteItemToTask(body.projectId, body.taskItemId, { assignee: body.assignee })
@@ -235,7 +235,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/assets/attach',
       method: 'POST',
       description: 'Attach an asset to a project',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ projectId: string; assetPath: string; label?: string }>(req)
         if (!body.projectId || !body.assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
         await attachAsset(body.projectId, body.assetPath, body.label)
@@ -247,7 +247,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/assets/detach',
       method: 'POST',
       description: 'Detach an asset from a project',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ projectId: string; assetPath: string }>(req)
         if (!body.projectId || !body.assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
         await detachAsset(body.projectId, body.assetPath)
@@ -259,7 +259,7 @@ const projectsPlugin: BakinPlugin = {
       path: '/ask',
       method: 'POST',
       description: 'Send a prompt to the main agent with project context',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{
           projectId: string
           prompt: string
@@ -323,7 +323,7 @@ const projectsPlugin: BakinPlugin = {
       parameters: {
         status: z.enum(['draft', 'active', 'completed', 'archived']).optional().describe('Filter by status'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         let projects = readAllProjects()
         if (params.status) {
           projects = projects.filter(p => p.status === params.status)
@@ -338,7 +338,7 @@ const projectsPlugin: BakinPlugin = {
       parameters: {
         projectId: z.string().describe('Project ID'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         const project = readProject(params.projectId as string)
         if (!project) return { ok: false, error: `Project not found: ${params.projectId}` }
         return { ok: true, project: resolveLinkedTaskStatuses(project) }
@@ -354,7 +354,7 @@ const projectsPlugin: BakinPlugin = {
         owner: z.string().optional().describe('Project owner'),
         tasks: z.array(z.string()).optional().describe('Initial checklist item titles'),
       },
-      handler: async (params, agent) => {
+      handler: async (params: Record<string, unknown>, agent: string) => {
         const result = await createProject({
           title: params.title as string,
           body: params.body as string | undefined,
@@ -375,7 +375,7 @@ const projectsPlugin: BakinPlugin = {
         body: z.string().optional().describe('New markdown body'),
         owner: z.string().optional().describe('New owner'),
       },
-      handler: async (params, agent) => {
+      handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await updateProject(params.projectId as string, {
             title: params.title as string | undefined,
@@ -396,7 +396,7 @@ const projectsPlugin: BakinPlugin = {
       parameters: {
         projectId: z.string().describe('Project ID'),
       },
-      handler: async (params, agent) => {
+      handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await deleteProject(params.projectId as string, agent)
           return { ok: true }
@@ -413,7 +413,7 @@ const projectsPlugin: BakinPlugin = {
         projectId: z.string().describe('Project ID'),
         title: z.string().describe('Checklist item title'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         const result = await addChecklistItem(params.projectId as string, params.title as string)
         return { ok: true, ...result }
       },
@@ -427,7 +427,7 @@ const projectsPlugin: BakinPlugin = {
         taskItemId: z.string().describe('Checklist item ID (e.g., t001)'),
         checked: z.boolean().describe('true to mark as done, false to uncheck'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         const result = await markChecklistItem(
           params.projectId as string,
           params.taskItemId as string,
@@ -444,7 +444,7 @@ const projectsPlugin: BakinPlugin = {
         projectId: z.string().describe('Project ID'),
         taskItemId: z.string().describe('Checklist item ID to remove'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         try {
           await removeChecklistItem(params.projectId as string, params.taskItemId as string)
           return { ok: true }
@@ -462,7 +462,7 @@ const projectsPlugin: BakinPlugin = {
         taskItemId: z.string().describe('Checklist item ID'),
         taskId: z.string().describe('Board task ID to link'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         try {
           await linkChecklistItem(
             params.projectId as string,
@@ -484,7 +484,7 @@ const projectsPlugin: BakinPlugin = {
         taskItemId: z.string().describe('Checklist item ID to promote to a board task'),
         assignee: z.string().optional().describe('Agent to assign the task to'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         try {
           const result = await promoteItemToTask(
             params.projectId as string,
@@ -506,7 +506,7 @@ const projectsPlugin: BakinPlugin = {
         assetPath: z.string().describe('Relative asset path (e.g., "assets/text/task-abc/spec.md")'),
         label: z.string().optional().describe('Human-readable label or summary of what this asset contains'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         try {
           await attachAsset(params.projectId as string, params.assetPath as string, params.label as string | undefined)
           return { ok: true }
@@ -523,7 +523,7 @@ const projectsPlugin: BakinPlugin = {
         projectId: z.string().describe('Project ID'),
         assetPath: z.string().describe('Asset path to detach'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         try {
           await detachAsset(params.projectId as string, params.assetPath as string)
           return { ok: true }

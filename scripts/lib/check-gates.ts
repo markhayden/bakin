@@ -71,7 +71,7 @@ addExecTool({
   parameters: {
     taskId: z.string().describe('Task ID (or workflow instance ID)'),
   },
-  handler: async (params) => {
+  handler: async (params: Record<string, unknown>) => {
     return checkGates(params.taskId as string)
   },
 })

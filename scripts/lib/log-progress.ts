@@ -51,7 +51,7 @@ addExecTool({
     category: z.enum(CATEGORIES).optional().describe('Log category (default: progress)'),
     stage: z.string().optional().describe('Workflow stage tag (e.g., "image-gen", "copy-review")'),
   },
-  handler: async (params, agent) => {
+  handler: async (params: Record<string, unknown>, agent: string) => {
     return logProgressFormatted({ ...params, agent } as LogProgressParams)
   },
 })

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { Workflow } from 'lucide-react'
+import { AgentAvatar } from '@/components/agent-avatar'
 import { WorkflowCanvas } from './workflow-canvas'
 import { AGENTS } from '@/lib/constants'
 import type { WorkflowTemplate, WorkflowStep, WorkflowDefinition, AgentStep } from '../types'
@@ -113,18 +114,9 @@ export function WorkflowsPage() {
                       {t.stepCount} steps
                     </Badge>
                     <div className="flex -space-x-1.5">
-                      {agentIds.map(id => {
-                        const agent = AGENTS.find(a => a.id === id)
-                        return agent ? (
-                          <img
-                            key={id}
-                            src={agent.headshot}
-                            alt={agent.name}
-                            title={agent.name}
-                            className="size-5 rounded-full ring-1 ring-zinc-700 object-cover"
-                          />
-                        ) : null
-                      })}
+                      {agentIds.map(id => (
+                        <AgentAvatar key={id} agentId={id} size="xs" />
+                      ))}
                     </div>
                   </div>
                 </button>
