@@ -418,4 +418,10 @@ class PluginRegistryImpl {
   }
 }
 
-export const pluginRegistry = new PluginRegistryImpl()
+// Use globalThis to survive Next.js webpack re-evaluation — without this,
+// API routes get a separate module instance with an empty registry.
+const g = globalThis as unknown as { __bakinPluginRegistry?: PluginRegistryImpl }
+if (!g.__bakinPluginRegistry) {
+  g.__bakinPluginRegistry = new PluginRegistryImpl()
+}
+export const pluginRegistry = g.__bakinPluginRegistry
