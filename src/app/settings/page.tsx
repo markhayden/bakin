@@ -7,49 +7,34 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/empty-state'
 import { Settings } from 'lucide-react'
 
-/** Stub settings schemas — Phase 4 will have plugins declare their own */
-const PLUGIN_SETTINGS: Record<string, { name: string; schema: PluginSettingsSchema }> = {
-  tasks: {
-    name: 'Tasks',
-    schema: {
-      fields: [
-        {
-          key: 'defaultColumn',
-          type: 'select',
-          label: 'Default Column',
-          description: 'Which column new tasks are created in.',
-          options: [
-            { value: 'backlog', label: 'Backlog' },
-            { value: 'todo', label: 'Todo' },
-          ],
-          default: 'todo',
-        },
-        {
-          key: 'showCompleted',
-          type: 'boolean',
-          label: 'Show Completed Tasks',
-          description: 'Show tasks in the Done and Confirmed columns by default.',
-          default: true,
-        },
-        {
-          key: 'autoArchiveDays',
-          type: 'number',
-          label: 'Auto-Archive After (days)',
-          description: 'Automatically move confirmed tasks to archive after this many days. Set to 0 to disable.',
-          default: 0,
-        },
-      ],
-    },
-  },
+interface PluginSchema {
+  id: string
+  name: string
+  schema: PluginSettingsSchema
 }
 
 export default function SettingsPage() {
-  const pluginIds = Object.keys(PLUGIN_SETTINGS)
-  const [activePlugin, setActivePlugin] = useState(pluginIds[0])
+  const [plugins, setPlugins] = useState<PluginSchema[]>([])
+  const [activePlugin, setActivePlugin] = useState<string>('')
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [loading, setLoading] = useState(true)
+  const [schemasLoading, setSchemasLoading] = useState(true)
 
+  // Fetch available schemas on mount
   useEffect(() => {
+    fetch('/api/plugin-settings/schemas')
+      .then(r => r.json())
+      .then((data: PluginSchema[]) => {
+        setPlugins(data)
+        if (data.length > 0) setActivePlugin(data[0].id)
+        setSchemasLoading(false)
+      })
+      .catch(() => setSchemasLoading(false))
+  }, [])
+
+  // Fetch values when active plugin changes
+  useEffect(() => {
+    if (!activePlugin) return
     setLoading(true)
     fetch(`/api/plugin-settings/${activePlugin}`)
       .then(r => r.json())
@@ -66,53 +51,77 @@ export default function SettingsPage() {
     if (res.ok) setValues(newValues)
   }
 
-  const plugin = PLUGIN_SETTINGS[activePlugin]
+  const plugin = plugins.find(p => p.id === activePlugin)
+
+  if (schemasLoading) {
+    return (
+      <PageLayout title="Settings" subtitle="Configure plugin behavior">
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-60" />
+          <Skeleton className="h-8 w-40" />
+        </div>
+      </PageLayout>
+    )
+  }
+
+  if (plugins.length === 0) {
+    return (
+      <PageLayout title="Settings" subtitle="Configure plugin behavior">
+        <EmptyState
+          icon={Settings}
+          title="No plugin settings"
+          description="No plugins have declared configurable settings."
+        />
+      </PageLayout>
+    )
+  }
 
   return (
     <PageLayout title="Settings" subtitle="Configure plugin behavior">
       <div className="flex gap-8">
         {/* Plugin list */}
         <nav className="w-40 shrink-0 space-y-1">
-          {pluginIds.map(id => {
-            const p = PLUGIN_SETTINGS[id]
-            return (
-              <button
-                key={id}
-                onClick={() => setActivePlugin(id)}
-                className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
-                  id === activePlugin
-                    ? 'bg-muted text-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {p.name}
-              </button>
-            )
-          })}
+          {plugins.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setActivePlugin(p.id)}
+              className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
+                p.id === activePlugin
+                  ? 'bg-muted text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {p.name}
+            </button>
+          ))}
         </nav>
 
         {/* Settings form */}
         <div className="flex-1 max-w-lg">
-          <h2 className="text-base font-semibold mb-4">{plugin.name}</h2>
-          {loading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-8 w-60" />
-              <Skeleton className="h-8 w-40" />
-              <Skeleton className="h-8 w-60" />
-            </div>
-          ) : plugin.schema.fields.length === 0 ? (
-            <EmptyState
-              icon={Settings}
-              title="No settings"
-              description="This plugin has no configurable settings."
-            />
-          ) : (
-            <PluginSettingsRenderer
-              pluginId={activePlugin}
-              schema={plugin.schema}
-              values={values}
-              onSave={handleSave}
-            />
+          {plugin && (
+            <>
+              <h2 className="text-base font-semibold mb-4">{plugin.name}</h2>
+              {loading ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-8 w-60" />
+                  <Skeleton className="h-8 w-40" />
+                  <Skeleton className="h-8 w-60" />
+                </div>
+              ) : plugin.schema.fields.length === 0 ? (
+                <EmptyState
+                  icon={Settings}
+                  title="No settings"
+                  description="This plugin has no configurable settings."
+                />
+              ) : (
+                <PluginSettingsRenderer
+                  pluginId={activePlugin}
+                  schema={plugin.schema}
+                  values={values}
+                  onSave={handleSave}
+                />
+              )}
+            </>
           )}
         </div>
       </div>

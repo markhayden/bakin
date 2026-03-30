@@ -1,65 +1,59 @@
 # Phase 5: Audit — Health Plugin
 
 **Applies:** `05-audit-template.md` checklist
+**Status:** Pending
 
 ## Current Inventory
 
-- **Routes (4):** `GET /summary`, `GET /requests`, `GET /usage`, `GET /registry`
-- **Exec tools:** None
-- **Nav items:** Health (Activity, order 85)
-- **Client components:** 1
-- **Cross-plugin deps:** `request-log`, `doctor`, `agent-usage` from `src/core/`
+| Surface | Count | Details |
+|---------|-------|---------|
+| HTTP routes | 4 | `GET /summary`, `GET /requests`, `GET /usage`, `GET /registry` |
+| MCP exec tools | 0 | |
+| Hooks registered | 0 | |
+| Components | 1 | |
+| Settings schema | none | |
+| Lifecycle hooks | none | |
+| Tests | 0 | |
 
-## Plugin-Specific Focus Areas
+## Phase 5A Items
 
-### GlobalThis Hack
-Health plugin likely accesses plugin registry and exec tool stats via globalThis or direct imports. This needs to be cleaned up:
-- Registry data should be available via a proper API (e.g., `ctx.getRegistrySnapshot()`)
-- Exec tool stats via the existing `getExecToolStats()` from registry
-- No globalThis references in plugin code
-
-### Real-Time Charts
-Currently 1 client component — likely a basic summary view. Needs:
-- Real-time charts for request rate, error rate, agent activity
-- Historical data (last hour, day, week)
-- Per-agent activity breakdown
-- SSE-powered live updates (subscribe to audit events)
-
-### Doctor Integration
-`src/core/doctor.ts` already runs health checks. Health plugin should:
-- Display latest doctor results prominently
-- Show `[OK]`, `[WARN]`, `[ERROR]`, `[FIXED]` status per check
-- Allow triggering doctor run from UI
-- Show check history over time
-
-### Per-Plugin Activity Metrics
-Once Phase 4's activity API is in place, health plugin can show:
-- Activity volume per plugin
-- Error rates per plugin
-- Most used exec tools
-- Slowest routes
-
-### Alert Configuration
-Future: configurable alerts when health thresholds are crossed:
-- Error rate > threshold → notification
-- Agent stuck > threshold → notification
-- Disk space low → notification
-Currently watchdog handles some of this — health plugin should surface watchdog state.
-
-### Route Additions
-- `GET /doctor` — run doctor checks on demand and return results
-- `GET /doctor/history` — historical check results
-- `GET /tools` — exec tool usage stats (separate from registry)
-
-### Hook Integration
-- **Provides:** None (consumer/viewer only)
-- **Consumes:** All hooks for monitoring — `task:*`, `workflow:*`, `schedule:*`, `asset:*`
-
-## Settings Schema
+### Settings Schema
 ```typescript
 settingsSchema: {
   refreshInterval: { type: 'number', default: 30, label: 'Refresh interval (seconds)', description: 'How often to poll for updated metrics' },
   showDetailedMetrics: { type: 'boolean', default: true, label: 'Detailed metrics', description: 'Show per-plugin and per-tool breakdowns' },
-  alertOnErrors: { type: 'boolean', default: true, label: 'Alert on errors', description: 'Show banner alert when error rate exceeds threshold' },
 }
 ```
+
+### Activity & Audit
+Read-only/monitoring plugin — no mutations, no audit needed.
+
+### Lifecycle Hooks
+- `onReady()` — run initial doctor check, cache baseline metrics
+
+## Phase 5B Items
+
+### Route Surface Parity
+
+| Operation | HTTP API Route | MCP Exec Tool | Agent Use Case |
+|-----------|---------------|---------------|----------------|
+| System summary | `GET /summary` | `bakin_exec_health_status` | **New** — agent checks system health |
+| Request log | `GET /requests` | — | UI-only |
+| Agent usage | `GET /usage` | — | UI-only |
+| Plugin registry | `GET /registry` | — | UI-only |
+| Run doctor | `GET /doctor` | `bakin_exec_health_doctor` | **New** — agent triggers health check |
+| Tool stats | `GET /tools` | — | UI-only |
+
+**MCP consideration:** One or two exec tools so agents can self-diagnose system health. The `health_status` tool is useful for agents to check if the system is healthy before starting work.
+
+### Route Additions
+- `GET /doctor` — trigger on-demand doctor check, return results
+- `GET /tools` — exec tool usage statistics
+
+### Components
+Only 1 component today. Health dashboard needs:
+- Doctor results display (OK/WARN/ERROR per check)
+- Exec tool usage stats table
+- Per-plugin activity metrics
+
+**Note:** Expanded health dashboard UI may be deferred if scope is too large for Phase 5. Core routes and exec tools are the priority.

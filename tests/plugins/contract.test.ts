@@ -11,6 +11,10 @@ import memoryPlugin from '../../plugins/memory'
 import modelsPlugin from '../../plugins/models'
 import calendarPlugin from '../../plugins/calendar'
 import workflowsPlugin from '../../plugins/workflows'
+import assetsPlugin from '../../plugins/assets'
+import projectsPlugin from '../../plugins/projects'
+import schedulePlugin from '../../plugins/schedule'
+import healthPlugin from '../../plugins/health'
 
 const TEST_DIR = path.join(process.cwd(), 'test-content-contract')
 
@@ -61,6 +65,10 @@ const ALL_PLUGINS: BakinPlugin[] = [
   modelsPlugin,
   calendarPlugin,
   workflowsPlugin,
+  assetsPlugin,
+  projectsPlugin,
+  schedulePlugin,
+  healthPlugin,
 ]
 
 describe('Plugin Contract', () => {
@@ -93,6 +101,24 @@ describe('Plugin Contract', () => {
         const { ctx, routes } = createMockContext(plugin.id)
         await plugin.activate(ctx)
         expect(routes.length).toBeGreaterThan(0)
+      })
+
+      it('has a settingsSchema with valid fields', () => {
+        if (!plugin.settingsSchema) return // optional but recommended
+        expect(Array.isArray(plugin.settingsSchema.fields)).toBe(true)
+        for (const field of plugin.settingsSchema.fields) {
+          expect(field.key).toBeDefined()
+          expect(['string', 'number', 'boolean', 'select']).toContain(field.type)
+          expect(field.label).toBeDefined()
+          if (field.type === 'select') {
+            expect(Array.isArray(field.options)).toBe(true)
+          }
+        }
+      })
+
+      it('lifecycle hooks are functions if defined', () => {
+        if (plugin.onReady) expect(typeof plugin.onReady).toBe('function')
+        if (plugin.onShutdown) expect(typeof plugin.onShutdown).toBe('function')
       })
 
       it('all registered routes have valid method and path', async () => {

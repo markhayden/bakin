@@ -3,14 +3,14 @@
  * Dispatches /api/plugins/:pluginId/:path to the plugin's registered route handler.
  */
 import { NextResponse } from 'next/server'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
 import { BakinEventBus } from '@/lib/events/event-bus'
 import { getContentDir } from '@/core/content-dir'
 import type { PluginContext, BakinPlugin, APIRoute } from '@/lib/plugin-types'
 
-/** Build the settings + activity stubs for a lightweight PluginContext */
+/** Build the settings + activity for a lightweight PluginContext */
 function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | 'updateSettings' | 'activity' | 'hooks'> {
   return {
     getSettings: <T = Record<string, unknown>>(): T => {
@@ -27,8 +27,36 @@ function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | '
       writeFileSync(p, JSON.stringify({ ...cur, ...patch }, null, 2))
     },
     activity: {
-      log: () => {},
-      audit: () => {},
+      log: (agent: string, message: string, opts?: { taskId?: string; category?: string }) => {
+        const broadcastFn = (globalThis as any).__bakinBroadcast
+        if (broadcastFn) {
+          broadcastFn({
+            type: 'activity',
+            agent,
+            message,
+            ts: new Date().toISOString(),
+            pluginId,
+            ...(opts?.taskId ? { taskId: opts.taskId } : {}),
+            ...(opts?.category ? { category: opts.category } : {}),
+          })
+        }
+      },
+      audit: (event: string, agent: string, data?: Record<string, unknown>) => {
+        // appendAudit writes to audit.jsonl + broadcasts via SSE
+        const contentDir = getContentDir()
+        const entry = JSON.stringify({
+          ts: new Date().toISOString(),
+          event: `${pluginId}.${event}`,
+          agent,
+          ...(data || {}),
+        })
+        const auditPath = join(contentDir, 'audit.jsonl')
+        try { appendFileSync(auditPath, entry + '\n') } catch { /* best-effort */ }
+        const broadcastFn = (globalThis as any).__bakinBroadcast
+        if (broadcastFn) {
+          broadcastFn({ type: 'audit', event: `${pluginId}.${event}`, agent, ...data })
+        }
+      },
     },
     hooks: {
       register: () => () => {},

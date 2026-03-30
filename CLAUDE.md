@@ -106,7 +106,7 @@ Every plugin has:
 - `components/` — plugin-specific UI components
 - `types.ts` — plugin-specific type definitions
 
-Plugin context provides: `storage`, `events`, `registerNav()`, `registerRoute()`, `registerSlot()`, `registerExecTool()`, `registerSkill()`, `watchFiles()`
+Plugin context provides: `storage`, `events`, `registerNav()`, `registerRoute()`, `registerSlot()`, `registerExecTool()`, `registerSkill()`, `watchFiles()`, `getSettings()`, `updateSettings()`, `activity` (log + audit), `hooks` (register + has + invoke)
 
 Routes registered as: `/api/plugins/{pluginId}/{path}` via the catch-all route.
 
@@ -159,7 +159,10 @@ Agents report progress via `bakin_log_progress` MCP tool → `logProgress()` in 
 All paths resolved through `getContentDir()` in `src/core/content-dir.ts`. Resolution: `BAKIN_HOME` env → `~/.bakin/` → `./content/` fallback. Well-known paths via `getBakinPaths()`.
 
 ### Plugin Communication
-Plugins currently interact via: shared core services (task-service, audit), direct dynamic imports, event bus (underutilized), and SSE broadcast. Phase 4 of hardening will formalize cross-plugin hooks.
+Plugins communicate exclusively through the HookRegistry (`packages/core/src/hooks/hook-registry.ts`). Plugins register hooks in `activate()` via `ctx.hooks.register(name, handler)`. Core modules and other plugins invoke hooks via `getHookRegistry().invoke<R>(name, data)`. Hook naming: `{pluginId}.{operation}` (e.g., `tasks.readTaskboard`, `workflows.getCurrentStep`). No direct imports between plugins or from core → plugins — all cross-boundary calls go through hooks.
+
+### Plugin Settings
+Each plugin declares a `settingsSchema` with typed fields (string, number, boolean, select). The settings page at `/settings` dynamically fetches and renders schemas via `PluginSettingsRenderer`. Values persisted at `~/.bakin/plugin-settings/{pluginId}.json`, accessible in plugins via `ctx.getSettings<T>()`.
 
 ## Reference
 

@@ -229,6 +229,13 @@ const modelsPlugin: BakinPlugin = {
   name: 'Models',
   version: '2.0.0',
 
+  settingsSchema: {
+    fields: [
+      { key: 'showUsageMetrics', type: 'boolean', label: 'Show usage metrics', description: 'Display token usage and cost estimates', default: true },
+      { key: 'defaultModel', type: 'select', label: 'Default model', description: 'Default model for new agents', options: [{ value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' }, { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' }, { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }], default: 'claude-sonnet-4-6' },
+    ],
+  },
+
   navItems: [
     { id: 'models', label: 'Models', icon: 'Cpu', href: '/models', order: 65 },
   ],
@@ -309,6 +316,7 @@ const modelsPlugin: BakinPlugin = {
             }
           })
 
+          ctx.activity.audit('config.updated', 'system', { agentId: body.agentId, ownModel: body.ownModel, subagentModel: body.subagentModel })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -345,6 +353,7 @@ const modelsPlugin: BakinPlugin = {
             }
           })
 
+          ctx.activity.audit('defaults.updated', 'system', { defaultModel: body.defaultModel, defaultSubagentModel: body.defaultSubagentModel })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -411,6 +420,7 @@ const modelsPlugin: BakinPlugin = {
             }
           })
 
+          ctx.activity.audit('aliases.updated', 'system')
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -430,6 +440,7 @@ const modelsPlugin: BakinPlugin = {
             if (err) {
               resolve(Response.json({ ok: false, error: String(err) }, { status: 500 }))
             } else {
+              ctx.activity.audit('gateway.restarted', 'system')
               resolve(Response.json({ ok: true, message: 'Restart initiated' }))
             }
           })

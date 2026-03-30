@@ -19,9 +19,12 @@ import {
   markGateNotified,
 } from './runtime'
 import { matchWorkflow } from './matcher'
+import { createLogger } from '../../src/core/logger'
 import { validateStepOutput } from './schema-validator'
 import { setEventBus } from './notifications'
 import type { WorkflowTemplate, WorkflowDefinition, NestedWorkflowStep } from './types'
+
+const log = createLogger('workflows')
 
 /** Fire-and-forget dispatch trigger so the next workflow step's agent starts immediately. */
 function triggerDispatch() {
@@ -45,6 +48,14 @@ const workflowsPlugin: BakinPlugin = {
   id: 'workflows',
   name: 'Workflows',
   version: '2.0.0',
+
+  settingsSchema: {
+    fields: [
+      { key: 'gateTimeout', type: 'number', label: 'Gate timeout (hours)', description: 'Auto-reject gates not approved within this time', default: 24 },
+      { key: 'maxConcurrentSteps', type: 'number', label: 'Max concurrent steps', description: 'Maximum steps running in parallel per workflow', default: 3 },
+      { key: 'notifyOnGate', type: 'boolean', label: 'Notify on gate', description: 'Send notification when a gate needs approval', default: true },
+    ],
+  },
 
   navItems: [
     { id: 'workflows', label: 'Workflows', icon: 'Workflow', href: '/workflows', order: 15 },
@@ -190,6 +201,8 @@ const workflowsPlugin: BakinPlugin = {
           return Response.json({ error: 'Step completion failed', errors: result.errors }, { status: 400 })
         }
 
+        ctx.activity.audit('step.completed', agentId, { taskId, stepId, workflowComplete: result.workflowComplete })
+
         // Kick dispatch so the next step's agent starts immediately
         if (!result.workflowComplete) {
           triggerDispatch()
@@ -224,6 +237,8 @@ const workflowsPlugin: BakinPlugin = {
           return Response.json({ error: result.errors?.[0], errors: result.errors }, { status: 400 })
         }
 
+        ctx.activity.audit('gate.approved', 'system', { taskId, stepId })
+
         // Kick dispatch so the next step's agent starts immediately
         triggerDispatch()
 
@@ -255,6 +270,8 @@ const workflowsPlugin: BakinPlugin = {
         if (!result.success) {
           return Response.json({ error: result.errors?.[0], errors: result.errors }, { status: 400 })
         }
+
+        ctx.activity.audit('gate.rejected', 'system', { taskId, stepId, reason })
 
         return Response.json(result)
       },
@@ -433,12 +450,31 @@ const workflowsPlugin: BakinPlugin = {
             // Non-fatal — instance is created regardless
           }
 
+          ctx.activity.audit('started', 'system', { taskId, workflowId })
+
           return Response.json({ instance })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 400 })
         }
       },
     })
+  },
+
+  onReady() {
+    const instances = listInstances()
+    const active = instances.filter(i => i.status === 'in_progress')
+    if (active.length > 0) {
+      log.info(`Ready — ${active.length} active workflow instance(s)`)
+    }
+    const defs = listDefinitions()
+    log.info(`Ready — ${defs.length} workflow definition(s) loaded`)
+  },
+
+  onShutdown() {
+    const active = listInstances().filter(i => i.status === 'in_progress')
+    if (active.length > 0) {
+      log.warn(`Shutting down with ${active.length} active workflow instance(s)`)
+    }
   },
 }
 

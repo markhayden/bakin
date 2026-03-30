@@ -39,6 +39,13 @@ const calendarPlugin: BakinPlugin = {
   name: 'Content Calendar',
   version: '1.0.0',
 
+  settingsSchema: {
+    fields: [
+      { key: 'defaultView', type: 'select', label: 'Default view', description: 'Calendar view shown on page load', options: [{ value: 'month', label: 'Month' }, { value: 'week', label: 'Week' }, { value: 'list', label: 'List' }], default: 'month' },
+      { key: 'showScheduleJobs', type: 'boolean', label: 'Show schedule jobs', description: 'Display recurring schedule jobs on the calendar', default: false },
+    ],
+  },
+
   navItems: [
     { id: 'calendar', label: 'Calendar', icon: 'CalendarDays', href: '/calendar', order: 25 },
   ],
@@ -89,7 +96,8 @@ const calendarPlugin: BakinPlugin = {
           brief: brief || '',
           status: status || 'draft',
         })
-        
+
+        ctx.activity.audit('item.created', agent, { itemId: item.id, title })
         return Response.json({ ok: true, item })
       },
     })
@@ -123,6 +131,7 @@ const calendarPlugin: BakinPlugin = {
           }
 
           const item = updateItem(id, body)
+          ctx.activity.audit('item.updated', 'system', { itemId: id })
           return Response.json({ ok: true, item })
         } catch (e) {
           return Response.json({ error: String(e) }, { status: 404 })
@@ -144,6 +153,7 @@ const calendarPlugin: BakinPlugin = {
         }
         
         deleteItem(id)
+        ctx.activity.audit('item.deleted', 'system', { itemId: id })
         return Response.json({ ok: true })
       },
     })
@@ -207,11 +217,12 @@ const calendarPlugin: BakinPlugin = {
           return Response.json({ error: `Cannot approve item in status: ${item.status}` }, { status: 400 })
         }
         
-        const updated = updateItem(id, { 
+        const updated = updateItem(id, {
           status: newStatus,
           ...(newStatus === 'published' ? { publishedAt: new Date().toISOString() } : {})
         })
-        
+
+        ctx.activity.audit('item.approved', 'system', { itemId: id, from: item.status, to: newStatus })
         return Response.json({ ok: true, item: updated })
       },
     })
@@ -237,11 +248,12 @@ const calendarPlugin: BakinPlugin = {
           return Response.json({ error: 'Can only reject items in review status' }, { status: 400 })
         }
         
-        const updated = updateItem(id, { 
+        const updated = updateItem(id, {
           status: 'draft',
           rejectionNote: note || undefined,
         })
-        
+
+        ctx.activity.audit('item.rejected', 'system', { itemId: id, note })
         return Response.json({ ok: true, item: updated })
       },
     })

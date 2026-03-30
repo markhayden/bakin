@@ -1,56 +1,23 @@
 # Phase 5: Audit — Schedule Plugin
 
 **Applies:** `05-audit-template.md` checklist
+**Status:** Pending
 
 ## Current Inventory
 
-- **Routes (9):** `GET /jobs`, `POST /jobs`, `PUT /jobs/update`, `POST /jobs/delete`, `POST /jobs/pause`, `POST /jobs/run-now`, `GET /runs`, `POST /parse-schedule`, `POST /bridge`
-- **Exec tools (6):** `bakin_exec_schedule_list`, `_create`, `_update`, `_pause`, `_delete`, `_briefing`
-- **Nav items:** Schedule (AlarmClock, order 22)
-- **Client components:** 12 (cron UI, calendar views, job cards, run history, agent badge, etc.)
-- **Cross-plugin deps:** `task-service` (createTaskWithEffects), `audit` (appendAudit), `content-dir`, dynamic imports of `tasks/taskboard`
+| Surface | Count | Details |
+|---------|-------|---------|
+| HTTP routes | 9 | `GET /jobs`, `POST /jobs`, `PUT /jobs/update`, `POST /jobs/delete`, `POST /jobs/pause`, `POST /jobs/run-now`, `GET /runs`, `POST /parse-schedule`, `POST /bridge` |
+| MCP exec tools | 6 | schedule_list, schedule_create, schedule_update, schedule_pause, schedule_delete, schedule_briefing |
+| Hooks registered | 0 | |
+| Components | 12 | cron UI, calendar views, job cards, run history, agent badge, etc. |
+| Settings schema | none | |
+| Lifecycle hooks | none | |
+| Tests | 0 | |
 
-## Plugin-Specific Focus Areas
+## Phase 5A Items
 
-### Route Standardization
-- `GET /jobs` → fine
-- `PUT /jobs/update` → `PUT /jobs/{jobId}`
-- `POST /jobs/delete` → `DELETE /jobs/{jobId}`
-- `POST /jobs/pause` → `POST /jobs/{jobId}/pause`
-- `POST /jobs/run-now` → `POST /jobs/{jobId}/run`
-- `GET /runs` → `GET /jobs/{jobId}/runs` (scoped to job)
-
-### Deep Linking
-- `/schedule` shows job list — need `/schedule/{jobId}` for direct job detail
-- Run history for a specific job: `/schedule/{jobId}/runs`
-
-### Bridge Pattern (Key Architecture)
-The `/bridge` route is the OpenClaw webhook handler — cron fires → webhook → bridge creates task. This is the **primary example of cross-plugin interaction** and needs to migrate from direct imports to hooks:
-- Replace `import { createTaskWithEffects }` → `ctx.hooks.call('task:create', { ... })`
-- Replace `import { readTaskboard }` → `ctx.hooks.call('task:query', { ... })` or keep as read-only import
-
-### Job History UI
-- `GET /runs` returns run history — needs better UI
-- Show: timestamp, status (success/fail/skipped), task created (link), duration
-- Filter by job, date range, status
-- Failure alerting: highlight failed runs, show error details
-
-### Failure Handling
-Schedule already has failure counting and cooldown — audit for:
-- Clear display of failure count per job
-- Alert when failure threshold reached
-- Easy retry mechanism
-- Overlap prevention (don't fire if previous run still active)
-
-### Hook Integration
-- **Provides:** `schedule:job:fired`, `schedule:job:failed`
-- **Consumes:** `task:completed` (to record run success), `task:blocked` (to record run issues)
-- Major migration: bridge function must use hooks instead of direct task-service import
-
-### Activity Reporting
-Schedule currently broadcasts directly via `globalThis.__bakinBroadcast`. Replace with `ctx.activity.log()` and `ctx.activity.audit()`.
-
-## Settings Schema
+### Settings Schema
 ```typescript
 settingsSchema: {
   maxConcurrentJobs: { type: 'number', default: 3, label: 'Max concurrent jobs', description: 'Maximum jobs that can run at the same time' },
@@ -59,3 +26,51 @@ settingsSchema: {
   bridgeEnabled: { type: 'boolean', default: true, label: 'Bridge enabled', description: 'Allow cron jobs to create tasks via the bridge' },
 }
 ```
+
+### Activity & Audit
+- Replace raw `appendAudit()` call with `ctx.activity.audit()`
+- Replace any `globalThis.__bakinBroadcast` with `ctx.activity.log()`
+- Add audit to: create, update, delete, pause, run-now, bridge fire
+
+### Manifest
+Dependencies: `["tasks"]` — correct. Permissions: correct.
+
+### Lifecycle Hooks
+- `onReady()` — verify cron jobs are valid, log job count
+
+## Phase 5B Items
+
+### Route Surface Parity
+
+| Operation | HTTP API Route | MCP Exec Tool | Agent Use Case |
+|-----------|---------------|---------------|----------------|
+| List jobs | `GET /jobs` | `bakin_exec_schedule_list` | Exists |
+| Get job | `GET /jobs/{jobId}` | `bakin_exec_schedule_get` | **New** — agent checks specific job |
+| Create job | `POST /jobs` | `bakin_exec_schedule_create` | Exists |
+| Update job | `PUT /jobs/{jobId}` | `bakin_exec_schedule_update` | Exists — standardize path |
+| Delete job | `DELETE /jobs/{jobId}` | `bakin_exec_schedule_delete` | Exists — standardize method |
+| Pause/resume | `POST /jobs/{jobId}/pause` | `bakin_exec_schedule_pause` | Exists — standardize path |
+| Run now | `POST /jobs/{jobId}/run` | `bakin_exec_schedule_run_now` | **New** — agent triggers immediate run |
+| Get runs | `GET /jobs/{jobId}/runs` | — | UI query only |
+| Briefing | — | `bakin_exec_schedule_briefing` | Exists (agent-only, no HTTP equivalent needed) |
+| Parse schedule | `POST /parse-schedule` | — | Utility, UI-only |
+| Bridge webhook | `POST /bridge` | — | Internal webhook from OpenClaw |
+
+### Route Standardization
+- `PUT /jobs/update` → `PUT /jobs/{jobId}`
+- `POST /jobs/delete` → `DELETE /jobs/{jobId}`
+- `POST /jobs/pause` → `POST /jobs/{jobId}/pause`
+- `POST /jobs/run-now` → `POST /jobs/{jobId}/run`
+- `GET /runs` → `GET /jobs/{jobId}/runs` (scope to job)
+
+### Hook Registration
+Schedule registers 0 hooks. Add:
+- `schedule.listJobs` — so other plugins can query schedule state
+- `schedule.getJob` — so other plugins can check specific job
+
+### Hook Events (Notification Hooks)
+- `schedule.jobFired` — `{ jobId, taskId }`
+- `schedule.jobFailed` — `{ jobId, error }`
+
+### Deep Linking
+Add `src/app/schedule/[id]/page.tsx` for direct job detail + run history.

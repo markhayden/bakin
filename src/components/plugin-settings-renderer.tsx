@@ -7,19 +7,9 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { useToastStore } from '@/hooks/use-toast'
+import type { SettingsField, PluginSettingsSchema } from '@/lib/plugin-types'
 
-interface SettingsField {
-  key: string
-  type: 'string' | 'number' | 'boolean' | 'select'
-  label: string
-  description?: string
-  options?: { value: string; label: string }[]
-  default?: unknown
-}
-
-export interface PluginSettingsSchema {
-  fields: SettingsField[]
-}
+export type { PluginSettingsSchema }
 
 interface PluginSettingsRendererProps {
   pluginId: string
