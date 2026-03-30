@@ -5,6 +5,7 @@
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { getRequestStats } from '../../src/core/request-log'
 import { getLastResults } from '../../src/core/doctor'
+import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 // Registry accessors live on globalThis because Next.js API routes get
 // separate webpack-compiled module instances with empty Maps. The custom
@@ -13,6 +14,8 @@ function getRegistrySnapshot() {
   const fn = (globalThis as any).__bakinGetRegistrySnapshot
   return fn ? fn() : []
 }
+
+const log = createLogger('health')
 
 function getExecToolStats() {
   const fn = (globalThis as any).__bakinGetExecToolStats
@@ -23,6 +26,13 @@ const healthPlugin: BakinPlugin = {
   id: 'health',
   name: 'Health',
   version: '1.0.0',
+
+  settingsSchema: {
+    fields: [
+      { key: 'refreshInterval', type: 'number', label: 'Refresh interval (seconds)', description: 'How often to poll for updated metrics', default: 30 },
+      { key: 'showDetailedMetrics', type: 'boolean', label: 'Detailed metrics', description: 'Show per-plugin and per-tool breakdowns', default: true },
+    ],
+  },
 
   navItems: [
     { id: 'health', label: 'Health', icon: 'Activity', href: '/health', order: 85 },
@@ -104,6 +114,17 @@ const healthPlugin: BakinPlugin = {
         })
       },
     })
+  },
+
+  onReady() {
+    const cached = getLastResults()
+    if (cached) {
+      const errors = cached.results.filter(r => r.status === 'error').length
+      const warns = cached.results.filter(r => r.status === 'warn').length
+      log.info(`Ready — baseline: ${errors} errors, ${warns} warnings from ${cached.results.length} checks`)
+    } else {
+      log.info('Ready — no cached doctor results yet')
+    }
   },
 }
 

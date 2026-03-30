@@ -26,6 +26,15 @@ const tasksPlugin: BakinPlugin = {
   name: 'Tasks',
   version: '1.0.0',
 
+  settingsSchema: {
+    fields: [
+      { key: 'defaultColumn', type: 'select', label: 'Default column', description: 'Which column new tasks are created in', options: [{ value: 'backlog', label: 'Backlog' }, { value: 'todo', label: 'Todo' }], default: 'todo' },
+      { key: 'showCompleted', type: 'boolean', label: 'Show completed tasks', description: 'Show tasks in the Done and Confirmed columns by default', default: true },
+      { key: 'autoArchiveDays', type: 'number', label: 'Auto-archive after (days)', description: 'Move completed tasks to archive after this many days. 0 to disable.', default: 0 },
+      { key: 'maxInProgress', type: 'number', label: 'Max in-progress tasks', description: 'Warn when more than this many tasks are in progress', default: 5 },
+    ],
+  },
+
   navItems: [
     { id: 'tasks', label: 'Tasks', icon: 'CheckSquare', href: '/tasks', order: 10 },
   ],
@@ -58,6 +67,7 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           const task = await createTask(title, column, assignee, description, workflowId, createdBy)
+          ctx.activity.audit('created', createdBy || 'system', { taskId: task.id, title })
           return Response.json({ ok: true, id: task.id })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -80,6 +90,7 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           await moveTaskWithEffects(identifier, to, agent, { from, channel: 'rest' })
+          ctx.activity.audit('moved', agent, { taskId: identifier, from, to })
           return Response.json({ ok: true })
         } catch (err) {
           const msg = (err as Error).message
@@ -103,6 +114,7 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           await deleteTask(identifier)
+          ctx.activity.audit('deleted', 'system', { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -122,6 +134,7 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           await assignTask(identifier, agent || '')
+          ctx.activity.audit('assigned', 'system', { taskId: identifier, agent: agent || '' })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -141,6 +154,7 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           await logProgress(identifier, author || 'system', message, 'rest')
+          ctx.activity.audit('logged', author || 'system', { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -160,6 +174,7 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           await blockTaskWithEffects(identifier, reason, agent || 'system', 'rest')
+          ctx.activity.audit('blocked', agent || 'system', { taskId: identifier, reason })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -179,6 +194,7 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           await updateTask(identifier, { title, description, agent, column, workflowId })
+          ctx.activity.audit('updated', agent || 'system', { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })

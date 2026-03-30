@@ -14,6 +14,6 @@
   ],
   "secrets": [],
   "tests": "tests/",
-  "dependencies": ["ajv"],
+  "dependencies": ["tasks"],
   "permissions": ["storage.read", "storage.write", "events.emit"]
 }

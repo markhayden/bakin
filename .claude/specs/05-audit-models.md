@@ -1,60 +1,57 @@
 # Phase 5: Audit — Models Plugin
 
 **Applies:** `05-audit-template.md` checklist
+**Status:** Pending
 
 ## Current Inventory
 
-- **Routes (7):** `GET /available`, `GET /config`, `POST /config`, `POST /defaults`, `GET /aliases`, `POST /aliases`, `POST /restart`
-- **Exec tools:** None
-- **Nav items:** Models (Cpu, order 65)
-- **Client components:** 1
-- **Cross-plugin deps:** None (self-contained)
+| Surface | Count | Details |
+|---------|-------|---------|
+| HTTP routes | 7 | `GET /available`, `GET /config`, `POST /config`, `POST /defaults`, `GET /aliases`, `POST /aliases`, `POST /restart` |
+| MCP exec tools | 0 | |
+| Hooks registered | 0 | |
+| Components | 1 | |
+| Settings schema | none | |
+| Lifecycle hooks | none | |
+| Tests | 0 | |
 
-## Plugin-Specific Focus Areas
+## Phase 5A Items
 
-### Route Standardization
-- Routes are already reasonable for a config-style plugin
-- `POST /restart` → `POST /gateway/restart` (clarify what's being restarted)
-- Consider: `GET /agents/{agentId}/model` for per-agent model lookup
-
-### Deep Linking
-- `/models` shows config UI — likely no per-item deep linking needed
-- Possibly: `/models/agents/{agentId}` to jump to a specific agent's config
-
-### Per-Agent Config UI
-Currently 1 client component. Needs:
-- Table/grid showing each agent with their assigned model
-- Inline editing: click to change model from dropdown
-- Visual indication of which model each agent is using
-- Model usage metrics (token counts, cost estimates if available)
-
-### Usage Metrics
-Track and display:
-- Token usage per agent per model (data from `src/core/agent-usage.ts`)
-- Historical usage trends (daily/weekly)
-- Cost estimates based on model pricing
-- Which agents are most active
-
-### Gateway Management
-`POST /restart` restarts the OpenClaw gateway. This is a sensitive operation:
-- Confirm dialog in UI
-- Only show to admin (or add a simple auth check)
-- Log to audit trail
-- Show gateway status (up/down/restarting)
-
-### Exec Tools
-Add agent-facing tools:
-- `bakin_exec_models_get_config` — get current model assignments
-- `bakin_exec_models_list_available` — list available models
-
-### Hook Integration
-- **Provides:** `models:config:changed` (when agent model assignments change)
-- **Consumes:** None
-
-## Settings Schema
+### Settings Schema
 ```typescript
 settingsSchema: {
   showUsageMetrics: { type: 'boolean', default: true, label: 'Show usage metrics', description: 'Display token usage and cost estimates' },
   defaultModel: { type: 'select', default: 'claude-sonnet-4-6', options: ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5'], label: 'Default model', description: 'Default model for new agents' },
 }
 ```
+
+### Activity & Audit
+Add `ctx.activity.audit()` to: config change, alias change, gateway restart.
+
+### Manifest
+Should declare `secrets: ["openclaw-api-key"]` if it reads gateway config/credentials.
+
+## Phase 5B Items
+
+### Route Surface Parity
+
+| Operation | HTTP API Route | MCP Exec Tool | Agent Use Case |
+|-----------|---------------|---------------|----------------|
+| List models | `GET /available` | `bakin_exec_models_list` | **New** — agent checks available models |
+| Get config | `GET /config` | `bakin_exec_models_get_config` | **New** — agent reads model assignments |
+| Update config | `POST /config` | — | Human-only (model assignment is admin) |
+| Set defaults | `POST /defaults` | — | Human-only |
+| Get aliases | `GET /aliases` | — | UI-only |
+| Set aliases | `POST /aliases` | — | Human-only |
+| Restart gateway | `POST /gateway/restart` | — | Human-only (destructive) |
+
+**MCP consideration:** Agents should be able to discover what models are available and what model they're assigned. They should NOT be able to change model assignments or restart the gateway.
+
+### Route Standardization
+- `POST /restart` → `POST /gateway/restart` (clarify what's being restarted)
+
+### Hook Events (Notification Hooks)
+- `models.configChanged` — `{ agentId, oldModel, newModel }`
+
+### Minimal Changes
+Models is a config plugin. Main work: 2 exec tools, route rename, audit on mutations.

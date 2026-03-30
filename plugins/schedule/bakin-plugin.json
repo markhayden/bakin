@@ -8,8 +8,8 @@
     "server": "index.ts"
   },
   "contentFiles": ["schedule/"],
-  "secrets": [],
-  "tests": "",
+  "secrets": ["gateway-token"],
+  "tests": "tests/",
   "dependencies": ["tasks"],
   "permissions": ["storage.read", "storage.write", "events.emit"]
 }

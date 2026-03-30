@@ -145,6 +145,22 @@ export interface PluginContext {
 }
 
 // ---------------------------------------------------------------------------
+// Settings Schema
+// ---------------------------------------------------------------------------
+export interface SettingsField {
+  key: string
+  type: 'string' | 'number' | 'boolean' | 'select'
+  label: string
+  description?: string
+  options?: { value: string; label: string }[]
+  default?: unknown
+}
+
+export interface PluginSettingsSchema {
+  fields: SettingsField[]
+}
+
+// ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
 export interface BakinPlugin {
@@ -158,6 +174,8 @@ export interface BakinPlugin {
   onShutdown?(): void | Promise<void>
   /** Called when this plugin's settings are updated */
   onSettingsChange?(settings: Record<string, unknown>): void | Promise<void>
+  /** Declarative settings schema for auto-generated settings UI */
+  settingsSchema?: PluginSettingsSchema
   navItems?: NavItem[]
   contentFiles?: ContentFile[]
 }

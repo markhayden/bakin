@@ -9,6 +9,7 @@
   },
   "contentFiles": [],
   "secrets": [],
+  "tests": "tests/",
   "dependencies": [],
   "permissions": ["storage.read"]
 }

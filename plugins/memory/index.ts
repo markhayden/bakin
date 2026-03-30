@@ -31,6 +31,12 @@ const memoryPlugin: BakinPlugin = {
   name: 'Memory',
   version: '1.0.0',
 
+  settingsSchema: {
+    fields: [
+      { key: 'retentionDays', type: 'number', label: 'Audit retention (days)', description: 'Auto-archive audit entries older than this', default: 90 },
+    ],
+  },
+
   navItems: [
     { id: 'memory', label: 'Memory', icon: 'Brain', href: '/memory', order: 40 },
   ],

@@ -16,6 +16,7 @@ import type {
   UISlotRegistration,
   ExecToolDefinition,
   SkillDefinition,
+  PluginSettingsSchema,
 } from './plugin-types'
 import { registerRouteDoc } from '../core/api-docs'
 import { addExecTool } from '../../scripts/lib/registry'
@@ -392,6 +393,17 @@ class PluginRegistryImpl {
       }
     }
     log.info('All plugins shut down')
+  }
+
+  /** Get all plugin settings schemas (for the settings page). */
+  getSettingsSchemas(): Array<{ id: string; name: string; schema: PluginSettingsSchema }> {
+    const result: Array<{ id: string; name: string; schema: PluginSettingsSchema }> = []
+    for (const [id, state] of this.plugins) {
+      if (state.plugin.settingsSchema) {
+        result.push({ id, name: state.plugin.name, schema: state.plugin.settingsSchema })
+      }
+    }
+    return result
   }
 
   /** Notify a plugin that its settings have changed. */

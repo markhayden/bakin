@@ -22,6 +22,13 @@ const assetsPlugin: BakinPlugin = {
   name: 'Assets',
   version: '1.0.0',
 
+  settingsSchema: {
+    fields: [
+      { key: 'thumbnails', type: 'boolean', label: 'Generate thumbnails', description: 'Auto-create optimized thumbnails on upload', default: true },
+      { key: 'maxFileSize', type: 'number', label: 'Max file size (MB)', description: 'Reject uploads larger than this', default: 50 },
+    ],
+  },
+
   navItems: [],
   contentFiles: [],
 
@@ -72,7 +79,11 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/delete',
       method: 'POST',
-      handler: async (req: Request) => handleDelete(req),
+      handler: async (req: Request) => {
+        const res = await handleDelete(req)
+        if (res.ok) ctx.activity.audit('deleted', 'system')
+        return res
+      },
     })
 
     // List trashed assets
@@ -86,21 +97,33 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/restore',
       method: 'POST',
-      handler: async (req: Request) => handleRestore(req),
+      handler: async (req: Request) => {
+        const res = await handleRestore(req)
+        if (res.ok) ctx.activity.audit('restored', 'system')
+        return res
+      },
     })
 
     // Permanently delete a trashed asset
     ctx.registerRoute({
       path: '/permanent-delete',
       method: 'POST',
-      handler: async (req: Request) => handlePermanentDelete(req),
+      handler: async (req: Request) => {
+        const res = await handlePermanentDelete(req)
+        if (res.ok) ctx.activity.audit('permanent-deleted', 'system')
+        return res
+      },
     })
 
     // Empty entire trash
     ctx.registerRoute({
       path: '/empty-trash',
       method: 'POST',
-      handler: handleEmptyTrash,
+      handler: async (req: Request) => {
+        const res = await handleEmptyTrash(req)
+        if (res.ok) ctx.activity.audit('trash-emptied', 'system')
+        return res
+      },
     })
   },
 }

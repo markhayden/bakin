@@ -9,6 +9,8 @@ export type {
   ExecToolResult,
   ExecToolDefinition,
   PluginToolContext,
+  SettingsField,
+  PluginSettingsSchema,
   SkillDefinition,
   ActivityAPI,
   HookAPI,

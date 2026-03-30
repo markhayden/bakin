@@ -10,7 +10,6 @@ import { readRuns, getLastRun } from './lib/runs-reader'
 import { parseSchedule, cronToHuman } from './lib/cron-parser'
 import { cronAdd, cronEdit, cronRemove, cronRun } from './lib/openclaw-cron'
 import { createTaskWithEffects } from '../../src/core/task-service'
-import { appendAudit } from '../../src/core/audit'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
@@ -53,6 +52,9 @@ function expandTemplate(template: string, vars: Record<string, string>): string 
 // ---------------------------------------------------------------------------
 // Bridge logic (cron → task)
 // ---------------------------------------------------------------------------
+
+/** Module-level ctx set during activate(), used by handleBridge */
+let pluginCtx: PluginContext | null = null
 
 async function handleBridge(req: Request): Promise<Response> {
   const payload = await readBody<BridgePayload>(req)
@@ -159,28 +161,10 @@ async function handleBridge(req: Request): Promise<Response> {
     meta.lastTaskId = taskId
     upsertJob(meta)
 
-    // Audit
-    appendAudit(getContentDir(), 'schedule.task_created', 'system', {
-      jobId,
-      runId,
-      taskId,
-      agent: meta.agentId,
-      owner: defaults.owner,
-    })
-
-    // Broadcast for Roscoe / owner visibility
-    const broadcast = (globalThis as Record<string, unknown>).__bakinBroadcast as
-      | ((data: Record<string, unknown>) => void)
-      | undefined
-    if (broadcast) {
-      broadcast({
-        type: 'activity',
-        agent: 'system',
-        message: `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}`,
-        taskId,
-        ts: now.toISOString(),
-        channel: 'system',
-      })
+    // Audit + activity feed
+    if (pluginCtx) {
+      pluginCtx.activity.audit('task_created', 'system', { jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner })
+      pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}`, { taskId })
     }
 
     return json({ ok: true, taskId } satisfies BridgeResult)
@@ -200,10 +184,22 @@ const schedulePlugin: BakinPlugin = {
   id: 'schedule',
   name: 'Schedule',
   version: '1.0.0',
+
+  settingsSchema: {
+    fields: [
+      { key: 'maxConcurrentJobs', type: 'number', label: 'Max concurrent jobs', description: 'Maximum jobs that can run at the same time', default: 3 },
+      { key: 'failureCooldownMs', type: 'number', label: 'Failure cooldown (ms)', description: 'Wait time after failure before retrying', default: 300000 },
+      { key: 'maxFailures', type: 'number', label: 'Max consecutive failures', description: 'Pause job after this many consecutive failures', default: 3 },
+      { key: 'bridgeEnabled', type: 'boolean', label: 'Bridge enabled', description: 'Allow cron jobs to create tasks via the bridge', default: true },
+    ],
+  },
+
   navItems: [],
   contentFiles: [],
 
   activate(ctx: PluginContext) {
+    pluginCtx = ctx
+
     // ── API Routes ─────────────────────────────────────────────────────
 
     // List all jobs (merged)
@@ -282,6 +278,7 @@ const schedulePlugin: BakinPlugin = {
         }
         upsertJob(meta)
 
+        ctx.activity.audit('job.created', body.owner ?? 'system', { jobId, name: body.name })
         return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz })
       },
     })
@@ -319,6 +316,7 @@ const schedulePlugin: BakinPlugin = {
         }
         upsertJob(meta)
 
+        ctx.activity.audit('job.updated', 'system', { jobId: body.jobId })
         return json({ ok: true })
       },
     })
@@ -334,6 +332,7 @@ const schedulePlugin: BakinPlugin = {
         await cronRemove(jobId)
         removeJob(jobId)
 
+        ctx.activity.audit('job.deleted', 'system', { jobId })
         return json({ ok: true })
       },
     })
@@ -376,6 +375,7 @@ const schedulePlugin: BakinPlugin = {
         }
         upsertJob(meta)
 
+        ctx.activity.audit(`job.${body.action}`, 'system', { jobId: body.jobId })
         return json({ ok: true })
       },
     })
@@ -388,6 +388,7 @@ const schedulePlugin: BakinPlugin = {
         const { jobId } = await readBody<{ jobId: string }>(req)
         if (!jobId) return json({ error: 'jobId required' }, 400)
         await cronRun(jobId, true)
+        ctx.activity.audit('job.run_now', 'system', { jobId })
         return json({ ok: true })
       },
     })
@@ -641,6 +642,17 @@ const schedulePlugin: BakinPlugin = {
     })
 
     log.info('Schedule plugin activated')
+  },
+
+  onReady() {
+    const jobs = readMergedJobs()
+    const bakin = jobs.filter(j => j.isBakinJob)
+    const paused = bakin.filter(j => j.paused)
+    log.info(`Ready — ${bakin.length} bakin jobs (${paused.length} paused), ${jobs.length} total`)
+  },
+
+  onShutdown() {
+    log.info('Schedule plugin shutting down')
   },
 }
 

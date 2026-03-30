@@ -50,6 +50,13 @@ const projectsPlugin: BakinPlugin = {
   name: 'Projects',
   version: '1.0.0',
 
+  settingsSchema: {
+    fields: [
+      { key: 'defaultStatus', type: 'select', label: 'Default project status', description: 'Status assigned to new projects', options: [{ value: 'active', label: 'Active' }, { value: 'planning', label: 'Planning' }, { value: 'paused', label: 'Paused' }], default: 'active' },
+      { key: 'autoPromoteThreshold', type: 'number', label: 'Auto-promote threshold', description: 'Auto-promote checklist items to tasks when project has more than N unchecked items (0 = disabled)', default: 0 },
+    ],
+  },
+
   navItems: [
     { id: 'projects', label: 'Projects', icon: 'FolderKanban', href: '/projects', order: 30 },
   ],
@@ -116,6 +123,7 @@ const projectsPlugin: BakinPlugin = {
         const body = await readBody<{ title: string; body?: string; owner?: string; tasks?: string[] }>(req)
         if (!body.title) return json({ error: 'Missing title' }, 400)
         const result = await createProject(body)
+        ctx.activity.audit('created', body.owner || 'system', { projectId: result.id, title: body.title })
         return json({ ok: true, ...result })
       },
     })
@@ -129,6 +137,7 @@ const projectsPlugin: BakinPlugin = {
         if (!body.id) return json({ error: 'Missing id' }, 400)
         try {
           await updateProject(body.id, body)
+          ctx.activity.audit('updated', 'system', { projectId: body.id })
           return json({ ok: true })
         } catch (err: any) {
           return json({ error: err.message }, 400)
@@ -156,6 +165,7 @@ const projectsPlugin: BakinPlugin = {
             }
           }
           await deleteProject(body.id)
+          ctx.activity.audit('deleted', 'system', { projectId: body.id })
           return json({ ok: true })
         } catch (err: any) {
           return json({ error: err.message }, 400)
@@ -171,6 +181,7 @@ const projectsPlugin: BakinPlugin = {
         const body = await readBody<{ projectId: string; title: string }>(req)
         if (!body.projectId || !body.title) return json({ error: 'Missing projectId or title' }, 400)
         const result = await addChecklistItem(body.projectId, body.title)
+        ctx.activity.audit('checklist.added', 'system', { projectId: body.projectId })
         return json({ ok: true, ...result })
       },
     })
@@ -183,6 +194,7 @@ const projectsPlugin: BakinPlugin = {
         const body = await readBody<{ projectId: string; taskItemId: string; checked: boolean }>(req)
         if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
         const result = await markChecklistItem(body.projectId, body.taskItemId, body.checked)
+        ctx.activity.audit('checklist.toggled', 'system', { projectId: body.projectId, checked: body.checked })
         return json({ ok: true, ...result })
       },
     })
@@ -195,6 +207,7 @@ const projectsPlugin: BakinPlugin = {
         const body = await readBody<{ projectId: string; taskItemId: string; title?: string; description?: string }>(req)
         if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
         await updateChecklistItem(body.projectId, body.taskItemId, { title: body.title, description: body.description })
+        ctx.activity.audit('checklist.updated', 'system', { projectId: body.projectId })
         return json({ ok: true })
       },
     })
@@ -207,6 +220,7 @@ const projectsPlugin: BakinPlugin = {
         const body = await readBody<{ projectId: string; taskItemId: string }>(req)
         if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
         await removeChecklistItem(body.projectId, body.taskItemId)
+        ctx.activity.audit('checklist.removed', 'system', { projectId: body.projectId })
         return json({ ok: true })
       },
     })
@@ -219,6 +233,7 @@ const projectsPlugin: BakinPlugin = {
         const body = await readBody<{ projectId: string; taskItemId: string; taskId: string }>(req)
         if (!body.projectId || !body.taskItemId || !body.taskId) return json({ error: 'Missing required fields' }, 400)
         await linkChecklistItem(body.projectId, body.taskItemId, body.taskId)
+        ctx.activity.audit('checklist.linked', 'system', { projectId: body.projectId, taskId: body.taskId })
         return json({ ok: true })
       },
     })
@@ -231,6 +246,7 @@ const projectsPlugin: BakinPlugin = {
         const body = await readBody<{ projectId: string; taskItemId: string; assignee?: string }>(req)
         if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
         const result = await promoteItemToTask(body.projectId, body.taskItemId, { assignee: body.assignee })
+        ctx.activity.audit('checklist.promoted', 'system', { projectId: body.projectId })
         return json({ ok: true, ...result })
       },
     })
@@ -243,6 +259,7 @@ const projectsPlugin: BakinPlugin = {
         const body = await readBody<{ projectId: string; assetPath: string; label?: string }>(req)
         if (!body.projectId || !body.assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
         await attachAsset(body.projectId, body.assetPath, body.label)
+        ctx.activity.audit('asset.attached', 'system', { projectId: body.projectId, assetPath: body.assetPath })
         return json({ ok: true })
       },
     })
@@ -255,6 +272,7 @@ const projectsPlugin: BakinPlugin = {
         const body = await readBody<{ projectId: string; assetPath: string }>(req)
         if (!body.projectId || !body.assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
         await detachAsset(body.projectId, body.assetPath)
+        ctx.activity.audit('asset.detached', 'system', { projectId: body.projectId, assetPath: body.assetPath })
         return json({ ok: true })
       },
     })
