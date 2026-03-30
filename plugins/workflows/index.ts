@@ -8,12 +8,18 @@ import { listDefinitions, loadDefinition } from './parser'
 import {
   createInstance,
   loadInstance,
+  saveInstance,
   getCurrentStep,
   completeStep,
   approveGate,
   rejectGate,
   listInstances,
+  getActiveAgents,
+  isGateNotified,
+  markGateNotified,
 } from './runtime'
+import { matchWorkflow } from './matcher'
+import { validateStepOutput } from './schema-validator'
 import { setEventBus } from './notifications'
 import type { WorkflowTemplate, WorkflowDefinition, NestedWorkflowStep } from './types'
 
@@ -49,6 +55,21 @@ const workflowsPlugin: BakinPlugin = {
   activate(ctx: PluginContext) {
     // Wire up event bus for notifications
     setEventBus(ctx.events)
+
+    // Register cross-plugin hooks
+    ctx.hooks.register('workflows.loadInstance', (d: Record<string, unknown>) => loadInstance(d.taskId as string, d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.saveInstance', (d: Record<string, unknown>) => saveInstance(d.instance as Parameters<typeof saveInstance>[0], d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.createInstance', (d: Record<string, unknown>) => createInstance(d.taskId as string, d.workflowId as string, d.contentDir as string | undefined, d.assignee as string | undefined, d.parentContext as Record<string, unknown> | undefined))
+    ctx.hooks.register('workflows.listInstances', (d: Record<string, unknown>) => listInstances(d.statusFilter as string | undefined, d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.getCurrentStep', (d: Record<string, unknown>) => getCurrentStep(d.taskId as string, d.agentId as string | undefined, d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.completeStep', (d: Record<string, unknown>) => completeStep(d.taskId as string, d.stepId as string, d.output as Record<string, unknown>, d.callerAgentId as string | undefined, d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.matchWorkflow', (d: Record<string, unknown>) => matchWorkflow(d.title as string, d.description as string | undefined))
+    ctx.hooks.register('workflows.listDefinitions', (d: Record<string, unknown>) => listDefinitions(d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.loadDefinition', (d: Record<string, unknown>) => loadDefinition(d.name as string, d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.getActiveAgents', (d: Record<string, unknown>) => getActiveAgents(d.taskId as string, d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.isGateNotified', (d: Record<string, unknown>) => isGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.markGateNotified', (d: Record<string, unknown>) => markGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.validateStepOutput', (d: Record<string, unknown>) => validateStepOutput(d.schema as Record<string, unknown> | undefined, d.output as Record<string, unknown>))
 
     // ─── Template Routes ──────────────────────────────────────────────
 
@@ -394,11 +415,12 @@ const workflowsPlugin: BakinPlugin = {
           // Look up task assignee so $assigned steps resolve correctly
           let assignee: string | undefined
           try {
-            const { readTaskboard } = await import('../../plugins/tasks/taskboard')
-            const { columns } = readTaskboard()
-            for (const col of Object.values(columns)) {
-              const task = col.find((t: { id: string; agent?: string }) => t.id === taskId)
-              if (task?.agent) { assignee = task.agent; break }
+            const board = await ctx.hooks.invoke<{ columns: Record<string, Array<{ id: string; agent?: string }>> }>('tasks.readTaskboard', {})
+            if (board) {
+              for (const col of Object.values(board.columns)) {
+                const task = col.find(t => t.id === taskId)
+                if (task?.agent) { assignee = task.agent; break }
+              }
             }
           } catch { /* best effort */ }
 
@@ -406,8 +428,7 @@ const workflowsPlugin: BakinPlugin = {
 
           // Ensure the task's workflowId is persisted in TASKBOARD.md
           try {
-            const { updateTask } = await import('../../plugins/tasks/taskboard')
-            await updateTask(taskId, { workflowId })
+            await ctx.hooks.invoke<void>('tasks.updateTask', { identifier: taskId, updates: { workflowId } })
           } catch {
             // Non-fatal — instance is created regardless
           }

@@ -11,7 +11,10 @@ import { handleListTrash } from './routes/list-trash'
 import { handleRestore } from './routes/restore'
 import { handlePermanentDelete } from './routes/permanent-delete'
 import { handleEmptyTrash } from './routes/empty-trash'
-import { buildIndex, upsertAsset, removeAsset } from './lib/asset-index'
+import { buildIndex, upsertAsset, removeAsset, detectVariant } from './lib/asset-index'
+import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
+import { ASSET_TYPES } from './lib/constants'
+import { listTrash, restoreAsset, emptyTrash } from './lib/trash'
 import { registerSyncHook } from '../../src/core/watcher'
 
 const assetsPlugin: BakinPlugin = {
@@ -23,6 +26,16 @@ const assetsPlugin: BakinPlugin = {
   contentFiles: [],
 
   activate(ctx: PluginContext) {
+    // Register cross-plugin hooks
+    ctx.hooks.register('assets.validateSidecar', (d: Record<string, unknown>) => validateSidecar(d.metaPath as string))
+    ctx.hooks.register('assets.getSidecarPath', (d: Record<string, unknown>) => getSidecarPath(d.assetPath as string))
+    ctx.hooks.register('assets.createStub', (d: Record<string, unknown>) => createStub(d.assetPath as string))
+    ctx.hooks.register('assets.detectVariant', (d: Record<string, unknown>) => detectVariant(d.filename as string))
+    ctx.hooks.register('assets.getAssetTypes', () => ASSET_TYPES)
+    ctx.hooks.register('assets.listTrash', (d: Record<string, unknown>) => listTrash(d.assetsRoot as string))
+    ctx.hooks.register('assets.restoreAsset', (d: Record<string, unknown>) => restoreAsset(d.trashFilename as string, d.assetsRoot as string))
+    ctx.hooks.register('assets.emptyTrash', (d: Record<string, unknown>) => emptyTrash(d.assetsRoot as string))
+
     // Build the index on startup
     buildIndex()
 

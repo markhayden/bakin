@@ -19,6 +19,7 @@ import {
   detachAsset,
   rebuildIndex,
   resolveLinkedTaskStatuses,
+  autoCheckLinkedItem,
 } from './lib/project-service'
 import { createLogger } from '../../src/core/logger'
 import type { ProjectStatus } from './types'
@@ -54,6 +55,10 @@ const projectsPlugin: BakinPlugin = {
   ],
 
   async activate(ctx: PluginContext) {
+    // Register cross-plugin hooks
+    ctx.hooks.register('projects.readProject', (d: Record<string, unknown>) => readProject(d.id as string))
+    ctx.hooks.register('projects.autoCheckLinkedItem', (d: Record<string, unknown>) => autoCheckLinkedItem(d.boardTaskId as string))
+
     // Build in-memory index on startup
     try {
       rebuildIndex()
@@ -143,10 +148,9 @@ const projectsPlugin: BakinPlugin = {
           if (body.deleteLinkedTasks) {
             const project = readProject(body.id)
             if (project) {
-              const { deleteTask } = await import('../../plugins/tasks/taskboard')
               for (const item of project.tasks) {
                 if (item.taskId) {
-                  try { await deleteTask(item.taskId) } catch { /* task may already be gone */ }
+                  try { await ctx.hooks.invoke<void>('tasks.deleteTask', { identifier: item.taskId }) } catch { /* task may already be gone */ }
                 }
               }
             }

@@ -28,7 +28,7 @@ vi.mock('../../../src/core/audit', () => ({
   appendAudit: vi.fn(),
 }))
 
-const mockCreateTask = vi.fn(() => Promise.resolve({ id: 'newtask1' }))
+const mockCreateTask = vi.fn((_opts?: unknown) => Promise.resolve({ id: 'newtask1' }))
 vi.mock('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))

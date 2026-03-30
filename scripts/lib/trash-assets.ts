@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { getContentDir } from '../../src/core/content-dir'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
-import { listTrash, restoreAsset, emptyTrash } from '../../plugins/assets/lib/trash'
+import { getHookRegistry } from '../../src/lib/plugin-registry'
 
 // ---------------------------------------------------------------------------
 // Handlers
@@ -18,7 +18,7 @@ import { listTrash, restoreAsset, emptyTrash } from '../../plugins/assets/lib/tr
 
 async function handleListTrash(): Promise<ReturnType<typeof succeed>> {
   const assetsRoot = join(getContentDir(), 'assets')
-  const items = listTrash(assetsRoot)
+  const items = await getHookRegistry().invoke<Array<Record<string, unknown>>>('assets.listTrash', { assetsRoot }) ?? []
 
   return succeed({
     count: items.length,
@@ -29,7 +29,7 @@ async function handleListTrash(): Promise<ReturnType<typeof succeed>> {
       size: i.size,
       deletedAt: i.deletedAt,
       expiresAt: i.expiresAt,
-      agent: i.metadata?.agent ?? 'unknown',
+      agent: (i.metadata as Record<string, unknown>)?.agent ?? 'unknown',
     })),
   })
 }
@@ -43,7 +43,7 @@ async function handleRestoreTrash(
   }
 
   const assetsRoot = join(getContentDir(), 'assets')
-  const restoredPath = restoreAsset(filename, assetsRoot)
+  const restoredPath = await getHookRegistry().invoke<string | null>('assets.restoreAsset', { trashFilename: filename, assetsRoot })
 
   if (!restoredPath) {
     return fail('Failed to restore asset — file may not exist in trash', { filename })
@@ -54,7 +54,7 @@ async function handleRestoreTrash(
 
 async function handleEmptyTrash(): Promise<ReturnType<typeof succeed>> {
   const assetsRoot = join(getContentDir(), 'assets')
-  const deleted = emptyTrash(assetsRoot)
+  const deleted = await getHookRegistry().invoke<number>('assets.emptyTrash', { assetsRoot }) ?? 0
   return succeed({ deleted })
 }
 

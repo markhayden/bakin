@@ -4,12 +4,16 @@
  */
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import {
+  readTaskboard,
   createTask,
   deleteTask,
   assignTask,
   addTaskLog,
   blockTask,
   updateTask,
+  moveTask,
+  setDependency,
+  clearDependency,
 } from './taskboard'
 import {
   moveTaskWithEffects,
@@ -31,6 +35,17 @@ const tasksPlugin: BakinPlugin = {
   ],
 
   activate(ctx: PluginContext) {
+    // Register cross-plugin hooks
+    ctx.hooks.register('tasks.readTaskboard', () => readTaskboard())
+    ctx.hooks.register('tasks.createTask', (d: Record<string, unknown>) => createTask(d.title as string, d.column as string | undefined, d.assignee as string | undefined, d.description as string | undefined, d.workflowId as string | undefined, d.createdBy as string | undefined, d.id as string | undefined, d.parentId as string | undefined, d.projectId as string | undefined))
+    ctx.hooks.register('tasks.moveTask', (d: Record<string, unknown>) => moveTask(d.identifier as string, d.to as string, d.from as string | undefined))
+    ctx.hooks.register('tasks.blockTask', (d: Record<string, unknown>) => blockTask(d.identifier as string, d.reason as string, d.agent as string | undefined))
+    ctx.hooks.register('tasks.addTaskLog', (d: Record<string, unknown>) => addTaskLog(d.identifier as string, d.author as string, d.message as string))
+    ctx.hooks.register('tasks.updateTask', (d: Record<string, unknown>) => updateTask(d.identifier as string, d.updates as Record<string, unknown>))
+    ctx.hooks.register('tasks.deleteTask', (d: Record<string, unknown>) => deleteTask(d.identifier as string))
+    ctx.hooks.register('tasks.setDependency', (d: Record<string, unknown>) => setDependency(d.taskId as string, d.dependsOnId as string))
+    ctx.hooks.register('tasks.clearDependency', (d: Record<string, unknown>) => clearDependency(d.taskId as string))
+
     // Register task API routes
     ctx.registerRoute({
       path: '/create',

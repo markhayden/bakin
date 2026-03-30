@@ -25,10 +25,9 @@ import {
   getTaskDetails,
   triggerDispatch,
 } from './task-service'
-import { getCurrentStep, completeStep } from '../../plugins/workflows/runtime'
-import { listDefinitions } from '../../plugins/workflows/parser'
+import { getHookRegistry } from '../lib/plugin-registry'
 import { appendAudit } from './audit'
-import { getAllExecTools, recordExecToolCall } from '../../scripts/lib/registry'
+import { getAllExecTools, recordExecToolCall, getToolContext } from '../../scripts/lib/registry'
 
 // Core execution tools — self-register via addExecTool() on import.
 // Must be imported AFTER registry.ts so the Map is initialized.
@@ -204,13 +203,13 @@ function registerTools(server: McpServer, getAgent: () => string): void {
       const agent = getAgent()
       recordToolCall('bakin_list_workflows', agent)
       try {
-        const defs = listDefinitions()
+        const defs = await getHookRegistry().invoke<Array<{ name: string; definition: Record<string, unknown> }>>('workflows.listDefinitions', {}) ?? []
         if (defs.length === 0) {
           return { content: [{ type: 'text' as const, text: 'No workflow definitions found.' }] }
         }
         const lines = defs.map(d => {
-          const steps = d.definition.steps || []
-          const agents = [...new Set(steps.filter((s) => 'agent' in s && (s as { agent?: string }).agent).map((s) => (s as { agent?: string }).agent))]
+          const steps = (d.definition.steps || []) as Array<Record<string, unknown>>
+          const agents = [...new Set(steps.filter((s) => typeof s.agent === 'string').map((s) => s.agent as string))]
           return `- ${d.name}: ${d.definition.description || d.definition.name}${agents.length ? ` (agents: ${agents.join(', ')})` : ''}`
         })
         return { content: [{ type: 'text' as const, text: `Available workflows:\n${lines.join('\n')}` }] }
@@ -270,7 +269,7 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     async ({ taskId }) => {
       const agent = getAgent()
       recordToolCall('bakin_get_step', agent)
-      const step = getCurrentStep(taskId, agent, getContentDir())
+      const step = await getHookRegistry().invoke<Record<string, unknown>>('workflows.getCurrentStep', { taskId, agentId: agent })
       if (!step) {
         return { content: [{ type: 'text' as const, text: 'No active workflow step found for this task.' }], isError: true }
       }
@@ -290,11 +289,11 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     async ({ taskId, stepId, output }) => {
       const agent = getAgent()
       recordToolCall('bakin_submit_step', agent)
-      const result = completeStep(taskId, stepId, output as Record<string, unknown>, agent, getContentDir())
+      const result = await getHookRegistry().invoke<{ success: boolean; workflowComplete?: boolean; errors?: string[] }>('workflows.completeStep', { taskId, stepId, output: output as Record<string, unknown>, callerAgentId: agent })
 
-      if (!result.success) {
+      if (!result || !result.success) {
         return {
-          content: [{ type: 'text' as const, text: `Step submission failed: ${result.errors?.join('; ')}` }],
+          content: [{ type: 'text' as const, text: `Step submission failed: ${result?.errors?.join('; ') ?? 'unknown error'}` }],
           isError: true,
         }
       }
@@ -353,7 +352,7 @@ function registerTools(server: McpServer, getAgent: () => string): void {
     },
     async ({ taskId }) => {
       recordToolCall('bakin_get_task', getAgent())
-      const result = getTaskDetails(taskId)
+      const result = await getTaskDetails(taskId)
       if (!result) {
         return { content: [{ type: 'text' as const, text: `Task ${taskId} not found on the board.` }], isError: true }
       }
@@ -362,8 +361,7 @@ function registerTools(server: McpServer, getAgent: () => string): void {
       const pId = (result.task as Record<string, unknown>).projectId as string | undefined
       if (pId) {
         try {
-          const { readProject } = await import('../../plugins/projects/lib/parser')
-          const project = readProject(pId)
+          const project = await getHookRegistry().invoke<{ title: string; status: string; progress: number; body: string }>('projects.readProject', { projectId: pId })
           if (project) {
             ;(result as Record<string, unknown>).projectTitle = project.title
             ;(result as Record<string, unknown>).projectStatus = project.status
@@ -396,7 +394,8 @@ function registerTools(server: McpServer, getAgent: () => string): void {
         log.info('Exec tool called', { tool: tool.name, agent, taskId })
 
         try {
-          const result = await tool.handler(params as Record<string, unknown>, agent)
+          const toolCtx = getToolContext(tool.name)
+          const result = await tool.handler(params as Record<string, unknown>, agent, toolCtx)
 
           // Audit log for exec tool calls (success and failure)
           appendAudit(

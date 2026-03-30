@@ -8,17 +8,11 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import * as openclaw from './openclaw-client'
-import { readTaskboard, blockTask, addTaskLog as taskLog } from '../../plugins/tasks/taskboard'
 import { isStale } from '../lib/format'
-import {
-  loadInstance,
-  createInstance,
-  saveInstance,
-  getCurrentStep,
-  getActiveAgents,
-} from '../../plugins/workflows/runtime'
+import { getHookRegistry } from '../lib/plugin-registry'
 
 const log = createLogger('dispatch')
+const hooks = () => getHookRegistry()
 
 const AGENT_ID_MAP: Record<string, string> = { main-operator: 'main' }
 const resolveId = (name: string) => AGENT_ID_MAP[name] || name
@@ -100,7 +94,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     const dispatchedSet = new Set(state.dispatched)
 
     // Reconcile dispatch state with taskboard reality
-    const { columns } = readTaskboard()
+    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const activeIds = new Set([
       ...columns.inProgress.map(t => t.id),
       ...columns.done.map(t => t.id),
@@ -122,7 +116,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       if (!wfTask.workflowId) continue
 
       // Check if the current workflow step agent has been dispatched
-      const activeAgents = getActiveAgents(task.id, contentDir)
+      const activeAgents = await hooks().invoke<Array<{ agent: string; stepId: string; effectiveTaskId?: string }>>('workflows.getActiveAgents', { taskId: task.id }) ?? []
       const needsDispatch = activeAgents.some(({ stepId }) => !dispatchedSet.has(`${task.id}:${stepId}`))
       if (!needsDispatch) continue
 
@@ -152,7 +146,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         if (failure.count >= settings.dispatch.maxRetries) {
           // Escalate to blocked
           try {
-            await blockTask(task.id, `Dispatch failed ${failure.count} times — agent may be unavailable`)
+            await hooks().invoke<void>('tasks.blockTask', { identifier: task.id, reason: `Dispatch failed ${failure.count} times — agent may be unavailable` })
             await addTaskLog(task.id, 'system', `Dispatch exhausted: ${failure.count} failed attempts. Task moved to blocked.`)
             appendAudit(contentDir, 'task.dispatch_exhausted', 'system', { id: task.id, title: task.title, count: failure.count })
             log.warn('Task blocked after max dispatch retries', { id: task.id, count: failure.count })
@@ -235,7 +229,7 @@ export async function dispatchSingleTask(
   const settings = getSettings()
 
   await withStateLock(async () => {
-    const { columns } = readTaskboard()
+    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const task = columns.todo.find(t => t.id === taskId)
     if (!task) {
       log.debug('dispatchSingleTask: task not in todo, skipping', { taskId })
@@ -464,19 +458,19 @@ async function dispatchWorkflowTask(
 ): Promise<void> {
   // Load or create workflow instance.
   // Pass the task assignee so $assigned steps resolve to whoever owns the task at start time.
-  let instance = loadInstance(task.id, contentDir)
+  let instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
   if (!instance) {
-    instance = createInstance(task.id, task.workflowId, contentDir, task.agent)
+    instance = await hooks().invoke<Record<string, unknown>>('workflows.createInstance', { taskId: task.id, workflowId: task.workflowId, assignee: task.agent }) ?? {}
     log.info('Created workflow instance', { taskId: task.id, workflowId: task.workflowId, resolvedAgent: task.agent })
   } else if (!instance.resolvedAgent && task.agent) {
     // Backfill resolvedAgent if instance was created before $assigned resolution was wired up
     instance.resolvedAgent = task.agent
-    saveInstance(instance, contentDir)
+    await hooks().invoke<void>('workflows.saveInstance', { instance })
     log.info('Backfilled resolvedAgent on existing instance', { taskId: task.id, resolvedAgent: task.agent })
   }
 
   // Get agents for current step
-  const activeAgents = getActiveAgents(task.id, contentDir)
+  const activeAgents = await hooks().invoke<Array<{ agent: string; stepId: string; effectiveTaskId?: string }>>('workflows.getActiveAgents', { taskId: task.id }) ?? []
   if (activeAgents.length === 0) {
     log.debug('No active agents for workflow step', { taskId: task.id })
     return
@@ -486,7 +480,7 @@ async function dispatchWorkflowTask(
   // non-workflow tasks. Prevents the task from sitting in "todo" while the
   // agent is already working on it.
   if (!dispatchedSet.has(task.id)) {
-    const { columns: fresh } = readTaskboard()
+    const { columns: fresh } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; agent?: string; title?: string; workflowId?: string }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const stillInTodo = fresh.todo.some(t => t.id === task.id)
     if (stillInTodo) {
       const firstAgent = activeAgents[0]?.agent || task.agent || 'main-operator'
@@ -499,7 +493,7 @@ async function dispatchWorkflowTask(
   for (const { agent, stepId, effectiveTaskId } of activeAgents) {
     // For nested workflows, use the child's taskId for step context resolution
     const contextTaskId = effectiveTaskId || task.id
-    const stepContext = getCurrentStep(contextTaskId, agent, contentDir)
+    const stepContext = await hooks().invoke<Record<string, unknown>>('workflows.getCurrentStep', { taskId: contextTaskId, agentId: agent })
     if (!stepContext || 'status' in stepContext && (stepContext.status === 'complete' || stepContext.status === 'pending_approval')) {
       continue
     }
@@ -739,7 +733,7 @@ function buildWorkflowDispatchMessage(
 export async function reconcileOnStartup(contentDir: string): Promise<void> {
   const settings = getSettings()
   try {
-    const { columns } = readTaskboard()
+    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     let recovered = 0
 
     for (const task of [...columns.inProgress]) {
@@ -751,7 +745,7 @@ export async function reconcileOnStartup(contentDir: string): Promise<void> {
 
       if (agentStale && !hasRecentLog) {
         try {
-          await taskLog(task.id, 'system', 'Recovered on server restart: agent heartbeat stale and no recent task logs.')
+          await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'system', message: 'Recovered on server restart: agent heartbeat stale and no recent task logs.' })
           const { moveTask: doMove } = await import('../lib/taskboard')
           await doMove(task.id, 'todo')
           appendAudit(contentDir, 'task.startup_recovered', 'system', { id: task.id, title: task.title, agent: task.agent })

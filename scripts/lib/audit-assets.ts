@@ -10,9 +10,7 @@ import { z } from 'zod'
 import { getContentDir } from '../../src/core/content-dir'
 import { succeed, fail, generateThumbnail } from './common'
 import { addExecTool } from './registry'
-import { validateSidecar, getSidecarPath, createStub } from '../../plugins/assets/lib/sidecar'
-import { detectVariant } from '../../plugins/assets/lib/asset-index'
-import { ASSET_TYPES } from '../../plugins/assets/lib/constants'
+import { getHookRegistry } from '../../src/lib/plugin-registry'
 
 interface AuditIssue {
   path: string
@@ -30,6 +28,7 @@ async function auditAssets(
   const fix = params.fix === true
   const typeFilter = typeof params.type === 'string' ? params.type : undefined
 
+  const hooks = getHookRegistry()
   const contentDir = getContentDir()
   const assetsRoot = join(contentDir, 'assets')
 
@@ -41,6 +40,7 @@ async function auditAssets(
   let total = 0
   let fixed = 0
 
+  const ASSET_TYPES = await hooks.invoke<string[]>('assets.getAssetTypes', {}) ?? []
   const types = typeFilter ? [typeFilter] : [...ASSET_TYPES]
 
   for (const typeName of types) {
@@ -68,7 +68,7 @@ async function auditAssets(
       const variantFiles: string[] = []
 
       for (const file of files) {
-        if (detectVariant(file)) {
+        if (await hooks.invoke<{ baseStem: string; role: string } | null>('assets.detectVariant', { filename: file })) {
           variantFiles.push(file)
         } else {
           primaryFiles.push(file)
@@ -81,10 +81,10 @@ async function auditAssets(
         const relPath = `assets/${typeName}/${subdir}/${file}`
 
         // Check 1: Missing sidecar
-        const sidecarPath = getSidecarPath(fullPath)
+        const sidecarPath = await hooks.invoke<string>('assets.getSidecarPath', { assetPath: fullPath }) ?? ''
         if (!existsSync(sidecarPath)) {
           if (fix) {
-            createStub(fullPath)
+            await hooks.invoke<void>('assets.createStub', { assetPath: fullPath })
             issues.push({ path: relPath, issue: 'missing-sidecar', fixed: true })
             fixed++
           } else {
@@ -92,7 +92,7 @@ async function auditAssets(
           }
         } else {
           // Check 2: Invalid sidecar
-          const sidecarIssues = validateSidecar(sidecarPath)
+          const sidecarIssues = await hooks.invoke<string[]>('assets.validateSidecar', { metaPath: sidecarPath }) ?? []
           if (sidecarIssues.length > 0) {
             issues.push({
               path: relPath,
@@ -135,7 +135,7 @@ async function auditAssets(
       // Check 5: Orphaned variants (thumbnail whose primary doesn't exist)
       for (const file of variantFiles) {
         const relPath = `assets/${typeName}/${subdir}/${file}`
-        const v = detectVariant(file)
+        const v = await hooks.invoke<{ baseStem: string; role: string } | null>('assets.detectVariant', { filename: file })
         if (!v) continue
 
         // Check if any primary file starts with the base stem

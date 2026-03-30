@@ -6,8 +6,7 @@
  * field-level messages, avoiding wasted round trips.
  */
 import { z } from 'zod'
-import { getCurrentStep, completeStep } from '../../plugins/workflows/runtime'
-import { validateStepOutput } from '../../plugins/workflows/schema-validator'
+import { getHookRegistry } from '../../src/lib/plugin-registry'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
@@ -19,28 +18,30 @@ export async function submitStepValidated(
   agent: string,
 ): Promise<ExecToolResult> {
   try {
+    const hooks = getHookRegistry()
+
     // Fetch current step to get schema
-    const step = await getCurrentStep(taskId, agent)
+    const step = await hooks.invoke<Record<string, unknown>>('workflows.getCurrentStep', { taskId, agentId: agent })
     if (!step) {
       return fail('No active step found for this task')
     }
 
-    const schema = (step as Record<string, unknown>).output_schema as Record<string, unknown> | undefined
+    const schema = step.output_schema as Record<string, unknown> | undefined
 
     // Local pre-validation if schema exists
     if (schema) {
-      const validation = validateStepOutput(schema, output)
-      if (!validation.valid) {
+      const validation = await hooks.invoke<{ valid: boolean; errors?: unknown }>('workflows.validateStepOutput', { schema, output })
+      if (validation && !validation.valid) {
         return fail('Schema validation failed — fix these before resubmitting', validation.errors)
       }
     }
 
     // Submit to server
-    const result = await completeStep(taskId, stepId, output, agent)
+    const result = await hooks.invoke<Record<string, unknown>>('workflows.completeStep', { taskId, stepId, output, callerAgentId: agent })
     return succeed({
       submitted: true,
-      success: result.success,
-      workflowComplete: result.workflowComplete,
+      success: result?.success,
+      workflowComplete: result?.workflowComplete,
     })
   } catch (err) {
     const msg = String(err)

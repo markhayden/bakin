@@ -3,9 +3,40 @@
  * Dispatches /api/plugins/:pluginId/:path to the plugin's registered route handler.
  */
 import { NextResponse } from 'next/server'
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { join } from 'path'
 import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
 import { BakinEventBus } from '@/lib/events/event-bus'
+import { getContentDir } from '@/core/content-dir'
 import type { PluginContext, BakinPlugin, APIRoute } from '@/lib/plugin-types'
+
+/** Build the settings + activity stubs for a lightweight PluginContext */
+function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | 'updateSettings' | 'activity' | 'hooks'> {
+  return {
+    getSettings: <T = Record<string, unknown>>(): T => {
+      const p = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
+      try { if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf-8')) as T } catch {}
+      return {} as T
+    },
+    updateSettings: (patch: Record<string, unknown>) => {
+      const dir = join(getContentDir(), 'plugin-settings')
+      const p = join(dir, `${pluginId}.json`)
+      let cur: Record<string, unknown> = {}
+      try { if (existsSync(p)) cur = JSON.parse(readFileSync(p, 'utf-8')) } catch {}
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+      writeFileSync(p, JSON.stringify({ ...cur, ...patch }, null, 2))
+    },
+    activity: {
+      log: () => {},
+      audit: () => {},
+    },
+    hooks: {
+      register: () => () => {},
+      has: () => false,
+      invoke: async () => undefined,
+    },
+  }
+}
 
 // Direct plugin imports (can't use dynamic import in Next.js bundle)
 import tasksPlugin from '@bakin/tasks'
@@ -70,6 +101,7 @@ function ensureInitialized() {
       registerExecTool: () => {},
       registerSkill: () => {},
       watchFiles: () => {},
+      ...buildCtxExtras(plugin.id),
     }
 
     plugin.activate(ctx)
@@ -97,6 +129,7 @@ function buildContext(pluginId: string): PluginContext {
     registerExecTool: () => {},
     registerSkill: () => {},
     watchFiles: () => {},
+    ...buildCtxExtras(pluginId),
   }
 }
 

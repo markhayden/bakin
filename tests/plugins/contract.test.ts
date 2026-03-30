@@ -39,6 +39,17 @@ function createMockContext(pluginId: string): {
     registerExecTool: () => {},
     registerSkill: () => {},
     watchFiles: () => {},
+    getSettings: (() => ({})) as PluginContext['getSettings'],
+    updateSettings: () => {},
+    activity: {
+      log: () => {},
+      audit: () => {},
+    },
+    hooks: {
+      register: () => () => {},
+      has: () => false,
+      invoke: async () => undefined,
+    },
   }
 
   return { ctx, routes, navItems }
