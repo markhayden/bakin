@@ -1,5 +1,5 @@
 /**
- * beacon_exec_check_gates — Human-readable gate status overview.
+ * bakin_exec_check_gates — Human-readable gate status overview.
  */
 import { z } from 'zod'
 import { loadInstance } from '../../plugins/workflows/runtime'
@@ -65,7 +65,7 @@ export async function checkGates(taskId: string): Promise<ExecToolResult> {
 }
 
 addExecTool({
-  name: 'beacon_exec_check_gates',
+  name: 'bakin_exec_check_gates',
   description: 'Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending.',
   source: 'core',
   parameters: {

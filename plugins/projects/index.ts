@@ -3,7 +3,7 @@
  * Registers API routes, exec tools, and the task-link index.
  */
 import { z } from 'zod'
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { readProject, readAllProjects, projectToSummary } from './lib/parser'
 import {
   createProject,
@@ -44,7 +44,7 @@ async function readBody<T>(req: Request): Promise<T> {
 // Plugin
 // ---------------------------------------------------------------------------
 
-const projectsPlugin: MCPlugin = {
+const projectsPlugin: BakinPlugin = {
   id: 'projects',
   name: 'Projects',
   version: '1.0.0',
@@ -318,7 +318,7 @@ const projectsPlugin: MCPlugin = {
     // -----------------------------------------------------------------
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_list',
+      name: 'bakin_exec_project_list',
       description: 'List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount.',
       parameters: {
         status: z.enum(['draft', 'active', 'completed', 'archived']).optional().describe('Filter by status'),
@@ -333,7 +333,7 @@ const projectsPlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_get',
+      name: 'bakin_exec_project_get',
       description: 'Get a project by ID including full spec, checklist, progress, and linked board task statuses.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -346,7 +346,7 @@ const projectsPlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_create',
+      name: 'bakin_exec_project_create',
       description: 'Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs.',
       parameters: {
         title: z.string().describe('Project title'),
@@ -366,7 +366,7 @@ const projectsPlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_update',
+      name: 'bakin_exec_project_update',
       description: 'Update a project\'s title, status, body, or owner. Cannot set status to "completed" if unchecked items remain.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -391,7 +391,7 @@ const projectsPlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_delete',
+      name: 'bakin_exec_project_delete',
       description: 'Delete a project by ID.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -407,7 +407,7 @@ const projectsPlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_add_item',
+      name: 'bakin_exec_project_add_item',
       description: 'Add a new checklist item to a project.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -420,7 +420,7 @@ const projectsPlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_mark_item',
+      name: 'bakin_exec_project_mark_item',
       description: 'Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -438,7 +438,7 @@ const projectsPlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_remove_item',
+      name: 'bakin_exec_project_remove_item',
       description: 'Remove a checklist item from a project.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -455,7 +455,7 @@ const projectsPlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_link_item',
+      name: 'bakin_exec_project_link_item',
       description: 'Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -477,7 +477,7 @@ const projectsPlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_promote_item',
+      name: 'bakin_exec_project_promote_item',
       description: 'Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -499,7 +499,7 @@ const projectsPlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_attach_asset',
+      name: 'bakin_exec_project_attach_asset',
       description: 'Attach an existing asset to a project. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -517,7 +517,7 @@ const projectsPlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_project_detach_asset',
+      name: 'bakin_exec_project_detach_asset',
       description: 'Remove an asset reference from a project. Does not delete the asset itself.',
       parameters: {
         projectId: z.string().describe('Project ID'),

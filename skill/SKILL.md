@@ -50,6 +50,64 @@ mcporter call beacon-<agent>.beacon_get_step taskId=<id>```
 
 Your agent identity is automatically injected by the MCP server — you do not need to specify it.
 
+<!-- bakin:exec-tools:start -->
+## Execution Tools
+
+> Auto-managed by `bakin doctor`. Do not edit this block manually.
+
+Use these tools to accomplish actual work — saving files, posting content, generating images, scheduling jobs. Called the same way as MCP tools via mcporter.
+
+| Tool | Purpose |
+|------|---------|
+| `bakin_exec_save_asset` | Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically. |
+| `bakin_exec_log` | Log a formatted progress update with category and stage tags. Categories: start, progress, milestone, blocked, complete. More structured than raw bakin_log_progress. |
+| `bakin_exec_get_step` | Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure. |
+| `bakin_exec_submit_step` | Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip. |
+| `bakin_exec_check_gates` | Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending. |
+| `bakin_exec_gen_image` | Generate an image via Gemini Imagen (Nano Banana). Default model: flash (cheaper). Use model=pro for higher quality. Default: 1080x1920 portrait (9:16) for Stories/Reels. Presets: social-portrait, social-square, social-landscape, custom. Auto-generates thumbnail. Max 1200px on any edge. |
+| `bakin_exec_post_discord` | Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds. |
+| `bakin_exec_audit_assets` | Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars. |
+| `bakin_exec_list_trash` | List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge. |
+| `bakin_exec_restore_trash` | Restore a trashed asset back to its original location. Use bakin_exec_list_trash first to get the filename. |
+| `bakin_exec_empty_trash` | Permanently delete all items from trash. This cannot be undone. |
+| `bakin_exec_schedule_list` | List all scheduled jobs (merged OpenClaw + Bakin view) |
+| `bakin_exec_schedule_create` | Create a new scheduled job that creates tasks on the board |
+| `bakin_exec_schedule_update` | Update an existing scheduled job |
+| `bakin_exec_schedule_pause` | Pause, resume, or skip runs for a scheduled job |
+| `bakin_exec_schedule_delete` | Delete a scheduled job |
+| `bakin_exec_schedule_briefing` | Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing. |
+| `bakin_exec_project_list` | List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount. |
+| `bakin_exec_project_get` | Get a project by ID including full spec, checklist, progress, and linked board task statuses. |
+| `bakin_exec_project_create` | Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs. |
+| `bakin_exec_project_update` | Update a project's title, status, body, or owner. Cannot set status to "completed" if unchecked items remain. |
+| `bakin_exec_project_delete` | Delete a project by ID. |
+| `bakin_exec_project_add_item` | Add a new checklist item to a project. |
+| `bakin_exec_project_mark_item` | Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage. |
+| `bakin_exec_project_remove_item` | Remove a checklist item from a project. |
+| `bakin_exec_project_link_item` | Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project. |
+| `bakin_exec_project_promote_item` | Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set. |
+| `bakin_exec_project_attach_asset` | Attach an existing asset to a project. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed. |
+| `bakin_exec_project_detach_asset` | Remove an asset reference from a project. Does not delete the asset itself. |
+
+### Quick Reference
+
+```bash
+# Save a file as a managed asset (handles naming + sidecar automatically)
+mcporter call bakin-<agent>.bakin_exec_save_asset taskId=<id> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<desc>"
+# Post to Discord (with optional image/video attachment)
+mcporter call bakin-<agent>.bakin_exec_post_discord channel="<name>" content="<msg>" taskId=<id>
+# Generate image via Nano Banana
+mcporter call bakin-<agent>.bakin_exec_gen_image taskId=<id> prompt="<text>" preset=social-portrait model=flash
+# Check workflow gate statuses
+mcporter call bakin-<agent>.bakin_exec_check_gates taskId=<id>
+# Create a recurring scheduled job (NEVER use openclaw cron directly)
+mcporter call bakin-<agent>.bakin_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="basil" taskPrompt="Post a short recipe"
+# List all scheduled jobs
+mcporter call bakin-<agent>.bakin_exec_schedule_list
+```
+<!-- bakin:exec-tools:end -->
+
+
 <!-- beacon:exec-tools:start -->
 ## Execution Tools
 

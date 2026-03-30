@@ -1,7 +1,7 @@
 /**
  * Antfly server process management.
  * Starts/stops the AntflyDB server as a child process when antfly.enabled is true.
- * Beacon owns the lifecycle — starts on boot, stops on shutdown.
+ * Bakin owns the lifecycle — starts on boot, stops on shutdown.
  */
 import { spawn, type ChildProcess } from 'child_process'
 import { join } from 'path'

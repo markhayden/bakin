@@ -1,6 +1,6 @@
 'use client'
 
-import { ProjectGrid } from '@mc/projects/components/project-grid'
+import { ProjectGrid } from '@bakin/projects/components/project-grid'
 
 export default function ProjectsPage() {
   return (

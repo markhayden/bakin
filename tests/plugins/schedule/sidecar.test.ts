@@ -4,7 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 // Mock content-dir to return our test directory
-const testDir = join(tmpdir(), `beacon-test-schedule-${Date.now()}`)
+const testDir = join(tmpdir(), `bakin-test-schedule-${Date.now()}`)
 
 vi.mock('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -30,13 +30,13 @@ import {
   shouldSkip,
   recordFailure,
   recordSuccess,
-} from '@mc/schedule/lib/sidecar'
-import type { BeaconJobMeta, ScheduleSidecar } from '@mc/schedule/types'
+} from '@bakin/schedule/lib/sidecar'
+import type { BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
 
-function makeMeta(overrides: Partial<BeaconJobMeta> = {}): BeaconJobMeta {
+function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
   return {
     jobId: 'test-job-1',
-    isBeaconJob: true,
+    isBakinJob: true,
     createdAt: '2026-03-27T00:00:00Z',
     updatedAt: '2026-03-27T00:00:00Z',
     ...overrides,

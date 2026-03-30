@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../src/core/content-dir', () => ({
-  getBeaconPaths: vi.fn(() => ({
-    home: '/tmp/beacon-test',
-    'assets.images': '/tmp/beacon-test/assets/images',
+  getBakinPaths: vi.fn(() => ({
+    home: '/tmp/bakin-test',
+    'assets.images': '/tmp/bakin-test/assets/images',
   })),
 }))
 

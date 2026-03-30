@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseSchedule, cronToHuman } from '@mc/schedule/lib/cron-parser'
+import { parseSchedule, cronToHuman } from '@bakin/schedule/lib/cron-parser'
 
 describe('schedule/cron-parser', () => {
   describe('parseSchedule', () => {

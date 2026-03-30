@@ -2,7 +2,7 @@
  * Memory plugin — server entry point.
  * Registers API routes for audit log, agent workspaces, and gateway logs.
  */
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { parseAuditLog, filterAuditEntries } from './audit-parser'
 import { parseGatewayLog } from './gateway-parser'
 import { AGENT_IDS } from '../../src/lib/agents-data'
@@ -26,7 +26,7 @@ function getWorkspacePath(agentId: string): string {
   return path.join(os.homedir(), '.openclaw', 'workspaces', agentId)
 }
 
-const memoryPlugin: MCPlugin = {
+const memoryPlugin: BakinPlugin = {
   id: 'memory',
   name: 'Memory',
   version: '1.0.0',

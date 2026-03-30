@@ -5,7 +5,7 @@
 ## Current Inventory
 
 - **Routes (14):** `/list`, `/get`, `/create`, `/update`, `/delete`, `/checklist/add`, `/checklist/toggle`, `/checklist/update`, `/checklist/remove`, `/checklist/link`, `/checklist/promote`, `/assets/attach`, `/assets/detach`, `/ask`
-- **Exec tools (12):** `beacon_exec_project_list`, `_get`, `_create`, `_update`, `_delete`, `_add_item`, `_mark_item`, `_remove_item`, `_link_item`, `_promote_item`, `_attach_asset`, `_detach_asset`
+- **Exec tools (12):** `bakin_exec_project_list`, `_get`, `_create`, `_update`, `_delete`, `_add_item`, `_mark_item`, `_remove_item`, `_link_item`, `_promote_item`, `_attach_asset`, `_detach_asset`
 - **Nav items:** Projects (Compass, order 30)
 - **Client components:** 6 (project-card, project-detail, project-checklist, project-grid, project-status-badge, project-editor)
 - **Cross-plugin deps:** Dynamic imports of `tasks/taskboard` (deleteTask), `openclaw-client` (sendMessage)

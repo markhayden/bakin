@@ -1,5 +1,5 @@
 /**
- * beacon_exec_save_asset — Standardized asset management.
+ * bakin_exec_save_asset — Standardized asset management.
  *
  * Encodes all asset conventions from SKILL.md:
  * - Directory structure: assets/{type}/{taskId}/
@@ -9,7 +9,7 @@
 import { mkdirSync, copyFileSync, writeFileSync, existsSync } from 'fs'
 import { join, extname, basename } from 'path'
 import { z } from 'zod'
-import { getBeaconPaths } from '../../src/core/content-dir'
+import { getBakinPaths } from '../../src/core/content-dir'
 import { succeed, fail, slugify, datePrefixedFilename, getExtension } from './common'
 import { addExecTool } from './registry'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
@@ -35,7 +35,7 @@ export async function saveAsset(params: SaveAssetParams): Promise<ExecToolResult
     return fail(`Source file not found: ${filePath}`)
   }
 
-  const paths = getBeaconPaths()
+  const paths = getBakinPaths()
   const typeKey = `assets.${type}` as keyof typeof paths
   const assetDir = paths[typeKey]
   if (!assetDir || typeof assetDir !== 'string') {
@@ -68,10 +68,10 @@ export async function saveAsset(params: SaveAssetParams): Promise<ExecToolResult
   const metadataPath = join(taskDir, `${filename}.meta.json`)
   writeFileSync(metadataPath, JSON.stringify(sidecar, null, 2))
 
-  // Return paths relative to beacon home
-  const beaconHome = assetDir.split('/assets/')[0]
-  const relativePath = destPath.replace(beaconHome + '/', '')
-  const relativeMetadataPath = metadataPath.replace(beaconHome + '/', '')
+  // Return paths relative to bakin home
+  const bakinHome = assetDir.split('/assets/')[0]
+  const relativePath = destPath.replace(bakinHome + '/', '')
+  const relativeMetadataPath = metadataPath.replace(bakinHome + '/', '')
 
   return succeed({
     path: relativePath,
@@ -85,7 +85,7 @@ export async function saveAsset(params: SaveAssetParams): Promise<ExecToolResult
 // ---------------------------------------------------------------------------
 
 addExecTool({
-  name: 'beacon_exec_save_asset',
+  name: 'bakin_exec_save_asset',
   description: 'Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.',
   source: 'core',
   parameters: {

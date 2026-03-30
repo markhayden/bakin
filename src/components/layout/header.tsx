@@ -37,8 +37,8 @@ export function Header() {
           )}
         </button>
         <div className="flex items-center gap-2">
-          <img src="/beacon-logo.svg" alt="Beacon" className="h-5 w-5" />
-          <span className="text-sm font-semibold tracking-widest text-foreground uppercase">Beacon</span>
+          <img src="/bakin-logo.svg" alt="Bakin" className="h-5 w-5" />
+          <span className="text-sm font-semibold tracking-widest text-foreground uppercase">Bakin</span>
           {version && <span className="text-[10px] font-mono text-muted-foreground">{version}</span>}
         </div>
         <div className="ml-auto flex items-center gap-4">

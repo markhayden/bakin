@@ -21,10 +21,10 @@ const log = createLogger('projects')
 
 function getProjectLock(): { queue: Promise<void> } {
   const g = globalThis as Record<string, unknown>
-  if (!g.__beaconProjectLock) {
-    g.__beaconProjectLock = { queue: Promise.resolve() }
+  if (!g.__bakinProjectLock) {
+    g.__bakinProjectLock = { queue: Promise.resolve() }
   }
-  return g.__beaconProjectLock as { queue: Promise<void> }
+  return g.__bakinProjectLock as { queue: Promise<void> }
 }
 
 function withProjectLock<T>(fn: () => T | Promise<T>): Promise<T> {
@@ -39,7 +39,7 @@ function withProjectLock<T>(fn: () => T | Promise<T>): Promise<T> {
 // ---------------------------------------------------------------------------
 
 function broadcast(data: Record<string, unknown>): void {
-  const fn = (globalThis as any).__beaconBroadcast
+  const fn = (globalThis as any).__bakinBroadcast
   if (fn) fn(data)
 }
 
@@ -54,10 +54,10 @@ export interface TaskLinkEntry {
 
 function getIndex(): Map<string, TaskLinkEntry> {
   const g = globalThis as Record<string, unknown>
-  if (!g.__beaconProjectIndex) {
-    g.__beaconProjectIndex = new Map<string, TaskLinkEntry>()
+  if (!g.__bakinProjectIndex) {
+    g.__bakinProjectIndex = new Map<string, TaskLinkEntry>()
   }
-  return g.__beaconProjectIndex as Map<string, TaskLinkEntry>
+  return g.__bakinProjectIndex as Map<string, TaskLinkEntry>
 }
 
 export function rebuildIndex(): void {

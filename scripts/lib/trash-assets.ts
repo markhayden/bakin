@@ -1,9 +1,9 @@
 /**
  * MCP exec tools for trash management.
  *
- * beacon_exec_list_trash — List trashed assets
- * beacon_exec_restore_trash — Restore a trashed asset
- * beacon_exec_empty_trash — Permanently delete all trash
+ * bakin_exec_list_trash — List trashed assets
+ * bakin_exec_restore_trash — Restore a trashed asset
+ * bakin_exec_empty_trash — Permanently delete all trash
  */
 import { join } from 'path'
 import { z } from 'zod'
@@ -63,7 +63,7 @@ async function handleEmptyTrash(): ReturnType<typeof succeed> {
 // ---------------------------------------------------------------------------
 
 addExecTool({
-  name: 'beacon_exec_list_trash',
+  name: 'bakin_exec_list_trash',
   description:
     'List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge.',
   parameters: {},
@@ -71,9 +71,9 @@ addExecTool({
 })
 
 addExecTool({
-  name: 'beacon_exec_restore_trash',
+  name: 'bakin_exec_restore_trash',
   description:
-    'Restore a trashed asset back to its original location. Use beacon_exec_list_trash first to get the filename.',
+    'Restore a trashed asset back to its original location. Use bakin_exec_list_trash first to get the filename.',
   parameters: {
     filename: z.string().describe('The trash filename (includes __deleted- suffix)'),
   },
@@ -81,7 +81,7 @@ addExecTool({
 })
 
 addExecTool({
-  name: 'beacon_exec_empty_trash',
+  name: 'bakin_exec_empty_trash',
   description:
     'Permanently delete all items from trash. This cannot be undone.',
   parameters: {},

@@ -2,7 +2,7 @@
  * Tasks plugin — server entry point.
  * Registers API routes for task operations.
  */
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import {
   createTask,
   deleteTask,
@@ -17,7 +17,7 @@ import {
   logProgress,
 } from '../../src/core/task-service'
 
-const tasksPlugin: MCPlugin = {
+const tasksPlugin: BakinPlugin = {
   id: 'tasks',
   name: 'Tasks',
   version: '1.0.0',

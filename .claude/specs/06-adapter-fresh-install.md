@@ -60,7 +60,7 @@ class OpenClawBridge implements AgentBridge {
   private gatewayUrl: string
   private gatewayPort: number
 
-  constructor(settings: BeaconSettings['openclaw']) {
+  constructor(settings: BakinSettings['openclaw']) {
     this.binaryPath = settings.binaryPath
     this.gatewayUrl = settings.gatewayUrl
     this.gatewayPort = settings.gatewayPort
@@ -88,7 +88,7 @@ Settings determine which bridge to use:
 
 Bridge factory:
 ```typescript
-function createAgentBridge(settings: BeaconSettings): AgentBridge {
+function createAgentBridge(settings: BakinSettings): AgentBridge {
   switch (settings.agentBridge) {
     case 'openclaw': return new OpenClawBridge(settings.openclaw)
     // Future: case 'langchain': return new LangChainBridge(settings.langchain)

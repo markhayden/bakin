@@ -3,7 +3,7 @@
  * Registers API routes, exec tools, and the cron→task bridge.
  */
 import { z } from 'zod'
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { readMergedJobs } from './lib/jobs-reader'
 import { readSidecar, writeSidecar, upsertJob, removeJob, getJob, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults } from './lib/sidecar'
 import { readRuns, getLastRun } from './lib/runs-reader'
@@ -13,7 +13,7 @@ import { createTaskWithEffects } from '../../src/core/task-service'
 import { appendAudit } from '../../src/core/audit'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
-import type { BeaconJobMeta, BridgePayload, BridgeResult } from './types'
+import type { BakinJobMeta, BridgePayload, BridgeResult } from './types'
 
 const log = createLogger('schedule')
 
@@ -58,8 +58,8 @@ async function handleBridge(req: Request): Promise<Response> {
   const { jobId, runId } = payload
 
   const meta = getJob(jobId)
-  if (!meta || !meta.isBeaconJob) {
-    return json({ ok: true, skipped: 'not-beacon' } satisfies BridgeResult)
+  if (!meta || !meta.isBakinJob) {
+    return json({ ok: true, skipped: 'not-bakin' } satisfies BridgeResult)
   }
 
   const defaults = withDefaults(meta)
@@ -166,7 +166,7 @@ async function handleBridge(req: Request): Promise<Response> {
     })
 
     // Broadcast for Roscoe / owner visibility
-    const broadcast = (globalThis as Record<string, unknown>).__beaconBroadcast as
+    const broadcast = (globalThis as Record<string, unknown>).__bakinBroadcast as
       | ((data: Record<string, unknown>) => void)
       | undefined
     if (broadcast) {
@@ -193,7 +193,7 @@ async function handleBridge(req: Request): Promise<Response> {
 // Plugin
 // ---------------------------------------------------------------------------
 
-const schedulePlugin: MCPlugin = {
+const schedulePlugin: BakinPlugin = {
   id: 'schedule',
   name: 'Schedule',
   version: '1.0.0',
@@ -260,9 +260,9 @@ const schedulePlugin: MCPlugin = {
         })
 
         // Write sidecar
-        const meta: BeaconJobMeta = {
+        const meta: BakinJobMeta = {
           jobId,
-          isBeaconJob: true,
+          isBakinJob: true,
           displayName: body.name,
           agentId: body.agentId,
           owner: body.owner ?? 'roscoe',
@@ -429,15 +429,15 @@ const schedulePlugin: MCPlugin = {
     // ── Exec Tools (agent-facing) ──────────────────────────────────────
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_list',
-      description: 'List all scheduled jobs (merged OpenClaw + Beacon view)',
+      name: 'bakin_exec_schedule_list',
+      description: 'List all scheduled jobs (merged OpenClaw + Bakin view)',
       parameters: {
-        filter: z.enum(['beacon', 'all']).optional().describe('Filter by job type'),
+        filter: z.enum(['bakin', 'all']).optional().describe('Filter by job type'),
         agentId: z.string().optional().describe('Filter by assigned agent'),
       },
       handler: async (params) => {
         let jobs = readMergedJobs()
-        if (params.filter === 'beacon') jobs = jobs.filter(j => j.isBeaconJob)
+        if (params.filter === 'bakin') jobs = jobs.filter(j => j.isBakinJob)
         if (params.agentId) jobs = jobs.filter(j => j.agentId === params.agentId)
         return {
           ok: true,
@@ -447,7 +447,7 @@ const schedulePlugin: MCPlugin = {
             agent: j.agentId,
             schedule: j.humanSchedule,
             paused: j.paused,
-            isBeaconJob: j.isBeaconJob,
+            isBakinJob: j.isBakinJob,
             lastTaskId: j.lastTaskId,
           })),
         }
@@ -455,7 +455,7 @@ const schedulePlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_create',
+      name: 'bakin_exec_schedule_create',
       description: 'Create a new scheduled job that creates tasks on the board',
       parameters: {
         name: z.string().describe('Job name (required)'),
@@ -483,9 +483,9 @@ const schedulePlugin: MCPlugin = {
           tz,
         })
 
-        const meta: BeaconJobMeta = {
+        const meta: BakinJobMeta = {
           jobId,
-          isBeaconJob: true,
+          isBakinJob: true,
           displayName: params.name as string,
           agentId: params.agentId as string | undefined,
           owner: 'roscoe',
@@ -506,7 +506,7 @@ const schedulePlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_update',
+      name: 'bakin_exec_schedule_update',
       description: 'Update an existing scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
@@ -542,7 +542,7 @@ const schedulePlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_pause',
+      name: 'bakin_exec_schedule_pause',
       description: 'Pause, resume, or skip runs for a scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
@@ -582,7 +582,7 @@ const schedulePlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_delete',
+      name: 'bakin_exec_schedule_delete',
       description: 'Delete a scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
@@ -596,16 +596,16 @@ const schedulePlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_briefing',
+      name: 'bakin_exec_schedule_briefing',
       description: "Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing.",
       parameters: {
         date: z.string().optional().describe('ISO date to check (defaults to today)'),
       },
       handler: async (params) => {
         const jobs = readMergedJobs()
-        const beaconJobs = jobs.filter(j => j.isBeaconJob)
+        const bakinJobs = jobs.filter(j => j.isBakinJob)
 
-        const alerts = beaconJobs.filter(j =>
+        const alerts = bakinJobs.filter(j =>
           j.paused || j.consecutiveFailures > 0
         )
 
@@ -613,10 +613,10 @@ const schedulePlugin: MCPlugin = {
           ok: true,
           date: (params.date as string) ?? new Date().toISOString().slice(0, 10),
           totalJobs: jobs.length,
-          beaconJobs: beaconJobs.length,
-          active: beaconJobs.filter(j => !j.paused).length,
-          paused: beaconJobs.filter(j => j.paused).length,
-          jobs: beaconJobs.map(j => ({
+          bakinJobs: bakinJobs.length,
+          active: bakinJobs.filter(j => !j.paused).length,
+          paused: bakinJobs.filter(j => j.paused).length,
+          jobs: bakinJobs.map(j => ({
             id: j.id,
             name: j.displayName,
             agent: j.agentId,

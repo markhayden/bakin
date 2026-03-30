@@ -6,8 +6,8 @@ import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import type {
-  MCConfig,
-  MCPlugin,
+  BakinConfig,
+  BakinPlugin,
   StorageAdapter,
   EventBus,
   PluginContext,
@@ -21,7 +21,7 @@ import { registerRouteDoc } from '../core/api-docs'
 import { addExecTool } from '../../scripts/lib/registry'
 
 interface PluginState {
-  plugin: MCPlugin
+  plugin: BakinPlugin
   navItems: NavItem[]
   routes: APIRoute[]
   slots: UISlotRegistration[]
@@ -39,7 +39,7 @@ class PluginRegistryImpl {
   private plugins = new Map<string, PluginState>()
   private initialized = false
 
-  async initialize(config: MCConfig, storage: StorageAdapter, events: EventBus): Promise<void> {
+  async initialize(config: BakinConfig, storage: StorageAdapter, events: EventBus): Promise<void> {
     if (this.initialized) return
     this.initialized = true
 
@@ -49,7 +49,7 @@ class PluginRegistryImpl {
       await this.loadPlugin(entry.path, storage, events)
     }
 
-    // Load user plugins from ~/.beacon/plugins/ (override by ID)
+    // Load user plugins from ~/.bakin/plugins/ (override by ID)
     await this.loadUserPlugins(storage, events)
   }
 
@@ -86,7 +86,7 @@ class PluginRegistryImpl {
   private async loadPlugin(pluginPath: string, storage: StorageAdapter, events: EventBus): Promise<void> {
     try {
       const mod = await import(/* webpackIgnore: true */ `../../${pluginPath}`)
-      const plugin: MCPlugin = mod.default || mod.plugin || mod
+      const plugin: BakinPlugin = mod.default || mod.plugin || mod
 
       if (!plugin.id || !plugin.activate) {
         console.warn(`Plugin at ${pluginPath} missing id or activate — skipping`)
@@ -111,12 +111,12 @@ class PluginRegistryImpl {
   }
 
   /**
-   * Scan ~/.beacon/plugins/ for user-installed plugins.
+   * Scan ~/.bakin/plugins/ for user-installed plugins.
    * User plugins with the same ID as built-in plugins override them.
    */
   private async loadUserPlugins(storage: StorageAdapter, events: EventBus): Promise<void> {
-    const beaconHome = process.env.BEACON_HOME || join(homedir(), '.beacon')
-    const userPluginsDir = join(beaconHome, 'plugins')
+    const bakinHome = process.env.BAKIN_HOME || join(homedir(), '.bakin')
+    const userPluginsDir = join(bakinHome, 'plugins')
 
     if (!existsSync(userPluginsDir)) return
 
@@ -125,7 +125,7 @@ class PluginRegistryImpl {
       for (const entry of entries) {
         if (!entry.isDirectory()) continue
 
-        const manifestPath = join(userPluginsDir, entry.name, 'beacon-plugin.json')
+        const manifestPath = join(userPluginsDir, entry.name, 'bakin-plugin.json')
         if (!existsSync(manifestPath)) continue
 
         try {
@@ -142,7 +142,7 @@ class PluginRegistryImpl {
           const relativePath = join(userPluginsDir, entry.name, serverEntry)
 
           const mod = await import(/* webpackIgnore: true */ relativePath)
-          const plugin: MCPlugin = mod.default || mod.plugin || mod
+          const plugin: BakinPlugin = mod.default || mod.plugin || mod
 
           if (!plugin.id || !plugin.activate) {
             console.warn(`User plugin "${entry.name}" missing id or activate — skipping`)
@@ -166,7 +166,7 @@ class PluginRegistryImpl {
         }
       }
     } catch {
-      // ~/.beacon/plugins/ not readable, skip silently
+      // ~/.bakin/plugins/ not readable, skip silently
     }
   }
 

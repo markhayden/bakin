@@ -1,5 +1,5 @@
 /**
- * File watcher for Beacon content directory.
+ * File watcher for Bakin content directory.
  * Uses chokidar to watch for changes and broadcasts via SSE.
  * Handles inbox completion reports inline.
  */
@@ -9,7 +9,7 @@ import { join, relative } from 'path'
 import { createLogger } from './logger'
 import { broadcast, broadcastAuditEvent } from './sse'
 import { appendAudit } from './audit'
-import type { MCEventBus } from '../lib/events/event-bus'
+import type { BakinEventBus } from '../lib/events/event-bus'
 
 const log = createLogger('watcher')
 
@@ -35,7 +35,7 @@ async function runSyncHooks(relativePath: string, content: string): Promise<void
 
 interface WatcherDeps {
   contentDir: string
-  eventBus: MCEventBus
+  eventBus: BakinEventBus
   onInboxFile: (fullPath: string) => void
 }
 
@@ -127,7 +127,7 @@ export function createInboxHandler(deps: { contentDir: string, sendNotification:
       const raw = readFileSync(fullPath, 'utf-8')
       const msg = JSON.parse(raw)
       if (msg.type === 'task-complete' && msg.title && msg.agent) {
-        const reviewMsg = `Agent ${msg.agent} reports task complete: "${msg.title}". Summary: ${msg.summary || 'No summary provided.'}. Please review and if satisfied, move the task to Done via the Beacon API (beacon tasks move <id> done). If rework is needed, add notes and leave it in In Progress.`
+        const reviewMsg = `Agent ${msg.agent} reports task complete: "${msg.title}". Summary: ${msg.summary || 'No summary provided.'}. Please review and if satisfied, move the task to Done via the Bakin API (bakin tasks move <id> done). If rework is needed, add notes and leave it in In Progress.`
         deps.sendNotification(reviewMsg)
 
         appendAudit(deps.contentDir, 'task.completion_report', msg.agent, {

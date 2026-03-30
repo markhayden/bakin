@@ -1,9 +1,9 @@
 /**
- * Beacon — Mission Control Server
+ * Bakin — Multi-Agent Orchestration Server
  * Version: 1.0.0
- * Last updated: 2026-03-21
- * 
- * Main entry point for the Beacon server. Bootstraps Next.js,
+ * Last updated: 2026-03-28
+ *
+ * Main entry point for the Bakin server. Bootstraps Next.js,
  * registers plugins, and starts the HTTP server with API routing.
  */
 
@@ -14,13 +14,13 @@ import { existsSync, mkdirSync } from 'fs'
 import { execSync } from 'child_process'
 
 import { MarkdownStorageAdapter } from './src/lib/storage/markdown-adapter'
-import { MCEventBus } from './src/lib/events/event-bus'
+import { BakinEventBus } from './src/lib/events/event-bus'
 import { pluginRegistry } from './src/lib/plugin-registry'
-import config from './mc.config'
+import config from './bakin.config'
 
 import { createLogger } from './src/core/logger'
 import { getSettings } from './src/core/settings'
-import { getContentDir, getBeaconPaths, isUsingBeaconHome } from './src/core/content-dir'
+import { getContentDir, getBakinPaths, isUsingBakinHome } from './src/core/content-dir'
 import { handleSSE, broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
 import * as vault from './src/core/vault'
@@ -45,11 +45,11 @@ import { recordRequest } from './src/core/request-log'
 const log = createLogger('server')
 
 // Git version — computed once at startup
-let BEACON_VERSION = 'unknown'
+let BAKIN_VERSION = 'unknown'
 try {
   const hash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
   const dirty = execSync('git status --porcelain', { encoding: 'utf-8' }).trim() ? '-dirty' : ''
-  BEACON_VERSION = `${hash}${dirty}`
+  BAKIN_VERSION = `${hash}${dirty}`
 } catch { /* not a git repo or git not installed */ }
 
 const dev = process.env.NODE_ENV !== 'production'
@@ -66,7 +66,7 @@ for (const dir of [CONTENT_DIR, join(CONTENT_DIR, 'heartbeats'), join(CONTENT_DI
 
 // Plugin infrastructure
 const storage = new MarkdownStorageAdapter(CONTENT_DIR)
-const eventBus = new MCEventBus(broadcast)
+const eventBus = new BakinEventBus(broadcast)
 
 app.prepare().then(async () => {
   // Initialize vault (load credentials from disk)
@@ -81,8 +81,8 @@ app.prepare().then(async () => {
 
   // Expose registry accessors on globalThis so Next.js API routes (which get
   // separate webpack-compiled module instances) can read the real data.
-  ;(globalThis as any).__beaconGetRegistrySnapshot = () => pluginRegistry.getRegistrySnapshot()
-  ;(globalThis as any).__beaconGetExecToolStats = () => {
+  ;(globalThis as any).__bakinGetRegistrySnapshot = () => pluginRegistry.getRegistrySnapshot()
+  ;(globalThis as any).__bakinGetExecToolStats = () => {
     const { getExecToolStats } = require('./scripts/lib/registry')
     return getExecToolStats()
   }
@@ -150,7 +150,7 @@ app.prepare().then(async () => {
 
     // Version endpoint
     if (url.pathname === '/api/version' && req.method === 'GET') {
-      jsonResponse(res, 200, { version: BEACON_VERSION })
+      jsonResponse(res, 200, { version: BAKIN_VERSION })
       return
     }
 
@@ -239,7 +239,7 @@ app.prepare().then(async () => {
     // Paths endpoint — agents use this to discover content locations
     if (url.pathname === '/api/paths' && req.method === 'GET') {
       const key = url.searchParams.get('key')
-      const paths = getBeaconPaths()
+      const paths = getBakinPaths()
       if (key) {
         const value = (paths as unknown as Record<string, string>)[key]
         if (value === undefined) {
@@ -248,7 +248,7 @@ app.prepare().then(async () => {
           jsonResponse(res, 200, { key, path: value })
         }
       } else {
-        jsonResponse(res, 200, { paths, isBeaconHome: isUsingBeaconHome() })
+        jsonResponse(res, 200, { paths, isBakinHome: isUsingBakinHome() })
       }
       return
     }
@@ -385,7 +385,7 @@ app.prepare().then(async () => {
   dispatchState.serverStart = Date.now()
 
   server.listen(port, '0.0.0.0', () => {
-    log.info(`Beacon ready on http://0.0.0.0:${port}`)
+    log.info(`Bakin ready on http://0.0.0.0:${port}`)
     log.info(`Tailscale: http://100.91.112.69:${port}`)
   })
 

@@ -1,5 +1,5 @@
 /**
- * Enhanced beacon_submit_step — local pre-validation before server submission.
+ * Enhanced bakin_submit_step — local pre-validation before server submission.
  *
  * Validates output against the step's JSON schema using the same ajv
  * validator the server uses. Catches errors locally with detailed
@@ -53,7 +53,7 @@ export async function submitStepValidated(
 }
 
 addExecTool({
-  name: 'beacon_exec_submit_step',
+  name: 'bakin_exec_submit_step',
   description: 'Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip.',
   source: 'core',
   parameters: {

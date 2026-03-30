@@ -63,38 +63,38 @@ describe('CLI schedule commands', () => {
       expectGetTo('/api/plugins/schedule/jobs')
     })
 
-    it('filters to Beacon jobs by default', async () => {
+    it('filters to Bakin jobs by default', async () => {
       mockJsonResponse({
         jobs: [
-          { id: 'j1', displayName: 'Beacon Job', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: true },
-          { id: 'j2', displayName: 'Other Job', isBeaconJob: false, humanSchedule: 'weekly', paused: false, enabled: true },
+          { id: 'j1', displayName: 'Bakin Job', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: true },
+          { id: 'j2', displayName: 'Other Job', isBakinJob: false, humanSchedule: 'weekly', paused: false, enabled: true },
         ],
       })
       await cmdScheduleList({})
-      // Should only show Beacon job (1 header line + 1 separator + 1 job = logged displayName once)
+      // Should only show Bakin job (1 header line + 1 separator + 1 job = logged displayName once)
       const output = consoleSpy.mock.calls.map(c => c[0]).join('\n')
-      expect(output).toContain('Beacon Job')
+      expect(output).toContain('Bakin Job')
       expect(output).not.toContain('Other Job')
     })
 
     it('shows all jobs with --all flag', async () => {
       mockJsonResponse({
         jobs: [
-          { id: 'j1', displayName: 'Beacon Job', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: true },
-          { id: 'j2', displayName: 'Other Job', isBeaconJob: false, humanSchedule: 'weekly', paused: false, enabled: true },
+          { id: 'j1', displayName: 'Bakin Job', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: true },
+          { id: 'j2', displayName: 'Other Job', isBakinJob: false, humanSchedule: 'weekly', paused: false, enabled: true },
         ],
       })
       await cmdScheduleList({ all: true })
       const output = consoleSpy.mock.calls.map(c => c[0]).join('\n')
-      expect(output).toContain('Beacon Job')
+      expect(output).toContain('Bakin Job')
       expect(output).toContain('Other Job')
     })
 
     it('filters by agent', async () => {
       mockJsonResponse({
         jobs: [
-          { id: 'j1', displayName: 'Basil Job', agentId: 'basil', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: true },
-          { id: 'j2', displayName: 'Pixel Job', agentId: 'pixel', isBeaconJob: true, humanSchedule: 'weekly', paused: false, enabled: true },
+          { id: 'j1', displayName: 'Basil Job', agentId: 'basil', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: true },
+          { id: 'j2', displayName: 'Pixel Job', agentId: 'pixel', isBakinJob: true, humanSchedule: 'weekly', paused: false, enabled: true },
         ],
       })
       await cmdScheduleList({ agent: 'basil' })
@@ -106,7 +106,7 @@ describe('CLI schedule commands', () => {
     it('outputs JSON with --json flag', async () => {
       mockJsonResponse({
         jobs: [
-          { id: 'j1', displayName: 'Test', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: true },
+          { id: 'j1', displayName: 'Test', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: true },
         ],
       })
       await cmdScheduleList({ json: true })
@@ -125,9 +125,9 @@ describe('CLI schedule commands', () => {
     it('shows status correctly for paused/active/disabled', async () => {
       mockJsonResponse({
         jobs: [
-          { id: 'j1', displayName: 'Paused', isBeaconJob: true, humanSchedule: 'daily', paused: true, enabled: true },
-          { id: 'j2', displayName: 'Active', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: true },
-          { id: 'j3', displayName: 'Disabled', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: false },
+          { id: 'j1', displayName: 'Paused', isBakinJob: true, humanSchedule: 'daily', paused: true, enabled: true },
+          { id: 'j2', displayName: 'Active', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: true },
+          { id: 'j3', displayName: 'Disabled', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: false },
         ],
       })
       await cmdScheduleList({ all: true })

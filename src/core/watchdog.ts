@@ -247,7 +247,7 @@ export function start(contentDir: string, port: number): void {
               }
             }
 
-            msg += `\n\nApprove or reject in Beacon UI.`
+            msg += `\n\nApprove or reject in Bakin UI.`
 
             openclaw.sendChannelMessage(
               settings.notifications.channel,

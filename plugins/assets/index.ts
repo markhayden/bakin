@@ -3,7 +3,7 @@
  * Registers API routes for asset listing, serving, and deletion.
  * Builds the in-memory asset index on activation.
  */
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { handleList } from './routes/list'
 import { handleFile } from './routes/file'
 import { handleDelete } from './routes/delete'
@@ -14,7 +14,7 @@ import { handleEmptyTrash } from './routes/empty-trash'
 import { buildIndex, upsertAsset, removeAsset } from './lib/asset-index'
 import { registerSyncHook } from '../../src/core/watcher'
 
-const assetsPlugin: MCPlugin = {
+const assetsPlugin: BakinPlugin = {
   id: 'assets',
   name: 'Assets',
   version: '1.0.0',

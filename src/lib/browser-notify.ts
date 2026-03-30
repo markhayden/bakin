@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'beacon-notifications-enabled'
+const STORAGE_KEY = 'bakin-notifications-enabled'
 
 export function isNotificationsSupported(): boolean {
   return typeof window !== 'undefined' && 'Notification' in window && window.isSecureContext

@@ -2,7 +2,7 @@
  * Content Calendar plugin — server entry point.
  * Manages content pipeline: draft → scheduled → executing → waiting → review → published
  */
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import {
   loadCalendarItems,
   createItem,
@@ -34,7 +34,7 @@ async function normalizeAssetPath(absPath: string | undefined): Promise<string |
   return `assets/${filename}`
 }
 
-const calendarPlugin: MCPlugin = {
+const calendarPlugin: BakinPlugin = {
   id: 'calendar',
   name: 'Content Calendar',
   version: '1.0.0',

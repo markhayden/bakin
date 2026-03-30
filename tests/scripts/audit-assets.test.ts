@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testDir = join(tmpdir(), `beacon-test-audit-${Date.now()}`)
+const testDir = join(tmpdir(), `bakin-test-audit-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
 vi.mock('../../src/core/content-dir', () => ({
@@ -36,12 +36,12 @@ import '../../scripts/lib/audit-assets'
 import { getExecTool } from '../../scripts/lib/registry'
 
 function runAudit(params: Record<string, unknown> = {}) {
-  const tool = getExecTool('beacon_exec_audit_assets')
+  const tool = getExecTool('bakin_exec_audit_assets')
   if (!tool) throw new Error('audit tool not registered')
   return tool.handler(params, 'test-agent')
 }
 
-describe('beacon_exec_audit_assets', () => {
+describe('bakin_exec_audit_assets', () => {
   beforeEach(() => {
     mkdirSync(join(assetsRoot, 'images', 'task-abc'), { recursive: true })
     mkdirSync(join(assetsRoot, 'text', 'task-def'), { recursive: true })
@@ -52,9 +52,9 @@ describe('beacon_exec_audit_assets', () => {
   })
 
   it('registers the tool in the registry', () => {
-    const tool = getExecTool('beacon_exec_audit_assets')
+    const tool = getExecTool('bakin_exec_audit_assets')
     expect(tool).toBeDefined()
-    expect(tool!.name).toBe('beacon_exec_audit_assets')
+    expect(tool!.name).toBe('bakin_exec_audit_assets')
   })
 
   it('reports healthy assets with no issues', async () => {

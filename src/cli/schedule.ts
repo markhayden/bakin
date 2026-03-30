@@ -1,6 +1,6 @@
 /**
- * CLI helpers for `beacon schedule` commands.
- * Each function calls the Beacon schedule API and formats output.
+ * CLI helpers for `bakin schedule` commands.
+ * Each function calls the Bakin schedule API and formats output.
  */
 
 const BASE_URL = `http://localhost:${process.env.PORT || 3737}`
@@ -53,7 +53,7 @@ interface ListResult {
     agentId?: string
     humanSchedule: string
     paused: boolean
-    isBeaconJob: boolean
+    isBakinJob: boolean
     enabled: boolean
   }>
 }
@@ -66,7 +66,7 @@ export async function cmdScheduleList(opts: {
   const data = await apiGet<ListResult>('/jobs')
   let jobs = data.jobs
 
-  if (!opts.all) jobs = jobs.filter(j => j.isBeaconJob)
+  if (!opts.all) jobs = jobs.filter(j => j.isBakinJob)
   if (opts.agent) jobs = jobs.filter(j => j.agentId === opts.agent)
 
   if (opts.json) {

@@ -22,7 +22,7 @@ Formalize the plugin system for extensibility and production use. This phase add
 
 ### 1. Plugin Lifecycle Hooks
 
-Extend `BakinPlugin` interface (renamed from `MCPlugin`):
+Extend `BakinPlugin` interface (renamed from `BakinPlugin`):
 
 ```typescript
 interface BakinPlugin {

@@ -15,7 +15,7 @@ export interface ScheduleJob {
   skipNextN?: number
   skippedCount?: number
   enabled: boolean
-  isBeaconJob: boolean
+  isBakinJob: boolean
   allowOverlap: boolean
   maxFailures: number
   consecutiveFailures: number
@@ -42,7 +42,7 @@ export interface RunEntry {
 
 interface UseScheduleOptions {
   agent?: string
-  beaconOnly?: boolean
+  bakinOnly?: boolean
 }
 
 export function useScheduleJobs(options: UseScheduleOptions = {}) {
@@ -93,7 +93,7 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
   // Apply client-side filters
   const opts = options
   const filtered = jobs.filter(j => {
-    if (opts.beaconOnly && !j.isBeaconJob) return false
+    if (opts.bakinOnly && !j.isBakinJob) return false
     if (opts.agent && j.agentId !== opts.agent) return false
     return true
   })

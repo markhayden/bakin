@@ -1,5 +1,5 @@
 /**
- * Self-documenting API for Beacon.
+ * Self-documenting API for Bakin.
  * Collects route registrations from plugins and core, generates docs.
  */
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
@@ -24,8 +24,8 @@ const CORE_ROUTES: RouteDoc[] = [
   { pluginId: 'core', method: 'GET', path: '/api/events', fullPath: '/api/events', description: 'SSE event stream — real-time updates for file changes, task events, alerts' },
   { pluginId: 'core', method: 'GET', path: '/api/dispatch', fullPath: '/api/dispatch', description: 'Get dispatch timer state — interval, last run, next run, dispatched count' },
   { pluginId: 'core', method: 'POST', path: '/api/dispatch', fullPath: '/api/dispatch', description: 'Trigger immediate task dispatch cycle' },
-  { pluginId: 'core', method: 'GET', path: '/api/settings', fullPath: '/api/settings', description: 'Get current Beacon settings' },
-  { pluginId: 'core', method: 'POST', path: '/api/settings', fullPath: '/api/settings', description: 'Update Beacon settings (partial merge)', params: 'JSON object with settings keys to update' },
+  { pluginId: 'core', method: 'GET', path: '/api/settings', fullPath: '/api/settings', description: 'Get current Bakin settings' },
+  { pluginId: 'core', method: 'POST', path: '/api/settings', fullPath: '/api/settings', description: 'Update Bakin settings (partial merge)', params: 'JSON object with settings keys to update' },
   { pluginId: 'core', method: 'POST', path: '/api/internal/continuation', fullPath: '/api/internal/continuation', description: 'Trigger dependency continuation check', params: '{"completedTaskId":"string","completedTitle":"string"}' },
   { pluginId: 'core', method: 'POST', path: '/api/activity/emit', fullPath: '/api/activity/emit', description: 'Emit activity event via SSE', params: '{"agent":"string","message":"string","ts":"string"}' },
   { pluginId: 'core', method: 'GET', path: '/api/docs', fullPath: '/api/docs', description: 'Get API documentation as JSON' },
@@ -75,7 +75,7 @@ export function generateDocs(contentDir: string): void {
   }
 
   const lines: string[] = [
-    '# Beacon API Documentation',
+    '# Bakin API Documentation',
     '',
     `_Auto-generated at ${new Date().toISOString()}_`,
     '',

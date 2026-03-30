@@ -11,7 +11,7 @@ export function mapAuditMessage(event: string, data: Record<string, unknown>): s
     case 'task.assigned': return `Assigned "${data.title}" to ${data.assignee}`
     case 'task.blocked': return `Blocked: ${data.title} — ${data.reason || 'no reason'}`
     case 'task.updated': return `Updated: ${data.title}`
-    case 'system.init': return 'Beacon started'
+    case 'system.init': return 'Bakin started'
     case 'system.dispatch_error': return `Dispatch failed: ${data.error || 'unknown error'}`
     case 'workflow.step_dispatched': return `Step "${data.label || 'unknown'}" dispatched to ${data.agent || 'agent'}`
     case 'workflow.step_complete': return `Step "${data.label || 'unknown'}" completed`

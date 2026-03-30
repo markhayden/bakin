@@ -1,6 +1,6 @@
 # Bakin
 
-Bakin (codebase currently named "beacon", rename pending) is a self-hosted multi-agent orchestration platform. It gives a single user a real-time dashboard into what their AI agents are doing — tasks, projects, workflows, assets, schedules — all powered by markdown files on the filesystem, pushed to the browser via SSE.
+Bakin is a self-hosted multi-agent orchestration platform. It gives a single user a real-time dashboard into what their AI agents are doing — tasks, projects, workflows, assets, schedules — all powered by markdown files on the filesystem, pushed to the browser via SSE.
 
 Runs on a Mac mini, accessed via Tailscale. No database, no SaaS dependencies.
 
@@ -8,7 +8,7 @@ Runs on a Mac mini, accessed via Tailscale. No database, no SaaS dependencies.
 
 - **Server:** Custom Node.js HTTP server wrapping Next.js 16 (App Router), port 3737
 - **Frontend:** React 19, Tailwind CSS 4, shadcn v4 (Base UI), Zustand for state
-- **Storage:** Markdown files in `~/.bakin/` (currently `~/.beacon/`), no database
+- **Storage:** Markdown files in `~/.bakin/`, no database
 - **Real-time:** Server-Sent Events (SSE) push updates to all connected browsers
 - **Agents:** Managed via OpenClaw gateway, communicate through MCP tools
 - **Plugins:** 9 core plugins, extensible architecture for addons
@@ -19,29 +19,30 @@ Runs on a Mac mini, accessed via Tailscale. No database, no SaaS dependencies.
 ### Repo Structure
 ```
 server.ts                  — HTTP server entry point (bootstraps Next.js + plugins)
-mc.config.ts               — Plugin configuration (which plugins are enabled)
+bakin.config.ts            — Plugin configuration (which plugins are enabled)
 src/
   core/                    — Server-side core modules
     mcp-server.ts          — MCP tool server (agent tool access)
     dispatch.ts            — Task dispatch engine (sends work to agents)
     task-service.ts        — Task mutations with side effects
-    settings.ts            — BeaconSettings interface, defaults, file loading
+    settings.ts            — BakinSettings interface, defaults, file loading
     content-dir.ts         — Content directory resolution (~/.bakin/)
+    main-agent.ts          — Runtime orchestrator agent resolution
     sse.ts                 — SSE client management and broadcast
     audit.ts               — Audit logging (JSONL + SSE + Antfly)
     agents.ts              — Agent status and communication
     logger.ts              — Structured logger (createLogger)
-    plugin-registry.ts     — Plugin loading and activation (duplicate of src/lib/)
     openclaw-client.ts     — OpenClaw HTTP gateway client
     watcher.ts             — Chokidar file watcher integration
   lib/                     — Shared types and utilities (client + server safe)
-    plugin-types.ts        — MCPlugin, PluginContext, StorageAdapter, EventBus interfaces
+    core-constants.ts      — APP_NAME, APP_SLUG, branding constants
+    plugin-types.ts        — BakinPlugin, PluginContext, StorageAdapter, EventBus interfaces
     plugin-registry.ts     — Plugin loading singleton
     plugin-manifest.ts     — Client-side plugin imports and navItems aggregation
     agents-data.ts         — Agent profiles (single source of truth for agent metadata)
     constants.ts           — Lightweight agent list, column config, nav items
     storage/               — MarkdownStorageAdapter
-    events/                — MCEventBus (pub/sub with pattern matching)
+    events/                — BakinEventBus (pub/sub with pattern matching)
     parsers/               — Markdown parsing utilities
   components/
     ui/                    — shadcn base components (button, card, dialog, input, etc.)
@@ -100,7 +101,7 @@ Created by `bakin init`. Per-installation state, NOT in the repo.
 
 Every plugin has:
 - `bakin-plugin.json` — manifest with id, name, version, dependencies, permissions
-- `index.ts` — server entry: exports `MCPlugin` with `activate(ctx: PluginContext)`
+- `index.ts` — server entry: exports `BakinPlugin` with `activate(ctx: PluginContext)`
 - `client.tsx` — client entry: exports `navItems` for sidebar
 - `components/` — plugin-specific UI components
 - `types.ts` — plugin-specific type definitions
@@ -109,7 +110,7 @@ Plugin context provides: `storage`, `events`, `registerNav()`, `registerRoute()`
 
 Routes registered as: `/api/plugins/{pluginId}/{path}` via the catch-all route.
 
-Exec tools naming: `beacon_exec_{pluginId}_{action}` (will become `bakin_exec_*`)
+Exec tools naming: `bakin_exec_{pluginId}_{action}`
 
 ## Code Conventions
 
@@ -120,7 +121,7 @@ Exec tools naming: `beacon_exec_{pluginId}_{action}` (will become `bakin_exec_*`
 - **No empty catch blocks** — always log or rethrow
 - **`const` over `let`**, never `var`
 - **Files:** `kebab-case.ts` / `kebab-case.tsx`
-- **Types/interfaces:** `PascalCase` (e.g., `MCPlugin`, `PluginContext`)
+- **Types/interfaces:** `PascalCase` (e.g., `BakinPlugin`, `PluginContext`)
 - **Constants:** `UPPER_SNAKE_CASE` for true constants
 
 ### Import Order
@@ -131,13 +132,13 @@ import { join } from 'path'
 import next from 'next'
 // 3. Internal @/* paths
 import { createLogger } from '@/core/logger'
-// 4. Plugin @mc/* paths
-import { readProject } from '@mc/projects/lib/parser'
+// 4. Plugin @bakin/* paths
+import { readProject } from '@bakin/projects/lib/parser'
 // 5. Relative
 import { helper } from './utils'
 ```
 
-Path aliases: `@/*` maps to `./src/*`, `@mc/{plugin}/*` maps to `./plugins/{plugin}/*`
+Path aliases: `@/*` maps to `./src/*`, `@bakin/{plugin}/*` maps to `./plugins/{plugin}/*`
 
 ### Commit Conventions
 Conventional commits with scope:
@@ -149,13 +150,13 @@ Conventional commits with scope:
 ## Key Patterns
 
 ### SSE Broadcasting
-Real-time updates via `broadcast()` from `src/core/sse.ts`. Uses `globalThis.__beaconBroadcast` to survive Next.js webpack re-evaluation. Two channels: activity (progress) and audit (structured events).
+Real-time updates via `broadcast()` from `src/core/sse.ts`. Uses `globalThis.__bakinBroadcast` to survive Next.js webpack re-evaluation. Two channels: activity (progress) and audit (structured events).
 
 ### Agent Activity
-Agents report progress via `beacon_log_progress` MCP tool → `logProgress()` in task-service → SSE broadcast. Structured audit via `appendAudit()` → `audit.jsonl` + SSE + Antfly.
+Agents report progress via `bakin_log_progress` MCP tool → `logProgress()` in task-service → SSE broadcast. Structured audit via `appendAudit()` → `audit.jsonl` + SSE + Antfly.
 
 ### Content Directory
-All paths resolved through `getContentDir()` in `src/core/content-dir.ts`. Resolution: `BEACON_HOME` env → `~/.beacon/` → `./content/` fallback. Well-known paths via `getBeaconPaths()`.
+All paths resolved through `getContentDir()` in `src/core/content-dir.ts`. Resolution: `BAKIN_HOME` env → `~/.bakin/` → `./content/` fallback. Well-known paths via `getBakinPaths()`.
 
 ### Plugin Communication
 Plugins currently interact via: shared core services (task-service, audit), direct dynamic imports, event bus (underutilized), and SSE broadcast. Phase 4 of hardening will formalize cross-plugin hooks.
@@ -165,4 +166,3 @@ Plugins currently interact via: shared core services (task-service, audit), dire
 - **Specs:** `.claude/specs/` — detailed specs for each hardening phase
 - **Knowledge:** `.claude/knowledge/` — deep dives on plugin system, agent system, storage model
 - **Skills:** `.claude/skills/` — reusable Claude Code operations (create-plugin, audit-plugin, add-component)
-- **Master plan:** `.claude/plans/atomic-twirling-salamander.md` — full hardening roadmap

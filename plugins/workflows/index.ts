@@ -3,7 +3,7 @@
  * Enforces step-by-step agent execution with gated delivery,
  * parallel steps, human gates, and output validation.
  */
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { listDefinitions, loadDefinition } from './parser'
 import {
   createInstance,
@@ -35,7 +35,7 @@ function countSteps(steps: { type: string; steps?: unknown[] }[]): number {
   return count
 }
 
-const workflowsPlugin: MCPlugin = {
+const workflowsPlugin: BakinPlugin = {
   id: 'workflows',
   name: 'Workflows',
   version: '2.0.0',

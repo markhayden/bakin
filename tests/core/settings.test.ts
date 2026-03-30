@@ -4,8 +4,7 @@ import path from 'path'
 import { getSettings, updateSettings, resetSettingsCache } from '../../src/core/settings'
 
 const TEST_CONTENT_DIR = path.join(process.cwd(), 'test-content-settings')
-const SETTINGS_DIR = path.join(TEST_CONTENT_DIR, '.beacon')
-const SETTINGS_FILE = path.join(SETTINGS_DIR, 'settings.json')
+const SETTINGS_FILE = path.join(TEST_CONTENT_DIR, 'settings.json')
 
 describe('Settings', () => {
   beforeEach(() => {
@@ -33,7 +32,7 @@ describe('Settings', () => {
   })
 
   it('merges partial overrides with defaults', () => {
-    fs.mkdirSync(SETTINGS_DIR, { recursive: true })
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
       dispatch: { intervalMs: 60000 },
       agents: ['roscoe', 'patch'],

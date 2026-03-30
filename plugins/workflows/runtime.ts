@@ -3,7 +3,7 @@
  *
  * Enforces step-by-step agent execution through information gating.
  * Agents only ever see their current step and cannot advance until
- * Beacon validates their output and releases the next step.
+ * Bakin validates their output and releases the next step.
  *
  * Key design decisions:
  * - Agents never see future steps (information gating)
