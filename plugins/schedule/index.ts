@@ -221,7 +221,7 @@ const schedulePlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/jobs',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{
           name: string
           schedule: string
@@ -287,7 +287,7 @@ const schedulePlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/jobs/update',
       method: 'PUT',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{ jobId: string; [key: string]: unknown }>(req)
         if (!body.jobId) return json({ error: 'jobId required' }, 400)
 
@@ -324,7 +324,7 @@ const schedulePlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/jobs/delete',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const { jobId } = await readBody<{ jobId: string }>(req)
         if (!jobId) return json({ error: 'jobId required' }, 400)
 
@@ -339,7 +339,7 @@ const schedulePlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/jobs/pause',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const body = await readBody<{
           jobId: string
           action: 'pause' | 'resume' | 'skip'
@@ -381,7 +381,7 @@ const schedulePlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/jobs/run-now',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const { jobId } = await readBody<{ jobId: string }>(req)
         if (!jobId) return json({ error: 'jobId required' }, 400)
         await cronRun(jobId, true)
@@ -393,7 +393,7 @@ const schedulePlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/runs',
       method: 'GET',
-      handler: (req) => {
+      handler: (req: Request) => {
         const url = new URL(req.url)
         const jobId = url.searchParams.get('jobId')
         if (!jobId) return json({ error: 'jobId query param required' }, 400)
@@ -407,7 +407,7 @@ const schedulePlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/parse-schedule',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const { input } = await readBody<{ input: string }>(req)
         if (!input) return json({ error: 'input required' }, 400)
 
@@ -435,7 +435,7 @@ const schedulePlugin: BakinPlugin = {
         filter: z.enum(['bakin', 'all']).optional().describe('Filter by job type'),
         agentId: z.string().optional().describe('Filter by assigned agent'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         let jobs = readMergedJobs()
         if (params.filter === 'bakin') jobs = jobs.filter(j => j.isBakinJob)
         if (params.agentId) jobs = jobs.filter(j => j.agentId === params.agentId)
@@ -465,7 +465,7 @@ const schedulePlugin: BakinPlugin = {
         taskPrompt: z.string().optional().describe('Task description template'),
         taskTitle: z.string().optional().describe('Task title template (supports {date}, {agent})'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         if (!params.name || !params.schedule) {
           return { ok: false, error: 'name and schedule are required' }
         }
@@ -517,7 +517,7 @@ const schedulePlugin: BakinPlugin = {
         taskPrompt: z.string().optional().describe('New task prompt template'),
         taskTitle: z.string().optional().describe('New task title template'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
 
         const meta = getJob(params.jobId as string)
@@ -550,7 +550,7 @@ const schedulePlugin: BakinPlugin = {
         pauseUntil: z.string().optional().describe('ISO date to auto-resume (for pause action)'),
         skipN: z.number().optional().describe('Number of runs to skip (for skip action)'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         if (!params.jobId || !params.action) return { ok: false, error: 'jobId and action required' }
 
         const meta = getJob(params.jobId as string)
@@ -587,7 +587,7 @@ const schedulePlugin: BakinPlugin = {
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
         await cronRemove(params.jobId as string)
         removeJob(params.jobId as string)
@@ -601,7 +601,7 @@ const schedulePlugin: BakinPlugin = {
       parameters: {
         date: z.string().optional().describe('ISO date to check (defaults to today)'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         const jobs = readMergedJobs()
         const bakinJobs = jobs.filter(j => j.isBakinJob)
 

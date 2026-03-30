@@ -28,7 +28,7 @@ function validateManifest(manifestPath: string): { valid: boolean; manifest?: Pl
     const required: (keyof PluginManifest)[] = ['id', 'name', 'version', 'entry']
     for (const field of required) {
       if (!manifest[field]) {
-        return { valid: false, error: `Missing required field: ${field}` }
+        return { valid: false, error: `Missing required field: ${String(field)}` }
       }
     }
     if (!manifest.entry.server) {

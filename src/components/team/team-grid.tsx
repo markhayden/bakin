@@ -19,7 +19,7 @@ function AgentCard({ id, status, statusLabel, heartbeat, onClick }: {
   const agent = AGENT_MAP[id]
   if (!agent) return null
 
-  const dotColor = status === 'online' ? 'bg-green-500' : status === 'working' ? 'bg-blue-500' : 'bg-zinc-400'
+  const dotColor = status === 'online' ? 'bg-success' : status === 'working' ? 'bg-primary' : 'bg-muted-foreground'
   const badgeVariant = status === 'online' || status === 'working' ? 'default' : 'secondary'
 
   return (
@@ -77,8 +77,6 @@ export function TeamGrid() {
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-foreground mb-8">Team</h1>
-
       <div className="flex flex-col items-center gap-0">
         {/* Mark */}
         <div className="rounded-xl border border-border bg-card px-5 py-3 flex items-center gap-3">

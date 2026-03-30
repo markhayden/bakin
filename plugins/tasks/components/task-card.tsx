@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { X } from 'lucide-react'
 import { AGENTS } from '@/lib/constants'
-import { STATUS_BADGE_STYLES, AGENT_AVATAR_COLORS } from '../constants'
+import { AgentAvatar } from '@/components/agent-avatar'
+import { STATUS_BADGE_STYLES } from '../constants'
 import type { Task, ColumnId } from '../types'
 
 function formatRelativeDate(dateStr: string): string {
@@ -25,32 +25,8 @@ function shortId(id: string): string {
   return id.slice(0, 6).toUpperCase()
 }
 
-function AgentAvatar({ agent, imgError, onError }: {
-  agent: { id: string; emoji: string; name: string } | undefined
-  imgError: boolean
-  onError: () => void
-}) {
-  if (!agent) return (
-    <span className="size-6 rounded-full bg-muted flex items-center justify-center text-[10px] text-muted-foreground shrink-0">?</span>
-  )
-  if (!imgError) return (
-    <img
-      src={`/headshots/${agent.id}.png`}
-      alt={agent.name}
-      onError={onError}
-      className="size-6 rounded-full object-cover object-top ring-1 ring-zinc-700 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity"
-    />
-  )
-  return (
-    <span className={`size-6 rounded-full flex items-center justify-center text-xs shrink-0 ${AGENT_AVATAR_COLORS[agent.id] || 'bg-zinc-400'}`}>
-      {agent.emoji}
-    </span>
-  )
-}
-
 /** Presentational card — used by DragOverlay */
 export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string }) {
-  const [imgError, setImgError] = useState(false)
   const agent = AGENTS.find((a) => a.id === task.agent)
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
 
@@ -121,7 +97,7 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
 
       {/* Footer: avatar bottom-left, date right */}
       <div className="flex items-center justify-between mt-4">
-        <AgentAvatar agent={agent} imgError={imgError} onError={() => setImgError(true)} />
+        {task.agent && <AgentAvatar agentId={task.agent} size="sm" />}
         {task.date && (
           <span className="text-zinc-500 text-[11px] font-medium tracking-tight uppercase">
             {formatRelativeDate(task.date)}

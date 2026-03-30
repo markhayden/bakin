@@ -3,6 +3,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { User } from 'lucide-react'
 import { AGENTS } from '@/lib/constants'
+import { AgentAvatar } from '@/components/agent-avatar'
 
 interface AgentNodeData extends Record<string, unknown> {
   label: string
@@ -22,20 +23,12 @@ export function AgentNode({ data }: NodeProps) {
   return (
     <div className="w-[280px] rounded-lg border-2 border-zinc-700 bg-zinc-900 p-3 shadow-lg">
       <div className="mb-1.5 flex items-center gap-2">
-        {agentMeta ? (
-          <img
-            src={agentMeta.headshot}
-            alt={agentMeta.name}
-            className="size-7 rounded-full object-cover ring-1 ring-zinc-600"
-          />
-        ) : isDynamic(agent) ? (
+        {isDynamic(agent) ? (
           <span className="inline-flex size-7 items-center justify-center rounded-full bg-blue-900/50 ring-1 ring-blue-500/40">
             <User className="size-3.5 text-blue-400" />
           </span>
         ) : (
-          <span className="inline-flex size-7 items-center justify-center rounded-full bg-zinc-800 text-xs ring-1 ring-zinc-600">
-            ?
-          </span>
+          <AgentAvatar agentId={agent ?? 'unknown'} size="sm" />
         )}
         <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
           {isDynamic(agent) ? 'Assigned Agent' : agentMeta?.name ?? agent ?? 'Agent'}

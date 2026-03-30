@@ -59,7 +59,7 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/delete',
       method: 'POST',
-      handler: async (req) => handleDelete(req),
+      handler: async (req: Request) => handleDelete(req),
     })
 
     // List trashed assets
@@ -73,14 +73,14 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/restore',
       method: 'POST',
-      handler: async (req) => handleRestore(req),
+      handler: async (req: Request) => handleRestore(req),
     })
 
     // Permanently delete a trashed asset
     ctx.registerRoute({
       path: '/permanent-delete',
       method: 'POST',
-      handler: async (req) => handlePermanentDelete(req),
+      handler: async (req: Request) => handlePermanentDelete(req),
     })
 
     // Empty entire trash

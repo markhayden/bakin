@@ -20,18 +20,22 @@ import { NewItemForm } from './new-item-form'
 import { ItemDetailPanel } from './item-detail-panel'
 import { BrainstormPanel } from './brainstorm-panel'
 
-const AGENT_COLORS: Record<ContentAgent, string> = {
-  basil: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  scout: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  nemo: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  zen: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+/**
+ * Agent colors now use CSS custom properties from the agent settings system.
+ * Each agent's --agent-{id} var is set by AgentThemeProvider.
+ * These utility functions generate inline styles from the CSS vars.
+ */
+function agentColorStyle(agent: ContentAgent): React.CSSProperties {
+  const v = `var(--agent-${agent})`
+  return {
+    backgroundColor: `color-mix(in srgb, ${v} 20%, transparent)`,
+    color: v,
+    borderColor: `color-mix(in srgb, ${v} 30%, transparent)`,
+  }
 }
 
-const AGENT_DOT: Record<ContentAgent, string> = {
-  basil: 'bg-emerald-400',
-  scout: 'bg-orange-400',
-  nemo: 'bg-blue-400',
-  zen: 'bg-purple-400',
+function agentDotStyle(agent: ContentAgent): React.CSSProperties {
+  return { backgroundColor: `var(--agent-${agent})` }
 }
 
 const STATUS_BADGE: Record<ContentStatus, string> = {
@@ -229,7 +233,7 @@ export function ContentCalendar() {
                     onClick={() => setSelectedItem(item)}
                     className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted/50 transition-colors w-full"
                   >
-                    <span className={`size-2 rounded-full shrink-0 ${AGENT_DOT[item.agent]}`} />
+                    <span className="size-2 rounded-full shrink-0" style={agentDotStyle(item.agent)} />
                     <span className="text-xs text-foreground truncate flex-1">{item.title}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_BADGE[item.status]}`}>
                       {item.status}
@@ -274,7 +278,8 @@ export function ContentCalendar() {
                   {dayItems.slice(0, 3).map(item => (
                     <div
                       key={item.id}
-                      className={`text-[10px] leading-tight px-1 py-0.5 rounded truncate border ${AGENT_COLORS[item.agent]}`}
+                      className="text-[10px] leading-tight px-1 py-0.5 rounded truncate border"
+                      style={agentColorStyle(item.agent)}
                     >
                       {item.title}
                     </div>
@@ -353,7 +358,7 @@ export function ContentCalendar() {
                     </td>
                     <td className="px-3 py-2">
                       <span className="flex items-center gap-1.5">
-                        <span className={`size-2 rounded-full ${AGENT_DOT[item.agent]}`} />
+                        <span className="size-2 rounded-full" style={agentDotStyle(item.agent)} />
                         <span className="capitalize">{item.agent}</span>
                       </span>
                     </td>
@@ -430,9 +435,9 @@ export function ContentCalendar() {
         <div className="flex items-center gap-4">
           {/* Agent legend */}
           <div className="flex items-center gap-3">
-            {(Object.entries(AGENT_DOT) as [ContentAgent, string][]).map(([agent, dot]) => (
+            {(['basil', 'scout', 'nemo', 'zen'] as ContentAgent[]).map(agent => (
               <div key={agent} className="flex items-center gap-1.5">
-                <span className={`size-2 rounded-full ${dot}`} />
+                <span className="size-2 rounded-full" style={agentDotStyle(agent)} />
                 <span className="text-xs text-muted-foreground capitalize">{agent}</span>
               </div>
             ))}

@@ -48,7 +48,7 @@ const TYPE_COLORS: Record<string, string> = {
   audio: 'text-amber-400',
   plans: 'text-cyan-400',
   data: 'text-orange-400',
-  other: 'text-zinc-400',
+  other: 'text-muted-foreground',
 }
 
 interface TrashGridProps {
@@ -68,7 +68,7 @@ function TrashCard({
   onPermanentDelete: () => void
 }) {
   const Icon = TYPE_ICONS[item.type] || Package
-  const iconColor = TYPE_COLORS[item.type] || 'text-zinc-400'
+  const iconColor = TYPE_COLORS[item.type] || 'text-muted-foreground'
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">

@@ -98,7 +98,7 @@ const workflowsPlugin: BakinPlugin = {
       method: 'GET',
       description: 'Get a specific workflow definition by name',
       params: '?name=<filename>',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const url = new URL(req.url)
         const name = url.searchParams.get('name')
 
@@ -123,7 +123,7 @@ const workflowsPlugin: BakinPlugin = {
       method: 'GET',
       description: 'Get current workflow step for a task. Returns step context or blocked/complete status.',
       params: '?taskId=<id>&agentId=<optional>',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const url = new URL(req.url)
         const taskId = url.searchParams.get('taskId')
         const agentId = url.searchParams.get('agentId') || undefined
@@ -147,7 +147,7 @@ const workflowsPlugin: BakinPlugin = {
       method: 'POST',
       description: 'Submit step output. Validates against schema, advances workflow.',
       params: '{"taskId":"string","stepId":"string","output":{}}',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         let body: { taskId?: string; stepId?: string; agentId?: string; output?: Record<string, unknown> }
         try {
           body = await req.json()
@@ -184,7 +184,7 @@ const workflowsPlugin: BakinPlugin = {
       method: 'POST',
       description: 'Approve a human gate step. Advances workflow past gate.',
       params: '{"taskId":"string","stepId":"string"}',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         let body: { taskId?: string; stepId?: string }
         try {
           body = await req.json()
@@ -216,7 +216,7 @@ const workflowsPlugin: BakinPlugin = {
       method: 'POST',
       description: 'Reject a gate step. Rewinds workflow to target step.',
       params: '{"taskId":"string","stepId":"string","reason":"string","rewindTo?":"string"}',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         let body: { taskId?: string; stepId?: string; reason?: string; rewindTo?: string }
         try {
           body = await req.json()
@@ -245,7 +245,7 @@ const workflowsPlugin: BakinPlugin = {
       method: 'GET',
       description: 'List active workflow instances. Optional status filter.',
       params: '?status=<in_progress|pending_approval|complete|failed>',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const url = new URL(req.url)
         const status = url.searchParams.get('status') || undefined
 
@@ -260,7 +260,7 @@ const workflowsPlugin: BakinPlugin = {
       method: 'GET',
       description: 'Get full workflow instance state for a task.',
       params: '?taskId=<id>',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const url = new URL(req.url)
         const taskId = url.searchParams.get('taskId')
 
@@ -331,7 +331,7 @@ const workflowsPlugin: BakinPlugin = {
       method: 'GET',
       description: 'Batch check gate status for multiple tasks. Returns map of taskId → gate info.',
       params: '?taskIds=id1,id2,...',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         const url = new URL(req.url)
         const taskIds = (url.searchParams.get('taskIds') || '').split(',').filter(Boolean)
 
@@ -377,7 +377,7 @@ const workflowsPlugin: BakinPlugin = {
       method: 'POST',
       description: 'Start a workflow instance for a task.',
       params: '{"taskId":"string","workflowId":"string"}',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         let body: { taskId?: string; workflowId?: string }
         try {
           body = await req.json()

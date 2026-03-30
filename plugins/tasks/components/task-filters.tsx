@@ -1,10 +1,8 @@
 'use client'
 
-import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Search } from 'lucide-react'
-import { AGENTS } from '@/lib/constants'
-import { AGENT_AVATAR_COLORS } from '../constants'
+import { AgentAvatar } from '@/components/agent-avatar'
 import { COLUMN_CONFIG } from '../constants'
 import type { ColumnId } from '../types'
 
@@ -19,9 +17,6 @@ const STATUS_TABS: { id: string; label: string }[] = [
 ]
 
 function AgentPill({ agentId, isActive, onClick }: { agentId: string; isActive: boolean; onClick: () => void }) {
-  const agent = AGENTS.find(a => a.id === agentId)
-  const [imgError, setImgError] = useState(false)
-
   return (
     <button
       onClick={onClick}
@@ -30,20 +25,8 @@ function AgentPill({ agentId, isActive, onClick }: { agentId: string; isActive: 
           ? 'bg-background text-foreground shadow-sm'
           : 'text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100'
       }`}
-      title={agent?.name ?? agentId}
     >
-      {!imgError ? (
-        <img
-          src={`/headshots/${agentId}.png`}
-          alt={agent?.name ?? agentId}
-          onError={() => setImgError(true)}
-          className="size-5 rounded-full object-cover object-top ring-1 ring-zinc-700 shrink-0"
-        />
-      ) : (
-        <span className={`size-5 rounded-full flex items-center justify-center text-[10px] shrink-0 ${AGENT_AVATAR_COLORS[agentId] || 'bg-zinc-400'}`}>
-          {agent?.emoji ?? '?'}
-        </span>
-      )}
+      <AgentAvatar agentId={agentId} size="xs" />
     </button>
   )
 }

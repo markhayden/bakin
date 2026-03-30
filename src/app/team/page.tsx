@@ -1,7 +1,12 @@
 'use client'
 
 import { TeamGrid } from '@/components/team/team-grid'
+import { PageLayout } from '@/components/page-layout'
 
 export default function TeamPage() {
-  return <div className="p-6 flex flex-col flex-1"><TeamGrid /></div>
+  return (
+    <PageLayout title="Team">
+      <TeamGrid />
+    </PageLayout>
+  )
 }

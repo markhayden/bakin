@@ -20,18 +20,18 @@ function StatusBadge({ job }: { job: ScheduleJob }) {
       : job.pauseUntil
         ? `Paused until ${new Date(job.pauseUntil).toLocaleDateString()}`
         : 'Paused'
-    return <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/20">{label}</Badge>
+    return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">{label}</Badge>
   }
   if (job.skipNextN && job.skippedCount !== undefined && job.skippedCount < job.skipNextN) {
-    return <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/20">Skipping {job.skippedCount}/{job.skipNextN}</Badge>
+    return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">Skipping {job.skippedCount}/{job.skipNextN}</Badge>
   }
   if (job.consecutiveFailures > 0) {
-    return <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/20">{job.consecutiveFailures} failures</Badge>
+    return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">{job.consecutiveFailures} failures</Badge>
   }
   if (!job.enabled) {
-    return <Badge variant="outline" className="bg-zinc-500/10 text-zinc-400 border-zinc-500/20">Disabled</Badge>
+    return <Badge variant="outline" className="bg-muted-foreground/10 text-muted-foreground border-muted-foreground/20">Disabled</Badge>
   }
-  return <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20">Active</Badge>
+  return <Badge variant="outline" className="bg-success/10 text-success border-success/20">Active</Badge>
 }
 
 export function JobRow({

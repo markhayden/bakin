@@ -63,23 +63,23 @@ class PluginRegistryImpl {
       storage,
       events,
       pluginId,
-      registerNav: (items) => { state.navItems.push(...items) },
-      registerRoute: (route) => {
+      registerNav: (items: NavItem[]) => { state.navItems.push(...items) },
+      registerRoute: (route: APIRoute) => {
         state.routes.push(route)
         registerRouteDoc(pluginId, route)
       },
-      registerSlot: (reg) => { state.slots.push(reg) },
-      registerExecTool: (tool) => {
+      registerSlot: (reg: UISlotRegistration) => { state.slots.push(reg) },
+      registerExecTool: (tool: ExecToolDefinition) => {
         tool.source = `plugin:${pluginId}`
         addExecTool(tool)
       },
-      registerSkill: (skill) => {
+      registerSkill: (skill: SkillDefinition) => {
         skill.source = `plugin:${pluginId}`
         if (!pluginSkills.has(skill.name)) {
           pluginSkills.set(skill.name, skill)
         }
       },
-      watchFiles: (patterns) => { state.watchPatterns.push(...patterns) },
+      watchFiles: (patterns: string[]) => { state.watchPatterns.push(...patterns) },
     }
   }
 

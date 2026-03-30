@@ -273,7 +273,7 @@ const modelsPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/config',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
           const body = await req.json() as {
             agentId: string
@@ -322,7 +322,7 @@ const modelsPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/defaults',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
           const body = await req.json() as {
             defaultModel?: string
@@ -375,7 +375,7 @@ const modelsPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/aliases',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
           const body = await req.json() as
             | { aliases: Record<string, string> }

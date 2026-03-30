@@ -193,7 +193,7 @@ addExecTool({
     embed: z.record(z.string(), z.unknown()).optional().describe('Discord embed object (title, description, color, fields)'),
     taskId: z.string().optional().describe('Task ID for audit trail'),
   },
-  handler: async (params, agent) => {
+  handler: async (params: Record<string, unknown>, agent: string) => {
     return postDiscord({ ...params, agent } as PostDiscordParams)
   },
 })

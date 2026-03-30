@@ -16,4 +16,4 @@ export type {
   PluginEntry,
   BakinConfig,
   MCConfig,
-} from '../../../packages/core/src/plugin-types'
+} from '@bakin/core/plugin-types'

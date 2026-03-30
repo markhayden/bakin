@@ -134,7 +134,7 @@ addExecTool({
   parameters: {
     taskId: z.string().describe('Task ID'),
   },
-  handler: async (params, agent) => {
+  handler: async (params: Record<string, unknown>, agent: string) => {
     return getStepFormatted(params.taskId as string, agent)
   },
 })
