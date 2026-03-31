@@ -278,49 +278,51 @@ export function KanbanBoard() {
           <TaskMetrics columns={columns} timestamp={timestamp} />
         </div>
 
-        {/* Title row with view toggle */}
-        <div className="flex items-center justify-between px-6 pt-3 md:pt-4 pb-2">
-          <PluginHeader title="Tasks" />
-          <div className="flex items-center gap-2">
-            {/* View toggle */}
-            <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
-              <button
-                onClick={() => setView('kanban')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                  view === 'kanban'
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Kanban className="size-3.5" />
-                Board
-              </button>
-              <button
-                onClick={() => setView('table')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                  view === 'table'
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Table2 className="size-3.5" />
-                Log
-              </button>
-            </div>
-            <NewTaskDialog />
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="px-6 pb-3">
-          <TaskFilters
-            search={search}
-            onSearchChange={setSearch}
-            agentFilter={agentFilter}
-            onAgentChange={setAgentFilter}
-            taskCount={view === 'kanban'
+        {/* Title row with search */}
+        <div className="px-6 pt-3 md:pt-4 pb-2">
+          <PluginHeader
+            title="Tasks"
+            count={view === 'kanban'
               ? Object.values(filteredColumns).reduce((s, c) => s + c.length, 0)
               : allTasksFlat.length
+            }
+            search={{ value: search, onChange: setSearch, placeholder: 'Search tasks...' }}
+          />
+        </div>
+
+        {/* Filters + view toggle */}
+        <div className="px-6 pb-3">
+          <TaskFilters
+            agentFilter={agentFilter}
+            onAgentChange={setAgentFilter}
+            actions={
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setView('kanban')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                      view === 'kanban'
+                        ? 'bg-accent text-accent-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Kanban className="size-3.5" />
+                    Board
+                  </button>
+                  <button
+                    onClick={() => setView('table')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                      view === 'table'
+                        ? 'bg-accent text-accent-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Table2 className="size-3.5" />
+                    Log
+                  </button>
+                </div>
+                <NewTaskDialog />
+              </div>
             }
           />
         </div>

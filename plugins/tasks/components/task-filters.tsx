@@ -1,7 +1,5 @@
 'use client'
 
-import { Input } from '@/components/ui/input'
-import { Search } from 'lucide-react'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { COLUMN_CONFIG } from '../constants'
 import type { ColumnId } from '../types'
@@ -32,37 +30,23 @@ function AgentPill({ agentId, isActive, onClick }: { agentId: string; isActive: 
 }
 
 interface TaskFiltersProps {
-  search: string
-  onSearchChange: (q: string) => void
   agentFilter: string
   onAgentChange: (agent: string) => void
   statusFilter?: string
   onStatusChange?: (status: string) => void
   showStatusFilter?: boolean
-  taskCount: number
+  actions?: React.ReactNode
 }
 
 export function TaskFilters({
-  search, onSearchChange,
   agentFilter, onAgentChange,
   statusFilter, onStatusChange,
   showStatusFilter = false,
-  taskCount,
+  actions,
 }: TaskFiltersProps) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-3 overflow-x-auto">
-        {/* Search input */}
-        <div className="relative w-56 focus-within:w-80 transition-all duration-200">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search tasks..."
-            className="pl-9 h-8 text-xs bg-surface border-border"
-          />
-        </div>
-
         {/* Agent filter — avatars */}
         <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
           <button
@@ -85,9 +69,8 @@ export function TaskFilters({
           ))}
         </div>
 
-        <span className="text-[11px] text-muted-foreground tabular-nums ml-auto">
-          {taskCount} task{taskCount !== 1 ? 's' : ''}
-        </span>
+        {/* Right-aligned actions (view toggle, new task, etc.) */}
+        {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
       </div>
 
       {/* Status filter — only in table view */}

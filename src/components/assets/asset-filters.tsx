@@ -1,8 +1,7 @@
 'use client'
 
-import { Input } from '@/components/ui/input'
 import { PluginHeader } from '@/components/plugin-header'
-import { Search, FileText, Image, Video, Music, Map, Database, Package, LayoutGrid, List, Trash2 } from 'lucide-react'
+import { FileText, Image, Video, Music, Map, Database, Package, LayoutGrid, List, Trash2 } from 'lucide-react'
 
 const TYPE_TABS = [
   { id: 'all', label: 'All', icon: LayoutGrid },
@@ -28,21 +27,11 @@ interface AssetFiltersProps {
 export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange, assetCount, view, onViewChange }: AssetFiltersProps) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <PluginHeader title="Assets" />
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground">{assetCount} asset{assetCount !== 1 ? 's' : ''}</span>
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search assets..."
-              className="pl-9 h-8 bg-surface border-border"
-            />
-          </div>
-        </div>
-      </div>
+      <PluginHeader
+        title="Assets"
+        count={assetCount}
+        search={{ value: search, onChange: onSearchChange, placeholder: 'Search assets...' }}
+      />
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1 w-fit">
