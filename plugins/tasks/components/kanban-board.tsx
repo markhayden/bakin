@@ -272,13 +272,13 @@ export function KanbanBoard() {
   return (
     <WithLoading>
       <div className="flex flex-col h-full min-w-0 min-h-0">
-        {/* Metrics bar — visually distinct from task content */}
-        <div className="px-[25px] pt-[25px] pb-2 border-b border-border/50">
+        {/* Metrics bar — hidden on mobile to save space */}
+        <div className="hidden md:block px-[25px] pt-[25px] pb-2 border-b border-border/50">
           <TaskMetrics columns={columns} />
         </div>
 
         {/* Title row with view toggle */}
-        <div className="flex items-center justify-between px-[25px] pt-4 pb-2">
+        <div className="flex items-center justify-between px-[25px] pt-3 md:pt-4 pb-2">
           <div>
             <h1 className="text-lg font-semibold text-foreground">Tasks</h1>
             {timestamp && (

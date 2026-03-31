@@ -27,8 +27,8 @@ export function LayoutShell({
 
       {/* Content + drawer row */}
       <div
-        className={`fixed top-14 bottom-0 right-0 flex transition-all duration-150 ease-in-out ${
-          collapsed ? 'left-[52px]' : 'left-52'
+        className={`fixed top-14 bottom-0 right-0 flex transition-all duration-150 ease-in-out left-0 ${
+          collapsed ? 'md:left-[52px]' : 'md:left-52'
         }`}
       >
         {/* Main content — fills remaining space */}
