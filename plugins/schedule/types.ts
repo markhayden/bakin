@@ -103,6 +103,7 @@ export interface MergedJob {
   lastTaskId?: string
 
   tz?: string
+  createdAt?: string
 
   // Computed
   humanSchedule: string

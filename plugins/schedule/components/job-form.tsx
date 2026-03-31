@@ -100,7 +100,7 @@ export function JobForm({
           placeholder="Daily content check"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="text-sm"
+          className="text-sm placeholder:text-zinc-600"
         />
       </div>
 
@@ -140,7 +140,7 @@ export function JobForm({
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={3}
-          className="text-sm resize-none"
+          className="text-sm resize-none placeholder:text-zinc-600"
         />
       </div>
 
@@ -162,7 +162,7 @@ export function JobForm({
               placeholder="e.g. image-social-post"
               value={workflowId}
               onChange={(e) => setWorkflowId(e.target.value)}
-              className="text-sm"
+              className="text-sm placeholder:text-zinc-600"
             />
           </div>
 
@@ -172,7 +172,7 @@ export function JobForm({
               placeholder="Scheduled: {jobName} on {date}"
               value={taskTitle}
               onChange={(e) => setTaskTitle(e.target.value)}
-              className="text-sm"
+              className="text-sm placeholder:text-zinc-600"
             />
             <p className="text-[10px] text-muted-foreground">Supports {'{date}'}, {'{agent}'}, {'{jobName}'}</p>
           </div>
@@ -230,11 +230,11 @@ export function JobForm({
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-2">
-        <Button type="submit" size="sm" disabled={!canSubmit}>
-          {submitting ? labels[mode].submitting : labels[mode].submit}
-        </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
+        </Button>
+        <Button type="submit" size="sm" disabled={!canSubmit}>
+          {submitting ? labels[mode].submitting : labels[mode].submit}
         </Button>
       </div>
     </form>

@@ -36,8 +36,10 @@ export function RunHistory({ jobId }: { jobId: string }) {
           <Badge
             variant="outline"
             className={
-              run.status === 'ok' || run.status === 'success'
+              run.status === 'success'
                 ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                : run.status === 'skipped'
+                ? 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
                 : 'bg-red-500/10 text-red-400 border-red-500/20'
             }
           >

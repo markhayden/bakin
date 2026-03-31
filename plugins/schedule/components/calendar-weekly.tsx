@@ -116,7 +116,7 @@ export function formatHour(h: number): string {
 }
 
 /** A single job card — used in weekly grid and today timeline */
-export function JobCard({ job, onClick, expanded }: { job: ScheduleJob; onClick: () => void; expanded?: boolean }) {
+export function JobCard({ job, onClick, expanded, past }: { job: ScheduleJob; onClick: () => void; expanded?: boolean; past?: boolean }) {
   const s = AGENT_STYLES[job.agentId || ''] || FALLBACK_STYLE
   const time = formatJobTime(job)
 
@@ -127,19 +127,22 @@ export function JobCard({ job, onClick, expanded }: { job: ScheduleJob; onClick:
         group/card relative w-full text-left rounded-md mb-1
         border ${s.border} ${s.bg}
         transition-all duration-200
-        hover:scale-[1.02] hover:brightness-125
+        ${past
+          ? 'opacity-35 saturate-[0.3] hover:opacity-50'
+          : 'hover:scale-[1.02] hover:brightness-125'
+        }
       `}
-      style={{ boxShadow: `0 1px 6px -1px ${s.glow}` }}
+      style={{ boxShadow: past ? 'none' : `0 1px 6px -1px ${s.glow}` }}
     >
       <div className={expanded ? 'px-3 py-2.5' : 'px-2 py-1.5'}>
         {/* Row 1: avatar + name + time pill */}
         <div className="flex items-center gap-1.5 min-w-0">
           <AgentBadge agentId={job.agentId} size="sm" showName={expanded} />
-          <span className={`font-medium text-zinc-200 truncate flex-1 leading-tight ${expanded ? 'text-sm' : 'text-[11px]'}`}>
+          <span className={`font-medium truncate flex-1 leading-tight ${expanded ? 'text-sm' : 'text-[11px]'} ${past ? 'text-zinc-500' : 'text-zinc-200'}`}>
             {job.displayName || job.id}
           </span>
           {time && (
-            <span className={`font-mono ${s.accent} opacity-70 shrink-0 tabular-nums ${expanded ? 'text-xs' : 'text-[9px]'}`}>
+            <span className={`font-mono ${past ? 'text-zinc-600' : s.accent} opacity-70 shrink-0 tabular-nums ${expanded ? 'text-xs' : 'text-[9px]'}`}>
               {time}
             </span>
           )}
@@ -147,14 +150,14 @@ export function JobCard({ job, onClick, expanded }: { job: ScheduleJob; onClick:
 
         {/* Row 2: prompt snippet */}
         {job.taskPrompt && (
-          <p className={`text-zinc-500 leading-snug mt-1 ${expanded ? 'text-xs pl-0 line-clamp-3' : 'text-[10px] pl-[26px] line-clamp-5'}`}>
+          <p className={`leading-snug mt-1 ${past ? 'text-zinc-600' : 'text-zinc-500'} ${expanded ? 'text-xs pl-0 line-clamp-3' : 'text-[10px] pl-[26px] line-clamp-5'}`}>
             {job.taskPrompt}
           </p>
         )}
 
         {/* Row 3: schedule (expanded only) */}
         {expanded && job.humanSchedule && (
-          <p className={`text-[10px] ${s.accent} opacity-50 mt-1.5 font-mono`}>
+          <p className={`text-[10px] ${past ? 'text-zinc-600' : s.accent} opacity-50 mt-1.5 font-mono`}>
             {job.humanSchedule}
           </p>
         )}
@@ -181,14 +184,20 @@ export function CalendarWeekly({
   const isToday = (d: Date) =>
     d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
 
-  // Build grid: [dow][hour] → jobs[]
+  // Build grid: [dow][hour] → jobs[]  (only cells on or after job's creation date)
   const grid = useMemo(() => {
     const map: Record<string, ScheduleJob[]> = {}
     for (const job of jobs) {
       const hour = getJobHour(job)
       if (hour === null) continue
+      const jobStart = job.createdAt ? new Date(job.createdAt) : null
+      const jobStartDay = jobStart
+        ? new Date(jobStart.getFullYear(), jobStart.getMonth(), jobStart.getDate())
+        : null
       for (let dow = 0; dow < 7; dow++) {
         if (jobOnDow(job, dow)) {
+          const cellDate = weekDates[dow]!
+          if (jobStartDay && cellDate < jobStartDay) continue
           const key = `${dow}-${hour}`
           if (!map[key]) map[key] = []
           map[key]!.push(job)
@@ -196,7 +205,7 @@ export function CalendarWeekly({
       }
     }
     return map
-  }, [jobs])
+  }, [jobs, weekDates])
 
   return (
     <div className="flex flex-col gap-3 h-full min-h-0">
@@ -245,6 +254,9 @@ export function CalendarWeekly({
               {Array.from({ length: 7 }, (_, dow) => {
                 const cellJobs = grid[`${dow}-${hour}`] || []
                 const today = isToday(weekDates[dow]!)
+                const cellDate = weekDates[dow]!
+                const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+                const isPast = cellDate.getTime() < todayStart.getTime() || (today && hour < now.getHours())
                 return (
                   <div
                     key={`${dow}-${hour}`}
@@ -255,7 +267,7 @@ export function CalendarWeekly({
                     `}
                   >
                     {cellJobs.map(j => (
-                      <JobCard key={j.id} job={j} onClick={() => onSelectJob(j)} />
+                      <JobCard key={j.id} job={j} onClick={() => onSelectJob(j)} past={isPast} />
                     ))}
                   </div>
                 )

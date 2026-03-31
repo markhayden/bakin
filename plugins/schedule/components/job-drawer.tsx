@@ -1,11 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import { Play, Pencil, Copy, Trash2, SkipForward } from 'lucide-react'
+import { Play, Pencil, Copy, Trash2, SkipForward, MoreHorizontal } from 'lucide-react'
 import { BakinDrawer } from '@/components/bakin-drawer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
 import { AgentBadge } from './agent-badge'
 import { RunHistory } from './run-history'
 import { PauseControls } from './pause-controls'
@@ -39,8 +46,8 @@ export function JobDrawer({
   onResume: (jobId: string) => Promise<boolean>
   onDelete: (jobId: string) => Promise<boolean>
   onRunNow: (jobId: string) => Promise<boolean>
-  onEdit: (job: ScheduleJob) => void
-  onDuplicate: (job: ScheduleJob) => void
+  onEdit: () => void
+  onDuplicate: () => void
   onSkipNext: (jobId: string, n?: number) => Promise<boolean>
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -74,6 +81,27 @@ export function JobDrawer({
           )}
         </span>
       }
+      actions={
+        <DropdownMenu onOpenChange={(o) => { if (!o) setConfirmDelete(false) }}>
+          <DropdownMenuTrigger className="p-1.5 rounded-md hover:bg-accent transition-colors">
+            <MoreHorizontal className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-36">
+            <DropdownMenuItem onClick={onDuplicate}>
+              <Copy className="size-3.5 mr-2" />
+              Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={handleDelete}
+              className="text-red-400 focus:text-red-400"
+            >
+              <Trash2 className="size-3.5 mr-2" />
+              {confirmDelete ? 'Confirm Delete' : 'Delete'}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      }
     >
       <div className="space-y-6">
         {/* Quick actions */}
@@ -81,22 +109,11 @@ export function JobDrawer({
           <Button variant="outline" size="sm" onClick={() => onRunNow(job.id)}>
             <Play className="size-3.5 mr-1.5" /> Run Now
           </Button>
-          <Button variant="outline" size="sm" onClick={() => onEdit(job)}>
-            <Pencil className="size-3.5 mr-1.5" /> Edit
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => onDuplicate(job)}>
-            <Copy className="size-3.5 mr-1.5" /> Duplicate
-          </Button>
           <Button variant="outline" size="sm" onClick={() => onSkipNext(job.id, 1)}>
             <SkipForward className="size-3.5 mr-1.5" /> Skip Next
           </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleDelete}
-          >
-            <Trash2 className="size-3.5 mr-1.5" />
-            {confirmDelete ? 'Confirm Delete' : 'Delete'}
+          <Button variant="outline" size="sm" onClick={onEdit}>
+            <Pencil className="size-3.5 mr-1.5" /> Edit
           </Button>
         </div>
 

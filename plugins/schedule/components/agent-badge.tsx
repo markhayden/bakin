@@ -2,6 +2,7 @@
 
 import { AGENTS } from '@/lib/constants'
 import { AgentAvatar } from '@/components/agent-avatar'
+import { Shell } from 'lucide-react'
 
 type BadgeSize = 'sm' | 'md' | 'lg'
 
@@ -23,6 +24,29 @@ const gapMap: Record<BadgeSize, string> = {
   lg: 'gap-2',
 }
 
+const iconSizeMap: Record<BadgeSize, string> = {
+  sm: 'size-5',
+  md: 'size-6',
+  lg: 'size-8',
+}
+
+const iconInnerMap: Record<BadgeSize, string> = {
+  sm: 'size-2.5',
+  md: 'size-3',
+  lg: 'size-3.5',
+}
+
+function SystemBadge({ size, showName }: { size: BadgeSize; showName: boolean }) {
+  return (
+    <span className={`inline-flex items-center ${gapMap[size]}`}>
+      <span className={`${iconSizeMap[size]} rounded-full bg-zinc-700 flex items-center justify-center shrink-0`}>
+        <Shell className={`${iconInnerMap[size]} text-zinc-400`} />
+      </span>
+      {showName && <span className={`${fontMap[size]} text-muted-foreground`}>System</span>}
+    </span>
+  )
+}
+
 export function AgentBadge({
   agentId,
   size = 'md',
@@ -35,12 +59,7 @@ export function AgentBadge({
   const agent = AGENTS.find(a => a.id === agentId)
 
   if (!agent) {
-    return (
-      <span className={`inline-flex items-center ${gapMap[size]}`}>
-        <AgentAvatar agentId={agentId ?? 'unknown'} size={sizeMap[size]} />
-        {showName && <span className={`${fontMap[size]} text-muted-foreground`}>Unassigned</span>}
-      </span>
-    )
+    return <SystemBadge size={size} showName={showName} />
   }
 
   return (

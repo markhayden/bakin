@@ -80,37 +80,37 @@ export function JobRow({
       <TableCell>
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="p-1 rounded hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
+            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+          <DropdownMenuContent align="end" className="min-w-36" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
             <DropdownMenuItem onClick={onRunNow}>
-              <Play className="size-4" /> Run Now
+              <Play className="size-3.5 mr-2" /> Run Now
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onEdit}>
-              <Pencil className="size-4" /> Edit
+              <Pencil className="size-3.5 mr-2" /> Edit
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onDuplicate}>
-              <Copy className="size-4" /> Duplicate
+              <Copy className="size-3.5 mr-2" /> Duplicate
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onSkipNext}>
-              <SkipForward className="size-4" /> Skip Next
+              <SkipForward className="size-3.5 mr-2" /> Skip Next
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             {job.paused ? (
               <DropdownMenuItem onClick={onResume}>
-                <RotateCcw className="size-4" /> Resume
+                <RotateCcw className="size-3.5 mr-2" /> Resume
               </DropdownMenuItem>
             ) : (
               <DropdownMenuItem onClick={onPause}>
-                <Pause className="size-4" /> Pause
+                <Pause className="size-3.5 mr-2" /> Pause
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={onDelete}>
-              <Trash2 className="size-4" /> Delete
+            <DropdownMenuItem onClick={onDelete} className="text-red-400 focus:text-red-400">
+              <Trash2 className="size-3.5 mr-2" /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

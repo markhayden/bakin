@@ -5,10 +5,12 @@ import { useCallback, useMemo, useRef } from 'react'
 
 /**
  * Syncs a single string value to a URL query parameter.
- * Returns [value, setValue] like useState.
+ * Returns [value, setValue, pushValue] like useState.
+ * - setValue uses router.replace (no history entry) — good for filters, search, view toggles
+ * - pushValue uses router.push (creates history entry) — good for opening drawers/modals
  * When value equals defaultValue, the param is removed from the URL.
  */
-export function useQueryState(key: string, defaultValue: string = ''): [string, (v: string) => void] {
+export function useQueryState(key: string, defaultValue: string = ''): [string, (v: string) => void, (v: string) => void] {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
@@ -21,7 +23,7 @@ export function useQueryState(key: string, defaultValue: string = ''): [string, 
 
   const value = searchParams.get(key) ?? defaultValue
 
-  const setValue = useCallback((v: string) => {
+  const buildUrl = useCallback((v: string) => {
     const params = new URLSearchParams(paramsRef.current.toString())
     if (v === defaultValue) {
       params.delete(key)
@@ -29,10 +31,18 @@ export function useQueryState(key: string, defaultValue: string = ''): [string, 
       params.set(key, v)
     }
     const qs = params.toString()
-    router.replace(qs ? `${pathnameRef.current}?${qs}` : pathnameRef.current, { scroll: false })
-  }, [router, key, defaultValue])
+    return qs ? `${pathnameRef.current}?${qs}` : pathnameRef.current
+  }, [key, defaultValue])
 
-  return [value, setValue]
+  const setValue = useCallback((v: string) => {
+    router.replace(buildUrl(v), { scroll: false })
+  }, [router, buildUrl])
+
+  const pushValue = useCallback((v: string) => {
+    router.push(buildUrl(v), { scroll: false })
+  }, [router, buildUrl])
+
+  return [value, setValue, pushValue]
 }
 
 /**

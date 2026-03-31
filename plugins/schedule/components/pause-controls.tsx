@@ -49,7 +49,7 @@ export function PauseControls({
             type="date"
             value={pauseUntil}
             onChange={(e) => setPauseUntil(e.target.value)}
-            className="h-8 text-sm"
+            className="h-8 text-sm [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-40"
           />
         </div>
         <Button size="sm" variant="outline" onClick={handlePause}>
