@@ -1,75 +1,124 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import { useAssets, useTrash } from '@/hooks/use-assets'
 import { AssetsGrid } from './assets-grid'
-import { AssetsList } from './assets-list'
+import { AssetsList, type SortField, type SortDir } from './assets-list'
 import { TrashGrid } from './trash-grid'
 import { AssetDetail } from './asset-detail'
 import { AssetFilters } from './asset-filters'
+import { AssetPagination } from './asset-pagination'
 import type { AssetMeta } from '@/types'
 
+const DEFAULT_PAGE_SIZE = 24
+const STORAGE_KEY = 'assets-page-size'
+
+function getStoredPageSize(): number {
+  if (typeof window === 'undefined') return DEFAULT_PAGE_SIZE
+  const stored = localStorage.getItem(STORAGE_KEY)
+  return stored ? parseInt(stored, 10) : DEFAULT_PAGE_SIZE
+}
+
 export function AssetsPage() {
-  const [typeFilter, setTypeFilter] = useState<string[]>([])
-  const [isTrash, setIsTrash] = useState(false)
-  const [view, setView] = useState<'grid' | 'list'>('grid')
-  const [search, setSearch] = useState('')
-  const [selectedAsset, setSelectedAsset] = useState<AssetMeta | null>(null)
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const highlightHandled = useRef(false)
+  const [view, setView] = useQueryState('view', 'grid')
+  const [search, setSearch] = useQueryState('q', '')
+  const [typeFilter, setTypeFilter] = useQueryArrayState('type')
+  const [assetPath, setAssetPath] = useQueryState('asset', '')
+  const [sort, setSort] = useQueryState('sort', 'created')
+  const [sortDir, setSortDir] = useQueryState('dir', 'desc')
+  const [pageStr, setPageStr] = useQueryState('page', '1')
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+
+  // Load persisted page size from localStorage
+  useEffect(() => {
+    setPageSize(getStoredPageSize())
+  }, [])
+
+  const page = Math.max(1, parseInt(pageStr, 10) || 1)
+  const isTrash = view === 'trash'
 
   // Pass first selected type or 'all' to the hook (hook expects single string)
   const hookType = typeFilter.length === 0 ? 'all' : typeFilter.length === 1 ? typeFilter[0] : 'all'
-  const { assets, loading, deleteAsset } = useAssets({ type: isTrash ? 'all' : hookType })
+  const { assets, total, loading, deleteAsset } = useAssets({ type: isTrash ? 'all' : hookType })
   const trash = useTrash()
 
-  // Auto-open asset from ?highlight= deep link
-  useEffect(() => {
-    if (loading || highlightHandled.current) return
-    const highlight = searchParams.get('highlight')
-    if (!highlight) return
+  // Resolve selected asset from ?asset= param
+  const selectedAsset = useMemo(() => {
+    if (!assetPath || loading) return null
+    return assets.find(a => a.path === assetPath) ?? null
+  }, [assetPath, assets, loading])
 
-    const match = assets.find(a => a.path === highlight)
-    if (match) {
-      setSelectedAsset(match)
-      highlightHandled.current = true
-      // Clear the param so refresh doesn't re-open
-      router.replace('/assets', { scroll: false })
+  // Client-side multi-type filtering + search
+  const filtered = useMemo(() => {
+    let result = assets
+    if (typeFilter.length > 1) {
+      result = result.filter(a => typeFilter.includes(a.type))
     }
-  }, [assets, loading, searchParams, router])
+    if (search) {
+      const q = search.toLowerCase()
+      result = result.filter(a =>
+        a.filename.toLowerCase().includes(q) ||
+        a.metadata.description?.toLowerCase().includes(q) ||
+        a.metadata.tags?.some(t => t.toLowerCase().includes(q)) ||
+        a.metadata.agent.toLowerCase().includes(q)
+      )
+    }
+    return result
+  }, [assets, typeFilter, search])
 
-  // Client-side multi-type filtering when multiple types selected
-  let filtered = assets
-  if (typeFilter.length > 1) {
-    filtered = filtered.filter(a => typeFilter.includes(a.type))
-  }
-  if (search) {
-    const q = search.toLowerCase()
-    filtered = filtered.filter(a =>
-      a.filename.toLowerCase().includes(q) ||
-      a.metadata.description?.toLowerCase().includes(q) ||
-      a.metadata.tags?.some(t => t.toLowerCase().includes(q)) ||
-      a.metadata.agent.toLowerCase().includes(q)
-    )
+  // Sorting
+  const sorted = useMemo(() => {
+    const s = sort as SortField
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...filtered].sort((a, b) => {
+      switch (s) {
+        case 'name': return dir * a.filename.localeCompare(b.filename)
+        case 'type': return dir * a.type.localeCompare(b.type)
+        case 'size': return dir * (a.size - b.size)
+        case 'created':
+        default:
+          return dir * (new Date(a.metadata.created).getTime() - new Date(b.metadata.created).getTime())
+      }
+    })
+  }, [filtered, sort, sortDir])
+
+  const handleSort = (field: SortField) => {
+    if (sort === field) {
+      setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
+    } else {
+      setSort(field)
+      setSortDir(field === 'name' ? 'asc' : 'desc')
+    }
+    setPageStr('1')
   }
 
-  const activeCount = isTrash ? trash.items.length : filtered.length
+  // Pagination
+  const totalFiltered = sorted.length
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const paged = sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
+
+  const activeCount = isTrash ? trash.items.length : totalFiltered
   const activeLoading = isTrash ? trash.loading : loading
+
+  const handlePageChange = (p: number) => setPageStr(String(p))
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size)
+    localStorage.setItem(STORAGE_KEY, String(size))
+    setPageStr('1')
+  }
 
   return (
     <div className="p-6 flex flex-col flex-1 gap-4">
       <AssetFilters
         typeFilter={typeFilter}
-        onTypeChange={setTypeFilter}
+        onTypeChange={(types) => { setTypeFilter(types); setPageStr('1') }}
         search={search}
-        onSearchChange={setSearch}
+        onSearchChange={(q) => { setSearch(q); setPageStr('1') }}
         assetCount={activeCount}
         view={view}
         onViewChange={setView}
-        isTrash={isTrash}
-        onTrashToggle={() => setIsTrash(prev => !prev)}
       />
 
       {activeLoading ? (
@@ -85,25 +134,38 @@ export function AssetsPage() {
         />
       ) : view === 'list' ? (
         <AssetsList
-          assets={filtered}
-          onSelect={setSelectedAsset}
+          assets={paged}
+          onSelect={(a: AssetMeta) => setAssetPath(a.path)}
           onDelete={deleteAsset}
+          sort={sort as SortField}
+          sortDir={sortDir as SortDir}
+          onSort={handleSort}
         />
       ) : (
         <AssetsGrid
-          assets={filtered}
-          onSelect={setSelectedAsset}
+          assets={paged}
+          onSelect={(a: AssetMeta) => setAssetPath(a.path)}
           onDelete={deleteAsset}
+        />
+      )}
+
+      {!isTrash && (
+        <AssetPagination
+          page={safePage}
+          pageSize={pageSize}
+          total={totalFiltered}
+          onPageChange={handlePageChange}
+          onPageSizeChange={handlePageSizeChange}
         />
       )}
 
       {!isTrash && (
         <AssetDetail
           asset={selectedAsset}
-          onClose={() => setSelectedAsset(null)}
+          onClose={() => setAssetPath('')}
           onDelete={async (path) => {
             const ok = await deleteAsset(path)
-            if (ok) setSelectedAsset(null)
+            if (ok) setAssetPath('')
           }}
         />
       )}

@@ -8,10 +8,13 @@ interface UseAssetsOptions {
   agent?: string
   taskId?: string
   tag?: string
+  limit?: number
+  offset?: number
 }
 
 export function useAssets(options: UseAssetsOptions = {}) {
   const [assets, setAssets] = useState<AssetMeta[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const optionsRef = useRef(options)
   optionsRef.current = options
@@ -23,12 +26,15 @@ export function useAssets(options: UseAssetsOptions = {}) {
     if (opts.agent) params.set('agent', opts.agent)
     if (opts.taskId) params.set('taskId', opts.taskId)
     if (opts.tag) params.set('tag', opts.tag)
+    if (opts.limit) params.set('limit', String(opts.limit))
+    if (opts.offset) params.set('offset', String(opts.offset))
 
     try {
       const res = await fetch(`/api/plugins/assets/list?${params}`)
       if (res.ok) {
         const data = await res.json()
         setAssets(data.assets || [])
+        setTotal(data.total ?? data.count ?? 0)
       }
     } catch {
       // Network error — keep existing state
@@ -39,7 +45,7 @@ export function useAssets(options: UseAssetsOptions = {}) {
 
   useEffect(() => {
     fetchAssets()
-  }, [fetchAssets, options.type, options.agent, options.taskId, options.tag])
+  }, [fetchAssets, options.type, options.agent, options.taskId, options.tag, options.limit, options.offset])
 
   // Listen for SSE asset events
   useEffect(() => {
@@ -73,7 +79,7 @@ export function useAssets(options: UseAssetsOptions = {}) {
     return false
   }, [])
 
-  return { assets, loading, refresh: fetchAssets, deleteAsset }
+  return { assets, total, loading, refresh: fetchAssets, deleteAsset }
 }
 
 export function useTrash() {

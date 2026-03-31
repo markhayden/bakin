@@ -20,22 +20,47 @@ interface AssetFiltersProps {
   search: string
   onSearchChange: (q: string) => void
   assetCount: number
-  view: 'grid' | 'list'
-  onViewChange: (view: 'grid' | 'list') => void
-  isTrash: boolean
-  onTrashToggle: () => void
+  view: string
+  onViewChange: (view: string) => void
 }
 
-export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange, assetCount, view, onViewChange, isTrash, onTrashToggle }: AssetFiltersProps) {
+const VIEW_OPTIONS = [
+  { key: 'grid', label: 'Grid', icon: LayoutGrid },
+  { key: 'list', label: 'List', icon: List },
+  { key: 'trash', label: 'Trash', icon: Trash2 },
+] as const
+
+export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange, assetCount, view, onViewChange }: AssetFiltersProps) {
   return (
     <div className="flex flex-col gap-3">
       <PluginHeader
         title="Assets"
         count={assetCount}
         search={{ value: search, onChange: onSearchChange, placeholder: 'Search assets...' }}
+        actions={
+          <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
+            {VIEW_OPTIONS.map(opt => {
+              const Icon = opt.icon
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => onViewChange(opt.key)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                    view === opt.key
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="size-3.5" />
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        }
       />
 
-      <div className="flex items-center justify-between">
+      {view !== 'trash' && (
         <div className="flex items-center gap-3">
           <ListFilter className="size-3.5 text-muted-foreground shrink-0" />
           <FacetFilter
@@ -45,49 +70,7 @@ export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange,
             onChange={onTypeChange}
           />
         </div>
-
-        <div className="flex items-center gap-2">
-          {/* View toggle — hidden in trash view */}
-          {!isTrash && (
-            <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
-              <button
-                onClick={() => onViewChange('grid')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                  view === 'grid'
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <LayoutGrid className="size-3.5" />
-                Grid
-              </button>
-              <button
-                onClick={() => onViewChange('list')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                  view === 'list'
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <List className="size-3.5" />
-                List
-              </button>
-            </div>
-          )}
-
-          <button
-            onClick={onTrashToggle}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-              isTrash
-                ? 'bg-muted/50 text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Trash2 className="size-3.5" />
-            Trash
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

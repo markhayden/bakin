@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FolderOpen, Image, Video, Music, FileText, ExternalLink, Plus } from 'lucide-react'
+import { FolderOpen, Image, Video, Music, FileText, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { AssetDetailModal } from './asset-detail'
 import type { AssetMeta } from '@/types'
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
@@ -20,6 +20,7 @@ interface TaskAssetsProps {
 export function TaskAssets({ taskId }: TaskAssetsProps) {
   const [assets, setAssets] = useState<AssetMeta[]>([])
   const [loading, setLoading] = useState(true)
+  const [previewPath, setPreviewPath] = useState<string | null>(null)
   const esRef = useRef<EventSource | null>(null)
 
   const fetchAssets = useCallback(() => {
@@ -42,7 +43,6 @@ export function TaskAssets({ taskId }: TaskAssetsProps) {
       try {
         const data = JSON.parse(e.data)
         if (data.type === 'plugin-event' && data.event === 'workflow.step_complete') {
-          // Refresh assets when any step completes (asset may have been created)
           if (data.taskId === taskId || data.taskId?.startsWith(taskId + '--')) {
             fetchAssets()
           }
@@ -73,10 +73,10 @@ export function TaskAssets({ taskId }: TaskAssetsProps) {
         {assets.map(asset => {
           const Icon = TYPE_ICONS[asset.type] || FileText
           return (
-            <a
+            <button
               key={asset.path}
-              href={`/assets?highlight=${encodeURIComponent(asset.path)}`}
-              className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 hover:border-[rgba(255,255,255,0.15)] transition-colors group"
+              onClick={() => setPreviewPath(asset.path)}
+              className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 hover:border-[rgba(255,255,255,0.15)] transition-colors group text-left w-full"
             >
               {asset.type === 'images' ? (
                 <img
@@ -95,11 +95,17 @@ export function TaskAssets({ taskId }: TaskAssetsProps) {
                   <p className="text-[10px] text-muted-foreground truncate">{asset.metadata.description}</p>
                 )}
               </div>
-              <ExternalLink className="size-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-            </a>
+            </button>
           )
         })}
       </div>
+
+      {previewPath && (
+        <AssetDetailModal
+          assetPath={previewPath}
+          onClose={() => setPreviewPath(null)}
+        />
+      )}
     </div>
   )
 }

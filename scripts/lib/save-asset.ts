@@ -10,7 +10,7 @@ import { mkdirSync, copyFileSync, writeFileSync, existsSync } from 'fs'
 import { join, extname, basename } from 'path'
 import { z } from 'zod'
 import { getBakinPaths } from '../../src/core/content-dir'
-import { succeed, fail, slugify, datePrefixedFilename, getExtension } from './common'
+import { succeed, fail, slugify, datePrefixedFilename, getExtension, generateThumbnail } from './common'
 import { addExecTool } from './registry'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
 
@@ -67,6 +67,16 @@ export async function saveAsset(params: SaveAssetParams): Promise<ExecToolResult
 
   const metadataPath = join(taskDir, `${filename}.meta.json`)
   writeFileSync(metadataPath, JSON.stringify(sidecar, null, 2))
+
+  // Auto-generate thumbnail for images (best-effort, don't fail the save)
+  if (type === 'images') {
+    try {
+      const dotIdx = filename.lastIndexOf('.')
+      const stem = dotIdx > 0 ? filename.substring(0, dotIdx) : filename
+      const thumbPath = join(taskDir, `${stem}.thumb.jpg`)
+      await generateThumbnail(destPath, thumbPath)
+    } catch { /* thumbnail generation is non-critical */ }
+  }
 
   // Return paths relative to bakin home
   const bakinHome = assetDir.split('/assets/')[0]

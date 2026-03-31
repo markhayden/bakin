@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FileText, Image, Video, Music, Map, Database, Package, Clock, MoreHorizontal, Trash2 } from 'lucide-react'
+import { FileText, Image, Video, Music, Map, Database, Package, Clock, MoreHorizontal, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
 import {
@@ -10,26 +10,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
+import { formatAge, formatSize } from '@/lib/format'
 import { DeleteAssetDialog } from './delete-asset-dialog'
 import type { AssetMeta } from '@/types'
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
   text: FileText,
@@ -51,10 +34,40 @@ const TYPE_COLORS: Record<string, string> = {
   other: 'text-muted-foreground',
 }
 
+export type SortField = 'name' | 'type' | 'size' | 'created'
+export type SortDir = 'asc' | 'desc'
+
 interface AssetsListProps {
   assets: AssetMeta[]
   onSelect: (asset: AssetMeta) => void
   onDelete: (path: string) => void
+  sort?: SortField
+  sortDir?: SortDir
+  onSort?: (field: SortField) => void
+}
+
+function SortIcon({ field, activeField, dir }: { field: SortField; activeField?: SortField; dir?: SortDir }) {
+  if (field !== activeField) return <ArrowUpDown className="size-3 opacity-0 group-hover/col:opacity-50" />
+  return dir === 'asc' ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />
+}
+
+function SortableHeader({ field, label, activeField, dir, onSort, className }: {
+  field: SortField
+  label: string
+  activeField?: SortField
+  dir?: SortDir
+  onSort?: (field: SortField) => void
+  className?: string
+}) {
+  return (
+    <button
+      onClick={() => onSort?.(field)}
+      className={`group/col flex items-center gap-1 hover:text-foreground transition-colors ${className ?? ''}`}
+    >
+      {label}
+      <SortIcon field={field} activeField={activeField} dir={dir} />
+    </button>
+  )
 }
 
 function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () => void; onDelete: (path: string) => void }) {
@@ -82,6 +95,7 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
               alt={asset.filename}
               onError={() => setImgError(true)}
               className="size-8 object-cover rounded"
+              loading="lazy"
             />
           ) : (
             <Icon className={`size-4 ${iconColor} opacity-60`} />
@@ -115,7 +129,7 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
         {/* Created */}
         <div className="flex items-center gap-1 w-20 shrink-0 hidden lg:flex">
           <Clock className="size-3 text-muted-foreground/50" />
-          <span className="text-[10px] text-muted-foreground">{timeAgo(asset.metadata.created)}</span>
+          <span className="text-[10px] text-muted-foreground">{formatAge(asset.metadata.created)}</span>
         </div>
 
         {/* Actions */}
@@ -148,7 +162,7 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
   )
 }
 
-export function AssetsList({ assets, onSelect, onDelete }: AssetsListProps) {
+export function AssetsList({ assets, onSelect, onDelete, sort, sortDir, onSort }: AssetsListProps) {
   if (assets.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -165,11 +179,19 @@ export function AssetsList({ assets, onSelect, onDelete }: AssetsListProps) {
       {/* Header */}
       <div className="flex items-center gap-3 px-3 py-1.5 text-[10px] text-muted-foreground/60 uppercase tracking-wider font-medium border-b border-border/50">
         <div className="size-8 shrink-0" />
-        <div className="flex-1 min-w-0">Name</div>
-        <div className="w-14 shrink-0 hidden sm:block">Type</div>
-        <div className="w-16 text-right shrink-0 hidden md:block">Size</div>
+        <div className="flex-1 min-w-0">
+          <SortableHeader field="name" label="Name" activeField={sort} dir={sortDir} onSort={onSort} />
+        </div>
+        <div className="w-14 shrink-0 hidden sm:block">
+          <SortableHeader field="type" label="Type" activeField={sort} dir={sortDir} onSort={onSort} />
+        </div>
+        <div className="w-16 shrink-0 hidden md:flex justify-end">
+          <SortableHeader field="size" label="Size" activeField={sort} dir={sortDir} onSort={onSort} />
+        </div>
         <div className="w-24 shrink-0 hidden lg:block">Agent</div>
-        <div className="w-20 shrink-0 hidden lg:block">Created</div>
+        <div className="w-20 shrink-0 hidden lg:block">
+          <SortableHeader field="created" label="Created" activeField={sort} dir={sortDir} onSort={onSort} />
+        </div>
         <div className="size-6 shrink-0" />
       </div>
 

@@ -10,6 +10,14 @@ export function formatAge(timestamp: string): string {
   return `${days}d ago`
 }
 
+/** Human-readable file size */
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
 /** Check if a heartbeat timestamp is stale (> 15 min) */
 export function isStale(timestamp: string, thresholdMs = 15 * 60 * 1000): boolean {
   return Date.now() - new Date(timestamp).getTime() > thresholdMs
