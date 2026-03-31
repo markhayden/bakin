@@ -11,26 +11,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
+import { formatAge, formatSize } from '@/lib/format'
 import { DeleteAssetDialog } from './delete-asset-dialog'
 import type { AssetMeta } from '@/types'
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
   text: FileText,
@@ -86,6 +69,7 @@ export function AssetCard({ asset, onClick, onDelete }: AssetCardProps) {
             alt={asset.filename}
             onError={() => setImgError(true)}
             className="w-full h-full object-cover"
+            loading="lazy"
           />
         ) : (
           <Icon className={`size-10 ${iconColor} opacity-40`} />
@@ -143,7 +127,7 @@ export function AssetCard({ asset, onClick, onDelete }: AssetCardProps) {
           {/* Time */}
           <div className="flex items-center gap-1">
             <Clock className="size-3 text-muted-foreground/50" />
-            <span className="text-[10px] text-muted-foreground">{timeAgo(asset.metadata.created)}</span>
+            <span className="text-[10px] text-muted-foreground">{formatAge(asset.metadata.created)}</span>
           </div>
 
           {/* Task link */}

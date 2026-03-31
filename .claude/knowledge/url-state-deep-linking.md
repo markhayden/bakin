@@ -51,12 +51,16 @@ export default function TasksPage() {
 
 | Param | Type | Example | Use |
 |-------|------|---------|-----|
-| `view` | string | `kanban`, `table`, `grid`, `list` | View mode toggle |
+| `view` | string | `kanban`, `table`, `grid`, `list`, `trash` | View mode toggle |
 | `q` | string | any text | Search query |
 | `agent` | string | `main-operator`, `all` | Agent filter (single-select) |
 | `status` | string[] | `todo,blocked` | Status filter (multi-select via FacetFilter) |
 | `type` | string[] | `images,video` | Type filter (multi-select via FacetFilter) |
-| `highlight` | string | asset path | Deep-link to specific item |
+| `asset` | string | asset path | Deep-link to open asset detail |
+| `taskId` | string | task id | Deep-link to open task detail drawer |
+| `page` | string | `1`, `2` | Pagination page number |
+| `sort` | string | `name`, `size`, `created`, `type` | Sort column (list view) |
+| `dir` | string | `asc`, `desc` | Sort direction |
 
 - Use short, lowercase param names
 - `all` is the default for single-select filters — omit from URL when active
@@ -89,8 +93,8 @@ Located at `src/components/facet-filter.tsx`. Shared multi-select filter compone
 
 | Plugin | URL State | Notes |
 |--------|-----------|-------|
-| Tasks | ✅ Done | `view`, `q`, `agent`, `status` |
-| Assets | ❌ Pending | Has FacetFilter but state not URL-backed yet |
+| Tasks | ✅ Done | `view`, `q`, `agent`, `status`, `taskId` (deep link) |
+| Assets | ✅ Done | `view`, `q`, `type`, `asset`, `page`, `sort`, `dir` |
 | Calendar | ❌ Pending | |
 | Workflows | ❌ Pending | |
 | Schedule | ❌ Pending | |

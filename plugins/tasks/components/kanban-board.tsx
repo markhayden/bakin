@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragEndEvent,
@@ -108,6 +108,8 @@ export function KanbanBoard() {
   const [search, setSearch] = useQueryState('q', '')
   const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
   const [statusFilter, setStatusFilter] = useQueryArrayState('status')
+
+  const [taskIdParam, setTaskIdParam] = useQueryState('taskId', '')
 
   const { filteredColumns, allTasksFlat } = useTaskFilters(displayColumns, {
     search, agentFilter, statusFilter,
@@ -261,6 +263,24 @@ export function KanbanBoard() {
 
   const [detailTask, setDetailTask] = useState<{ task: Task; columnId: ColumnId } | null>(null)
   const [createMode, setCreateMode] = useState(false)
+
+  // Deep link: open task from ?taskId= param (e.g. from asset detail)
+  const taskIdHandled = useRef(false)
+  useEffect(() => {
+    if (!taskIdParam || taskIdHandled.current) return
+    taskIdHandled.current = true
+
+    for (const [colId, colTasks] of Object.entries(columns) as [ColumnId, Task[]][]) {
+      const match = colTasks.find(t => t.id === taskIdParam)
+      if (match) {
+        setDetailTask({ task: match, columnId: colId })
+        setTaskIdParam('')
+        return
+      }
+    }
+    toast('Task not found', 'error')
+    setTaskIdParam('')
+  }, [taskIdParam, columns])
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
 
   const confirmDelete = useCallback(async () => {

@@ -9,16 +9,10 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { MarkdownContent } from '@/components/markdown-content'
-import { Trash2, ExternalLink, Download, Clock, User, Wrench, Tag, Layers } from 'lucide-react'
+import { Trash2, ExternalLink, Download, Clock, User, Wrench, Tag, Layers, Eye } from 'lucide-react'
+import { formatSize } from '@/lib/format'
 import { DeleteAssetDialog } from './delete-asset-dialog'
 import type { AssetMeta } from '@/types'
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-}
 
 interface AssetDetailProps {
   asset: AssetMeta | null
@@ -154,30 +148,76 @@ function CodeRenderer({ fileUrl }: { fileUrl: string }) {
   )
 }
 
-export function AssetDetail({ asset, onClose, onDelete }: AssetDetailProps) {
+/**
+ * Standalone modal that fetches asset metadata by path and renders AssetDetail.
+ * Usable from any context (e.g. task drawer) without needing the full assets page.
+ */
+export function AssetDetailModal({ assetPath, onClose }: { assetPath: string; onClose: () => void }) {
+  const [asset, setAsset] = useState<AssetMeta | null>(null)
+
+  useEffect(() => {
+    if (!assetPath) { setAsset(null); return }
+    fetch(`/api/plugins/assets/list?path=${encodeURIComponent(assetPath)}`)
+      .then(r => r.ok ? r.json() : { assets: [] })
+      .then(d => setAsset(d.assets?.[0] ?? null))
+      .catch(() => setAsset(null))
+  }, [assetPath])
+
+  return (
+    <AssetDetail
+      asset={asset}
+      onClose={onClose}
+      onDelete={async (path) => {
+        await fetch(`/api/plugins/assets/delete?path=${encodeURIComponent(path)}`, { method: 'POST' })
+        onClose()
+      }}
+      showOpenInAssets
+    />
+  )
+}
+
+export function AssetDetail({ asset, onClose, onDelete, showOpenInAssets }: AssetDetailProps & { showOpenInAssets?: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [activeVariantPath, setActiveVariantPath] = useState<string | null>(null)
 
   if (!asset) return null
+
+  // Build the asset to preview — either the primary or the active variant
+  const previewAsset: AssetMeta = activeVariantPath
+    ? (() => {
+        const v = asset.variants?.find(v => v.path === activeVariantPath)
+        if (!v) return asset
+        return { ...asset, path: v.path, filename: v.filename, size: v.size, mimeType: v.mimeType }
+      })()
+    : asset
 
   const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}&v=${asset.mtimeMs || ''}`
 
   return (
     <>
-    <Dialog open={!!asset} onOpenChange={() => { onClose(); setConfirmDelete(false) }}>
+    <Dialog open={!!asset} onOpenChange={() => { onClose(); setConfirmDelete(false); setActiveVariantPath(null) }}>
       <DialogContent className="bg-card border-border !max-w-[calc(100vw-2rem)] !w-full h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
-            <span>{asset.filename}</span>
+            <span>{activeVariantPath ? `${asset.filename} (${asset.variants?.find(v => v.path === activeVariantPath)?.role ?? 'variant'})` : asset.filename}</span>
             <Badge variant="outline" className="text-[10px] h-4">
               {asset.type}
             </Badge>
+            {activeVariantPath && (
+              <button
+                onClick={() => setActiveVariantPath(null)}
+                className="text-[10px] text-blue-400 hover:text-blue-300"
+              >
+                Back to original
+              </button>
+            )}
           </DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
           {/* Main content area */}
           <div className="flex-1 min-w-0 min-h-0">
-            <AssetRenderer asset={asset} />
+            <AssetRenderer asset={previewAsset} />
           </div>
 
           {/* Sidebar info */}
@@ -252,14 +292,21 @@ export function AssetDetail({ asset, onClose, onDelete }: AssetDetailProps) {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   {asset.variants.map(v => (
-                    <div key={v.path} className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground capitalize">{v.role}</span>
+                    <div key={v.path} className={`flex items-center justify-between text-xs rounded-md px-1.5 py-1 -mx-1.5 transition-colors ${activeVariantPath === v.path ? 'bg-accent/10' : 'hover:bg-muted/30'}`}>
+                      <button
+                        onClick={() => setActiveVariantPath(activeVariantPath === v.path ? null : v.path)}
+                        className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground capitalize"
+                      >
+                        <Eye className="size-3" />
+                        {v.role}
+                      </button>
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground">{formatSize(v.size)}</span>
                         <a
                           href={`/api/plugins/assets/file?path=${encodeURIComponent(v.path)}`}
                           download={v.filename}
                           className="text-blue-400 hover:text-blue-300"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           <Download className="size-3" />
                         </a>
@@ -279,6 +326,16 @@ export function AssetDetail({ asset, onClose, onDelete }: AssetDetailProps) {
 
             {/* Actions */}
             <div className="border-t border-border pt-3 mt-auto flex flex-col gap-2">
+              {showOpenInAssets && (
+                <a
+                  href={`/assets?asset=${encodeURIComponent(asset.path)}`}
+                  className="flex items-center justify-center gap-1.5 text-xs text-foreground bg-zinc-800 hover:bg-zinc-700 rounded-md px-3 py-1.5 transition-colors"
+                >
+                  <ExternalLink className="size-3.5" />
+                  View in Assets
+                </a>
+              )}
+
               <a
                 href={fileUrl}
                 download={asset.filename}
