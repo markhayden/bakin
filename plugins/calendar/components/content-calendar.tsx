@@ -15,6 +15,7 @@ import {
   Eye,
   Trash2,
 } from 'lucide-react'
+import { PluginHeader } from '@/components/plugin-header'
 import type { CalendarItem, ContentAgent, ContentStatus } from '../types'
 import { NewItemForm } from './new-item-form'
 import { ItemDetailPanel } from './item-detail-panel'
@@ -414,7 +415,7 @@ export function ContentCalendar() {
       {/* Top bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-4">
-          <h1 className="text-lg font-semibold text-foreground">Calendar</h1>
+          <PluginHeader title="Calendar" />
           {view === 'calendar' && (
             <div className="flex items-center gap-1">
               <Button size="icon-xs" variant="ghost" onClick={prevMonth}>

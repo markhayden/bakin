@@ -69,7 +69,11 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign,
           )}
         </div>
       </SortableContext>
-      {footer}
+      {footer && (
+        <div className="border-t border-border mt-3 pt-2">
+          {footer}
+        </div>
+      )}
     </div>
   )
 }

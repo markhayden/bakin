@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FolderOpen, Image, Video, Music, FileText, ExternalLink } from 'lucide-react'
+import { FolderOpen, Image, Video, Music, FileText, ExternalLink, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import type { AssetMeta } from '@/types'
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
@@ -52,15 +53,21 @@ export function TaskAssets({ taskId }: TaskAssetsProps) {
   }, [taskId, fetchAssets])
 
   if (loading) return null
-  if (assets.length === 0) return null
 
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-2">
         <FolderOpen className="size-3 text-muted-foreground" />
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Assets ({assets.length})
+          Assets {assets.length > 0 && `(${assets.length})`}
         </h3>
+        <a
+          href={`/assets?linkTo=${encodeURIComponent(taskId)}`}
+          className="ml-auto flex items-center gap-1 text-[11px] text-accent hover:underline"
+        >
+          <Plus className="size-3" />
+          Add
+        </a>
       </div>
       <div className="flex flex-col gap-1.5">
         {assets.map(asset => {

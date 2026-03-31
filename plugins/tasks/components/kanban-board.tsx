@@ -18,6 +18,7 @@ import { NewTaskDialog } from './new-task-dialog'
 import { DeleteTaskDialog } from './delete-task-dialog'
 import { TaskDetailDrawer } from './task-detail-dialog'
 import { TaskMetrics } from './task-metrics'
+import { PluginHeader } from '@/components/plugin-header'
 import { TaskFilters } from './task-filters'
 import { TaskLogTable } from './task-log-table'
 import { useTaskFilters } from '../hooks/use-task-filters'
@@ -273,20 +274,13 @@ export function KanbanBoard() {
     <WithLoading>
       <div className="flex flex-col h-full min-w-0 min-h-0">
         {/* Metrics bar — hidden on mobile to save space */}
-        <div className="hidden md:block px-[25px] pt-[25px] pb-2 border-b border-border/50">
-          <TaskMetrics columns={columns} />
+        <div className="hidden md:block px-6 pt-[25px] pb-2 border-b border-border/50">
+          <TaskMetrics columns={columns} timestamp={timestamp} />
         </div>
 
         {/* Title row with view toggle */}
-        <div className="flex items-center justify-between px-[25px] pt-3 md:pt-4 pb-2">
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">Tasks</h1>
-            {timestamp && (
-              <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                Updated {timestamp}
-              </p>
-            )}
-          </div>
+        <div className="flex items-center justify-between px-6 pt-3 md:pt-4 pb-2">
+          <PluginHeader title="Tasks" />
           <div className="flex items-center gap-2">
             {/* View toggle */}
             <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
@@ -318,7 +312,7 @@ export function KanbanBoard() {
         </div>
 
         {/* Filters */}
-        <div className="px-[25px] pb-3">
+        <div className="px-6 pb-3">
           <TaskFilters
             search={search}
             onSearchChange={setSearch}
@@ -349,7 +343,7 @@ export function KanbanBoard() {
                   footer={colId === 'confirmed' && hiddenConfirmedCount > 0 ? (
                     <button
                       onClick={() => setView('table')}
-                      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors mt-2"
+                      className="text-[11px] text-accent hover:text-accent/80 hover:underline transition-colors"
                     >
                       {hiddenConfirmedCount} older task{hiddenConfirmedCount !== 1 ? 's' : ''} — View Log
                     </button>
@@ -367,7 +361,7 @@ export function KanbanBoard() {
           </DndContext>
           </div>
         ) : (
-          <div className="flex-1 overflow-auto min-h-0 px-[25px] pb-[25px]">
+          <div className="flex-1 overflow-auto min-h-0 px-6 pb-[25px]">
             <TaskLogTable currentTasks={allTasksFlat} />
           </div>
         )}

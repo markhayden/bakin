@@ -10,7 +10,10 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
+import { AgentAvatar } from '@/components/agent-avatar'
 import { AGENTS } from '@/lib/constants'
 import { Plus } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
@@ -108,13 +111,13 @@ export function NewTaskDialog() {
             <Label htmlFor="description" className="text-sm font-semibold text-foreground">
               Details
             </Label>
-            <textarea
+            <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Additional context, instructions, or acceptance criteria..."
               rows={5}
-              className="rounded-md border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground resize-y min-h-[120px] focus:outline-none focus:ring-1 focus:ring-ring"
+              className="min-h-[120px] resize-y"
             />
           </div>
 
@@ -123,19 +126,19 @@ export function NewTaskDialog() {
             <Label htmlFor="workflow" className="text-sm font-semibold text-foreground">
               Workflow
             </Label>
-            <select
-              id="workflow"
-              value={workflowId}
-              onChange={(e) => setWorkflowId(e.target.value)}
-              className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              <option value="">None</option>
-              {workflows.map((w) => (
-                <option key={w.filename} value={w.filename.replace('.yaml', '')}>
-                  {w.name} ({w.stepCount} steps)
-                </option>
-              ))}
-            </select>
+            <Select value={workflowId} onValueChange={(v) => setWorkflowId(v ?? '')}>
+              <SelectTrigger className="w-full h-10">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">None</SelectItem>
+                {workflows.map((w) => (
+                  <SelectItem key={w.filename} value={w.filename.replace('.yaml', '')}>
+                    {w.name} ({w.stepCount} steps)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {workflowId && (
               <p className="text-xs text-muted-foreground">
                 {workflows.find((w) => w.filename.replace('.yaml', '') === workflowId)?.description}
@@ -149,35 +152,43 @@ export function NewTaskDialog() {
               <Label htmlFor="assignee" className="text-sm font-semibold text-foreground">
                 Assignee
               </Label>
-              <select
-                id="assignee"
-                value={assignee}
-                onChange={(e) => setAssignee(e.target.value)}
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="">Unassigned</option>
-                {AGENTS.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.emoji} {a.name}
-                  </option>
-                ))}
-              </select>
+              <Select value={assignee} onValueChange={(v) => setAssignee(v ?? '')}>
+                <SelectTrigger className="w-full h-10">
+                  <SelectValue>
+                    {assignee ? (
+                      <span className="flex items-center gap-2">
+                        <AgentAvatar agentId={assignee} size="xs" />
+                        {AGENTS.find(a => a.id === assignee)?.name || assignee}
+                      </span>
+                    ) : 'Unassigned'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Unassigned</SelectItem>
+                  {AGENTS.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      <AgentAvatar agentId={a.id} size="xs" />
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="column" className="text-sm font-semibold text-foreground">
                 Column
               </Label>
-              <select
-                id="column"
-                value={column}
-                onChange={(e) => setColumn(e.target.value)}
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="backlog">Backlog</option>
-                <option value="todo">Todo</option>
-                <option value="inProgress">In Progress</option>
-                <option value="blocked">Blocked</option>
-              </select>
+              <Select value={column} onValueChange={(v) => setColumn(v ?? 'todo')}>
+                <SelectTrigger className="w-full h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="backlog">Backlog</SelectItem>
+                  <SelectItem value="todo">Todo</SelectItem>
+                  <SelectItem value="inProgress">In Progress</SelectItem>
+                  <SelectItem value="blocked">Blocked</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
