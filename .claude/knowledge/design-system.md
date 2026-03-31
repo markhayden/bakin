@@ -85,6 +85,10 @@ border-outline-variant → var(--outline-variant)
 
 The Bakin logo (`public/bakin-logo.svg`) is `bakin-hop.svg` — a leaping bison rendered in `#ff4d94`. Source variants live on the Desktop (`bakin-1.svg`, `bakin.svg`, `bakin-traditional.svg`, `bakin-basic.svg`, `bakin-basic-nose.svg`, `bakin-primary.svg`, `bakin-full.svg`, `bakin-hat.svg`, `bakin-hop.svg`). Header text is Inter bold italic, white, `text-base`.
 
+## Agent Avatars
+
+Avatars are **per-installation content** stored in `~/.bakin/agents/{id}/avatar.jpg` (128px thumbnails). Served via `GET /api/agents/avatar?id={agentId}`, NOT as static files. Full-res originals at `avatar-full.png` in the same directory. See `.claude/specs/agent-avatars.md` for the full pipeline spec.
+
 ## Version
 
 `APP_VERSION` is exported from `packages/core/src/constants.ts` and served by the `/api/version` endpoint. The header displays it as `v{version}`. Bump this constant when cutting releases.

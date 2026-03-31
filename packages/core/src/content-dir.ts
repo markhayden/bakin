@@ -86,6 +86,7 @@ export interface BakinPaths {
   'assets.plans': string
   'assets.data': string
   'assets.other': string
+  agents: string
   personas: string
   team: string
   heartbeats: string
@@ -112,6 +113,7 @@ export function getBakinPaths(): BakinPaths {
     'assets.plans': join(assets, 'plans'),
     'assets.data': join(assets, 'data'),
     'assets.other': join(assets, 'other'),
+    agents: join(home, 'agents'),
     personas: join(home, 'team', 'personas'),
     team: join(home, 'team'),
     heartbeats: join(home, 'heartbeats'),
@@ -144,6 +146,7 @@ export function initBakinHome(targetDir?: string): { created: string[]; seeded: 
     join(home, 'assets'),
     join(home, 'assets', '.trash'),
     ...assetDirs,
+    join(home, 'agents'),
     join(home, 'heartbeats'),
     join(home, 'inbox'),
     join(home, 'plugins'),
