@@ -396,7 +396,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
                     value={editOwner}
                     onChange={(e) => setEditOwner(e.target.value)}
                     placeholder="Search or type..."
-                    className="w-full text-[11px] bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-foreground placeholder:text-zinc-600 focus:outline-none focus:border-[#5e6ad2]/50"
+                    className="w-full text-[11px] bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-foreground placeholder:text-zinc-500 focus:outline-none focus:border-[#5e6ad2]/50"
                     autoFocus
                   />
                 </div>
@@ -536,7 +536,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
                 type="text"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                className="w-full text-xl font-semibold text-foreground bg-zinc-900/40 border border-[rgba(255,255,255,0.06)] rounded-lg outline-none px-4 py-2.5 placeholder:text-zinc-600 mb-5 tracking-tight focus:border-[#5e6ad2]/40 transition-colors"
+                className="w-full text-xl font-semibold text-foreground bg-zinc-900/40 border border-[rgba(255,255,255,0.06)] rounded-lg outline-none px-4 py-2.5 placeholder:text-zinc-500 mb-5 tracking-tight focus:border-[#5e6ad2]/40 transition-colors"
                 placeholder="Untitled project"
                 autoFocus
               />
@@ -626,7 +626,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAgentAsk() } }}
                     placeholder="Ask about this project..."
                     rows={2}
-                    className="flex-1 text-sm bg-zinc-900/60 border border-[rgba(255,255,255,0.06)] rounded-lg px-3 py-2 text-foreground placeholder:text-zinc-600 focus:outline-none focus:border-[#5e6ad2]/40 transition-colors resize-none"
+                    className="flex-1 text-sm bg-zinc-900/60 border border-[rgba(255,255,255,0.06)] rounded-lg px-3 py-2 text-foreground placeholder:text-zinc-500 focus:outline-none focus:border-[#5e6ad2]/40 transition-colors resize-none"
                   />
                   <button
                     onClick={handleAgentAsk}
@@ -731,7 +731,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
                       value={assetSearch}
                       onChange={(e) => setAssetSearch(e.target.value)}
                       placeholder="Search assets..."
-                      className="flex-1 text-[11px] bg-transparent text-foreground placeholder:text-zinc-600 focus:outline-none"
+                      className="flex-1 text-[11px] bg-transparent text-foreground placeholder:text-zinc-500 focus:outline-none"
                       autoFocus
                     />
                     {assetSearch && (
