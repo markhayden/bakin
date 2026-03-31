@@ -412,7 +412,7 @@ export function ContentCalendar() {
   return (
     <div>
       {/* Top bar */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-semibold text-foreground">Calendar</h1>
           {view === 'calendar' && (
@@ -434,7 +434,7 @@ export function ContentCalendar() {
         </div>
         <div className="flex items-center gap-4">
           {/* Agent legend */}
-          <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-3">
             {(['basil', 'scout', 'nemo', 'zen'] as ContentAgent[]).map(agent => (
               <div key={agent} className="flex items-center gap-1.5">
                 <span className="size-2 rounded-full" style={agentDotStyle(agent)} />

@@ -81,9 +81,9 @@ export function WorkflowsPage() {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
         {/* Left sidebar — template list */}
-        <div className="flex w-72 shrink-0 flex-col border-r border-border bg-card">
+        <div className="flex w-full md:w-72 shrink-0 flex-col border-b md:border-b-0 md:border-r border-border bg-card max-h-[40vh] md:max-h-none">
           <div className="flex-1 overflow-y-auto">
             <div className="px-3 pt-3 pb-1">
               <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">

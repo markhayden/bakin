@@ -51,7 +51,7 @@ export function TaskFilters({
 }: TaskFiltersProps) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 overflow-x-auto">
         {/* Search input */}
         <div className="relative w-56">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />

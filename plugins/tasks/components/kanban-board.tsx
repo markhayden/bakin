@@ -335,9 +335,9 @@ export function KanbanBoard() {
         {view === 'kanban' ? (
           <div className="flex-1 overflow-auto min-h-0">
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-            <div className="inline-flex gap-4 items-start p-[25px] pt-0">
+            <div className="inline-flex gap-4 items-start p-[25px] pt-0 md:pl-[25px] pl-4">
               {COLUMN_ORDER.map((colId) => (
-                <div key={colId} className="w-72 shrink-0">
+                <div key={colId} className="w-[75vw] sm:w-72 shrink-0">
                 <KanbanColumn
                   id={colId}
                   tasks={filteredColumns[colId]}

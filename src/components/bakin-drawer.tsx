@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback } from 'react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 
-const MIN_WIDTH = 400
+const MIN_WIDTH = 320
 const MAX_WIDTH = 960
 const DEFAULT_WIDTH = 560
 
@@ -59,7 +59,7 @@ export function BakinDrawer({
       <SheetContent
         side="right"
         className="overflow-y-auto p-0"
-        style={{ width: `${width}px`, maxWidth: `${MAX_WIDTH}px` }}
+        style={{ width: `${width}px`, maxWidth: `min(${MAX_WIDTH}px, 100vw)` }}
       >
         {/* Drag handle — left edge */}
         <div
