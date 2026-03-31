@@ -171,7 +171,7 @@ export function MemoryLog() {
               value={newText}
               onChange={(e) => setNewText(e.target.value)}
               placeholder="Record a new memory entry..."
-              className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-600 border-none focus:ring-0 focus:outline-none resize-none h-12 py-1"
+              className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 border-none focus:ring-0 focus:outline-none resize-none h-12 py-1"
             />
             <div className="flex justify-end border-t border-zinc-800 pt-3 gap-2">
               <button
@@ -248,7 +248,7 @@ export function MemoryLog() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search memories..."
-            className="w-full bg-zinc-900 border border-zinc-800 text-sm rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-zinc-100 placeholder:text-zinc-600"
+            className="w-full bg-zinc-900 border border-zinc-800 text-sm rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-zinc-100 placeholder:text-zinc-500"
           />
         </div>
       </div>

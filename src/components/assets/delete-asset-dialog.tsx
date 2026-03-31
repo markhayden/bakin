@@ -31,10 +31,10 @@ export function DeleteAssetDialog({ open, filename, permanent, onConfirm, onCanc
           )}
         </p>
         <div className="flex justify-end gap-2 mt-2">
-          <Button variant="outline" size="sm" onClick={onCancel}>
+          <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm}>
+          <Button variant="destructive" onClick={onConfirm}>
             {permanent ? 'Delete Permanently' : 'Delete'}
           </Button>
         </div>

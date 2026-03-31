@@ -67,7 +67,7 @@ export function ScheduleInput({
         placeholder='e.g. "every day at 9am" or "0 9 * * *"'
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="text-sm placeholder:text-zinc-600"
+        className="text-sm"
       />
       {loading && (
         <p className="text-xs text-muted-foreground">Parsing...</p>
