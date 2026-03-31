@@ -85,7 +85,7 @@ Created by `bakin init`. Per-installation state, NOT in the repo.
   settings.json            — Runtime config (mainAgentId, bridge settings)
   plugin-settings/         — Per-plugin configuration
   plugins/                 — Addon plugins (installed via bakin install)
-  agents/                  — Addon agent definitions (YAML)
+  agents/                  — Per-agent data ({id}/avatar.jpg, avatar-full.png)
   assets/                  — Content files organized by type
   projects/                — Project markdown files
   heartbeats/              — Agent status heartbeats (JSON)

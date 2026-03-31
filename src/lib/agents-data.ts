@@ -29,7 +29,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     role: 'Orchestrator · Lead Agent',
     title: 'Orchestrator',
     subtitle: 'Orchestrator · Lead Agent',
-    headshot: '/headshots/main-operator.webp',
+    headshot: '/api/agents/avatar?id=main-operator',
     model: 'claude-sonnet-4-6',
     definition: 'Main Operator is the team lead and orchestrator. He receives tasks from Mark, triages them to the right agent, monitors progress, and assembles final deliverables. He owns the pipeline from brief to publish.',
     shouldDo: [
@@ -63,7 +63,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     title: 'Content Creator',
     fullName: 'Gabrielle Marchetti',
     subtitle: 'Nutritionist & Culinary Creator',
-    headshot: '/headshots/chef.webp',
+    headshot: '/api/agents/avatar?id=chef',
     model: 'claude-sonnet-4-6',
     definition: 'Chef is a nutritionist and culinary expert who creates food and wellness content for social media. She writes recipes, captions, and content strategies — and briefs Pixel and Rolo on the assets she needs.',
     shouldDo: [
@@ -95,7 +95,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     role: 'Image Generation · Visual Content',
     title: 'Image Generation',
     subtitle: 'Image Generation',
-    headshot: '/headshots/pixel.webp',
+    headshot: '/api/agents/avatar?id=pixel',
     model: 'claude-sonnet-4-6',
     definition: 'Pixel generates images for the content pipeline — food photography, character portraits, graphics, and social media visuals. She works from briefs provided by Chef or Main Operator.',
     shouldDo: [
@@ -129,7 +129,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     role: 'Videographer & Editor · Video Content',
     title: 'Videographer',
     subtitle: 'Video Production',
-    headshot: '/headshots/rolo.webp',
+    headshot: '/api/agents/avatar?id=rolo',
     model: 'claude-sonnet-4-6',
     definition: 'Rolo produces and edits video content for the content pipeline — recipe walkthroughs, short-form reels, and social media videos. He works from briefs provided by Chef or Main Operator.',
     shouldDo: [
@@ -158,7 +158,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     role: 'Lead Developer',
     title: 'Lead Developer',
     subtitle: 'Lead Developer',
-    headshot: '/headshots/patch.webp',
+    headshot: '/api/agents/avatar?id=patch',
     model: 'claude-opus-4-6 · Claude Code',
     definition: 'Patch is the lead developer for Bakin. He builds integrations, fixes bugs, extends the tooling, and keeps the technical infrastructure running. He uses Claude Code (with claude-opus-4-6) for all coding tasks — giving him deep file exploration, multi-step execution, and the ability to run builds and tests.',
     shouldDo: [
@@ -195,7 +195,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     title: 'Content Creator',
     fullName: 'Connor Walsh',
     subtitle: 'Outdoor & Adventure Creator',
-    headshot: '/headshots/explorer.webp',
+    headshot: '/api/agents/avatar?id=explorer',
     model: 'claude-sonnet-4-6',
     definition: 'Connor "Explorer" Walsh is a 28-year-old software engineer from New Jersey who moved to Bozeman, Montana after discovering hiking in college. He creates outdoor and adventure content for SampleBrand — making the outdoors feel accessible to people who didn\'t grow up with it. Dry humor, no gear snobbery, deeply genuine.',
     shouldDo: [
@@ -228,7 +228,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     title: 'Content Creator',
     fullName: 'Yuki Tanaka',
     subtitle: 'Fitness & Movement Coach',
-    headshot: '/headshots/trainer.webp',
+    headshot: '/api/agents/avatar?id=trainer',
     model: 'claude-sonnet-4-6',
     definition: 'Yuki "Trainer" Tanaka is a 32-year-old former competitive swimmer from Honolulu, now based in Austin. A shoulder injury ended her elite career and redirected her toward personal training focused on longevity over performance. She coaches people to move well for the rest of their lives — especially those recovering from injury or with complicated relationships with fitness.',
     shouldDo: [
@@ -261,7 +261,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
     title: 'Content Creator',
     fullName: 'Marcus Webb',
     subtitle: 'Life & Mindset Coach',
-    headshot: '/headshots/coach.webp',
+    headshot: '/api/agents/avatar?id=coach',
     model: 'claude-sonnet-4-6',
     definition: 'Marcus "Coach" Webb is a 36-year-old former Detroit high school English teacher who burned out and accidentally became a life coach. He writes about the gap between performing wellness and actually living it — habits, identity, relationships, burnout, and the small decisions that compound into a life. Warm, grounded, occasionally profound, sends good memes.',
     shouldDo: [
