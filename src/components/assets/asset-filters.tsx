@@ -1,6 +1,7 @@
 'use client'
 
 import { Input } from '@/components/ui/input'
+import { PluginHeader } from '@/components/plugin-header'
 import { Search, FileText, Image, Video, Music, Map, Database, Package, LayoutGrid, List, Trash2 } from 'lucide-react'
 
 const TYPE_TABS = [
@@ -28,7 +29,7 @@ export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange,
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Assets</h1>
+        <PluginHeader title="Assets" />
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">{assetCount} asset{assetCount !== 1 ? 's' : ''}</span>
           <div className="relative w-64">

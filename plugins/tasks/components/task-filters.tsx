@@ -53,13 +53,13 @@ export function TaskFilters({
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-3 overflow-x-auto">
         {/* Search input */}
-        <div className="relative w-56">
+        <div className="relative w-56 focus-within:w-80 transition-all duration-200">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search tasks..."
-            className="pl-9 h-7 text-xs bg-surface border-border"
+            className="pl-9 h-8 text-xs bg-surface border-border"
           />
         </div>
 

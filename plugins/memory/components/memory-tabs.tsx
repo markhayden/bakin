@@ -1,6 +1,7 @@
 'use client'
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { PluginHeader } from '@/components/plugin-header'
 import { MemoryLog } from './memory-log'
 import { AuditTimeline } from './audit-timeline'
 import { AgentBrowser } from './agent-browser'
@@ -9,6 +10,8 @@ import { GatewayViewer } from './gateway-viewer'
 export function MemoryTabs() {
   return (
     <div>
+      <PluginHeader title="Memory" subtitle="Agent memory and audit trail" />
+      <div className="mt-4" />
       <Tabs defaultValue="log">
         <TabsList>
           <TabsTrigger value="log">Log</TabsTrigger>

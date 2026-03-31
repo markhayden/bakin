@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Plus } from 'lucide-react'
+import { PluginHeader } from '@/components/plugin-header'
 import { ProjectCard } from './project-card'
 import { ProjectDetail } from './project-detail'
 import type { ProjectSummary, ProjectStatus } from '../types'
@@ -65,7 +66,7 @@ export function ProjectGrid() {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-foreground">Projects</h1>
+        <PluginHeader title="Projects" />
         <button
           onClick={handleNew}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 text-sm text-white hover:bg-blue-500 transition-colors"

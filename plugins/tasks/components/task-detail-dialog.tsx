@@ -9,13 +9,16 @@ import {
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { Send, Check, X, RefreshCw } from 'lucide-react'
 import { MarkdownContent } from '@/components/markdown-content'
 import { TaskAssets } from '@/components/assets/task-assets'
+import { AgentAvatar } from '@/components/agent-avatar'
 import { AGENTS } from '@/lib/constants'
-import { COLUMN_CONFIG } from '../constants'
+import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import { toast } from '@/hooks/use-toast'
 import type { Task, ColumnId } from '../types'
 
@@ -146,6 +149,7 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
   const [dirty, setDirty] = useState(false)
   const [logMessage, setLogMessage] = useState('')
   const [addingLog, setAddingLog] = useState(false)
+  const [showAllNotes, setShowAllNotes] = useState(false)
 
   // Workflow instance state for gate approval
   const [wfInstance, setWfInstance] = useState<WorkflowInstance | null>(null)
@@ -363,7 +367,7 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
     <Sheet open={!!task} onOpenChange={(open) => { if (!open) onClose() }}>
       <SheetContent side="right" className="bg-card border-border sm:max-w-md overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Edit Task</SheetTitle>
+          <SheetTitle>Task Details</SheetTitle>
         </SheetHeader>
         <div className="px-4 pb-4 space-y-4">
           <div className="flex flex-col gap-2">
@@ -377,66 +381,77 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit-description">Details</Label>
-            <textarea
+            <Textarea
               id="edit-description"
               value={description}
               onChange={(e) => { setDescription(e.target.value); markDirty() }}
               placeholder="Instructions, notes..."
-              rows={4}
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground resize-y min-h-[60px]"
+              rows={8}
+              className="min-h-[120px] resize-y"
             />
           </div>
 
           <div className="flex gap-4">
             <div className="flex flex-col gap-2 flex-1">
-              <Label htmlFor="edit-agent">Assignee</Label>
-              <select
-                id="edit-agent"
-                value={agent}
-                onChange={(e) => { setAgent(e.target.value); markDirty() }}
-                className="h-8 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option value="">Unassigned</option>
-                {AGENTS.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.emoji} {a.name}
-                  </option>
-                ))}
-              </select>
+              <Label>Assignee</Label>
+              <Select value={agent} onValueChange={(v) => { setAgent(v ?? ''); markDirty() }}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {agent ? (
+                      <span className="flex items-center gap-2">
+                        <AgentAvatar agentId={agent} size="xs" />
+                        {AGENTS.find(a => a.id === agent)?.name || agent}
+                      </span>
+                    ) : 'Unassigned'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Unassigned</SelectItem>
+                  {AGENTS.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      <AgentAvatar agentId={a.id} size="xs" />
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex flex-col gap-2 flex-1">
-              <Label htmlFor="edit-column">Column</Label>
-              <select
-                id="edit-column"
-                value={column}
-                onChange={(e) => { setColumn(e.target.value as ColumnId); markDirty() }}
-                className="h-8 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-              >
-                {COLUMN_IDS.map((id) => (
-                  <option key={id} value={id}>
-                    {COLUMN_CONFIG[id].emoji} {COLUMN_CONFIG[id].label}
-                  </option>
-                ))}
-              </select>
+              <Label>Column</Label>
+              <Select value={column} onValueChange={(v) => { setColumn((v ?? 'todo') as ColumnId); markDirty() }}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {COLUMN_CONFIG[column as ColumnId]?.label || column}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {COLUMN_IDS.map((id) => (
+                    <SelectItem key={id} value={id}>
+                      <span className={`size-2 rounded-full ${STATUS_DOT_COLORS[id]} shrink-0`} />
+                      {COLUMN_CONFIG[id].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-workflow">Workflow</Label>
-            <select
-              id="edit-workflow"
-              value={workflowId}
-              onChange={(e) => { setWorkflowId(e.target.value); markDirty() }}
-              className="h-8 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-            >
-              <option value="">None</option>
-              {workflows.map((w) => (
-                <option key={w.filename} value={w.filename.replace('.yaml', '')}>
-                  {w.name} ({w.stepCount} steps)
-                </option>
-              ))}
-            </select>
+            <Label>Workflow</Label>
+            <Select value={workflowId} onValueChange={(v) => { setWorkflowId(v ?? ''); markDirty() }}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">None</SelectItem>
+                {workflows.map((w) => (
+                  <SelectItem key={w.filename} value={w.filename.replace('.yaml', '')}>
+                    {w.name} ({w.stepCount} steps)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {workflowId && (
               <p className="text-xs text-muted-foreground">
                 {workflows.find((w) => w.filename.replace('.yaml', '') === workflowId)?.description}
@@ -581,27 +596,41 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
 
           <Separator />
 
-          {/* Task Log */}
+          {/* Task Notes */}
           <div>
-            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Log</h3>
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Notes</h3>
 
             {(!task.log || task.log.length === 0) && (
-              <p className="text-xs text-muted-foreground mb-3">No log entries yet.</p>
+              <p className="text-xs text-muted-foreground mb-3">No notes yet.</p>
             )}
 
-            {task.log && task.log.length > 0 && (
-              <div className="flex flex-col gap-2 mb-3">
-                {task.log.map((entry, i) => (
-                  <div key={i} className="rounded-md border border-border bg-background px-3 py-2">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-xs font-mono text-muted-foreground">{entry.timestamp}</span>
-                      <span className="text-xs font-medium text-foreground">{entry.author}</span>
+            {task.log && task.log.length > 0 && (() => {
+              const reversed = [...task.log].reverse()
+              const NOTES_PAGE_SIZE = 10
+              const visible = showAllNotes ? reversed : reversed.slice(0, NOTES_PAGE_SIZE)
+              const hasMore = reversed.length > NOTES_PAGE_SIZE
+              return (
+                <div className="flex flex-col gap-2 mb-3">
+                  {visible.map((entry, i) => (
+                    <div key={i} className="rounded-md border border-border bg-background px-3 py-2">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-xs font-mono text-muted-foreground">{entry.timestamp}</span>
+                        <span className="text-xs font-medium text-foreground">{entry.author}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{entry.message}</p>
                     </div>
-                    <p className="text-sm text-muted-foreground">{entry.message}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                  {hasMore && !showAllNotes && (
+                    <button
+                      onClick={() => setShowAllNotes(true)}
+                      className="text-xs text-accent hover:underline self-start"
+                    >
+                      Show {reversed.length - NOTES_PAGE_SIZE} older notes
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
 
             <div className="flex gap-2">
               <Input

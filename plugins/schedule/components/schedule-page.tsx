@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { BakinDrawer } from '@/components/bakin-drawer'
+import { PluginHeader } from '@/components/plugin-header'
 import { AGENTS } from '@/lib/constants'
 import { useScheduleJobs, type ScheduleJob } from '@/hooks/use-schedule'
 import { JobList } from './job-list'
@@ -140,11 +141,10 @@ export function SchedulePage() {
     <div className="p-6 flex flex-col h-full min-h-0 gap-4">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <AlarmClock className="size-5 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">Schedule</h1>
-        <span className="text-sm text-muted-foreground">
-          {loading ? '...' : `${filtered.length} job${filtered.length !== 1 ? 's' : ''}`}
-        </span>
+        <PluginHeader
+          title="Schedule"
+          subtitle={loading ? '...' : `${filtered.length} job${filtered.length !== 1 ? 's' : ''}`}
+        />
         <div className="ml-auto flex items-center gap-2">
           {/* View toggle */}
           <div className="flex items-center rounded-md border border-border/50 overflow-hidden">

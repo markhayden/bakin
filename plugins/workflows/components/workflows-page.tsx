@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { Workflow } from 'lucide-react'
+import { PluginHeader } from '@/components/plugin-header'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { WorkflowCanvas } from './workflow-canvas'
 import { AGENTS } from '@/lib/constants'
@@ -72,13 +73,7 @@ export function WorkflowsPage() {
     <div className="flex h-full flex-col">
       {/* Top bar */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Workflow className="size-4 text-amber-400" />
-            <h1 className="text-base font-semibold">Workflows</h1>
-          </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">Agent Workflows</p>
-        </div>
+        <PluginHeader title="Workflows" subtitle="Agent Workflows" />
       </div>
 
       <div className="flex flex-1 overflow-hidden flex-col md:flex-row">

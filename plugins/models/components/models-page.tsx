@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import type { AgentModelConfig, AvailableModel } from '../types'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
+import { PluginHeader } from '@/components/plugin-header'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -241,12 +242,10 @@ export function ModelsPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Models</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Configure models for agents, view available models, and manage aliases.
-        </p>
-      </div>
+      <PluginHeader
+        title="Models"
+        subtitle="Configure models for agents, view available models, and manage aliases."
+      />
 
       {/* Restart banner */}
       {restartNeeded && (

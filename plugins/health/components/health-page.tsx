@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { PluginHeader } from '@/components/plugin-header'
 
 interface McpSession {
   agent: string
@@ -262,7 +263,7 @@ export function HealthPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">System Health</h1>
+        <PluginHeader title="System Health" />
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">
             Updated {lastRefresh.toLocaleTimeString()}
