@@ -32,7 +32,7 @@ export function PluginHeader({ title, subtitle, count, actions, meta, search }: 
       </div>
       <div className="flex items-center gap-3">
         {search && (
-          <div className="relative w-52 focus-within:w-96 transition-all duration-200">
+          <div className="relative w-80 focus-within:w-[32rem] transition-all duration-200">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
               value={search.value}
