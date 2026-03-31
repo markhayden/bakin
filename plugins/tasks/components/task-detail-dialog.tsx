@@ -1,12 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
+import { BakinDrawer } from '@/components/bakin-drawer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -125,9 +120,11 @@ interface TaskDetailDrawerProps {
   task: Task | null
   columnId: ColumnId | null
   onClose: () => void
+  /** When true, drawer opens in create mode with empty fields */
+  createMode?: boolean
 }
 
-const COLUMN_IDS: ColumnId[] = ['todo', 'blocked', 'inProgress', 'done']
+const COLUMN_IDS: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
 
 const STEP_DOT_COLORS: Record<string, string> = {
   complete: 'bg-green-400',
@@ -138,7 +135,7 @@ const STEP_DOT_COLORS: Record<string, string> = {
   failed: 'bg-red-600',
 }
 
-export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerProps) {
+export function TaskDetailDrawer({ task, columnId, onClose, createMode = false }: TaskDetailDrawerProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [agent, setAgent] = useState('')
@@ -165,12 +162,25 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
 
   useEffect(() => {
     fetch('/api/plugins/workflows/list')
-      .then((r) => r.ok ? r.json() : { workflows: [] })
-      .then((d) => setWorkflows(d.workflows ?? []))
+      .then((r) => r.ok ? r.json() : { templates: [] })
+      .then((d) => setWorkflows(d.templates ?? []))
       .catch(() => {})
   }, [])
 
   useEffect(() => {
+    if (createMode) {
+      setTitle('')
+      setDescription('')
+      setAgent('')
+      setColumn('todo')
+      setWorkflowId('')
+      setDirty(false)
+      setLogMessage('')
+      setShowAllNotes(false)
+      setWfInstance(null)
+      setWfDefinition(null)
+      return
+    }
     if (task && columnId) {
       setTitle(task.title)
       setDescription(task.description || '')
@@ -197,7 +207,7 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
           .catch(() => {})
       }
     }
-  }, [task, columnId])
+  }, [task, columnId, createMode])
 
   // Derived workflow state (needed by hooks below, so must be before early return)
   const isGatePending = wfInstance?.status === 'pending_approval'
@@ -242,11 +252,41 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
     fetchPriorOutput()
   }, [fetchPriorOutput])
 
-  if (!task || !columnId) return null
+  const isOpen = createMode || (!!task && !!columnId)
+  if (!isOpen) return null
 
   function markDirty() { setDirty(true) }
 
+  async function handleCreate() {
+    if (!title.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/tasks/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim() || undefined,
+          column,
+          assignee: agent || undefined,
+          workflowId: workflowId || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Unknown error' }))
+        toast(data.error || 'Failed to create task', 'error')
+      } else {
+        toast(`Created "${title.trim()}"`, 'success')
+        onClose()
+      }
+    } catch {
+      toast('Network error', 'error')
+    }
+    setSaving(false)
+  }
+
   async function handleSave() {
+    if (createMode) return handleCreate()
     setSaving(true)
     try {
       const res = await fetch('/api/tasks/update', {
@@ -364,12 +404,8 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
   const gateStep = wfDefinition?.steps.find(s => s.id === wfInstance?.currentStepId)
 
   return (
-    <Sheet open={!!task} onOpenChange={(open) => { if (!open) onClose() }}>
-      <SheetContent side="right" className="bg-card border-border sm:max-w-md overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Task Details</SheetTitle>
-        </SheetHeader>
-        <div className="px-4 pb-4 space-y-4">
+    <BakinDrawer open={isOpen} onOpenChange={(open) => { if (!open) onClose() }} title={createMode ? 'New Task' : 'Task Details'}>
+        <div className="space-y-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit-title">Title</Label>
             <Input
@@ -582,26 +618,44 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
             </div>
           )}
 
-          {/* Linked Assets */}
-          <TaskAssets taskId={task.id} />
+          {/* Linked Assets — edit mode only */}
+          {!createMode && task && <TaskAssets taskId={task.id} />}
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={onClose}>
               Cancel
             </Button>
-            <Button size="sm" onClick={handleSave} disabled={saving || !dirty || !title.trim()}>
-              {saving ? 'Saving...' : 'Save'}
+            <Button size="sm" onClick={handleSave} disabled={saving || (!createMode && !dirty) || !title.trim()}>
+              {saving ? 'Saving...' : createMode ? 'Create Task' : 'Save'}
             </Button>
           </div>
 
-          <Separator />
+          {!createMode && <Separator />}
 
-          {/* Task Notes */}
-          <div>
+          {/* Task Notes — edit mode only */}
+          {!createMode && task && <div>
             <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Notes</h3>
 
+            <div className="flex gap-2 mb-3">
+              <Input
+                value={logMessage}
+                onChange={(e) => setLogMessage(e.target.value)}
+                placeholder="Add a note..."
+                className="flex-1 h-8 bg-background"
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddLog() }}
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleAddLog}
+                disabled={addingLog || !logMessage.trim()}
+              >
+                <Send className="size-3.5" />
+              </Button>
+            </div>
+
             {(!task.log || task.log.length === 0) && (
-              <p className="text-xs text-muted-foreground mb-3">No notes yet.</p>
+              <p className="text-xs text-muted-foreground">No notes yet.</p>
             )}
 
             {task.log && task.log.length > 0 && (() => {
@@ -610,14 +664,14 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
               const visible = showAllNotes ? reversed : reversed.slice(0, NOTES_PAGE_SIZE)
               const hasMore = reversed.length > NOTES_PAGE_SIZE
               return (
-                <div className="flex flex-col gap-2 mb-3">
+                <div className="flex flex-col gap-2">
                   {visible.map((entry, i) => (
                     <div key={i} className="rounded-md border border-border bg-background px-3 py-2">
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className="text-xs font-mono text-muted-foreground">{entry.timestamp}</span>
                         <span className="text-xs font-medium text-foreground">{entry.author}</span>
                       </div>
-                      <p className="text-sm text-muted-foreground">{entry.message}</p>
+                      <p className="text-xs text-muted-foreground">{entry.message}</p>
                     </div>
                   ))}
                   {hasMore && !showAllNotes && (
@@ -631,27 +685,8 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
                 </div>
               )
             })()}
-
-            <div className="flex gap-2">
-              <Input
-                value={logMessage}
-                onChange={(e) => setLogMessage(e.target.value)}
-                placeholder="Add a note..."
-                className="flex-1 h-8 bg-background"
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAddLog() }}
-              />
-              <Button
-                variant="outline"
-                size="icon-xs"
-                onClick={handleAddLog}
-                disabled={addingLog || !logMessage.trim()}
-              >
-                <Send className="size-3" />
-              </Button>
-            </div>
-          </div>
+          </div>}
         </div>
-      </SheetContent>
-    </Sheet>
+    </BakinDrawer>
   )
 }

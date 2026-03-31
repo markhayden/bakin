@@ -9,7 +9,8 @@ import { STATUS_BADGE_STYLES } from '../constants'
 import type { Task, ColumnId } from '../types'
 
 function formatRelativeDate(dateStr: string): string {
-  const date = new Date(dateStr)
+  // Parse YYYY-MM-DD as local date, not UTC (appending T00:00 forces local interpretation)
+  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00')
   if (isNaN(date.getTime())) return dateStr
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -29,6 +30,7 @@ function shortId(id: string): string {
 export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string }) {
   const agent = AGENTS.find((a) => a.id === task.agent)
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
+  const isComplete = task.checked || columnId === 'done' || columnId === 'confirmed'
 
   return (
     <div className={className}>
@@ -45,7 +47,7 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
       </div>
 
       {/* Title */}
-      <h3 className={`text-[14px] font-medium leading-[1.4] mb-2 ${task.checked ? 'line-through text-muted-foreground' : 'text-zinc-100'}`}>
+      <h3 className={`text-[14px] font-medium leading-[1.4] mb-2 ${isComplete ? 'line-through text-muted-foreground' : 'text-zinc-100'}`}>
         {task.title}
       </h3>
 
@@ -144,7 +146,7 @@ export function TaskCard({ task, columnId, gateLabel, childTaskId, onAssign, onD
       <div
         onClick={() => onClick(task, columnId as ColumnId)}
         className={`group relative rounded-xl border border-border bg-card cursor-grab active:cursor-grabbing hover:border-zinc-700 hover:shadow-sm shadow-sm shadow-black/20 select-none ${
-          task.checked ? 'opacity-60' : ''
+          task.checked || columnId === 'done' || columnId === 'confirmed' ? 'opacity-60' : ''
         } ${task.blockedReason ? 'border-l-2 border-l-destructive' : ''}`}
       >
       {/* Delete button — top-right, shows on hover */}

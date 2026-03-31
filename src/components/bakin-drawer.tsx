@@ -5,7 +5,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 
 const MIN_WIDTH = 320
 const MAX_WIDTH = 960
-const DEFAULT_WIDTH = 560
+const DEFAULT_WIDTH = 810
 
 export function BakinDrawer({
   open,
@@ -67,7 +67,7 @@ export function BakinDrawer({
           onMouseDown={handleMouseDown}
         />
 
-        <div className="p-6 flex flex-col gap-4 h-full">
+        <div className="px-7 py-6 flex flex-col gap-4 h-full">
           {(title || description) && (
             <SheetHeader className="p-0">
               {title && <SheetTitle>{title}</SheetTitle>}

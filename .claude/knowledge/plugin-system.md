@@ -106,6 +106,9 @@ interface PluginManifest {
 
 `packages/core/src/hooks/hook-registry.ts` — singleton shared across all plugins and core.
 
+### GlobalThis Backing
+The hook registry singleton is backed by `globalThis.__bakinHookRegistry` to survive Next.js webpack module re-evaluation during HMR. Without this, the singleton reference would be lost on hot reload, breaking all hook-based operations (task creation, moves, etc.). The same pattern is used for the plugin registry (`globalThis.__bakinPluginRegistry`) and SSE broadcasting (`globalThis.__bakinBroadcast`). See `src/lib/plugin-registry.ts` for the implementation.
+
 ### How it works
 1. Plugins register hooks in `activate()` via `ctx.hooks.register(name, handler)`
 2. Core modules and other plugins invoke hooks via `getHookRegistry().invoke<R>(name, data)`

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { FileText, Image, Video, Music, Map, Database, Package, Clock, MoreHorizontal, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -70,9 +71,9 @@ export function AssetCard({ asset, onClick, onDelete }: AssetCardProps) {
   const thumbnailVariant = asset.variants?.find(v => v.role === 'thumbnail')
   const previewPath = thumbnailVariant ? thumbnailVariant.path : asset.path
   const previewUrl = `/api/plugins/assets/file?path=${encodeURIComponent(previewPath)}&v=${asset.mtimeMs || ''}`
+  const fullUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}&v=${asset.mtimeMs || ''}`
 
-  return (
-    <>
+  const card = (
     <div
       onClick={onClick}
       className="text-left rounded-lg border border-border bg-card hover:border-[rgba(255,255,255,0.15)] transition-all duration-150 hover:-translate-y-0.5 overflow-hidden flex flex-col cursor-pointer"
@@ -171,13 +172,37 @@ export function AssetCard({ asset, onClick, onDelete }: AssetCardProps) {
         )}
       </div>
     </div>
+  )
 
-    <DeleteAssetDialog
-      open={confirmOpen}
-      filename={asset.filename}
-      onConfirm={() => { setConfirmOpen(false); onDelete(asset.path) }}
-      onCancel={() => setConfirmOpen(false)}
-    />
+  return (
+    <>
+      {showPreview ? (
+        <TooltipProvider delay={400}>
+          <Tooltip>
+            <TooltipTrigger render={<div />}>
+              {card}
+            </TooltipTrigger>
+            <TooltipContent
+              side="right"
+              sideOffset={8}
+              className="p-1 bg-popover border border-border rounded-lg shadow-xl max-w-none w-auto"
+            >
+              <img
+                src={fullUrl}
+                alt={asset.filename}
+                className="max-w-[320px] max-h-[320px] rounded-md object-contain"
+              />
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : card}
+
+      <DeleteAssetDialog
+        open={confirmOpen}
+        filename={asset.filename}
+        onConfirm={() => { setConfirmOpen(false); onDelete(asset.path) }}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </>
   )
 }

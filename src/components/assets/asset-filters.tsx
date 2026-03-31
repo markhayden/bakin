@@ -1,30 +1,32 @@
 'use client'
 
 import { PluginHeader } from '@/components/plugin-header'
-import { FileText, Image, Video, Music, Map, Database, Package, LayoutGrid, List, Trash2 } from 'lucide-react'
+import { FacetFilter } from '@/components/facet-filter'
+import { FileText, Image, Video, Music, Map, Database, Package, LayoutGrid, List, ListFilter, Trash2 } from 'lucide-react'
 
-const TYPE_TABS = [
-  { id: 'all', label: 'All', icon: LayoutGrid },
-  { id: 'text', label: 'Text', icon: FileText },
-  { id: 'images', label: 'Images', icon: Image },
-  { id: 'video', label: 'Video', icon: Video },
-  { id: 'audio', label: 'Audio', icon: Music },
-  { id: 'plans', label: 'Plans', icon: Map },
-  { id: 'data', label: 'Data', icon: Database },
-  { id: 'other', label: 'Other', icon: Package },
-] as const
+const TYPE_OPTIONS = [
+  { value: 'text', label: 'Text', icon: <FileText className="size-3.5" /> },
+  { value: 'images', label: 'Images', icon: <Image className="size-3.5" /> },
+  { value: 'video', label: 'Video', icon: <Video className="size-3.5" /> },
+  { value: 'audio', label: 'Audio', icon: <Music className="size-3.5" /> },
+  { value: 'plans', label: 'Plans', icon: <Map className="size-3.5" /> },
+  { value: 'data', label: 'Data', icon: <Database className="size-3.5" /> },
+  { value: 'other', label: 'Other', icon: <Package className="size-3.5" /> },
+]
 
 interface AssetFiltersProps {
-  typeFilter: string
-  onTypeChange: (type: string) => void
+  typeFilter: string[]
+  onTypeChange: (types: string[]) => void
   search: string
   onSearchChange: (q: string) => void
   assetCount: number
   view: 'grid' | 'list'
   onViewChange: (view: 'grid' | 'list') => void
+  isTrash: boolean
+  onTrashToggle: () => void
 }
 
-export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange, assetCount, view, onViewChange }: AssetFiltersProps) {
+export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange, assetCount, view, onViewChange, isTrash, onTrashToggle }: AssetFiltersProps) {
   return (
     <div className="flex flex-col gap-3">
       <PluginHeader
@@ -34,30 +36,19 @@ export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange,
       />
 
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1 w-fit">
-          {TYPE_TABS.map(tab => {
-            const Icon = tab.icon
-            const isActive = typeFilter === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => onTypeChange(tab.id)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                  isActive
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Icon className="size-3.5" />
-                {tab.label}
-              </button>
-            )
-          })}
+        <div className="flex items-center gap-3">
+          <ListFilter className="size-3.5 text-muted-foreground shrink-0" />
+          <FacetFilter
+            label="Type"
+            options={TYPE_OPTIONS}
+            selected={typeFilter}
+            onChange={onTypeChange}
+          />
         </div>
 
         <div className="flex items-center gap-2">
           {/* View toggle — hidden in trash view */}
-          {typeFilter !== 'trash' && (
+          {!isTrash && (
             <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
               <button
                 onClick={() => onViewChange('grid')}
@@ -85,9 +76,9 @@ export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange,
           )}
 
           <button
-            onClick={() => onTypeChange('trash')}
+            onClick={onTrashToggle}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-              typeFilter === 'trash'
+              isTrash
                 ? 'bg-muted/50 text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
