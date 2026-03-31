@@ -180,7 +180,7 @@ export function TaskLogTable({ currentTasks }: TaskLogTableProps) {
               onClick={() => setStatusFilter(tab.id)}
               className={`px-2 py-0.5 rounded-md text-xs font-medium transition-all ${
                 isActive
-                  ? 'bg-background text-foreground shadow-sm'
+                  ? 'bg-accent text-accent-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >

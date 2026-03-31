@@ -294,7 +294,7 @@ export function KanbanBoard() {
                 onClick={() => setView('kanban')}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                   view === 'kanban'
-                    ? 'bg-background text-foreground shadow-sm'
+                    ? 'bg-accent text-accent-foreground'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -305,7 +305,7 @@ export function KanbanBoard() {
                 onClick={() => setView('table')}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                   view === 'table'
-                    ? 'bg-background text-foreground shadow-sm'
+                    ? 'bg-accent text-accent-foreground'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
