@@ -24,6 +24,16 @@ export function withTaskboardLock<T>(fn: () => T | Promise<T>): Promise<T> {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Returns today's date as YYYY-MM-DD in the server's local timezone (not UTC). */
+export function localDateString(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 const COLUMN_TO_HEADER: Record<ColumnId, string> = {
@@ -46,9 +56,9 @@ export const VALID_TRANSITIONS: Record<ColumnId, ColumnId[]> = {
   todo:       ['inProgress', 'blocked', 'done', 'backlog'],
   inProgress: ['review', 'done', 'blocked', 'todo'],
   blocked:    ['todo', 'inProgress', 'backlog'],
-  review:     ['inProgress', 'todo'],
-  done:       ['confirmed', 'todo'],
-  confirmed:  [],
+  review:     ['done', 'inProgress', 'todo'],
+  done:       ['confirmed', 'todo', 'inProgress'],
+  confirmed:  ['done', 'todo'],
 }
 
 // ---------------------------------------------------------------------------
@@ -154,14 +164,14 @@ export function createTask(title: string, column?: string, assignee?: string, de
       title,
       agent: assignee,
       createdBy,
-      checked: colId === 'done',
+      checked: colId === 'done' || colId === 'confirmed',
       description,
       parentId,
       workflowId,
       projectId,
     }
-    if (colId === 'inProgress' || colId === 'done') {
-      task.date = new Date().toISOString().split('T')[0]
+    if (colId === 'inProgress' || colId === 'review' || colId === 'done' || colId === 'confirmed') {
+      task.date = localDateString()
     }
     columns[colId].push(task)
     writeTaskboard(columns)
@@ -192,9 +202,9 @@ export function moveTask(identifier: string, to: string, from?: string): Promise
     }
 
     columns[colId].splice(idx, 1)
-    task.checked = toCol === 'done'
-    if (toCol === 'inProgress' || toCol === 'review' || toCol === 'done') {
-      task.date = new Date().toISOString().split('T')[0]
+    task.checked = toCol === 'done' || toCol === 'confirmed'
+    if (toCol === 'inProgress' || toCol === 'review' || toCol === 'done' || toCol === 'confirmed') {
+      task.date = localDateString()
     }
     if (toCol !== 'blocked') {
       task.blockedReason = undefined
@@ -286,9 +296,9 @@ export function updateTask(
         throw new Error('Cannot move to done: task has no log entries. Log your work first via POST /api/tasks/log')
       }
       columns[colId].splice(idx, 1)
-      task.checked = updates.column === 'done'
-      if (updates.column === 'inProgress' || updates.column === 'review' || updates.column === 'done') {
-        task.date = new Date().toISOString().split('T')[0]
+      task.checked = updates.column === 'done' || updates.column === 'confirmed'
+      if (updates.column === 'inProgress' || updates.column === 'review' || updates.column === 'done' || updates.column === 'confirmed') {
+        task.date = localDateString()
       }
       columns[updates.column].push(task)
     }
@@ -345,7 +355,7 @@ export function moveTaskToInProgress(identifier: string, agentTag?: string): Pro
 
     const { task, colId, idx } = found
     columns[colId].splice(idx, 1)
-    task.date = new Date().toISOString().split('T')[0]
+    task.date = localDateString()
     if (agentTag && !task.agent) task.agent = agentTag
     columns.inProgress.push(task)
     writeTaskboard(columns)

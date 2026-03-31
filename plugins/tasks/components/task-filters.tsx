@@ -1,18 +1,19 @@
 'use client'
 
 import { AgentAvatar } from '@/components/agent-avatar'
-import { COLUMN_CONFIG } from '../constants'
+import { FacetFilter } from '@/components/facet-filter'
+import { ListFilter } from 'lucide-react'
+import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import type { ColumnId } from '../types'
 
 const AGENT_IDS = ['roscoe', 'basil', 'pixel', 'rolo', 'patch', 'scout', 'nemo', 'zen']
 
-const STATUS_TABS: { id: string; label: string }[] = [
-  { id: 'all', label: 'All' },
-  ...(['todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed'] as ColumnId[]).map(id => ({
-    id,
+const STATUS_OPTIONS: { value: string; label: string; icon: React.ReactNode }[] =
+  (['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed'] as ColumnId[]).map(id => ({
+    value: id,
     label: COLUMN_CONFIG[id].label,
-  })),
-]
+    icon: <span className={`size-2 rounded-full ${STATUS_DOT_COLORS[id]}`} />,
+  }))
 
 function AgentPill({ agentId, isActive, onClick }: { agentId: string; isActive: boolean; onClick: () => void }) {
   return (
@@ -32,8 +33,8 @@ function AgentPill({ agentId, isActive, onClick }: { agentId: string; isActive: 
 interface TaskFiltersProps {
   agentFilter: string
   onAgentChange: (agent: string) => void
-  statusFilter?: string
-  onStatusChange?: (status: string) => void
+  statusFilter?: string[]
+  onStatusChange?: (statuses: string[]) => void
   showStatusFilter?: boolean
   actions?: React.ReactNode
 }
@@ -45,55 +46,42 @@ export function TaskFilters({
   actions,
 }: TaskFiltersProps) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3 overflow-x-auto">
-        {/* Agent filter — avatars */}
-        <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
-          <button
-            onClick={() => onAgentChange('all')}
-            className={`px-2 py-0.5 rounded-md text-xs font-medium transition-all ${
-              agentFilter === 'all'
-                ? 'bg-accent text-accent-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            All
-          </button>
-          {AGENT_IDS.map(id => (
-            <AgentPill
-              key={id}
-              agentId={id}
-              isActive={agentFilter === id}
-              onClick={() => onAgentChange(id)}
-            />
-          ))}
-        </div>
-
-        {/* Right-aligned actions (view toggle, new task, etc.) */}
-        {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
+    <div className="flex items-center gap-3 overflow-x-auto">
+      <ListFilter className="size-3.5 text-muted-foreground shrink-0" />
+      {/* Agent filter — avatars */}
+      <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
+        <button
+          onClick={() => onAgentChange('all')}
+          className={`px-2 py-0.5 rounded-md text-xs font-medium transition-all ${
+            agentFilter === 'all'
+              ? 'bg-accent text-accent-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          All
+        </button>
+        {AGENT_IDS.map(id => (
+          <AgentPill
+            key={id}
+            agentId={id}
+            isActive={agentFilter === id}
+            onClick={() => onAgentChange(id)}
+          />
+        ))}
       </div>
 
-      {/* Status filter — only in table view */}
+      {/* Status facet filter — only in table view */}
       {showStatusFilter && onStatusChange && (
-        <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5 w-fit">
-          {STATUS_TABS.map(tab => {
-            const isActive = statusFilter === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => onStatusChange(tab.id)}
-                className={`px-2 py-0.5 rounded-md text-xs font-medium transition-all ${
-                  isActive
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
+        <FacetFilter
+          label="Status"
+          options={STATUS_OPTIONS}
+          selected={statusFilter ?? []}
+          onChange={onStatusChange}
+        />
       )}
+
+      {/* Right-aligned actions (view toggle, new task, etc.) */}
+      {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
     </div>
   )
 }

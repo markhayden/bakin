@@ -14,7 +14,6 @@ import {
 import { arrayMove } from '@dnd-kit/sortable'
 import { KanbanColumn } from './kanban-column'
 import { TaskCardOverlay } from './task-card'
-import { NewTaskDialog } from './new-task-dialog'
 import { DeleteTaskDialog } from './delete-task-dialog'
 import { TaskDetailDrawer } from './task-detail-dialog'
 import { TaskMetrics } from './task-metrics'
@@ -24,10 +23,12 @@ import { TaskLogTable } from './task-log-table'
 import { useTaskFilters } from '../hooks/use-task-filters'
 import { WithLoading } from '@/components/layout/skeleton-loader'
 import { useContentStore } from '@/hooks/use-content-store'
+import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import { parseTasks } from '../parser'
 import { toast } from '@/hooks/use-toast'
 import { useGateStatus } from './use-gate-status'
-import { Kanban, Table2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Kanban, Table2, Plus } from 'lucide-react'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
 const COLUMN_ORDER: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
@@ -93,23 +94,24 @@ export function KanbanBoard() {
       ...columns,
       confirmed: columns.confirmed.filter(t => {
         if (!t.date) return true
-        return new Date(t.date).getTime() >= cutoff
+        // Parse YYYY-MM-DD as local time, not UTC
+        const d = new Date(t.date.includes('T') ? t.date : t.date + 'T00:00')
+        return d.getTime() >= cutoff
       }),
     }
   }, [columns])
 
   const hiddenConfirmedCount = columns.confirmed.length - displayColumns.confirmed.length
 
-  // Search / filter
-  const {
-    search, setSearch,
-    agentFilter, setAgentFilter,
-    filteredColumns,
-    allTasksFlat,
-  } = useTaskFilters(displayColumns)
+  // URL-backed filter & view state
+  const [view, setView] = useQueryState('view', 'kanban')
+  const [search, setSearch] = useQueryState('q', '')
+  const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
+  const [statusFilter, setStatusFilter] = useQueryArrayState('status')
 
-  // View mode: kanban or table
-  const [view, setView] = useState<'kanban' | 'table'>('kanban')
+  const { filteredColumns, allTasksFlat } = useTaskFilters(displayColumns, {
+    search, agentFilter, statusFilter,
+  })
 
   // Collect workflow task IDs for gate status polling
   const workflowTaskIds = useMemo(() => {
@@ -258,6 +260,7 @@ export function KanbanBoard() {
   }, [])
 
   const [detailTask, setDetailTask] = useState<{ task: Task; columnId: ColumnId } | null>(null)
+  const [createMode, setCreateMode] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
 
   const confirmDelete = useCallback(async () => {
@@ -295,6 +298,9 @@ export function KanbanBoard() {
           <TaskFilters
             agentFilter={agentFilter}
             onAgentChange={setAgentFilter}
+            statusFilter={statusFilter}
+            onStatusChange={setStatusFilter}
+            showStatusFilter={view === 'table'}
             actions={
               <div className="flex items-center gap-2">
                 <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
@@ -321,7 +327,10 @@ export function KanbanBoard() {
                     Log
                   </button>
                 </div>
-                <NewTaskDialog />
+                <Button size="sm" onClick={() => setCreateMode(true)}>
+                  <Plus className="size-4" />
+                  New Task
+                </Button>
               </div>
             }
           />
@@ -364,14 +373,15 @@ export function KanbanBoard() {
           </div>
         ) : (
           <div className="flex-1 overflow-auto min-h-0 px-6 pb-[25px]">
-            <TaskLogTable currentTasks={allTasksFlat} />
+            <TaskLogTable currentTasks={allTasksFlat} statusFilter={statusFilter} />
           </div>
         )}
 
         <TaskDetailDrawer
           task={detailTask?.task ?? null}
           columnId={detailTask?.columnId ?? null}
-          onClose={() => setDetailTask(null)}
+          createMode={createMode}
+          onClose={() => { setDetailTask(null); setCreateMode(false) }}
         />
 
         <DeleteTaskDialog

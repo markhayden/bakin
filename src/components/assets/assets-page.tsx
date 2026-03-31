@@ -11,7 +11,8 @@ import { AssetFilters } from './asset-filters'
 import type { AssetMeta } from '@/types'
 
 export function AssetsPage() {
-  const [typeFilter, setTypeFilter] = useState('all')
+  const [typeFilter, setTypeFilter] = useState<string[]>([])
+  const [isTrash, setIsTrash] = useState(false)
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [search, setSearch] = useState('')
   const [selectedAsset, setSelectedAsset] = useState<AssetMeta | null>(null)
@@ -19,8 +20,9 @@ export function AssetsPage() {
   const router = useRouter()
   const highlightHandled = useRef(false)
 
-  const isTrashView = typeFilter === 'trash'
-  const { assets, loading, deleteAsset } = useAssets({ type: isTrashView ? 'all' : typeFilter })
+  // Pass first selected type or 'all' to the hook (hook expects single string)
+  const hookType = typeFilter.length === 0 ? 'all' : typeFilter.length === 1 ? typeFilter[0] : 'all'
+  const { assets, loading, deleteAsset } = useAssets({ type: isTrash ? 'all' : hookType })
   const trash = useTrash()
 
   // Auto-open asset from ?highlight= deep link
@@ -38,20 +40,23 @@ export function AssetsPage() {
     }
   }, [assets, loading, searchParams, router])
 
-  const filtered = search
-    ? assets.filter(a => {
-        const q = search.toLowerCase()
-        return (
-          a.filename.toLowerCase().includes(q) ||
-          a.metadata.description?.toLowerCase().includes(q) ||
-          a.metadata.tags?.some(t => t.toLowerCase().includes(q)) ||
-          a.metadata.agent.toLowerCase().includes(q)
-        )
-      })
-    : assets
+  // Client-side multi-type filtering when multiple types selected
+  let filtered = assets
+  if (typeFilter.length > 1) {
+    filtered = filtered.filter(a => typeFilter.includes(a.type))
+  }
+  if (search) {
+    const q = search.toLowerCase()
+    filtered = filtered.filter(a =>
+      a.filename.toLowerCase().includes(q) ||
+      a.metadata.description?.toLowerCase().includes(q) ||
+      a.metadata.tags?.some(t => t.toLowerCase().includes(q)) ||
+      a.metadata.agent.toLowerCase().includes(q)
+    )
+  }
 
-  const activeCount = isTrashView ? trash.items.length : filtered.length
-  const activeLoading = isTrashView ? trash.loading : loading
+  const activeCount = isTrash ? trash.items.length : filtered.length
+  const activeLoading = isTrash ? trash.loading : loading
 
   return (
     <div className="p-6 flex flex-col flex-1 gap-4">
@@ -63,13 +68,15 @@ export function AssetsPage() {
         assetCount={activeCount}
         view={view}
         onViewChange={setView}
+        isTrash={isTrash}
+        onTrashToggle={() => setIsTrash(prev => !prev)}
       />
 
       {activeLoading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="text-sm text-muted-foreground">Loading{isTrashView ? ' trash' : ' assets'}...</div>
+          <div className="text-sm text-muted-foreground">Loading{isTrash ? ' trash' : ' assets'}...</div>
         </div>
-      ) : isTrashView ? (
+      ) : isTrash ? (
         <TrashGrid
           items={trash.items}
           onRestore={trash.restoreAsset}
@@ -90,7 +97,7 @@ export function AssetsPage() {
         />
       )}
 
-      {!isTrashView && (
+      {!isTrash && (
         <AssetDetail
           asset={selectedAsset}
           onClose={() => setSelectedAsset(null)}

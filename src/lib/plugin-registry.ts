@@ -28,8 +28,9 @@ import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 
 const log = createLogger('plugin-registry')
 
-/** Singleton hook registry shared across all plugins and core modules */
-const hookRegistry = new HookRegistry()
+/** Singleton hook registry shared across all plugins and core modules.
+ *  Backed by globalThis to survive Next.js webpack re-evaluation. */
+const hookRegistry: HookRegistry = (globalThis as any).__bakinHookRegistry ??= new HookRegistry()
 
 /** Access the hook registry from core modules to call hooks */
 export function getHookRegistry(): HookRegistry {

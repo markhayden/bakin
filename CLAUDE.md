@@ -164,6 +164,13 @@ Plugins communicate exclusively through the HookRegistry (`packages/core/src/hoo
 ### Plugin Settings
 Each plugin declares a `settingsSchema` with typed fields (string, number, boolean, select). The settings page at `/settings` dynamically fetches and renders schemas via `PluginSettingsRenderer`. Values persisted at `~/.bakin/plugin-settings/{pluginId}.json`, accessible in plugins via `ctx.getSettings<T>()`.
 
+### URL State & Deep Linking
+All user-facing filter/view state **must** be backed by URL query parameters so pages are bookmarkable and support browser back/forward. Use `useQueryState(key, default)` for single values and `useQueryArrayState(key)` for arrays (comma-separated). Params are omitted when at their default value. Pages using these hooks must wrap their content component in `<Suspense>`. See `.claude/knowledge/url-state-deep-linking.md` for conventions and implementation status.
+
+### Shared UI Components
+- **`PluginHeader`** (`src/components/plugin-header.tsx`) — Consistent page title + count badge + search + actions slot. Used by all 9 plugins.
+- **`FacetFilter`** (`src/components/facet-filter.tsx`) — Popover-based multi-select filter with removable chips. Replaces long tab bars for 4+ filter options. Always back with `useQueryArrayState`.
+
 ## Reference
 
 - **Specs:** `.claude/specs/` — detailed specs for each hardening phase

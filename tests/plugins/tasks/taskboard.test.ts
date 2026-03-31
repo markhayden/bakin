@@ -14,7 +14,7 @@ vi.mock('../../../plugins/workflows/runtime', () => ({
   cancelInstance: vi.fn(),
 }))
 
-import { moveTask, createTask, readTaskboard, addTaskLog, blockTask, VALID_TRANSITIONS } from '../../../plugins/tasks/taskboard'
+import { moveTask, createTask, readTaskboard, addTaskLog, blockTask, VALID_TRANSITIONS, localDateString } from '../../../plugins/tasks/taskboard'
 import type { ColumnId } from '../../../plugins/tasks/types'
 
 function seedTaskboard(md: string) {
@@ -60,8 +60,8 @@ describe('VALID_TRANSITIONS', () => {
     expect(VALID_TRANSITIONS.review).toContain('todo')
   })
 
-  it('does NOT allow review → done directly', () => {
-    expect(VALID_TRANSITIONS.review).not.toContain('done')
+  it('allows review → done', () => {
+    expect(VALID_TRANSITIONS.review).toContain('done')
   })
 
   it('does NOT allow review → blocked', () => {
@@ -72,8 +72,13 @@ describe('VALID_TRANSITIONS', () => {
     expect(VALID_TRANSITIONS.todo).not.toContain('review')
   })
 
-  it('confirmed is terminal', () => {
-    expect(VALID_TRANSITIONS.confirmed).toHaveLength(0)
+  it('allows confirmed → done and todo', () => {
+    expect(VALID_TRANSITIONS.confirmed).toContain('done')
+    expect(VALID_TRANSITIONS.confirmed).toContain('todo')
+  })
+
+  it('allows done → inProgress', () => {
+    expect(VALID_TRANSITIONS.done).toContain('inProgress')
   })
 })
 
@@ -142,12 +147,16 @@ describe('moveTask — review column', () => {
     expect(board.columns.todo).toHaveLength(1)
   })
 
-  it('rejects review → done (invalid transition)', async () => {
+  it('allows review → done (with log)', async () => {
     seedColumns({
       review: [makeTask('aaa11111', 'review', { log: true })],
     })
 
-    await expect(moveTask('aaa11111', 'done')).rejects.toThrow('Invalid transition')
+    await moveTask('aaa11111', 'done')
+
+    const board = readTaskboard()
+    expect(board.columns.done).toHaveLength(1)
+    expect(board.columns.done[0].checked).toBe(true)
   })
 
   it('rejects review → blocked (invalid transition)', async () => {
@@ -203,12 +212,34 @@ describe('moveTask — existing transitions still work', () => {
     expect(board.columns.confirmed).toHaveLength(1)
   })
 
-  it('rejects moves out of confirmed (terminal)', async () => {
+  it('allows moves from confirmed to done', async () => {
+    seedColumns({
+      confirmed: ['- [x] [aaa11111] Task aaa11111 @pixel\n  [2026-03-20 10:00 pixel] Did work'],
+    })
+
+    await moveTask('aaa11111', 'done')
+
+    const board = readTaskboard()
+    expect(board.columns.done).toHaveLength(1)
+  })
+
+  it('allows moves from confirmed to todo', async () => {
     seedColumns({
       confirmed: ['- [x] [aaa11111] Task aaa11111 @pixel'],
     })
 
-    await expect(moveTask('aaa11111', 'todo')).rejects.toThrow('Invalid transition')
+    await moveTask('aaa11111', 'todo')
+
+    const board = readTaskboard()
+    expect(board.columns.todo).toHaveLength(1)
+  })
+
+  it('rejects confirmed → blocked (invalid transition)', async () => {
+    seedColumns({
+      confirmed: ['- [x] [aaa11111] Task aaa11111 @pixel'],
+    })
+
+    await expect(moveTask('aaa11111', 'blocked')).rejects.toThrow('Invalid transition')
   })
 })
 
@@ -255,5 +286,98 @@ describe('serialization round-trip', () => {
     // Verify the serialized markdown contains the review header
     const md = mockFiles['TASKBOARD.md']
     expect(md).toContain('## 🔍 Review')
+  })
+})
+
+describe('localDateString', () => {
+  it('returns YYYY-MM-DD format', () => {
+    const result = localDateString()
+    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+
+  it('matches local date, not UTC', () => {
+    const result = localDateString()
+    const now = new Date()
+    const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    expect(result).toBe(expected)
+  })
+
+  it('pads single-digit months and days', () => {
+    // The function always pads — verify format even if today is double-digit
+    const result = localDateString()
+    const parts = result.split('-')
+    expect(parts[1]).toHaveLength(2)
+    expect(parts[2]).toHaveLength(2)
+  })
+})
+
+describe('createTask — date handling', () => {
+  beforeEach(() => {
+    Object.keys(mockFiles).forEach(k => delete mockFiles[k])
+  })
+
+  it('sets date for inProgress tasks', async () => {
+    seedColumns({})
+    const task = await createTask('Test task', 'inProgress', 'pixel')
+
+    const board = readTaskboard()
+    const created = board.columns.inProgress.find(t => t.id === task.id)
+    expect(created?.date).toBe(localDateString())
+  })
+
+  it('sets date for done tasks', async () => {
+    seedColumns({})
+    const task = await createTask('Test task', 'done', 'pixel')
+
+    const board = readTaskboard()
+    const created = board.columns.done.find(t => t.id === task.id)
+    expect(created?.date).toBe(localDateString())
+  })
+
+  it('does not set date for todo tasks', async () => {
+    seedColumns({})
+    const task = await createTask('Test task', 'todo', 'pixel')
+
+    const board = readTaskboard()
+    const created = board.columns.todo.find(t => t.id === task.id)
+    expect(created?.date).toBeUndefined()
+  })
+
+  it('sets checked=true for done column', async () => {
+    seedColumns({})
+    const task = await createTask('Test task', 'done', 'pixel')
+
+    const board = readTaskboard()
+    const created = board.columns.done.find(t => t.id === task.id)
+    expect(created?.checked).toBe(true)
+  })
+})
+
+describe('moveTask — date and checked handling', () => {
+  beforeEach(() => {
+    Object.keys(mockFiles).forEach(k => delete mockFiles[k])
+  })
+
+  it('sets date when moving to confirmed', async () => {
+    seedColumns({
+      done: ['- [x] [aaa11111] Task aaa11111 @pixel\n  [2026-03-20 10:00 pixel] Did work'],
+    })
+
+    await moveTask('aaa11111', 'confirmed')
+
+    const board = readTaskboard()
+    expect(board.columns.confirmed[0].date).toBe(localDateString())
+    expect(board.columns.confirmed[0].checked).toBe(true)
+  })
+
+  it('sets checked=false when moving from done back to todo', async () => {
+    seedColumns({
+      done: ['- [x] [aaa11111] Task aaa11111 @pixel\n  [2026-03-20 10:00 pixel] Did work'],
+    })
+
+    await moveTask('aaa11111', 'todo')
+
+    const board = readTaskboard()
+    expect(board.columns.todo[0].checked).toBe(false)
   })
 })

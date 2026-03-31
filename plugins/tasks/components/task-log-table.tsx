@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table'
-import { STATUS_BADGE_STYLES, COLUMN_CONFIG } from '../constants'
+import { STATUS_BADGE_STYLES } from '../constants'
 import { AGENTS } from '@/lib/constants'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { ArrowUpDown } from 'lucide-react'
@@ -48,25 +48,18 @@ function getCompletedAt(t: TaskRow): string | undefined {
 type SortField = 'title' | 'agent' | 'status' | 'createdAt' | 'completedAt'
 type SortDir = 'asc' | 'desc'
 
-const STATUS_TABS: { id: string; label: string }[] = [
-  { id: 'all', label: 'All' },
-  ...(['todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed'] as ColumnId[]).map(id => ({
-    id,
-    label: COLUMN_CONFIG[id].label,
-  })),
-]
-
 interface TaskLogTableProps {
   /** Pre-filtered tasks from the parent (search + agent already applied) */
   currentTasks: FlatTask[]
+  /** Status filter from parent (empty = all) */
+  statusFilter: string[]
 }
 
-export function TaskLogTable({ currentTasks }: TaskLogTableProps) {
+export function TaskLogTable({ currentTasks, statusFilter }: TaskLogTableProps) {
   const [auditTasks, setAuditTasks] = useState<HistoricalTask[]>([])
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<SortField>('completedAt')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
-  const [statusFilter, setStatusFilter] = useState('all')
 
   useEffect(() => {
     async function fetchAudit() {
@@ -120,10 +113,10 @@ export function TaskLogTable({ currentTasks }: TaskLogTableProps) {
     return Array.from(merged.values())
   }, [currentTasks, auditTasks])
 
-  // Status filter (table-specific — search + agent already applied by parent)
+  // Status filter from parent facet
   const filtered = useMemo(() => {
-    if (statusFilter === 'all') return allTasks
-    return allTasks.filter(t => t.status === statusFilter)
+    if (statusFilter.length === 0) return allTasks
+    return allTasks.filter(t => statusFilter.includes(t.status))
   }, [allTasks, statusFilter])
 
   // Sort
@@ -170,26 +163,6 @@ export function TaskLogTable({ currentTasks }: TaskLogTableProps) {
 
   return (
     <div className="flex flex-col gap-3 h-full">
-      {/* Status tabs — table-specific filter */}
-      <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5 w-fit">
-        {STATUS_TABS.map(tab => {
-          const isActive = statusFilter === tab.id
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setStatusFilter(tab.id)}
-              className={`px-2 py-0.5 rounded-md text-xs font-medium transition-all ${
-                isActive
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
-
       <div className="flex-1 overflow-auto min-h-0">
         {loading ? (
           <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
