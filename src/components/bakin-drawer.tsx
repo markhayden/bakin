@@ -1,7 +1,8 @@
 'use client'
 
 import { useRef, useState, useCallback } from 'react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetClose, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { X } from 'lucide-react'
 
 const MIN_WIDTH = 320
 const MAX_WIDTH = 960
@@ -12,6 +13,7 @@ export function BakinDrawer({
   onOpenChange,
   title,
   description,
+  actions,
   children,
   defaultWidth = DEFAULT_WIDTH,
 }: {
@@ -19,6 +21,7 @@ export function BakinDrawer({
   onOpenChange: (open: boolean) => void
   title?: React.ReactNode
   description?: React.ReactNode
+  actions?: React.ReactNode
   children: React.ReactNode
   defaultWidth?: number
 }) {
@@ -59,6 +62,7 @@ export function BakinDrawer({
       <SheetContent
         side="right"
         className="overflow-y-auto p-0"
+        showCloseButton={false}
         style={{ width: `${width}px`, maxWidth: `min(${MAX_WIDTH}px, 100vw)` }}
       >
         {/* Drag handle — left edge */}
@@ -68,9 +72,18 @@ export function BakinDrawer({
         />
 
         <div className="px-7 py-6 flex flex-col gap-4 h-full">
-          {(title || description) && (
+          {(title || description || actions) && (
             <SheetHeader className="p-0">
-              {title && <SheetTitle>{title}</SheetTitle>}
+              <div className="flex items-center justify-between gap-2">
+                {title && <SheetTitle>{title}</SheetTitle>}
+                <div className="flex items-center gap-1 shrink-0">
+                  {actions}
+                  <SheetClose className="p-1.5 rounded-md hover:bg-accent transition-colors text-muted-foreground hover:text-foreground">
+                    <X className="size-4" />
+                    <span className="sr-only">Close</span>
+                  </SheetClose>
+                </div>
+              </div>
               {description && <SheetDescription>{description}</SheetDescription>}
             </SheetHeader>
           )}

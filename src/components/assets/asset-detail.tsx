@@ -221,27 +221,27 @@ export function AssetDetail({ asset, onClose, onDelete, showOpenInAssets }: Asse
           </div>
 
           {/* Sidebar info */}
-          <div className="lg:w-64 shrink-0 flex flex-col gap-3 text-sm overflow-y-auto">
+          <div className="lg:w-64 shrink-0 flex flex-col gap-2 text-xs overflow-y-auto overflow-x-hidden">
             {/* Agent */}
-            <div className="flex items-center gap-2">
-              <User className="size-3.5 text-muted-foreground" />
+            <div className="flex items-center gap-1.5">
+              <User className="size-3 text-muted-foreground" />
               <span className="text-muted-foreground">Agent:</span>
               <span className="text-foreground">{asset.metadata.agent}</span>
             </div>
 
             {/* Created */}
-            <div className="flex items-center gap-2">
-              <Clock className="size-3.5 text-muted-foreground" />
+            <div className="flex items-center gap-1.5">
+              <Clock className="size-3 text-muted-foreground" />
               <span className="text-muted-foreground">Created:</span>
-              <span className="text-foreground text-xs">
+              <span className="text-foreground">
                 {new Date(asset.metadata.created).toLocaleString()}
               </span>
             </div>
 
             {/* Tool */}
             {asset.metadata.tool && (
-              <div className="flex items-center gap-2">
-                <Wrench className="size-3.5 text-muted-foreground" />
+              <div className="flex items-center gap-1.5">
+                <Wrench className="size-3 text-muted-foreground" />
                 <span className="text-muted-foreground">Tool:</span>
                 <span className="text-foreground">{asset.metadata.tool}</span>
               </div>
@@ -249,12 +249,12 @@ export function AssetDetail({ asset, onClose, onDelete, showOpenInAssets }: Asse
 
             {/* Task link */}
             {asset.metadata.taskId && (
-              <div className="flex items-center gap-2">
-                <ExternalLink className="size-3.5 text-muted-foreground" />
+              <div className="flex items-center gap-1.5">
+                <ExternalLink className="size-3 text-muted-foreground" />
                 <span className="text-muted-foreground">Task:</span>
                 <a
                   href={`/tasks?taskId=${asset.metadata.taskId}`}
-                  className="text-blue-400 hover:text-blue-300 text-xs"
+                  className="text-blue-400 hover:text-blue-300"
                 >
                   {asset.metadata.taskId.slice(0, 8)}...
                 </a>
@@ -262,7 +262,7 @@ export function AssetDetail({ asset, onClose, onDelete, showOpenInAssets }: Asse
             )}
 
             {/* Size */}
-            <div className="text-xs text-muted-foreground">
+            <div className="text-muted-foreground">
               {formatSize(asset.size)} &middot; {asset.mimeType}
             </div>
 
