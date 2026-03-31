@@ -558,7 +558,6 @@ export function TaskDetailDrawer({ task, columnId, onClose }: TaskDetailDrawerPr
                     size="sm"
                     onClick={handleApproveGate}
                     disabled={gateLoading}
-                    className="bg-green-600 hover:bg-green-700 text-white"
                   >
                     <Check className="size-3 mr-1" />
                     {gateLoading ? 'Approving...' : 'Approve'}

@@ -214,7 +214,6 @@ export function ItemDetailPanel({ item, onClose, onUpdated }: Props) {
                     <Button
                       onClick={handleApprove}
                       disabled={loading}
-                      className="bg-emerald-600 hover:bg-emerald-700"
                     >
                       <Check className="w-4 h-4 mr-1.5" />
                       Approve & Publish

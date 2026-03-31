@@ -11,7 +11,6 @@ import { createServer } from 'http'
 import next from 'next'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
-import { execSync } from 'child_process'
 
 import { MarkdownStorageAdapter } from './src/lib/storage/markdown-adapter'
 import { BakinEventBus } from './src/lib/events/event-bus'
@@ -44,13 +43,9 @@ import { recordRequest } from './src/core/request-log'
 
 const log = createLogger('server')
 
-// Git version — computed once at startup
-let BAKIN_VERSION = 'unknown'
-try {
-  const hash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
-  const dirty = execSync('git status --porcelain', { encoding: 'utf-8' }).trim() ? '-dirty' : ''
-  BAKIN_VERSION = `${hash}${dirty}`
-} catch { /* not a git repo or git not installed */ }
+import { APP_VERSION } from './packages/core/src/constants'
+
+const BAKIN_VERSION = APP_VERSION
 
 const dev = process.env.NODE_ENV !== 'production'
 const port = Number(process.env.PORT || 3737)
