@@ -35,14 +35,13 @@ export interface ScheduleJob {
 export interface RunEntry {
   runId: string
   timestamp: string
-  status: string
+  status: 'success' | 'failure' | 'skipped'
   taskId?: string
   error?: string
 }
 
 interface UseScheduleOptions {
   agent?: string
-  bakinOnly?: boolean
 }
 
 export function useScheduleJobs(options: UseScheduleOptions = {}) {
@@ -93,7 +92,6 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
   // Apply client-side filters
   const opts = options
   const filtered = jobs.filter(j => {
-    if (opts.bakinOnly && !j.isBakinJob) return false
     if (opts.agent && j.agentId !== opts.agent) return false
     return true
   })

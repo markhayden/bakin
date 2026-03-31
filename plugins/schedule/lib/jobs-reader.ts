@@ -91,6 +91,7 @@ export function mergeJob(job: OpenClawJob, sidecar: BakinJobMeta | undefined): M
     consecutiveFailures: meta?.consecutiveFailures ?? 0,
     lastTaskId: meta?.lastTaskId,
     tz: meta?.tz ?? job.schedule.tz,
+    createdAt: meta?.createdAt ?? job.createdAt,
 
     // Computed
     humanSchedule: schedType === 'cron'

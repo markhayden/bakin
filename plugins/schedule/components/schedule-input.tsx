@@ -3,12 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Clock } from 'lucide-react'
 import { Input } from '@/components/ui/input'
-
-interface ParseResult {
-  cron: string
-  human: string
-  nextRuns?: string[]
-}
+import type { ParseResult } from '../types'
 
 export function ScheduleInput({
   value,
@@ -72,7 +67,7 @@ export function ScheduleInput({
         placeholder='e.g. "every day at 9am" or "0 9 * * *"'
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="text-sm"
+        className="text-sm placeholder:text-zinc-600"
       />
       {loading && (
         <p className="text-xs text-muted-foreground">Parsing...</p>

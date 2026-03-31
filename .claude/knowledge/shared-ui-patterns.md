@@ -79,6 +79,7 @@ Always use `min-w-36` on `DropdownMenuContent` to prevent narrow popups from sma
 | Assets | asset-card (grid card) | Delete |
 | Assets | assets-list (table row) | Delete |
 | Schedule | job-row (table row) | Edit, Delete, Run Now |
+| Schedule | job-drawer (drawer) | Duplicate, Delete |
 
 ## PluginHeader Actions
 

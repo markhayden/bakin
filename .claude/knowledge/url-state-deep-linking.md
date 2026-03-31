@@ -26,7 +26,8 @@ const [status, setStatus] = useQueryArrayState('status')
 ```
 
 - When value equals the default, the param is **removed** from the URL (clean URLs by default)
-- Uses `router.replace()` with `scroll: false` — no history spam, no scroll jump
+- `setValue` uses `router.replace()` with `scroll: false` — no history spam, no scroll jump
+- `pushValue` (third return) uses `router.push()` — creates a browser history entry for back-button navigation
 - Array values are comma-separated: `?status=todo,blocked,review`
 
 ## Suspense Requirement
@@ -58,6 +59,8 @@ export default function TasksPage() {
 | `type` | string[] | `images,video` | Type filter (multi-select via FacetFilter) |
 | `asset` | string | asset path | Deep-link to open asset detail |
 | `taskId` | string | task id | Deep-link to open task detail drawer |
+| `jobId` | string | job id | Deep-link to open schedule job detail drawer |
+| `mode` | string | `create`, `edit`, `duplicate` | Form mode (schedule plugin) |
 | `page` | string | `1`, `2` | Pagination page number |
 | `sort` | string | `name`, `size`, `created`, `type` | Sort column (list view) |
 | `dir` | string | `asc`, `desc` | Sort direction |
@@ -97,7 +100,7 @@ Located at `src/components/facet-filter.tsx`. Shared multi-select filter compone
 | Assets | ✅ Done | `view`, `q`, `type`, `asset`, `page`, `sort`, `dir` |
 | Calendar | ❌ Pending | |
 | Workflows | ❌ Pending | |
-| Schedule | ❌ Pending | |
+| Schedule | ✅ Done | `view`, `q`, `agent`, `jobId` (deep link), `mode` (create/edit/duplicate) |
 | Health | ❌ Pending | |
 | Memory | ❌ Pending | |
 | Projects | ❌ Pending | |
