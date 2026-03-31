@@ -345,7 +345,7 @@ export function KanbanBoard() {
                   footer={colId === 'confirmed' && hiddenConfirmedCount > 0 ? (
                     <button
                       onClick={() => setView('table')}
-                      className="text-[11px] text-accent hover:text-accent/80 hover:underline transition-colors"
+                      className="text-[11px] px-3 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                     >
                       {hiddenConfirmedCount} older task{hiddenConfirmedCount !== 1 ? 's' : ''} — View Log
                     </button>
