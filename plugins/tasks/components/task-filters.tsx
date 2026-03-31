@@ -36,14 +36,12 @@ interface TaskFiltersProps {
   statusFilter?: string[]
   onStatusChange?: (statuses: string[]) => void
   showStatusFilter?: boolean
-  actions?: React.ReactNode
 }
 
 export function TaskFilters({
   agentFilter, onAgentChange,
   statusFilter, onStatusChange,
   showStatusFilter = false,
-  actions,
 }: TaskFiltersProps) {
   return (
     <div className="flex items-center gap-3 overflow-x-auto">
@@ -80,8 +78,6 @@ export function TaskFilters({
         />
       )}
 
-      {/* Right-aligned actions (view toggle, new task, etc.) */}
-      {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
     </div>
   )
 }

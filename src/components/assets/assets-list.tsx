@@ -136,14 +136,14 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
         <DropdownMenu>
           <DropdownMenuTrigger
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            className="size-6 rounded hover:bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
           >
             <MoreHorizontal className="size-3.5" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
+          <DropdownMenuContent align="end" className="min-w-36">
             <DropdownMenuItem
-              variant="destructive"
               onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConfirmOpen(true) }}
+              className="text-red-400 focus:text-red-400"
             >
               <Trash2 className="size-3.5 mr-2" />
               Delete

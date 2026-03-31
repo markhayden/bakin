@@ -301,7 +301,7 @@ export function KanbanBoard() {
           <TaskMetrics columns={columns} timestamp={timestamp} />
         </div>
 
-        {/* Title row with search */}
+        {/* Title row with search + view toggle */}
         <div className="px-6 pt-3 md:pt-4 pb-2">
           <PluginHeader
             title="Tasks"
@@ -310,17 +310,6 @@ export function KanbanBoard() {
               : allTasksFlat.length
             }
             search={{ value: search, onChange: setSearch, placeholder: 'Search tasks...' }}
-          />
-        </div>
-
-        {/* Filters + view toggle */}
-        <div className="px-6 pb-3">
-          <TaskFilters
-            agentFilter={agentFilter}
-            onAgentChange={setAgentFilter}
-            statusFilter={statusFilter}
-            onStatusChange={setStatusFilter}
-            showStatusFilter={view === 'table'}
             actions={
               <div className="flex items-center gap-2">
                 <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
@@ -353,6 +342,17 @@ export function KanbanBoard() {
                 </Button>
               </div>
             }
+          />
+        </div>
+
+        {/* Filters */}
+        <div className="px-6 pb-3">
+          <TaskFilters
+            agentFilter={agentFilter}
+            onAgentChange={setAgentFilter}
+            statusFilter={statusFilter}
+            onStatusChange={setStatusFilter}
+            showStatusFilter={view === 'table'}
           />
         </div>
 
@@ -402,6 +402,23 @@ export function KanbanBoard() {
           columnId={detailTask?.columnId ?? null}
           createMode={createMode}
           onClose={() => { setDetailTask(null); setCreateMode(false) }}
+          onDelete={(task) => {
+            setDetailTask(null)
+            setDeleteTarget({ id: task.id, title: task.title })
+          }}
+          onDuplicate={async (task) => {
+            const ok = await apiFetch('/api/tasks/create', {
+              title: `${task.title} (copy)`,
+              description: task.description || undefined,
+              column: detailTask?.columnId || 'todo',
+              assignee: task.agent || undefined,
+              workflowId: task.workflowId || undefined,
+            })
+            if (ok) {
+              toast(`Duplicated "${task.title}"`, 'success')
+              await refreshTaskboard()
+            }
+          }}
         />
 
         <DeleteTaskDialog

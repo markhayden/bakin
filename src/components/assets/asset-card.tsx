@@ -79,14 +79,14 @@ export function AssetCard({ asset, onClick, onDelete }: AssetCardProps) {
         <DropdownMenu>
           <DropdownMenuTrigger
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            className="absolute top-1.5 right-1.5 size-6 rounded bg-black/60 hover:bg-black/80 flex items-center justify-center text-zinc-400 hover:text-zinc-200 transition-colors"
+            className="absolute top-1.5 right-1.5 p-1.5 rounded-md bg-black/60 hover:bg-black/80 text-zinc-400 hover:text-zinc-200 transition-colors"
           >
             <MoreHorizontal className="size-3.5" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
+          <DropdownMenuContent align="end" className="min-w-36">
             <DropdownMenuItem
-              variant="destructive"
               onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConfirmOpen(true) }}
+              className="text-red-400 focus:text-red-400"
             >
               <Trash2 className="size-3.5 mr-2" />
               Delete

@@ -8,7 +8,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
-import { Send, Check, X, RefreshCw } from 'lucide-react'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Send, Check, X, RefreshCw, MoreHorizontal, Copy, Trash2 } from 'lucide-react'
 import { MarkdownContent } from '@/components/markdown-content'
 import { TaskAssets } from '@/components/assets/task-assets'
 import { AgentAvatar } from '@/components/agent-avatar'
@@ -122,6 +123,8 @@ interface TaskDetailDrawerProps {
   onClose: () => void
   /** When true, drawer opens in create mode with empty fields */
   createMode?: boolean
+  onDelete?: (task: Task) => void
+  onDuplicate?: (task: Task) => void
 }
 
 const COLUMN_IDS: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
@@ -135,7 +138,7 @@ const STEP_DOT_COLORS: Record<string, string> = {
   failed: 'bg-red-600',
 }
 
-export function TaskDetailDrawer({ task, columnId, onClose, createMode = false }: TaskDetailDrawerProps) {
+export function TaskDetailDrawer({ task, columnId, onClose, createMode = false, onDelete, onDuplicate }: TaskDetailDrawerProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [agent, setAgent] = useState('')
@@ -404,7 +407,28 @@ export function TaskDetailDrawer({ task, columnId, onClose, createMode = false }
   const gateStep = wfDefinition?.steps.find(s => s.id === wfInstance?.currentStepId)
 
   return (
-    <BakinDrawer open={isOpen} onOpenChange={(open) => { if (!open) onClose() }} title={createMode ? 'New Task' : 'Task Details'}>
+    <BakinDrawer
+      open={isOpen}
+      onOpenChange={(open) => { if (!open) onClose() }}
+      title={createMode ? 'New Task' : 'Task Details'}
+      actions={!createMode && task ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger className="p-1.5 rounded-md hover:bg-accent transition-colors">
+            <MoreHorizontal className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-36">
+            <DropdownMenuItem onClick={() => onDuplicate?.(task)}>
+              <Copy className="size-3.5 mr-2" />
+              Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onDelete?.(task)} className="text-red-400 focus:text-red-400">
+              <Trash2 className="size-3.5 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : undefined}
+    >
         <div className="space-y-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit-title">Title</Label>
