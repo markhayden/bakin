@@ -10,7 +10,7 @@
 import { createServer } from 'http'
 import next from 'next'
 import { join } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync } from 'fs'
 
 import { MarkdownStorageAdapter } from './src/lib/storage/markdown-adapter'
 import { BakinEventBus } from './src/lib/events/event-bus'
@@ -300,6 +300,29 @@ app.prepare().then(async () => {
         const { pluginId } = body as { pluginId: string }
         return pluginInstaller.removePlugin(pluginId, process.cwd())
       })
+      return
+    }
+
+    // Agent avatar route (must be before the agent catch-all)
+    if (url.pathname === '/api/agents/avatar' && req.method === 'GET') {
+      const agentId = url.searchParams.get('id')
+      if (!agentId) {
+        jsonResponse(res, 400, { error: 'Missing id param' })
+        return
+      }
+      const avatarPath = join(CONTENT_DIR, 'agents', agentId, 'avatar.jpg')
+      if (!existsSync(avatarPath)) {
+        res.writeHead(404)
+        res.end()
+        return
+      }
+      const data = readFileSync(avatarPath)
+      res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': data.length,
+        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+      })
+      res.end(data)
       return
     }
 

@@ -54,7 +54,7 @@ export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange,
                 onClick={() => onTypeChange(tab.id)}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                   isActive
-                    ? 'bg-background text-foreground shadow-sm'
+                    ? 'bg-accent text-accent-foreground'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -73,7 +73,7 @@ export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange,
                 onClick={() => onViewChange('grid')}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                   view === 'grid'
-                    ? 'bg-background text-foreground shadow-sm'
+                    ? 'bg-accent text-accent-foreground'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -84,7 +84,7 @@ export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange,
                 onClick={() => onViewChange('list')}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                   view === 'list'
-                    ? 'bg-background text-foreground shadow-sm'
+                    ? 'bg-accent text-accent-foreground'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >

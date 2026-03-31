@@ -446,7 +446,7 @@ export function ContentCalendar() {
             <button
               onClick={() => setView('calendar')}
               className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
-                view === 'calendar' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
+                view === 'calendar' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <CalendarDays className="size-3" />
@@ -455,7 +455,7 @@ export function ContentCalendar() {
             <button
               onClick={() => setView('list')}
               className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
-                view === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
+                view === 'list' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <List className="size-3" />
@@ -464,7 +464,7 @@ export function ContentCalendar() {
             <button
               onClick={() => setView('brainstorm')}
               className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
-                view === 'brainstorm' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
+                view === 'brainstorm' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <Sparkles className="size-3" />
