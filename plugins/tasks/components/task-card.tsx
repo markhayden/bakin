@@ -149,7 +149,7 @@ export function TaskCard({ task, columnId, gateLabel, childTaskId, onAssign, onD
       >
       {/* Delete button — top-right, shows on hover */}
       <button
-        className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive z-10"
+        className="absolute top-2.5 right-2.5 p-1 rounded-md opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10 z-10"
         onClick={(e) => { e.stopPropagation(); onDelete({ id: task.id, title: task.title }) }}
         onPointerDown={(e) => e.stopPropagation()}
       >

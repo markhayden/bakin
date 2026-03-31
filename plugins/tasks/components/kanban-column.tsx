@@ -40,7 +40,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign,
         {onAddTask && (
           <button
             onClick={() => onAddTask(id)}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 -mr-2 rounded-md hover:bg-muted/50"
           >
             + Add
           </button>
