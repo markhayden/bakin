@@ -89,7 +89,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
       })}
 
       {/* Settings — pinned to bottom */}
-      <div className="mt-auto pt-2 border-t border-border">
+      <div className="mt-auto border-t border-border -mx-2 px-2 pt-2">
         <Link
           href="/settings"
           onClick={onNavigate}

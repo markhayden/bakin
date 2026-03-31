@@ -77,7 +77,7 @@ export function NewTaskDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        render={<Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white border-0" />}
+        render={<Button size="sm" />}
       >
         <Plus className="size-4" />
         New Task
