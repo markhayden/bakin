@@ -194,9 +194,25 @@ ctx.registerRoute({
 })
 ```
 
+### Parameterized routes
+Paths can include `:param` segments for RESTful naming:
+```typescript
+ctx.registerRoute({
+  path: '/definitions/:name',
+  method: 'GET',
+  handler: async (req) => {
+    const url = new URL(req.url)
+    const name = url.searchParams.get('name') // injected from path param
+    // ...
+  },
+})
+```
+
 ### Catch-all router
 `src/app/api/plugins/[pluginId]/[...path]/route.ts` handles all plugin API requests.
-Request to `/api/plugins/tasks/create` → extracts `pluginId=tasks`, `path=/create` → calls `pluginRegistry.findRoute('tasks', '/create', 'POST')`.
+The router's `matchRoute()` tries exact match first, then falls back to segment-by-segment `:param` matching. Extracted path params are injected into the request URL's `searchParams` so handlers read them the same way as query params.
+
+Request to `/api/plugins/workflows/definitions/my-workflow` → extracts `pluginId=workflows`, `path=/definitions/my-workflow` → matches route `/definitions/:name` → injects `name=my-workflow` into searchParams.
 
 ## Client-Side Plugin Manifest
 

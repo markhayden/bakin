@@ -19,7 +19,7 @@ Filters, search, view mode, pagination. These are ephemeral and combinable. Use 
 ### Path segments — for addressable resources
 Individual items (`/projects/abc123`) and their modes (`/projects/abc123/edit`, `/projects/new`). These are Next.js file-system routes under `src/app/`. Path-based routing is the target pattern for all plugins — see `.claude/specs/06-routing-refactor.md` for migration status.
 
-**Current state:** Projects uses path segments. Other plugins still use query params (`?taskId=`, `?jobId=`, etc.) — migration tracked in spec 06.
+**Current state:** Projects and Workflows use path segments. Other plugins still use query params (`?taskId=`, `?jobId=`, etc.) — migration tracked in spec 06.
 
 ## Hook: `useQueryState` / `useQueryArrayState`
 
@@ -109,7 +109,7 @@ Located at `src/components/facet-filter.tsx`. Shared multi-select filter compone
 | Tasks | ✅ Done | `view`, `q`, `agent`, `status`, `taskId` (deep link). Edit/create state is component-level (`editing` useState), not URL-driven. |
 | Assets | ✅ Done | `view`, `q`, `type`, `asset`, `page`, `sort`, `dir` |
 | Calendar | ✅ Done | `view`, `q`, `agent`, `status`, `type`, `itemId` (deep link), `mode` (edit) |
-| Workflows | ❌ Pending | |
+| Workflows | ✅ Done | `q` on list; path-based `/workflows/[id]` for canvas detail, step drawer via node click |
 | Schedule | ✅ Done | `view`, `q`, `agent`, `jobId` (deep link), `mode` (create/edit/duplicate) |
 | Health | ❌ Pending | |
 | Memory | ❌ Pending | |

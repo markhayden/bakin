@@ -138,10 +138,40 @@ function ensureInitialized() {
   }
 }
 
-function findRoute(pluginId: string, path: string, method: string): APIRoute | null {
+/**
+ * Match a request path against registered routes, supporting :param segments.
+ * Exact matches take priority. Returns the matched route and extracted path params.
+ */
+function matchRoute(pluginId: string, path: string, method: string): { route: APIRoute; params: Record<string, string> } | null {
   const state = pluginStates.get(pluginId)
   if (!state) return null
-  return state.routes.find(r => r.path === path && r.method === method.toUpperCase()) || null
+  const upperMethod = method.toUpperCase()
+
+  // 1. Exact match (fast path, backward compatible)
+  const exact = state.routes.find(r => r.path === path && r.method === upperMethod)
+  if (exact) return { route: exact, params: {} }
+
+  // 2. Parameterized match — e.g. /definitions/:name matches /definitions/my-workflow
+  const reqSegments = path.split('/').filter(Boolean)
+  for (const route of state.routes) {
+    if (route.method !== upperMethod) continue
+    const routeSegments = route.path.split('/').filter(Boolean)
+    if (routeSegments.length !== reqSegments.length) continue
+
+    const params: Record<string, string> = {}
+    let match = true
+    for (let i = 0; i < routeSegments.length; i++) {
+      if (routeSegments[i].startsWith(':')) {
+        params[routeSegments[i].slice(1)] = reqSegments[i]
+      } else if (routeSegments[i] !== reqSegments[i]) {
+        match = false
+        break
+      }
+    }
+    if (match) return { route, params }
+  }
+
+  return null
 }
 
 function buildContext(pluginId: string): PluginContext {
@@ -171,8 +201,8 @@ async function handleRequest(
   const routePath = '/' + pathSegments.join('/')
   const method = req.method
 
-  const route = findRoute(pluginId, routePath, method)
-  if (!route) {
+  const match = matchRoute(pluginId, routePath, method)
+  if (!match) {
     return NextResponse.json(
       { error: `No ${method} handler for ${pluginId}${routePath}` },
       { status: 404 }
@@ -180,8 +210,27 @@ async function handleRequest(
   }
 
   try {
+    // Inject extracted path params into the request URL's searchParams
+    // so handlers can read them the same way as query params
+    let handlerReq = req
+    if (Object.keys(match.params).length > 0) {
+      const url = new URL(req.url)
+      for (const [key, value] of Object.entries(match.params)) {
+        if (!url.searchParams.has(key)) {
+          url.searchParams.set(key, value)
+        }
+      }
+      handlerReq = new Request(url.toString(), {
+        method: req.method,
+        headers: req.headers,
+        body: req.body,
+        // @ts-expect-error duplex is needed for streaming request bodies
+        duplex: 'half',
+      })
+    }
+
     const ctx = buildContext(pluginId)
-    return await route.handler(req, ctx)
+    return await match.route.handler(handlerReq, ctx)
   } catch (err) {
     console.error(`Plugin route error [${pluginId}${routePath}]:`, err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
