@@ -15,9 +15,10 @@ const TYPE_ICONS: Record<string, typeof FileText> = {
 
 interface TaskAssetsProps {
   taskId: string
+  readOnly?: boolean
 }
 
-export function TaskAssets({ taskId }: TaskAssetsProps) {
+export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
   const [assets, setAssets] = useState<AssetMeta[]>([])
   const [loading, setLoading] = useState(true)
   const [previewPath, setPreviewPath] = useState<string | null>(null)
@@ -61,13 +62,15 @@ export function TaskAssets({ taskId }: TaskAssetsProps) {
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           Assets {assets.length > 0 && `(${assets.length})`}
         </h3>
-        <a
-          href={`/assets?linkTo=${encodeURIComponent(taskId)}`}
-          className="ml-auto flex items-center gap-1 text-[11px] text-accent hover:underline"
-        >
-          <Plus className="size-3" />
-          Add
-        </a>
+        {!readOnly && (
+          <a
+            href={`/assets?linkTo=${encodeURIComponent(taskId)}`}
+            className="ml-auto flex items-center gap-1 text-[11px] font-medium bg-accent text-accent-foreground rounded-md px-2 py-0.5 hover:bg-accent/90 transition-colors"
+          >
+            <Plus className="size-3" />
+            Add
+          </a>
+        )}
       </div>
       <div className="flex flex-col gap-1.5">
         {assets.map(asset => {

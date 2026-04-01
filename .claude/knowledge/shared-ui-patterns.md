@@ -15,6 +15,8 @@
 | `actions` | `React.ReactNode` | Rendered inline next to title and close button |
 | `children` | `React.ReactNode` | Drawer body content |
 | `defaultWidth` | `number` | Initial width (default 810, min 320, max 960) |
+| `onBack` | `() => void` | When provided, shows a back arrow left of title (for edit→detail navigation) |
+| `dirty` | `boolean` | When true, closing shows an "unsaved changes" confirmation dialog (default false) |
 
 ### Header Layout
 
@@ -80,6 +82,31 @@ Always use `min-w-36` on `DropdownMenuContent` to prevent narrow popups from sma
 | Assets | assets-list (table row) | Delete |
 | Schedule | job-row (table row) | Edit, Delete, Run Now |
 | Schedule | job-drawer (drawer) | Duplicate, Delete |
+| Calendar | item-detail-drawer (drawer) | Edit, Delete |
+
+## AgentSelect
+
+`src/components/agent-select.tsx` — Shared agent selection dropdown with avatar in both trigger and dropdown items.
+
+### Props
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `value` | `string` | Selected agent ID |
+| `onValueChange` | `(value: string) => void` | Called when selection changes |
+| `allowNone` | `boolean` | Show "None" option (default false) |
+| `noneLabel` | `string` | Label for none option (default "None") |
+| `placeholder` | `string` | Trigger placeholder text |
+| `agentIds` | `string[]` | Restrict to specific agents (default: all) |
+| `className` | `string` | Extra classes on trigger |
+
+### Where Used
+
+| Plugin | Component | Use |
+|--------|-----------|-----|
+| Tasks | task-detail-dialog | Assignee picker |
+| Schedule | job-form | Agent + Owner pickers |
+| Calendar | item-detail-drawer | Agent picker |
 
 ## PluginHeader Actions
 
@@ -112,6 +139,7 @@ Always use `min-w-36` on `DropdownMenuContent` to prevent narrow popups from sma
 
 ```
 src/components/bakin-drawer.tsx      — Resizable drawer shell
+src/components/agent-select.tsx      — Agent picker with avatars
 src/components/plugin-header.tsx     — Page header with search + actions
 src/components/ui/dropdown-menu.tsx  — Base dropdown (focus: bg-secondary)
 src/components/ui/sheet.tsx          — Sheet primitive (used by BakinDrawer)

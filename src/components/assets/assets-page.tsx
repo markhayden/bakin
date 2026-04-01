@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import { useAssets, useTrash } from '@/hooks/use-assets'
 import { AssetsGrid } from './assets-grid'
@@ -34,6 +35,21 @@ export function AssetsPage() {
   useEffect(() => {
     setPageSize(getStoredPageSize())
   }, [])
+
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  // Atomic multi-param update to avoid race when resetting page alongside another param
+  const updateParams = useCallback((updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null || v === '') params.delete(k)
+      else params.set(k, v)
+    }
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [router, pathname, searchParams])
 
   const page = Math.max(1, parseInt(pageStr, 10) || 1)
   const isTrash = view === 'trash'
@@ -113,9 +129,9 @@ export function AssetsPage() {
     <div className="p-6 flex flex-col flex-1 gap-4">
       <AssetFilters
         typeFilter={typeFilter}
-        onTypeChange={(types) => { setTypeFilter(types); setPageStr('1') }}
+        onTypeChange={(types) => updateParams({ type: types.length ? types.join(',') : null, page: null })}
         search={search}
-        onSearchChange={(q) => { setSearch(q); setPageStr('1') }}
+        onSearchChange={(q) => updateParams({ q: q || null, page: null })}
         assetCount={activeCount}
         view={view}
         onViewChange={setView}

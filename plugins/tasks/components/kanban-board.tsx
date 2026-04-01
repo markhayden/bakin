@@ -262,7 +262,7 @@ export function KanbanBoard() {
   }, [])
 
   const [detailTask, setDetailTask] = useState<{ task: Task; columnId: ColumnId } | null>(null)
-  const [createMode, setCreateMode] = useState(false)
+  const [editing, setEditing] = useState(false)
 
   // Deep link: open task from ?taskId= param (e.g. from asset detail)
   const taskIdHandled = useRef(false)
@@ -274,6 +274,7 @@ export function KanbanBoard() {
       const match = colTasks.find(t => t.id === taskIdParam)
       if (match) {
         setDetailTask({ task: match, columnId: colId })
+        setEditing(false)
         setTaskIdParam('')
         return
       }
@@ -336,7 +337,7 @@ export function KanbanBoard() {
                     Log
                   </button>
                 </div>
-                <Button size="sm" onClick={() => setCreateMode(true)}>
+                <Button size="sm" onClick={() => { setDetailTask(null); setEditing(true) }}>
                   <Plus className="size-4" />
                   New Task
                 </Button>
@@ -370,7 +371,7 @@ export function KanbanBoard() {
                   childTaskLabels={childTaskLabels}
                   onAssign={handleAssign}
                   onDelete={setDeleteTarget}
-                  onTaskClick={(task, colId) => setDetailTask({ task, columnId: colId })}
+                  onTaskClick={(task, colId) => { setDetailTask({ task, columnId: colId }); setEditing(false) }}
                   footer={colId === 'confirmed' && hiddenConfirmedCount > 0 ? (
                     <button
                       onClick={() => setView('table')}
@@ -400,10 +401,14 @@ export function KanbanBoard() {
         <TaskDetailDrawer
           task={detailTask?.task ?? null}
           columnId={detailTask?.columnId ?? null}
-          createMode={createMode}
-          onClose={() => { setDetailTask(null); setCreateMode(false) }}
+          open={editing || !!detailTask}
+          editing={editing}
+          onClose={() => { setDetailTask(null); setEditing(false) }}
+          onEdit={() => setEditing(true)}
+          onCancelEdit={() => setEditing(false)}
           onDelete={(task) => {
             setDetailTask(null)
+            setEditing(false)
             setDeleteTarget({ id: task.id, title: task.title })
           }}
           onDuplicate={async (task) => {
