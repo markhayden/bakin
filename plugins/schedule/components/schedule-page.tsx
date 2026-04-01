@@ -264,6 +264,7 @@ export function SchedulePage() {
         open={showForm}
         onOpenChange={(o) => { if (!o) closeForm() }}
         title={formTitle}
+        onBack={mode === 'edit' && selectedJob ? closeForm : undefined}
       >
         <JobForm
           onSubmit={handleFormSubmit}

@@ -98,7 +98,7 @@ Located at `src/components/facet-filter.tsx`. Shared multi-select filter compone
 |--------|-----------|-------|
 | Tasks | ✅ Done | `view`, `q`, `agent`, `status`, `taskId` (deep link) |
 | Assets | ✅ Done | `view`, `q`, `type`, `asset`, `page`, `sort`, `dir` |
-| Calendar | ❌ Pending | |
+| Calendar | ✅ Done | `view`, `q`, `agent`, `status`, `type`, `itemId` (deep link), `mode` (edit) |
 | Workflows | ❌ Pending | |
 | Schedule | ✅ Done | `view`, `q`, `agent`, `jobId` (deep link), `mode` (create/edit/duplicate) |
 | Health | ❌ Pending | |

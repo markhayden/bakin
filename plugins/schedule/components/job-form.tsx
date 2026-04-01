@@ -6,8 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { AGENTS } from '@/lib/constants'
+import { AgentSelect } from '@/components/agent-select'
 import { ScheduleInput } from './schedule-input'
 
 export interface JobFormData {
@@ -117,19 +116,14 @@ export function JobForm({
       {/* Agent */}
       <div className="space-y-1.5">
         <Label className="text-sm">Agent</Label>
-        <Select value={agentId} onValueChange={(v) => setAgentId(v ?? '')}>
-          <SelectTrigger className="text-sm">
-            <SelectValue placeholder="Select agent (optional)" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">None (triage later)</SelectItem>
-            {AGENTS.map(a => (
-              <SelectItem key={a.id} value={a.id}>
-                {a.emoji} {a.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <AgentSelect
+          value={agentId}
+          onValueChange={(v) => setAgentId(v ?? '')}
+          allowNone
+          noneLabel="None (triage later)"
+          placeholder="Select agent (optional)"
+          className="text-sm"
+        />
       </div>
 
       {/* Prompt */}
@@ -179,18 +173,11 @@ export function JobForm({
 
           <div className="space-y-1.5">
             <Label className="text-sm">Owner</Label>
-            <Select value={owner} onValueChange={(v) => setOwner(v ?? 'roscoe')}>
-              <SelectTrigger className="text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {AGENTS.map(a => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.emoji} {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <AgentSelect
+              value={owner}
+              onValueChange={(v) => setOwner(v ?? 'roscoe')}
+              className="text-sm"
+            />
           </div>
 
           <div className="space-y-1.5">

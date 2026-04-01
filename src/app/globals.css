@@ -186,6 +186,11 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* Date/time input icons — visible on dark backgrounds */
+::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+}
+
 /* Kanban drag states */
 .drag-over {
   background: rgba(255, 0, 127, 0.06) !important;
