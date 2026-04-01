@@ -5,7 +5,8 @@
   "bakin": ">=1.0.0",
   "description": "Workflow runtime — enforces step-by-step agent execution with gated delivery, parallel steps, human gates, and output validation",
   "entry": {
-    "server": "index.ts"
+    "server": "index.ts",
+    "client": "client.tsx"
   },
   "contentFiles": [
     "workflows/definitions/",

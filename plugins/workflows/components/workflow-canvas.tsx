@@ -56,6 +56,7 @@ const SUBFLOW_PADDING_BOTTOM = 32
 interface WorkflowCanvasProps {
   definition: WorkflowDefinition
   subWorkflows?: Record<string, WorkflowDefinition>
+  onNodeClick?: (nodeId: string) => void
 }
 
 /** Map a step type to its ReactFlow node type */
@@ -318,7 +319,7 @@ function buildGraph(
   return { nodes, edges }
 }
 
-export function WorkflowCanvas({ definition, subWorkflows }: WorkflowCanvasProps) {
+export function WorkflowCanvas({ definition, subWorkflows, onNodeClick }: WorkflowCanvasProps) {
   const { nodes: initialNodes, edges } = useMemo(
     () => buildGraph(definition, subWorkflows),
     [definition, subWorkflows],
@@ -342,6 +343,7 @@ export function WorkflowCanvas({ definition, subWorkflows }: WorkflowCanvasProps
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
+        onNodeClick={onNodeClick ? (_event, node) => onNodeClick(node.id) : undefined}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.3 }}

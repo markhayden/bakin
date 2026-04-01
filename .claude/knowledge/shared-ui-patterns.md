@@ -84,6 +84,28 @@ Always use `min-w-36` on `DropdownMenuContent` to prevent narrow popups from sma
 | Schedule | job-drawer (drawer) | Duplicate, Delete |
 | Calendar | item-detail-drawer (drawer) | Edit, Delete |
 
+### Drawer Content Sections
+
+All drawers follow the same section patterns inside `BakinDrawer`:
+
+- **Hero card** (first element): `flex items-center gap-4 rounded-lg p-4 border border-border bg-surface` — AgentAvatar left, info right
+- **Metadata grid**: `grid grid-cols-2 gap-3` with `rounded-lg bg-surface p-3 space-y-1` cards. Label: `text-[11px] text-muted-foreground uppercase tracking-wider` with optional icon.
+- **Section labels**: `text-[11px] text-muted-foreground uppercase tracking-wider mb-2`
+- **Left-bordered content blocks**: `text-sm text-foreground/90 rounded-lg p-4 border-l-2 bg-surface whitespace-pre-wrap` — use agent/step-type accent color on border
+- **Alert/rejection boxes**: `bg-red-500/10 border border-red-500/20 rounded-lg p-3`
+- **Spacing**: `space-y-6` between major sections, `Separator` between groups
+- **Quick actions**: `flex flex-wrap items-center gap-2` with `Button variant="outline" size="sm"`
+
+### Where BakinDrawer Is Used
+
+| Plugin | Component | Detail |
+|--------|-----------|--------|
+| Tasks | task-detail-dialog | View/edit with hero, gate approval, notes |
+| Calendar | item-detail-drawer | View/edit with hero, metadata grid, draft content |
+| Schedule | job-drawer | View-only with hero, metadata grid, run history |
+| Workflows | step-detail-drawer | View-only, per-step-type sections (agent/gate/output/parallel/workflow) |
+| Team | agent-drawer | View-only with agent profile |
+
 ## AgentSelect
 
 `src/components/agent-select.tsx` — Shared agent selection dropdown with avatar in both trigger and dropdown items.
@@ -161,6 +183,7 @@ Create mode is derived: `isCreate = editing && !existingItem`
 | Tasks | task-detail-dialog | No (component state) |
 | Calendar | item-detail-drawer | Yes (`mode` param) |
 | Schedule | job-drawer + schedule-page | Yes (`mode` param) |
+| Workflows | step-detail-drawer | N/A (view-only, no edit mode) |
 
 ## TaskAssets
 

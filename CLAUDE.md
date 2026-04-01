@@ -56,7 +56,8 @@ src/
     tasks/page.tsx         — Task kanban board
     team/page.tsx          — Agent team view
     projects/page.tsx      — Project list
-    workflows/page.tsx     — Workflow canvas
+    workflows/page.tsx     — Workflow template grid
+    workflows/[id]/page.tsx — Workflow canvas detail view
     assets/page.tsx        — Asset browser
     schedule/page.tsx      — Cron job manager
     calendar/page.tsx      — Calendar view

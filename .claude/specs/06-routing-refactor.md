@@ -14,6 +14,7 @@ Projects was migrated to path-based routing (`/projects/[id]`, `/projects/[id]/e
 | Plugin | Resource URL Pattern | Detail UI | Notes |
 |--------|---------------------|-----------|-------|
 | Projects | `/projects/[id]`, `/projects/[id]/edit` | Full page | **Done** — path-based |
+| Workflows | `/workflows/[id]` | Full page (canvas + drawer) | **Done** — path-based |
 | Tasks | `?taskId=` | Drawer | Deep-linked from other plugins |
 | Schedule | `?jobId=`, `?mode=` | Drawer | Dual-param race risk |
 | Calendar | `?itemId=`, `?mode=` | Drawer | Dual-param race risk |
