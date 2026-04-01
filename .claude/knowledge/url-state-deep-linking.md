@@ -2,7 +2,7 @@
 
 ## Rule
 
-All interactive UI state that a user would want to bookmark, share, or navigate back to **must** be reflected in URL query parameters. This includes:
+All interactive UI state that a user would want to bookmark, share, or navigate back to **must** be reflected in the URL. This includes:
 
 - **View modes** (kanban/table, grid/list)
 - **Filters** (agent, status, type, etc.)
@@ -10,6 +10,16 @@ All interactive UI state that a user would want to bookmark, share, or navigate 
 - **Selected tabs** or active panels
 
 State that is transient and not meaningful to bookmark (e.g., open modals, drag state, hover) stays in `useState`.
+
+## Two URL Patterns
+
+### Query params — for list-level state
+Filters, search, view mode, pagination. These are ephemeral and combinable. Use `useQueryState` / `useQueryArrayState`.
+
+### Path segments — for addressable resources
+Individual items (`/projects/abc123`) and their modes (`/projects/abc123/edit`, `/projects/new`). These are Next.js file-system routes under `src/app/`. Path-based routing is the target pattern for all plugins — see `.claude/specs/06-routing-refactor.md` for migration status.
+
+**Current state:** Projects uses path segments. Other plugins still use query params (`?taskId=`, `?jobId=`, etc.) — migration tracked in spec 06.
 
 ## Hook: `useQueryState` / `useQueryArrayState`
 
@@ -103,5 +113,5 @@ Located at `src/components/facet-filter.tsx`. Shared multi-select filter compone
 | Schedule | ✅ Done | `view`, `q`, `agent`, `jobId` (deep link), `mode` (create/edit/duplicate) |
 | Health | ❌ Pending | |
 | Memory | ❌ Pending | |
-| Projects | ❌ Pending | |
+| Projects | ✅ Done | `status`, `q` on list; path-based `/projects/[id]` and `/projects/[id]/edit` for detail |
 | Models | ❌ Pending | |
