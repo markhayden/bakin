@@ -115,7 +115,7 @@ export async function createProject(opts: CreateProjectOpts): Promise<{ id: stri
       owner: opts.owner || 'roscoe',
       tasks: taskItems,
       assets: [],
-      body: opts.body || `# ${opts.title}\n`,
+      body: opts.body || (opts.title ? `# ${opts.title}\n` : ''),
       progress: 0,
     }
 

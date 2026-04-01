@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { Plus } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import { Plus, ListFilter } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
+import { useQueryState } from '@/hooks/use-query-state'
 import { ProjectCard } from './project-card'
-import { ProjectDetail } from './project-detail'
 import type { ProjectSummary, ProjectStatus } from '../types'
 
-const TABS: { label: string; value: ProjectStatus | 'all' }[] = [
+const STATUS_TABS: { label: string; value: ProjectStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
   { label: 'Draft', value: 'draft' },
   { label: 'Active', value: 'active' },
@@ -16,16 +18,18 @@ const TABS: { label: string; value: ProjectStatus | 'all' }[] = [
 ]
 
 export function ProjectGrid() {
+  const router = useRouter()
   const [projects, setProjects] = useState<ProjectSummary[]>([])
-  const [filter, setFilter] = useState<ProjectStatus | 'all'>('all')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const [status, setStatus] = useQueryState('status', 'all')
+  const [search, setSearch] = useQueryState('q', '')
 
   const fetchProjects = useCallback(async () => {
     try {
-      const url = filter === 'all'
+      const url = status === 'all'
         ? '/api/plugins/projects/list'
-        : `/api/plugins/projects/list?status=${filter}`
+        : `/api/plugins/projects/list?status=${status}`
       const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
@@ -34,83 +38,77 @@ export function ProjectGrid() {
     } finally {
       setLoading(false)
     }
-  }, [filter])
+  }, [status])
 
   useEffect(() => {
     fetchProjects()
   }, [fetchProjects])
 
-  const handleNew = async () => {
-    const res = await fetch('/api/plugins/projects/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'Untitled Project', owner: 'roscoe' }),
-    })
-    if (res.ok) {
-      const data = await res.json()
-      setSelectedId(data.id)
-    }
-  }
+  const filtered = useMemo(() => {
+    if (!search.trim()) return projects
+    const q = search.toLowerCase()
+    return projects.filter(p => p.title.toLowerCase().includes(q))
+  }, [projects, search])
 
-  // If a project is selected, show detail view
-  if (selectedId) {
-    return (
-      <ProjectDetail
-        projectId={selectedId}
-        onBack={() => { setSelectedId(null); fetchProjects() }}
-      />
-    )
+  const handleNew = () => {
+    router.push('/projects/new')
   }
 
   return (
-    <div>
+    <div className="p-6 flex flex-col h-full min-h-0 gap-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <PluginHeader title="Projects" />
-        <button
-          onClick={handleNew}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 text-sm text-white hover:bg-blue-500 transition-colors"
-        >
-          <Plus className="size-4" />
-          New Project
-        </button>
-      </div>
+      <PluginHeader
+        title="Projects"
+        count={loading ? undefined : filtered.length}
+        search={{ value: search, onChange: setSearch, placeholder: 'Search projects...' }}
+        actions={
+          <Button size="sm" onClick={handleNew}>
+            <Plus className="size-4" />
+            New Project
+          </Button>
+        }
+      />
 
-      {/* Filter tabs */}
-      <div className="flex gap-1 mb-6">
-        {TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setFilter(tab.value)}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-              filter === tab.value
-                ? 'bg-zinc-700 text-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-zinc-800'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* Status filter */}
+      <div className="flex items-center gap-3">
+        <ListFilter className="size-3.5 text-muted-foreground shrink-0" />
+        <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setStatus(tab.value)}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                status === tab.value
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Grid */}
-      {loading ? (
-        <div className="text-sm text-muted-foreground">Loading projects...</div>
-      ) : projects.length === 0 ? (
-        <div className="text-sm text-muted-foreground">
-          {filter === 'all' ? 'No projects yet. Create one to get started.' : `No ${filter} projects.`}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((p) => (
-            <ProjectCard
-              key={p.id}
-              project={p}
-              onClick={() => setSelectedId(p.id)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="flex-1 min-h-0 overflow-auto">
+        {loading ? (
+          <div className="text-sm text-muted-foreground">Loading projects...</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-sm text-muted-foreground">
+            {search ? 'No matching projects.' : status === 'all' ? 'No projects yet. Create one to get started.' : `No ${status} projects.`}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map((p) => (
+              <ProjectCard
+                key={p.id}
+                project={p}
+                onClick={() => router.push(`/projects/${p.id}`)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
