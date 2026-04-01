@@ -108,6 +108,69 @@ Always use `min-w-36` on `DropdownMenuContent` to prevent narrow popups from sma
 | Schedule | job-form | Agent + Owner pickers |
 | Calendar | item-detail-drawer | Agent picker |
 
+## View/Edit Split Pattern
+
+All detail drawers (Tasks, Calendar, Schedule) follow a two-mode pattern: **detail view** (read-only) and **edit form**.
+
+### State Machine
+
+Parent component manages `editing: boolean`. The drawer component receives:
+
+```tsx
+open: boolean          // drawer visible
+editing: boolean       // true = form, false = detail
+onEdit: () => void     // detail → edit
+onCancelEdit: () => void  // edit → detail (back arrow)
+onClose: () => void    // close drawer entirely
+```
+
+Create mode is derived: `isCreate = editing && !existingItem`
+
+### Detail View
+
+- **Hero card**: `bg-surface border-border rounded-lg p-4` with agent avatar, name, status dot + label
+- **Quick actions**: Edit button, gate approval buttons
+- **Metadata**: workflow progress, description (rendered via MarkdownContent with agent-colored left border)
+- **Actions dropdown**: Edit, Duplicate, Delete
+
+### Edit Form
+
+- BakinDrawer with `onBack={isCreate ? undefined : onCancelEdit}` and `dirty={dirty}`
+- Form fields with `bg-surface` inputs
+- Save/Cancel buttons
+
+### Hero Card Pattern
+
+```tsx
+<div className="flex items-center gap-4 rounded-lg p-4 border border-border bg-surface">
+  <AgentAvatar agentId={agentId} size="lg" />
+  <div className="flex-1 min-w-0">
+    <div className="text-sm font-medium">{agentName}</div>
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className={`size-2 rounded-full ${statusDotColor}`} />
+      {statusLabel}
+    </span>
+  </div>
+</div>
+```
+
+### Where Implemented
+
+| Plugin | Component | URL-driven edit? |
+|--------|-----------|-----------------|
+| Tasks | task-detail-dialog | No (component state) |
+| Calendar | item-detail-drawer | Yes (`mode` param) |
+| Schedule | job-drawer + schedule-page | Yes (`mode` param) |
+
+## TaskAssets
+
+`src/components/assets/task-assets.tsx` — Displays linked assets for a task with optional add button.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `taskId` | `string` | Task to show assets for |
+| `readOnly` | `boolean` | Hides "Add" button when true (use in detail view) |
+
 ## PluginHeader Actions
 
 `PluginHeader` has an `actions` slot for controls that sit to the right of the search bar.

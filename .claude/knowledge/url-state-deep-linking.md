@@ -96,7 +96,7 @@ Located at `src/components/facet-filter.tsx`. Shared multi-select filter compone
 
 | Plugin | URL State | Notes |
 |--------|-----------|-------|
-| Tasks | ✅ Done | `view`, `q`, `agent`, `status`, `taskId` (deep link) |
+| Tasks | ✅ Done | `view`, `q`, `agent`, `status`, `taskId` (deep link). Edit/create state is component-level (`editing` useState), not URL-driven. |
 | Assets | ✅ Done | `view`, `q`, `type`, `asset`, `page`, `sort`, `dir` |
 | Calendar | ✅ Done | `view`, `q`, `agent`, `status`, `type`, `itemId` (deep link), `mode` (edit) |
 | Workflows | ❌ Pending | |
