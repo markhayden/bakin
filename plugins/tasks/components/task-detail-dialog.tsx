@@ -10,7 +10,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Send, Check, X, RefreshCw, MoreHorizontal, Copy, Trash2, Pencil } from 'lucide-react'
 import { MarkdownContent } from '@/components/markdown-content'
-import { TaskAssets } from '@/components/assets/task-assets'
+import { TaskAssets } from '@bakin/assets/components/task-assets'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { AgentSelect } from '@/components/agent-select'
 import { AGENTS } from '@/lib/constants'

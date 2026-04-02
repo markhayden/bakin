@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense } from 'react'
-import { AssetsPage } from '@/components/assets/assets-page'
+import { AssetsPage } from '@bakin/assets/components/assets-page'
 
 export default function Assets() {
   return (

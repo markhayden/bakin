@@ -133,7 +133,7 @@ _Last updated: 03/30/2026, 14:30 MDT_
 
 | File | Purpose |
 |------|---------|
-| `plugins/tasks/index.ts` | Plugin entry: registers 7 API routes + 9 hooks + file watcher |
+| `plugins/tasks/index.ts` | Plugin entry: registers 12 API routes + 11 exec tools + 9 hooks + file watcher |
 | `plugins/tasks/taskboard.ts` | Core mutations: create, move, block, update, delete, assign, dependencies, reorder |
 | `plugins/tasks/parser.ts` | Markdown → TaskBoard parser (pure, client-safe) |
 | `plugins/tasks/ids.ts` | Task ID generation (crypto-safe) |
@@ -160,85 +160,52 @@ _Last updated: 03/30/2026, 14:30 MDT_
 
 ## API Routes
 
-All routes are registered at `/api/plugins/tasks/{path}` via the plugin route system.
+All routes are registered at `/api/plugins/tasks/{path}` via the plugin route system. 12 RESTful routes:
 
-### POST /api/plugins/tasks/create
+| Method | Path | Handler |
+|--------|------|---------|
+| GET | `/` | List all tasks (taskboard) |
+| GET | `/:taskId` | Get single task details |
+| POST | `/` | Create task |
+| PUT | `/:taskId` | Update task |
+| DELETE | `/:taskId` | Delete task |
+| POST | `/:taskId/move` | Move to column |
+| POST | `/:taskId/assign` | Assign to agent |
+| POST | `/:taskId/log` | Log progress |
+| POST | `/:taskId/block` | Block with reason |
+| POST | `/:taskId/dependency` | Set dependency |
+| POST | `/:taskId/complete` | Report complete |
+| POST | `/reorder` | Reorder within column |
 
-Create a new task.
+### Key route details
 
-| Field | Type | Required | Default |
-|-------|------|----------|---------|
-| `title` | string | yes | — |
-| `description` | string | no | — |
-| `column` | string | no | `"todo"` |
-| `assignee` | string | no | — |
-| `workflowId` | string | no | — |
-| `createdBy` | string | no | — |
+**POST /** (create) — Fields: `title` (required), `description`, `column` (default `"todo"`), `assignee`, `workflowId`, `createdBy`. Response: `{ ok: true, id: "a1b2c3d4" }`.
 
-**Response:** `{ ok: true, id: "a1b2c3d4" }`
+**POST /:taskId/move** — Fields: `to` (required), `from`, `agent` (required). Uses `moveTaskWithEffects` (workflow done-guard, audit, continuation, Antfly). Errors: 403 for workflow tasks moved to done directly.
 
-### POST /api/plugins/tasks/move
+**POST /:taskId/block** — Fields: `reason` (required), `agent`. Uses `blockTaskWithEffects` which propagates blocks to parent tasks for child workflow tasks.
 
-Move a task between columns. Uses `moveTaskWithEffects` which includes workflow done-guard, audit logging, continuation triggers, and Antfly indexing.
+**PUT /:taskId** (update) — Fields: `title`, `description`, `agent`, `column` (ColumnId), `workflowId`. Column changes go through transition validation.
 
-| Field | Type | Required |
-|-------|------|----------|
-| `id` or `title` | string | yes (one of) |
-| `to` | string | yes |
-| `from` | string | no |
-| `agent` | string | yes |
+**DELETE /:taskId** — Also cancels any active workflow instances.
 
-**Errors:** 403 if workflow task moved to done directly. 500 for invalid transitions.
+## Exec Tools
 
-### POST /api/plugins/tasks/delete
+11 MCP exec tools registered via `ctx.registerExecTool()`, naming: `bakin_exec_tasks_{action}`:
 
-Delete a task. Also cancels any active workflow instances.
-
-| Field | Type | Required |
-|-------|------|----------|
-| `id` or `title` | string | yes (one of) |
-
-### POST /api/plugins/tasks/assign
-
-Assign or unassign an agent.
-
-| Field | Type | Required |
-|-------|------|----------|
-| `id` or `title` | string | yes (one of) |
-| `agent` | string | no (empty string unassigns) |
-
-### POST /api/plugins/tasks/log
-
-Add a progress log entry. Uses `logProgress` from task-service which broadcasts to SSE first, then persists.
-
-| Field | Type | Required |
-|-------|------|----------|
-| `id` or `title` | string | yes (one of) |
-| `message` | string | yes |
-| `author` | string | no | defaults to `"system"` |
-
-### POST /api/plugins/tasks/block
-
-Block a task with a reason. Uses `blockTaskWithEffects` which propagates blocks to parent tasks for child workflow tasks.
-
-| Field | Type | Required |
-|-------|------|----------|
-| `id` or `title` | string | yes (one of) |
-| `reason` | string | yes |
-| `agent` | string | no |
-
-### POST /api/plugins/tasks/update
-
-Update task fields (title, description, agent, column, workflowId). Column changes go through transition validation.
-
-| Field | Type | Required |
-|-------|------|----------|
-| `id` or `originalTitle` | string | yes (one of) |
-| `title` | string | no |
-| `description` | string | no |
-| `agent` | string | no |
-| `column` | ColumnId | no |
-| `workflowId` | string | no |
+| Tool | Action |
+|------|--------|
+| `bakin_exec_tasks_list` | List all tasks |
+| `bakin_exec_tasks_get` | Get single task details |
+| `bakin_exec_tasks_create` | Create task |
+| `bakin_exec_tasks_move` | Move to column |
+| `bakin_exec_tasks_block` | Block with reason |
+| `bakin_exec_tasks_complete` | Report complete |
+| `bakin_exec_tasks_log_progress` | Log progress |
+| `bakin_exec_tasks_set_dependency` | Set dependency |
+| `bakin_exec_tasks_update` | Update task fields |
+| `bakin_exec_tasks_delete` | Delete task |
+| `bakin_exec_tasks_assign` | Assign to agent |
 
 ## Hook Registry
 

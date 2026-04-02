@@ -73,24 +73,23 @@ Provided to plugins via `PluginContext.storage`. Each plugin reads/writes to nam
 ## Key File Formats
 
 ### TASKBOARD.md
-Markdown kanban board. Columns are H2 headers with emoji prefix:
+Markdown kanban board. Columns are H2 headers with emoji prefix. Tasks are checkbox list items:
 ```markdown
 ## 🔵 In Progress
-
-### task-abc123
-- **title:** Create social media images
-- **agent:** @pixel
-- **workflow:** social-media-post
-- **created:** 2026-03-28
-- **log:**
-  - [10:30] [START] Beginning image generation
-  - [10:35] [PROGRESS] Generated 3 variants
+- [ ] [a1b2c3d4] Task title @agent -- 2026-03-30
+  createdBy: roscoe
+  dependsOn: e5f6g7h8
+  workflow: content-pipeline
+  [2026-03-30T14:30:00.000Z pixel] Progress message
 
 ## 📋 Todo
 ...
+
+## ✅ Done
+- [x] [e5f6g7h8] Completed task @rolo -- 2026-03-29
 ```
 
-Parsed by `src/lib/parsers/` and `src/lib/taskboard.ts`.
+Parsed by `plugins/tasks/parser.ts` (primary) and `plugins/tasks/taskboard.ts`.
 
 ### Project files (`projects/{id}.md`)
 Markdown with YAML frontmatter:

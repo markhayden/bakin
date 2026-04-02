@@ -122,7 +122,7 @@ The hook registry singleton is backed by `globalThis.__bakinHookRegistry` to sur
 | Plugin | Hooks | Examples |
 |--------|-------|---------|
 | tasks | 9 | `tasks.readTaskboard`, `tasks.createTask`, `tasks.moveTask`, `tasks.blockTask`, `tasks.addTaskLog`, `tasks.updateTask`, `tasks.deleteTask`, `tasks.setDependency`, `tasks.clearDependency` |
-| workflows | 15 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.matchWorkflow`, `workflows.listDefinitions`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
+| workflows | 13 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.matchWorkflow`, `workflows.listDefinitions`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
 | assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.listTrash`, `assets.restoreAsset`, `assets.emptyTrash` |
 | projects | 2 | `projects.readProject`, `projects.autoCheckLinkedItem` |
 
@@ -137,6 +137,21 @@ const board = await hooks.invoke<TaskBoard>('tasks.readTaskboard', {})
 - Task mutation hooks use `identifier` (not `taskId`) for `blockTask`, `addTaskLog`, `moveTask`, `deleteTask`, `updateTask`
 - `setDependency`/`clearDependency` use `taskId` and `dependsOnId`
 - Workflow hooks use `taskId`, `contentDir`, `agentId` etc.
+
+### Exec tool registrations by plugin
+
+6 plugins register exec tools, 3 don't (memory, models, health):
+
+| Plugin | Exec tools |
+|--------|-----------|
+| tasks | 11 |
+| workflows | 10 |
+| assets | 8 |
+| schedule | 10 |
+| calendar | 7 |
+| projects | 15 |
+| scripts (non-plugin) | 4 |
+| **Total** | **62** (58 plugin + 4 script) |
 
 **Critical:** No direct imports between plugins or from core → plugins. All cross-boundary calls go through hooks. Verified: `grep -r "from '../../plugins/" src/core/ scripts/lib/` returns 0 results.
 
@@ -183,7 +198,7 @@ The `getToolContext()` function in `scripts/lib/registry.ts` uses `eval('require
 Plugins register routes in `activate()`:
 ```typescript
 ctx.registerRoute({
-  path: '/create',
+  path: '/',
   method: 'POST',
   handler: async (req, ctx) => {
     const body = await req.json()
@@ -191,6 +206,16 @@ ctx.registerRoute({
     return Response.json({ ok: true })
   },
   description: 'Create a new item',
+})
+
+ctx.registerRoute({
+  path: '/:taskId',
+  method: 'DELETE',
+  handler: async (req) => {
+    // ... delete item ...
+    return Response.json({ ok: true })
+  },
+  description: 'Delete an item by ID',
 })
 ```
 
@@ -209,7 +234,7 @@ ctx.registerRoute({
 ```
 
 ### Catch-all router
-`src/app/api/plugins/[pluginId]/[...path]/route.ts` handles all plugin API requests.
+`src/app/api/plugins/[pluginId]/[[...path]]/route.ts` handles all plugin API requests.
 The router's `matchRoute()` tries exact match first, then falls back to segment-by-segment `:param` matching. Extracted path params are injected into the request URL's `searchParams` so handlers read them the same way as query params.
 
 Request to `/api/plugins/workflows/definitions/my-workflow` → extracts `pluginId=workflows`, `path=/definitions/my-workflow` → matches route `/definitions/:name` → injects `name=my-workflow` into searchParams.
@@ -265,7 +290,7 @@ The event bus is used by the workflows plugin for notifications. Most cross-plug
 | `bakin.config.ts` | Plugin enable list |
 | `scripts/lib/registry.ts` | Exec tool registry (addExecTool, getAllExecTools, getToolContext) |
 | `src/core/mcp-server.ts` | MCP server, tool registration, core tool imports |
-| `src/app/api/plugins/[pluginId]/[...path]/route.ts` | Catch-all API router |
+| `src/app/api/plugins/[pluginId]/[[...path]]/route.ts` | Catch-all API router |
 | `src/app/api/plugin-settings/schemas/route.ts` | Serves all plugin settings schemas |
 | `src/app/api/plugin-settings/[pluginId]/route.ts` | GET/PUT per-plugin settings values |
 | `src/components/plugin-settings-renderer.tsx` | Auto-renders settings UI from schema |
