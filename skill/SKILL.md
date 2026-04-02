@@ -70,6 +70,13 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_list_trash` | List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge. |
 | `bakin_exec_restore_trash` | Restore a trashed asset back to its original location. Use bakin_exec_list_trash first to get the filename. |
 | `bakin_exec_empty_trash` | Permanently delete all items from trash. This cannot be undone. |
+| `bakin_exec_workflows_list` | List all workflow definitions (templates). Returns name, filename, description, and step count for each. |
+| `bakin_exec_workflows_get_definition` | Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows. |
+| `bakin_exec_workflows_start` | Start a workflow instance for a task. The task must exist on the board. Returns the created instance. |
+| `bakin_exec_workflows_list_instances` | List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled). |
+| `bakin_exec_workflows_get_instance` | Get the full state of a workflow instance for a task, including step states and history. |
+| `bakin_exec_workflows_get_step` | Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next. |
+| `bakin_exec_workflows_complete_step` | Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete. |
 | `bakin_exec_schedule_list` | List all scheduled jobs (merged OpenClaw + Bakin view) |
 | `bakin_exec_schedule_create` | Create a new scheduled job that creates tasks on the board |
 | `bakin_exec_schedule_update` | Update an existing scheduled job |
