@@ -280,7 +280,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
     if (!title.trim()) return
     setSaving(true)
     try {
-      const res = await fetch('/api/tasks/create', {
+      const res = await fetch('/api/plugins/tasks/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -308,8 +308,8 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
     if (isCreate) return handleCreate()
     setSaving(true)
     try {
-      const res = await fetch('/api/tasks/update', {
-        method: 'POST',
+      const res = await fetch('/api/plugins/tasks/' + task!.id, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: task!.id,
@@ -339,7 +339,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
     if (!logMessage.trim()) return
     setAddingLog(true)
     try {
-      const res = await fetch('/api/tasks/log', {
+      const res = await fetch('/api/plugins/tasks/' + task!.id + '/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

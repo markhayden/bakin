@@ -24,7 +24,7 @@ import {
   MAX_IMAGE_EDGE,
 } from './common'
 import type { ImagePreset } from './common'
-import { saveAsset } from './save-asset'
+import { saveAsset } from '../../plugins/assets/lib/save-asset'
 import { addExecTool } from './registry'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
 

@@ -46,7 +46,7 @@ export function useSSE() {
       es.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data)
-          // Agent activity logs (from /api/tasks/log broadcasts)
+          // Agent activity logs (from task log broadcasts via SSE)
           if (data.type === 'activity') {
             appendActivityEvent({
               id: `${data.ts}-activity-${data.agent}`,

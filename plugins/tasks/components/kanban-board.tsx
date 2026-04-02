@@ -39,10 +39,10 @@ function parseCompositeId(id: string): { columnId: ColumnId; taskId: string } | 
   return { columnId: parts[0] as ColumnId, taskId: parts[1] }
 }
 
-async function apiFetch(url: string, body: Record<string, unknown>): Promise<boolean> {
+async function apiFetch(url: string, body: Record<string, unknown>, method = 'POST'): Promise<boolean> {
   try {
     const res = await fetch(url, {
-      method: 'POST',
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
@@ -207,7 +207,7 @@ export function KanbanBoard() {
         return { columns: { ...base, [fromCol]: reordered } }
       })
 
-      const ok = await apiFetch('/api/tasks/reorder', {
+      const ok = await apiFetch('/api/plugins/tasks/reorder', {
         columnId: fromCol,
         orderedIds: reordered.map(t => t.id),
       })
@@ -240,7 +240,7 @@ export function KanbanBoard() {
         columns: { ...base, [fromCol]: fromTasks, [targetCol]: toTasks },
       })
 
-      const ok = await apiFetch('/api/tasks/move', {
+      const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/move', {
         id: task.id, title: task.title, from: fromCol, to: targetCol, agent: 'main-operator',
       })
 
@@ -253,7 +253,7 @@ export function KanbanBoard() {
   }, [parsed.columns, optimistic])
 
   const handleAssign = useCallback(async (task: Task, agent: string) => {
-    const ok = await apiFetch('/api/tasks/assign', { id: task.id, title: task.title, agent })
+    const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/assign', { id: task.id, title: task.title, agent })
     if (ok) {
       await refreshTaskboard()
     } else {
@@ -286,7 +286,7 @@ export function KanbanBoard() {
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return
-    const ok = await apiFetch('/api/tasks/delete', { id: deleteTarget.id, title: deleteTarget.title })
+    const ok = await apiFetch('/api/plugins/tasks/' + deleteTarget.id, { id: deleteTarget.id, title: deleteTarget.title }, 'DELETE')
     if (ok) {
       toast(`Deleted "${deleteTarget.title}"`, 'success')
       await refreshTaskboard()
@@ -412,7 +412,7 @@ export function KanbanBoard() {
             setDeleteTarget({ id: task.id, title: task.title })
           }}
           onDuplicate={async (task) => {
-            const ok = await apiFetch('/api/tasks/create', {
+            const ok = await apiFetch('/api/plugins/tasks/', {
               title: `${task.title} (copy)`,
               description: task.description || undefined,
               column: detailTask?.columnId || 'todo',

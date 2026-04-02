@@ -105,7 +105,7 @@ async function cmdDispatch(): Promise<void> {
 
 async function cmdTasksList(column?: string): Promise<void> {
   // Read tasks from the API - for now we parse the taskboard file
-  const result = await apiGet('/api/plugins/tasks/board') as { columns: Record<string, Array<Record<string, unknown>>> }
+  const result = await apiGet('/api/plugins/tasks/') as { columns: Record<string, Array<Record<string, unknown>>> }
   const columns = result.columns || {}
 
   if (column) {
@@ -129,7 +129,7 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
   if (assignee) body.assignee = assignee
   if (workflowId) body.workflowId = workflowId
   if (skipWorkflowReason) body.skipWorkflowReason = skipWorkflowReason
-  const result = await apiPost('/api/tasks/create', body) as { ok?: boolean; id?: string; workflowId?: string; suggestedWorkflow?: string; error?: string }
+  const result = await apiPost('/api/plugins/tasks/', body) as { ok?: boolean; id?: string; workflowId?: string; suggestedWorkflow?: string; error?: string }
 
   if (result.error) {
     console.error(`Error: ${result.error}`)
@@ -147,7 +147,7 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
 }
 
 async function cmdTasksMove(id: string, to: string): Promise<void> {
-  const result = await apiPost('/api/tasks/move', { id, to, agent: CLI_AGENT })
+  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to, agent: CLI_AGENT })
   print(result)
 }
 
@@ -988,29 +988,29 @@ async function cmdSetupMcporter(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdTasksLog(id: string, message: string): Promise<void> {
-  const result = await apiPost('/api/tasks/log', { id, author: CLI_AGENT, message })
+  const result = await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: CLI_AGENT, message })
   print(result)
 }
 
 async function cmdTasksBlock(id: string, reason: string): Promise<void> {
-  const result = await apiPost('/api/tasks/block', { id, reason, agent: CLI_AGENT })
+  const result = await apiPost(`/api/plugins/tasks/${id}/block`, { id, reason, agent: CLI_AGENT })
   print(result)
 }
 
 async function cmdTasksDepend(id: string, dependsOn: string): Promise<void> {
-  const result = await apiPost('/api/tasks/depend', { id, dependsOn })
+  const result = await apiPost(`/api/plugins/tasks/${id}/dependency`, { id, dependsOn })
   print(result)
 }
 
 async function cmdTasksComplete(id: string, summary: string): Promise<void> {
   // Log the summary, then move to done
-  await apiPost('/api/tasks/log', { id, author: CLI_AGENT, message: `Task complete: ${summary}` })
-  const result = await apiPost('/api/tasks/move', { id, to: 'done', agent: CLI_AGENT })
+  await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: CLI_AGENT, message: `Task complete: ${summary}` })
+  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to: 'done', agent: CLI_AGENT })
   print(result)
 }
 
 async function cmdTasksGet(id: string): Promise<void> {
-  const result = await apiGet('/api/plugins/tasks/board') as { columns: Record<string, Array<Record<string, unknown>>> }
+  const result = await apiGet('/api/plugins/tasks/') as { columns: Record<string, Array<Record<string, unknown>>> }
   const columns = result.columns || {}
   for (const [colName, tasks] of Object.entries(columns)) {
     const task = (tasks as Array<Record<string, unknown>>).find(t => t.id === id)
@@ -1074,7 +1074,7 @@ function daysUntil(dateStr: string): string {
 }
 
 async function cmdTrashList(): Promise<void> {
-  const data = await apiGet('/api/plugins/assets/list-trash') as { assets: Array<{ filename: string; originalFilename: string; type: string; size: number; deletedAt: string; expiresAt: string; metadata: { agent?: string } | null }>; count: number }
+  const data = await apiGet('/api/plugins/assets/trash') as { assets: Array<{ filename: string; originalFilename: string; type: string; size: number; deletedAt: string; expiresAt: string; metadata: { agent?: string } | null }>; count: number }
   if (data.count === 0) {
     console.log('Trash is empty.')
     return
@@ -1100,7 +1100,7 @@ async function cmdTrashRestore(filename: string): Promise<void> {
 }
 
 async function cmdTrashEmpty(): Promise<void> {
-  const check = await apiGet('/api/plugins/assets/list-trash') as { count: number }
+  const check = await apiGet('/api/plugins/assets/trash') as { count: number }
   if (check.count === 0) {
     console.log('Trash is already empty.')
     return

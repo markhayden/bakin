@@ -27,6 +27,86 @@ import type { WorkflowTemplate, WorkflowDefinition, NestedWorkflowStep } from '.
 
 const log = createLogger('workflows')
 
+// ---------------------------------------------------------------------------
+// Human-readable step context formatter (migrated from scripts/lib/get-step.ts)
+// ---------------------------------------------------------------------------
+
+function formatSchema(schema: Record<string, unknown>, indent = 0): string {
+  const prefix = '  '.repeat(indent)
+  const lines: string[] = []
+  const properties = (schema.properties || schema.fields || schema) as Record<string, Record<string, unknown>>
+  const required = new Set<string>((schema.required as string[]) || [])
+
+  for (const [key, def] of Object.entries(properties)) {
+    if (key === 'type' || key === 'required' || key === 'properties' || key === 'fields') continue
+    const type = (def?.type as string) || 'unknown'
+    const desc = (def?.description as string) || ''
+    const req = required.has(key) ? ', required' : ''
+    lines.push(`${prefix}- ${key} (${type}${req})${desc ? ': ' + desc : ''}`)
+    if (type === 'object' && (def.properties || def.fields)) {
+      lines.push(formatSchema(def as Record<string, unknown>, indent + 1))
+    }
+  }
+  return lines.join('\n')
+}
+
+function formatStepContext(step: Record<string, unknown>): string {
+  const sections: string[] = []
+  sections.push(`STEP: ${step.stepId}`)
+  sections.push(`STATUS: ${step.status}`)
+  if (step.label) sections.push(`LABEL: ${step.label}`)
+  if (step.agent) sections.push(`AGENT: ${step.agent}`)
+
+  if (step.instructions) {
+    sections.push('')
+    sections.push('INSTRUCTIONS:')
+    sections.push(step.instructions as string)
+  }
+
+  if (step.priorStepOutput) {
+    sections.push('')
+    sections.push('PRIOR STEP OUTPUT:')
+    sections.push(typeof step.priorStepOutput === 'string' ? step.priorStepOutput : JSON.stringify(step.priorStepOutput, null, 2))
+  } else if (!step.stepOutputs || Object.keys(step.stepOutputs as Record<string, unknown>).length === 0) {
+    sections.push('')
+    sections.push('PRIOR STEP OUTPUT:')
+    sections.push('(none — this is the first step)')
+  }
+
+  const stepOutputs = step.stepOutputs as Record<string, unknown> | undefined
+  if (stepOutputs && Object.keys(stepOutputs).length > 0) {
+    sections.push('')
+    sections.push('ALL PRIOR STEP OUTPUTS:')
+    for (const [stepId, output] of Object.entries(stepOutputs)) {
+      sections.push(`  [${stepId}]:`)
+      sections.push('  ' + JSON.stringify(output, null, 2).replace(/\n/g, '\n  '))
+    }
+  }
+
+  if (step.output_schema) {
+    sections.push('')
+    sections.push('REQUIRED OUTPUT SCHEMA:')
+    sections.push(formatSchema(step.output_schema as Record<string, unknown>))
+  }
+
+  if (step.rejectionReason) {
+    sections.push('')
+    sections.push('REJECTION CONTEXT:')
+    sections.push(step.rejectionReason as string)
+    if (step.previousOutput) {
+      sections.push('')
+      sections.push('YOUR PREVIOUS OUTPUT (needs revision):')
+      sections.push(JSON.stringify(step.previousOutput, null, 2))
+    }
+  } else {
+    sections.push('')
+    sections.push('REJECTION CONTEXT:')
+    sections.push('(none — first attempt)')
+  }
+
+  return sections.join('\n')
+}
+
 /** Fire-and-forget dispatch trigger so the next workflow step's agent starts immediately. */
 function triggerDispatch() {
   const port = Number(process.env.PORT || 3737)
@@ -579,6 +659,133 @@ const workflowsPlugin: BakinPlugin = {
         }
 
         return { ok: true, workflowComplete: result.workflowComplete }
+      },
+    })
+
+    // ─── Migrated Script Tools (formerly scripts/lib/) ─────────────────
+
+    // bakin_exec_get_step — human-readable step context formatter
+    ctx.registerExecTool({
+      name: 'bakin_exec_get_step',
+      description: 'Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        try {
+          const step = getCurrentStep(params.taskId as string, agent) as Record<string, unknown> | undefined
+          if (!step) return { ok: false, error: 'No active step found for this task' }
+          const formatted = formatStepContext(step)
+          return { ok: true, formatted, raw: step }
+        } catch (err) {
+          return { ok: false, error: `Failed to get step: ${String(err)}` }
+        }
+      },
+    })
+
+    // bakin_exec_submit_step — local pre-validation before server submission
+    ctx.registerExecTool({
+      name: 'bakin_exec_submit_step',
+      description: 'Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+        stepId: z.string().describe('Step ID to submit for'),
+        output: z.record(z.string(), z.unknown()).describe('JSON output matching the step schema'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const taskId = params.taskId as string
+        const stepId = params.stepId as string
+        const output = params.output as Record<string, unknown>
+
+        try {
+          // Fetch current step to get schema
+          const step = getCurrentStep(taskId, agent) as Record<string, unknown> | undefined
+          if (!step) return { ok: false, error: 'No active step found for this task' }
+
+          const schema = step.output_schema as Record<string, unknown> | undefined
+
+          // Local pre-validation if schema exists
+          if (schema) {
+            const validation = validateStepOutput(schema, output)
+            if (validation && !validation.valid) {
+              return { ok: false, error: 'Schema validation failed — fix these before resubmitting', details: validation.errors }
+            }
+          }
+
+          // Submit to server
+          const result = completeStep(taskId, stepId, output, agent)
+
+          if (!result.success) {
+            return { ok: false, error: 'Step completion failed', errors: result.errors }
+          }
+
+          ctx.activity.audit('step.completed', agent, { taskId, stepId, workflowComplete: result.workflowComplete })
+          ctx.activity.log(agent, `Completed step "${stepId}"${result.workflowComplete ? ' — workflow complete' : ''}`, { taskId })
+
+          if (!result.workflowComplete) {
+            triggerDispatch()
+          }
+
+          return { ok: true, workflowComplete: result.workflowComplete }
+        } catch (err) {
+          const msg = String(err)
+          if (msg.includes('near-duplicate') || msg.includes('rejection')) {
+            return { ok: false, error: 'Submission rejected: output is too similar to your previous rejected submission. Address the feedback and make substantive changes.' }
+          }
+          return { ok: false, error: `Failed to submit step: ${msg}` }
+        }
+      },
+    })
+
+    // bakin_exec_check_gates — human-readable gate status overview
+    ctx.registerExecTool({
+      name: 'bakin_exec_check_gates',
+      description: 'Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending.',
+      parameters: {
+        taskId: z.string().describe('Task ID (or workflow instance ID)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        try {
+          const instance = loadInstance(params.taskId as string)
+          if (!instance) return { ok: false, error: 'No workflow instance found for this task' }
+
+          const STATUS_DISPLAY: Record<string, string> = {
+            complete: 'APPROVED', pending_approval: 'WAITING', pending: 'PENDING',
+            rejected: 'REJECTED', in_progress: 'IN PROGRESS',
+          }
+
+          const lines: string[] = []
+          lines.push(`WORKFLOW: ${instance.workflowId} (${params.taskId})`)
+          lines.push(`STATUS: ${instance.status}`)
+          lines.push('')
+          lines.push('GATES:')
+
+          let hasGates = false
+          const stepStates = (instance.stepStates || {}) as unknown as Record<string, Record<string, unknown>>
+          for (const [stepId, state] of Object.entries(stepStates)) {
+            const s = state as { status: string; completedAt?: string; startedAt?: string }
+            const isGate = s.status === 'pending_approval' ||
+              stepId.includes('gate') || stepId.includes('review') || stepId.includes('approval')
+            if (!isGate) continue
+            hasGates = true
+
+            const display = STATUS_DISPLAY[s.status] || s.status.toUpperCase()
+            const time = s.completedAt
+              ? `  (${new Date(s.completedAt).toLocaleString()})`
+              : s.startedAt
+                ? `  (since ${new Date(s.startedAt).toLocaleString()})`
+                : ''
+            lines.push(`  ${stepId.padEnd(24)} ${display}${time}`)
+          }
+
+          if (!hasGates) lines.push('  (no gates found in this workflow)')
+          lines.push('')
+          lines.push(`CURRENT STEP: ${instance.currentStepId}`)
+
+          return { ok: true, formatted: lines.join('\n') }
+        } catch (err) {
+          return { ok: false, error: `Failed to check gates: ${String(err)}` }
+        }
       },
     })
   },
