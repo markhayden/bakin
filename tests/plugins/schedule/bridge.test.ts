@@ -55,6 +55,21 @@ vi.mock('../../../plugins/tasks/taskboard', () => ({
   readTaskboard: vi.fn(() => mockTaskboard),
 }))
 
+// Mock the hook registry so getHookRegistry().invoke() routes to the taskboard mock
+const mockHookRegistry = {
+  invoke: vi.fn(async <R>(name: string, _data: unknown): Promise<R | undefined> => {
+    if (name === 'tasks.readTaskboard') return mockTaskboard as R
+    if (name === 'tasks.createTask') return mockCreateTask(_data) as R
+    return undefined
+  }),
+  register: vi.fn(),
+  has: vi.fn(() => false),
+}
+
+vi.mock('../../../src/lib/plugin-registry', () => ({
+  getHookRegistry: () => mockHookRegistry,
+}))
+
 // Mock OpenClaw cron wrappers
 vi.mock('@bakin/schedule/lib/openclaw-cron', () => ({
   cronAdd: vi.fn(() => Promise.resolve('new-job')),
@@ -109,6 +124,29 @@ async function callBridge(payload: Record<string, unknown>): Promise<{ status: n
     storage: {} as any,
     events: {} as any,
     pluginId: 'schedule',
+    activity: {
+      log: vi.fn((agent: string, message: string, opts?: { taskId?: string }) => {
+        const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as ((...args: unknown[]) => void) | undefined
+        if (broadcastFn) {
+          broadcastFn({
+            type: 'activity',
+            agent,
+            message,
+            ts: new Date().toISOString(),
+            pluginId: 'schedule',
+            ...(opts?.taskId ? { taskId: opts.taskId } : {}),
+          })
+        }
+      }),
+      audit: vi.fn(),
+    },
+    hooks: {
+      register: vi.fn(),
+      has: vi.fn(() => false),
+      invoke: mockHookRegistry.invoke,
+    },
+    getSettings: vi.fn(() => ({})),
+    updateSettings: vi.fn(),
   }
 
   await plugin.activate(ctx as any)

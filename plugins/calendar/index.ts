@@ -486,7 +486,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
           const item = updateItem(itemId as string, updates as Partial<CalendarItem>)
           ctx.activity.audit('item.updated', 'system', { itemId })
           return { ok: true, item }
-        } catch (e) {
+        } catch (e: unknown) {
           return { ok: false, error: String(e) }
         }
       },
