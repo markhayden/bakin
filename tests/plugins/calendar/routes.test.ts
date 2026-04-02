@@ -821,12 +821,12 @@ describe('Calendar exec tools', () => {
 // ===========================================================================
 
 describe('Calendar plugin registration', () => {
-  it('registers exactly 7 routes', () => {
-    expect(plugin.routes.length).toBe(7)
+  it('registers exactly 8 routes', () => {
+    expect(plugin.routes.length).toBe(8)
   })
 
-  it('registers exactly 6 exec tools', () => {
-    expect(plugin.execTools.length).toBe(6)
+  it('registers exactly 7 exec tools', () => {
+    expect(plugin.execTools.length).toBe(7)
   })
 
   it('called watchFiles with calendar.json during activation', async () => {

@@ -378,13 +378,13 @@ These are the ONLY valid workflow endpoints. Do NOT guess at other paths.
 
 | Action | Method | Path |
 |--------|--------|------|
-| List templates | GET | \`/api/plugins/workflows/list\` |
-| Get definition | GET | \`/api/plugins/workflows/definition?name=<id>\` |
-| Start workflow | POST | \`/api/plugins/workflows/start\` — body: \`{"taskId":"...","workflowId":"..."}\` |
+| List templates | GET | \`/api/plugins/workflows/definitions\` |
+| Get definition | GET | \`/api/plugins/workflows/definitions/:name\` |
+| Start workflow | POST | \`/api/plugins/workflows/instances/start\` — body: \`{"taskId":"...","workflowId":"..."}\` |
 | List instances | GET | \`/api/plugins/workflows/instances?status=<optional>\` |
-| Get instance | GET | \`/api/plugins/workflows/instance?taskId=<id>\` |
-| Pending gates | GET | \`/api/plugins/workflows/pending-gates\` |
-| Gate status | GET | \`/api/plugins/workflows/gate-status?taskIds=id1,id2\` |
+| Get instance | GET | \`/api/plugins/workflows/instances/:taskId\` |
+| Pending gates | GET | \`/api/plugins/workflows/gates/pending\` |
+| Gate status | GET | \`/api/plugins/workflows/gates/status?taskIds=id1,id2\` |
 
 Do NOT use \`/api/tasks\`, \`/api/tasks/list\`, \`/api/plugins/workflows/runs\`, or \`/api/plugins/workflows/run\` — these do not exist. All task operations are via MCP exec tools (bakin_exec_tasks_*).`
 
@@ -400,7 +400,7 @@ async function buildWorkflowCatalog(): Promise<string> {
       return `   - \`${d.name}\`: ${d.definition.description || d.definition.name}${agents.length ? ` (agents: ${agents.join(', ')})` : ''}`
     }).join('\n')
   } catch {
-    return '   (query GET /api/plugins/workflows/list at runtime)'
+    return '   (query GET /api/plugins/workflows/definitions at runtime)'
   }
 }
 

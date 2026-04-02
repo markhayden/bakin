@@ -250,7 +250,7 @@ curl -s 'http://localhost:3737/api/plugins/assets/file?path=assets/images/task-a
 
 Soft-delete an asset (moves to .trash/):
 ```bash
-curl -s -X POST 'http://localhost:3737/api/plugins/assets/delete?path=assets/images/task-abc/hero.png'
+curl -s -X DELETE 'http://localhost:3737/api/plugins/assets/assets%2Fimages%2Ftask-abc%2Fhero.png'
 ```
 
 ### Writing Assets

@@ -166,7 +166,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
   const isCreate = editing && !task
 
   useEffect(() => {
-    fetch('/api/plugins/workflows/list')
+    fetch('/api/plugins/workflows/definitions')
       .then((r) => r.ok ? r.json() : { templates: [] })
       .then((d) => setWorkflows(d.templates ?? []))
       .catch(() => {})
@@ -203,12 +203,12 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
       setWfDefinition(null)
 
       if (task.workflowId) {
-        fetch(`/api/plugins/workflows/instance?taskId=${task.id}`)
+        fetch(`/api/plugins/workflows/instances/${task.id}`)
           .then(r => r.ok ? r.json() : null)
           .then(d => { if (d?.instance) setWfInstance(d.instance) })
           .catch(() => {})
 
-        fetch(`/api/plugins/workflows/definition?name=${task.workflowId}`)
+        fetch(`/api/plugins/workflows/definitions/${task.workflowId}`)
           .then(r => r.ok ? r.json() : null)
           .then(d => { if (d?.definition) setWfDefinition(d.definition) })
           .catch(() => {})
@@ -224,7 +224,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
     }
     // Skip if already loaded for this workflow
     if (wfDefinition?.name === workflowId) return
-    fetch(`/api/plugins/workflows/definition?name=${workflowId}`)
+    fetch(`/api/plugins/workflows/definitions/${workflowId}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.definition) setWfDefinition(d.definition) })
       .catch(() => {})
@@ -249,7 +249,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
     for (let attempt = 0; attempt < 3; attempt++) {
       await new Promise(r => setTimeout(r, 500))
       try {
-        const res = await fetch(`/api/plugins/workflows/instance?taskId=${wfInstance.taskId}`)
+        const res = await fetch(`/api/plugins/workflows/instances/${wfInstance.taskId}`)
         if (!res.ok) continue
         const d = await res.json()
         const inst = d?.instance as WorkflowInstance | undefined
@@ -363,7 +363,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
     if (!wfInstance) return
     setGateLoading(true)
     try {
-      const res = await fetch('/api/plugins/workflows/approve', {
+      const res = await fetch('/api/plugins/workflows/gates/${task!.id}/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -373,7 +373,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
       })
       if (res.ok) {
         toast('Gate approved — workflow advancing', 'success')
-        const d = await fetch(`/api/plugins/workflows/instance?taskId=${task!.id}`).then(r => r.ok ? r.json() : null)
+        const d = await fetch(`/api/plugins/workflows/instances/${task!.id}`).then(r => r.ok ? r.json() : null)
         if (d?.instance) setWfInstance(d.instance)
         else setWfInstance(null)
       } else {
@@ -390,7 +390,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
     if (!wfInstance || !rejectReason.trim()) return
     setGateLoading(true)
     try {
-      const res = await fetch('/api/plugins/workflows/reject', {
+      const res = await fetch(`/api/plugins/workflows/gates/${task!.id}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -404,7 +404,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
         toast(`Gate rejected — rewinding to ${data.rewoundTo}`, 'success')
         setShowRejectInput(false)
         setRejectReason('')
-        const d = await fetch(`/api/plugins/workflows/instance?taskId=${task!.id}`).then(r => r.ok ? r.json() : null)
+        const d = await fetch(`/api/plugins/workflows/instances/${task!.id}`).then(r => r.ok ? r.json() : null)
         if (d?.instance) setWfInstance(d.instance)
         else setWfInstance(null)
       } else {

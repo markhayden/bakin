@@ -5,6 +5,10 @@
  */
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import {
+  cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
+  cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
+} from '../src/cli/schedule'
 
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -56,6 +60,10 @@ async function apiPost(path: string, body?: unknown): Promise<unknown> {
     method: 'POST',
     body: body ? JSON.stringify(body) : undefined,
   })
+}
+
+async function apiDelete(path: string): Promise<unknown> {
+  return api(path, { method: 'DELETE' })
 }
 
 function print(data: unknown): void {
@@ -1025,7 +1033,7 @@ async function cmdTasksGet(id: string): Promise<void> {
 }
 
 async function cmdWorkflowsList(): Promise<void> {
-  const result = await apiGet('/api/plugins/workflows/list') as { templates?: Array<Record<string, unknown>> }
+  const result = await apiGet('/api/plugins/workflows/definitions') as { templates?: Array<Record<string, unknown>> }
   const templates = result?.templates || []
   if (templates.length === 0) {
     console.log('No workflow definitions found.')
@@ -1035,12 +1043,12 @@ async function cmdWorkflowsList(): Promise<void> {
 }
 
 async function cmdWorkflowsStart(taskId: string, workflowId: string): Promise<void> {
-  const result = await apiPost('/api/plugins/workflows/start', { taskId, workflowId })
+  const result = await apiPost('/api/plugins/workflows/instances/start', { taskId, workflowId })
   print(result)
 }
 
 async function cmdWorkflowsStep(taskId: string): Promise<void> {
-  const result = await apiGet(`/api/plugins/workflows/step?taskId=${encodeURIComponent(taskId)}`)
+  const result = await apiGet(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}`)
   print(result)
 }
 
@@ -1052,7 +1060,7 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
     console.error('Invalid JSON for output. Usage: bakin workflows submit <taskId> <stepId> \'{"key":"value"}\'')
     process.exit(1)
   }
-  const result = await apiPost('/api/plugins/workflows/step/complete', { taskId, stepId, agentId: CLI_AGENT, output })
+  const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: CLI_AGENT, output })
   print(result)
 }
 
@@ -1095,7 +1103,7 @@ async function cmdTrashList(): Promise<void> {
 }
 
 async function cmdTrashRestore(filename: string): Promise<void> {
-  const data = await apiPost(`/api/plugins/assets/restore?file=${encodeURIComponent(filename)}`) as { ok: boolean; restoredPath: string }
+  const data = await apiPost(`/api/plugins/assets/trash/${encodeURIComponent(filename)}/restore`) as { ok: boolean; restoredPath: string }
   console.log(`Restored → ${data.restoredPath}`)
 }
 
@@ -1105,7 +1113,7 @@ async function cmdTrashEmpty(): Promise<void> {
     console.log('Trash is already empty.')
     return
   }
-  const data = await apiPost('/api/plugins/assets/empty-trash') as { ok: boolean; deleted: number }
+  const data = await apiDelete('/api/plugins/assets/trash') as { ok: boolean; deleted: number }
   console.log(`Permanently deleted ${data.deleted} item${data.deleted !== 1 ? 's' : ''}.`)
 }
 
@@ -1151,6 +1159,13 @@ Commands:
   reboot                           Restart Bakin server (works with launchctl or standalone)
   reindex                          Reindex all content to Antfly
   docs                             Print API documentation
+  schedule [list]                    List scheduled jobs
+  schedule add <name> <sched>       Create a scheduled job (--agent, --prompt)
+  schedule pause <jobId>            Pause a job (--until <date>, --skip <n>)
+  schedule resume <jobId>           Resume a paused job
+  schedule remove <jobId>           Delete a scheduled job
+  schedule run <jobId>              Trigger immediate job run
+  schedule runs <jobId>             View run history for a job
   trash [list]                       List trashed assets (7-day soft-delete window)
   trash restore <filename>           Restore a trashed asset to its original location
   trash empty                        Permanently delete all items in trash
@@ -1376,6 +1391,45 @@ async function main(): Promise<void> {
           await cmdTrashEmpty()
         } else {
           console.error(`Unknown trash subcommand: ${sub}`)
+          process.exit(1)
+        }
+        break
+
+      case 'schedule':
+        if (!sub || sub === 'list') {
+          await cmdScheduleList({ agent: args.includes('--agent') ? args[args.indexOf('--agent') + 1] : undefined })
+        } else if (sub === 'add') {
+          if (!args[2] || !args[3]) { console.error('Usage: bakin schedule add <name> <schedule> [--agent <id>] [--prompt <text>]'); process.exit(1) }
+          const agentIdx = args.indexOf('--agent')
+          const promptIdx = args.indexOf('--prompt')
+          await cmdScheduleAdd({
+            name: args[2],
+            schedule: args[3],
+            agent: agentIdx > -1 ? args[agentIdx + 1] : undefined,
+            prompt: promptIdx > -1 ? args.slice(promptIdx + 1).join(' ') : undefined,
+          })
+        } else if (sub === 'pause') {
+          if (!args[2]) { console.error('Usage: bakin schedule pause <jobId> [--until <date>] [--skip <n>]'); process.exit(1) }
+          const untilIdx = args.indexOf('--until')
+          const skipIdx = args.indexOf('--skip')
+          await cmdSchedulePause(args[2], {
+            until: untilIdx > -1 ? args[untilIdx + 1] : undefined,
+            skip: skipIdx > -1 ? Number(args[skipIdx + 1]) : undefined,
+          })
+        } else if (sub === 'resume') {
+          if (!args[2]) { console.error('Usage: bakin schedule resume <jobId>'); process.exit(1) }
+          await cmdScheduleResume(args[2])
+        } else if (sub === 'remove') {
+          if (!args[2]) { console.error('Usage: bakin schedule remove <jobId>'); process.exit(1) }
+          await cmdScheduleRemove(args[2])
+        } else if (sub === 'run') {
+          if (!args[2]) { console.error('Usage: bakin schedule run <jobId>'); process.exit(1) }
+          await cmdScheduleRun(args[2])
+        } else if (sub === 'runs') {
+          if (!args[2]) { console.error('Usage: bakin schedule runs <jobId>'); process.exit(1) }
+          await cmdScheduleRuns(args[2], { limit: 20 })
+        } else {
+          console.error(`Unknown schedule subcommand: ${sub}`)
           process.exit(1)
         }
         break

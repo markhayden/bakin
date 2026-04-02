@@ -168,7 +168,7 @@ export function AssetDetailModal({ assetPath, onClose }: { assetPath: string; on
       asset={asset}
       onClose={onClose}
       onDelete={async (path) => {
-        await fetch(`/api/plugins/assets/delete?path=${encodeURIComponent(path)}`, { method: 'POST' })
+        await fetch(`/api/plugins/assets/${encodeURIComponent(path)}`, { method: 'DELETE' })
         onClose()
       }}
       showOpenInAssets

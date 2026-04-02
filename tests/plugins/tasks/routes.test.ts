@@ -115,8 +115,8 @@ beforeEach(() => {
 // ─── Route Registration ────────────────────────────────────────────────────
 
 describe('Tasks Plugin — Route Registration', () => {
-  it('registers 11 routes', () => {
-    expect(activated.routes.length).toBe(11)
+  it('registers 12 routes', () => {
+    expect(activated.routes.length).toBe(12)
   })
 
   it.each([
@@ -687,8 +687,8 @@ describe('POST /reorder — Reorder Tasks', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('Tasks Plugin — Exec Tool Registration', () => {
-  it('registers 8 exec tools', () => {
-    expect(activated.execTools.length).toBe(8)
+  it('registers 11 exec tools', () => {
+    expect(activated.execTools.length).toBe(11)
   })
 
   it.each([

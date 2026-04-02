@@ -104,11 +104,11 @@ Plugins are configured in `mc.config.ts` and loaded at startup. Each plugin can 
 
 | Plugin | Description | Key Routes |
 |--------|-------------|------------|
-| **tasks** | Kanban board backed by `TASKBOARD.md` | `/api/plugins/tasks/create`, `/move`, `/log`, `/assign` |
-| **calendar** | Content pipeline (draft → published) | `/api/plugins/calendar/items` |
+| **tasks** | Kanban board backed by `TASKBOARD.md` | `/api/plugins/tasks/` (CRUD + move, log, block) |
+| **calendar** | Content pipeline (draft → published) | `/api/plugins/calendar/` |
 | **memory** | Audit log viewer + agent workspace inspector | `/api/plugins/memory/audit`, `/workspace` |
 | **models** | Agent model assignments + available models | `/api/plugins/models/*` |
-| **workflows** | Reusable workflow templates | `/api/plugins/workflows/list`, `/definition` |
+| **workflows** | Reusable workflow templates | `/api/plugins/workflows/definitions`, `/steps/:taskId` |
 
 ---
 

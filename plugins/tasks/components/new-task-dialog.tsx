@@ -36,7 +36,7 @@ export function NewTaskDialog() {
 
   useEffect(() => {
     if (!open) return
-    fetch('/api/plugins/workflows/list')
+    fetch('/api/plugins/workflows/definitions')
       .then((r) => r.ok ? r.json() : { templates: [] })
       .then((data) => setWorkflows(data.templates || []))
       .catch(() => setWorkflows([]))
