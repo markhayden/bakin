@@ -30,7 +30,7 @@ export function useAssets(options: UseAssetsOptions = {}) {
     if (opts.offset) params.set('offset', String(opts.offset))
 
     try {
-      const res = await fetch(`/api/plugins/assets/list?${params}`)
+      const res = await fetch(`/api/plugins/assets/?${params}`)
       if (res.ok) {
         const data = await res.json()
         setAssets(data.assets || [])
@@ -88,7 +88,7 @@ export function useTrash() {
 
   const fetchTrash = useCallback(async () => {
     try {
-      const res = await fetch('/api/plugins/assets/list-trash')
+      const res = await fetch('/api/plugins/assets/trash')
       if (res.ok) {
         const data = await res.json()
         setItems(data.assets || [])

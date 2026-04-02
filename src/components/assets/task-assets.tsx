@@ -25,7 +25,7 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
   const esRef = useRef<EventSource | null>(null)
 
   const fetchAssets = useCallback(() => {
-    fetch(`/api/plugins/assets/list?taskId=${encodeURIComponent(taskId)}&includeChildren=true`)
+    fetch(`/api/plugins/assets/?taskId=${encodeURIComponent(taskId)}&includeChildren=true`)
       .then(r => r.ok ? r.json() : { assets: [] })
       .then(d => setAssets(d.assets || []))
       .catch(() => {})

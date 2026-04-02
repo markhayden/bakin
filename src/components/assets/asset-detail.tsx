@@ -157,7 +157,7 @@ export function AssetDetailModal({ assetPath, onClose }: { assetPath: string; on
 
   useEffect(() => {
     if (!assetPath) { setAsset(null); return }
-    fetch(`/api/plugins/assets/list?path=${encodeURIComponent(assetPath)}`)
+    fetch(`/api/plugins/assets/?path=${encodeURIComponent(assetPath)}`)
       .then(r => r.ok ? r.json() : { assets: [] })
       .then(d => setAsset(d.assets?.[0] ?? null))
       .catch(() => setAsset(null))
