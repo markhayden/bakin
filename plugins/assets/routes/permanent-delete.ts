@@ -1,5 +1,5 @@
 /**
- * POST /api/plugins/assets/permanent-delete?file= — permanently delete a trashed asset.
+ * DELETE /api/plugins/assets/trash/:file — permanently delete a trashed asset.
  */
 import { join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'

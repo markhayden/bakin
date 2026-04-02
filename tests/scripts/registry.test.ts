@@ -1,13 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Mock all the self-registering tool imports to prevent side-effect errors
-vi.mock('../../scripts/lib/save-asset', () => ({}))
+// Mock self-registering tool imports to prevent side-effect errors
 vi.mock('../../scripts/lib/log-progress', () => ({}))
-vi.mock('../../scripts/lib/get-step', () => ({}))
-vi.mock('../../scripts/lib/submit-step', () => ({}))
-vi.mock('../../scripts/lib/check-gates', () => ({}))
 vi.mock('../../scripts/lib/generate-image', () => ({}))
 vi.mock('../../scripts/lib/post-discord', () => ({}))
+vi.mock('../../scripts/lib/get-paths', () => ({}))
 
 import {
   addExecTool,

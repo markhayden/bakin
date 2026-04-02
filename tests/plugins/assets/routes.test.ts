@@ -147,11 +147,11 @@ describe('route registration', () => {
   it.each([
     ['GET', '/'],
     ['GET', '/file'],
-    ['POST', '/delete'],
+    ['DELETE', '/:assetPath'],
     ['GET', '/trash'],
-    ['POST', '/restore'],
-    ['POST', '/empty-trash'],
-    ['POST', '/permanent-delete'],
+    ['POST', '/trash/:file/restore'],
+    ['DELETE', '/trash'],
+    ['DELETE', '/trash/:file'],
   ])('registers %s %s', (method, path) => {
     const route = findRoute(plugin.routes, method, path)
     expect(route).toBeDefined()
@@ -164,8 +164,8 @@ describe('route registration', () => {
 // ===========================================================================
 
 describe('exec tool registration', () => {
-  it('registers all 6 exec tools', () => {
-    expect(plugin.execTools.length).toBe(6)
+  it('registers all 8 exec tools', () => {
+    expect(plugin.execTools.length).toBe(8)
   })
 
   it.each([
@@ -175,6 +175,8 @@ describe('exec tool registration', () => {
     'bakin_exec_assets_list_trash',
     'bakin_exec_assets_restore',
     'bakin_exec_assets_audit',
+    'bakin_exec_assets_empty_trash',
+    'bakin_exec_assets_permanent_delete',
   ])('registers tool: %s', (name) => {
     const tool = findTool(plugin.execTools, name)
     expect(tool).toBeDefined()
@@ -368,8 +370,8 @@ describe('POST /delete — soft-delete asset', () => {
       created: '2026-03-25T00:00:00Z',
     })
 
-    const route = findRoute(plugin.routes, 'POST', '/delete')!
-    const req = makeRequest('/delete?path=assets/images/task-del/delete-me.png', {
+    const route = findRoute(plugin.routes, 'DELETE', '/:assetPath')!
+    const req = makeRequest('/?assetPath=assets/images/task-del/delete-me.png', {
       method: 'POST',
     })
     const res = await route.handler(req, plugin.ctx)
@@ -396,8 +398,8 @@ describe('POST /delete — soft-delete asset', () => {
     })
     createAssetFixture('images', 'task-cascade', 'photo.thumb.jpg', 'thumb')
 
-    const route = findRoute(plugin.routes, 'POST', '/delete')!
-    const req = makeRequest('/delete?path=assets/images/task-cascade/photo.png', {
+    const route = findRoute(plugin.routes, 'DELETE', '/:assetPath')!
+    const req = makeRequest('/?assetPath=assets/images/task-cascade/photo.png', {
       method: 'POST',
     })
     const res = await route.handler(req, plugin.ctx)
@@ -416,8 +418,8 @@ describe('POST /delete — soft-delete asset', () => {
       created: '2026-03-25T00:00:00Z',
     })
 
-    const route = findRoute(plugin.routes, 'POST', '/delete')!
-    const req = makeRequest('/delete?path=assets/text/task-audit/log-test.md', {
+    const route = findRoute(plugin.routes, 'DELETE', '/:assetPath')!
+    const req = makeRequest('/?assetPath=assets/text/task-audit/log-test.md', {
       method: 'POST',
     })
     await route.handler(req, plugin.ctx)
@@ -427,16 +429,16 @@ describe('POST /delete — soft-delete asset', () => {
   })
 
   it('returns 400 when path is missing', async () => {
-    const route = findRoute(plugin.routes, 'POST', '/delete')!
-    const req = makeRequest('/delete', { method: 'POST' })
+    const route = findRoute(plugin.routes, 'DELETE', '/:assetPath')!
+    const req = makeRequest('/', { method: 'DELETE' })
     const res = await route.handler(req, plugin.ctx)
 
     expect(res.status).toBe(400)
   })
 
   it('returns 400 for path traversal', async () => {
-    const route = findRoute(plugin.routes, 'POST', '/delete')!
-    const req = makeRequest('/delete?path=assets/../../../etc/passwd', { method: 'POST' })
+    const route = findRoute(plugin.routes, 'DELETE', '/:assetPath')!
+    const req = makeRequest('/?assetPath=assets/../../../etc/passwd', { method: 'POST' })
     const res = await route.handler(req, plugin.ctx)
 
     expect(res.status).toBe(400)
@@ -473,7 +475,7 @@ describe('POST /restore — restore trashed asset', () => {
       created: '2026-03-20T10:00:00Z',
     })
 
-    const route = findRoute(plugin.routes, 'POST', '/restore')!
+    const route = findRoute(plugin.routes, 'POST', '/trash/:file/restore')!
     const req = makeRequest(`/restore?file=${trashFilename}`, { method: 'POST' })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
@@ -492,7 +494,7 @@ describe('POST /restore — restore trashed asset', () => {
       created: '2026-03-20T10:00:00Z',
     })
 
-    const route = findRoute(plugin.routes, 'POST', '/restore')!
+    const route = findRoute(plugin.routes, 'POST', '/trash/:file/restore')!
     const req = makeRequest(`/restore?file=${trashFilename}`, { method: 'POST' })
     await route.handler(req, plugin.ctx)
 
@@ -500,7 +502,7 @@ describe('POST /restore — restore trashed asset', () => {
   })
 
   it('returns 400 when file param is missing', async () => {
-    const route = findRoute(plugin.routes, 'POST', '/restore')!
+    const route = findRoute(plugin.routes, 'POST', '/trash/:file/restore')!
     const req = makeRequest('/restore', { method: 'POST' })
     const res = await route.handler(req, plugin.ctx)
 
@@ -508,7 +510,7 @@ describe('POST /restore — restore trashed asset', () => {
   })
 
   it('returns 400 for path traversal in filename', async () => {
-    const route = findRoute(plugin.routes, 'POST', '/restore')!
+    const route = findRoute(plugin.routes, 'POST', '/trash/:file/restore')!
     const req = makeRequest('/restore?file=../../etc/passwd', { method: 'POST' })
     const res = await route.handler(req, plugin.ctx)
 
@@ -516,7 +518,7 @@ describe('POST /restore — restore trashed asset', () => {
   })
 
   it('returns 500 for nonexistent trash item', async () => {
-    const route = findRoute(plugin.routes, 'POST', '/restore')!
+    const route = findRoute(plugin.routes, 'POST', '/trash/:file/restore')!
     const req = makeRequest('/restore?file=nope.png__deleted-999', { method: 'POST' })
     const res = await route.handler(req, plugin.ctx)
 
@@ -537,7 +539,7 @@ describe('POST /permanent-delete — permanently delete trashed asset', () => {
       created: '2026-03-20T10:00:00Z',
     })
 
-    const route = findRoute(plugin.routes, 'POST', '/permanent-delete')!
+    const route = findRoute(plugin.routes, 'DELETE', '/trash/:file')!
     const req = makeRequest(`/permanent-delete?file=${trashFilename}`, { method: 'POST' })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
@@ -552,7 +554,7 @@ describe('POST /permanent-delete — permanently delete trashed asset', () => {
     const ts = Date.now() + 200
     const trashFilename = createTrashFixture('perm-audit.txt', ts, 'data')
 
-    const route = findRoute(plugin.routes, 'POST', '/permanent-delete')!
+    const route = findRoute(plugin.routes, 'DELETE', '/trash/:file')!
     const req = makeRequest(`/permanent-delete?file=${trashFilename}`, { method: 'POST' })
     await route.handler(req, plugin.ctx)
 
@@ -560,7 +562,7 @@ describe('POST /permanent-delete — permanently delete trashed asset', () => {
   })
 
   it('returns 400 when file param is missing', async () => {
-    const route = findRoute(plugin.routes, 'POST', '/permanent-delete')!
+    const route = findRoute(plugin.routes, 'DELETE', '/trash/:file')!
     const req = makeRequest('/permanent-delete', { method: 'POST' })
     const res = await route.handler(req, plugin.ctx)
 
@@ -568,7 +570,7 @@ describe('POST /permanent-delete — permanently delete trashed asset', () => {
   })
 
   it('returns 400 for path traversal', async () => {
-    const route = findRoute(plugin.routes, 'POST', '/permanent-delete')!
+    const route = findRoute(plugin.routes, 'DELETE', '/trash/:file')!
     const req = makeRequest('/permanent-delete?file=../../../secret', { method: 'POST' })
     const res = await route.handler(req, plugin.ctx)
 
@@ -576,7 +578,7 @@ describe('POST /permanent-delete — permanently delete trashed asset', () => {
   })
 
   it('returns 500 for nonexistent item', async () => {
-    const route = findRoute(plugin.routes, 'POST', '/permanent-delete')!
+    const route = findRoute(plugin.routes, 'DELETE', '/trash/:file')!
     const req = makeRequest('/permanent-delete?file=nope__deleted-999', { method: 'POST' })
     const res = await route.handler(req, plugin.ctx)
 
@@ -595,7 +597,7 @@ describe('POST /empty-trash — empty entire trash', () => {
     createTrashFixture('empty-a.png', ts, 'a-data')
     createTrashFixture('empty-b.txt', ts + 1, 'b-data')
 
-    const route = findRoute(plugin.routes, 'POST', '/empty-trash')!
+    const route = findRoute(plugin.routes, 'DELETE', '/trash')!
     const req = makeRequest('/empty-trash', { method: 'POST' })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
@@ -614,7 +616,7 @@ describe('POST /empty-trash — empty entire trash', () => {
     // Seed one item so handler succeeds
     createTrashFixture('audit-empty.png', Date.now() + 600, 'data')
 
-    const route = findRoute(plugin.routes, 'POST', '/empty-trash')!
+    const route = findRoute(plugin.routes, 'DELETE', '/trash')!
     const req = makeRequest('/empty-trash', { method: 'POST' })
     await route.handler(req, plugin.ctx)
 
@@ -629,7 +631,7 @@ describe('POST /empty-trash — empty entire trash', () => {
       mkdirSync(trashDir, { recursive: true })
     }
 
-    const route = findRoute(plugin.routes, 'POST', '/empty-trash')!
+    const route = findRoute(plugin.routes, 'DELETE', '/trash')!
     const req = makeRequest('/empty-trash', { method: 'POST' })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
@@ -729,13 +731,7 @@ describe('exec tool: bakin_exec_assets_save', () => {
 // ===========================================================================
 
 describe('exec tool: bakin_exec_assets_delete', () => {
-  // NOTE: The exec tool handler creates a POST request with JSON body containing
-  // { path }, but handleDelete reads from url.searchParams.get('path').
-  // This means the path is never found via body parsing — only query params work.
-  // The tool currently fails because of this mismatch. These tests document the
-  // actual behavior.
-
-  it('returns not-ok when path param does not reach handleDelete via query string', async () => {
+  it('deletes asset directly via library (bypasses HTTP handler)', async () => {
     createAssetFixture('text', 'task-tool-del', 'tool-delete.md', 'content', {
       agent: 'scribe',
       taskId: 'task-tool-del',
@@ -747,10 +743,8 @@ describe('exec tool: bakin_exec_assets_delete', () => {
       path: 'assets/text/task-tool-del/tool-delete.md',
     }, 'scribe')
 
-    // The tool sends path in JSON body, but handleDelete reads from searchParams.
-    // This is a known issue — the path param never reaches the route handler.
-    expect(result.ok).toBe(false)
-    expect(result.error).toBeDefined()
+    expect(result.ok).toBe(true)
+    expect(existsSync(join(assetsRoot, 'text', 'task-tool-del', 'tool-delete.md'))).toBe(false)
   })
 
   it('has the correct tool name and handler', () => {

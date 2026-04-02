@@ -23,7 +23,7 @@ export function useGateStatus(taskIds: string[]): Record<string, GateStatus | nu
       return
     }
     try {
-      const res = await fetch(`/api/plugins/workflows/gate-status?taskIds=${ids.join(',')}`)
+      const res = await fetch(`/api/plugins/workflows/gates/status?taskIds=${ids.join(',')}`)
       if (res.ok) {
         const data = await res.json()
         setGates(data.gates || {})

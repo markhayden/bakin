@@ -16,7 +16,7 @@ import { handleEmptyTrash } from './routes/empty-trash'
 import { buildIndex, upsertAsset, removeAsset, detectVariant } from './lib/asset-index'
 import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { ASSET_TYPES } from './lib/constants'
-import { listTrash, restoreAsset, emptyTrash, type TrashedAsset } from './lib/trash'
+import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
 import { saveAsset } from './lib/save-asset'
 import { registerSyncHook } from '../../src/core/watcher'
 import { getContentDir } from '../../src/core/content-dir'
@@ -196,15 +196,19 @@ const assetsPlugin: BakinPlugin = {
         path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
-        const req = new Request('http://localhost/api/plugins/assets/delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: params.path }),
-        })
-        const res = await handleDelete(req)
-        const data = await res.json()
-        if (res.ok) ctx.activity.log(agent, `Deleted asset "${params.path}"`)
-        return { ok: res.ok, ...data }
+        const assetPath = params.path as string
+        if (!assetPath || assetPath.includes('..') || !assetPath.startsWith('assets/')) {
+          return { ok: false, error: 'Invalid asset path' }
+        }
+        const contentDir = getContentDir()
+        const fullPath = join(contentDir, assetPath)
+        const assetsRoot = join(contentDir, 'assets')
+        const success = softDelete(fullPath, assetsRoot)
+        if (!success) return { ok: false, error: 'Failed to delete asset' }
+        removeAsset(assetPath)
+        ctx.activity.log(agent, `Deleted asset "${assetPath}"`)
+        ctx.activity.audit('asset.deleted', agent, { path: assetPath })
+        return { ok: true, trashed: [assetPath] }
       },
     })
 
@@ -367,6 +371,39 @@ const assetsPlugin: BakinPlugin = {
 
         const healthy = total - issues.filter(i => !i.issue.startsWith('orphaned') && !i.fixed).length
         return { ok: true, summary: { total, healthy, issues: issues.length, fixed }, issues }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_empty_trash',
+      description: 'Permanently delete all items from trash. This cannot be undone.',
+      parameters: {},
+      handler: async (_params: Record<string, unknown>, agent: string) => {
+        const assetsRoot = join(getContentDir(), 'assets')
+        const deleted = emptyTrash(assetsRoot)
+        ctx.activity.log(agent, `Emptied trash (${deleted} items)`)
+        ctx.activity.audit('assets.trash.emptied', agent, { deleted })
+        return { ok: true, deleted }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_permanent_delete',
+      description: 'Permanently delete a specific trashed asset. This cannot be undone.',
+      parameters: {
+        filename: z.string().describe('The trash filename (includes __deleted- suffix)'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const filename = params.filename as string
+        if (!filename || filename.includes('/') || filename.includes('..')) {
+          return { ok: false, error: 'Invalid filename' }
+        }
+        const assetsRoot = join(getContentDir(), 'assets')
+        const success = permanentDelete(filename, assetsRoot)
+        if (!success) return { ok: false, error: 'Failed to permanently delete — file may not exist in trash' }
+        ctx.activity.log(agent, `Permanently deleted "${filename}"`)
+        ctx.activity.audit('assets.trash.permanent_delete', agent, { filename })
+        return { ok: true }
       },
     })
   },

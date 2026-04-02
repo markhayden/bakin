@@ -68,8 +68,8 @@ export function useAssets(options: UseAssetsOptions = {}) {
 
   const deleteAsset = useCallback(async (path: string) => {
     try {
-      const res = await fetch(`/api/plugins/assets/delete?path=${encodeURIComponent(path)}`, {
-        method: 'POST',
+      const res = await fetch(`/api/plugins/assets/${encodeURIComponent(path)}`, {
+        method: 'DELETE',
       })
       if (res.ok) {
         setAssets(prev => prev.filter(a => a.path !== path))
@@ -124,7 +124,7 @@ export function useTrash() {
 
   const restoreAsset = useCallback(async (filename: string) => {
     try {
-      const res = await fetch(`/api/plugins/assets/restore?file=${encodeURIComponent(filename)}`, {
+      const res = await fetch(`/api/plugins/assets/trash/${encodeURIComponent(filename)}/restore`, {
         method: 'POST',
       })
       if (res.ok) {
@@ -137,8 +137,8 @@ export function useTrash() {
 
   const permanentDeleteAsset = useCallback(async (filename: string) => {
     try {
-      const res = await fetch(`/api/plugins/assets/permanent-delete?file=${encodeURIComponent(filename)}`, {
-        method: 'POST',
+      const res = await fetch(`/api/plugins/assets/trash/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
       })
       if (res.ok) {
         setItems(prev => prev.filter(i => i.filename !== filename))
@@ -150,7 +150,7 @@ export function useTrash() {
 
   const emptyTrash = useCallback(async () => {
     try {
-      const res = await fetch('/api/plugins/assets/empty-trash', { method: 'POST' })
+      const res = await fetch('/api/plugins/assets/trash', { method: 'DELETE' })
       if (res.ok) {
         setItems([])
         return true

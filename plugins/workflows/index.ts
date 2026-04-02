@@ -201,7 +201,6 @@ const workflowsPlugin: BakinPlugin = {
     // GET /definitions — list all workflow templates
     const listHandler = async () => Response.json(buildTemplateList())
     ctx.registerRoute({ path: '/definitions', method: 'GET', description: 'List all workflow templates with step counts and resolved sub-workflows', handler: listHandler })
-    ctx.registerRoute({ path: '/list', method: 'GET', description: 'List all workflow templates (alias)', handler: listHandler })
 
     // GET /definitions/:name — get a specific definition with resolved sub-workflows
     const getDefinitionHandler = async (req: Request) => {
@@ -224,7 +223,6 @@ const workflowsPlugin: BakinPlugin = {
       return Response.json({ definition, subWorkflows })
     }
     ctx.registerRoute({ path: '/definitions/:name', method: 'GET', description: 'Get a specific workflow definition by name', handler: getDefinitionHandler })
-    ctx.registerRoute({ path: '/definition', method: 'GET', description: 'Get a specific workflow definition (alias)', handler: getDefinitionHandler })
 
     // ─── Runtime Routes ���──────────────────────────────��───────────────
 
@@ -246,7 +244,6 @@ const workflowsPlugin: BakinPlugin = {
       return Response.json(step)
     }
     ctx.registerRoute({ path: '/steps/:taskId', method: 'GET', description: 'Get current workflow step for a task', handler: getStepHandler })
-    ctx.registerRoute({ path: '/step', method: 'GET', description: 'Get current workflow step (alias)', handler: getStepHandler })
 
     // POST /steps/:taskId/complete — submit step output
     const completeStepHandler = async (req: Request) => {
@@ -285,7 +282,7 @@ const workflowsPlugin: BakinPlugin = {
       return Response.json(result)
     }
     ctx.registerRoute({ path: '/steps/:taskId/complete', method: 'POST', description: 'Submit step output, validates against schema, advances workflow', handler: completeStepHandler })
-    ctx.registerRoute({ path: '/step/complete', method: 'POST', description: 'Submit step output (alias)', handler: completeStepHandler })
+
 
     // POST /gates/:taskId/approve — approve a gate step
     const approveHandler = async (req: Request) => {
@@ -318,7 +315,7 @@ const workflowsPlugin: BakinPlugin = {
       return Response.json(result)
     }
     ctx.registerRoute({ path: '/gates/:taskId/approve', method: 'POST', description: 'Approve a human gate step', handler: approveHandler })
-    ctx.registerRoute({ path: '/approve', method: 'POST', description: 'Approve a gate step (alias)', handler: approveHandler })
+
 
     // POST /gates/:taskId/reject — reject a gate step
     const rejectHandler = async (req: Request) => {
@@ -348,7 +345,7 @@ const workflowsPlugin: BakinPlugin = {
       return Response.json(result)
     }
     ctx.registerRoute({ path: '/gates/:taskId/reject', method: 'POST', description: 'Reject a gate step, rewinds workflow', handler: rejectHandler })
-    ctx.registerRoute({ path: '/reject', method: 'POST', description: 'Reject a gate step (alias)', handler: rejectHandler })
+
 
     // GET /instances — list active workflow instances
     ctx.registerRoute({
@@ -380,7 +377,7 @@ const workflowsPlugin: BakinPlugin = {
       return Response.json({ instance })
     }
     ctx.registerRoute({ path: '/instances/:taskId', method: 'GET', description: 'Get full workflow instance state for a task', handler: getInstanceHandler })
-    ctx.registerRoute({ path: '/instance', method: 'GET', description: 'Get instance state (alias)', handler: getInstanceHandler })
+
 
     // GET /gates/pending — list all gates awaiting approval
     const pendingGatesHandler = async () => {
@@ -425,7 +422,7 @@ const workflowsPlugin: BakinPlugin = {
       return Response.json({ gates })
     }
     ctx.registerRoute({ path: '/gates/pending', method: 'GET', description: 'List all gates awaiting approval', handler: pendingGatesHandler })
-    ctx.registerRoute({ path: '/pending-gates', method: 'GET', description: 'List pending gates (alias)', handler: pendingGatesHandler })
+
 
     // GET /gates/status — batch check gate status for tasks
     const gateStatusHandler = async (req: Request) => {
@@ -466,7 +463,7 @@ const workflowsPlugin: BakinPlugin = {
       return Response.json({ gates: result })
     }
     ctx.registerRoute({ path: '/gates/status', method: 'GET', description: 'Batch check gate status for tasks', handler: gateStatusHandler })
-    ctx.registerRoute({ path: '/gate-status', method: 'GET', description: 'Batch gate status (alias)', handler: gateStatusHandler })
+
 
     // POST /instances/start — start a workflow for a task
     const startHandler = async (req: Request) => {
@@ -513,7 +510,7 @@ const workflowsPlugin: BakinPlugin = {
       }
     }
     ctx.registerRoute({ path: '/instances/start', method: 'POST', description: 'Start a workflow instance for a task', handler: startHandler })
-    ctx.registerRoute({ path: '/start', method: 'POST', description: 'Start workflow (alias)', handler: startHandler })
+
 
     // ─── MCP Exec Tools ────────────────────────────────────────────────
 
