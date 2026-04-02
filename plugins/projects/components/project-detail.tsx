@@ -342,7 +342,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
       return
     }
     try {
-      const res = await fetch('/api/plugins/assets/list?grouped=false')
+      const res = await fetch('/api/plugins/assets/?grouped=false')
       if (res.ok) {
         const data = await res.json()
         const attached = new Set(project?.assets.map(a => a.path) || [])
