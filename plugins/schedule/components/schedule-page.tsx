@@ -118,7 +118,7 @@ export function SchedulePage() {
         })
         if (ok) closeForm()
       } else {
-        const res = await fetch('/api/plugins/schedule/jobs', {
+        const res = await fetch('/api/plugins/schedule/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),

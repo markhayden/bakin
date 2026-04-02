@@ -52,7 +52,7 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
 
   const fetchJobs = useCallback(async () => {
     try {
-      const res = await fetch('/api/plugins/schedule/jobs')
+      const res = await fetch('/api/plugins/schedule/')
       if (res.ok) {
         const data = await res.json()
         setJobs(data.jobs || [])
@@ -98,10 +98,10 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
 
   const pauseJob = useCallback(async (jobId: string, pauseUntil?: string) => {
     try {
-      const res = await fetch('/api/plugins/schedule/jobs/pause', {
+      const res = await fetch(`/api/plugins/schedule/${jobId}/pause`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId, action: 'pause', pauseUntil }),
+        body: JSON.stringify({ action: 'pause', pauseUntil }),
       })
       if (res.ok) fetchJobs()
       return res.ok
@@ -110,10 +110,10 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
 
   const resumeJob = useCallback(async (jobId: string) => {
     try {
-      const res = await fetch('/api/plugins/schedule/jobs/pause', {
+      const res = await fetch(`/api/plugins/schedule/${jobId}/pause`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId, action: 'resume' }),
+        body: JSON.stringify({ action: 'resume' }),
       })
       if (res.ok) fetchJobs()
       return res.ok
@@ -122,10 +122,9 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
 
   const deleteJob = useCallback(async (jobId: string) => {
     try {
-      const res = await fetch('/api/plugins/schedule/jobs/delete', {
-        method: 'POST',
+      const res = await fetch(`/api/plugins/schedule/${jobId}`, {
+        method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId }),
       })
       if (res.ok) {
         setJobs(prev => prev.filter(j => j.id !== jobId))
@@ -136,10 +135,9 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
 
   const runNow = useCallback(async (jobId: string) => {
     try {
-      const res = await fetch('/api/plugins/schedule/jobs/run-now', {
+      const res = await fetch(`/api/plugins/schedule/${jobId}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId }),
       })
       return res.ok
     } catch { return false }
@@ -147,10 +145,10 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
 
   const updateJob = useCallback(async (jobId: string, data: Record<string, unknown>) => {
     try {
-      const res = await fetch('/api/plugins/schedule/jobs/update', {
+      const res = await fetch(`/api/plugins/schedule/${jobId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId, ...data }),
+        body: JSON.stringify(data),
       })
       if (res.ok) fetchJobs()
       return res.ok
@@ -159,10 +157,10 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
 
   const skipNext = useCallback(async (jobId: string, n = 1) => {
     try {
-      const res = await fetch('/api/plugins/schedule/jobs/pause', {
+      const res = await fetch(`/api/plugins/schedule/${jobId}/pause`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId, action: 'skip', skipN: n }),
+        body: JSON.stringify({ action: 'skip', skipN: n }),
       })
       if (res.ok) fetchJobs()
       return res.ok
@@ -174,7 +172,7 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
     const source = jobs.find(j => j.id === jobId)
     if (!source) return false
     try {
-      const res = await fetch('/api/plugins/schedule/jobs', {
+      const res = await fetch('/api/plugins/schedule/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -209,7 +207,7 @@ export function useRunHistory(jobId: string | null, limit = 20) {
   useEffect(() => {
     if (!jobId) { setRuns([]); return }
     setLoading(true)
-    fetch(`/api/plugins/schedule/runs?jobId=${jobId}&limit=${limit}`)
+    fetch(`/api/plugins/schedule/${jobId}/runs?limit=${limit}`)
       .then(res => res.ok ? res.json() : null)
       .then(data => { if (data) setRuns(data.runs || []) })
       .catch(() => {})
