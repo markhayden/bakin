@@ -90,7 +90,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
     setSaving(true)
     try {
       if (isCreate) {
-        await fetch('/api/plugins/calendar/items', {
+        await fetch('/api/plugins/calendar/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -106,11 +106,10 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
           }),
         })
       } else if (item) {
-        await fetch('/api/plugins/calendar/items/update', {
-          method: 'POST',
+        await fetch(`/api/plugins/calendar/${item.id}`, {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            id: item.id,
             title: title.trim(),
             agent,
             contentType,
@@ -131,10 +130,9 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
     if (!item) return
     setActionLoading(true)
     try {
-      await fetch('/api/plugins/calendar/items/approve', {
+      await fetch(`/api/plugins/calendar/${item.id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id }),
       })
       onUpdated()
       onClose()
@@ -147,10 +145,10 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
     if (!item) return
     setActionLoading(true)
     try {
-      await fetch('/api/plugins/calendar/items/reject', {
+      await fetch(`/api/plugins/calendar/${item.id}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id, note: rejectionNote }),
+        body: JSON.stringify({ note: rejectionNote }),
       })
       onUpdated()
       onClose()
