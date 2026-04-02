@@ -32,7 +32,7 @@ export function ScheduleInput({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch('/api/plugins/schedule/parse-schedule', {
+        const res = await fetch('/api/plugins/schedule/parse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ input: value }),

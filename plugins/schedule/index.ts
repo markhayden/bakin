@@ -183,7 +183,7 @@ async function handleBridge(req: Request): Promise<Response> {
 const schedulePlugin: BakinPlugin = {
   id: 'schedule',
   name: 'Schedule',
-  version: '1.0.0',
+  version: '2.0.0',
 
   settingsSchema: {
     fields: [
@@ -202,106 +202,99 @@ const schedulePlugin: BakinPlugin = {
 
     // ── API Routes ─────────────────────────────────────────────────────
 
-    // List all jobs (merged)
+    // GET / — list all jobs (merged)
+    const listJobsHandler = () => {
+      const jobs = readMergedJobs().map(j => ({
+        ...j,
+        cron: j.schedule.type === 'cron' ? j.schedule.value : undefined,
+      }))
+      return json({ jobs })
+    }
+    ctx.registerRoute({ path: '/', method: 'GET', description: 'List all scheduled jobs', handler: listJobsHandler })
+    ctx.registerRoute({ path: '/jobs', method: 'GET', description: 'List jobs (alias)', handler: listJobsHandler })
+
+    // POST / — create a job
+    const createJobHandler = async (req: Request): Promise<Response> => {
+      const body = await readBody<{
+        name: string
+        schedule: string
+        agentId?: string
+        workflowId?: string
+        taskPrompt?: string
+        taskTitle?: string
+        owner?: string
+        requireTriage?: boolean
+        allowOverlap?: boolean
+        maxFailures?: number
+        tz?: string
+      }>(req)
+
+      if (!body.name || !body.schedule) {
+        return json({ error: 'name and schedule are required' }, 400)
+      }
+
+      const parsed = parseSchedule(body.schedule)
+      if (!parsed) {
+        return json({ error: 'Could not parse schedule expression' }, 400)
+      }
+
+      const tz = body.tz || getSystemTimezone()
+      const port = process.env.PORT || '3737'
+      const jobId = await cronAdd({
+        name: body.name,
+        cron: parsed.cron,
+        session: 'isolated',
+        webhookUrl: `http://localhost:${port}/api/plugins/schedule/bridge`,
+        tz,
+      })
+
+      const meta: BakinJobMeta = {
+        jobId,
+        isBakinJob: true,
+        displayName: body.name,
+        agentId: body.agentId,
+        owner: body.owner ?? 'roscoe',
+        requireTriage: body.requireTriage ?? false,
+        workflowId: body.workflowId,
+        taskPrompt: body.taskPrompt,
+        taskTitle: body.taskTitle,
+        allowOverlap: body.allowOverlap ?? false,
+        maxFailures: body.maxFailures ?? 3,
+        consecutiveFailures: 0,
+        tz,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      upsertJob(meta)
+
+      ctx.activity.audit('job.created', body.owner ?? 'system', { jobId, name: body.name })
+      ctx.activity.log(body.owner ?? 'system', `Created schedule "${body.name}"`)
+      return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz })
+    }
+    ctx.registerRoute({ path: '/', method: 'POST', description: 'Create a scheduled job', handler: createJobHandler })
+    ctx.registerRoute({ path: '/jobs', method: 'POST', description: 'Create job (alias)', handler: createJobHandler })
+
+    // PUT /:jobId — update a job
     ctx.registerRoute({
-      path: '/jobs',
-      method: 'GET',
-      handler: () => {
-        const jobs = readMergedJobs().map(j => ({
-          ...j,
-          // Flatten cron expression for client consumption
-          cron: j.schedule.type === 'cron' ? j.schedule.value : undefined,
-        }))
-        return json({ jobs })
-      },
-    })
-
-    // Create a job
-    ctx.registerRoute({
-      path: '/jobs',
-      method: 'POST',
-      handler: async (req: Request) => {
-        const body = await readBody<{
-          name: string
-          schedule: string
-          agentId?: string
-          workflowId?: string
-          taskPrompt?: string
-          taskTitle?: string
-          owner?: string
-          requireTriage?: boolean
-          allowOverlap?: boolean
-          maxFailures?: number
-          tz?: string
-        }>(req)
-
-        if (!body.name || !body.schedule) {
-          return json({ error: 'name and schedule are required' }, 400)
-        }
-
-        // Parse schedule (NL or raw cron)
-        const parsed = parseSchedule(body.schedule)
-        if (!parsed) {
-          return json({ error: 'Could not parse schedule expression' }, 400)
-        }
-
-        // Resolve timezone — explicit, or system default
-        const tz = body.tz || getSystemTimezone()
-
-        // Create in OpenClaw
-        const port = process.env.PORT || '3737'
-        const jobId = await cronAdd({
-          name: body.name,
-          cron: parsed.cron,
-          session: 'isolated',
-          webhookUrl: `http://localhost:${port}/api/plugins/schedule/bridge`,
-          tz,
-        })
-
-        // Write sidecar
-        const meta: BakinJobMeta = {
-          jobId,
-          isBakinJob: true,
-          displayName: body.name,
-          agentId: body.agentId,
-          owner: body.owner ?? 'roscoe',
-          requireTriage: body.requireTriage ?? false,
-          workflowId: body.workflowId,
-          taskPrompt: body.taskPrompt,
-          taskTitle: body.taskTitle,
-          allowOverlap: body.allowOverlap ?? false,
-          maxFailures: body.maxFailures ?? 3,
-          consecutiveFailures: 0,
-          tz,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-        upsertJob(meta)
-
-        ctx.activity.audit('job.created', body.owner ?? 'system', { jobId, name: body.name })
-        return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz })
-      },
-    })
-
-    // Update a job
-    ctx.registerRoute({
-      path: '/jobs/update',
+      path: '/:jobId',
       method: 'PUT',
       handler: async (req: Request) => {
-        const body = await readBody<{ jobId: string; [key: string]: unknown }>(req)
-        if (!body.jobId) return json({ error: 'jobId required' }, 400)
+        const url = new URL(req.url)
+        const body = await readBody<{ jobId?: string; [key: string]: unknown }>(req)
+        const jobId = url.searchParams.get('jobId') || body.jobId
+        if (!jobId) return json({ error: 'jobId required' }, 400)
 
-        const meta = getJob(body.jobId)
+        const meta = getJob(jobId)
         if (!meta) return json({ error: 'Job not found in sidecar' }, 404)
 
         // Update OpenClaw fields if schedule changed
         if (body.schedule && typeof body.schedule === 'string') {
           const parsed = parseSchedule(body.schedule)
           if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
-          await cronEdit(body.jobId, { cron: parsed.cron })
+          await cronEdit(jobId, { cron: parsed.cron })
         }
         if (body.name && typeof body.name === 'string') {
-          await cronEdit(body.jobId, { name: body.name })
+          await cronEdit(jobId, { name: body.name })
         }
 
         // Update sidecar fields
@@ -316,42 +309,51 @@ const schedulePlugin: BakinPlugin = {
         }
         upsertJob(meta)
 
-        ctx.activity.audit('job.updated', 'system', { jobId: body.jobId })
+        ctx.activity.audit('job.updated', 'system', { jobId })
+        ctx.activity.log('system', `Updated schedule "${meta.displayName || jobId}"`)
         return json({ ok: true })
       },
     })
+    ctx.registerRoute({ path: '/jobs/update', method: 'PUT', description: 'Update job (alias)', handler: async (req: Request) => {
+      const body = await readBody<{ jobId: string; [key: string]: unknown }>(req)
+      if (!body.jobId) return json({ error: 'jobId required' }, 400)
+      // Rewrite URL with jobId as path param and forward
+      const url = new URL(req.url)
+      url.searchParams.set('jobId', body.jobId)
+      return (await fetch(new Request(url.toString(), { method: 'PUT', headers: req.headers, body: JSON.stringify(body) }))).json().then((d: unknown) => json(d))
+    }})
 
-    // Delete a job
-    ctx.registerRoute({
-      path: '/jobs/delete',
-      method: 'POST',
-      handler: async (req: Request) => {
-        const { jobId } = await readBody<{ jobId: string }>(req)
-        if (!jobId) return json({ error: 'jobId required' }, 400)
+    // DELETE /:jobId — delete a job
+    const deleteJobHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const body = await readBody<{ jobId?: string }>(req).catch(() => ({}))
+      const jobId = url.searchParams.get('jobId') || (body as Record<string, unknown>).jobId as string | undefined
+      if (!jobId) return json({ error: 'jobId required' }, 400)
 
-        await cronRemove(jobId)
-        removeJob(jobId)
+      await cronRemove(jobId)
+      removeJob(jobId)
 
-        ctx.activity.audit('job.deleted', 'system', { jobId })
-        return json({ ok: true })
-      },
-    })
+      ctx.activity.audit('job.deleted', 'system', { jobId })
+      ctx.activity.log('system', `Deleted schedule "${jobId}"`)
+      return json({ ok: true })
+    }
+    ctx.registerRoute({ path: '/:jobId', method: 'DELETE', description: 'Delete a scheduled job', handler: deleteJobHandler })
+    ctx.registerRoute({ path: '/jobs/delete', method: 'POST', description: 'Delete job (alias)', handler: deleteJobHandler })
 
-    // Pause/resume/skip
-    ctx.registerRoute({
-      path: '/jobs/pause',
-      method: 'POST',
-      handler: async (req: Request) => {
-        const body = await readBody<{
-          jobId: string
-          action: 'pause' | 'resume' | 'skip'
-          pauseUntil?: string
-          skipN?: number
-        }>(req)
+    // POST /:jobId/pause — pause/resume/skip
+    const pauseHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const body = await readBody<{
+        jobId?: string
+        action: 'pause' | 'resume' | 'skip'
+        pauseUntil?: string
+        skipN?: number
+      }>(req)
 
-        if (!body.jobId || !body.action) return json({ error: 'jobId and action required' }, 400)
+      const jobId = url.searchParams.get('jobId') || body.jobId
+      if (!jobId || !body.action) return json({ error: 'jobId and action required' }, 400)
 
-        const meta = getJob(body.jobId)
+      const meta = getJob(jobId)
         if (!meta) return json({ error: 'Job not found' }, 404)
 
         switch (body.action) {
@@ -375,60 +377,54 @@ const schedulePlugin: BakinPlugin = {
         }
         upsertJob(meta)
 
-        ctx.activity.audit(`job.${body.action}`, 'system', { jobId: body.jobId })
+        ctx.activity.audit(`job.${body.action}`, 'system', { jobId })
+        ctx.activity.log('system', `Schedule "${meta.displayName || jobId}" ${body.action}d`)
         return json({ ok: true })
-      },
-    })
+    }
+    ctx.registerRoute({ path: '/:jobId/pause', method: 'POST', description: 'Pause/resume/skip a job', handler: pauseHandler })
+    ctx.registerRoute({ path: '/jobs/pause', method: 'POST', description: 'Pause job (alias)', handler: pauseHandler })
 
-    // Run now
-    ctx.registerRoute({
-      path: '/jobs/run-now',
-      method: 'POST',
-      handler: async (req: Request) => {
-        const { jobId } = await readBody<{ jobId: string }>(req)
-        if (!jobId) return json({ error: 'jobId required' }, 400)
-        await cronRun(jobId, true)
-        ctx.activity.audit('job.run_now', 'system', { jobId })
-        return json({ ok: true })
-      },
-    })
+    // POST /:jobId/run — trigger immediate run
+    const runNowHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const body = await readBody<{ jobId?: string }>(req).catch(() => ({}))
+      const jobId = url.searchParams.get('jobId') || (body as Record<string, unknown>).jobId as string | undefined
+      if (!jobId) return json({ error: 'jobId required' }, 400)
+      await cronRun(jobId, true)
+      ctx.activity.audit('job.run_now', 'system', { jobId })
+      ctx.activity.log('system', `Triggered immediate run for "${jobId}"`)
+      return json({ ok: true })
+    }
+    ctx.registerRoute({ path: '/:jobId/run', method: 'POST', description: 'Trigger immediate run', handler: runNowHandler })
+    ctx.registerRoute({ path: '/jobs/run-now', method: 'POST', description: 'Run now (alias)', handler: runNowHandler })
 
-    // Run history
-    ctx.registerRoute({
-      path: '/runs',
-      method: 'GET',
-      handler: (req: Request) => {
-        const url = new URL(req.url)
-        const jobId = url.searchParams.get('jobId')
-        if (!jobId) return json({ error: 'jobId query param required' }, 400)
-        const limit = parseInt(url.searchParams.get('limit') ?? '50', 10)
-        const runs = readRuns(jobId, limit)
-        return json({ runs })
-      },
-    })
+    // GET /:jobId/runs — run history
+    const runsHandler = (req: Request) => {
+      const url = new URL(req.url)
+      const jobId = url.searchParams.get('jobId')
+      if (!jobId) return json({ error: 'jobId query param required' }, 400)
+      const limit = parseInt(url.searchParams.get('limit') ?? '50', 10)
+      const runs = readRuns(jobId, limit)
+      return json({ runs })
+    }
+    ctx.registerRoute({ path: '/:jobId/runs', method: 'GET', description: 'Get run history for a job', handler: runsHandler })
+    ctx.registerRoute({ path: '/runs', method: 'GET', description: 'Run history (alias)', handler: runsHandler })
 
-    // Parse schedule (NL → cron)
-    ctx.registerRoute({
-      path: '/parse-schedule',
-      method: 'POST',
-      handler: async (req: Request) => {
-        const { input } = await readBody<{ input: string }>(req)
-        if (!input) return json({ error: 'input required' }, 400)
+    // POST /parse — parse schedule expression (NL → cron)
+    const parseHandler = async (req: Request) => {
+      const { input } = await readBody<{ input: string }>(req)
+      if (!input) return json({ error: 'input required' }, 400)
+      const result = parseSchedule(input)
+      if (!result) {
+        return json({ error: 'Could not parse schedule. Try a simpler expression or raw cron.' }, 400)
+      }
+      return json(result)
+    }
+    ctx.registerRoute({ path: '/parse', method: 'POST', description: 'Parse schedule expression', handler: parseHandler })
+    ctx.registerRoute({ path: '/parse-schedule', method: 'POST', description: 'Parse schedule (alias)', handler: parseHandler })
 
-        const result = parseSchedule(input)
-        if (!result) {
-          return json({ error: 'Could not parse schedule. Try a simpler expression or raw cron.' }, 400)
-        }
-        return json(result)
-      },
-    })
-
-    // Bridge (OpenClaw webhook → task creation)
-    ctx.registerRoute({
-      path: '/bridge',
-      method: 'POST',
-      handler: handleBridge,
-    })
+    // POST /bridge — OpenClaw webhook → task creation
+    ctx.registerRoute({ path: '/bridge', method: 'POST', description: 'Cron bridge webhook', handler: handleBridge })
 
     // ── Exec Tools (agent-facing) ──────────────────────────────────────
 
@@ -596,6 +592,60 @@ const schedulePlugin: BakinPlugin = {
         await cronRemove(params.jobId as string)
         removeJob(params.jobId as string)
         return { ok: true }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_schedule_get',
+      description: 'Get details for a single scheduled job',
+      parameters: {
+        jobId: z.string().describe('Job ID (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.jobId) return { ok: false, error: 'jobId required' }
+        const meta = getJob(params.jobId as string)
+        if (!meta) return { ok: false, error: 'Job not found' }
+        const defaults = withDefaults(meta)
+        const lastRun = getLastRun(params.jobId as string)
+        return {
+          ok: true,
+          job: {
+            id: meta.jobId,
+            name: meta.displayName,
+            agent: meta.agentId,
+            owner: defaults.owner,
+            paused: meta.paused ?? false,
+            pauseReason: meta.pauseReason,
+            pauseUntil: meta.pauseUntil,
+            workflowId: meta.workflowId,
+            taskPrompt: meta.taskPrompt,
+            taskTitle: meta.taskTitle,
+            allowOverlap: defaults.allowOverlap,
+            maxFailures: defaults.maxFailures,
+            consecutiveFailures: meta.consecutiveFailures ?? 0,
+            lastTaskId: meta.lastTaskId,
+            lastRun: lastRun ?? null,
+            tz: meta.tz,
+            createdAt: meta.createdAt,
+          },
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_schedule_run_now',
+      description: 'Trigger an immediate run of a scheduled job',
+      parameters: {
+        jobId: z.string().describe('Job ID (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.jobId) return { ok: false, error: 'jobId required' }
+        const meta = getJob(params.jobId as string)
+        if (!meta) return { ok: false, error: 'Job not found' }
+        await cronRun(params.jobId as string, true)
+        ctx.activity.audit('job.run_now', 'system', { jobId: params.jobId })
+        ctx.activity.log('system', `Triggered immediate run for "${meta.displayName || params.jobId}"`)
+        return { ok: true, jobId: params.jobId }
       },
     })
 
