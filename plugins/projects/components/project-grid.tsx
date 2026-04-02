@@ -28,8 +28,8 @@ export function ProjectGrid() {
   const fetchProjects = useCallback(async () => {
     try {
       const url = status === 'all'
-        ? '/api/plugins/projects/list'
-        : `/api/plugins/projects/list?status=${status}`
+        ? '/api/plugins/projects/'
+        : `/api/plugins/projects/?status=${status}`
       const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()

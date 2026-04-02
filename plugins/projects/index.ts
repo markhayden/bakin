@@ -48,7 +48,7 @@ async function readBody<T>(req: Request): Promise<T> {
 const projectsPlugin: BakinPlugin = {
   id: 'projects',
   name: 'Projects',
-  version: '1.0.0',
+  version: '2.0.0',
 
   settingsSchema: {
     fields: [
@@ -83,205 +83,204 @@ const projectsPlugin: BakinPlugin = {
     })
 
     // -----------------------------------------------------------------
-    // API Routes
+    // API Routes (RESTful + aliases for old paths)
     // -----------------------------------------------------------------
 
-    ctx.registerRoute({
-      path: '/list',
-      method: 'GET',
-      description: 'List projects with optional status filter',
-      handler: async (req: Request) => {
-        const url = new URL(req.url, 'http://localhost')
-        const statusFilter = url.searchParams.get('status') as ProjectStatus | null
-        let projects = readAllProjects()
-        if (statusFilter) {
-          projects = projects.filter(p => p.status === statusFilter)
-        }
-        return json({ projects: projects.map(projectToSummary) })
-      },
-    })
+    // GET / — list projects
+    const listHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const statusFilter = url.searchParams.get('status') as ProjectStatus | null
+      let projects = readAllProjects()
+      if (statusFilter) projects = projects.filter(p => p.status === statusFilter)
+      return json({ projects: projects.map(projectToSummary) })
+    }
+    ctx.registerRoute({ path: '/', method: 'GET', description: 'List projects', handler: listHandler })
+    ctx.registerRoute({ path: '/list', method: 'GET', description: 'List projects (alias)', handler: listHandler })
 
-    ctx.registerRoute({
-      path: '/get',
-      method: 'GET',
-      description: 'Get a project by ID with resolved task statuses',
-      handler: async (req: Request) => {
-        const url = new URL(req.url, 'http://localhost')
-        const id = url.searchParams.get('id')
-        if (!id) return json({ error: 'Missing id parameter' }, 400)
-        const project = readProject(id)
-        if (!project) return json({ error: 'Project not found' }, 404)
-        return json({ project: resolveLinkedTaskStatuses(project) })
-      },
-    })
+    // GET /:projectId — get single project
+    const getHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const id = url.searchParams.get('projectId') || url.searchParams.get('id')
+      if (!id) return json({ error: 'Missing id parameter' }, 400)
+      const project = readProject(id)
+      if (!project) return json({ error: 'Project not found' }, 404)
+      return json({ project: resolveLinkedTaskStatuses(project) })
+    }
+    ctx.registerRoute({ path: '/:projectId', method: 'GET', description: 'Get project by ID', handler: getHandler })
+    ctx.registerRoute({ path: '/get', method: 'GET', description: 'Get project (alias)', handler: getHandler })
 
-    ctx.registerRoute({
-      path: '/create',
-      method: 'POST',
-      description: 'Create a new project',
-      handler: async (req: Request) => {
-        const body = await readBody<{ title: string; body?: string; owner?: string; tasks?: string[] }>(req)
-        if (!body.title) return json({ error: 'Missing title' }, 400)
-        const result = await createProject(body)
-        ctx.activity.audit('created', body.owner || 'system', { projectId: result.id, title: body.title })
-        return json({ ok: true, ...result })
-      },
-    })
+    // POST / — create project
+    const createHandler = async (req: Request) => {
+      const body = await readBody<{ title: string; body?: string; owner?: string; tasks?: string[] }>(req)
+      if (!body.title) return json({ error: 'Missing title' }, 400)
+      const result = await createProject(body)
+      ctx.activity.audit('created', body.owner || 'system', { projectId: result.id, title: body.title })
+      ctx.activity.log(body.owner || 'system', `Created project "${body.title}"`)
+      return json({ ok: true, ...result })
+    }
+    ctx.registerRoute({ path: '/', method: 'POST', description: 'Create project', handler: createHandler })
+    ctx.registerRoute({ path: '/create', method: 'POST', description: 'Create project (alias)', handler: createHandler })
 
-    ctx.registerRoute({
-      path: '/update',
-      method: 'PUT',
-      description: 'Update a project',
-      handler: async (req: Request) => {
-        const body = await readBody<{ id: string; title?: string; status?: ProjectStatus; body?: string; owner?: string }>(req)
-        if (!body.id) return json({ error: 'Missing id' }, 400)
-        try {
-          await updateProject(body.id, body)
-          ctx.activity.audit('updated', 'system', { projectId: body.id })
-          return json({ ok: true })
-        } catch (err: any) {
-          return json({ error: err.message }, 400)
-        }
-      },
-    })
+    // PUT /:projectId — update project
+    const updateHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const body = await readBody<{ id?: string; title?: string; status?: ProjectStatus; body?: string; owner?: string }>(req)
+      const id = url.searchParams.get('projectId') || body.id
+      if (!id) return json({ error: 'Missing id' }, 400)
+      try {
+        await updateProject(id, body)
+        ctx.activity.audit('updated', 'system', { projectId: id })
+        ctx.activity.log('system', `Updated project ${id}`)
+        return json({ ok: true })
+      } catch (err: unknown) {
+        return json({ error: (err as Error).message }, 400)
+      }
+    }
+    ctx.registerRoute({ path: '/:projectId', method: 'PUT', description: 'Update project', handler: updateHandler })
+    ctx.registerRoute({ path: '/update', method: 'PUT', description: 'Update project (alias)', handler: updateHandler })
 
-    ctx.registerRoute({
-      path: '/delete',
-      method: 'POST',
-      description: 'Delete a project',
-      handler: async (req: Request) => {
-        const body = await readBody<{ id: string; deleteLinkedTasks?: boolean }>(req)
-        if (!body.id) return json({ error: 'Missing id' }, 400)
-        try {
-          // If requested, delete linked board tasks before deleting the project
-          if (body.deleteLinkedTasks) {
-            const project = readProject(body.id)
-            if (project) {
-              for (const item of project.tasks) {
-                if (item.taskId) {
-                  try { await ctx.hooks.invoke<void>('tasks.deleteTask', { identifier: item.taskId }) } catch { /* task may already be gone */ }
-                }
+    // DELETE /:projectId — delete project
+    const deleteHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const body = await readBody<{ id?: string; deleteLinkedTasks?: boolean }>(req).catch(() => ({} as { id?: string; deleteLinkedTasks?: boolean }))
+      const id = url.searchParams.get('projectId') || body.id
+      if (!id) return json({ error: 'Missing id' }, 400)
+      try {
+        if (body.deleteLinkedTasks) {
+          const project = readProject(id)
+          if (project) {
+            for (const item of project.tasks) {
+              if (item.taskId) {
+                try { await ctx.hooks.invoke<void>('tasks.deleteTask', { identifier: item.taskId }) } catch { /* task may already be gone */ }
               }
             }
           }
-          await deleteProject(body.id)
-          ctx.activity.audit('deleted', 'system', { projectId: body.id })
-          return json({ ok: true })
-        } catch (err: any) {
-          return json({ error: err.message }, 400)
         }
-      },
-    })
-
-    ctx.registerRoute({
-      path: '/checklist/add',
-      method: 'POST',
-      description: 'Add a checklist item to a project',
-      handler: async (req: Request) => {
-        const body = await readBody<{ projectId: string; title: string }>(req)
-        if (!body.projectId || !body.title) return json({ error: 'Missing projectId or title' }, 400)
-        const result = await addChecklistItem(body.projectId, body.title)
-        ctx.activity.audit('checklist.added', 'system', { projectId: body.projectId })
-        return json({ ok: true, ...result })
-      },
-    })
-
-    ctx.registerRoute({
-      path: '/checklist/toggle',
-      method: 'POST',
-      description: 'Mark a checklist item as checked or unchecked',
-      handler: async (req: Request) => {
-        const body = await readBody<{ projectId: string; taskItemId: string; checked: boolean }>(req)
-        if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
-        const result = await markChecklistItem(body.projectId, body.taskItemId, body.checked)
-        ctx.activity.audit('checklist.toggled', 'system', { projectId: body.projectId, checked: body.checked })
-        return json({ ok: true, ...result })
-      },
-    })
-
-    ctx.registerRoute({
-      path: '/checklist/update',
-      method: 'POST',
-      description: 'Update a checklist item title or description',
-      handler: async (req: Request) => {
-        const body = await readBody<{ projectId: string; taskItemId: string; title?: string; description?: string }>(req)
-        if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
-        await updateChecklistItem(body.projectId, body.taskItemId, { title: body.title, description: body.description })
-        ctx.activity.audit('checklist.updated', 'system', { projectId: body.projectId })
+        await deleteProject(id)
+        ctx.activity.audit('deleted', 'system', { projectId: id })
+        ctx.activity.log('system', `Deleted project ${id}`)
         return json({ ok: true })
-      },
-    })
+      } catch (err: unknown) {
+        return json({ error: (err as Error).message }, 400)
+      }
+    }
+    ctx.registerRoute({ path: '/:projectId', method: 'DELETE', description: 'Delete project', handler: deleteHandler })
+    ctx.registerRoute({ path: '/delete', method: 'POST', description: 'Delete project (alias)', handler: deleteHandler })
 
-    ctx.registerRoute({
-      path: '/checklist/remove',
-      method: 'POST',
-      description: 'Remove a checklist item',
-      handler: async (req: Request) => {
-        const body = await readBody<{ projectId: string; taskItemId: string }>(req)
-        if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
-        await removeChecklistItem(body.projectId, body.taskItemId)
-        ctx.activity.audit('checklist.removed', 'system', { projectId: body.projectId })
-        return json({ ok: true })
-      },
-    })
+    // POST /:projectId/checklist — add checklist item
+    const addItemHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const body = await readBody<{ projectId?: string; title: string }>(req)
+      const projectId = url.searchParams.get('projectId') || body.projectId
+      if (!projectId || !body.title) return json({ error: 'Missing projectId or title' }, 400)
+      const result = await addChecklistItem(projectId, body.title)
+      ctx.activity.audit('checklist.added', 'system', { projectId })
+      ctx.activity.log('system', `Added checklist item to project ${projectId}`)
+      return json({ ok: true, ...result })
+    }
+    ctx.registerRoute({ path: '/:projectId/checklist', method: 'POST', description: 'Add checklist item', handler: addItemHandler })
+    ctx.registerRoute({ path: '/checklist/add', method: 'POST', description: 'Add item (alias)', handler: addItemHandler })
 
-    ctx.registerRoute({
-      path: '/checklist/link',
-      method: 'POST',
-      description: 'Link a checklist item to an existing board task',
-      handler: async (req: Request) => {
-        const body = await readBody<{ projectId: string; taskItemId: string; taskId: string }>(req)
-        if (!body.projectId || !body.taskItemId || !body.taskId) return json({ error: 'Missing required fields' }, 400)
-        await linkChecklistItem(body.projectId, body.taskItemId, body.taskId)
-        ctx.activity.audit('checklist.linked', 'system', { projectId: body.projectId, taskId: body.taskId })
-        return json({ ok: true })
-      },
-    })
+    // PUT /:projectId/checklist/:itemId/toggle — toggle checklist item
+    const toggleHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const body = await readBody<{ projectId?: string; taskItemId?: string; checked: boolean }>(req)
+      const projectId = url.searchParams.get('projectId') || body.projectId
+      const taskItemId = url.searchParams.get('itemId') || body.taskItemId
+      if (!projectId || !taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
+      const result = await markChecklistItem(projectId, taskItemId, body.checked)
+      ctx.activity.audit('checklist.toggled', 'system', { projectId, checked: body.checked })
+      return json({ ok: true, ...result })
+    }
+    ctx.registerRoute({ path: '/:projectId/checklist/:itemId/toggle', method: 'PUT', description: 'Toggle checklist item', handler: toggleHandler })
+    ctx.registerRoute({ path: '/checklist/toggle', method: 'POST', description: 'Toggle item (alias)', handler: toggleHandler })
 
-    ctx.registerRoute({
-      path: '/checklist/promote',
-      method: 'POST',
-      description: 'Create a board task from a checklist item and auto-link it',
-      handler: async (req: Request) => {
-        const body = await readBody<{ projectId: string; taskItemId: string; assignee?: string }>(req)
-        if (!body.projectId || !body.taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
-        const result = await promoteItemToTask(body.projectId, body.taskItemId, { assignee: body.assignee })
-        ctx.activity.audit('checklist.promoted', 'system', { projectId: body.projectId })
-        return json({ ok: true, ...result })
-      },
-    })
+    // PUT /:projectId/checklist/:itemId — update checklist item
+    const updateItemHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const body = await readBody<{ projectId?: string; taskItemId?: string; title?: string; description?: string }>(req)
+      const projectId = url.searchParams.get('projectId') || body.projectId
+      const taskItemId = url.searchParams.get('itemId') || body.taskItemId
+      if (!projectId || !taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
+      await updateChecklistItem(projectId, taskItemId, { title: body.title, description: body.description })
+      ctx.activity.audit('checklist.updated', 'system', { projectId })
+      return json({ ok: true })
+    }
+    ctx.registerRoute({ path: '/:projectId/checklist/:itemId', method: 'PUT', description: 'Update checklist item', handler: updateItemHandler })
+    ctx.registerRoute({ path: '/checklist/update', method: 'POST', description: 'Update item (alias)', handler: updateItemHandler })
 
-    ctx.registerRoute({
-      path: '/assets/attach',
-      method: 'POST',
-      description: 'Attach an asset to a project',
-      handler: async (req: Request) => {
-        const body = await readBody<{ projectId: string; assetPath: string; label?: string }>(req)
-        if (!body.projectId || !body.assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
-        await attachAsset(body.projectId, body.assetPath, body.label)
-        ctx.activity.audit('asset.attached', 'system', { projectId: body.projectId, assetPath: body.assetPath })
-        return json({ ok: true })
-      },
-    })
+    // DELETE /:projectId/checklist/:itemId — remove checklist item
+    const removeItemHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const body = await readBody<{ projectId?: string; taskItemId?: string }>(req).catch(() => ({} as { projectId?: string; taskItemId?: string }))
+      const projectId = url.searchParams.get('projectId') || body.projectId
+      const taskItemId = url.searchParams.get('itemId') || body.taskItemId
+      if (!projectId || !taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
+      await removeChecklistItem(projectId, taskItemId)
+      ctx.activity.audit('checklist.removed', 'system', { projectId })
+      return json({ ok: true })
+    }
+    ctx.registerRoute({ path: '/:projectId/checklist/:itemId', method: 'DELETE', description: 'Remove checklist item', handler: removeItemHandler })
+    ctx.registerRoute({ path: '/checklist/remove', method: 'POST', description: 'Remove item (alias)', handler: removeItemHandler })
 
-    ctx.registerRoute({
-      path: '/assets/detach',
-      method: 'POST',
-      description: 'Detach an asset from a project',
-      handler: async (req: Request) => {
-        const body = await readBody<{ projectId: string; assetPath: string }>(req)
-        if (!body.projectId || !body.assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
-        await detachAsset(body.projectId, body.assetPath)
-        ctx.activity.audit('asset.detached', 'system', { projectId: body.projectId, assetPath: body.assetPath })
-        return json({ ok: true })
-      },
-    })
+    // POST /:projectId/checklist/:itemId/link — link to board task
+    const linkHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const body = await readBody<{ projectId?: string; taskItemId?: string; taskId: string }>(req)
+      const projectId = url.searchParams.get('projectId') || body.projectId
+      const taskItemId = url.searchParams.get('itemId') || body.taskItemId
+      if (!projectId || !taskItemId || !body.taskId) return json({ error: 'Missing required fields' }, 400)
+      await linkChecklistItem(projectId, taskItemId, body.taskId)
+      ctx.activity.audit('checklist.linked', 'system', { projectId, taskId: body.taskId })
+      return json({ ok: true })
+    }
+    ctx.registerRoute({ path: '/:projectId/checklist/:itemId/link', method: 'POST', description: 'Link checklist item to task', handler: linkHandler })
+    ctx.registerRoute({ path: '/checklist/link', method: 'POST', description: 'Link item (alias)', handler: linkHandler })
 
-    ctx.registerRoute({
-      path: '/ask',
-      method: 'POST',
-      description: 'Send a prompt to the main agent with project context',
-      handler: async (req: Request) => {
+    // POST /:projectId/checklist/:itemId/promote — promote to board task
+    const promoteHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const body = await readBody<{ projectId?: string; taskItemId?: string; assignee?: string }>(req)
+      const projectId = url.searchParams.get('projectId') || body.projectId
+      const taskItemId = url.searchParams.get('itemId') || body.taskItemId
+      if (!projectId || !taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
+      const result = await promoteItemToTask(projectId, taskItemId, { assignee: body.assignee })
+      ctx.activity.audit('checklist.promoted', 'system', { projectId })
+      ctx.activity.log('system', `Promoted checklist item to task in project ${projectId}`)
+      return json({ ok: true, ...result })
+    }
+    ctx.registerRoute({ path: '/:projectId/checklist/:itemId/promote', method: 'POST', description: 'Promote item to task', handler: promoteHandler })
+    ctx.registerRoute({ path: '/checklist/promote', method: 'POST', description: 'Promote item (alias)', handler: promoteHandler })
+
+    // POST /:projectId/assets — attach asset
+    const attachHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const body = await readBody<{ projectId?: string; assetPath: string; label?: string }>(req)
+      const projectId = url.searchParams.get('projectId') || body.projectId
+      if (!projectId || !body.assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
+      await attachAsset(projectId, body.assetPath, body.label)
+      ctx.activity.audit('asset.attached', 'system', { projectId, assetPath: body.assetPath })
+      return json({ ok: true })
+    }
+    ctx.registerRoute({ path: '/:projectId/assets', method: 'POST', description: 'Attach asset', handler: attachHandler })
+    ctx.registerRoute({ path: '/assets/attach', method: 'POST', description: 'Attach asset (alias)', handler: attachHandler })
+
+    // DELETE /:projectId/assets/:assetPath — detach asset
+    const detachHandler = async (req: Request) => {
+      const url = new URL(req.url, 'http://localhost')
+      const body = await readBody<{ projectId?: string; assetPath?: string }>(req).catch(() => ({} as { projectId?: string; assetPath?: string }))
+      const projectId = url.searchParams.get('projectId') || body.projectId
+      const assetPath = url.searchParams.get('assetPath') || body.assetPath
+      if (!projectId || !assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
+      await detachAsset(projectId, assetPath)
+      ctx.activity.audit('asset.detached', 'system', { projectId, assetPath })
+      return json({ ok: true })
+    }
+    ctx.registerRoute({ path: '/:projectId/assets/:assetPath', method: 'DELETE', description: 'Detach asset', handler: detachHandler })
+    ctx.registerRoute({ path: '/assets/detach', method: 'POST', description: 'Detach asset (alias)', handler: detachHandler })
+
+    // POST /:projectId/ask — agent brainstorm
+    ctx.registerRoute({ path: '/:projectId/ask', method: 'POST', description: 'Ask agent about project', handler: async (req: Request) => {
         const body = await readBody<{
           projectId: string
           prompt: string
@@ -328,12 +327,26 @@ const projectsPlugin: BakinPlugin = {
           const agentId = body.agent || 'main'
           const reply = await sendMessage(agentId, context)
           return json({ ok: true, reply })
-        } catch (err: any) {
+        } catch (err: unknown) {
           log.error('Agent ask failed', err)
-          return json({ error: err.message || 'Failed to reach agent' }, 500)
+          return json({ error: (err as Error).message || 'Failed to reach agent' }, 500)
         }
       },
     })
+    // The ask handler reads projectId from body, so the alias works directly
+    ctx.registerRoute({ path: '/ask', method: 'POST', description: 'Ask agent (alias)', handler: async (req: Request) => {
+      const body = await readBody<{ projectId: string; prompt: string; agent?: string; history?: Array<{ role: 'user' | 'agent'; content: string }> }>(req)
+      if (!body.projectId || !body.prompt) return json({ error: 'Missing projectId or prompt' }, 400)
+      const project = readProject(body.projectId)
+      if (!project) return json({ error: 'Project not found' }, 404)
+      try {
+        const { sendMessage } = await import('../../src/core/openclaw-client')
+        const reply = await sendMessage(body.agent || 'main', body.prompt)
+        return json({ ok: true, reply })
+      } catch (err: unknown) {
+        return json({ error: (err as Error).message || 'Failed' }, 500)
+      }
+    }})
 
     // -----------------------------------------------------------------
     // MCP Exec Tools
@@ -406,8 +419,8 @@ const projectsPlugin: BakinPlugin = {
             owner: params.owner as string | undefined,
           }, agent)
           return { ok: true }
-        } catch (err: any) {
-          return { ok: false, error: err.message }
+        } catch (err: unknown) {
+          return { ok: false, error: (err as Error).message }
         }
       },
     })
@@ -422,8 +435,8 @@ const projectsPlugin: BakinPlugin = {
         try {
           await deleteProject(params.projectId as string, agent)
           return { ok: true }
-        } catch (err: any) {
-          return { ok: false, error: err.message }
+        } catch (err: unknown) {
+          return { ok: false, error: (err as Error).message }
         }
       },
     })
@@ -470,8 +483,8 @@ const projectsPlugin: BakinPlugin = {
         try {
           await removeChecklistItem(params.projectId as string, params.taskItemId as string)
           return { ok: true }
-        } catch (err: any) {
-          return { ok: false, error: err.message }
+        } catch (err: unknown) {
+          return { ok: false, error: (err as Error).message }
         }
       },
     })
@@ -492,8 +505,8 @@ const projectsPlugin: BakinPlugin = {
             params.taskId as string,
           )
           return { ok: true }
-        } catch (err: any) {
-          return { ok: false, error: err.message }
+        } catch (err: unknown) {
+          return { ok: false, error: (err as Error).message }
         }
       },
     })
@@ -514,8 +527,8 @@ const projectsPlugin: BakinPlugin = {
             { assignee: params.assignee as string | undefined },
           )
           return { ok: true, ...result }
-        } catch (err: any) {
-          return { ok: false, error: err.message }
+        } catch (err: unknown) {
+          return { ok: false, error: (err as Error).message }
         }
       },
     })
@@ -532,8 +545,8 @@ const projectsPlugin: BakinPlugin = {
         try {
           await attachAsset(params.projectId as string, params.assetPath as string, params.label as string | undefined)
           return { ok: true }
-        } catch (err: any) {
-          return { ok: false, error: err.message }
+        } catch (err: unknown) {
+          return { ok: false, error: (err as Error).message }
         }
       },
     })
@@ -549,13 +562,26 @@ const projectsPlugin: BakinPlugin = {
         try {
           await detachAsset(params.projectId as string, params.assetPath as string)
           return { ok: true }
-        } catch (err: any) {
-          return { ok: false, error: err.message }
+        } catch (err: unknown) {
+          return { ok: false, error: (err as Error).message }
         }
       },
     })
 
     log.info('Projects plugin activated')
+  },
+
+  onReady() {
+    const projects = readAllProjects()
+    const byStatus: Record<string, number> = {}
+    for (const p of projects) {
+      byStatus[p.status] = (byStatus[p.status] || 0) + 1
+    }
+    log.info(`Ready — ${projects.length} projects`, byStatus)
+  },
+
+  onShutdown() {
+    log.info('Projects plugin shutting down')
   },
 }
 
