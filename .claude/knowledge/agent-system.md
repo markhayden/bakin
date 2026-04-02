@@ -82,23 +82,23 @@ Status values: `working`, `idle`, `error`
 
 Agents interact with Bakin through MCP tools served by `src/core/mcp-server.ts`:
 
-### Core MCP tools (hardcoded in mcp-server.ts):
-| Tool | Purpose |
-|------|---------|
-| `bakin_log_progress` | Log progress to activity feed |
-| `bakin_move_task` | Move task between columns |
-| `bakin_create_task` | Create a new task |
-| `bakin_get_task` | Fetch task details |
-| `bakin_block_task` | Mark task as blocked |
-| `bakin_report_complete` | Mark task complete |
-| `bakin_register_dependency` | Set task dependencies |
-| `bakin_list_workflows` | List available workflow templates |
-| `bakin_get_step` / `bakin_submit_step` | Workflow step execution |
-| `bakin_get_paths` | Get content directory paths |
+### Dynamic tool registration (all tools from exec registry):
+`mcp-server.ts` has NO hardcoded tools. All tools come from `getAllExecTools()` in the exec tool registry.
 
-### Exec tools (from registry):
-Registered by plugins and core scripts. Naming: `bakin_exec_{source}_{action}`.
-Examples: `bakin_exec_save_asset`, `bakin_exec_project_list`, `bakin_exec_schedule_list`
+| Source | Count | Registration method | Examples |
+|--------|-------|---------------------|----------|
+| tasks plugin | 11 | `ctx.registerExecTool()` | `bakin_exec_tasks_list`, `bakin_exec_tasks_create`, `bakin_exec_tasks_move` |
+| workflows plugin | 10 | `ctx.registerExecTool()` | `bakin_exec_workflows_list_definitions`, `bakin_exec_workflows_get_step` |
+| assets plugin | 8 | `ctx.registerExecTool()` | `bakin_exec_assets_save`, `bakin_exec_assets_list` |
+| schedule plugin | 10 | `ctx.registerExecTool()` | `bakin_exec_schedule_list`, `bakin_exec_schedule_fire` |
+| calendar plugin | 7 | `ctx.registerExecTool()` | `bakin_exec_calendar_list`, `bakin_exec_calendar_create` |
+| projects plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_projects_list`, `bakin_exec_projects_create` |
+| scripts/lib/log-progress.ts | 1 | `addExecTool()` | `bakin_exec_log` |
+| scripts/lib/gen-image.ts | 1 | `addExecTool()` | `bakin_exec_gen_image` |
+| scripts/lib/post-discord.ts | 1 | `addExecTool()` | `bakin_exec_post_discord` |
+| scripts/lib/get-paths.ts | 1 | `addExecTool()` | `bakin_exec_get_paths` |
+
+**Total:** 62 exec tools (58 plugin + 4 script). Naming: `bakin_exec_{pluginId}_{action}`.
 
 ### Agent identity
 MCP sessions bind agent identity via `?agent=chef` query param at connection time. All tool calls carry the agent ID for audit attribution.

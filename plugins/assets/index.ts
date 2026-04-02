@@ -169,6 +169,35 @@ const assetsPlugin: BakinPlugin = {
     })
 
     ctx.registerExecTool({
+      name: 'bakin_exec_assets_get',
+      description: 'Retrieve a single asset\'s sidecar metadata by path.',
+      parameters: {
+        path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const assetPath = params.path as string
+        if (!assetPath || assetPath.includes('..') || !assetPath.startsWith('assets/')) {
+          return { ok: false, error: 'Invalid asset path' }
+        }
+        const contentDir = getContentDir()
+        const fullPath = join(contentDir, assetPath)
+        if (!existsSync(fullPath)) {
+          return { ok: false, error: 'Asset not found' }
+        }
+        const sidecarPath = getSidecarPath(fullPath)
+        if (!existsSync(sidecarPath)) {
+          return { ok: true, asset: { path: assetPath, sidecar: null } }
+        }
+        try {
+          const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
+          return { ok: true, asset: { path: assetPath, ...sidecar } }
+        } catch (err) {
+          return { ok: false, error: `Failed to read sidecar: ${(err as Error).message}` }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
       name: 'bakin_exec_assets_save',
       description: 'Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.',
       parameters: {
