@@ -33,7 +33,7 @@ async function executeScheduledContent(contentDir: string, port: number): Promis
       const taskDescription = buildContentTaskDescription(item, persona, port)
 
       // Create task via API
-      const res = await fetch(`http://localhost:${port}/api/tasks/create`, {
+      const res = await fetch(`http://localhost:${port}/api/plugins/tasks/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

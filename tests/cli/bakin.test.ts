@@ -24,20 +24,16 @@ describe('CLI bakin commands', () => {
     globalThis.fetch = originalFetch
   })
 
-  // Test the API helper functions by importing them
-  // The CLI is a script but the helper functions are testable
-
   describe('api helpers', () => {
     it('should send POST with correct content-type', async () => {
-      // Call the endpoint the CLI would call for tasks log
-      await fetch('http://localhost:3737/api/tasks/log', {
+      await fetch('http://localhost:3737/api/plugins/tasks/task-1/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: 'task-1', author: 'cli', message: 'test message' }),
       })
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:3737/api/tasks/log',
+        'http://localhost:3737/api/plugins/tasks/task-1/log',
         expect.objectContaining({
           method: 'POST',
           body: expect.stringContaining('test message'),
@@ -47,33 +43,28 @@ describe('CLI bakin commands', () => {
   })
 
   describe('command endpoint mapping', () => {
-    // These tests verify the correct API endpoints are called for each command
-    // by simulating the HTTP calls the CLI functions make
-
-    it('tasks log calls POST /api/tasks/log', async () => {
-      await simulateCliPost('/api/tasks/log', { id: 'abc', author: 'cli', message: 'progress update' })
-      expectPostTo('/api/tasks/log', { id: 'abc', author: 'cli', message: 'progress update' })
+    it('tasks log calls POST /api/plugins/tasks/:id/log', async () => {
+      await simulateCliPost('/api/plugins/tasks/abc/log', { id: 'abc', author: 'cli', message: 'progress update' })
+      expectPostTo('/api/plugins/tasks/abc/log', { id: 'abc', author: 'cli', message: 'progress update' })
     })
 
-    it('tasks block calls POST /api/tasks/block', async () => {
-      await simulateCliPost('/api/tasks/block', { id: 'abc', reason: 'API down', agent: 'cli' })
-      expectPostTo('/api/tasks/block', { id: 'abc', reason: 'API down', agent: 'cli' })
+    it('tasks block calls POST /api/plugins/tasks/:id/block', async () => {
+      await simulateCliPost('/api/plugins/tasks/abc/block', { id: 'abc', reason: 'API down', agent: 'cli' })
+      expectPostTo('/api/plugins/tasks/abc/block', { id: 'abc', reason: 'API down', agent: 'cli' })
     })
 
-    it('tasks depend calls POST /api/tasks/depend', async () => {
-      await simulateCliPost('/api/tasks/depend', { id: 'abc', dependsOn: 'def' })
-      expectPostTo('/api/tasks/depend', { id: 'abc', dependsOn: 'def' })
+    it('tasks depend calls POST /api/plugins/tasks/:id/dependency', async () => {
+      await simulateCliPost('/api/plugins/tasks/abc/dependency', { id: 'abc', dependsOn: 'def' })
+      expectPostTo('/api/plugins/tasks/abc/dependency', { id: 'abc', dependsOn: 'def' })
     })
 
-    it('tasks complete calls POST /api/tasks/log then POST /api/tasks/move', async () => {
-      // Simulate the two-call sequence that cmdTasksComplete makes
-      await simulateCliPost('/api/tasks/log', { id: 'abc', author: 'cli', message: 'Task complete: All done' })
-      await simulateCliPost('/api/tasks/move', { id: 'abc', to: 'done', agent: 'cli' })
+    it('tasks complete calls POST log then POST move', async () => {
+      await simulateCliPost('/api/plugins/tasks/abc/log', { id: 'abc', author: 'cli', message: 'Task complete: All done' })
+      await simulateCliPost('/api/plugins/tasks/abc/move', { id: 'abc', to: 'done', agent: 'cli' })
 
-      // Verify both calls were made in order
       expect(mockFetch).toHaveBeenCalledTimes(2)
-      expect(mockFetch.mock.calls[0][0]).toContain('/api/tasks/log')
-      expect(mockFetch.mock.calls[1][0]).toContain('/api/tasks/move')
+      expect(mockFetch.mock.calls[0][0]).toContain('/api/plugins/tasks/abc/log')
+      expect(mockFetch.mock.calls[1][0]).toContain('/api/plugins/tasks/abc/move')
     })
 
     it('workflows step calls GET /api/plugins/workflows/step', async () => {
@@ -118,7 +109,7 @@ describe('CLI bakin commands', () => {
   })
 
   describe('tasks get endpoint mapping', () => {
-    it('tasks get calls GET /api/plugins/tasks/board and filters by id', async () => {
+    it('tasks get calls GET /api/plugins/tasks/ and filters by id', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
@@ -131,12 +122,11 @@ describe('CLI bakin commands', () => {
         text: () => Promise.resolve(''),
       })
 
-      const res = await fetch('http://localhost:3737/api/plugins/tasks/board', {
+      const res = await fetch('http://localhost:3737/api/plugins/tasks/', {
         headers: { 'Content-Type': 'application/json' },
       })
       const data = await res.json() as { columns: Record<string, Array<{ id: string }>> }
 
-      // Simulate the filtering the CLI does
       let found = null
       for (const [col, tasks] of Object.entries(data.columns)) {
         const task = tasks.find(t => t.id === 'task-1')

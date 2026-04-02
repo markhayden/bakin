@@ -198,7 +198,7 @@ export function moveTask(identifier: string, to: string, from?: string): Promise
 
     // Require at least one log entry before moving to done
     if (toCol === 'done' && (!task.log || task.log.length === 0)) {
-      throw new Error('Cannot move to done: task has no log entries. Log your work first via POST /api/tasks/log')
+      throw new Error('Cannot move to done: task has no log entries. Log your work first via bakin_exec_tasks_log_progress')
     }
 
     columns[colId].splice(idx, 1)
@@ -293,7 +293,7 @@ export function updateTask(
         throw new Error(`Invalid transition: ${colId} → ${updates.column}. Allowed: ${allowed.join(', ') || 'none'}`)
       }
       if (updates.column === 'done' && (!task.log || task.log.length === 0)) {
-        throw new Error('Cannot move to done: task has no log entries. Log your work first via POST /api/tasks/log')
+        throw new Error('Cannot move to done: task has no log entries. Log your work first via bakin_exec_tasks_log_progress')
       }
       columns[colId].splice(idx, 1)
       task.checked = updates.column === 'done' || updates.column === 'confirmed'

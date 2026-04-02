@@ -386,7 +386,7 @@ These are the ONLY valid workflow endpoints. Do NOT guess at other paths.
 | Pending gates | GET | \`/api/plugins/workflows/pending-gates\` |
 | Gate status | GET | \`/api/plugins/workflows/gate-status?taskIds=id1,id2\` |
 
-Do NOT use \`/api/tasks\`, \`/api/tasks/list\`, \`/api/plugins/workflows/runs\`, or \`/api/plugins/workflows/run\` — these do not exist.`
+Do NOT use \`/api/tasks\`, \`/api/tasks/list\`, \`/api/plugins/workflows/runs\`, or \`/api/plugins/workflows/run\` — these do not exist. All task operations are via MCP exec tools (bakin_exec_tasks_*).`
 
 /** Build the workflow catalog from available definitions for embedding in rules */
 async function buildWorkflowCatalog(): Promise<string> {
