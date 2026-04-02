@@ -83,7 +83,6 @@ const assetsPlugin: BakinPlugin = {
 
     // GET / — list assets with filters
     ctx.registerRoute({ path: '/', method: 'GET', description: 'List assets with filters', handler: handleList })
-    ctx.registerRoute({ path: '/list', method: 'GET', description: 'List assets (alias)', handler: handleList })
 
     // GET /file — serve asset file for rendering
     ctx.registerRoute({ path: '/file', method: 'GET', description: 'Serve asset file', handler: handleFile })
@@ -105,7 +104,6 @@ const assetsPlugin: BakinPlugin = {
 
     // GET /trash — list trashed assets
     ctx.registerRoute({ path: '/trash', method: 'GET', description: 'List trashed assets', handler: handleListTrash })
-    ctx.registerRoute({ path: '/list-trash', method: 'GET', description: 'List trash (alias)', handler: handleListTrash })
 
     // POST /trash/:file/restore — restore a trashed asset
     ctx.registerRoute({

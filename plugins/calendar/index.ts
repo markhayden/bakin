@@ -142,7 +142,6 @@ const calendarPlugin: BakinPlugin = {
       return json({ items })
     }
     ctx.registerRoute({ path: '/', method: 'GET', description: 'List calendar items', handler: listHandler })
-    ctx.registerRoute({ path: '/items', method: 'GET', description: 'List items (alias)', handler: listHandler })
 
     // POST / — create item
     const createHandler = async (req: Request) => {
@@ -170,7 +169,6 @@ const calendarPlugin: BakinPlugin = {
       return json({ ok: true, item })
     }
     ctx.registerRoute({ path: '/', method: 'POST', description: 'Create calendar item', handler: createHandler })
-    ctx.registerRoute({ path: '/items', method: 'POST', description: 'Create item (alias)', handler: createHandler })
 
     // PUT /:itemId — update item
     const updateHandler = async (req: Request) => {
@@ -193,12 +191,11 @@ const calendarPlugin: BakinPlugin = {
         ctx.activity.audit('item.updated', 'system')
         ctx.activity.log('system', `Updated calendar item "${item.title}"`)
         return json({ ok: true, item })
-      } catch (e) {
-        return json({ error: String(e) }, 404)
+      } catch (e: unknown) {
+        return json({ error: (e as Error).message || String(e) }, 404)
       }
     }
     ctx.registerRoute({ path: '/:itemId', method: 'PUT', description: 'Update calendar item', handler: updateHandler })
-    ctx.registerRoute({ path: '/items/update', method: 'POST', description: 'Update item (alias)', handler: updateHandler })
 
     // DELETE /:itemId — delete item
     const deleteHandler = async (req: Request) => {
@@ -214,7 +211,6 @@ const calendarPlugin: BakinPlugin = {
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:itemId', method: 'DELETE', description: 'Delete calendar item', handler: deleteHandler })
-    ctx.registerRoute({ path: '/items/delete', method: 'POST', description: 'Delete item (alias)', handler: deleteHandler })
 
     // POST /:itemId/approve — approve item
     const approveHandler = async (req: Request) => {
@@ -232,7 +228,6 @@ const calendarPlugin: BakinPlugin = {
       return json({ ok: true, item: result.item })
     }
     ctx.registerRoute({ path: '/:itemId/approve', method: 'POST', description: 'Approve calendar item', handler: approveHandler })
-    ctx.registerRoute({ path: '/items/approve', method: 'POST', description: 'Approve item (alias)', handler: approveHandler })
 
     // POST /:itemId/reject — reject item back to draft
     const rejectHandler = async (req: Request) => {
@@ -259,7 +254,6 @@ const calendarPlugin: BakinPlugin = {
       return json({ ok: true, item: updated })
     }
     ctx.registerRoute({ path: '/:itemId/reject', method: 'POST', description: 'Reject calendar item', handler: rejectHandler })
-    ctx.registerRoute({ path: '/items/reject', method: 'POST', description: 'Reject item (alias)', handler: rejectHandler })
 
     // POST /brainstorm — AI brainstorming (unchanged)
     ctx.registerRoute({

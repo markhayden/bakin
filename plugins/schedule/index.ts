@@ -211,7 +211,6 @@ const schedulePlugin: BakinPlugin = {
       return json({ jobs })
     }
     ctx.registerRoute({ path: '/', method: 'GET', description: 'List all scheduled jobs', handler: listJobsHandler })
-    ctx.registerRoute({ path: '/jobs', method: 'GET', description: 'List jobs (alias)', handler: listJobsHandler })
 
     // POST / — create a job
     const createJobHandler = async (req: Request): Promise<Response> => {
@@ -272,7 +271,6 @@ const schedulePlugin: BakinPlugin = {
       return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz })
     }
     ctx.registerRoute({ path: '/', method: 'POST', description: 'Create a scheduled job', handler: createJobHandler })
-    ctx.registerRoute({ path: '/jobs', method: 'POST', description: 'Create job (alias)', handler: createJobHandler })
 
     // PUT /:jobId — update a job
     ctx.registerRoute({
@@ -314,15 +312,6 @@ const schedulePlugin: BakinPlugin = {
         return json({ ok: true })
       },
     })
-    ctx.registerRoute({ path: '/jobs/update', method: 'PUT', description: 'Update job (alias)', handler: async (req: Request) => {
-      const body = await readBody<{ jobId: string; [key: string]: unknown }>(req)
-      if (!body.jobId) return json({ error: 'jobId required' }, 400)
-      // Rewrite URL with jobId as path param and forward
-      const url = new URL(req.url)
-      url.searchParams.set('jobId', body.jobId)
-      return (await fetch(new Request(url.toString(), { method: 'PUT', headers: req.headers, body: JSON.stringify(body) }))).json().then((d: unknown) => json(d))
-    }})
-
     // DELETE /:jobId — delete a job
     const deleteJobHandler = async (req: Request) => {
       const url = new URL(req.url)
@@ -338,7 +327,6 @@ const schedulePlugin: BakinPlugin = {
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:jobId', method: 'DELETE', description: 'Delete a scheduled job', handler: deleteJobHandler })
-    ctx.registerRoute({ path: '/jobs/delete', method: 'POST', description: 'Delete job (alias)', handler: deleteJobHandler })
 
     // POST /:jobId/pause — pause/resume/skip
     const pauseHandler = async (req: Request) => {
@@ -382,7 +370,6 @@ const schedulePlugin: BakinPlugin = {
         return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:jobId/pause', method: 'POST', description: 'Pause/resume/skip a job', handler: pauseHandler })
-    ctx.registerRoute({ path: '/jobs/pause', method: 'POST', description: 'Pause job (alias)', handler: pauseHandler })
 
     // POST /:jobId/run — trigger immediate run
     const runNowHandler = async (req: Request) => {
@@ -396,7 +383,6 @@ const schedulePlugin: BakinPlugin = {
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:jobId/run', method: 'POST', description: 'Trigger immediate run', handler: runNowHandler })
-    ctx.registerRoute({ path: '/jobs/run-now', method: 'POST', description: 'Run now (alias)', handler: runNowHandler })
 
     // GET /:jobId/runs — run history
     const runsHandler = (req: Request) => {
@@ -408,7 +394,6 @@ const schedulePlugin: BakinPlugin = {
       return json({ runs })
     }
     ctx.registerRoute({ path: '/:jobId/runs', method: 'GET', description: 'Get run history for a job', handler: runsHandler })
-    ctx.registerRoute({ path: '/runs', method: 'GET', description: 'Run history (alias)', handler: runsHandler })
 
     // POST /parse — parse schedule expression (NL → cron)
     const parseHandler = async (req: Request) => {
@@ -421,7 +406,6 @@ const schedulePlugin: BakinPlugin = {
       return json(result)
     }
     ctx.registerRoute({ path: '/parse', method: 'POST', description: 'Parse schedule expression', handler: parseHandler })
-    ctx.registerRoute({ path: '/parse-schedule', method: 'POST', description: 'Parse schedule (alias)', handler: parseHandler })
 
     // POST /bridge — OpenClaw webhook → task creation
     ctx.registerRoute({ path: '/bridge', method: 'POST', description: 'Cron bridge webhook', handler: handleBridge })
