@@ -184,6 +184,7 @@ const projectsPlugin: BakinPlugin = {
       if (!projectId || !taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
       const result = await markChecklistItem(projectId, taskItemId, body.checked)
       ctx.activity.audit('checklist.toggled', 'system', { projectId, checked: body.checked })
+      ctx.activity.log('system', 'Toggled checklist item in project', { taskId: projectId })
       return json({ ok: true, ...result })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId/toggle', method: 'PUT', description: 'Toggle checklist item', handler: toggleHandler })
@@ -197,6 +198,7 @@ const projectsPlugin: BakinPlugin = {
       if (!projectId || !taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
       await updateChecklistItem(projectId, taskItemId, { title: body.title, description: body.description })
       ctx.activity.audit('checklist.updated', 'system', { projectId })
+      ctx.activity.log('system', 'Updated checklist item in project', { taskId: projectId })
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId', method: 'PUT', description: 'Update checklist item', handler: updateItemHandler })
@@ -210,6 +212,7 @@ const projectsPlugin: BakinPlugin = {
       if (!projectId || !taskItemId) return json({ error: 'Missing projectId or taskItemId' }, 400)
       await removeChecklistItem(projectId, taskItemId)
       ctx.activity.audit('checklist.removed', 'system', { projectId })
+      ctx.activity.log('system', 'Removed checklist item from project', { taskId: projectId })
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId', method: 'DELETE', description: 'Remove checklist item', handler: removeItemHandler })
@@ -223,6 +226,7 @@ const projectsPlugin: BakinPlugin = {
       if (!projectId || !taskItemId || !body.taskId) return json({ error: 'Missing required fields' }, 400)
       await linkChecklistItem(projectId, taskItemId, body.taskId)
       ctx.activity.audit('checklist.linked', 'system', { projectId, taskId: body.taskId })
+      ctx.activity.log('system', 'Linked checklist item to task', { taskId: projectId })
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId/link', method: 'POST', description: 'Link checklist item to task', handler: linkHandler })
@@ -249,6 +253,7 @@ const projectsPlugin: BakinPlugin = {
       if (!projectId || !body.assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
       await attachAsset(projectId, body.assetPath, body.label)
       ctx.activity.audit('asset.attached', 'system', { projectId, assetPath: body.assetPath })
+      ctx.activity.log('system', 'Attached asset to project', { taskId: projectId })
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/assets', method: 'POST', description: 'Attach asset', handler: attachHandler })
@@ -262,6 +267,7 @@ const projectsPlugin: BakinPlugin = {
       if (!projectId || !assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
       await detachAsset(projectId, assetPath)
       ctx.activity.audit('asset.detached', 'system', { projectId, assetPath })
+      ctx.activity.log('system', 'Detached asset from project', { taskId: projectId })
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/assets/:assetPath', method: 'DELETE', description: 'Detach asset', handler: detachHandler })
@@ -537,6 +543,100 @@ const projectsPlugin: BakinPlugin = {
           return { ok: true }
         } catch (err: unknown) {
           return { ok: false, error: (err as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_project_toggle_item',
+      description: 'Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage.',
+      parameters: {
+        projectId: z.string().describe('Project ID'),
+        itemId: z.string().describe('Checklist item ID (e.g., t001)'),
+        checked: z.boolean().describe('true to mark as done, false to uncheck'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const projectId = params.projectId as string
+        const itemId = params.itemId as string
+        const checked = params.checked as boolean
+        const result = await markChecklistItem(projectId, itemId, checked)
+        ctx.activity.audit('checklist.toggled', 'system', { projectId, checked })
+        ctx.activity.log('system', 'Toggled checklist item in project', { taskId: projectId })
+        return { ok: true, ...result }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_project_update_item',
+      description: 'Update a checklist item\'s title and/or description.',
+      parameters: {
+        projectId: z.string().describe('Project ID'),
+        itemId: z.string().describe('Checklist item ID (e.g., t001)'),
+        title: z.string().optional().describe('New title for the checklist item'),
+        description: z.string().optional().describe('New description for the checklist item'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const projectId = params.projectId as string
+        const itemId = params.itemId as string
+        try {
+          await updateChecklistItem(projectId, itemId, {
+            title: params.title as string | undefined,
+            description: params.description as string | undefined,
+          })
+          ctx.activity.audit('checklist.updated', 'system', { projectId })
+          ctx.activity.log('system', 'Updated checklist item in project', { taskId: projectId })
+          return { ok: true }
+        } catch (err: unknown) {
+          return { ok: false, error: (err as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_project_ask',
+      description: 'Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming.',
+      parameters: {
+        projectId: z.string().describe('Project ID'),
+        message: z.string().describe('Question or prompt for the agent'),
+        agent: z.string().optional().describe('Agent ID to ask (defaults to main)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const projectId = params.projectId as string
+        const message = params.message as string
+        const project = readProject(projectId)
+        if (!project) return { ok: false, error: `Project not found: ${projectId}` }
+
+        const assetLines = project.assets.length > 0
+          ? ['', 'Attached assets (summaries — use asset tools to read full content if needed):', ...project.assets.map(a => `- ${a.path}${a.label ? ` — ${a.label}` : ''}`)]
+          : []
+
+        const context = [
+          `You are being asked about project "${project.title}" (id: ${project.id}, status: ${project.status}).`,
+          `Progress: ${project.progress}% (${project.tasks.filter(t => t.checked).length}/${project.tasks.length} items checked)`,
+          '',
+          'Project spec:',
+          project.body.slice(0, 3000),
+          '',
+          'Checklist items:',
+          ...project.tasks.map(t => `- [${t.checked ? 'x' : ' '}] ${t.title}${t.taskId ? ` (linked: ${t.taskId})` : ''}`),
+          ...assetLines,
+          '',
+          'User request:',
+          message,
+          '',
+          'Respond concisely. If suggesting tasks, format them as a numbered list.',
+        ].join('\n')
+
+        try {
+          const { sendMessage } = await import('../../src/core/openclaw-client')
+          const agentId = (params.agent as string) || 'main'
+          const reply = await sendMessage(agentId, context)
+          ctx.activity.audit('project.asked', 'system', { projectId, agent: agentId })
+          ctx.activity.log('system', `Asked agent about project ${projectId}`, { taskId: projectId })
+          return { ok: true, reply }
+        } catch (err: unknown) {
+          log.error('Agent ask failed', err)
+          return { ok: false, error: (err as Error).message || 'Failed to reach agent' }
         }
       },
     })

@@ -89,8 +89,8 @@ const assetsPlugin: BakinPlugin = {
 
     // DELETE /:assetPath — soft-delete an asset
     ctx.registerRoute({
-      path: '/delete',
-      method: 'POST',
+      path: '/:assetPath',
+      method: 'DELETE',
       description: 'Soft-delete an asset',
       handler: async (req: Request) => {
         const res = await handleDelete(req)
@@ -107,7 +107,7 @@ const assetsPlugin: BakinPlugin = {
 
     // POST /trash/:file/restore — restore a trashed asset
     ctx.registerRoute({
-      path: '/restore',
+      path: '/trash/:file/restore',
       method: 'POST',
       description: 'Restore a trashed asset',
       handler: async (req: Request) => {
@@ -122,8 +122,8 @@ const assetsPlugin: BakinPlugin = {
 
     // DELETE /trash — empty entire trash
     ctx.registerRoute({
-      path: '/empty-trash',
-      method: 'POST',
+      path: '/trash',
+      method: 'DELETE',
       description: 'Empty entire trash',
       handler: async (req: Request) => {
         const res = await handleEmptyTrash(req)
@@ -135,10 +135,10 @@ const assetsPlugin: BakinPlugin = {
       },
     })
 
-    // Permanent delete (kept for compatibility)
+    // DELETE /trash/:file — permanently delete a trashed asset
     ctx.registerRoute({
-      path: '/permanent-delete',
-      method: 'POST',
+      path: '/trash/:file',
+      method: 'DELETE',
       description: 'Permanently delete a trashed asset',
       handler: async (req: Request) => {
         const res = await handlePermanentDelete(req)

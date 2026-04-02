@@ -143,6 +143,17 @@ const calendarPlugin: BakinPlugin = {
     }
     ctx.registerRoute({ path: '/', method: 'GET', description: 'List calendar items', handler: listHandler })
 
+    // GET /:itemId — get single item
+    const getHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const id = url.searchParams.get('itemId')
+      if (!id) return json({ error: 'itemId required' }, 400)
+      const item = getItem(id)
+      if (!item) return json({ error: 'Item not found' }, 404)
+      return json({ item })
+    }
+    ctx.registerRoute({ path: '/:itemId', method: 'GET', description: 'Get single calendar item', handler: getHandler })
+
     // POST / — create item
     const createHandler = async (req: Request) => {
       const body = await readBody<Record<string, unknown>>(req)
@@ -516,6 +527,23 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         ctx.activity.audit('item.rejected', 'system', { itemId: params.itemId, note: params.note })
         ctx.activity.log('system', `Calendar item "${item.title}" rejected → draft`)
         return { ok: true, item: updated }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_delete',
+      description: 'Delete a calendar item',
+      parameters: {
+        itemId: z.string().describe('Item ID (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.itemId) return { ok: false, error: 'itemId required' }
+        const item = getItem(params.itemId as string)
+        if (!item) return { ok: false, error: 'Item not found' }
+        deleteItem(params.itemId as string)
+        ctx.activity.audit('item.deleted', 'system', { itemId: params.itemId })
+        ctx.activity.log('system', `Deleted calendar item "${item.title}"`)
+        return { ok: true }
       },
     })
 

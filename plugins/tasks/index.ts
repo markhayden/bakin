@@ -244,6 +244,7 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           await logProgress(identifier, body.author || 'system', body.message, 'rest')
+          ctx.activity.log(body.agent || body.author || 'system', `Logged progress on task ${identifier}`, { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -309,6 +310,31 @@ const tasksPlugin: BakinPlugin = {
         try {
           await reorderTasks(columnId, orderedIds)
           ctx.activity.audit('reordered', 'system', { columnId, orderedIds })
+          ctx.activity.log('system', `Reordered tasks in ${columnId}`)
+          return Response.json({ ok: true })
+        } catch (err) {
+          return Response.json({ error: String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // POST /:taskId/complete — mark task as complete
+    ctx.registerRoute({
+      path: '/:taskId/complete',
+      method: 'POST',
+      description: 'Mark a task as complete',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await req.json()
+        const taskId = url.searchParams.get('taskId') || body.id
+        if (!taskId) {
+          return Response.json({ error: 'taskId required' }, { status: 400 })
+        }
+        const agent = body.agent || 'system'
+        const summary = body.summary || ''
+        try {
+          await reportComplete(taskId, agent, summary, 'rest')
+          ctx.activity.log(agent, `Completed task: ${summary}`, { taskId })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -505,6 +531,74 @@ const tasksPlugin: BakinPlugin = {
           await setDependencyWithEffects(params.taskId as string, params.dependsOn as string, 'mcp')
           ctx.activity.log(agent, `Set dependency on ${params.dependsOn}`, { taskId: params.taskId as string })
           return { ok: true, message: `Dependency registered. You will be re-dispatched when ${params.dependsOn} completes. Stop now.` }
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_update',
+      description: 'Update a task on the board — change title, description, or assigned agent.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+        title: z.string().optional().describe('New task title'),
+        description: z.string().optional().describe('New task description'),
+        agent: z.string().optional().describe('New assigned agent'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const { taskId, title, description, agent: assignee } = params as {
+          taskId: string; title?: string; description?: string; agent?: string
+        }
+        try {
+          const updates: Record<string, unknown> = {}
+          if (title !== undefined) updates.title = title
+          if (description !== undefined) updates.description = description
+          if (assignee !== undefined) updates.agent = assignee
+          const result = await ctx.hooks.invoke('tasks.updateTask', { identifier: taskId, updates })
+          ctx.activity.audit('updated', agent, { taskId })
+          ctx.activity.log(agent, `Updated task "${taskId}"`, { taskId })
+          return { ok: true, result }
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_delete',
+      description: 'Delete a task from the board.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const taskId = params.taskId as string
+        try {
+          await ctx.hooks.invoke('tasks.deleteTask', { identifier: taskId })
+          ctx.activity.audit('deleted', agent, { taskId })
+          ctx.activity.log(agent, `Deleted task "${taskId}"`, { taskId })
+          return { ok: true }
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_assign',
+      description: 'Assign a task to an agent.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+        agent: z.string().describe('Agent to assign the task to'),
+      },
+      handler: async (params: Record<string, unknown>, callingAgent: string) => {
+        const taskId = params.taskId as string
+        const targetAgent = params.agent as string
+        try {
+          await assignTask(taskId, targetAgent)
+          ctx.activity.audit('assigned', callingAgent, { taskId, agent: targetAgent })
+          ctx.activity.log(callingAgent, `Assigned task to "${targetAgent}"`, { taskId })
+          return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
         }

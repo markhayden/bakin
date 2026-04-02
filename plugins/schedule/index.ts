@@ -312,6 +312,45 @@ const schedulePlugin: BakinPlugin = {
         return json({ ok: true })
       },
     })
+    // GET /:jobId — get single job details
+    ctx.registerRoute({
+      path: '/:jobId',
+      method: 'GET',
+      description: 'Get details for a single scheduled job',
+      handler: (req: Request) => {
+        const url = new URL(req.url)
+        const jobId = url.searchParams.get('jobId')
+        if (!jobId) return json({ error: 'jobId required' }, 400)
+
+        const meta = getJob(jobId)
+        if (!meta) return json({ error: 'Job not found' }, 404)
+
+        const defaults = withDefaults(meta)
+        const lastRun = getLastRun(jobId)
+        return json({
+          job: {
+            id: meta.jobId,
+            name: meta.displayName,
+            agent: meta.agentId,
+            owner: defaults.owner,
+            paused: meta.paused ?? false,
+            pauseReason: meta.pauseReason,
+            pauseUntil: meta.pauseUntil,
+            workflowId: meta.workflowId,
+            taskPrompt: meta.taskPrompt,
+            taskTitle: meta.taskTitle,
+            allowOverlap: defaults.allowOverlap,
+            maxFailures: defaults.maxFailures,
+            consecutiveFailures: meta.consecutiveFailures ?? 0,
+            lastTaskId: meta.lastTaskId,
+            lastRun: lastRun ?? null,
+            tz: meta.tz,
+            createdAt: meta.createdAt,
+          },
+        })
+      },
+    })
+
     // DELETE /:jobId — delete a job
     const deleteJobHandler = async (req: Request) => {
       const url = new URL(req.url)
@@ -630,6 +669,35 @@ const schedulePlugin: BakinPlugin = {
         ctx.activity.audit('job.run_now', 'system', { jobId: params.jobId })
         ctx.activity.log('system', `Triggered immediate run for "${meta.displayName || params.jobId}"`)
         return { ok: true, jobId: params.jobId }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_schedule_runs',
+      description: 'Get run history for a scheduled job',
+      parameters: {
+        jobId: z.string().describe('Job ID (required)'),
+        limit: z.number().optional().describe('Max runs to return (default 50)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.jobId) return { ok: false, error: 'jobId required' }
+        const limit = typeof params.limit === 'number' ? params.limit : 50
+        const runs = readRuns(params.jobId as string, limit)
+        return { ok: true, runs }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_schedule_parse',
+      description: 'Parse a natural language or raw cron schedule expression',
+      parameters: {
+        input: z.string().describe('Schedule expression to parse (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.input) return { ok: false, error: 'input required' }
+        const result = parseSchedule(params.input as string)
+        if (!result) return { ok: false, error: 'Could not parse schedule. Try a simpler expression or raw cron.' }
+        return { ok: true, cron: result.cron, human: result.human, nextRuns: result.nextRuns }
       },
     })
 
