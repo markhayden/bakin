@@ -93,7 +93,7 @@ export function BrainstormPanel({ onItemCreated }: Props) {
 
     const suggestion = msg.suggestions[sugIdx]
 
-    const res = await fetch('/api/plugins/calendar/items', {
+    const res = await fetch('/api/plugins/calendar/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

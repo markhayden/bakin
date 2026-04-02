@@ -133,7 +133,7 @@ export function ContentCalendar() {
 
   const fetchItems = useCallback(async () => {
     try {
-      const res = await fetch(`/api/plugins/calendar/items?month=${monthKey}`)
+      const res = await fetch(`/api/plugins/calendar/?month=${monthKey}`)
       if (res.ok) {
         const data = await res.json()
         setItems(data.items ?? data)
@@ -218,19 +218,17 @@ export function ContentCalendar() {
   }
 
   async function handleApprove(id: string) {
-    await fetch('/api/plugins/calendar/items/approve', {
+    await fetch(`/api/plugins/calendar/${id}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
     })
     fetchItems()
   }
 
   async function handleDelete(id: string) {
-    await fetch('/api/plugins/calendar/items/delete', {
-      method: 'POST',
+    await fetch(`/api/plugins/calendar/${id}`, {
+      method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
     })
     fetchItems()
     if (itemIdParam === id) setItemIdParam('')
