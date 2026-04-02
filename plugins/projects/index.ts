@@ -95,7 +95,6 @@ const projectsPlugin: BakinPlugin = {
       return json({ projects: projects.map(projectToSummary) })
     }
     ctx.registerRoute({ path: '/', method: 'GET', description: 'List projects', handler: listHandler })
-    ctx.registerRoute({ path: '/list', method: 'GET', description: 'List projects (alias)', handler: listHandler })
 
     // GET /:projectId — get single project
     const getHandler = async (req: Request) => {
@@ -107,7 +106,6 @@ const projectsPlugin: BakinPlugin = {
       return json({ project: resolveLinkedTaskStatuses(project) })
     }
     ctx.registerRoute({ path: '/:projectId', method: 'GET', description: 'Get project by ID', handler: getHandler })
-    ctx.registerRoute({ path: '/get', method: 'GET', description: 'Get project (alias)', handler: getHandler })
 
     // POST / — create project
     const createHandler = async (req: Request) => {
@@ -119,7 +117,6 @@ const projectsPlugin: BakinPlugin = {
       return json({ ok: true, ...result })
     }
     ctx.registerRoute({ path: '/', method: 'POST', description: 'Create project', handler: createHandler })
-    ctx.registerRoute({ path: '/create', method: 'POST', description: 'Create project (alias)', handler: createHandler })
 
     // PUT /:projectId — update project
     const updateHandler = async (req: Request) => {
@@ -137,7 +134,6 @@ const projectsPlugin: BakinPlugin = {
       }
     }
     ctx.registerRoute({ path: '/:projectId', method: 'PUT', description: 'Update project', handler: updateHandler })
-    ctx.registerRoute({ path: '/update', method: 'PUT', description: 'Update project (alias)', handler: updateHandler })
 
     // DELETE /:projectId — delete project
     const deleteHandler = async (req: Request) => {
@@ -165,7 +161,6 @@ const projectsPlugin: BakinPlugin = {
       }
     }
     ctx.registerRoute({ path: '/:projectId', method: 'DELETE', description: 'Delete project', handler: deleteHandler })
-    ctx.registerRoute({ path: '/delete', method: 'POST', description: 'Delete project (alias)', handler: deleteHandler })
 
     // POST /:projectId/checklist — add checklist item
     const addItemHandler = async (req: Request) => {
@@ -179,7 +174,6 @@ const projectsPlugin: BakinPlugin = {
       return json({ ok: true, ...result })
     }
     ctx.registerRoute({ path: '/:projectId/checklist', method: 'POST', description: 'Add checklist item', handler: addItemHandler })
-    ctx.registerRoute({ path: '/checklist/add', method: 'POST', description: 'Add item (alias)', handler: addItemHandler })
 
     // PUT /:projectId/checklist/:itemId/toggle — toggle checklist item
     const toggleHandler = async (req: Request) => {
@@ -193,7 +187,6 @@ const projectsPlugin: BakinPlugin = {
       return json({ ok: true, ...result })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId/toggle', method: 'PUT', description: 'Toggle checklist item', handler: toggleHandler })
-    ctx.registerRoute({ path: '/checklist/toggle', method: 'POST', description: 'Toggle item (alias)', handler: toggleHandler })
 
     // PUT /:projectId/checklist/:itemId — update checklist item
     const updateItemHandler = async (req: Request) => {
@@ -207,7 +200,6 @@ const projectsPlugin: BakinPlugin = {
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId', method: 'PUT', description: 'Update checklist item', handler: updateItemHandler })
-    ctx.registerRoute({ path: '/checklist/update', method: 'POST', description: 'Update item (alias)', handler: updateItemHandler })
 
     // DELETE /:projectId/checklist/:itemId — remove checklist item
     const removeItemHandler = async (req: Request) => {
@@ -221,7 +213,6 @@ const projectsPlugin: BakinPlugin = {
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId', method: 'DELETE', description: 'Remove checklist item', handler: removeItemHandler })
-    ctx.registerRoute({ path: '/checklist/remove', method: 'POST', description: 'Remove item (alias)', handler: removeItemHandler })
 
     // POST /:projectId/checklist/:itemId/link — link to board task
     const linkHandler = async (req: Request) => {
@@ -235,7 +226,6 @@ const projectsPlugin: BakinPlugin = {
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId/link', method: 'POST', description: 'Link checklist item to task', handler: linkHandler })
-    ctx.registerRoute({ path: '/checklist/link', method: 'POST', description: 'Link item (alias)', handler: linkHandler })
 
     // POST /:projectId/checklist/:itemId/promote — promote to board task
     const promoteHandler = async (req: Request) => {
@@ -250,7 +240,6 @@ const projectsPlugin: BakinPlugin = {
       return json({ ok: true, ...result })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId/promote', method: 'POST', description: 'Promote item to task', handler: promoteHandler })
-    ctx.registerRoute({ path: '/checklist/promote', method: 'POST', description: 'Promote item (alias)', handler: promoteHandler })
 
     // POST /:projectId/assets — attach asset
     const attachHandler = async (req: Request) => {
@@ -263,7 +252,6 @@ const projectsPlugin: BakinPlugin = {
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/assets', method: 'POST', description: 'Attach asset', handler: attachHandler })
-    ctx.registerRoute({ path: '/assets/attach', method: 'POST', description: 'Attach asset (alias)', handler: attachHandler })
 
     // DELETE /:projectId/assets/:assetPath — detach asset
     const detachHandler = async (req: Request) => {
@@ -277,7 +265,6 @@ const projectsPlugin: BakinPlugin = {
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/assets/:assetPath', method: 'DELETE', description: 'Detach asset', handler: detachHandler })
-    ctx.registerRoute({ path: '/assets/detach', method: 'POST', description: 'Detach asset (alias)', handler: detachHandler })
 
     // POST /:projectId/ask — agent brainstorm
     ctx.registerRoute({ path: '/:projectId/ask', method: 'POST', description: 'Ask agent about project', handler: async (req: Request) => {
@@ -333,20 +320,6 @@ const projectsPlugin: BakinPlugin = {
         }
       },
     })
-    // The ask handler reads projectId from body, so the alias works directly
-    ctx.registerRoute({ path: '/ask', method: 'POST', description: 'Ask agent (alias)', handler: async (req: Request) => {
-      const body = await readBody<{ projectId: string; prompt: string; agent?: string; history?: Array<{ role: 'user' | 'agent'; content: string }> }>(req)
-      if (!body.projectId || !body.prompt) return json({ error: 'Missing projectId or prompt' }, 400)
-      const project = readProject(body.projectId)
-      if (!project) return json({ error: 'Project not found' }, 404)
-      try {
-        const { sendMessage } = await import('../../src/core/openclaw-client')
-        const reply = await sendMessage(body.agent || 'main', body.prompt)
-        return json({ ok: true, reply })
-      } catch (err: unknown) {
-        return json({ error: (err as Error).message || 'Failed' }, 500)
-      }
-    }})
 
     // -----------------------------------------------------------------
     // MCP Exec Tools

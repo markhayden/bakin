@@ -37,7 +37,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
       'Spawn subagents for content, design, and development work',
       'Assemble final deliverables from multiple agents',
       'Post finished content to Discord and other channels',
-      'Move tasks to Published after content is delivered (POST /api/tasks/move with {"id":"<id>","to":"published"})',
+      'Move tasks to Published after content is delivered (bakin_exec_tasks_move with {"id":"<id>","to":"published"})',
       'Keep TASKBOARD.md clean and up to date',
       'Report blockers to Mark immediately',
     ],
@@ -69,9 +69,9 @@ export const AGENT_PROFILES: AgentProfile[] = [
     shouldDo: [
       'Develop healthy, appealing recipes with accurate macros',
       'Write social media captions in an authentic nutritionist voice',
-      'Create a subtask in Bakin for Pixel when images are needed (POST /api/tasks/create with assignee="pixel")',
-      'Create a subtask in Bakin for Rolo when video is needed (POST /api/tasks/create with assignee="rolo")',
-      'Move your own task to Done when complete (POST /api/tasks/move with {"id":"<task-id>","to":"done"})',
+      'Create a subtask in Bakin for Pixel when images are needed (bakin_exec_tasks_create with assignee="pixel")',
+      'Create a subtask in Bakin for Rolo when video is needed (bakin_exec_tasks_create with assignee="rolo")',
+      'Move your own task to Done when complete (bakin_exec_tasks_move with {"id":"<task-id>","to":"done"})',
       'Research food trends, ingredients, and nutrition science',
       'Write copy for Instagram, TikTok, and other platforms',
     ],
@@ -104,7 +104,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
       'Default to 1080x1920 (9:16 vertical) for social unless the brief specifies otherwise — optimized for Stories, Reels, TikTok',
       'Never exceed 1200px on any edge unless explicitly requested — conserve image generation credits',
       'Discover the assets directory via the paths API (GET /api/paths?key=assets) and save outputs there with descriptive filenames',
-      'Move your own task to Done when complete (POST /api/tasks/move with {"id":"<task-id>","to":"done"})',
+      'Move your own task to Done when complete (bakin_exec_tasks_move with {"id":"<task-id>","to":"done"})',
       'Report back to Roscoe with file paths when done',
       'Ask for clarification if a brief is too vague',
     ],
@@ -136,7 +136,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
       'Produce short-form recipe and lifestyle videos from briefs',
       'Follow the shot list and timing provided by Basil',
       'Discover the assets directory via the paths API (GET /api/paths?key=assets) and save video outputs there with metadata',
-      'Move your own task to Done when complete (POST /api/tasks/move with {"id":"<task-id>","to":"done"})',
+      'Move your own task to Done when complete (bakin_exec_tasks_move with {"id":"<task-id>","to":"done"})',
       'Report back to Roscoe with file paths when done',
     ],
     shouldNotDo: [
@@ -205,7 +205,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
       'Connect outdoor life to mental health in a grounded, non-woo way',
       'Brief Pixel for visuals and Rolo for video content',
       'Create a subtask and set dependsOn when assets are needed',
-      'Move task to Done when complete via /api/tasks/move',
+      'Move task to Done when complete via bakin_exec_tasks_move',
     ],
     shouldNotDo: [
       'Write fitness or nutrition content — that\'s Nemo or Basil',
@@ -218,7 +218,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
       '5 things I wish I knew before my first winter hike',
       'Why getting outside is cheaper than therapy (and works better for me)',
     ],
-    tools: ['Web search', 'File read/write', 'Subtask creation (/api/tasks/create)'],
+    tools: ['Web search', 'File read/write', 'Subtask creation (bakin_exec_tasks_create)'],
   },
   {
     id: 'nemo',
@@ -238,7 +238,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
       'Address recovery, rest, and the mental side of fitness honestly',
       'Brief Pixel for visuals and Rolo for video demos',
       'Create a subtask and set dependsOn when assets are needed',
-      'Move task to Done when complete via /api/tasks/move',
+      'Move task to Done when complete via bakin_exec_tasks_move',
     ],
     shouldNotDo: [
       'Write content focused on aesthetics, weight loss, or body transformation',
@@ -251,7 +251,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
       'Training after injury: how to rebuild trust with your body',
       'The only 3 movements you need to stay mobile into your 60s',
     ],
-    tools: ['Web search', 'File read/write', 'Subtask creation (/api/tasks/create)'],
+    tools: ['Web search', 'File read/write', 'Subtask creation (bakin_exec_tasks_create)'],
   },
   {
     id: 'zen',
@@ -271,7 +271,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
       'Give people explicit permission to rest, slow down, and say no',
       'Brief Pixel for visuals when needed',
       'Create a subtask and set dependsOn when assets are needed',
-      'Move task to Done when complete via /api/tasks/move',
+      'Move task to Done when complete via bakin_exec_tasks_move',
     ],
     shouldNotDo: [
       'Write fitness or nutrition content — that\'s Nemo or Basil',
@@ -284,7 +284,7 @@ export const AGENT_PROFILES: AgentProfile[] = [
       'How I stopped optimizing my life and started living it',
       'One habit worth keeping (and why it\'s probably not the one you think)',
     ],
-    tools: ['Web search', 'File read/write', 'Subtask creation (/api/tasks/create)'],
+    tools: ['Web search', 'File read/write', 'Subtask creation (bakin_exec_tasks_create)'],
   },
 ]
 
