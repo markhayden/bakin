@@ -57,13 +57,13 @@ All under `/api/plugins/assets/`:
 
 | Route | Method | Params | Notes |
 |-------|--------|--------|-------|
-| `/list` | GET | `type`, `agent`, `taskId`, `tag`, `includeChildren`, `grouped`, `path`, `limit`, `offset` | Main listing with pagination |
+| `/` | GET | `type`, `agent`, `taskId`, `tag`, `includeChildren`, `grouped`, `path`, `limit`, `offset` | Main listing with pagination |
 | `/file` | GET | `path`, `v` (cache bust) | Serves file with MIME type + ETag |
-| `/delete` | POST | `path` | Soft-delete to .trash/ |
-| `/list-trash` | GET | — | Lists trashed items with expiry |
-| `/restore` | POST | `file` | Restores from trash to original location |
-| `/permanent-delete` | POST | `file` | Permanently removes trashed item |
-| `/empty-trash` | POST | — | Bulk delete all trash |
+| `/:assetPath` | DELETE | — | Soft-delete to .trash/ |
+| `/trash` | GET | — | Lists trashed items with expiry |
+| `/trash/:file/restore` | POST | — | Restores from trash to original location |
+| `/trash/:file` | DELETE | — | Permanently removes trashed item |
+| `/trash` | DELETE | — | Bulk delete all trash |
 
 Alternative file serving at `/api/assets/[...path]` supports range requests (video seeking).
 
@@ -92,7 +92,7 @@ Page size persisted in `localStorage` key `assets-page-size` (default: 24).
 
 ## Trash Lifecycle
 
-1. `POST /delete` moves file to `.trash/{filename}__deleted-{timestamp}`
+1. `DELETE /:assetPath` moves file to `.trash/{filename}__deleted-{timestamp}`
 2. Sidecar is preserved alongside (for restore path resolution)
 3. 7-day TTL before auto-purge
 4. Restore infers original directory from sidecar `taskId` + asset type

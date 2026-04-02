@@ -193,12 +193,12 @@ function buildContext(pluginId: string): PluginContext {
 
 async function handleRequest(
   req: Request,
-  { params }: { params: Promise<{ pluginId: string; path: string[] }> }
+  { params }: { params: Promise<{ pluginId: string; path?: string[] }> }
 ) {
   ensureInitialized()
 
   const { pluginId, path: pathSegments } = await params
-  const routePath = '/' + pathSegments.join('/')
+  const routePath = '/' + (pathSegments || []).join('/')
   const method = req.method
 
   const match = matchRoute(pluginId, routePath, method)

@@ -91,8 +91,6 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
     const { todoTasks } = getTodoTasks()
     const state = loadDispatchState(contentDir)
-    const dispatchedSet = new Set(state.dispatched)
-
     // Reconcile dispatch state with taskboard reality
     const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const activeIds = new Set([
@@ -101,6 +99,8 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       ...columns.confirmed.map(t => t.id),
     ])
     state.dispatched = state.dispatched.filter(id => activeIds.has(id))
+    // Rebuild dispatchedSet AFTER reconciliation so tasks moved back to todo are eligible
+    const dispatchedSet = new Set(state.dispatched)
     for (const task of columns.inProgress) {
       if (!dispatchedSet.has(task.id)) {
         dispatchedSet.add(task.id)

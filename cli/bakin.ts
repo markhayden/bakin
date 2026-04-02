@@ -858,7 +858,7 @@ async function cmdStart(): Promise<void> {
         console.log('')
         console.log('MCP endpoints:')
         const settings = await (await fetch(`${BASE_URL}/api/settings`)).json() as { agents?: string[] }
-        const agents = (settings as any).agents || []
+        const agents = (settings as Record<string, unknown>).agents as string[] || []
         for (const agent of agents as string[]) {
           console.log(`  ${agent}: mcporter call bakin-${agent}.<tool> ...`)
         }

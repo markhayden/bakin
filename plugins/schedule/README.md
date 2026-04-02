@@ -85,14 +85,15 @@ All routes are prefixed with `/api/plugins/schedule/`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/jobs` | List all merged jobs |
-| POST | `/jobs` | Create a new job |
-| PUT | `/jobs/update` | Update job fields |
-| POST | `/jobs/delete` | Delete a job |
-| POST | `/jobs/pause` | Pause, resume, or skip runs |
-| POST | `/jobs/run-now` | Trigger immediate run |
-| GET | `/runs?jobId=X` | Get run history for a job |
-| POST | `/parse-schedule` | Parse NL/cron schedule expression |
+| GET | `/` | List all merged jobs |
+| POST | `/` | Create a new job |
+| GET | `/:jobId` | Get single job details |
+| PUT | `/:jobId` | Update job fields |
+| DELETE | `/:jobId` | Delete a job |
+| POST | `/:jobId/pause` | Pause, resume, or skip runs |
+| POST | `/:jobId/run` | Trigger immediate run |
+| GET | `/:jobId/runs` | Get run history for a job |
+| POST | `/parse` | Parse NL/cron schedule expression |
 | POST | `/bridge` | Webhook endpoint (called by OpenClaw) |
 
 ## Exec Tools (Agent-Facing)

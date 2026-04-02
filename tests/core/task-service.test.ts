@@ -26,11 +26,11 @@ vi.mock('@/core/openclaw-client', () => ({
 }))
 
 // Mock taskboard functions
-const mockAddTaskLog = vi.fn(() => Promise.resolve())
-const mockBlockTask = vi.fn(() => Promise.resolve())
-const mockCreateTask = vi.fn(() => Promise.resolve({ id: 'new-task-123' }))
-const mockMoveTask = vi.fn(() => Promise.resolve())
-const mockReadTaskboard = vi.fn(() => ({
+const mockAddTaskLog = vi.fn((..._args: unknown[]) => Promise.resolve())
+const mockBlockTask = vi.fn((..._args: unknown[]) => Promise.resolve())
+const mockCreateTask = vi.fn((..._args: unknown[]) => Promise.resolve({ id: 'new-task-123' }))
+const mockMoveTask = vi.fn((..._args: unknown[]) => Promise.resolve())
+const mockReadTaskboard = vi.fn((..._args: unknown[]) => ({
   columns: {
     todo: [],
     inProgress: [{ id: 'task-1', title: 'Test Task' }],
@@ -40,8 +40,8 @@ const mockReadTaskboard = vi.fn(() => ({
     confirmed: [],
   }
 }))
-const mockSetDependency = vi.fn(() => Promise.resolve())
-const mockUpdateTask = vi.fn(() => Promise.resolve())
+const mockSetDependency = vi.fn((..._args: unknown[]) => Promise.resolve())
+const mockUpdateTask = vi.fn((..._args: unknown[]) => Promise.resolve())
 
 vi.mock('@bakin/tasks/taskboard', () => ({
   addTaskLog: mockAddTaskLog,
@@ -53,13 +53,45 @@ vi.mock('@bakin/tasks/taskboard', () => ({
   updateTask: mockUpdateTask,
 }))
 
+const mockLoadInstance = vi.fn((..._args: unknown[]) => null)
+const mockCreateInstance = vi.fn((..._args: unknown[]) => undefined)
+
 vi.mock('@bakin/workflows/runtime', () => ({
-  createInstance: vi.fn(),
-  loadInstance: vi.fn(() => null),
+  createInstance: (...args: unknown[]) => mockCreateInstance(...args),
+  loadInstance: (...args: unknown[]) => mockLoadInstance(...args),
 }))
 
 vi.mock('@bakin/workflows/matcher', () => ({
   matchWorkflow: vi.fn(() => null),
+}))
+
+// Mock the hook registry so that hooks().invoke() routes to the right mock functions
+const hookHandlers: Record<string, (...args: unknown[]) => unknown> = {
+  'tasks.readTaskboard': () => mockReadTaskboard(),
+  'tasks.addTaskLog': (data: any) => mockAddTaskLog(data.identifier, data.author, data.message),
+  'tasks.blockTask': (data: any) => mockBlockTask(data.identifier, data.reason, data.agent),
+  'tasks.createTask': (data: any) => mockCreateTask(data.title, data.column, data.assignee, data.description, data.workflowId, data.createdBy, data.id, data.parentId, data.projectId),
+  'tasks.moveTask': (data: any) => mockMoveTask(data.identifier, data.to, data.from),
+  'tasks.setDependency': (data: any) => mockSetDependency(data.taskId, data.dependsOnId),
+  'tasks.updateTask': (data: any) => mockUpdateTask(data.identifier, data.updates),
+  'workflows.loadInstance': (data: any) => mockLoadInstance(data),
+  'workflows.createInstance': (data: any) => mockCreateInstance(data),
+  'workflows.matchWorkflow': () => null,
+  'projects.autoCheckLinkedItem': () => Promise.resolve(),
+}
+
+const mockHookRegistry = {
+  invoke: vi.fn(async <R>(name: string, data: unknown): Promise<R | undefined> => {
+    const handler = hookHandlers[name]
+    if (handler) return await handler(data) as R
+    return undefined
+  }),
+  register: vi.fn(),
+  has: vi.fn(() => false),
+}
+
+vi.mock('@/lib/plugin-registry', () => ({
+  getHookRegistry: () => mockHookRegistry,
 }))
 
 describe('task-service', () => {
@@ -139,7 +171,6 @@ describe('task-service', () => {
     })
 
     it('should enforce workflow done-guard', async () => {
-      const { loadInstance } = await import('@bakin/workflows/runtime')
       mockReadTaskboard.mockReturnValueOnce({
         columns: {
           todo: [],
@@ -150,7 +181,7 @@ describe('task-service', () => {
           confirmed: [],
         }
       })
-      vi.mocked(loadInstance).mockReturnValueOnce({ status: 'in_progress' } as any)
+      mockLoadInstance.mockReturnValueOnce({ status: 'in_progress' } as any)
 
       await expect(
         service.moveTaskWithEffects('wf-task', 'done', 'pixel')
@@ -217,7 +248,6 @@ describe('task-service', () => {
 
   describe('reportComplete', () => {
     it('should reject workflow tasks', async () => {
-      const { loadInstance } = await import('@bakin/workflows/runtime')
       mockReadTaskboard.mockReturnValueOnce({
         columns: {
           todo: [],
@@ -228,7 +258,7 @@ describe('task-service', () => {
           confirmed: [],
         }
       })
-      vi.mocked(loadInstance).mockReturnValueOnce({ status: 'in_progress' } as any)
+      mockLoadInstance.mockReturnValueOnce({ status: 'in_progress' } as any)
 
       await expect(
         service.reportComplete('wf-task', 'pixel', 'Done with images')
@@ -277,8 +307,8 @@ describe('task-service', () => {
       )
     })
 
-    it('should return null for unknown task', () => {
-      expect(service.getTaskDetails('nonexistent')).toBeNull()
+    it('should return null for unknown task', async () => {
+      expect(await service.getTaskDetails('nonexistent')).toBeNull()
     })
   })
 })

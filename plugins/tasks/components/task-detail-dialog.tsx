@@ -363,7 +363,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
     if (!wfInstance) return
     setGateLoading(true)
     try {
-      const res = await fetch('/api/plugins/workflows/gates/${task!.id}/approve', {
+      const res = await fetch(`/api/plugins/workflows/gates/${task!.id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

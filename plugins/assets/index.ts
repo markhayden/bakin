@@ -2,6 +2,7 @@
  * Assets plugin — server entry point.
  * Registers API routes, MCP exec tools, and cross-plugin hooks for asset management.
  */
+import { execSync } from 'child_process'
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
@@ -30,7 +31,6 @@ const log = createLogger('assets')
 
 function generateThumbnail(inputPath: string, outputPath: string, widthPx = 400): string | null {
   try {
-    const { execSync } = require('child_process')
     execSync(`ffmpeg -i "${inputPath}" -vf "scale=${widthPx}:-1" -q:v 5 -y "${outputPath}"`, { stdio: 'pipe', timeout: 30_000 })
     return outputPath
   } catch { return null }
