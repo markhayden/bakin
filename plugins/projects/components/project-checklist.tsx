@@ -175,10 +175,10 @@ export function ProjectChecklist({
   }
 
   const handleUpdate = async (taskItemId: string, updates: { title?: string; description?: string }) => {
-    await fetch('/api/plugins/projects/checklist/update', {
-      method: 'POST',
+    await fetch(`/api/plugins/projects/${projectId}/checklist/${taskItemId}`, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId, taskItemId, ...updates }),
+      body: JSON.stringify(updates),
     })
     // Parent will refetch via SSE or next interaction
   }

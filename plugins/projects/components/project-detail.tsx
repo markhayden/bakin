@@ -149,7 +149,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   const fetchProject = useCallback(async (enterEdit?: boolean) => {
     if (!currentId) return
     try {
-      const res = await fetch(`/api/plugins/projects/get?id=${currentId}`)
+      const res = await fetch(`/api/plugins/projects/${currentId}`)
       if (res.ok) {
         const data = await res.json()
         setProject(data.project)
@@ -211,10 +211,10 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
 
   const saveField = async (field: string, value: string) => {
     if (isNew || !currentId) return
-    await fetch('/api/plugins/projects/update', {
+    await fetch(`/api/plugins/projects/${currentId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: currentId, [field]: value }),
+      body: JSON.stringify({ [field]: value }),
     })
     fetchProject()
   }
@@ -242,7 +242,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
     if (isNew) {
       // Create the project on first save
       const title = editTitle.trim() || 'Untitled Project'
-      const res = await fetch('/api/plugins/projects/create', {
+      const res = await fetch('/api/plugins/projects/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, owner: editOwner, body: editBody }),
@@ -259,7 +259,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
     if (editOwner !== project.owner) updates.owner = editOwner
     if (editStatus !== project.status) updates.status = editStatus
     if (editBody !== project.body) updates.body = editBody
-    await fetch('/api/plugins/projects/update', {
+    await fetch(`/api/plugins/projects/${currentId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
@@ -272,19 +272,19 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   // ---------------------------------------------------------------------------
 
   const toggleItem = async (taskItemId: string, checked: boolean) => {
-    await fetch('/api/plugins/projects/checklist/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: currentId, taskItemId, checked }) })
+    await fetch(`/api/plugins/projects/${currentId}/checklist/${taskItemId}/toggle`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ checked }) })
     fetchProject()
   }
   const addItem = async (title: string) => {
-    await fetch('/api/plugins/projects/checklist/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: currentId, title }) })
+    await fetch(`/api/plugins/projects/${currentId}/checklist`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) })
     fetchProject()
   }
   const removeItem = async (taskItemId: string) => {
-    await fetch('/api/plugins/projects/checklist/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: currentId, taskItemId }) })
+    await fetch(`/api/plugins/projects/${currentId}/checklist/${taskItemId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } })
     fetchProject()
   }
   const promoteItem = async (taskItemId: string) => {
-    await fetch('/api/plugins/projects/checklist/promote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: currentId, taskItemId }) })
+    await fetch(`/api/plugins/projects/${currentId}/checklist/${taskItemId}/promote`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
     fetchProject()
   }
 
@@ -302,7 +302,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
     setTimeout(() => brainstormEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
     try {
       const history = brainstormMessages.map(m => ({ role: m.role, content: m.content }))
-      const res = await fetch('/api/plugins/projects/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: currentId, prompt, agent, history }) })
+      const res = await fetch(`/api/plugins/projects/${currentId}/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: currentId, prompt, agent, history }) })
       const data = await res.json().catch(() => null)
       if (res.ok && data?.reply) {
         setBrainstormMessages(prev => [...prev, { role: 'agent', agent, content: data.reply }])
@@ -360,13 +360,13 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   }
 
   const handleAttachAsset = async (assetPath: string) => {
-    await fetch('/api/plugins/projects/assets/attach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: currentId, assetPath }) })
+    await fetch(`/api/plugins/projects/${currentId}/assets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assetPath }) })
     setAssetPickerOpen(false)
     fetchProject()
   }
 
   const handleDetachAsset = async (assetPath: string) => {
-    await fetch('/api/plugins/projects/assets/detach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: currentId, assetPath }) })
+    await fetch(`/api/plugins/projects/${currentId}/assets/${encodeURIComponent(assetPath)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } })
     fetchProject()
   }
 
@@ -385,10 +385,10 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   const handleDelete = async (deleteLinkedTasks: boolean) => {
     setDeleting(true)
     try {
-      await fetch('/api/plugins/projects/delete', {
-        method: 'POST',
+      await fetch(`/api/plugins/projects/${currentId}`, {
+        method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: currentId, deleteLinkedTasks }),
+        body: JSON.stringify({ deleteLinkedTasks }),
       })
       onBack()
     } finally {
