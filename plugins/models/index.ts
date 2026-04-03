@@ -22,9 +22,9 @@ const OPENCLAW_BIN = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
 // Gateway sync tracking (survives Next.js webpack re-evaluation)
 // ---------------------------------------------------------------------------
 interface GatewaySync { lastConfigChangeAt: number | null; lastRestartAt: number | null }
-const gw = (globalThis as Record<string, unknown>)
+const gw = globalThis as typeof globalThis & { __bakinGatewaySync?: GatewaySync }
 if (!gw.__bakinGatewaySync) gw.__bakinGatewaySync = { lastConfigChangeAt: null, lastRestartAt: null }
-function getGatewaySync(): GatewaySync { return gw.__bakinGatewaySync as GatewaySync }
+function getGatewaySync(): GatewaySync { return gw.__bakinGatewaySync! }
 function markConfigDirty() { getGatewaySync().lastConfigChangeAt = Date.now() }
 function markGatewayRestarted() { getGatewaySync().lastRestartAt = Date.now() }
 
