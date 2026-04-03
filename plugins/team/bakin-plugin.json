@@ -1,0 +1,15 @@
+{
+  "id": "team",
+  "name": "Team",
+  "version": "1.0.0",
+  "bakin": ">=1.0.0",
+  "description": "Agent team management — adapter layer over OpenClaw agent workspaces",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": [],
+  "secrets": [],
+  "tests": "tests/",
+  "dependencies": [],
+  "permissions": ["storage.read", "storage.write", "events.emit"]
+}

@@ -68,6 +68,15 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_gen_image` | Generate an image via Gemini Imagen (Nano Banana). Default model: flash (cheaper). Use model=pro for higher quality. Default: 1080x1920 portrait (9:16) for Stories/Reels. Presets: social-portrait, social-square, social-landscape, custom. Auto-generates thumbnail. Max 1200px on any edge. |
 | `bakin_exec_post_discord` | Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds. |
 | `bakin_exec_get_paths` | Get Bakin content directory paths — where to find assets, team info, docs, etc. |
+| `bakin_exec_heartbeat` | Write a heartbeat signal. Call periodically (every 5-10 minutes) to indicate you are alive. Also call when starting or finishing a task. |
+| `bakin_exec_team_list` | List all agents with their current status (online/working/available/offline). |
+| `bakin_exec_team_profile` | Get the full profile for an agent including soul, rules, and tools. |
+| `bakin_exec_team_status` | Get the heartbeat and health status for an agent. |
+| `bakin_exec_team_read_file` | Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md). |
+| `bakin_exec_team_message` | Send a message to an agent via OpenClaw. |
+| `bakin_exec_team_org` | Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines. |
+| `bakin_exec_team_members` | Get agents that belong to a specific team (e.g. "builders", "creators"). |
+| `bakin_exec_team_my_team` | Get the team that a specific agent belongs to, including all teammates. |
 | `bakin_exec_tasks_list` | List all tasks on the board. Optionally filter by column or agent. Returns the full taskboard. |
 | `bakin_exec_tasks_get` | Get details about a task — title, description, current column, logs, dependencies, project context. |
 | `bakin_exec_tasks_create` | Create a new task on the task board. For top-level tasks, you MUST provide either workflowId or skipWorkflowReason. Subtasks (with parentId) are exempt. |
@@ -80,6 +89,7 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_tasks_delete` | Delete a task from the board. |
 | `bakin_exec_tasks_assign` | Assign a task to an agent. |
 | `bakin_exec_assets_list` | List assets with optional type filter. Returns asset count and paths. |
+| `bakin_exec_assets_get` | Retrieve a single asset's sidecar metadata by path. |
 | `bakin_exec_assets_save` | Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically. |
 | `bakin_exec_assets_delete` | Soft-delete an asset (moves to trash with 30-day expiry). |
 | `bakin_exec_assets_list_trash` | List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge. |

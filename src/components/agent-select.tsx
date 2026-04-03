@@ -1,7 +1,7 @@
 'use client'
 
 import { AgentAvatar } from '@/components/agent-avatar'
-import { AGENTS } from '@/lib/constants'
+import { useAgentList } from '@bakin/team/hooks/use-agent-store'
 import {
   Select,
   SelectContent,
@@ -33,7 +33,8 @@ export function AgentSelect({
   agentIds,
   className,
 }: AgentSelectProps) {
-  const agents = agentIds ? AGENTS.filter(a => agentIds.includes(a.id)) : AGENTS
+  const allAgents = useAgentList()
+  const agents = agentIds ? allAgents.filter(a => agentIds.includes(a.id)) : allAgents
 
   return (
     <Select value={value} onValueChange={(v) => onValueChange(v ?? '')}>

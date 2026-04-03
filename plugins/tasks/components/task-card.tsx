@@ -3,7 +3,6 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { X } from 'lucide-react'
-import { AGENTS } from '@/lib/constants'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { STATUS_BADGE_STYLES } from '../constants'
 import type { Task, ColumnId } from '../types'
@@ -28,7 +27,6 @@ function shortId(id: string): string {
 
 /** Presentational card — used by DragOverlay */
 export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string }) {
-  const agent = AGENTS.find((a) => a.id === task.agent)
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
   const isComplete = task.checked || columnId === 'done' || columnId === 'confirmed'
 

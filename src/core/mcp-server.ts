@@ -27,6 +27,7 @@ import '../../scripts/lib/log-progress'
 import '../../scripts/lib/generate-image'
 import '../../scripts/lib/post-discord'
 import '../../scripts/lib/get-paths'
+import '../../scripts/lib/heartbeat'
 
 const log = createLogger('mcp')
 

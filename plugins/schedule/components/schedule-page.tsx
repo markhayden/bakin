@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { BakinDrawer } from '@/components/bakin-drawer'
 import { PluginHeader } from '@/components/plugin-header'
 import { AgentAvatar } from '@/components/agent-avatar'
-import { AGENT_IDS } from '@/lib/agents-data'
+import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useQueryState } from '@/hooks/use-query-state'
 import { useScheduleJobs, type ScheduleJob } from '@/hooks/use-schedule'
 import { JobList } from './job-list'
@@ -27,6 +27,7 @@ const VIEWS: { id: ViewMode; icon: typeof List; label: string }[] = [
 ]
 
 export function SchedulePage() {
+  const agentIds = useAgentIds()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -202,7 +203,7 @@ export function SchedulePage() {
           >
             All
           </button>
-          {AGENT_IDS.map(id => (
+          {agentIds.map(id => (
             <button
               key={id}
               onClick={() => setAgentFilter(id)}

@@ -11,8 +11,9 @@ Runs on a Mac mini, accessed via Tailscale. No database, no SaaS dependencies.
 - **Storage:** Markdown files in `~/.bakin/`, no database
 - **Real-time:** Server-Sent Events (SSE) push updates to all connected browsers
 - **Agents:** Managed via OpenClaw gateway, communicate through MCP tools
-- **Plugins:** 9 core plugins, extensible architecture for addons
+- **Plugins:** 10 core plugins, extensible architecture for addons
 - **Search:** Antfly SDK for full-text indexing
+- **OpenClaw Adapter Principle:** Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw. Agent identity, soul, rules, tools, models, and workspace data all live in `~/.openclaw/`. Bakin owns only UI-specific data (display settings, avatars, heartbeats). Question any pattern that duplicates OpenClaw state into Bakin code or storage.
 
 ## Directory Map
 
@@ -39,22 +40,21 @@ src/
     plugin-types.ts        — BakinPlugin, PluginContext, StorageAdapter, EventBus interfaces
     plugin-registry.ts     — Plugin loading singleton
     plugin-manifest.ts     — Client-side plugin imports and navItems aggregation
-    agents-data.ts         — Agent profiles (single source of truth for agent metadata)
-    constants.ts           — Lightweight agent list, column config, nav items
+    constants.ts           — Column config, nav items
     storage/               — MarkdownStorageAdapter
     events/                — BakinEventBus (pub/sub with pattern matching)
     parsers/               — Markdown parsing utilities
   components/
     ui/                    — shadcn base components (button, card, dialog, input, etc.)
     layout/                — App shell (sidebar, header, layout-shell)
-    team/                  — Agent team grid and drawer
     tasks/                 — Task-specific components (activity feed)
     projects/              — Project components
     assets/                — Asset browser components
   app/                     — Next.js App Router pages
     page.tsx               — Dashboard home
     tasks/page.tsx         — Task kanban board
-    team/page.tsx          — Agent team view
+    team/page.tsx          — Agent team grid
+    team/[id]/page.tsx     — Agent detail page (tabs: profile, soul, rules, tools, skills, memory, activity, stats)
     projects/page.tsx      — Project list
     workflows/page.tsx     — Workflow template grid
     workflows/[id]/page.tsx — Workflow canvas detail view
@@ -74,6 +74,7 @@ plugins/                   — Core plugins (each has bakin-plugin.json manifest
   memory/                  — Audit logs and agent workspaces
   calendar/                — Content calendar
   models/                  — AI model configuration
+  team/                    — Agent team management (OpenClaw adapter layer)
   health/                  — System health dashboard
 scripts/lib/               — MCP exec tools (self-registering via registry.ts)
 cli/                       — CLI tool (wraps HTTP API)
@@ -163,7 +164,7 @@ All paths resolved through `getContentDir()` in `src/core/content-dir.ts`. Resol
 Plugins communicate exclusively through the HookRegistry (`packages/core/src/hooks/hook-registry.ts`). Plugins register hooks in `activate()` via `ctx.hooks.register(name, handler)`. Core modules and other plugins invoke hooks via `getHookRegistry().invoke<R>(name, data)`. Hook naming: `{pluginId}.{operation}` (e.g., `tasks.readTaskboard`, `workflows.getCurrentStep`). No direct imports between plugins or from core → plugins — all cross-boundary calls go through hooks.
 
 ### MCP Tool Registration
-All MCP tools are dynamically registered — no hardcoded tools exist in `mcp-server.ts`. Plugins register exec tools via `ctx.registerExecTool()` during activation (58 tools across 6 plugins). Scripts self-register via `addExecTool()` on import (4 tools: log, gen_image, post_discord, get_paths). Total: 62 exec tools. `mcp-server.ts` calls `getAllExecTools()` to build the tool list at startup.
+All MCP tools are dynamically registered — no hardcoded tools exist in `mcp-server.ts`. Plugins register exec tools via `ctx.registerExecTool()` during activation (70 tools across 7 plugins). Scripts self-register via `addExecTool()` on import (5 tools: log, gen_image, post_discord, get_paths, heartbeat). Total: 75 exec tools. `mcp-server.ts` calls `getAllExecTools()` to build the tool list at startup.
 
 ### Plugin Settings
 Each plugin declares a `settingsSchema` with typed fields (string, number, boolean, select). The settings page at `/settings` dynamically fetches and renders schemas via `PluginSettingsRenderer`. Values persisted at `~/.bakin/plugin-settings/{pluginId}.json`, accessible in plugins via `ctx.getSettings<T>()`.
@@ -172,7 +173,7 @@ Each plugin declares a `settingsSchema` with typed fields (string, number, boole
 All user-facing filter/view state **must** be backed by URL query parameters so pages are bookmarkable and support browser back/forward. Use `useQueryState(key, default)` for single values and `useQueryArrayState(key)` for arrays (comma-separated). Params are omitted when at their default value. Pages using these hooks must wrap their content component in `<Suspense>`. See `.claude/knowledge/url-state-deep-linking.md` for conventions and implementation status.
 
 ### Shared UI Components
-- **`PluginHeader`** (`src/components/plugin-header.tsx`) — Consistent page title + count badge + search + actions slot. Used by all 9 plugins.
+- **`PluginHeader`** (`src/components/plugin-header.tsx`) — Consistent page title + count badge + search + actions slot. Used by all 10 plugins.
 - **`FacetFilter`** (`src/components/facet-filter.tsx`) — Popover-based multi-select filter with removable chips. Replaces long tab bars for 4+ filter options. Always back with `useQueryArrayState`.
 
 ## Reference

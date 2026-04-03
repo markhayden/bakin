@@ -83,7 +83,7 @@ interface PluginSettingsSchema {
 }
 ```
 
-All 9 plugins define `settingsSchema`. The settings page at `/settings` fetches schemas from `GET /api/plugin-settings/schemas` and renders them via `PluginSettingsRenderer`. Values are persisted at `~/.bakin/plugin-settings/{pluginId}.json` via `GET/PUT /api/plugin-settings/{pluginId}`.
+All 10 plugins define `settingsSchema`. The settings page at `/settings` fetches schemas from `GET /api/plugin-settings/schemas` and renders them via `PluginSettingsRenderer`. Values are persisted at `~/.bakin/plugin-settings/{pluginId}.json` via `GET/PUT /api/plugin-settings/{pluginId}`.
 
 ### PluginManifest (`bakin-plugin.json`)
 ```typescript
@@ -107,7 +107,7 @@ interface PluginManifest {
 `packages/core/src/hooks/hook-registry.ts` — singleton shared across all plugins and core.
 
 ### GlobalThis Backing
-The hook registry singleton is backed by `globalThis.__bakinHookRegistry` to survive Next.js webpack module re-evaluation during HMR. Without this, the singleton reference would be lost on hot reload, breaking all hook-based operations (task creation, moves, etc.). The same pattern is used for the plugin registry (`globalThis.__bakinPluginRegistry`) and SSE broadcasting (`globalThis.__bakinBroadcast`). See `src/lib/plugin-registry.ts` for the implementation.
+The hook registry singleton is backed by `globalThis.__bakinHookRegistry` to survive Next.js webpack module re-evaluation during HMR. Without this, the singleton reference would be lost on hot reload, breaking all hook-based operations (task creation, moves, etc.). The same pattern is used for the plugin registry (`globalThis.__bakinPluginRegistry`), SSE broadcasting (`globalThis.__bakinBroadcast`), and settings cache (`globalThis.__bakinSettingsCache` + `__bakinOpenClawMtime` + `__bakinOpenClawAgents`). See `src/lib/plugin-registry.ts` and `packages/core/src/settings.ts` for implementations.
 
 ### How it works
 1. Plugins register hooks in `activate()` via `ctx.hooks.register(name, handler)`
@@ -124,6 +124,7 @@ The hook registry singleton is backed by `globalThis.__bakinHookRegistry` to sur
 | tasks | 9 | `tasks.readTaskboard`, `tasks.createTask`, `tasks.moveTask`, `tasks.blockTask`, `tasks.addTaskLog`, `tasks.updateTask`, `tasks.deleteTask`, `tasks.setDependency`, `tasks.clearDependency` |
 | workflows | 13 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.matchWorkflow`, `workflows.listDefinitions`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
 | assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.listTrash`, `assets.restoreAsset`, `assets.emptyTrash` |
+| team | 7 | `team.listAgents`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
 | projects | 2 | `projects.readProject`, `projects.autoCheckLinkedItem` |
 
 ### Invoking hooks from core
@@ -140,18 +141,19 @@ const board = await hooks.invoke<TaskBoard>('tasks.readTaskboard', {})
 
 ### Exec tool registrations by plugin
 
-6 plugins register exec tools, 3 don't (memory, models, health):
+7 plugins register exec tools, 3 don't (memory, models, health):
 
 | Plugin | Exec tools |
 |--------|-----------|
 | tasks | 11 |
 | workflows | 10 |
-| assets | 8 |
+| assets | 9 |
 | schedule | 10 |
 | calendar | 7 |
 | projects | 15 |
-| scripts (non-plugin) | 4 |
-| **Total** | **62** (58 plugin + 4 script) |
+| team | 8 |
+| scripts (non-plugin) | 5 |
+| **Total** | **75** (70 plugin + 5 script) |
 
 **Critical:** No direct imports between plugins or from core → plugins. All cross-boundary calls go through hooks. Verified: `grep -r "from '../../plugins/" src/core/ scripts/lib/` returns 0 results.
 

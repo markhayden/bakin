@@ -55,13 +55,6 @@ export interface MemoryDay {
   entries: MemoryEntry[]
 }
 
-export interface AgentMeta {
-  id: string
-  emoji: string
-  name: string
-  role: string
-  headshot: string
-}
 
 export interface Heartbeat {
   status: 'working' | 'idle' | 'down'

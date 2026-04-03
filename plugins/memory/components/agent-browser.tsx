@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { AGENT_PROFILES } from '@/lib/agents-data'
+import { useAgentList } from '@bakin/team/hooks/use-agent-store'
 import { Button } from '@/components/ui/button'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { AgentWorkspace } from '../types'
@@ -42,10 +42,16 @@ function CollapsibleSection({
 }
 
 export function AgentBrowser() {
-  const [selectedAgent, setSelectedAgent] = useState(AGENT_PROFILES[0]?.id || '')
+  const agents = useAgentList()
+  const [selectedAgent, setSelectedAgent] = useState('')
   const [workspace, setWorkspace] = useState<AgentWorkspace | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Set default agent once loaded
+  useEffect(() => {
+    if (!selectedAgent && agents.length > 0) setSelectedAgent(agents[0].id)
+  }, [agents, selectedAgent])
 
   useEffect(() => {
     if (!selectedAgent) return
@@ -67,7 +73,7 @@ export function AgentBrowser() {
   return (
     <div>
       <div className="flex items-center gap-1 mb-4 flex-wrap">
-        {AGENT_PROFILES.map((a) => (
+        {agents.map((a) => (
           <Button
             key={a.id}
             variant={selectedAgent === a.id ? 'secondary' : 'ghost'}

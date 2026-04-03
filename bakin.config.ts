@@ -2,6 +2,7 @@ import type { BakinConfig } from './src/lib/plugin-types'
 
 const config: BakinConfig = {
   plugins: [
+    { path: 'plugins/team' },
     { path: 'plugins/tasks' },
     { path: 'plugins/memory' },
     { path: 'plugins/models' },

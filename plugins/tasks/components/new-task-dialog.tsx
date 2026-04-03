@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { AgentAvatar } from '@/components/agent-avatar'
-import { AGENTS } from '@/lib/constants'
+import { useAgent, useAgentList } from '@bakin/team/hooks/use-agent-store'
 import { Plus } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 
@@ -26,6 +26,7 @@ interface WorkflowOption {
 }
 
 export function NewTaskDialog() {
+  const agents = useAgentList()
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -156,16 +157,13 @@ export function NewTaskDialog() {
                 <SelectTrigger className="w-full h-10">
                   <SelectValue>
                     {assignee ? (
-                      <span className="flex items-center gap-2">
-                        <AgentAvatar agentId={assignee} size="xs" />
-                        {AGENTS.find(a => a.id === assignee)?.name || assignee}
-                      </span>
+                      <AssigneeLabel assignee={assignee} />
                     ) : 'Unassigned'}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Unassigned</SelectItem>
-                  {AGENTS.map((a) => (
+                  {agents.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       <AgentAvatar agentId={a.id} size="xs" />
                       {a.name}
@@ -215,5 +213,15 @@ export function NewTaskDialog() {
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function AssigneeLabel({ assignee }: { assignee: string }) {
+  const agent = useAgent(assignee)
+  return (
+    <span className="flex items-center gap-2">
+      <AgentAvatar agentId={assignee} size="xs" />
+      {agent?.name || assignee}
+    </span>
   )
 }

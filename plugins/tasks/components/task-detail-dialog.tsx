@@ -13,7 +13,7 @@ import { MarkdownContent } from '@/components/markdown-content'
 import { TaskAssets } from '@bakin/assets/components/task-assets'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { AgentSelect } from '@/components/agent-select'
-import { AGENTS } from '@/lib/constants'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import { toast } from '@/hooks/use-toast'
 import type { Task, ColumnId } from '../types'
@@ -575,8 +575,10 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
   })() : null
 
   // Hero card (used in both modes for existing tasks)
+  const taskAgentMeta = useAgent(task?.agent ?? '')
+
   const heroJSX = task && columnId ? (() => {
-    const agentMeta = AGENTS.find(a => a.id === task.agent)
+    const agentMeta = taskAgentMeta
     const colConfig = COLUMN_CONFIG[columnId]
     return (
       <div className="flex items-center gap-4 rounded-lg p-4 border border-border bg-surface">
@@ -774,7 +776,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
   // ─── Detail View ────────────────────────────────────────────────
   if (!task || !columnId) return null
 
-  const agentMeta = AGENTS.find(a => a.id === task.agent)
+  const agentMeta = taskAgentMeta
 
   return (
     <BakinDrawer

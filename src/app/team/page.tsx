@@ -1,12 +1,14 @@
 'use client'
 
-import { TeamGrid } from '@/components/team/team-grid'
-import { PageLayout } from '@/components/page-layout'
+import { Suspense } from 'react'
+import { TeamGrid } from '@bakin/team/components/team-grid'
 
 export default function TeamPage() {
   return (
-    <PageLayout title="Team">
-      <TeamGrid />
-    </PageLayout>
+    <div className="flex flex-col h-full min-w-0 overflow-hidden">
+      <Suspense>
+        <TeamGrid />
+      </Suspense>
+    </div>
   )
 }

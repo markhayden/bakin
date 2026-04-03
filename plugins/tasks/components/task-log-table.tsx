@@ -5,7 +5,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table'
 import { STATUS_BADGE_STYLES } from '../constants'
-import { AGENTS } from '@/lib/constants'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { ArrowUpDown } from 'lucide-react'
 import type { FlatTask } from '../hooks/use-task-filters'
@@ -225,7 +225,7 @@ export function TaskLogTable({ currentTasks, statusFilter }: TaskLogTableProps) 
 }
 
 function AgentCell({ agentId }: { agentId: string }) {
-  const agent = AGENTS.find(a => a.id === agentId)
+  const agent = useAgent(agentId)
   return (
     <span className="flex items-center gap-1.5">
       <AgentAvatar agentId={agentId} size="xs" />

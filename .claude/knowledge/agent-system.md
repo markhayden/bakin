@@ -6,33 +6,39 @@ Bakin orchestrates a team of AI agents via the OpenClaw gateway. Each agent has 
 
 ## Agent Profiles
 
-### Single source of truth: `src/lib/agents-data.ts`
+### Source of truth: OpenClaw via Team Plugin
+
+Agent data lives in `~/.openclaw/` and is accessed through the team plugin adapter (`plugins/team/openclaw-adapter.ts`). **Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw.**
+
+- `~/.openclaw/openclaw.json` — agent roster (IDs, names, models, identity, subagent perms)
+- `~/.openclaw/workspace/` — main agent (roscoe) workspace files
+- `~/.openclaw/workspaces/{id}/` — subagent workspace files (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md, etc.)
 
 ```typescript
-interface AgentProfile {
-  id: string           // 'roscoe', 'pixel', 'basil', etc.
-  emoji: string        // fallback display
-  name: string         // display name
-  fullName?: string
-  role: string         // 'Orchestrator · Lead Agent'
-  title: string
-  subtitle: string
-  headshot: string     // '/headshots/{id}.webp'
-  model: string        // 'claude-sonnet-4-6'
-  definition: string   // role description paragraph
-  shouldDo: string[]   // instructions
-  shouldNotDo: string[]// constraints
-  examples: string[]   // use case examples
-  tools: string[]      // available tool names
+// Lightweight (dropdowns, badges) — from plugins/team/types.ts
+interface AgentMeta { id: string; name: string; emoji: string; role: string; headshot: string }
+
+// Full profile (detail pages) — merged from OpenClaw config + workspace files
+interface AgentProfile extends AgentMeta {
+  model: string; workspacePath: string;
+  soul: string | null; identity: string | null; rules: string | null;
+  tools: string | null; heartbeatMd: string | null; subagentPerms: string[] | null
 }
 ```
 
-Exported as `AGENT_PROFILES` (array) and `AGENT_MAP` (Record by ID).
+### Client store: `plugins/team/hooks/use-agent-store.ts`
+Single Zustand store loaded on app init. All components use `useAgent(id)`, `useAgentList()`, `useAgentIds()`, `useAgentColor(id)` from this store.
 
-**Note:** This is currently hardcoded. Phase 4 migrates to loadable YAML/JSON files in `~/.bakin/agents/` with the main agent ID resolved at runtime from settings.
+### Bakin-owned display data (not in OpenClaw)
+- Display settings (accent colors, display name overrides, team assignments) — `~/.bakin/plugin-settings/team.json`
+- Avatars — `~/.bakin/agents/{id}/avatar.jpg`
+- Heartbeats — `~/.bakin/heartbeats/{id}.json`
 
-### Lightweight agent list: `src/lib/constants.ts`
-Derives `AGENTS: AgentMeta[]` from profiles for use in dropdowns/badges (id, emoji, name, role, headshot only).
+### Organizational teams
+Teams are a Bakin concept for grouping agents (e.g. "Builders", "Creators"). Stored in `~/.bakin/plugin-settings/team.json` alongside display settings. Each team has a `reportsTo` agent, creating the org chart hierarchy. Agents are assigned to teams via display settings (`teamId` field).
+
+### ID mapping
+`roscoe` <-> `main` is the only mapping. Centralized in `toOpenClawId()`/`toBakinId()` in the adapter. All other agents use identity mapping.
 
 ## Agent Communication
 
@@ -59,24 +65,35 @@ The dispatch system assigns tasks to agents:
 
 Runs on an interval defined in `BakinSettings.dispatch.intervalMs`.
 
-## Heartbeat System
+## Heartbeat & Status System
 
-Each agent writes a heartbeat JSON file to `~/.bakin/heartbeats/{agentId}.json`:
+### Heartbeat files
+Each agent writes a heartbeat JSON file to `~/.bakin/heartbeats/{agentId}.json` via the `bakin_exec_heartbeat` MCP tool:
 ```json
 {
+  "agent": "basil",
   "timestamp": "2026-03-28T10:30:00Z",
   "status": "working",
   "currentTask": "task-abc123"
 }
 ```
 
-Status values: `working`, `idle`, `error`
+Status values: `working`, `idle`
+
+### Dual-signal status resolution
+The team plugin resolves agent status from two sources:
+1. **Heartbeat file** — primary signal, written by `bakin_exec_heartbeat`
+2. **Audit log** — fallback signal, reads tail of `audit.jsonl` for recent agent events
+
+Whichever source has the more recent timestamp wins. This means agents show as online even if they forget to write heartbeats, as long as they're generating audit events (task moves, tool calls, etc.).
 
 ### Status color logic (UI):
-- **Green** (success): working, last activity < 15 min
-- **Yellow** (warning): idle
-- **Gray** (muted): no heartbeat or stale (> 15 min)
+- **Green** (success): working, last activity < threshold
+- **Yellow** (warning): idle / online but not working
+- **Gray** (muted): no heartbeat and no audit activity, or stale (> threshold)
 - **Red** (destructive): error status
+
+Threshold is configurable via team plugin settings (`staleThresholdMinutes`, default 15).
 
 ## MCP Tool Access
 
@@ -89,16 +106,18 @@ Agents interact with Bakin through MCP tools served by `src/core/mcp-server.ts`:
 |--------|-------|---------------------|----------|
 | tasks plugin | 11 | `ctx.registerExecTool()` | `bakin_exec_tasks_list`, `bakin_exec_tasks_create`, `bakin_exec_tasks_move` |
 | workflows plugin | 10 | `ctx.registerExecTool()` | `bakin_exec_workflows_list_definitions`, `bakin_exec_workflows_get_step` |
-| assets plugin | 8 | `ctx.registerExecTool()` | `bakin_exec_assets_save`, `bakin_exec_assets_list` |
+| assets plugin | 9 | `ctx.registerExecTool()` | `bakin_exec_assets_save`, `bakin_exec_assets_list` |
 | schedule plugin | 10 | `ctx.registerExecTool()` | `bakin_exec_schedule_list`, `bakin_exec_schedule_fire` |
 | calendar plugin | 7 | `ctx.registerExecTool()` | `bakin_exec_calendar_list`, `bakin_exec_calendar_create` |
 | projects plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_projects_list`, `bakin_exec_projects_create` |
+| team plugin | 8 | `ctx.registerExecTool()` | `bakin_exec_team_list`, `bakin_exec_team_org`, `bakin_exec_team_members`, `bakin_exec_team_my_team` |
 | scripts/lib/log-progress.ts | 1 | `addExecTool()` | `bakin_exec_log` |
 | scripts/lib/gen-image.ts | 1 | `addExecTool()` | `bakin_exec_gen_image` |
 | scripts/lib/post-discord.ts | 1 | `addExecTool()` | `bakin_exec_post_discord` |
 | scripts/lib/get-paths.ts | 1 | `addExecTool()` | `bakin_exec_get_paths` |
+| scripts/lib/heartbeat.ts | 1 | `addExecTool()` | `bakin_exec_heartbeat` |
 
-**Total:** 62 exec tools (58 plugin + 4 script). Naming: `bakin_exec_{pluginId}_{action}`.
+**Total:** 75 exec tools (70 plugin + 5 script). Naming: `bakin_exec_{pluginId}_{action}`.
 
 ### Agent identity
 MCP sessions bind agent identity via `?agent=basil` query param at connection time. All tool calls carry the agent ID for audit attribution.
@@ -153,8 +172,9 @@ Monitors agent health:
 
 | File | Purpose |
 |------|---------|
-| `src/lib/agents-data.ts` | Agent profiles (single source of truth) |
-| `src/lib/constants.ts` | Lightweight agent list for UI |
+| `plugins/team/openclaw-adapter.ts` | Reads/writes OpenClaw filesystem for agent data |
+| `plugins/team/hooks/use-agent-store.ts` | Client-side Zustand store for agent data |
+| `plugins/team/index.ts` | Team plugin server: routes, hooks, exec tools |
 | `src/core/agents.ts` | Agent status resolution and communication |
 | `src/core/dispatch.ts` | Task dispatch engine |
 | `src/core/mcp-server.ts` | MCP tool server |
