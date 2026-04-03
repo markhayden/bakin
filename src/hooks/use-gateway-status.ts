@@ -19,9 +19,12 @@ export function useGatewayStatus(): GatewayStatus {
 
   useEffect(() => {
     fetch('/api/plugins/models/gateway/status')
-      .then((r) => r.json())
-      .then((data) => { if (data.restartNeeded) setRestartNeeded(true) })
-      .catch(() => {})
+      .then((r) => {
+        if (!r.ok) throw new Error(`Gateway status: ${r.status}`)
+        return r.json()
+      })
+      .then((data) => { if (data?.restartNeeded) setRestartNeeded(true) })
+      .catch((e) => console.error('Failed to fetch gateway status:', e))
   }, [])
 
   const restart = useCallback(async () => {

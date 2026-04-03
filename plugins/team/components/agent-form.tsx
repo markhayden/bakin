@@ -46,7 +46,7 @@ export function AgentForm({
           if (std && !model) setModel(std.id)
         }
       })
-      .catch(() => {})
+      .catch((e) => console.error('Failed to fetch available models:', e))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-derive ID from name unless user manually edited it

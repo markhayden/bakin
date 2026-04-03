@@ -247,6 +247,31 @@ Options are grouped into three `SelectGroup` tiers: **Premium** (opus), **Standa
 | Team | agent-form | Select model during agent creation |
 | Models | models-page | Agent config table, alias target, task profile model |
 
+## useGatewayStatus
+
+`src/hooks/use-gateway-status.ts` — Checks if the OpenClaw gateway needs a restart after config changes.
+
+### Return Value
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `restartNeeded` | `boolean` | True if config changed since last gateway restart |
+| `restarting` | `boolean` | True while restart POST is in flight |
+| `restart` | `() => Promise<void>` | Calls `POST /api/plugins/models/gateway/restart` |
+| `markDirty` | `() => void` | Optimistically set `restartNeeded` without waiting for server |
+
+### How It Works
+
+Server tracks `lastConfigChangeAt` and `lastRestartAt` timestamps via `globalThis.__bakinGatewaySync` (survives Next.js webpack re-evaluation). The hook fetches `GET /api/plugins/models/gateway/status` on mount and shows the amber restart banner if out of sync.
+
+### Where Used
+
+| Plugin | Component | Trigger |
+|--------|-----------|---------|
+| Team | agent-detail | Model change via dropdown |
+| Team | team-grid | "Save Without Restart" on agent creation |
+| Models | models-page | Any config/defaults change |
+
 ## Key Files
 
 ```
@@ -254,6 +279,7 @@ src/components/bakin-drawer.tsx      — Resizable drawer shell
 src/components/agent-select.tsx      — Agent picker with avatars
 src/components/model-select.tsx      — Model picker grouped by tier
 src/components/plugin-header.tsx     — Page header with search + actions
+src/hooks/use-gateway-status.ts     — Gateway restart sync checker
 src/components/ui/dropdown-menu.tsx  — Base dropdown (focus: bg-secondary)
 src/components/ui/sheet.tsx          — Sheet primitive (used by BakinDrawer)
 ```

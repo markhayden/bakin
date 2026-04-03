@@ -58,11 +58,12 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     fetch('/api/plugins/models/available')
       .then((r) => r.json())
       .then((data) => { if (data.models) setAvailableModels(data.models) })
-      .catch(() => {})
+      .catch((e) => console.error('Failed to fetch available models:', e))
   }, [agentId])
 
   // Resolve profile.model (e.g. "claude-opus-4-6") to a full available model ID
-  const resolvedModelId = availableModels.find((m) => m.id.startsWith(profile?.model ?? ''))?.id ?? profile?.model ?? ''
+  const profileModel = profile?.model ?? ''
+  const resolvedModelId = availableModels.find((m) => m.id === profileModel || m.id.startsWith(profileModel + '-'))?.id ?? profileModel
 
   const handleModelChange = async (modelId: string) => {
     if (!profile) return
@@ -75,8 +76,10 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         body: JSON.stringify({ agentId, ownModel }),
       })
       if (res.ok) {
-        setProfile({ ...profile, model: modelId === '__default__' ? 'default' : modelId })
         gateway.markDirty()
+        // Refetch profile to get the correct effective model
+        const updated = await fetch(`/api/plugins/team/${agentId}`).then((r) => r.json())
+        setProfile(updated)
       }
     } finally {
       setSavingModel(false)
