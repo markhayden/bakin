@@ -5,7 +5,7 @@
  */
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
-import { listDefinitions, loadDefinition } from './parser'
+import { listDefinitions, loadDefinition } from './lib/parser'
 import {
   createInstance,
   loadInstance,
@@ -18,11 +18,11 @@ import {
   getActiveAgents,
   isGateNotified,
   markGateNotified,
-} from './runtime'
-import { matchWorkflow } from './matcher'
+} from './lib/runtime'
+import { matchWorkflow } from './lib/matcher'
 import { createLogger } from '../../src/core/logger'
-import { validateStepOutput } from './schema-validator'
-import { setEventBus } from './notifications'
+import { validateStepOutput } from './lib/schema-validator'
+import { setEventBus } from './lib/notifications'
 import type { WorkflowTemplate, WorkflowDefinition, NestedWorkflowStep } from './types'
 
 const log = createLogger('workflows')

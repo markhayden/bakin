@@ -43,7 +43,7 @@ const mockReadTaskboard = vi.fn((..._args: unknown[]) => ({
 const mockSetDependency = vi.fn((..._args: unknown[]) => Promise.resolve())
 const mockUpdateTask = vi.fn((..._args: unknown[]) => Promise.resolve())
 
-vi.mock('@bakin/tasks/taskboard', () => ({
+vi.mock('@bakin/tasks/lib/taskboard', () => ({
   addTaskLog: mockAddTaskLog,
   blockTask: mockBlockTask,
   createTask: mockCreateTask,
@@ -56,12 +56,12 @@ vi.mock('@bakin/tasks/taskboard', () => ({
 const mockLoadInstance = vi.fn((..._args: unknown[]) => null)
 const mockCreateInstance = vi.fn((..._args: unknown[]) => undefined)
 
-vi.mock('@bakin/workflows/runtime', () => ({
+vi.mock('@bakin/workflows/lib/runtime', () => ({
   createInstance: (...args: unknown[]) => mockCreateInstance(...args),
   loadInstance: (...args: unknown[]) => mockLoadInstance(...args),
 }))
 
-vi.mock('@bakin/workflows/matcher', () => ({
+vi.mock('@bakin/workflows/lib/matcher', () => ({
   matchWorkflow: vi.fn(() => null),
 }))
 

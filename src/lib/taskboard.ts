@@ -24,4 +24,4 @@ export {
   clearDependency,
   readAllColumns,
   VALID_TRANSITIONS,
-} from '../../plugins/tasks/taskboard'
+} from '../../plugins/tasks/lib/taskboard'

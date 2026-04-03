@@ -19,7 +19,7 @@ import { resetSettingsCache } from '../../src/core/settings'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
-import * as adapter from './openclaw-adapter'
+import * as adapter from './lib/openclaw-adapter'
 import type { AgentWithStatus, AgentDisplaySettingsMap, HeartbeatData, OrgTeam, TeamPluginSettings } from './types'
 
 const log = createLogger('team')

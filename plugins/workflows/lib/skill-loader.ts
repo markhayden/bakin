@@ -12,9 +12,9 @@
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import yaml from 'js-yaml'
-import type { SkillDefinition } from './types'
+import type { SkillDefinition } from '../types'
 import { getContentDir } from './content-dir'
-import { getPluginSkills } from '../../src/lib/plugin-registry'
+import { getPluginSkills } from '../../../src/lib/plugin-registry'
 
 const skillCache = new Map<string, SkillDefinition | null>()
 

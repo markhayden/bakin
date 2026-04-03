@@ -89,7 +89,7 @@ Markdown kanban board. Columns are H2 headers with emoji prefix. Tasks are check
 - [x] [e5f6g7h8] Completed task @rolo -- 2026-03-29
 ```
 
-Parsed by `plugins/tasks/parser.ts` (primary) and `plugins/tasks/taskboard.ts`.
+Parsed by `plugins/tasks/lib/parser.ts` (primary) and `plugins/tasks/lib/taskboard.ts`.
 
 ### Project files (`projects/{id}.md`)
 Markdown with YAML frontmatter:

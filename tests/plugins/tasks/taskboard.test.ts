@@ -10,11 +10,11 @@ vi.mock('../../../src/lib/content', () => ({
 }))
 
 // Mock cancelInstance (called on some transitions)
-vi.mock('../../../plugins/workflows/runtime', () => ({
+vi.mock('../../../plugins/workflows/lib/runtime', () => ({
   cancelInstance: vi.fn(),
 }))
 
-import { moveTask, createTask, readTaskboard, addTaskLog, blockTask, VALID_TRANSITIONS, localDateString } from '../../../plugins/tasks/taskboard'
+import { moveTask, createTask, readTaskboard, addTaskLog, blockTask, VALID_TRANSITIONS, localDateString } from '../../../plugins/tasks/lib/taskboard'
 import type { ColumnId } from '../../../plugins/tasks/types'
 
 function seedTaskboard(md: string) {

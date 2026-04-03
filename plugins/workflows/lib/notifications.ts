@@ -3,8 +3,8 @@
  * Emits SSE events for UI updates and optionally sends chat notifications
  * (Discord first) when gates are reached or workflows complete.
  */
-import type { EventBus } from '../../src/lib/plugin-types'
-import type { WorkflowInstance } from './types'
+import type { EventBus } from '../../../src/lib/plugin-types'
+import type { WorkflowInstance } from '../types'
 
 let eventBus: EventBus | null = null
 

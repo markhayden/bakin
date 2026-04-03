@@ -8,7 +8,7 @@ Bakin orchestrates a team of AI agents via the OpenClaw gateway. Each agent has 
 
 ### Source of truth: OpenClaw via Team Plugin
 
-Agent data lives in `~/.openclaw/` and is accessed through the team plugin adapter (`plugins/team/openclaw-adapter.ts`). **Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw.**
+Agent data lives in `~/.openclaw/` and is accessed through the team plugin adapter (`plugins/team/lib/openclaw-adapter.ts`). **Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw.**
 
 - `~/.openclaw/openclaw.json` — agent roster (IDs, names, models, identity, subagent perms)
 - `~/.openclaw/workspace/` — main agent (roscoe) workspace files
@@ -172,7 +172,7 @@ Monitors agent health:
 
 | File | Purpose |
 |------|---------|
-| `plugins/team/openclaw-adapter.ts` | Reads/writes OpenClaw filesystem for agent data |
+| `plugins/team/lib/openclaw-adapter.ts` | Reads/writes OpenClaw filesystem for agent data |
 | `plugins/team/hooks/use-agent-store.ts` | Client-side Zustand store for agent data |
 | `plugins/team/index.ts` | Team plugin server: routes, hooks, exec tools |
 | `src/core/agents.ts` | Agent status resolution and communication |

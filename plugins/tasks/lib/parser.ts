@@ -1,7 +1,7 @@
 /**
  * Pure task parser — no fs/node dependencies. Safe for client components.
  */
-import type { Task, TaskLogEntry, TaskColumns, TaskBoard, ColumnId } from './types'
+import type { Task, TaskLogEntry, TaskColumns, TaskBoard, ColumnId } from '../types'
 import { generateTaskId } from './ids'
 
 const COLUMN_HEADER_MAP: Record<string, ColumnId> = {

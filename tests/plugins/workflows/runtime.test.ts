@@ -4,7 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 // Mock taskboard so tests don't leak child-workflow tasks into the real board
-vi.mock('../../plugins/tasks/taskboard', () => ({
+vi.mock('../../plugins/tasks/lib/taskboard', () => ({
   createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
   addTaskLog: vi.fn(() => Promise.resolve()),
   moveTask: vi.fn(() => Promise.resolve()),
@@ -23,8 +23,8 @@ import {
   listInstances,
   getActiveAgents,
   cancelInstance,
-} from '@bakin/workflows/runtime'
-import { invalidateSkillCache } from '@bakin/workflows/skill-loader'
+} from '@bakin/workflows/lib/runtime'
+import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
 
 describe('runtime', () => {
   const testDir = join(tmpdir(), `bakin-test-runtime-${Date.now()}`)

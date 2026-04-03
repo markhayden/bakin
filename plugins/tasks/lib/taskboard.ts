@@ -2,11 +2,11 @@
  * Server-side taskboard operations.
  * All mutations are serialized through an async mutex to prevent concurrent write races.
  */
-import { readContentFile, writeContentFile } from '../../src/lib/content'
+import { readContentFile, writeContentFile } from '../../../src/lib/content'
 import { parseTasks } from './parser'
 import { generateTaskId } from './ids'
-import { cancelInstance } from '../workflows/runtime'
-import type { Task, TaskColumns, ColumnId } from './types'
+import { cancelInstance } from '../../workflows/lib/runtime'
+import type { Task, TaskColumns, ColumnId } from '../types'
 
 // Re-export for convenience
 export { parseTasks as parseTaskboard } from './parser'

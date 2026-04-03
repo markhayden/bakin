@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { parseYAML, validateDefinition, loadDefinition, listDefinitions } from '@bakin/workflows/parser'
+import { parseYAML, validateDefinition, loadDefinition, listDefinitions } from '@bakin/workflows/lib/parser'
 import type { WorkflowDefinition } from '@bakin/workflows/types'
 
 describe('parser', () => {

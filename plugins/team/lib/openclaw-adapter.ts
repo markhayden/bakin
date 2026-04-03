@@ -12,8 +12,8 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync, statSync, mkdirSync, renameSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { createLogger } from '../../src/core/logger'
-import type { AgentMeta, AgentProfile, SkillSummary } from './types'
+import { createLogger } from '../../../src/core/logger'
+import type { AgentMeta, AgentProfile, SkillSummary } from '../types'
 
 const log = createLogger('team:openclaw')
 

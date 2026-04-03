@@ -38,7 +38,7 @@ vi.mock('../../../src/lib/content', () => ({
   writeContentFile: vi.fn(),
 }))
 
-vi.mock('../../../plugins/workflows/runtime', () => ({
+vi.mock('../../../plugins/workflows/lib/runtime', () => ({
   cancelInstance: vi.fn(),
 }))
 

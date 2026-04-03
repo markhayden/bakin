@@ -1,4 +1,4 @@
-import type { AuditEntry } from './types'
+import type { AuditEntry } from '../types'
 
 export function parseAuditLog(jsonl: string): AuditEntry[] {
   const entries: AuditEntry[] = []

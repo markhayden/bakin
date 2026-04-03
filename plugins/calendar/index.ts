@@ -10,7 +10,7 @@ import {
   updateItem,
   deleteItem,
   getItem,
-} from './storage'
+} from './lib/storage'
 import type { CalendarItem, ContentStatus } from './types'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
