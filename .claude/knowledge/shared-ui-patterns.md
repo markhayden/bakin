@@ -221,11 +221,38 @@ Create mode is derived: `isCreate = editing && !existingItem`
 </div>
 ```
 
+## ModelSelect
+
+`src/components/model-select.tsx` — Shared model selection dropdown that fetches from the models plugin API and groups options by tier.
+
+### Props
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `value` | `string` | Selected model ID (e.g. `claude-opus-4-6-20250514`) |
+| `onChange` | `(v: string) => void` | Called when selection changes |
+| `models` | `AvailableModel[]` | Available models (from `GET /api/plugins/models/available`) |
+| `defaultLabel` | `string` | Optional "use default" option label — uses value `__default__` |
+| `className` | `string` | Extra classes on trigger |
+
+### Option Groups
+
+Options are grouped into three `SelectGroup` tiers: **Premium** (opus), **Standard** (sonnet), **Budget** (haiku). The `AvailableModel` type comes from `plugins/models/types.ts`.
+
+### Where Used
+
+| Plugin | Component | Use |
+|--------|-----------|-----|
+| Team | agent-detail | Change agent's active model (saves via `POST /api/plugins/models/config`) |
+| Team | agent-form | Select model during agent creation |
+| Models | models-page | Agent config table, alias target, task profile model |
+
 ## Key Files
 
 ```
 src/components/bakin-drawer.tsx      — Resizable drawer shell
 src/components/agent-select.tsx      — Agent picker with avatars
+src/components/model-select.tsx      — Model picker grouped by tier
 src/components/plugin-header.tsx     — Page header with search + actions
 src/components/ui/dropdown-menu.tsx  — Base dropdown (focus: bg-secondary)
 src/components/ui/sheet.tsx          — Sheet primitive (used by BakinDrawer)

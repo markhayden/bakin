@@ -13,6 +13,8 @@ import {
 } from '@/components/ui/dialog'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { MarkdownContent } from '@/components/markdown-content'
+import { ModelSelect } from '@/components/model-select'
+import type { AvailableModel } from '@bakin/models/types'
 import { useAgentStore, useAgentColor } from '../hooks/use-agent-store'
 import type { AgentProfile, SkillSummary } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
@@ -41,6 +43,8 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true)
   const [avatarKey, setAvatarKey] = useState(0)
   const avatarInputRef = useRef<HTMLInputElement>(null)
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
+  const [savingModel, setSavingModel] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -49,7 +53,33 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       .then((data) => setProfile(data))
       .catch(() => setProfile(null))
       .finally(() => setLoading(false))
+    fetch('/api/plugins/models/available')
+      .then((r) => r.json())
+      .then((data) => { if (data.models) setAvailableModels(data.models) })
+      .catch(() => {})
   }, [agentId])
+
+  // Resolve profile.model (e.g. "claude-opus-4-6") to a full available model ID
+  const resolvedModelId = availableModels.find((m) => m.id.startsWith(profile?.model ?? ''))?.id ?? profile?.model ?? ''
+
+  const handleModelChange = async (modelId: string) => {
+    if (!profile) return
+    setSavingModel(true)
+    try {
+      const ownModel = modelId === '__default__' ? null : modelId
+      const res = await fetch('/api/plugins/models/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, ownModel }),
+      })
+      if (res.ok) {
+        // Update local state with the new model ID (stripped for display)
+        setProfile({ ...profile, model: modelId === '__default__' ? 'default' : modelId })
+      }
+    } finally {
+      setSavingModel(false)
+    }
+  }
 
   const handleTeamChange = async (teamId: string) => {
     const res = await fetch(`/api/plugins/team/${agentId}/team`, {
@@ -144,7 +174,20 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           <h1 className="text-xl font-semibold">{profile.name}</h1>
           <div className="text-sm text-muted-foreground">{profile.role}</div>
           <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs font-mono text-muted-foreground">{profile.model}</span>
+            {availableModels.length > 0 ? (
+              <div className="flex items-center gap-1.5">
+                <ModelSelect
+                  value={resolvedModelId}
+                  onChange={handleModelChange}
+                  models={availableModels}
+                  defaultLabel="Use default"
+                  className="h-6 w-48 text-xs"
+                />
+                {savingModel && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
+              </div>
+            ) : (
+              <span className="text-xs font-mono text-muted-foreground">{profile.model}</span>
+            )}
             {profile.subagentPerms && (
               <Badge variant="outline" className="text-[10px]">
                 manages: {profile.subagentPerms.join(', ')}

@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/table'
 import { useQueryState } from '@/hooks/use-query-state'
 import { AgentAvatar } from '@/components/agent-avatar'
+import { ModelSelect } from '@/components/model-select'
 // Relative
 import type { AgentModelConfig, AvailableModel, TaskProfile } from '../types'
 
@@ -86,52 +87,6 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => vo
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="py-12 text-center text-sm text-muted-foreground">{message}</div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Model Select (reusable)
-// ---------------------------------------------------------------------------
-function ModelSelect({
-  value,
-  onChange,
-  models,
-  defaultLabel,
-  className,
-}: {
-  value: string
-  onChange: (v: string) => void
-  models: AvailableModel[]
-  defaultLabel?: string
-  className?: string
-}) {
-  return (
-    <Select value={value} onValueChange={(v) => onChange(v ?? '')}>
-      <SelectTrigger className={className ?? 'w-full'} size="sm">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {defaultLabel && <SelectItem value="__default__">{defaultLabel}</SelectItem>}
-        <SelectGroup>
-          <SelectLabel>Premium</SelectLabel>
-          {models.filter((m) => m.tier === 'premium').map((m) => (
-            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-          ))}
-        </SelectGroup>
-        <SelectGroup>
-          <SelectLabel>Standard</SelectLabel>
-          {models.filter((m) => m.tier === 'standard').map((m) => (
-            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-          ))}
-        </SelectGroup>
-        <SelectGroup>
-          <SelectLabel>Budget</SelectLabel>
-          {models.filter((m) => m.tier === 'budget').map((m) => (
-            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
   )
 }
 

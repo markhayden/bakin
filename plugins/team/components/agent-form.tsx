@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Loader2, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ModelSelect } from '@/components/model-select'
+import type { AvailableModel } from '@bakin/models/types'
 
 export interface AgentFormData {
   id: string
@@ -13,12 +15,6 @@ export interface AgentFormData {
   model: string
   soul: string
 }
-
-const DEFAULT_MODELS = [
-  'anthropic/claude-sonnet-4-20250514',
-  'anthropic/claude-opus-4-20250514',
-  'anthropic/claude-haiku-4-5-20251001',
-]
 
 export function AgentForm({
   onSubmit,
@@ -33,11 +29,25 @@ export function AgentForm({
   const [id, setId] = useState('')
   const [idManual, setIdManual] = useState(false)
   const [emoji, setEmoji] = useState('')
-  const [model, setModel] = useState(DEFAULT_MODELS[0])
+  const [model, setModel] = useState('')
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
   const [soul, setSoul] = useState('')
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch('/api/plugins/models/available')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.models) {
+          setAvailableModels(data.models)
+          const std = data.models.find((m: AvailableModel) => m.tier === 'standard')
+          if (std && !model) setModel(std.id)
+        }
+      })
+      .catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-derive ID from name unless user manually edited it
   const handleNameChange = (v: string) => {
@@ -145,17 +155,12 @@ export function AgentForm({
 
       {/* Model */}
       <div className="space-y-1.5">
-        <Label htmlFor="agent-model">Model</Label>
-        <select
-          id="agent-model"
+        <Label>Model</Label>
+        <ModelSelect
           value={model}
-          onChange={(e) => setModel(e.target.value)}
-          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          {DEFAULT_MODELS.map((m) => (
-            <option key={m} value={m}>{m.replace('anthropic/', '')}</option>
-          ))}
-        </select>
+          onChange={setModel}
+          models={availableModels}
+        />
       </div>
 
       {/* Soul */}

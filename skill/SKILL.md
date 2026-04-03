@@ -97,6 +97,8 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_assets_audit` | Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars. |
 | `bakin_exec_assets_empty_trash` | Permanently delete all items from trash. This cannot be undone. |
 | `bakin_exec_assets_permanent_delete` | Permanently delete a specific trashed asset. This cannot be undone. |
+| `bakin_exec_models_list` | List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment. |
+| `bakin_exec_models_get_config` | Get model configuration for all agents or a specific agent. Shows effective model (own override or default), subagent model, and system defaults. |
 | `bakin_exec_calendar_list` | List calendar items with optional filters |
 | `bakin_exec_calendar_get` | Get details for a single calendar item |
 | `bakin_exec_calendar_create` | Create a new calendar item |
