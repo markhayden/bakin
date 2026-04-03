@@ -19,6 +19,16 @@ const AUTH_PROFILES = join(homedir(), '.openclaw', 'agents', 'main', 'agent', 'a
 const OPENCLAW_BIN = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
 
 // ---------------------------------------------------------------------------
+// Gateway sync tracking (survives Next.js webpack re-evaluation)
+// ---------------------------------------------------------------------------
+interface GatewaySync { lastConfigChangeAt: number | null; lastRestartAt: number | null }
+const gw = (globalThis as Record<string, unknown>)
+if (!gw.__bakinGatewaySync) gw.__bakinGatewaySync = { lastConfigChangeAt: null, lastRestartAt: null }
+function getGatewaySync(): GatewaySync { return gw.__bakinGatewaySync as GatewaySync }
+function markConfigDirty() { getGatewaySync().lastConfigChangeAt = Date.now() }
+function markGatewayRestarted() { getGatewaySync().lastRestartAt = Date.now() }
+
+// ---------------------------------------------------------------------------
 // OpenClaw config types
 // ---------------------------------------------------------------------------
 interface OpenclawAgent {
@@ -318,6 +328,10 @@ const modelsPlugin: BakinPlugin = {
       return agent?.effectiveModel ?? null
     })
 
+    ctx.hooks.register('models.markConfigDirty', () => { markConfigDirty() })
+
+    ctx.hooks.register('models.markGatewayRestarted', () => { markGatewayRestarted() })
+
     ctx.hooks.register('models.getAvailableModels', async () => {
       const result = await fetchAvailableModels()
       return result.models
@@ -400,6 +414,7 @@ const modelsPlugin: BakinPlugin = {
           const after = agentsAfter.find((a) => a.agentId === agentId)
           const newModel = after?.effectiveModel ?? null
 
+          markConfigDirty()
           ctx.activity.audit('config.updated', 'system', { agentId, ownModel: body.ownModel, subagentModel: body.subagentModel })
           ctx.activity.log('system', `Updated model config for ${agentId}`, { category: 'models' })
 
@@ -445,6 +460,7 @@ const modelsPlugin: BakinPlugin = {
             }
           })
 
+          markConfigDirty()
           ctx.activity.audit('defaults.updated', 'system', { defaultModel: body.defaultModel, defaultSubagentModel: body.defaultSubagentModel })
           ctx.activity.log('system', `Updated default model${body.defaultModel ? ` to ${body.defaultModel}` : ''}`, { category: 'models' })
           return Response.json({ ok: true })
@@ -565,6 +581,21 @@ const modelsPlugin: BakinPlugin = {
     })
 
     // -------------------------------------------------------------------
+    // GET /api/plugins/models/gateway/status
+    // -------------------------------------------------------------------
+    ctx.registerRoute({
+      path: '/gateway/status',
+      method: 'GET',
+      description: 'Check if gateway config is out of sync (needs restart)',
+      handler: async () => {
+        const sync = getGatewaySync()
+        const restartNeeded = sync.lastConfigChangeAt !== null &&
+          (sync.lastRestartAt === null || sync.lastConfigChangeAt > sync.lastRestartAt)
+        return Response.json({ restartNeeded, ...sync })
+      },
+    })
+
+    // -------------------------------------------------------------------
     // POST /api/plugins/models/gateway/restart
     // -------------------------------------------------------------------
     ctx.registerRoute({
@@ -576,6 +607,7 @@ const modelsPlugin: BakinPlugin = {
             if (err) {
               resolve(Response.json({ ok: false, error: String(err) }, { status: 500 }))
             } else {
+              markGatewayRestarted()
               ctx.activity.audit('gateway.restarted', 'system')
               ctx.activity.log('system', 'OpenClaw gateway restarted', { category: 'models' })
               resolve(Response.json({ ok: true, message: 'Restart initiated' }))

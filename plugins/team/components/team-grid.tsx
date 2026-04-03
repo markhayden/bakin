@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { BakinDrawer } from '@/components/bakin-drawer'
+import { useGatewayStatus } from '@/hooks/use-gateway-status'
 import { useAgentStore, useAgentColor } from '../hooks/use-agent-store'
 import { AgentForm, type AgentFormData } from './agent-form'
 import { TeamManager } from './team-manager'
@@ -383,6 +384,7 @@ export function TeamGrid() {
   const reload = useAgentStore((s) => s.load)
   const [showCreate, setShowCreate] = useState(false)
   const [showTeams, setShowTeams] = useState(false)
+  const gateway = useGatewayStatus()
   const [submitting, setSubmitting] = useState(false)
   const [pendingCreate, setPendingCreate] = useState<{ data: AgentFormData; avatarFile: File | null } | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -480,6 +482,24 @@ export function TeamGrid() {
           New Agent
         </Button>
       </div>
+
+      {/* Restart banner */}
+      {gateway.restartNeeded && (
+        <div className="flex items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-6 py-2.5">
+          <span className="text-sm text-amber-400">
+            Gateway config out of sync. Restart to apply changes.
+          </span>
+          <Button
+            onClick={gateway.restart}
+            disabled={gateway.restarting}
+            variant="outline"
+            size="sm"
+            className="border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
+          >
+            {gateway.restarting ? 'Restarting...' : 'Restart Gateway'}
+          </Button>
+        </div>
+      )}
 
       {/* Dark canvas — matches workflow detail */}
       <div className="flex-1 overflow-hidden bg-zinc-950">

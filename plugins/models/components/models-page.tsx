@@ -19,6 +19,7 @@ import {
 import { useQueryState } from '@/hooks/use-query-state'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { ModelSelect } from '@/components/model-select'
+import { useGatewayStatus } from '@/hooks/use-gateway-status'
 // Relative
 import type { AgentModelConfig, AvailableModel, TaskProfile } from '../types'
 
@@ -103,10 +104,9 @@ export function ModelsPage() {
   const [pendingOwn, setPendingOwn] = useState<Record<string, string>>({})
   const [pendingSub, setPendingSub] = useState<Record<string, string>>({})
   const [pendingProfiles, setPendingProfiles] = useState<TaskProfile[] | null>(null)
-  const [restartNeeded, setRestartNeeded] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
-  const [restarting, setRestarting] = useState(false)
+  const gateway = useGatewayStatus()
   const [newAliasName, setNewAliasName] = useState('')
   const [newAliasTarget, setNewAliasTarget] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -197,7 +197,7 @@ export function ModelsPage() {
       if (data.ok) {
         setPendingOwn((prev) => { const n = { ...prev }; delete n[agentId]; return n })
         setPendingSub((prev) => { const n = { ...prev }; delete n[agentId]; return n })
-        setRestartNeeded(true)
+        gateway.markDirty()
         await fetchConfig()
       }
     } catch (err) {
@@ -223,7 +223,7 @@ export function ModelsPage() {
       })
       const data = await res.json()
       if (data.ok) {
-        setRestartNeeded(true)
+        gateway.markDirty()
         await fetchConfig()
       }
     } catch (err) {
@@ -322,21 +322,6 @@ export function ModelsPage() {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Restart
-  // -------------------------------------------------------------------------
-  const handleRestart = async () => {
-    setRestarting(true)
-    try {
-      await fetch('/api/plugins/models/gateway/restart', { method: 'POST' })
-      setRestartNeeded(false)
-    } catch (err) {
-      console.error('Failed to restart:', err)
-    } finally {
-      setRestarting(false)
-    }
-  }
-
   const hasPending = Object.keys(pendingOwn).length > 0 || Object.keys(pendingSub).length > 0
 
   // Build model options (available or fallback)
@@ -370,19 +355,19 @@ export function ModelsPage() {
       {error && <ErrorBanner message={error} onRetry={fetchConfig} />}
 
       {/* Restart banner */}
-      {restartNeeded && (
+      {gateway.restartNeeded && (
         <div className="flex items-center justify-between rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
           <span className="text-sm text-amber-400">
-            Configuration saved. Restart the gateway to apply changes.
+            Gateway config out of sync. Restart to apply changes.
           </span>
           <Button
-            onClick={handleRestart}
-            disabled={restarting}
+            onClick={gateway.restart}
+            disabled={gateway.restarting}
             variant="outline"
             size="sm"
             className="border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
           >
-            {restarting ? 'Restarting...' : 'Restart Gateway'}
+            {gateway.restarting ? 'Restarting...' : 'Restart Gateway'}
           </Button>
         </div>
       )}
