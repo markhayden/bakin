@@ -59,9 +59,19 @@ function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | '
       },
     },
     hooks: {
-      register: () => () => {},
-      has: () => false,
-      invoke: async () => undefined,
+      register: (name: string, handler: (data: any) => any) => {
+        const registry = (globalThis as any).__bakinHookRegistry
+        if (registry) return registry.register(name, handler)
+        return () => {}
+      },
+      has: (name: string) => {
+        const registry = (globalThis as any).__bakinHookRegistry
+        return registry ? registry.has(name) : false
+      },
+      invoke: async (name: string, data: unknown) => {
+        const registry = (globalThis as any).__bakinHookRegistry
+        return registry ? registry.invoke(name, data) : undefined
+      },
     },
   }
 }

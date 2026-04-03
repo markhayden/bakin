@@ -40,3 +40,17 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
   { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', tier: 'standard', bestFor: 'General purpose, current default', contextWindow: '200K' },
   { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', tier: 'premium', bestFor: 'Complex coding, planning, analysis', contextWindow: '200K' },
 ]
+
+/** Editable task-to-model mapping (stored in plugin settings) */
+export interface TaskProfile {
+  taskType: string
+  recommendedModel: string
+  notes: string
+}
+
+/** Shape of models plugin settings */
+export interface ModelsPluginSettings {
+  showUsageMetrics?: boolean
+  defaultModel?: string
+  taskProfiles?: TaskProfile[]
+}

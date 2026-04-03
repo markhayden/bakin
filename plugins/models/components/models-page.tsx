@@ -1,15 +1,25 @@
 'use client'
 
+// React
 import { useEffect, useState, useCallback } from 'react'
-import type { AgentModelConfig, AvailableModel } from '../types'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+// External
+import { AlertCircle } from 'lucide-react'
+// Internal
 import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel,
+} from '@/components/ui/select'
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table'
+import { useQueryState } from '@/hooks/use-query-state'
+import { AgentAvatar } from '@/components/agent-avatar'
+// Relative
+import type { AgentModelConfig, AvailableModel, TaskProfile } from '../types'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -26,31 +36,125 @@ const TOOL_MODELS: Record<string, string> = {
   patch: 'Claude Code',
 }
 
-const COMPLEXITY_PROFILES = [
-  { taskType: 'Heartbeat check', model: 'Claude Haiku 4.5', notes: 'Fast, cheap' },
-  { taskType: 'Content writing', model: 'Claude Sonnet 4.6', notes: 'Quality output' },
-  { taskType: 'Image brief', model: 'Claude Sonnet 4.6', notes: 'Creative' },
-  { taskType: 'Video production', model: 'Claude Sonnet 4.6', notes: 'Creative' },
-  { taskType: 'Code/development', model: 'Claude Opus 4.6', notes: 'Complex reasoning' },
-  { taskType: 'Orchestration', model: 'Claude Sonnet 4.6', notes: 'Multi-step planning' },
-]
+const TABS = [
+  { id: 'agents', label: 'Agent Config' },
+  { id: 'available', label: 'Available Models' },
+  { id: 'aliases', label: 'Aliases' },
+  { id: 'profiles', label: 'Task Profiles' },
+] as const
+
+// ---------------------------------------------------------------------------
+// Loading skeleton
+// ---------------------------------------------------------------------------
+function TableSkeleton({ rows = 4, cols = 4 }: { rows?: number; cols?: number }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-card">
+            {Array.from({ length: cols }).map((_, i) => (
+              <TableHead key={i}><Skeleton className="h-4 w-20" /></TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Array.from({ length: rows }).map((_, r) => (
+            <TableRow key={r}>
+              {Array.from({ length: cols }).map((_, c) => (
+                <TableCell key={c}><Skeleton className="h-4 w-full" /></TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3">
+      <AlertCircle className="size-4 text-destructive shrink-0" />
+      <span className="text-sm text-destructive flex-1">{message}</span>
+      {onRetry && (
+        <Button variant="outline" size="xs" onClick={onRetry}>Retry</Button>
+      )}
+    </div>
+  )
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="py-12 text-center text-sm text-muted-foreground">{message}</div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Model Select (reusable)
+// ---------------------------------------------------------------------------
+function ModelSelect({
+  value,
+  onChange,
+  models,
+  defaultLabel,
+  className,
+}: {
+  value: string
+  onChange: (v: string) => void
+  models: AvailableModel[]
+  defaultLabel?: string
+  className?: string
+}) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v ?? '')}>
+      <SelectTrigger className={className ?? 'w-full'} size="sm">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {defaultLabel && <SelectItem value="__default__">{defaultLabel}</SelectItem>}
+        <SelectGroup>
+          <SelectLabel>Premium</SelectLabel>
+          {models.filter((m) => m.tier === 'premium').map((m) => (
+            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+          ))}
+        </SelectGroup>
+        <SelectGroup>
+          <SelectLabel>Standard</SelectLabel>
+          {models.filter((m) => m.tier === 'standard').map((m) => (
+            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+          ))}
+        </SelectGroup>
+        <SelectGroup>
+          <SelectLabel>Budget</SelectLabel>
+          {models.filter((m) => m.tier === 'budget').map((m) => (
+            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export function ModelsPage() {
+  const [tab, setTab] = useQueryState('tab', 'agents')
   const [agents, setAgents] = useState<AgentModelConfig[]>([])
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
   const [modelsCached, setModelsCached] = useState(false)
   const [aliases, setAliases] = useState<Record<string, string>>({})
+  const [profiles, setProfiles] = useState<TaskProfile[]>([])
   const [pendingOwn, setPendingOwn] = useState<Record<string, string>>({})
   const [pendingSub, setPendingSub] = useState<Record<string, string>>({})
+  const [pendingProfiles, setPendingProfiles] = useState<TaskProfile[] | null>(null)
   const [restartNeeded, setRestartNeeded] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const [restarting, setRestarting] = useState(false)
   const [newAliasName, setNewAliasName] = useState('')
   const [newAliasTarget, setNewAliasTarget] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   // -------------------------------------------------------------------------
   // Data fetching
@@ -58,10 +162,12 @@ export function ModelsPage() {
   const fetchConfig = useCallback(async () => {
     try {
       const res = await fetch('/api/plugins/models/config')
+      if (!res.ok) throw new Error(`Config fetch failed (${res.status})`)
       const data = await res.json()
       if (data.agents) setAgents(data.agents)
+      setError(null)
     } catch (err) {
-      console.error('Failed to fetch model config:', err)
+      setError(`Failed to load agent config: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setLoading(false)
     }
@@ -70,6 +176,7 @@ export function ModelsPage() {
   const fetchAvailable = useCallback(async () => {
     try {
       const res = await fetch('/api/plugins/models/available')
+      if (!res.ok) throw new Error(`Models fetch failed (${res.status})`)
       const data = await res.json()
       if (data.models) {
         setAvailableModels(data.models)
@@ -83,6 +190,7 @@ export function ModelsPage() {
   const fetchAliases = useCallback(async () => {
     try {
       const res = await fetch('/api/plugins/models/aliases')
+      if (!res.ok) throw new Error(`Aliases fetch failed (${res.status})`)
       const data = await res.json()
       if (data.aliases) setAliases(data.aliases)
     } catch (err) {
@@ -90,11 +198,23 @@ export function ModelsPage() {
     }
   }, [])
 
+  const fetchProfiles = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/models/profiles')
+      if (!res.ok) throw new Error(`Profiles fetch failed (${res.status})`)
+      const data = await res.json()
+      if (data.profiles) setProfiles(data.profiles)
+    } catch (err) {
+      console.error('Failed to fetch profiles:', err)
+    }
+  }, [])
+
   useEffect(() => {
     fetchConfig()
     fetchAvailable()
     fetchAliases()
-  }, [fetchConfig, fetchAvailable, fetchAliases])
+    fetchProfiles()
+  }, [fetchConfig, fetchAvailable, fetchAliases, fetchProfiles])
 
   // -------------------------------------------------------------------------
   // Agent config actions
@@ -207,12 +327,53 @@ export function ModelsPage() {
   }
 
   // -------------------------------------------------------------------------
+  // Profile actions
+  // -------------------------------------------------------------------------
+  const updateProfile = (index: number, field: keyof TaskProfile, value: string) => {
+    const current = pendingProfiles ?? [...profiles]
+    const updated = [...current]
+    updated[index] = { ...updated[index], [field]: value }
+    setPendingProfiles(updated)
+  }
+
+  const addProfile = () => {
+    const current = pendingProfiles ?? [...profiles]
+    setPendingProfiles([...current, { taskType: '', recommendedModel: '', notes: '' }])
+  }
+
+  const removeProfile = (index: number) => {
+    const current = pendingProfiles ?? [...profiles]
+    setPendingProfiles(current.filter((_, i) => i !== index))
+  }
+
+  const saveProfiles = async () => {
+    if (!pendingProfiles) return
+    setSaving('profiles')
+    try {
+      const res = await fetch('/api/plugins/models/profiles', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profiles: pendingProfiles }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setProfiles(pendingProfiles)
+        setPendingProfiles(null)
+      }
+    } catch (err) {
+      console.error('Failed to save profiles:', err)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Restart
   // -------------------------------------------------------------------------
   const handleRestart = async () => {
     setRestarting(true)
     try {
-      await fetch('/api/plugins/models/restart', { method: 'POST' })
+      await fetch('/api/plugins/models/gateway/restart', { method: 'POST' })
       setRestartNeeded(false)
     } catch (err) {
       console.error('Failed to restart:', err)
@@ -223,29 +384,35 @@ export function ModelsPage() {
 
   const hasPending = Object.keys(pendingOwn).length > 0 || Object.keys(pendingSub).length > 0
 
-  // Build model options for selects (available models with anthropic/ prefix for matching)
-  const modelOptions = availableModels.length > 0
+  // Build model options (available or fallback)
+  const modelOptions: AvailableModel[] = availableModels.length > 0
     ? availableModels
     : [
-        { id: 'claude-opus-4-6-20250514', name: 'Claude Opus 4.6', tier: 'premium' as const },
-        { id: 'claude-sonnet-4-6-20250514', name: 'Claude Sonnet 4.6', tier: 'standard' as const },
-        { id: 'claude-sonnet-4-5-20250414', name: 'Claude Sonnet 4.5', tier: 'standard' as const },
-        { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', tier: 'budget' as const },
+        { id: 'claude-opus-4-6-20250514', name: 'Claude Opus 4.6', tier: 'premium' },
+        { id: 'claude-sonnet-4-6-20250514', name: 'Claude Sonnet 4.6', tier: 'standard' },
+        { id: 'claude-sonnet-4-5-20250414', name: 'Claude Sonnet 4.5', tier: 'standard' },
+        { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', tier: 'budget' },
       ]
 
-  // Group available models by tier for Tab 2
+  // Group available models by tier for the catalog tab
   const modelsByTier = {
     premium: modelOptions.filter((m) => m.tier === 'premium'),
     standard: modelOptions.filter((m) => m.tier === 'standard'),
     budget: modelOptions.filter((m) => m.tier === 'budget'),
   }
 
+  const displayProfiles = pendingProfiles ?? profiles
+
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
+    <div className="p-6 flex flex-col flex-1 gap-6">
       <PluginHeader
         title="Models"
-        subtitle="Configure models for agents, view available models, and manage aliases."
+        count={modelOptions.length}
+        subtitle="Agent model config, aliases, and task profiles"
       />
+
+      {/* Error banner */}
+      {error && <ErrorBanner message={error} onRetry={fetchConfig} />}
 
       {/* Restart banner */}
       {restartNeeded && (
@@ -265,19 +432,26 @@ export function ModelsPage() {
         </div>
       )}
 
-      <Tabs defaultValue="agents">
-        <TabsList>
-          <TabsTrigger value="agents">Agent Config</TabsTrigger>
-          <TabsTrigger value="available">Available Models</TabsTrigger>
-          <TabsTrigger value="aliases">Aliases</TabsTrigger>
-          <TabsTrigger value="profiles">Task Profiles</TabsTrigger>
-        </TabsList>
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-border">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={`px-3 py-2 text-sm transition-colors ${
+              tab === t.id
+                ? 'text-foreground border-b-2 border-accent font-medium'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-        {/* ================================================================= */}
-        {/* Tab 1: Agent Config                                                */}
-        {/* ================================================================= */}
-        <TabsContent value="agents">
-          <div className="mt-4 space-y-4">
+      {/* Tab content */}
+      {tab === 'agents' && (
+        <div className="space-y-4">
             {hasPending && (
               <div className="flex justify-end">
                 <Button onClick={saveAll} disabled={!!saving} size="sm">
@@ -287,7 +461,9 @@ export function ModelsPage() {
             )}
 
             {loading ? (
-              <div className="text-sm text-muted-foreground py-8 text-center">Loading...</div>
+              <TableSkeleton rows={5} cols={5} />
+            ) : agents.length === 0 ? (
+              <EmptyState message="No agents configured in OpenClaw" />
             ) : (
               <div className="overflow-hidden rounded-xl border border-border">
                 <Table>
@@ -312,37 +488,25 @@ export function ModelsPage() {
                         <TableRow key={agent.agentId}>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="text-lg">{agent.emoji}</span>
+                              <AgentAvatar agentId={agent.agentId} size="sm" />
                               <span className="font-medium">{agent.name}</span>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <select
+                            <ModelSelect
                               value={ownVal}
-                              onChange={(e) => setPendingOwn((p) => ({ ...p, [agent.agentId]: e.target.value }))}
-                              className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-ring"
-                            >
-                              <option value="__default__">
-                                Default ({agent.defaultModel})
-                              </option>
-                              {modelOptions.map((m) => (
-                                <option key={m.id} value={m.id}>{m.name}</option>
-                              ))}
-                            </select>
+                              onChange={(v) => setPendingOwn((p) => ({ ...p, [agent.agentId]: v }))}
+                              models={modelOptions}
+                              defaultLabel={`Default (${agent.defaultModel})`}
+                            />
                           </TableCell>
                           <TableCell>
-                            <select
+                            <ModelSelect
                               value={subVal}
-                              onChange={(e) => setPendingSub((p) => ({ ...p, [agent.agentId]: e.target.value }))}
-                              className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-ring"
-                            >
-                              <option value="__default__">
-                                Default ({agent.defaultSubagentModel || agent.defaultModel})
-                              </option>
-                              {modelOptions.map((m) => (
-                                <option key={m.id} value={m.id}>{m.name}</option>
-                              ))}
-                            </select>
+                              onChange={(v) => setPendingSub((p) => ({ ...p, [agent.agentId]: v }))}
+                              models={modelOptions}
+                              defaultLabel={`Default (${agent.defaultSubagentModel || agent.defaultModel})`}
+                            />
                           </TableCell>
                           <TableCell>
                             <span className="text-sm text-muted-foreground">{toolModel}</span>
@@ -365,14 +529,11 @@ export function ModelsPage() {
                 </Table>
               </div>
             )}
-          </div>
-        </TabsContent>
+        </div>
+      )}
 
-        {/* ================================================================= */}
-        {/* Tab 2: Available Models                                             */}
-        {/* ================================================================= */}
-        <TabsContent value="available">
-          <div className="mt-4 space-y-6">
+      {tab === 'available' && (
+        <div className="space-y-6">
             {modelsCached && (
               <p className="text-xs text-muted-foreground">Showing cached results (1h TTL)</p>
             )}
@@ -418,18 +579,13 @@ export function ModelsPage() {
             })}
 
             {availableModels.length === 0 && (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                Could not fetch models from Anthropic API. Showing fallback list.
-              </p>
+              <EmptyState message="Could not fetch models from Anthropic API. Showing fallback list." />
             )}
-          </div>
-        </TabsContent>
+        </div>
+      )}
 
-        {/* ================================================================= */}
-        {/* Tab 3: Aliases                                                     */}
-        {/* ================================================================= */}
-        <TabsContent value="aliases">
-          <div className="mt-4 space-y-4">
+      {tab === 'aliases' && (
+        <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
                 Model aliases from <code className="text-xs">agents.defaults.models</code>
@@ -451,8 +607,8 @@ export function ModelsPage() {
                 <TableBody>
                   {Object.entries(aliases).length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center text-muted-foreground py-6">
-                        No aliases defined
+                      <TableCell colSpan={3}>
+                        <EmptyState message="No aliases defined" />
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -492,52 +648,99 @@ export function ModelsPage() {
               </div>
               <div className="flex-1 space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">Target Model</label>
-                <select
+                <ModelSelect
                   value={newAliasTarget}
-                  onChange={(e) => setNewAliasTarget(e.target.value)}
-                  className="h-8 w-full rounded-lg border border-border bg-background px-2.5 py-1 text-sm text-foreground outline-none focus:border-ring"
-                >
-                  <option value="">Select model...</option>
-                  {modelOptions.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name} ({m.id})</option>
-                  ))}
-                </select>
+                  onChange={setNewAliasTarget}
+                  models={modelOptions}
+                />
               </div>
               <Button onClick={addAlias} disabled={!newAliasName.trim() || !newAliasTarget.trim()}>
                 Add
               </Button>
             </div>
-          </div>
-        </TabsContent>
+        </div>
+      )}
 
-        {/* ================================================================= */}
-        {/* Tab 4: Task Profiles                                               */}
-        {/* ================================================================= */}
-        <TabsContent value="profiles">
-          <div className="mt-4">
-            <div className="overflow-hidden rounded-xl border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-card">
-                    <TableHead>Task Type</TableHead>
-                    <TableHead>Recommended Model</TableHead>
-                    <TableHead>Notes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {COMPLEXITY_PROFILES.map((row) => (
-                    <TableRow key={row.taskType}>
-                      <TableCell>{row.taskType}</TableCell>
-                      <TableCell className="text-muted-foreground">{row.model}</TableCell>
-                      <TableCell className="text-muted-foreground">{row.notes}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+      {tab === 'profiles' && (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Map task types to recommended models. Not yet wired to dispatch — used as configuration reference.
+              </p>
+              <div className="flex items-center gap-2">
+                {pendingProfiles && (
+                  <>
+                    <Button variant="outline" size="xs" onClick={() => setPendingProfiles(null)}>
+                      Discard
+                    </Button>
+                    <Button size="xs" onClick={saveProfiles} disabled={saving === 'profiles'}>
+                      {saving === 'profiles' ? 'Saving...' : 'Save Profiles'}
+                    </Button>
+                  </>
+                )}
+                <Button variant="outline" size="xs" onClick={addProfile}>
+                  Add Profile
+                </Button>
+              </div>
             </div>
-          </div>
-        </TabsContent>
-      </Tabs>
+
+            {displayProfiles.length === 0 ? (
+              <EmptyState message="No task profiles configured" />
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-card">
+                      <TableHead>Task Type</TableHead>
+                      <TableHead>Recommended Model</TableHead>
+                      <TableHead>Notes</TableHead>
+                      <TableHead className="w-[60px]" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {displayProfiles.map((row, i) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <Input
+                            value={row.taskType}
+                            onChange={(e) => updateProfile(i, 'taskType', e.target.value)}
+                            className="h-8 text-sm"
+                            placeholder="e.g. Heartbeat check"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <ModelSelect
+                            value={row.recommendedModel}
+                            onChange={(v) => updateProfile(i, 'recommendedModel', v)}
+                            models={modelOptions}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={row.notes}
+                            onChange={(e) => updateProfile(i, 'notes', e.target.value)}
+                            className="h-8 text-sm"
+                            placeholder="e.g. Fast, cheap"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => removeProfile(i)}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            Remove
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+        </div>
+      )}
     </div>
   )
 }

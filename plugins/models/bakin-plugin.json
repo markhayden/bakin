@@ -1,15 +1,15 @@
 {
   "id": "models",
   "name": "Models",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "bakin": ">=1.0.0",
-  "description": "Agent model configuration UI — per-agent models, aliases, available models from Anthropic API",
+  "description": "Agent model configuration — per-agent models, aliases, task profiles, available models from Anthropic API",
   "entry": {
     "server": "index.ts"
   },
   "contentFiles": [],
   "secrets": ["anthropic-api-key", "gateway-token"],
   "tests": "tests/",
-  "dependencies": [],
+  "dependencies": ["team"],
   "permissions": ["storage.read", "storage.write", "events.emit"]
 }
