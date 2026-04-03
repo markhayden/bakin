@@ -1,15 +1,15 @@
 'use client'
 
-import { useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { X } from 'lucide-react'
-import { AGENTS } from '@/lib/constants'
-import { STATUS_BADGE_STYLES, AGENT_AVATAR_COLORS } from '../constants'
+import { AgentAvatar } from '@/components/agent-avatar'
+import { STATUS_BADGE_STYLES } from '../constants'
 import type { Task, ColumnId } from '../types'
 
 function formatRelativeDate(dateStr: string): string {
-  const date = new Date(dateStr)
+  // Parse YYYY-MM-DD as local date, not UTC (appending T00:00 forces local interpretation)
+  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00')
   if (isNaN(date.getTime())) return dateStr
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -25,34 +25,10 @@ function shortId(id: string): string {
   return id.slice(0, 6).toUpperCase()
 }
 
-function AgentAvatar({ agent, imgError, onError }: {
-  agent: { id: string; emoji: string; name: string } | undefined
-  imgError: boolean
-  onError: () => void
-}) {
-  if (!agent) return (
-    <span className="size-6 rounded-full bg-muted flex items-center justify-center text-[10px] text-muted-foreground shrink-0">?</span>
-  )
-  if (!imgError) return (
-    <img
-      src={`/headshots/${agent.id}.png`}
-      alt={agent.name}
-      onError={onError}
-      className="size-6 rounded-full object-cover object-top ring-1 ring-zinc-700 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity"
-    />
-  )
-  return (
-    <span className={`size-6 rounded-full flex items-center justify-center text-xs shrink-0 ${AGENT_AVATAR_COLORS[agent.id] || 'bg-zinc-400'}`}>
-      {agent.emoji}
-    </span>
-  )
-}
-
 /** Presentational card — used by DragOverlay */
 export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string }) {
-  const [imgError, setImgError] = useState(false)
-  const agent = AGENTS.find((a) => a.id === task.agent)
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
+  const isComplete = task.checked || columnId === 'done' || columnId === 'confirmed'
 
   return (
     <div className={className}>
@@ -69,7 +45,7 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
       </div>
 
       {/* Title */}
-      <h3 className={`text-[14px] font-medium leading-[1.4] mb-2 ${task.checked ? 'line-through text-muted-foreground' : 'text-zinc-100'}`}>
+      <h3 className={`text-[14px] font-medium leading-[1.4] mb-2 ${isComplete ? 'line-through text-muted-foreground' : 'text-zinc-100'}`}>
         {task.title}
       </h3>
 
@@ -121,7 +97,7 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
 
       {/* Footer: avatar bottom-left, date right */}
       <div className="flex items-center justify-between mt-4">
-        <AgentAvatar agent={agent} imgError={imgError} onError={() => setImgError(true)} />
+        {task.agent && <AgentAvatar agentId={task.agent} size="sm" />}
         {task.date && (
           <span className="text-zinc-500 text-[11px] font-medium tracking-tight uppercase">
             {formatRelativeDate(task.date)}
@@ -168,12 +144,12 @@ export function TaskCard({ task, columnId, gateLabel, childTaskId, onAssign, onD
       <div
         onClick={() => onClick(task, columnId as ColumnId)}
         className={`group relative rounded-xl border border-border bg-card cursor-grab active:cursor-grabbing hover:border-zinc-700 hover:shadow-sm shadow-sm shadow-black/20 select-none ${
-          task.checked ? 'opacity-60' : ''
+          task.checked || columnId === 'done' || columnId === 'confirmed' ? 'opacity-60' : ''
         } ${task.blockedReason ? 'border-l-2 border-l-destructive' : ''}`}
       >
       {/* Delete button — top-right, shows on hover */}
       <button
-        className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive z-10"
+        className="absolute top-2.5 right-2.5 p-1 rounded-md opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10 z-10"
         onClick={(e) => { e.stopPropagation(); onDelete({ id: task.id, title: task.title }) }}
         onPointerDown={(e) => e.stopPropagation()}
       >

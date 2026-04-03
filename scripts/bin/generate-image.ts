@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * CLI wrapper for beacon_exec_gen_image.
+ * CLI wrapper for bakin_exec_gen_image.
  * For debugging — agents use the MCP tool directly.
  *
  * Usage:
@@ -11,8 +11,8 @@
 import { parseArgs } from 'util'
 import { generateImage } from '../lib/generate-image'
 
-console.error('⚠  WARNING: This CLI script bypasses Beacon tracking (no MCP call, no Health metrics, no audit log).')
-console.error('   Agents should use: mcporter call beacon-<agent>.beacon_exec_gen_image ...')
+console.error('⚠  WARNING: This CLI script bypasses Bakin tracking (no MCP call, no Health metrics, no audit log).')
+console.error('   Agents should use: mcporter call bakin-<agent>.bakin_exec_gen_image ...')
 console.error('')
 
 const { values } = parseArgs({

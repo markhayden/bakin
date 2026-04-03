@@ -3,11 +3,11 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testDir = join(tmpdir(), `beacon-test-projects-parser-${Date.now()}`)
+const testDir = join(tmpdir(), `bakin-test-projects-parser-${Date.now()}`)
 const projectsDir = join(testDir, 'projects')
 
 vi.mock('../../../src/core/content-dir', () => ({
-  getBeaconPaths: () => ({ projects: projectsDir }),
+  getBakinPaths: () => ({ projects: projectsDir }),
   getContentDir: () => testDir,
 }))
 

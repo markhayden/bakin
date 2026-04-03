@@ -57,44 +57,44 @@ describe('CLI schedule commands', () => {
   }
 
   describe('cmdScheduleList', () => {
-    it('calls GET /api/plugins/schedule/jobs', async () => {
+    it('calls GET /api/plugins/schedule/', async () => {
       mockJsonResponse({ jobs: [] })
       await cmdScheduleList({})
-      expectGetTo('/api/plugins/schedule/jobs')
+      expectGetTo('/api/plugins/schedule/')
     })
 
-    it('filters to Beacon jobs by default', async () => {
+    it('filters to Bakin jobs by default', async () => {
       mockJsonResponse({
         jobs: [
-          { id: 'j1', displayName: 'Beacon Job', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: true },
-          { id: 'j2', displayName: 'Other Job', isBeaconJob: false, humanSchedule: 'weekly', paused: false, enabled: true },
+          { id: 'j1', displayName: 'Bakin Job', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: true },
+          { id: 'j2', displayName: 'Other Job', isBakinJob: false, humanSchedule: 'weekly', paused: false, enabled: true },
         ],
       })
       await cmdScheduleList({})
-      // Should only show Beacon job (1 header line + 1 separator + 1 job = logged displayName once)
+      // Should only show Bakin job (1 header line + 1 separator + 1 job = logged displayName once)
       const output = consoleSpy.mock.calls.map(c => c[0]).join('\n')
-      expect(output).toContain('Beacon Job')
+      expect(output).toContain('Bakin Job')
       expect(output).not.toContain('Other Job')
     })
 
     it('shows all jobs with --all flag', async () => {
       mockJsonResponse({
         jobs: [
-          { id: 'j1', displayName: 'Beacon Job', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: true },
-          { id: 'j2', displayName: 'Other Job', isBeaconJob: false, humanSchedule: 'weekly', paused: false, enabled: true },
+          { id: 'j1', displayName: 'Bakin Job', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: true },
+          { id: 'j2', displayName: 'Other Job', isBakinJob: false, humanSchedule: 'weekly', paused: false, enabled: true },
         ],
       })
       await cmdScheduleList({ all: true })
       const output = consoleSpy.mock.calls.map(c => c[0]).join('\n')
-      expect(output).toContain('Beacon Job')
+      expect(output).toContain('Bakin Job')
       expect(output).toContain('Other Job')
     })
 
     it('filters by agent', async () => {
       mockJsonResponse({
         jobs: [
-          { id: 'j1', displayName: 'Chef Job', agentId: 'chef', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: true },
-          { id: 'j2', displayName: 'Pixel Job', agentId: 'pixel', isBeaconJob: true, humanSchedule: 'weekly', paused: false, enabled: true },
+          { id: 'j1', displayName: 'Chef Job', agentId: 'chef', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: true },
+          { id: 'j2', displayName: 'Pixel Job', agentId: 'pixel', isBakinJob: true, humanSchedule: 'weekly', paused: false, enabled: true },
         ],
       })
       await cmdScheduleList({ agent: 'chef' })
@@ -106,7 +106,7 @@ describe('CLI schedule commands', () => {
     it('outputs JSON with --json flag', async () => {
       mockJsonResponse({
         jobs: [
-          { id: 'j1', displayName: 'Test', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: true },
+          { id: 'j1', displayName: 'Test', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: true },
         ],
       })
       await cmdScheduleList({ json: true })
@@ -125,9 +125,9 @@ describe('CLI schedule commands', () => {
     it('shows status correctly for paused/active/disabled', async () => {
       mockJsonResponse({
         jobs: [
-          { id: 'j1', displayName: 'Paused', isBeaconJob: true, humanSchedule: 'daily', paused: true, enabled: true },
-          { id: 'j2', displayName: 'Active', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: true },
-          { id: 'j3', displayName: 'Disabled', isBeaconJob: true, humanSchedule: 'daily', paused: false, enabled: false },
+          { id: 'j1', displayName: 'Paused', isBakinJob: true, humanSchedule: 'daily', paused: true, enabled: true },
+          { id: 'j2', displayName: 'Active', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: true },
+          { id: 'j3', displayName: 'Disabled', isBakinJob: true, humanSchedule: 'daily', paused: false, enabled: false },
         ],
       })
       await cmdScheduleList({ all: true })
@@ -139,10 +139,10 @@ describe('CLI schedule commands', () => {
   })
 
   describe('cmdScheduleAdd', () => {
-    it('calls POST /api/plugins/schedule/jobs with correct payload', async () => {
+    it('calls POST /api/plugins/schedule/ with correct payload', async () => {
       mockJsonResponse({ ok: true, jobId: 'new-1', cron: '0 9 * * *', human: 'Every day at 9:00 AM' })
       await cmdScheduleAdd({ name: 'Daily Check', schedule: 'every day at 9am', agent: 'chef' })
-      expectPostTo('/api/plugins/schedule/jobs', {
+      expectPostTo('/api/plugins/schedule/', {
         name: 'Daily Check',
         schedule: 'every day at 9am',
         agentId: 'chef',
@@ -167,7 +167,7 @@ describe('CLI schedule commands', () => {
         workflow: 'image-social-post',
         prompt: 'Create daily social media image',
       })
-      expectPostTo('/api/plugins/schedule/jobs', {
+      expectPostTo('/api/plugins/schedule/', {
         name: 'Weekday Post',
         schedule: 'every weekday at 9am',
         agentId: 'pixel',
@@ -178,65 +178,68 @@ describe('CLI schedule commands', () => {
   })
 
   describe('cmdSchedulePause', () => {
-    it('calls POST /api/plugins/schedule/jobs/pause with pause action', async () => {
+    it('calls POST /api/plugins/schedule/job-1/pause with pause action', async () => {
       mockJsonResponse({ ok: true })
       await cmdSchedulePause('job-1', {})
-      expectPostTo('/api/plugins/schedule/jobs/pause', { jobId: 'job-1', action: 'pause', pauseUntil: undefined })
+      expectPostTo('/api/plugins/schedule/job-1/pause', { action: 'pause', pauseUntil: undefined })
     })
 
     it('passes pauseUntil when --until provided', async () => {
       mockJsonResponse({ ok: true })
       await cmdSchedulePause('job-1', { until: '2026-04-01' })
-      expectPostTo('/api/plugins/schedule/jobs/pause', { jobId: 'job-1', action: 'pause', pauseUntil: '2026-04-01' })
+      expectPostTo('/api/plugins/schedule/job-1/pause', { action: 'pause', pauseUntil: '2026-04-01' })
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('until 2026-04-01'))
     })
 
     it('sends skip action with count when --skip provided', async () => {
       mockJsonResponse({ ok: true })
       await cmdSchedulePause('job-1', { skip: 3 })
-      expectPostTo('/api/plugins/schedule/jobs/pause', { jobId: 'job-1', action: 'skip', skipN: 3 })
+      expectPostTo('/api/plugins/schedule/job-1/pause', { action: 'skip', skipN: 3 })
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Skipping next 3'))
     })
   })
 
   describe('cmdScheduleResume', () => {
-    it('calls POST /api/plugins/schedule/jobs/pause with resume action', async () => {
+    it('calls POST /api/plugins/schedule/job-1/pause with resume action', async () => {
       mockJsonResponse({ ok: true })
       await cmdScheduleResume('job-1')
-      expectPostTo('/api/plugins/schedule/jobs/pause', { jobId: 'job-1', action: 'resume' })
+      expectPostTo('/api/plugins/schedule/job-1/pause', { action: 'resume' })
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Resumed'))
     })
   })
 
   describe('cmdScheduleRemove', () => {
-    it('calls POST /api/plugins/schedule/jobs/delete', async () => {
+    it('calls DELETE /api/plugins/schedule/job-1', async () => {
       mockJsonResponse({ ok: true })
       await cmdScheduleRemove('job-1')
-      expectPostTo('/api/plugins/schedule/jobs/delete', { jobId: 'job-1' })
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/plugins/schedule/job-1'),
+        expect.objectContaining({ method: 'DELETE' })
+      )
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Removed'))
     })
   })
 
   describe('cmdScheduleRun', () => {
-    it('calls POST /api/plugins/schedule/jobs/run-now', async () => {
+    it('calls POST /api/plugins/schedule/job-1/run', async () => {
       mockJsonResponse({ ok: true })
       await cmdScheduleRun('job-1')
-      expectPostTo('/api/plugins/schedule/jobs/run-now', { jobId: 'job-1' })
+      expectPostTo('/api/plugins/schedule/job-1/run', {})
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Triggered'))
     })
   })
 
   describe('cmdScheduleRuns', () => {
-    it('calls GET /api/plugins/schedule/runs with jobId and limit', async () => {
+    it('calls GET /api/plugins/schedule/job-1/runs', async () => {
       mockJsonResponse({ runs: [] })
       await cmdScheduleRuns('job-1', {})
-      expectGetTo('/api/plugins/schedule/runs?jobId=job-1&limit=20')
+      expectGetTo('/api/plugins/schedule/job-1/runs?limit=20')
     })
 
     it('uses custom limit', async () => {
       mockJsonResponse({ runs: [] })
       await cmdScheduleRuns('job-1', { limit: 5 })
-      expectGetTo('/api/plugins/schedule/runs?jobId=job-1&limit=5')
+      expectGetTo('/api/plugins/schedule/job-1/runs?limit=5')
     })
 
     it('shows empty message when no runs', async () => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
 export interface FlatTask extends Task {
@@ -19,10 +19,14 @@ function matchesSearch(task: Task, q: string): boolean {
   )
 }
 
-export function useTaskFilters(columns: TaskColumns) {
-  const [search, setSearch] = useState('')
-  const [agentFilter, setAgentFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
+interface TaskFilterState {
+  search: string
+  agentFilter: string
+  statusFilter: string[]
+}
+
+export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
+  const { search, agentFilter, statusFilter } = state
 
   const filteredColumns = useMemo(() => {
     const result = {} as TaskColumns
@@ -45,15 +49,9 @@ export function useTaskFilters(columns: TaskColumns) {
     let filtered = flat
     if (search) filtered = filtered.filter(t => matchesSearch(t, search))
     if (agentFilter !== 'all') filtered = filtered.filter(t => t.agent === agentFilter)
-    if (statusFilter !== 'all') filtered = filtered.filter(t => t.status === statusFilter)
+    if (statusFilter.length > 0) filtered = filtered.filter(t => statusFilter.includes(t.status))
     return filtered
   }, [columns, search, agentFilter, statusFilter])
 
-  return {
-    search, setSearch,
-    agentFilter, setAgentFilter,
-    statusFilter, setStatusFilter,
-    filteredColumns,
-    allTasksFlat,
-  }
+  return { filteredColumns, allTasksFlat }
 }

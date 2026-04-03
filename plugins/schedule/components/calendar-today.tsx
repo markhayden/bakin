@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react'
 import { Clock } from 'lucide-react'
-import { AgentBadge } from './agent-badge'
 import {
   AGENT_STYLES,
   FALLBACK_STYLE,
@@ -79,7 +78,6 @@ export function CalendarToday({
                 className={`
                   flex gap-4 px-4 py-3 min-h-[56px]
                   ${isCurrent ? 'bg-blue-500/[0.04]' : ''}
-                  ${isPast ? 'opacity-50' : ''}
                 `}
               >
                 {/* Time gutter */}
@@ -102,6 +100,7 @@ export function CalendarToday({
                           job={job}
                           onClick={() => onSelectJob(job)}
                           expanded
+                          past={isPast}
                         />
                       ))}
                     </div>

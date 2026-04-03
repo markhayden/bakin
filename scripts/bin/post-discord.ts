@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * CLI wrapper for beacon_exec_post_discord.
+ * CLI wrapper for bakin_exec_post_discord.
  * For debugging — agents use the MCP tool directly.
  *
  * Usage:
@@ -10,8 +10,8 @@
 import { parseArgs } from 'util'
 import { postDiscord } from '../lib/post-discord'
 
-console.error('⚠  WARNING: This CLI script bypasses Beacon tracking (no MCP call, no Health metrics, no audit log).')
-console.error('   Agents should use: mcporter call beacon-<agent>.beacon_exec_post_discord ...')
+console.error('⚠  WARNING: This CLI script bypasses Bakin tracking (no MCP call, no Health metrics, no audit log).')
+console.error('   Agents should use: mcporter call bakin-<agent>.bakin_exec_post_discord ...')
 console.error('')
 
 const { values } = parseArgs({

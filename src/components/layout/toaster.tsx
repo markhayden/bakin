@@ -10,9 +10,9 @@ const ICONS = {
 } as const
 
 const COLORS = {
-  success: 'border-green-500/50 bg-green-500/80 text-green-100',
-  error: 'border-red-500/50 bg-red-500/80 text-red-100',
-  info: 'border-zinc-500/50 bg-zinc-700/90 text-zinc-100',
+  success: 'border-success/50 bg-success/80 text-white',
+  error: 'border-destructive/50 bg-destructive/80 text-white',
+  info: 'border-muted-foreground/50 bg-muted text-foreground',
 } as const
 
 export function Toaster() {

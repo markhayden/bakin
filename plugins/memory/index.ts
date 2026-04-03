@@ -2,10 +2,10 @@
  * Memory plugin — server entry point.
  * Registers API routes for audit log, agent workspaces, and gateway logs.
  */
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
-import { parseAuditLog, filterAuditEntries } from './audit-parser'
-import { parseGatewayLog } from './gateway-parser'
-import { AGENT_IDS } from '../../src/lib/agents-data'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import { parseAuditLog, filterAuditEntries } from './lib/audit-parser'
+import { parseGatewayLog } from './lib/gateway-parser'
+import { getAgentIds } from '../team/lib/openclaw-adapter'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
@@ -26,10 +26,16 @@ function getWorkspacePath(agentId: string): string {
   return path.join(os.homedir(), '.openclaw', 'workspaces', agentId)
 }
 
-const memoryPlugin: MCPlugin = {
+const memoryPlugin: BakinPlugin = {
   id: 'memory',
   name: 'Memory',
   version: '1.0.0',
+
+  settingsSchema: {
+    fields: [
+      { key: 'retentionDays', type: 'number', label: 'Audit retention (days)', description: 'Auto-archive audit entries older than this', default: 90 },
+    ],
+  },
 
   navItems: [
     { id: 'memory', label: 'Memory', icon: 'Brain', href: '/memory', order: 40 },
@@ -44,7 +50,7 @@ const memoryPlugin: MCPlugin = {
     ctx.registerRoute({
       path: '/audit',
       method: 'GET',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
           const content = ctx.storage.read('audit.jsonl')
           if (!content) {
@@ -71,12 +77,12 @@ const memoryPlugin: MCPlugin = {
     ctx.registerRoute({
       path: '/workspace',
       method: 'GET',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
           const url = new URL(req.url)
           const agentId = url.searchParams.get('agentId')
 
-          if (!agentId || !AGENT_IDS.includes(agentId)) {
+          if (!agentId || !getAgentIds().includes(agentId)) {
             return Response.json({ error: 'Invalid agentId' }, { status: 400 })
           }
 
@@ -123,7 +129,7 @@ const memoryPlugin: MCPlugin = {
     ctx.registerRoute({
       path: '/gateway',
       method: 'GET',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
           const url = new URL(req.url)
           const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10)

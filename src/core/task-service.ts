@@ -1,5 +1,5 @@
 /**
- * Task service layer for Beacon.
+ * Task service layer for Bakin.
  *
  * Shared functions that both REST route handlers and MCP tool handlers call.
  * Each function wraps core taskboard mutations with their required side effects:
@@ -13,35 +13,28 @@ import { createLogger } from './logger'
 import { indexCompletedTask } from './antfly'
 import { checkAndContinueDependents } from './continuation'
 import * as openclaw from './openclaw-client'
-import {
-  addTaskLog,
-  blockTask,
-  createTask,
-  moveTask,
-  readTaskboard,
-  setDependency,
-} from '../../plugins/tasks/taskboard'
-import { createInstance, loadInstance } from '../../plugins/workflows/runtime'
-import { matchWorkflow } from '../../plugins/workflows/matcher'
-import { updateTask } from '../../plugins/tasks/taskboard'
+import { getHookRegistry } from '../lib/plugin-registry'
 
 const log = createLogger('task-service')
+const hooks = () => getHookRegistry()
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function broadcast(data: Record<string, unknown>): void {
-  const fn = (globalThis as any).__beaconBroadcast
+  const fn = (globalThis as any).__bakinBroadcast
   if (fn) fn(data)
 }
 
-function resolveTitle(id: string): string {
+async function resolveTitle(id: string): Promise<string> {
   try {
-    const { columns } = readTaskboard()
-    for (const col of Object.values(columns)) {
-      const found = (col as Array<{ id: string; title: string }>).find(t => t.id === id)
-      if (found) return found.title
+    const board = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string }>> }>('tasks.readTaskboard', {})
+    if (board) {
+      for (const col of Object.values(board.columns)) {
+        const found = col.find(t => t.id === id)
+        if (found) return found.title
+      }
     }
   } catch { /* best effort */ }
   return id
@@ -73,7 +66,7 @@ export async function logProgress(
 ): Promise<void> {
   // Broadcast to live activity feed first (never block on persistence)
   broadcast({ type: 'activity', agent, message, ts: new Date().toISOString(), taskId, ...(channel ? { channel } : {}) })
-  await addTaskLog(taskId, agent, message)
+  await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author: agent, message })
 }
 
 /**
@@ -88,22 +81,24 @@ export async function moveTaskWithEffects(
 ): Promise<void> {
   // Workflow done-guard: workflow tasks can only reach Done via the workflow engine
   if (to.toLowerCase() === 'done' && !opts?.skipDoneGuard) {
-    const { columns } = readTaskboard()
-    for (const col of Object.values(columns)) {
-      const task = (col as Array<{ id: string; workflowId?: string }>).find(t => t.id === taskId)
-      if (task?.workflowId) {
-        const instance = loadInstance(task.id)
-        if (instance && instance.status !== 'complete') {
-          throw new Error('Workflow tasks cannot be moved to Done directly. Use beacon_submit_step — the workflow engine manages task completion.')
+    const board = await hooks().invoke<{ columns: Record<string, Array<{ id: string; workflowId?: string }>> }>('tasks.readTaskboard', {})
+    if (board) {
+      for (const col of Object.values(board.columns)) {
+        const task = col.find(t => t.id === taskId)
+        if (task?.workflowId) {
+          const instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
+          if (instance && instance.status !== 'complete') {
+            throw new Error('Workflow tasks cannot be moved to Done directly. Use bakin_submit_step — the workflow engine manages task completion.')
+          }
+          break
         }
-        break
       }
     }
   }
 
-  await moveTask(taskId, to, opts?.from)
+  await hooks().invoke<void>('tasks.moveTask', { identifier: taskId, to, from: opts?.from })
 
-  const title = resolveTitle(taskId)
+  const title = await resolveTitle(taskId)
   appendAudit(getContentDir(), 'task.moved', agent, { id: taskId, title, from: opts?.from, to }, opts?.channel)
 
   // Side effects when moved to done
@@ -116,9 +111,7 @@ export async function moveTaskWithEffects(
 
   // Auto-check project checklist items when task reaches done or confirmed
   if (to.toLowerCase() === 'done' || to.toLowerCase() === 'confirmed') {
-    import('../../plugins/projects/lib/project-service')
-      .then(m => m.autoCheckLinkedItem(taskId))
-      .catch(() => {}) // projects plugin may not be loaded
+    hooks().invoke<void>('projects.autoCheckLinkedItem', { taskId }).catch(() => {})
   }
 
   // Auto-unblock parent when a child workflow task moves out of blocked
@@ -130,12 +123,12 @@ export async function moveTaskWithEffects(
       if (fromLower === 'blocked') {
         const parentTaskId = taskId.slice(0, dashIdx)
         try {
-          const { columns } = readTaskboard()
-          const parentBlocked = (columns.blocked as Array<{ id: string; blockedReason?: string }>)
+          const board2 = await hooks().invoke<{ columns: Record<string, Array<{ id: string; blockedReason?: string }>> }>('tasks.readTaskboard', {})
+          const parentBlocked = (board2?.columns.blocked || [])
             .find(t => t.id === parentTaskId)
           if (parentBlocked?.blockedReason?.startsWith('Child workflow blocked:')) {
-            await moveTask(parentTaskId, 'todo', 'blocked')
-            const parentTitle = resolveTitle(parentTaskId)
+            await hooks().invoke<void>('tasks.moveTask', { identifier: parentTaskId, to: 'todo', from: 'blocked' })
+            const parentTitle = await resolveTitle(parentTaskId)
             appendAudit(getContentDir(), 'task.moved', 'system', {
               id: parentTaskId, title: parentTitle, from: 'blocked', to: 'todo',
               reason: 'Auto-unblocked: child task unblocked',
@@ -161,8 +154,8 @@ export async function blockTaskWithEffects(
   agent: string,
   channel?: Channel,
 ): Promise<void> {
-  await blockTask(taskId, reason, agent)
-  const title = resolveTitle(taskId)
+  await hooks().invoke<void>('tasks.blockTask', { identifier: taskId, reason, agent })
+  const title = await resolveTitle(taskId)
   const contentDir = getContentDir()
   appendAudit(contentDir, 'task.blocked', agent, { id: taskId, title, reason }, channel)
 
@@ -170,10 +163,10 @@ export async function blockTaskWithEffects(
   const dashIdx = taskId.indexOf('--')
   if (dashIdx > 0) {
     const parentTaskId = taskId.slice(0, dashIdx)
-    const parentTitle = resolveTitle(parentTaskId)
+    const parentTitle = await resolveTitle(parentTaskId)
     const childReason = `Child workflow blocked: ${reason}`
     try {
-      await blockTask(parentTaskId, childReason, 'system')
+      await hooks().invoke<void>('tasks.blockTask', { identifier: parentTaskId, reason: childReason, agent: 'system' })
       appendAudit(contentDir, 'task.blocked', 'system', { id: parentTaskId, title: parentTitle, reason: childReason, blockedBy: taskId }, channel)
       log.info('Parent task blocked due to child', { parentTaskId, childTaskId: taskId })
     } catch (err) {
@@ -200,31 +193,31 @@ export async function createTaskWithEffects(opts: {
   channel?: Channel
 }): Promise<{ id: string; workflowId?: string; suggestedWorkflow?: string }> {
   // Auto-match workflow if none was explicitly provided
-  const suggested = !opts.workflowId ? (matchWorkflow(opts.title, opts.description) || undefined) : undefined
+  const suggested = !opts.workflowId ? (await hooks().invoke<string | null>('workflows.matchWorkflow', { title: opts.title, description: opts.description }) || undefined) : undefined
   const effectiveWorkflowId = opts.workflowId || undefined
 
-  const task = await createTask(
-    opts.title,
-    opts.column,
-    opts.assignee,
-    opts.description,
-    effectiveWorkflowId,
-    opts.createdBy,
-    undefined, // id — let it auto-generate
-    opts.parentId,
-    opts.projectId,
-  )
+  const task = await hooks().invoke<{ id: string }>('tasks.createTask', {
+    title: opts.title,
+    column: opts.column,
+    assignee: opts.assignee,
+    description: opts.description,
+    workflowId: effectiveWorkflowId,
+    createdBy: opts.createdBy,
+    parentId: opts.parentId,
+    projectId: opts.projectId,
+  })
+  if (!task) throw new Error('Failed to create task')
 
   // Start workflow instance if one was specified
   if (effectiveWorkflowId) {
     try {
       const contentDir = getContentDir()
-      createInstance(task.id, effectiveWorkflowId, contentDir, opts.assignee)
+      await hooks().invoke<void>('workflows.createInstance', { taskId: task.id, workflowId: effectiveWorkflowId, assignee: opts.assignee })
       log.info('Started workflow', { taskId: task.id, workflowId: effectiveWorkflowId })
       broadcast({ type: 'workflow_started', taskId: task.id, workflowId: effectiveWorkflowId })
     } catch (err) {
       log.error('Failed to start workflow', { taskId: task.id, workflowId: effectiveWorkflowId, error: (err as Error).message })
-      await updateTask(task.id, { workflowId: undefined })
+      await hooks().invoke<void>('tasks.updateTask', { identifier: task.id, updates: { workflowId: undefined } })
     }
   }
 
@@ -241,7 +234,7 @@ export async function createTaskWithEffects(opts: {
 
 /**
  * Report a task as complete.
- * Rejects workflow tasks (they must use beacon_submit_step).
+ * Rejects workflow tasks (they must use bakin_submit_step).
  * Moves to done, logs summary, notifies orchestrator.
  */
 export async function reportComplete(
@@ -251,23 +244,25 @@ export async function reportComplete(
   channel?: Channel,
 ): Promise<void> {
   // Reject workflow tasks
-  const { columns } = readTaskboard()
-  for (const col of Object.values(columns)) {
-    const task = (col as Array<{ id: string; workflowId?: string }>).find(t => t.id === taskId)
-    if (task?.workflowId) {
-      const instance = loadInstance(task.id)
-      if (instance && instance.status !== 'complete') {
-        throw new Error('This is a workflow task — use beacon_submit_step to submit your step output instead of beacon_report_complete.')
+  const board = await hooks().invoke<{ columns: Record<string, Array<{ id: string; workflowId?: string }>> }>('tasks.readTaskboard', {})
+  if (board) {
+    for (const col of Object.values(board.columns)) {
+      const task = col.find(t => t.id === taskId)
+      if (task?.workflowId) {
+        const instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
+        if (instance && instance.status !== 'complete') {
+          throw new Error('This is a workflow task — use bakin_submit_step to submit your step output instead of bakin_report_complete.')
+        }
+        break
       }
-      break
     }
   }
 
-  await addTaskLog(taskId, agent, `Task complete: ${summary}`)
+  await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author: agent, message: `Task complete: ${summary}` })
   await moveTaskWithEffects(taskId, 'done', agent, { skipDoneGuard: true, channel })
 
   // Notify orchestrator
-  const title = resolveTitle(taskId)
+  const title = await resolveTitle(taskId)
   try {
     await openclaw.sendMessage('main', `TASK COMPLETE: ${title} — ${summary}`)
   } catch (err) {
@@ -283,7 +278,7 @@ export async function setDependencyWithEffects(
   dependsOn: string,
   channel?: Channel,
 ): Promise<void> {
-  await setDependency(taskId, dependsOn)
+  await hooks().invoke<void>('tasks.setDependency', { taskId, dependsOnId: dependsOn })
   appendAudit(getContentDir(), 'task.dependency_set', 'api', { id: taskId, dependsOn }, channel)
 }
 
@@ -291,13 +286,14 @@ export async function setDependencyWithEffects(
  * Get task details by ID.
  * Returns the task object or null if not found.
  */
-export function getTaskDetails(taskId: string): {
+export async function getTaskDetails(taskId: string): Promise<{
   task: Record<string, unknown>
   column: string
-} | null {
-  const { columns } = readTaskboard()
-  for (const [colName, tasks] of Object.entries(columns)) {
-    const task = (tasks as Array<{ id: string } & Record<string, unknown>>).find(t => t.id === taskId)
+} | null> {
+  const board = await hooks().invoke<{ columns: Record<string, Array<{ id: string } & Record<string, unknown>>> }>('tasks.readTaskboard', {})
+  if (!board) return null
+  for (const [colName, tasks] of Object.entries(board.columns)) {
+    const task = tasks.find(t => t.id === taskId)
     if (task) {
       return { task: task as Record<string, unknown>, column: colName }
     }

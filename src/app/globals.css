@@ -46,48 +46,116 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
   --color-surface: var(--surface);
+  --color-surface-low: var(--surface-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-high: var(--surface-high);
+  --color-surface-highest: var(--surface-highest);
+  --color-surface-bright: var(--surface-bright);
   --color-surface-elevated: var(--surface-elevated);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent-container: var(--accent-container);
+  --color-selection: var(--selection);
+  --color-selection-foreground: var(--selection-foreground);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning-foreground: var(--warning-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-status-backlog: var(--status-backlog);
+  --color-status-todo: var(--status-todo);
+  --color-status-in-progress: var(--status-in-progress);
+  --color-status-review: var(--status-review);
+  --color-status-done: var(--status-done);
+  --color-status-blocked: var(--status-blocked);
+  --color-status-confirmed: var(--status-confirmed);
 }
 
 :root {
-  --background: #0a0a0a;
-  --foreground: #ededef;
-  --card: #141414;
-  --card-foreground: #ededef;
-  --popover: #141414;
-  --popover-foreground: #ededef;
-  --primary: #ededef;
-  --primary-foreground: #0a0a0a;
-  --secondary: #1a1a1a;
-  --secondary-foreground: #ededef;
-  --muted: #1a1a1a;
-  --muted-foreground: #8a8a8a;
-  --accent: #5e6ad2;
-  --accent-foreground: #ededef;
+  /* Surface hierarchy (darkest → lightest) */
+  --background: #0f0e0e;
+  --surface: #0f0e0e;
+  --surface-low: #151313;
+  --surface-container: #1b1919;
+  --surface-high: #211f1f;
+  --surface-highest: #272525;
+  --surface-bright: #2e2b2b;
+  --surface-elevated: #1b1919;
+
+  --foreground: #ffffff;
+  --card: #151313;
+  --card-foreground: #ffffff;
+  --popover: #1b1919;
+  --popover-foreground: #ffffff;
+
+  /* Primary — Green (default CTA) */
+  --primary: #22c55e;
+  --primary-foreground: #052e16;
+
+  /* Secondary — Subtle surface action */
+  --secondary: #272525;
+  --secondary-foreground: #ffffff;
+
+  /* Accent — Neon Pink (branding, links, highlights) */
+  --accent: #ff007f;
+  --accent-foreground: #ffffff;
+  --accent-dim: #e30071;
+  --accent-container: #ff709e;
+
+  /* Selection — Electric Yellow */
+  --selection: #eaea00;
+  --selection-foreground: #555500;
+
+  --muted: #1b1919;
+  --muted-foreground: #aeaaaa;
   --destructive: #ef4444;
-  --border: rgba(255, 255, 255, 0.08);
-  --input: rgba(255, 255, 255, 0.12);
-  --ring: #5e6ad2;
+  --warning: #f59e0b;
+  --warning-foreground: #451a03;
+
+  /* Outline */
+  --border: rgba(74, 71, 71, 0.3);
+  --outline: #787574;
+  --outline-variant: #4a4747;
+  --input: rgba(74, 71, 71, 0.3);
+  --ring: #22c55e;
   --radius: 0.5rem;
-  --surface: #141414;
-  --surface-elevated: #1a1a1a;
-  --success: #4ade80;
-  --warning: #eab308;
-  --sidebar: #0a0a0a;
-  --sidebar-foreground: #8a8a8a;
-  --sidebar-primary: #ededef;
-  --sidebar-primary-foreground: #0a0a0a;
+
+  --success: #22c55e;
+  --success-foreground: #052e16;
+
+  /* Sidebar */
+  --sidebar: #0f0e0e;
+  --sidebar-foreground: #aeaaaa;
+  --sidebar-primary: #22c55e;
+  --sidebar-primary-foreground: #052e16;
   --sidebar-accent: rgba(255, 255, 255, 0.06);
-  --sidebar-accent-foreground: #ededef;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #5e6ad2;
-  --chart-1: #5e6ad2;
-  --chart-2: #4ade80;
-  --chart-3: #eab308;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(74, 71, 71, 0.2);
+  --sidebar-ring: #22c55e;
+
+  /* Charts */
+  --chart-1: #22c55e;
+  --chart-2: #ff007f;
+  --chart-3: #eaea00;
   --chart-4: #ef4444;
-  --chart-5: #8a8a8a;
+  --chart-5: #aeaaaa;
+  /* Status colors for task board */
+  --status-backlog: #71717a;
+  --status-todo: #a855f7;
+  --status-in-progress: #3b82f6;
+  --status-review: #f59e0b;
+  --status-done: #22c55e;
+  --status-blocked: #ef4444;
+  --status-confirmed: #a855f7;
+  /* Agent accent colors (overridden at runtime by AgentThemeProvider) */
+  --agent-main-operator: #60a5fa;
+  --agent-chef: #4ade80;
+  --agent-pixel: #a78bfa;
+  --agent-rolo: #fb923c;
+  --agent-patch: #a1a1aa;
+  --agent-explorer: #34d399;
+  --agent-trainer: #22d3ee;
+  --agent-coach: #fbbf24;
 }
 
 @layer base {
@@ -118,10 +186,15 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* Date/time input icons — visible on dark backgrounds */
+::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+}
+
 /* Kanban drag states */
 .drag-over {
-  background: rgba(94, 106, 210, 0.06) !important;
-  border-color: rgba(94, 106, 210, 0.2) !important;
+  background: rgba(255, 0, 127, 0.06) !important;
+  border-color: rgba(255, 0, 127, 0.2) !important;
 }
 .dragging {
   opacity: 0.5;
@@ -140,20 +213,20 @@
 .prose-invert h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.75rem; }
 .prose-invert h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem; margin-top: 1.5rem; }
 .prose-invert h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; margin-top: 1rem; }
-.prose-invert p { margin-bottom: 0.75rem; color: #8a8a8a; line-height: 1.6; }
+.prose-invert p { margin-bottom: 0.75rem; color: #aeaaaa; line-height: 1.6; }
 .prose-invert ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }
 .prose-invert ol { list-style: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }
-.prose-invert li { margin-bottom: 0.25rem; color: #8a8a8a; }
-.prose-invert code { background: #1a1a1a; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875rem; }
-.prose-invert pre { background: #141414; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 0.75rem; }
+.prose-invert li { margin-bottom: 0.25rem; color: #aeaaaa; }
+.prose-invert code { background: #1b1919; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875rem; }
+.prose-invert pre { background: #151313; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 0.75rem; }
 .prose-invert pre code { background: none; padding: 0; }
-.prose-invert a { color: #5e6ad2; text-decoration: none; }
+.prose-invert a { color: var(--accent); text-decoration: none; }
 .prose-invert a:hover { text-decoration: underline; }
-.prose-invert strong { color: #ededef; }
+.prose-invert strong { color: #ffffff; }
 .prose-invert table { width: 100%; border-collapse: collapse; margin-bottom: 0.75rem; }
 .prose-invert th, .prose-invert td { border: 1px solid rgba(255,255,255,0.08); padding: 0.5rem 0.75rem; text-align: left; }
-.prose-invert th { font-weight: 600; color: #ededef; }
-.prose-invert td { color: #8a8a8a; }
+.prose-invert th { font-weight: 600; color: #ffffff; }
+.prose-invert td { color: #aeaaaa; }
 
 /* Kanban drop indicator marching ants */
 @keyframes march {

@@ -107,7 +107,16 @@ export function CalendarMonthly({
     const map = new Map<number, ScheduleJob[]>()
     const days = getDaysInMonth(year, month)
     for (const day of days) {
-      const matches = jobs.filter(j => jobFiringOnDay(j, day))
+      const matches = jobs.filter(j => {
+        if (!jobFiringOnDay(j, day)) return false
+        // Only show on or after the job's creation date
+        if (j.createdAt) {
+          const created = new Date(j.createdAt)
+          const createdDay = new Date(created.getFullYear(), created.getMonth(), created.getDate())
+          if (day < createdDay) return false
+        }
+        return true
+      })
       if (matches.length > 0) map.set(day.getDate(), matches)
     }
     return map
@@ -156,6 +165,8 @@ export function CalendarMonthly({
 
           const dayJobs = jobsByDay.get(date.getDate()) || []
           const hasJobs = dayJobs.length > 0
+          const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+          const isPast = date.getTime() < todayStart.getTime()
           const MAX_SHOW = 3
 
           return (
@@ -179,20 +190,20 @@ export function CalendarMonthly({
               </div>
 
               {/* Job indicators */}
-              <div className="flex flex-col gap-1">
+              <div className={`flex flex-col gap-1 ${isPast ? 'opacity-35 saturate-[0.3]' : ''}`}>
                 {dayJobs.slice(0, MAX_SHOW).map(j => (
                   <button
                     key={j.id}
                     onClick={() => onSelectJob(j)}
-                    className="group/dot flex items-center gap-1.5 w-full hover:bg-white/[0.04] rounded px-1 py-0.5 -mx-1 transition-colors"
+                    className={`group/dot flex items-center gap-1.5 w-full hover:bg-white/[0.04] rounded px-1 py-0.5 -mx-1 transition-colors ${isPast ? 'hover:opacity-60' : ''}`}
                   >
                     <span
                       className="shrink-0 transition-transform group-hover/dot:scale-110"
-                      style={{ filter: `drop-shadow(0 0 3px ${AGENT_DOT_GLOW[j.agentId || ''] || 'transparent'})` }}
+                      style={{ filter: isPast ? 'none' : `drop-shadow(0 0 3px ${AGENT_DOT_GLOW[j.agentId || ''] || 'transparent'})` }}
                     >
                       <AgentBadge agentId={j.agentId} size="sm" showName={false} />
                     </span>
-                    <span className="text-[10px] text-zinc-400 truncate group-hover/dot:text-zinc-300 transition-colors">
+                    <span className={`text-[10px] truncate transition-colors ${isPast ? 'text-zinc-600' : 'text-zinc-400 group-hover/dot:text-zinc-300'}`}>
                       {j.displayName || j.id}
                     </span>
                   </button>

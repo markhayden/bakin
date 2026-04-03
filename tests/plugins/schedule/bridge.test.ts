@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { BeaconJobMeta, ScheduleSidecar } from '@mc/schedule/types'
+import type { BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
 
-const testDir = join(tmpdir(), `beacon-test-bridge-${Date.now()}`)
+const testDir = join(tmpdir(), `bakin-test-bridge-${Date.now()}`)
 const sidecarDir = join(testDir, 'schedule')
 const sidecarPath = join(sidecarDir, 'sidecar.json')
 
@@ -55,8 +55,23 @@ vi.mock('../../../plugins/tasks/taskboard', () => ({
   readTaskboard: vi.fn(() => mockTaskboard),
 }))
 
+// Mock the hook registry so getHookRegistry().invoke() routes to the taskboard mock
+const mockHookRegistry = {
+  invoke: vi.fn(async <R>(name: string, _data: unknown): Promise<R | undefined> => {
+    if (name === 'tasks.readTaskboard') return mockTaskboard as R
+    if (name === 'tasks.createTask') return mockCreateTask(_data) as R
+    return undefined
+  }),
+  register: vi.fn(),
+  has: vi.fn(() => false),
+}
+
+vi.mock('../../../src/lib/plugin-registry', () => ({
+  getHookRegistry: () => mockHookRegistry,
+}))
+
 // Mock OpenClaw cron wrappers
-vi.mock('@mc/schedule/lib/openclaw-cron', () => ({
+vi.mock('@bakin/schedule/lib/openclaw-cron', () => ({
   cronAdd: vi.fn(() => Promise.resolve('new-job')),
   cronEdit: vi.fn(() => Promise.resolve()),
   cronRemove: vi.fn(() => Promise.resolve()),
@@ -64,12 +79,12 @@ vi.mock('@mc/schedule/lib/openclaw-cron', () => ({
   cronList: vi.fn(() => Promise.resolve([])),
 }))
 
-import { readSidecar, writeSidecar, upsertJob, getJob } from '@mc/schedule/lib/sidecar'
+import { readSidecar, writeSidecar, upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 
-function makeMeta(overrides: Partial<BeaconJobMeta> = {}): BeaconJobMeta {
+function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
   return {
     jobId: 'test-job',
-    isBeaconJob: true,
+    isBakinJob: true,
     displayName: 'Test Job',
     agentId: 'chef',
     owner: 'main-operator',
@@ -92,7 +107,7 @@ function writeSidecarFile(sidecar: ScheduleSidecar) {
 // The bridge is registered as a route, so we simulate Request/Response
 async function callBridge(payload: Record<string, unknown>): Promise<{ status: number; body: Record<string, unknown> }> {
   // Dynamically import the plugin to get fresh state
-  const mod = await import('@mc/schedule/index')
+  const mod = await import('@bakin/schedule/index')
   const plugin = mod.default
 
   // Find the bridge route handler by activating the plugin
@@ -109,6 +124,29 @@ async function callBridge(payload: Record<string, unknown>): Promise<{ status: n
     storage: {} as any,
     events: {} as any,
     pluginId: 'schedule',
+    activity: {
+      log: vi.fn((agent: string, message: string, opts?: { taskId?: string }) => {
+        const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as ((...args: unknown[]) => void) | undefined
+        if (broadcastFn) {
+          broadcastFn({
+            type: 'activity',
+            agent,
+            message,
+            ts: new Date().toISOString(),
+            pluginId: 'schedule',
+            ...(opts?.taskId ? { taskId: opts.taskId } : {}),
+          })
+        }
+      }),
+      audit: vi.fn(),
+    },
+    hooks: {
+      register: vi.fn(),
+      has: vi.fn(() => false),
+      invoke: mockHookRegistry.invoke,
+    },
+    getSettings: vi.fn(() => ({})),
+    updateSettings: vi.fn(),
   }
 
   await plugin.activate(ctx as any)
@@ -139,23 +177,23 @@ describe('schedule/bridge', () => {
 
     // Setup broadcast mock
     mockBroadcast = vi.fn()
-    ;(globalThis as Record<string, unknown>).__beaconBroadcast = mockBroadcast
+    ;(globalThis as Record<string, unknown>).__bakinBroadcast = mockBroadcast
   })
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
-    delete (globalThis as Record<string, unknown>).__beaconBroadcast
+    delete (globalThis as Record<string, unknown>).__bakinBroadcast
   })
 
-  it('skips non-Beacon jobs', async () => {
-    // No sidecar entry = not a Beacon job
+  it('skips non-Bakin jobs', async () => {
+    // No sidecar entry = not a Bakin job
     const { body } = await callBridge({ jobId: 'unknown-job', runId: 'r1', timestamp: '2026-03-27T09:00:00Z' })
     expect(body.ok).toBe(true)
-    expect(body.skipped).toBe('not-beacon')
+    expect(body.skipped).toBe('not-bakin')
     expect(mockCreateTask).not.toHaveBeenCalled()
   })
 
-  it('creates a task for Beacon jobs', async () => {
+  it('creates a task for Bakin jobs', async () => {
     upsertJob(makeMeta())
 
     const { body } = await callBridge({ jobId: 'test-job', runId: 'r1', timestamp: '2026-03-27T09:00:00Z' })

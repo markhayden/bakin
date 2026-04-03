@@ -1,0 +1,15 @@
+{
+  "id": "health",
+  "name": "Health",
+  "version": "1.0.0",
+  "bakin": ">=1.0.0",
+  "description": "System health dashboard — MCP stats, diagnostics, and uptime",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": [],
+  "secrets": [],
+  "tests": "tests/",
+  "dependencies": [],
+  "permissions": ["storage.read"]
+}

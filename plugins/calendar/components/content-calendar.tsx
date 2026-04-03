@@ -1,50 +1,58 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   ChevronLeft,
   ChevronRight,
   Plus,
   List,
   CalendarDays,
+  CalendarRange,
   Sparkles,
   Check,
   X,
-  Eye,
   Trash2,
+  ListFilter,
 } from 'lucide-react'
-import type { CalendarItem, ContentAgent, ContentStatus } from '../types'
-import { NewItemForm } from './new-item-form'
-import { ItemDetailPanel } from './item-detail-panel'
+import { PluginHeader } from '@/components/plugin-header'
+import { FacetFilter } from '@/components/facet-filter'
+import { AgentAvatar } from '@/components/agent-avatar'
+import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
+import type { CalendarItem, ContentAgent } from '../types'
+import { AGENT_INFO } from '../types'
+import { CONTENT_AGENTS, STATUS_BADGE, CONTENT_TYPE_LABELS } from '../constants'
+import { ItemDetailDrawer } from './item-detail-drawer'
+import { CalendarWeek } from './calendar-week'
 import { BrainstormPanel } from './brainstorm-panel'
 
-const AGENT_COLORS: Record<ContentAgent, string> = {
-  chef: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  explorer: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  trainer: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  coach: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+/**
+ * Agent colors use CSS custom properties from the agent settings system.
+ * Each agent's --agent-{id} var is set by AgentThemeProvider.
+ */
+function agentColorStyle(agent: ContentAgent): React.CSSProperties {
+  const v = `var(--agent-${agent})`
+  return {
+    backgroundColor: `color-mix(in srgb, ${v} 20%, transparent)`,
+    color: v,
+    borderColor: `color-mix(in srgb, ${v} 30%, transparent)`,
+  }
 }
 
-const AGENT_DOT: Record<ContentAgent, string> = {
-  chef: 'bg-emerald-400',
-  explorer: 'bg-orange-400',
-  trainer: 'bg-blue-400',
-  coach: 'bg-purple-400',
-}
+const STATUS_OPTIONS = [
+  { value: 'draft', label: 'Draft', icon: <span className="size-2 rounded-full bg-zinc-500" /> },
+  { value: 'scheduled', label: 'Scheduled', icon: <span className="size-2 rounded-full bg-sky-500" /> },
+  { value: 'executing', label: 'Executing', icon: <span className="size-2 rounded-full bg-amber-500" /> },
+  { value: 'waiting', label: 'Waiting', icon: <span className="size-2 rounded-full bg-amber-500" /> },
+  { value: 'review', label: 'Review', icon: <span className="size-2 rounded-full bg-yellow-500" /> },
+  { value: 'published', label: 'Published', icon: <span className="size-2 rounded-full bg-emerald-500" /> },
+  { value: 'failed', label: 'Failed', icon: <span className="size-2 rounded-full bg-red-500" /> },
+]
 
-const STATUS_BADGE: Record<ContentStatus, string> = {
-  draft: 'bg-zinc-500/20 text-zinc-400',
-  scheduled: 'bg-sky-500/20 text-sky-400',
-  executing: 'bg-amber-500/20 text-amber-400',
-  waiting: 'bg-amber-500/20 text-amber-400',
-  review: 'bg-yellow-500/20 text-yellow-300',
-  published: 'bg-emerald-500/20 text-emerald-400',
-  failed: 'bg-red-500/20 text-red-400',
-}
+const TYPE_OPTIONS = Object.entries(CONTENT_TYPE_LABELS).map(([value, label]) => ({ value, label }))
 
-type ViewMode = 'calendar' | 'list' | 'brainstorm'
+type ViewMode = 'month' | 'week' | 'list' | 'brainstorm'
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate()
@@ -54,30 +62,78 @@ function getFirstDayOfMonth(year: number, month: number) {
   return new Date(year, month, 1).getDay()
 }
 
+function getWeekStart(date: Date): Date {
+  const d = new Date(date)
+  d.setDate(d.getDate() - d.getDay())
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function formatDateShort(d: Date) {
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
+const VIEW_DEFS: { id: ViewMode; icon: typeof List; label: string }[] = [
+  { id: 'month', icon: CalendarDays, label: 'Month' },
+  { id: 'week', icon: CalendarRange, label: 'Week' },
+  { id: 'list', icon: List, label: 'List' },
+  { id: 'brainstorm', icon: Sparkles, label: 'Brainstorm' },
+]
+
+function AgentPill({ agentId, isActive, onClick }: { agentId: string; isActive: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium transition-all ${
+        isActive
+          ? 'bg-accent text-accent-foreground'
+          : 'text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100'
+      }`}
+    >
+      <AgentAvatar agentId={agentId} size="xs" />
+    </button>
+  )
+}
+
 export function ContentCalendar() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  // URL state
+  const [view, setView] = useQueryState('view', 'week')
+  const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
+  const [statusFilter, setStatusFilter] = useQueryArrayState('status')
+  const [typeFilter, setTypeFilter] = useQueryArrayState('type')
+  const [search, setSearch] = useQueryState('q', '')
+  const [itemIdParam, setItemIdParam, pushItemId] = useQueryState('itemId', '')
+  const [mode, setMode, pushMode] = useQueryState('mode', '')
+
   const [items, setItems] = useState<CalendarItem[]>([])
-  const [view, setView] = useState<ViewMode>('list')
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
-  const [selectedItem, setSelectedItem] = useState<CalendarItem | null>(null)
-  const [showNewForm, setShowNewForm] = useState(false)
-  const [newFormDate, setNewFormDate] = useState<string | undefined>()
-  const [filterAgent, setFilterAgent] = useState<ContentAgent | 'all'>('all')
-  const [filterStatus, setFilterStatus] = useState<ContentStatus | 'all'>('all')
   const [loading, setLoading] = useState(true)
 
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
 
+  // Week view dates
+  const weekStart = useMemo(() => getWeekStart(currentDate), [currentDate])
+  const weekEnd = useMemo(() => {
+    const d = new Date(weekStart)
+    d.setDate(d.getDate() + 6)
+    return d
+  }, [weekStart])
+
   const fetchItems = useCallback(async () => {
     try {
-      const res = await fetch(`/api/plugins/calendar/items?month=${monthKey}`)
+      const res = await fetch(`/api/plugins/calendar/?month=${monthKey}`)
       if (res.ok) {
         const data = await res.json()
         setItems(data.items ?? data)
@@ -94,17 +150,26 @@ export function ContentCalendar() {
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
-        if (data.file === 'calendar.json') {
-          fetchItems()
-        }
+        if (data.file === 'calendar.json') fetchItems()
       } catch { /* */ }
     }
     return () => es.close()
   }, [fetchItems])
 
+  // Filter items
   const filteredItems = items.filter(i => {
-    if (filterAgent !== 'all' && i.agent !== filterAgent) return false
-    if (filterStatus !== 'all' && i.status !== filterStatus) return false
+    if (agentFilter !== 'all' && i.agent !== agentFilter) return false
+    if (statusFilter.length > 0 && !statusFilter.includes(i.status)) return false
+    if (typeFilter.length > 0 && !typeFilter.includes(i.contentType)) return false
+    if (search) {
+      const q = search.toLowerCase()
+      if (
+        !i.title.toLowerCase().includes(q) &&
+        !i.agent.toLowerCase().includes(q) &&
+        !i.contentType.toLowerCase().includes(q) &&
+        !(i.brief || '').toLowerCase().includes(q)
+      ) return false
+    }
     return true
   })
 
@@ -116,66 +181,80 @@ export function ContentCalendar() {
     itemsByDate.set(day, existing)
   }
 
-  async function handleApprove(id: string) {
-    await fetch('/api/plugins/calendar/items/approve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    })
-    fetchItems()
-    if (selectedItem?.id === id) {
-      const updated = await fetch(`/api/plugins/calendar/items?month=${monthKey}`).then(r => r.json())
-      setSelectedItem(updated.find((i: CalendarItem) => i.id === id) || null)
+  // Atomic multi-param update to avoid race conditions
+  const updateParams = useCallback((updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null || v === '') params.delete(k)
+      else params.set(k, v)
     }
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [router, pathname, searchParams])
+
+  // Derive drawer state from URL
+  const selectedItem = itemIdParam ? items.find(i => i.id === itemIdParam) ?? null : null
+  const showForm = mode === 'create' || (mode === 'edit' && !!selectedItem)
+  const showDetail = !!selectedItem && !showForm
+
+  // --- Transitions ---
+  const openItem = (item: CalendarItem) => pushItemId(item.id)
+  const closeItem = () => updateParams({ itemId: null, mode: null, date: null })
+
+  const openCreate = (defaultDate?: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('itemId')
+    params.set('mode', 'create')
+    if (defaultDate) params.set('date', defaultDate)
+    router.push(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
-  async function handleReject(id: string, note: string) {
-    await fetch('/api/plugins/calendar/items/reject', {
+  const openEdit = () => pushMode('edit')
+  const cancelEdit = () => setMode('')  // back to detail view, keeps itemId
+
+  const closeForm = () => {
+    updateParams({ mode: null, date: null })
+    fetchItems()
+  }
+
+  async function handleApprove(id: string) {
+    await fetch(`/api/plugins/calendar/${id}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, rejectionNote: note }),
     })
     fetchItems()
-    setSelectedItem(null)
   }
 
   async function handleDelete(id: string) {
-    await fetch('/api/plugins/calendar/items/delete', {
-      method: 'POST',
+    await fetch(`/api/plugins/calendar/${id}`, {
+      method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
     })
     fetchItems()
-    setSelectedItem(null)
+    if (itemIdParam === id) setItemIdParam('')
   }
 
-  async function handleCreate(data: Record<string, unknown>) {
-    await fetch('/api/plugins/calendar/items', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
-    fetchItems()
-    setShowNewForm(false)
+  // --- Navigation ---
+  function prevPeriod() {
+    if (view === 'month') {
+      setCurrentDate(new Date(year, month - 1, 1))
+      setSelectedDay(null)
+    } else {
+      const d = new Date(currentDate)
+      d.setDate(d.getDate() - 7)
+      setCurrentDate(d)
+    }
   }
 
-  async function handleUpdate(id: string, updates: Record<string, unknown>) {
-    await fetch('/api/plugins/calendar/items/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...updates }),
-    })
-    fetchItems()
-  }
-
-  function prevMonth() {
-    setCurrentDate(new Date(year, month - 1, 1))
-    setSelectedDay(null)
-  }
-
-  function nextMonth() {
-    setCurrentDate(new Date(year, month + 1, 1))
-    setSelectedDay(null)
+  function nextPeriod() {
+    if (view === 'month') {
+      setCurrentDate(new Date(year, month + 1, 1))
+      setSelectedDay(null)
+    } else {
+      const d = new Date(currentDate)
+      d.setDate(d.getDate() + 7)
+      setCurrentDate(d)
+    }
   }
 
   function goToday() {
@@ -185,8 +264,15 @@ export function ContentCalendar() {
 
   const todayStr = new Date().toISOString().slice(0, 10)
 
-  // ─── Calendar View ──────────────────────────────────────────────
-  function renderCalendar() {
+  // Navigation label
+  const navLabel = view === 'month'
+    ? `${MONTH_NAMES[month]} ${year}`
+    : view === 'week'
+      ? `${formatDateShort(weekStart)} — ${formatDateShort(weekEnd)}`
+      : ''
+
+  // ─── Month View ─────────────────────────────────────────────────
+  function renderMonth() {
     const daysInMonth = getDaysInMonth(year, month)
     const firstDay = getFirstDayOfMonth(year, month)
     const cells: (number | null)[] = []
@@ -206,10 +292,7 @@ export function ContentCalendar() {
                 <Button
                   size="xs"
                   variant="outline"
-                  onClick={() => {
-                    setNewFormDate(selectedDay + 'T10:00')
-                    setShowNewForm(true)
-                  }}
+                  onClick={() => openCreate(selectedDay + 'T10:00')}
                 >
                   <Plus className="size-3" />
                   Add
@@ -226,10 +309,10 @@ export function ContentCalendar() {
                 {(itemsByDate.get(selectedDay) || []).map(item => (
                   <button
                     key={item.id}
-                    onClick={() => setSelectedItem(item)}
+                    onClick={() => openItem(item)}
                     className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted/50 transition-colors w-full"
                   >
-                    <span className={`size-2 rounded-full shrink-0 ${AGENT_DOT[item.agent]}`} />
+                    <AgentAvatar agentId={item.agent} size="xs" />
                     <span className="text-xs text-foreground truncate flex-1">{item.title}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_BADGE[item.status]}`}>
                       {item.status}
@@ -274,7 +357,10 @@ export function ContentCalendar() {
                   {dayItems.slice(0, 3).map(item => (
                     <div
                       key={item.id}
-                      className={`text-[10px] leading-tight px-1 py-0.5 rounded truncate border ${AGENT_COLORS[item.agent]}`}
+                      role="button"
+                      onClick={(e) => { e.stopPropagation(); openItem(item) }}
+                      className="text-[10px] leading-tight px-1 py-0.5 rounded border cursor-pointer hover:brightness-125 transition-all"
+                      style={agentColorStyle(item.agent)}
                     >
                       {item.title}
                     </div>
@@ -297,35 +383,6 @@ export function ContentCalendar() {
 
     return (
       <div>
-        {/* Filters */}
-        <div className="flex gap-2 mb-4 flex-wrap">
-          <select
-            className="h-7 rounded-md border border-input bg-transparent px-2 text-xs"
-            value={filterAgent}
-            onChange={e => setFilterAgent(e.target.value as ContentAgent | 'all')}
-          >
-            <option value="all">All Agents</option>
-            <option value="chef">Chef</option>
-            <option value="explorer">Explorer</option>
-            <option value="trainer">Trainer</option>
-            <option value="coach">Coach</option>
-          </select>
-          <select
-            className="h-7 rounded-md border border-input bg-transparent px-2 text-xs"
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value as ContentStatus | 'all')}
-          >
-            <option value="all">All Statuses</option>
-            <option value="draft">Draft</option>
-            <option value="scheduled">Scheduled</option>
-            <option value="executing">Executing</option>
-            <option value="waiting">Waiting</option>
-            <option value="review">Review</option>
-            <option value="published">Published</option>
-            <option value="failed">Failed</option>
-          </select>
-        </div>
-
         {sorted.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8 text-center">No items match filters.</p>
         ) : (
@@ -345,15 +402,15 @@ export function ContentCalendar() {
                 {sorted.map(item => (
                   <tr
                     key={item.id}
-                    className="border-b border-border/50 hover:bg-muted/30 transition-colors cursor-pointer"
-                    onClick={() => setSelectedItem(item)}
+                    className="group border-b border-border/50 hover:bg-muted/30 transition-colors cursor-pointer"
+                    onClick={() => openItem(item)}
                   >
                     <td className="px-3 py-2 font-mono text-muted-foreground whitespace-nowrap">
                       {item.scheduledAt.slice(0, 16).replace('T', ' ')}
                     </td>
                     <td className="px-3 py-2">
                       <span className="flex items-center gap-1.5">
-                        <span className={`size-2 rounded-full ${AGENT_DOT[item.agent]}`} />
+                        <AgentAvatar agentId={item.agent} size="xs" />
                         <span className="capitalize">{item.agent}</span>
                       </span>
                     </td>
@@ -367,10 +424,7 @@ export function ContentCalendar() {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button size="icon-xs" variant="ghost" onClick={() => setSelectedItem(item)}>
-                          <Eye className="size-3" />
-                        </Button>
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         {(item.status === 'draft' || item.status === 'review') && (
                           <Button
                             size="icon-xs"
@@ -406,19 +460,86 @@ export function ContentCalendar() {
   // ─── Main Layout ────────────────────────────────────────────────
   return (
     <div>
-      {/* Top bar */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <h1 className="text-lg font-semibold text-foreground">Calendar</h1>
-          {view === 'calendar' && (
-            <div className="flex items-center gap-1">
-              <Button size="icon-xs" variant="ghost" onClick={prevMonth}>
+      {/* Header */}
+      <PluginHeader
+        title="Calendar"
+        count={filteredItems.length}
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: 'Search items...',
+        }}
+        actions={
+          <div className="flex items-center gap-3">
+            <div className="flex items-center rounded-lg bg-muted/50 p-0.5">
+              {VIEW_DEFS.map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => setView(v.id)}
+                  className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
+                    view === v.id ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <v.icon className="size-3" />
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            <Button size="sm" onClick={() => openCreate()}>
+              <Plus className="size-3.5" data-icon="inline-start" />
+              New Item
+            </Button>
+          </div>
+        }
+      />
+
+      {/* Filters + date nav */}
+      {view !== 'brainstorm' && (
+        <div className="flex items-center gap-3 mt-4 mb-4">
+          <ListFilter className="size-3.5 text-muted-foreground shrink-0" />
+          <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
+            <button
+              onClick={() => setAgentFilter('all')}
+              className={`px-2 py-0.5 rounded-md text-xs font-medium transition-all ${
+                agentFilter === 'all'
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              All
+            </button>
+            {CONTENT_AGENTS.map(id => (
+              <AgentPill
+                key={id}
+                agentId={id}
+                isActive={agentFilter === id}
+                onClick={() => setAgentFilter(id)}
+              />
+            ))}
+          </div>
+          <FacetFilter
+            label="Status"
+            options={STATUS_OPTIONS}
+            selected={statusFilter}
+            onChange={setStatusFilter}
+          />
+          <FacetFilter
+            label="Type"
+            options={TYPE_OPTIONS}
+            selected={typeFilter}
+            onChange={setTypeFilter}
+          />
+
+          {/* Date navigation — far right */}
+          {(view === 'month' || view === 'week') && (
+            <div className="flex items-center gap-1 ml-auto shrink-0">
+              <Button size="icon-xs" variant="ghost" onClick={prevPeriod}>
                 <ChevronLeft className="size-3.5" />
               </Button>
-              <span className="text-sm font-medium text-foreground min-w-[140px] text-center">
-                {MONTH_NAMES[month]} {year}
+              <span className="text-sm font-medium text-foreground min-w-[160px] text-center">
+                {navLabel}
               </span>
-              <Button size="icon-xs" variant="ghost" onClick={nextMonth}>
+              <Button size="icon-xs" variant="ghost" onClick={nextPeriod}>
                 <ChevronRight className="size-3.5" />
               </Button>
               <Button size="xs" variant="ghost" className="ml-1 text-muted-foreground" onClick={goToday}>
@@ -427,51 +548,7 @@ export function ContentCalendar() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-4">
-          {/* Agent legend */}
-          <div className="flex items-center gap-3">
-            {(Object.entries(AGENT_DOT) as [ContentAgent, string][]).map(([agent, dot]) => (
-              <div key={agent} className="flex items-center gap-1.5">
-                <span className={`size-2 rounded-full ${dot}`} />
-                <span className="text-xs text-muted-foreground capitalize">{agent}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center rounded-lg border border-border bg-surface p-0.5">
-            <button
-              onClick={() => setView('calendar')}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
-                view === 'calendar' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <CalendarDays className="size-3" />
-              Calendar
-            </button>
-            <button
-              onClick={() => setView('list')}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
-                view === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <List className="size-3" />
-              List
-            </button>
-            <button
-              onClick={() => setView('brainstorm')}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
-                view === 'brainstorm' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Sparkles className="size-3" />
-              Brainstorm
-            </button>
-          </div>
-          <Button size="sm" onClick={() => { setNewFormDate(undefined); setShowNewForm(true) }}>
-            <Plus className="size-3.5" data-icon="inline-start" />
-            New Item
-          </Button>
-        </div>
-      </div>
+      )}
 
       {/* Content */}
       {loading ? (
@@ -480,7 +557,15 @@ export function ContentCalendar() {
         </div>
       ) : (
         <>
-          {view === 'calendar' && renderCalendar()}
+          {view === 'month' && renderMonth()}
+          {view === 'week' && (
+            <CalendarWeek
+              items={filteredItems}
+              weekStart={weekStart}
+              onSelectItem={openItem}
+              onAddItem={(dateStr) => openCreate(dateStr)}
+            />
+          )}
           {view === 'list' && renderList()}
           {view === 'brainstorm' && (
             <BrainstormPanel onItemCreated={fetchItems} />
@@ -488,24 +573,18 @@ export function ContentCalendar() {
         </>
       )}
 
-      {/* New Item Modal */}
-      {showNewForm && (
-        <NewItemForm
-          open={true}
-          defaultDate={newFormDate ? new Date(newFormDate) : undefined}
-          onCreated={fetchItems}
-          onClose={() => setShowNewForm(false)}
-        />
-      )}
-
-      {/* Item Detail Panel */}
-      {selectedItem && (
-        <ItemDetailPanel
-          item={selectedItem}
-          onClose={() => setSelectedItem(null)}
-          onUpdated={fetchItems}
-        />
-      )}
+      {/* Item Detail/Edit Drawer */}
+      <ItemDetailDrawer
+        item={selectedItem}
+        open={showDetail || showForm}
+        editing={showForm}
+        onClose={closeItem}
+        onCancelEdit={cancelEdit}
+        onEdit={openEdit}
+        onUpdated={fetchItems}
+        onDelete={handleDelete}
+        defaultDate={searchParams.get('date') ?? undefined}
+      />
     </div>
   )
 }

@@ -36,12 +36,12 @@ export async function checkAndContinueDependents(
         await clearDependency(task.id)
 
         const agentId = task.agent ? (AGENT_ID_MAP[task.agent] || task.agent) : 'main'
-        const mcServer = `beacon-${agentId}`
+        const mcServer = `bakin-${agentId}`
         const resumeMsg = `Your dependency task "${completedTitle}" is now Done. Resume your task: "${task.title}". Continue from where you left off.
 
-Your Beacon MCP server is \`${mcServer}\`. Use mcporter for all interactions:
+Your Bakin MCP server is \`${mcServer}\`. Use mcporter for all interactions:
 \`\`\`bash
-mcporter call ${mcServer}.beacon_log_progress taskId=${task.id} message="<update>"mcporter call ${mcServer}.beacon_report_complete taskId=${task.id} summary="<what you did>"mcporter call ${mcServer}.beacon_block_task taskId=${task.id} reason="<why>"mcporter call ${mcServer}.beacon_get_task taskId=${task.id}\`\`\``
+mcporter call ${mcServer}.bakin_log_progress taskId=${task.id} message="<update>"mcporter call ${mcServer}.bakin_report_complete taskId=${task.id} summary="<what you did>"mcporter call ${mcServer}.bakin_block_task taskId=${task.id} reason="<why>"mcporter call ${mcServer}.bakin_get_task taskId=${task.id}\`\`\``
 
         let sent = false
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {

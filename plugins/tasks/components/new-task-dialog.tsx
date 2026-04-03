@@ -10,8 +10,11 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { AGENTS } from '@/lib/constants'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
+import { AgentAvatar } from '@/components/agent-avatar'
+import { useAgent, useAgentList } from '@bakin/team/hooks/use-agent-store'
 import { Plus } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 
@@ -23,6 +26,7 @@ interface WorkflowOption {
 }
 
 export function NewTaskDialog() {
+  const agents = useAgentList()
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -33,7 +37,7 @@ export function NewTaskDialog() {
 
   useEffect(() => {
     if (!open) return
-    fetch('/api/plugins/workflows/list')
+    fetch('/api/plugins/workflows/definitions')
       .then((r) => r.ok ? r.json() : { templates: [] })
       .then((data) => setWorkflows(data.templates || []))
       .catch(() => setWorkflows([]))
@@ -44,7 +48,7 @@ export function NewTaskDialog() {
     if (!title.trim()) return
 
     try {
-      const res = await fetch('/api/tasks/create', {
+      const res = await fetch('/api/plugins/tasks/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -77,7 +81,7 @@ export function NewTaskDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        render={<Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white border-0" />}
+        render={<Button size="sm" />}
       >
         <Plus className="size-4" />
         New Task
@@ -108,13 +112,13 @@ export function NewTaskDialog() {
             <Label htmlFor="description" className="text-sm font-semibold text-foreground">
               Details
             </Label>
-            <textarea
+            <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Additional context, instructions, or acceptance criteria..."
               rows={5}
-              className="rounded-md border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground resize-y min-h-[120px] focus:outline-none focus:ring-1 focus:ring-ring"
+              className="min-h-[120px] resize-y"
             />
           </div>
 
@@ -123,19 +127,19 @@ export function NewTaskDialog() {
             <Label htmlFor="workflow" className="text-sm font-semibold text-foreground">
               Workflow
             </Label>
-            <select
-              id="workflow"
-              value={workflowId}
-              onChange={(e) => setWorkflowId(e.target.value)}
-              className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              <option value="">None</option>
-              {workflows.map((w) => (
-                <option key={w.filename} value={w.filename.replace('.yaml', '')}>
-                  {w.name} ({w.stepCount} steps)
-                </option>
-              ))}
-            </select>
+            <Select value={workflowId} onValueChange={(v) => setWorkflowId(v ?? '')}>
+              <SelectTrigger className="w-full h-10">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">None</SelectItem>
+                {workflows.map((w) => (
+                  <SelectItem key={w.filename} value={w.filename.replace('.yaml', '')}>
+                    {w.name} ({w.stepCount} steps)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {workflowId && (
               <p className="text-xs text-muted-foreground">
                 {workflows.find((w) => w.filename.replace('.yaml', '') === workflowId)?.description}
@@ -149,35 +153,40 @@ export function NewTaskDialog() {
               <Label htmlFor="assignee" className="text-sm font-semibold text-foreground">
                 Assignee
               </Label>
-              <select
-                id="assignee"
-                value={assignee}
-                onChange={(e) => setAssignee(e.target.value)}
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="">Unassigned</option>
-                {AGENTS.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.emoji} {a.name}
-                  </option>
-                ))}
-              </select>
+              <Select value={assignee} onValueChange={(v) => setAssignee(v ?? '')}>
+                <SelectTrigger className="w-full h-10">
+                  <SelectValue>
+                    {assignee ? (
+                      <AssigneeLabel assignee={assignee} />
+                    ) : 'Unassigned'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Unassigned</SelectItem>
+                  {agents.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      <AgentAvatar agentId={a.id} size="xs" />
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="column" className="text-sm font-semibold text-foreground">
                 Column
               </Label>
-              <select
-                id="column"
-                value={column}
-                onChange={(e) => setColumn(e.target.value)}
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="backlog">Backlog</option>
-                <option value="todo">Todo</option>
-                <option value="inProgress">In Progress</option>
-                <option value="blocked">Blocked</option>
-              </select>
+              <Select value={column} onValueChange={(v) => setColumn(v ?? 'todo')}>
+                <SelectTrigger className="w-full h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="backlog">Backlog</SelectItem>
+                  <SelectItem value="todo">Todo</SelectItem>
+                  <SelectItem value="inProgress">In Progress</SelectItem>
+                  <SelectItem value="blocked">Blocked</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -204,5 +213,15 @@ export function NewTaskDialog() {
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function AssigneeLabel({ assignee }: { assignee: string }) {
+  const agent = useAgent(assignee)
+  return (
+    <span className="flex items-center gap-2">
+      <AgentAvatar agentId={assignee} size="xs" />
+      {agent?.name || assignee}
+    </span>
   )
 }

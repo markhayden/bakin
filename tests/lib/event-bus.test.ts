@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { MCEventBus } from '../../src/lib/events/event-bus'
+import { BakinEventBus } from '../../src/lib/events/event-bus'
 
 describe('EventBus', () => {
   it('emit calls broadcast with data', () => {
     const broadcast = vi.fn()
-    const bus = new MCEventBus(broadcast)
+    const bus = new BakinEventBus(broadcast)
     bus.emit('test.event', { key: 'value' })
 
     expect(broadcast).toHaveBeenCalledOnce()
@@ -17,7 +17,7 @@ describe('EventBus', () => {
 
   it('on() subscribes to exact events', () => {
     const broadcast = vi.fn()
-    const bus = new MCEventBus(broadcast)
+    const bus = new BakinEventBus(broadcast)
     const handler = vi.fn()
 
     bus.on('task.created', handler)
@@ -30,7 +30,7 @@ describe('EventBus', () => {
 
   it('on() with glob matches prefix', () => {
     const broadcast = vi.fn()
-    const bus = new MCEventBus(broadcast)
+    const bus = new BakinEventBus(broadcast)
     const handler = vi.fn()
 
     bus.on('task.*', handler)
@@ -43,7 +43,7 @@ describe('EventBus', () => {
 
   it('once() fires handler only once', () => {
     const broadcast = vi.fn()
-    const bus = new MCEventBus(broadcast)
+    const bus = new BakinEventBus(broadcast)
     const handler = vi.fn()
 
     bus.once('task.done', handler)
@@ -55,7 +55,7 @@ describe('EventBus', () => {
 
   it('unsubscribe function removes handler', () => {
     const broadcast = vi.fn()
-    const bus = new MCEventBus(broadcast)
+    const bus = new BakinEventBus(broadcast)
     const handler = vi.fn()
 
     const unsub = bus.on('test', handler)
@@ -69,7 +69,7 @@ describe('EventBus', () => {
 
   it('handler errors do not break other handlers', () => {
     const broadcast = vi.fn()
-    const bus = new MCEventBus(broadcast)
+    const bus = new BakinEventBus(broadcast)
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const bad = vi.fn(() => { throw new Error('bad handler') })
@@ -86,7 +86,7 @@ describe('EventBus', () => {
 
   it('injectFileEvent notifies local subscribers', () => {
     const broadcast = vi.fn()
-    const bus = new MCEventBus(broadcast)
+    const bus = new BakinEventBus(broadcast)
     const handler = vi.fn()
 
     bus.on('file.change', handler)

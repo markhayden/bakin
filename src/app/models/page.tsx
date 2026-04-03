@@ -1,7 +1,12 @@
 'use client'
 
-import { ModelsPage } from '@mc/models/components/models-page'
+import { Suspense } from 'react'
+import { ModelsPage } from '@bakin/models/components/models-page'
 
 export default function Page() {
-  return <ModelsPage />
+  return (
+    <Suspense>
+      <ModelsPage />
+    </Suspense>
+  )
 }

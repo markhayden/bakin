@@ -487,7 +487,7 @@ Node.js with chokidar (file watching) and marked (markdown rendering).
 - `GET /api/state` → returns JSON with all mission-control file contents
 - `GET /api/events` → SSE stream (client subscribes here for live updates)
 - `GET /api/agents/health` → returns all heartbeat JSON files
-- `POST /api/tasks/*` → task mutations (create, move, assign, delete)
+- `POST /api/plugins/tasks/*` → task mutations (create, move, assign, delete)
 - `POST /api/agents/*` → agent control (start, stop, restart)
 - `GET /public/*` → static assets
 
@@ -554,7 +554,7 @@ const server = http.createServer((req, res) => {
   if (req.url === '/api/agents/health') { /* read all from HEARTBEATS_DIR */ }
 
   // Task mutations — write to inbox for Main Operator to process
-  if (req.url.startsWith('/api/tasks/')) { /* write to INBOX_DIR */ }
+  if (req.url.startsWith('/api/plugins/tasks/')) { /* write to INBOX_DIR */ }
 
   // Agent control — shell out to openclaw CLI
   if (req.url.startsWith('/api/agents/')) {
@@ -935,7 +935,7 @@ corruption. Mitigation strategy:
    Main Operator picks up inbox items on heartbeat and applies them.
 
 ```
-Dashboard POST /api/tasks/assign
+Dashboard POST /api/plugins/tasks/:taskId/assign
   → MC server writes content/inbox/1710782400-assign.json
   → Main Operator picks up on next heartbeat (≤5 min)
   → Main Operator updates TASKBOARD.md
@@ -957,10 +957,10 @@ agents. These changes flow through the MC server back to the markdown files.
 
 ### Task Endpoints
 ```
-POST /api/tasks/create   — { title, column, assignee }
-POST /api/tasks/move     — { taskId, fromColumn, toColumn }
-POST /api/tasks/assign   — { taskId, agent }
-POST /api/tasks/delete   — { taskId }
+POST /api/plugins/tasks/          — { title, column, assignee }
+POST /api/plugins/tasks/:id/move  — { fromColumn, toColumn }
+POST /api/plugins/tasks/:id/assign — { agent }
+DELETE /api/plugins/tasks/:id     — {}
 ```
 
 ### Agent Control Endpoints
@@ -1228,7 +1228,7 @@ commands, etc.
 **Server:**
 - [ ] Create `server.js` with chokidar file watching
 - [ ] Add read endpoints: `/api/state`, `/api/events` (SSE)
-- [ ] Add write endpoints: `/api/tasks/*`, `/api/agents/*`
+- [ ] Add write endpoints: `/api/plugins/tasks/*`, `/api/agents/*`
 - [ ] Serve static files from `public/`
 - [ ] Create `public/index.html` — dashboard shell
 - [ ] Create `public/style.css` — dark theme, responsive

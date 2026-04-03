@@ -1,12 +1,12 @@
 /**
- * Schedule sidecar — Beacon-owned metadata for OpenClaw cron jobs.
- * Stored at ~/.beacon/schedule/sidecar.json.
+ * Schedule sidecar — Bakin-owned metadata for OpenClaw cron jobs.
+ * Stored at ~/.bakin/schedule/sidecar.json.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
-import type { ScheduleSidecar, BeaconJobMeta } from '../types'
+import type { ScheduleSidecar, BakinJobMeta } from '../types'
 
 const log = createLogger('schedule:sidecar')
 
@@ -49,12 +49,12 @@ export function writeSidecar(sidecar: ScheduleSidecar): void {
   writeFileSync(path, JSON.stringify(sidecar, null, 2), 'utf-8')
 }
 
-export function getJob(jobId: string): BeaconJobMeta | null {
+export function getJob(jobId: string): BakinJobMeta | null {
   const sidecar = readSidecar()
   return sidecar.jobs[jobId] ?? null
 }
 
-export function upsertJob(meta: BeaconJobMeta): void {
+export function upsertJob(meta: BakinJobMeta): void {
   const sidecar = readSidecar()
   sidecar.jobs[meta.jobId] = { ...meta, updatedAt: new Date().toISOString() }
   writeSidecar(sidecar)
@@ -69,7 +69,7 @@ export function removeJob(jobId: string): boolean {
 }
 
 /** Apply defaults to a sidecar entry for display. */
-export function withDefaults(meta: BeaconJobMeta): Required<Pick<BeaconJobMeta, 'owner' | 'maxFailures' | 'allowOverlap' | 'requireTriage'>> & BeaconJobMeta {
+export function withDefaults(meta: BakinJobMeta): Required<Pick<BakinJobMeta, 'owner' | 'maxFailures' | 'allowOverlap' | 'requireTriage'>> & BakinJobMeta {
   return {
     ...meta,
     owner: meta.owner ?? DEFAULTS.owner,
@@ -82,7 +82,7 @@ export function withDefaults(meta: BeaconJobMeta): Required<Pick<BeaconJobMeta, 
 }
 
 /** Check if a job is currently paused (including auto-resume logic). */
-export function isPaused(meta: BeaconJobMeta): { paused: boolean; reason?: string } {
+export function isPaused(meta: BakinJobMeta): { paused: boolean; reason?: string } {
   if (!meta.paused) return { paused: false }
 
   // Check pauseUntil auto-resume
@@ -101,7 +101,7 @@ export function isPaused(meta: BeaconJobMeta): { paused: boolean; reason?: strin
 }
 
 /** Check and handle skip-next-N logic. Returns true if this run should be skipped. */
-export function shouldSkip(meta: BeaconJobMeta): boolean {
+export function shouldSkip(meta: BakinJobMeta): boolean {
   if (!meta.skipNextN || meta.skipNextN <= 0) return false
   const skipped = meta.skippedCount ?? 0
   if (skipped < meta.skipNextN) {
@@ -115,7 +115,7 @@ export function shouldSkip(meta: BeaconJobMeta): boolean {
 }
 
 /** Increment failure counter and auto-pause if threshold reached. */
-export function recordFailure(meta: BeaconJobMeta): boolean {
+export function recordFailure(meta: BakinJobMeta): boolean {
   const max = meta.maxFailures ?? DEFAULTS.maxFailures
   meta.consecutiveFailures = (meta.consecutiveFailures ?? 0) + 1
   if (meta.consecutiveFailures >= max) {
@@ -132,6 +132,6 @@ export function recordFailure(meta: BeaconJobMeta): boolean {
 }
 
 /** Reset failure counter on successful task completion. */
-export function recordSuccess(meta: BeaconJobMeta): void {
+export function recordSuccess(meta: BakinJobMeta): void {
   meta.consecutiveFailures = 0
 }

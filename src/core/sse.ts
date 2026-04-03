@@ -1,5 +1,5 @@
 /**
- * SSE (Server-Sent Events) client management for Beacon.
+ * SSE (Server-Sent Events) client management for Bakin.
  * Handles client connections, broadcasting, keepalive, and reconnection replay.
  */
 import type { IncomingMessage, ServerResponse } from 'http'
@@ -13,14 +13,14 @@ const log = createLogger('sse')
 // client set, event buffer, and counter.  The first evaluation creates them;
 // subsequent evaluations reuse them.
 const g = globalThis as any
-const clients: Set<ServerResponse> = g.__beaconSSEClients ?? (g.__beaconSSEClients = new Set<ServerResponse>())
-const keepAliveTimers: Map<ServerResponse, NodeJS.Timeout> = g.__beaconSSEKeepAlive ?? (g.__beaconSSEKeepAlive = new Map<ServerResponse, NodeJS.Timeout>())
+const clients: Set<ServerResponse> = g.__bakinSSEClients ?? (g.__bakinSSEClients = new Set<ServerResponse>())
+const keepAliveTimers: Map<ServerResponse, NodeJS.Timeout> = g.__bakinSSEKeepAlive ?? (g.__bakinSSEKeepAlive = new Map<ServerResponse, NodeJS.Timeout>())
 
 const EVENT_BUFFER_SIZE = 200
-if (!g.__beaconSSEState) {
-  g.__beaconSSEState = { eventCounter: 0, eventBuffer: [] as { id: number; data: string }[] }
+if (!g.__bakinSSEState) {
+  g.__bakinSSEState = { eventCounter: 0, eventBuffer: [] as { id: number; data: string }[] }
 }
-const sseState: { eventCounter: number; eventBuffer: { id: number; data: string }[] } = g.__beaconSSEState
+const sseState: { eventCounter: number; eventBuffer: { id: number; data: string }[] } = g.__bakinSSEState
 
 function nextEventId(): number {
   return ++sseState.eventCounter
@@ -52,8 +52,8 @@ export function broadcastAuditEvent(entry: Record<string, unknown>): void {
 
 // Expose broadcast on globalThis so Next.js API routes (which get a separate
 // module instance due to webpack bundling) can still reach the real SSE clients.
-;(globalThis as any).__beaconBroadcastAudit = broadcastAuditEvent
-;(globalThis as any).__beaconBroadcast = broadcast
+;(globalThis as any).__bakinBroadcastAudit = broadcastAuditEvent
+;(globalThis as any).__bakinBroadcast = broadcast
 
 function removeClient(res: ServerResponse): void {
   clients.delete(res)

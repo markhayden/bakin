@@ -45,7 +45,7 @@ export async function cronAdd(opts: {
   if (opts.tz) args.push('--tz', opts.tz)
 
   // OpenClaw requires a payload — isolated sessions need --message
-  args.push('--message', `beacon:schedule:${opts.name}`)
+  args.push('--message', `bakin:schedule:${opts.name}`)
   // Skip announce delivery — the bridge handles notifications
   args.push('--no-deliver')
 

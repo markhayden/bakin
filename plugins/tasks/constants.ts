@@ -21,32 +21,21 @@ export const COLUMN_HEADERS: Record<string, ColumnId> = {
 }
 
 export const STATUS_DOT_COLORS: Record<ColumnId, string> = {
-  backlog: 'bg-zinc-400',
-  inProgress: 'bg-blue-400',
-  todo: 'bg-purple-400',
-  review: 'bg-amber-400',
-  done: 'bg-green-400',
-  confirmed: 'bg-green-400',
-  blocked: 'bg-red-400',
+  backlog:    'bg-status-backlog',
+  inProgress: 'bg-status-in-progress',
+  todo:       'bg-status-todo',
+  review:     'bg-status-review',
+  done:       'bg-status-done',
+  confirmed:  'bg-status-done',
+  blocked:    'bg-status-blocked',
 }
 
 export const STATUS_BADGE_STYLES: Record<ColumnId, { bg: string; label: string }> = {
-  backlog: { bg: 'bg-zinc-500/10 text-zinc-400 border border-zinc-500/20', label: 'Backlog' },
-  todo: { bg: 'bg-purple-500/10 text-purple-400 border border-purple-500/20', label: 'Todo' },
-  inProgress: { bg: 'bg-blue-500/10 text-blue-400 border border-blue-500/20', label: 'In Progress' },
-  review: { bg: 'bg-amber-500/10 text-amber-400 border border-amber-500/20', label: 'Review' },
-  done: { bg: 'bg-green-500/10 text-green-400 border border-green-500/20', label: 'Done' },
-  blocked: { bg: 'bg-red-500/10 text-red-400 border border-red-500/20', label: 'Blocked' },
-  confirmed: { bg: 'bg-purple-500/10 text-purple-400 border border-purple-500/20', label: 'Confirmed' },
-}
-
-export const AGENT_AVATAR_COLORS: Record<string, string> = {
-  main-operator: 'bg-blue-400',
-  chef: 'bg-green-400',
-  pixel: 'bg-violet-400',
-  rolo: 'bg-orange-400',
-  patch: 'bg-zinc-400',
-  explorer: 'bg-emerald-400',
-  trainer: 'bg-cyan-400',
-  coach: 'bg-amber-400',
+  backlog:    { bg: 'bg-status-backlog/10 text-status-backlog border border-status-backlog/20', label: 'Backlog' },
+  todo:       { bg: 'bg-status-todo/10 text-status-todo border border-status-todo/20', label: 'Todo' },
+  inProgress: { bg: 'bg-status-in-progress/10 text-status-in-progress border border-status-in-progress/20', label: 'In Progress' },
+  review:     { bg: 'bg-status-review/10 text-status-review border border-status-review/20', label: 'Review' },
+  done:       { bg: 'bg-status-done/10 text-status-done border border-status-done/20', label: 'Done' },
+  blocked:    { bg: 'bg-status-blocked/10 text-status-blocked border border-status-blocked/20', label: 'Blocked' },
+  confirmed:  { bg: 'bg-status-confirmed/10 text-status-confirmed border border-status-confirmed/20', label: 'Confirmed' },
 }

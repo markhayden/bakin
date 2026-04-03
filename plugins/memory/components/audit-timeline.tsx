@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useContentStore } from '@/hooks/use-content-store'
-import { AGENT_PROFILES } from '@/lib/agents-data'
+import { useAgentList } from '@bakin/team/hooks/use-agent-store'
 import { TimelineEntry } from './timeline-entry'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ const EVENT_TYPES = [
 ]
 
 export function AuditTimeline() {
+  const agents = useAgentList()
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [agentFilter, setAgentFilter] = useState('')
@@ -106,7 +107,7 @@ export function AuditTimeline() {
           >
             All
           </Button>
-          {AGENT_PROFILES.map((a) => (
+          {agents.map((a) => (
             <Button
               key={a.id}
               variant={agentFilter === a.id ? 'secondary' : 'ghost'}

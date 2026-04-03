@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validateStepOutput, detectRejectionRepeat } from '@mc/workflows/schema-validator'
+import { validateStepOutput, detectRejectionRepeat } from '@bakin/workflows/lib/schema-validator'
 
 describe('schema-validator', () => {
   const schema = {

@@ -1,11 +1,14 @@
 'use client'
 
-import { ProjectGrid } from '@mc/projects/components/project-grid'
+import { Suspense } from 'react'
+import { ProjectGrid } from '@bakin/projects/components/project-grid'
 
 export default function ProjectsPage() {
   return (
-    <div className="p-6 flex flex-col flex-1">
-      <ProjectGrid />
+    <div className="p-[5px] flex flex-col h-full min-w-0 overflow-hidden">
+      <Suspense>
+        <ProjectGrid />
+      </Suspense>
     </div>
   )
 }

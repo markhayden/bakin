@@ -1,7 +1,12 @@
 'use client'
 
-import { WorkflowsPage } from '@mc/workflows/components/workflows-page'
+import { Suspense } from 'react'
+import { WorkflowsPage } from '@bakin/workflows/components/workflows-page'
 
 export default function WorkflowsRoute() {
-  return <WorkflowsPage />
+  return (
+    <Suspense>
+      <WorkflowsPage />
+    </Suspense>
+  )
 }

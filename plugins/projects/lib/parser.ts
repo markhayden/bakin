@@ -6,7 +6,7 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import yaml from 'js-yaml'
-import { getBeaconPaths } from '../../../src/core/content-dir'
+import { getBakinPaths } from '../../../src/core/content-dir'
 import type { Project, ProjectFrontmatter, ProjectTask, ProjectAsset, ProjectSummary } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ export function nextTaskItemId(tasks: ProjectTask[]): string {
 }
 
 function getProjectsDir(): string {
-  const dir = getBeaconPaths().projects
+  const dir = getBakinPaths().projects
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   return dir
 }

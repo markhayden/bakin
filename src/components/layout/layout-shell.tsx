@@ -18,7 +18,7 @@ export function LayoutShell({
     <>
       {/* Desktop sidebar */}
       <aside
-        className={`fixed top-14 left-0 bottom-0 border-r border-border bg-background hidden md:block overflow-y-auto overflow-x-hidden transition-all duration-150 ease-in-out ${
+        className={`fixed top-14 left-0 bottom-0 border-r border-border bg-background hidden md:flex flex-col overflow-y-auto overflow-x-hidden transition-all duration-150 ease-in-out ${
           collapsed ? 'w-[52px]' : 'w-52'
         }`}
       >
@@ -27,8 +27,8 @@ export function LayoutShell({
 
       {/* Content + drawer row */}
       <div
-        className={`fixed top-14 bottom-0 right-0 flex transition-all duration-150 ease-in-out ${
-          collapsed ? 'left-[52px]' : 'left-52'
+        className={`fixed top-14 bottom-0 right-0 flex transition-all duration-150 ease-in-out left-0 ${
+          collapsed ? 'md:left-[52px]' : 'md:left-52'
         }`}
       >
         {/* Main content — fills remaining space */}

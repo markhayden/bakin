@@ -1,7 +1,7 @@
 'use client'
 
 import type { AuditEntry } from '../types'
-import { AGENT_MAP } from '@/lib/agents-data'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
 
 const EVENT_ICONS: Record<string, string> = {
   'system.init': '🔄',
@@ -71,7 +71,7 @@ function summarize(entry: AuditEntry): string {
 }
 
 export function TimelineEntry({ entry }: { entry: AuditEntry }) {
-  const agent = AGENT_MAP[entry.agent]
+  const agent = useAgent(entry.agent)
   const agentLabel = agent ? `${agent.emoji} ${agent.name}` : entry.agent
 
   return (
