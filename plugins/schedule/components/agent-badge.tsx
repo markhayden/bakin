@@ -1,15 +1,50 @@
 'use client'
 
-import { useState } from 'react'
-import { AGENTS } from '@/lib/constants'
-import { AGENT_AVATAR_COLORS } from '../../tasks/constants'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
+import { AgentAvatar } from '@/components/agent-avatar'
+import { Shell } from 'lucide-react'
 
 type BadgeSize = 'sm' | 'md' | 'lg'
 
-const sizes = {
-  sm: { img: 'size-5', text: 'text-[10px]', ring: 'ring-1', gap: 'gap-1', font: 'text-xs' },
-  md: { img: 'size-6', text: 'text-xs', ring: 'ring-1', gap: 'gap-1.5', font: 'text-sm' },
-  lg: { img: 'size-8', text: 'text-sm', ring: 'ring-2', gap: 'gap-2', font: 'text-sm' },
+const sizeMap: Record<BadgeSize, 'xs' | 'sm' | 'md'> = {
+  sm: 'xs',
+  md: 'sm',
+  lg: 'md',
+}
+
+const fontMap: Record<BadgeSize, string> = {
+  sm: 'text-xs',
+  md: 'text-sm',
+  lg: 'text-sm',
+}
+
+const gapMap: Record<BadgeSize, string> = {
+  sm: 'gap-1',
+  md: 'gap-1.5',
+  lg: 'gap-2',
+}
+
+const iconSizeMap: Record<BadgeSize, string> = {
+  sm: 'size-5',
+  md: 'size-6',
+  lg: 'size-8',
+}
+
+const iconInnerMap: Record<BadgeSize, string> = {
+  sm: 'size-2.5',
+  md: 'size-3',
+  lg: 'size-3.5',
+}
+
+function SystemBadge({ size, showName }: { size: BadgeSize; showName: boolean }) {
+  return (
+    <span className={`inline-flex items-center ${gapMap[size]}`}>
+      <span className={`${iconSizeMap[size]} rounded-full bg-zinc-700 flex items-center justify-center shrink-0`}>
+        <Shell className={`${iconInnerMap[size]} text-zinc-400`} />
+      </span>
+      {showName && <span className={`${fontMap[size]} text-muted-foreground`}>System</span>}
+    </span>
+  )
 }
 
 export function AgentBadge({
@@ -21,36 +56,16 @@ export function AgentBadge({
   size?: BadgeSize
   showName?: boolean
 }) {
-  const [imgError, setImgError] = useState(false)
-  const agent = AGENTS.find(a => a.id === agentId)
-  const s = sizes[size]
+  const agent = useAgent(agentId ?? '')
 
   if (!agent) {
-    return (
-      <span className={`inline-flex items-center ${s.gap}`}>
-        <span className={`${s.img} rounded-full bg-muted flex items-center justify-center ${s.text} text-muted-foreground shrink-0`}>?</span>
-        {showName && <span className={`${s.font} text-muted-foreground`}>Unassigned</span>}
-      </span>
-    )
+    return <SystemBadge size={size} showName={showName} />
   }
 
-  const color = AGENT_AVATAR_COLORS[agent.id] || 'bg-zinc-400'
-
   return (
-    <span className={`inline-flex items-center ${s.gap}`}>
-      {!imgError ? (
-        <img
-          src={`/headshots/${agent.id}.png`}
-          alt={agent.name}
-          onError={() => setImgError(true)}
-          className={`${s.img} rounded-full object-cover object-top ${s.ring} ring-zinc-700 shrink-0`}
-        />
-      ) : (
-        <span className={`${s.img} rounded-full flex items-center justify-center ${s.text} shrink-0 ${color}`}>
-          {agent.emoji}
-        </span>
-      )}
-      {showName && <span className={`${s.font} text-foreground`}>{agent.name}</span>}
+    <span className={`inline-flex items-center ${gapMap[size]}`}>
+      <AgentAvatar agentId={agent.id} size={sizeMap[size]} />
+      {showName && <span className={`${fontMap[size]} text-foreground`}>{agent.name}</span>}
     </span>
   )
 }

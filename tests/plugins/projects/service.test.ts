@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testDir = join(tmpdir(), `beacon-test-projects-svc-${Date.now()}`)
+const testDir = join(tmpdir(), `bakin-test-projects-svc-${Date.now()}`)
 const projectsDir = join(testDir, 'projects')
 
 // ---------------------------------------------------------------------------
@@ -11,7 +11,7 @@ const projectsDir = join(testDir, 'projects')
 // ---------------------------------------------------------------------------
 
 vi.mock('../../../src/core/content-dir', () => ({
-  getBeaconPaths: () => ({ projects: projectsDir }),
+  getBakinPaths: () => ({ projects: projectsDir }),
   getContentDir: () => testDir,
 }))
 
@@ -28,7 +28,7 @@ vi.mock('../../../src/core/audit', () => ({
   appendAudit: vi.fn(),
 }))
 
-const mockCreateTask = vi.fn(() => Promise.resolve({ id: 'newtask1' }))
+const mockCreateTask = vi.fn((_opts?: unknown) => Promise.resolve({ id: 'newtask1' }))
 vi.mock('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
@@ -48,12 +48,12 @@ vi.mock('../../../plugins/tasks/taskboard', () => ({
 }))
 
 // Suppress broadcast
-;(globalThis as any).__beaconBroadcast = vi.fn()
+;(globalThis as any).__bakinBroadcast = vi.fn()
 
 // Clear project index between tests
 function clearIndex() {
-  ;(globalThis as any).__beaconProjectIndex = undefined
-  ;(globalThis as any).__beaconProjectLock = undefined
+  ;(globalThis as any).__bakinProjectIndex = undefined
+  ;(globalThis as any).__bakinProjectLock = undefined
 }
 
 import {

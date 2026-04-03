@@ -1,5 +1,5 @@
 /**
- * beacon_exec_gen_image — Image generation via Gemini Imagen (Nano Banana).
+ * bakin_exec_gen_image — Image generation via Gemini Imagen (Nano Banana).
  *
  * Models:
  * - gemini-3.1-flash-image-preview (Nano Banana 2) — default, cheaper
@@ -14,7 +14,7 @@ import { z } from 'zod'
 import { join } from 'path'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
-import { getBeaconPaths } from '../../src/core/content-dir'
+import { getBakinPaths } from '../../src/core/content-dir'
 import {
   succeed,
   fail,
@@ -24,7 +24,7 @@ import {
   MAX_IMAGE_EDGE,
 } from './common'
 import type { ImagePreset } from './common'
-import { saveAsset } from './save-asset'
+import { saveAsset } from '../../plugins/assets/lib/save-asset'
 import { addExecTool } from './registry'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
 
@@ -136,7 +136,7 @@ class GeminiImagenGenerator implements ImageGenerator {
     const ext = mimeType === 'image/png' ? 'png' : 'jpg'
 
     // Write to temp file
-    const paths = getBeaconPaths()
+    const paths = getBakinPaths()
     const tmpDir = join(paths.home, '.tmp')
     mkdirSync(tmpDir, { recursive: true })
 
@@ -211,7 +211,7 @@ export async function generateImage(params: GenImageParams): Promise<ExecToolRes
   // Generate thumbnail if requested
   let thumbnailPath: string | null = null
   if (thumbnail && assetResult.path) {
-    const paths = getBeaconPaths()
+    const paths = getBakinPaths()
     const fullAssetPath = join(paths.home, assetResult.path as string)
     const thumbPath = fullAssetPath.replace(/\.\w+$/, '.thumb.jpg')
     thumbnailPath = generateThumbnail(fullAssetPath, thumbPath)
@@ -237,7 +237,7 @@ export async function generateImage(params: GenImageParams): Promise<ExecToolRes
 // ---------------------------------------------------------------------------
 
 addExecTool({
-  name: 'beacon_exec_gen_image',
+  name: 'bakin_exec_gen_image',
   description: `Generate an image via Gemini Imagen (Nano Banana). Default model: flash (cheaper). Use model=pro for higher quality. Default: 1080x1920 portrait (9:16) for Stories/Reels. Presets: social-portrait, social-square, social-landscape, custom. Auto-generates thumbnail. Max ${MAX_IMAGE_EDGE}px on any edge.`,
   source: 'core',
   parameters: {
@@ -249,7 +249,7 @@ addExecTool({
     model: z.enum(MODEL_NAMES).optional().describe('Model tier: flash (default, cheaper) or pro (higher quality)'),
     thumbnail: z.boolean().optional().describe('Generate a 400px WebP thumbnail for UI previews (default: true)'),
   },
-  handler: async (params, agent) => {
+  handler: async (params: Record<string, unknown>, agent: string) => {
     return generateImage({ ...params, agent } as GenImageParams)
   },
 })

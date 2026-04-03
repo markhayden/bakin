@@ -4,8 +4,7 @@ import path from 'path'
 import { getSettings, updateSettings, resetSettingsCache } from '../../src/core/settings'
 
 const TEST_CONTENT_DIR = path.join(process.cwd(), 'test-content-settings')
-const SETTINGS_DIR = path.join(TEST_CONTENT_DIR, '.beacon')
-const SETTINGS_FILE = path.join(SETTINGS_DIR, 'settings.json')
+const SETTINGS_FILE = path.join(TEST_CONTENT_DIR, 'settings.json')
 
 describe('Settings', () => {
   beforeEach(() => {
@@ -27,13 +26,13 @@ describe('Settings', () => {
     const settings = getSettings()
     expect(settings.dispatch.intervalMs).toBe(300000)
     expect(settings.sse.maxClients).toBe(50)
-    expect(settings.agents).toContain('roscoe')
-    expect(settings.agents).toContain('patch')
+    // agents is populated dynamically from OpenClaw; in test env it may be empty
+    expect(Array.isArray(settings.agents)).toBe(true)
     expect(settings.antfly.enabled).toBe(false)
   })
 
   it('merges partial overrides with defaults', () => {
-    fs.mkdirSync(SETTINGS_DIR, { recursive: true })
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
       dispatch: { intervalMs: 60000 },
       agents: ['roscoe', 'patch'],

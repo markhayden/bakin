@@ -1,5 +1,5 @@
 /**
- * Agent Communication API for Beacon.
+ * Agent Communication API for Bakin.
  * Core routes for agent-to-agent interaction and status queries.
  */
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs'

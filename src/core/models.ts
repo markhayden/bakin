@@ -1,5 +1,5 @@
 /**
- * Core models module for Beacon.
+ * Core models module for Bakin.
  * Handles model resolution, configuration, and available models caching.
  * This is core (not plugin) because model selection affects all agents.
  */

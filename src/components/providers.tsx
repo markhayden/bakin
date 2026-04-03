@@ -6,6 +6,7 @@ import { Toaster } from '@/components/layout/toaster'
 import { SidebarContext } from '@/context/sidebar-context'
 import { ActivityProvider } from '@/context/activity-context'
 import { useSidebar } from '@/hooks/use-sidebar'
+import { AgentThemeProvider } from '@/components/providers/agent-theme-provider'
 
 function SSEProvider({ children }: { children: React.ReactNode }) {
   useSSE()
@@ -19,7 +20,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <TooltipProvider>
       <SidebarContext.Provider value={sidebar}>
         <ActivityProvider>
-          <SSEProvider>{children}</SSEProvider>
+          <AgentThemeProvider>
+            <SSEProvider>{children}</SSEProvider>
+          </AgentThemeProvider>
         </ActivityProvider>
       </SidebarContext.Provider>
       <Toaster />

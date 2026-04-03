@@ -11,9 +11,11 @@ import { navItems as assetsNav } from '../../plugins/assets/client'
 import { navItems as scheduleNav } from '../../plugins/schedule/client'
 import { navItems as healthNav } from '../../plugins/health/client'
 import { navItems as projectsNav } from '../../plugins/projects/client'
+import { navItems as teamNav } from '../../plugins/team/client'
 import type { NavItem } from './plugin-types'
 
 export const allNavItems: NavItem[] = [
+  ...teamNav,
   ...taskNav,
   ...memoryNav,
   ...modelsNav,

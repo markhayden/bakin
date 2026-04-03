@@ -12,9 +12,9 @@ vi.mock('../../../src/core/logger', () => ({
   }),
 }))
 
-import { readRuns, getLastRun } from '@mc/schedule/lib/runs-reader'
+import { readRuns, getLastRun } from '@bakin/schedule/lib/runs-reader'
 
-const testDir = join(tmpdir(), `beacon-test-runs-${Date.now()}`)
+const testDir = join(tmpdir(), `bakin-test-runs-${Date.now()}`)
 
 describe('schedule/runs-reader', () => {
   beforeEach(() => {

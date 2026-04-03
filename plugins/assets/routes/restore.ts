@@ -1,5 +1,5 @@
 /**
- * POST /api/plugins/assets/restore?file= — restore a trashed asset.
+ * POST /api/plugins/assets/trash/:file/restore — restore a trashed asset.
  */
 import { join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'

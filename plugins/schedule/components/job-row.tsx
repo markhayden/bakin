@@ -20,18 +20,18 @@ function StatusBadge({ job }: { job: ScheduleJob }) {
       : job.pauseUntil
         ? `Paused until ${new Date(job.pauseUntil).toLocaleDateString()}`
         : 'Paused'
-    return <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/20">{label}</Badge>
+    return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">{label}</Badge>
   }
   if (job.skipNextN && job.skippedCount !== undefined && job.skippedCount < job.skipNextN) {
-    return <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/20">Skipping {job.skippedCount}/{job.skipNextN}</Badge>
+    return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">Skipping {job.skippedCount}/{job.skipNextN}</Badge>
   }
   if (job.consecutiveFailures > 0) {
-    return <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/20">{job.consecutiveFailures} failures</Badge>
+    return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">{job.consecutiveFailures} failures</Badge>
   }
   if (!job.enabled) {
-    return <Badge variant="outline" className="bg-zinc-500/10 text-zinc-400 border-zinc-500/20">Disabled</Badge>
+    return <Badge variant="outline" className="bg-muted-foreground/10 text-muted-foreground border-muted-foreground/20">Disabled</Badge>
   }
-  return <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20">Active</Badge>
+  return <Badge variant="outline" className="bg-success/10 text-success border-success/20">Active</Badge>
 }
 
 export function JobRow({
@@ -60,8 +60,8 @@ export function JobRow({
       <TableCell>
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-medium text-foreground">{job.displayName || job.id}</span>
-          {job.isBeaconJob && (
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Beacon</span>
+          {job.isBakinJob && (
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Bakin</span>
           )}
         </div>
       </TableCell>
@@ -80,37 +80,37 @@ export function JobRow({
       <TableCell>
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="p-1 rounded hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
+            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+          <DropdownMenuContent align="end" className="min-w-36" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
             <DropdownMenuItem onClick={onRunNow}>
-              <Play className="size-4" /> Run Now
+              <Play className="size-3.5 mr-2" /> Run Now
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onEdit}>
-              <Pencil className="size-4" /> Edit
+              <Pencil className="size-3.5 mr-2" /> Edit
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onDuplicate}>
-              <Copy className="size-4" /> Duplicate
+              <Copy className="size-3.5 mr-2" /> Duplicate
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onSkipNext}>
-              <SkipForward className="size-4" /> Skip Next
+              <SkipForward className="size-3.5 mr-2" /> Skip Next
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             {job.paused ? (
               <DropdownMenuItem onClick={onResume}>
-                <RotateCcw className="size-4" /> Resume
+                <RotateCcw className="size-3.5 mr-2" /> Resume
               </DropdownMenuItem>
             ) : (
               <DropdownMenuItem onClick={onPause}>
-                <Pause className="size-4" /> Pause
+                <Pause className="size-3.5 mr-2" /> Pause
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={onDelete}>
-              <Trash2 className="size-4" /> Delete
+            <DropdownMenuItem onClick={onDelete} className="text-red-400 focus:text-red-400">
+              <Trash2 className="size-3.5 mr-2" /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

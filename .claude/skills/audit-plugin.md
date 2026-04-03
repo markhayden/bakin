@@ -9,7 +9,7 @@ Provide the plugin id to audit (e.g., `tasks`, `assets`, `schedule`).
 ## Audit Checklist
 
 ### 1. Manifest
-- [ ] `beacon-plugin.json` exists with all required fields
+- [ ] `bakin-plugin.json` exists with all required fields
 - [ ] Version is set and meaningful
 - [ ] Dependencies accurately listed
 - [ ] Secrets declared for any vault keys used
@@ -25,10 +25,10 @@ Provide the plugin id to audit (e.g., `tasks`, `assets`, `schedule`).
 
 ### 3. MCP Exec Tools
 - [ ] All tools inventoried (list every `ctx.registerExecTool()` call)
-- [ ] Naming follows `beacon_exec_{pluginId}_{action}` convention
+- [ ] Naming follows `bakin_exec_{pluginId}_{action}` convention
 - [ ] Parameters use Zod schemas
 - [ ] Handlers return `{ ok, error?, details? }` shape
-- [ ] Tools log activity via `beacon_log_progress` or `ctx.activity.log()`
+- [ ] Tools log activity via `bakin_log_progress` or `ctx.activity.log()`
 
 ### 4. Settings Schema
 - [ ] `settingsSchema` defined on plugin object with all configurable options

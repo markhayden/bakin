@@ -3,9 +3,9 @@
  * Wraps parser operations with side effects: audit, SSE broadcast,
  * in-memory index, auto-check on task completion.
  */
-import { generateTaskId } from '../../tasks/ids'
+import { generateTaskId } from '../../tasks/lib/ids'
 import { readProject, readAllProjects, writeProject, deleteProjectFile, computeProgress, nextTaskItemId } from './parser'
-import { readTaskboard } from '../../tasks/taskboard'
+import { readTaskboard } from '../../tasks/lib/taskboard'
 import { createTaskWithEffects } from '../../../src/core/task-service'
 import { appendAudit } from '../../../src/core/audit'
 import { getContentDir } from '../../../src/core/content-dir'
@@ -21,10 +21,10 @@ const log = createLogger('projects')
 
 function getProjectLock(): { queue: Promise<void> } {
   const g = globalThis as Record<string, unknown>
-  if (!g.__beaconProjectLock) {
-    g.__beaconProjectLock = { queue: Promise.resolve() }
+  if (!g.__bakinProjectLock) {
+    g.__bakinProjectLock = { queue: Promise.resolve() }
   }
-  return g.__beaconProjectLock as { queue: Promise<void> }
+  return g.__bakinProjectLock as { queue: Promise<void> }
 }
 
 function withProjectLock<T>(fn: () => T | Promise<T>): Promise<T> {
@@ -39,7 +39,7 @@ function withProjectLock<T>(fn: () => T | Promise<T>): Promise<T> {
 // ---------------------------------------------------------------------------
 
 function broadcast(data: Record<string, unknown>): void {
-  const fn = (globalThis as any).__beaconBroadcast
+  const fn = (globalThis as any).__bakinBroadcast
   if (fn) fn(data)
 }
 
@@ -54,10 +54,10 @@ export interface TaskLinkEntry {
 
 function getIndex(): Map<string, TaskLinkEntry> {
   const g = globalThis as Record<string, unknown>
-  if (!g.__beaconProjectIndex) {
-    g.__beaconProjectIndex = new Map<string, TaskLinkEntry>()
+  if (!g.__bakinProjectIndex) {
+    g.__bakinProjectIndex = new Map<string, TaskLinkEntry>()
   }
-  return g.__beaconProjectIndex as Map<string, TaskLinkEntry>
+  return g.__bakinProjectIndex as Map<string, TaskLinkEntry>
 }
 
 export function rebuildIndex(): void {
@@ -115,7 +115,7 @@ export async function createProject(opts: CreateProjectOpts): Promise<{ id: stri
       owner: opts.owner || 'roscoe',
       tasks: taskItems,
       assets: [],
-      body: opts.body || `# ${opts.title}\n`,
+      body: opts.body || (opts.title ? `# ${opts.title}\n` : ''),
       progress: 0,
     }
 

@@ -6,5 +6,4 @@ import type { NavItem } from '../../src/lib/plugin-types'
 
 export const navItems: NavItem[] = [
   { id: 'tasks', label: 'Tasks', icon: 'CheckSquare', href: '/tasks', order: 10 },
-  { id: 'team', label: 'Team', icon: 'Users', href: '/team', order: 60 },
 ]

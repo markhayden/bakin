@@ -9,9 +9,9 @@ describe('migrations', () => {
   let contentDir: string
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'beacon-migrations-test-'))
+    tempDir = mkdtempSync(join(tmpdir(), 'bakin-migrations-test-'))
     contentDir = join(tempDir, 'content')
-    mkdirSync(join(contentDir, '.beacon'), { recursive: true })
+    mkdirSync(join(contentDir, '.bakin'), { recursive: true })
   })
 
   afterEach(() => {

@@ -1,0 +1,15 @@
+{
+  "id": "tasks",
+  "name": "Tasks",
+  "version": "1.0.0",
+  "bakin": ">=1.0.0",
+  "description": "Kanban task management with markdown persistence, agent assignment, and dependency tracking",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": ["TASKBOARD.md"],
+  "secrets": [],
+  "tests": "tests/",
+  "dependencies": [],
+  "permissions": ["storage.read", "storage.write", "events.emit"]
+}

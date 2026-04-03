@@ -1,6 +1,6 @@
 /**
- * CLI helpers for `beacon schedule` commands.
- * Each function calls the Beacon schedule API and formats output.
+ * CLI helpers for `bakin schedule` commands.
+ * Each function calls the Bakin schedule API and formats output.
  */
 
 const BASE_URL = `http://localhost:${process.env.PORT || 3737}`
@@ -21,6 +21,18 @@ async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`API error ${res.status}: ${text}`)
+  }
+  return res.json() as Promise<T>
+}
+
+async function apiDelete<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}/api/plugins/schedule${path}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
   })
   if (!res.ok) {
     const text = await res.text()
@@ -53,7 +65,7 @@ interface ListResult {
     agentId?: string
     humanSchedule: string
     paused: boolean
-    isBeaconJob: boolean
+    isBakinJob: boolean
     enabled: boolean
   }>
 }
@@ -63,10 +75,10 @@ export async function cmdScheduleList(opts: {
   agent?: string
   json?: boolean
 }): Promise<void> {
-  const data = await apiGet<ListResult>('/jobs')
+  const data = await apiGet<ListResult>('/')
   let jobs = data.jobs
 
-  if (!opts.all) jobs = jobs.filter(j => j.isBeaconJob)
+  if (!opts.all) jobs = jobs.filter(j => j.isBakinJob)
   if (opts.agent) jobs = jobs.filter(j => j.agentId === opts.agent)
 
   if (opts.json) {
@@ -95,7 +107,7 @@ export async function cmdScheduleAdd(opts: {
   workflow?: string
   prompt?: string
 }): Promise<void> {
-  const data = await apiPost<{ ok: boolean; jobId: string; cron: string; human: string }>('/jobs', {
+  const data = await apiPost<{ ok: boolean; jobId: string; cron: string; human: string }>('/', {
     name: opts.name,
     schedule: opts.schedule,
     agentId: opts.agent,
@@ -110,26 +122,26 @@ export async function cmdSchedulePause(jobId: string, opts: {
   skip?: number
 }): Promise<void> {
   if (opts.skip) {
-    await apiPost('/jobs/pause', { jobId, action: 'skip', skipN: opts.skip })
+    await apiPost(`/${jobId}/pause`, { action: 'skip', skipN: opts.skip })
     console.log(`Skipping next ${opts.skip} runs for ${jobId}`)
   } else {
-    await apiPost('/jobs/pause', { jobId, action: 'pause', pauseUntil: opts.until })
+    await apiPost(`/${jobId}/pause`, { action: 'pause', pauseUntil: opts.until })
     console.log(`Paused ${jobId}${opts.until ? ` until ${opts.until}` : ''}`)
   }
 }
 
 export async function cmdScheduleResume(jobId: string): Promise<void> {
-  await apiPost('/jobs/pause', { jobId, action: 'resume' })
+  await apiPost(`/${jobId}/pause`, { action: 'resume' })
   console.log(`Resumed ${jobId}`)
 }
 
 export async function cmdScheduleRemove(jobId: string): Promise<void> {
-  await apiPost('/jobs/delete', { jobId })
+  await apiDelete(`/${jobId}`)
   console.log(`Removed ${jobId}`)
 }
 
 export async function cmdScheduleRun(jobId: string): Promise<void> {
-  await apiPost('/jobs/run-now', { jobId })
+  await apiPost(`/${jobId}/run`, {})
   console.log(`Triggered immediate run for ${jobId}`)
 }
 
@@ -146,7 +158,7 @@ interface RunsResult {
 export async function cmdScheduleRuns(jobId: string, opts: {
   limit?: number
 }): Promise<void> {
-  const data = await apiGet<RunsResult>(`/runs?jobId=${jobId}&limit=${opts.limit ?? 20}`)
+  const data = await apiGet<RunsResult>(`/${jobId}/runs?limit=${opts.limit ?? 20}`)
 
   if (data.runs.length === 0) {
     console.log(`No run history for ${jobId}`)

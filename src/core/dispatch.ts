@@ -1,5 +1,5 @@
 /**
- * Task dispatch system for Beacon.
+ * Task dispatch system for Bakin.
  * Periodically checks for TODO tasks and dispatches them to agents via OpenClaw.
  */
 import { readFileSync, writeFileSync, existsSync } from 'fs'
@@ -8,17 +8,11 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import * as openclaw from './openclaw-client'
-import { readTaskboard, blockTask, addTaskLog as taskLog } from '../../plugins/tasks/taskboard'
 import { isStale } from '../lib/format'
-import {
-  loadInstance,
-  createInstance,
-  saveInstance,
-  getCurrentStep,
-  getActiveAgents,
-} from '../../plugins/workflows/runtime'
+import { getHookRegistry } from '../lib/plugin-registry'
 
 const log = createLogger('dispatch')
+const hooks = () => getHookRegistry()
 
 const AGENT_ID_MAP: Record<string, string> = { roscoe: 'main' }
 const resolveId = (name: string) => AGENT_ID_MAP[name] || name
@@ -97,16 +91,16 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
     const { todoTasks } = getTodoTasks()
     const state = loadDispatchState(contentDir)
-    const dispatchedSet = new Set(state.dispatched)
-
     // Reconcile dispatch state with taskboard reality
-    const { columns } = readTaskboard()
+    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const activeIds = new Set([
       ...columns.inProgress.map(t => t.id),
       ...columns.done.map(t => t.id),
       ...columns.confirmed.map(t => t.id),
     ])
     state.dispatched = state.dispatched.filter(id => activeIds.has(id))
+    // Rebuild dispatchedSet AFTER reconciliation so tasks moved back to todo are eligible
+    const dispatchedSet = new Set(state.dispatched)
     for (const task of columns.inProgress) {
       if (!dispatchedSet.has(task.id)) {
         dispatchedSet.add(task.id)
@@ -122,7 +116,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       if (!wfTask.workflowId) continue
 
       // Check if the current workflow step agent has been dispatched
-      const activeAgents = getActiveAgents(task.id, contentDir)
+      const activeAgents = await hooks().invoke<Array<{ agent: string; stepId: string; effectiveTaskId?: string }>>('workflows.getActiveAgents', { taskId: task.id }) ?? []
       const needsDispatch = activeAgents.some(({ stepId }) => !dispatchedSet.has(`${task.id}:${stepId}`))
       if (!needsDispatch) continue
 
@@ -152,7 +146,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         if (failure.count >= settings.dispatch.maxRetries) {
           // Escalate to blocked
           try {
-            await blockTask(task.id, `Dispatch failed ${failure.count} times — agent may be unavailable`)
+            await hooks().invoke<void>('tasks.blockTask', { identifier: task.id, reason: `Dispatch failed ${failure.count} times — agent may be unavailable` })
             await addTaskLog(task.id, 'system', `Dispatch exhausted: ${failure.count} failed attempts. Task moved to blocked.`)
             appendAudit(contentDir, 'task.dispatch_exhausted', 'system', { id: task.id, title: task.title, count: failure.count })
             log.warn('Task blocked after max dispatch retries', { id: task.id, count: failure.count })
@@ -235,7 +229,7 @@ export async function dispatchSingleTask(
   const settings = getSettings()
 
   await withStateLock(async () => {
-    const { columns } = readTaskboard()
+    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const task = columns.todo.find(t => t.id === taskId)
     if (!task) {
       log.debug('dispatchSingleTask: task not in todo, skipping', { taskId })
@@ -337,22 +331,22 @@ function buildDispatchMessage(
       const { readProject } = require('../../plugins/projects/lib/parser')
       const project = readProject(task.projectId)
       if (project) {
-        projectBlock = `\n\n**Project:** "${project.title}" (id: ${project.id}, ${project.progress}% complete)\nThe project spec contains detailed requirements. Call beacon_exec_project_get to read it before starting work.`
+        projectBlock = `\n\n**Project:** "${project.title}" (id: ${project.id}, ${project.progress}% complete)\nThe project spec contains detailed requirements. Call bakin_exec_project_get to read it before starting work.`
       }
     } catch { /* projects plugin may not be loaded */ }
   }
   const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
   const taskboardRef = join(contentDir, 'TASKBOARD.md')
 
-  const server = `beacon-${agentName}`
+  const server = `bakin-${agentName}`
   const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
 
   if (!task.agent) {
-    return `Triage this task: "${task.title}".${detailsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, basil=research/strategy) by updating ${taskboardRef}. ${contactsRef}\n\nLog progress: \`${mc('beacon_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Triage this task: "${task.title}".${detailsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, basil=research/strategy) by updating ${taskboardRef}. ${contactsRef}\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   if (task.agent === 'roscoe') {
-    return `Work on this task: "${task.title}".${detailsBlock}\n\n${contactsRef} When done: \`${mc('beacon_report_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('beacon_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Work on this task: "${task.title}".${detailsBlock}\n\n${contactsRef} When done: \`${mc('bakin_report_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   return `Work on this task: "${task.title}".${detailsBlock}${projectBlock}
@@ -373,29 +367,29 @@ For Patch using Claude Code: log before spawning the agent, and after it complet
 
 ## BEACON TOOLS — via mcporter
 
-All Beacon interactions use mcporter. Your server is \`${server}\`.
+All Bakin interactions use mcporter. Your server is \`${server}\`.
 
 \`\`\`bash
 # Log progress (mandatory, every major step)
-${mc('beacon_log_progress', `taskId=${task.id} message="<what you did or are doing>"`)}
+${mc('bakin_log_progress', `taskId=${task.id} message="<what you did or are doing>"`)}
 
 # Report complete (when finished — includes summary + notifies orchestrator)
-${mc('beacon_report_complete', `taskId=${task.id} summary="<what you accomplished>"`)}
+${mc('bakin_report_complete', `taskId=${task.id} summary="<what you accomplished>"`)}
 
 # Block task (if stuck or cannot proceed)
-${mc('beacon_block_task', `taskId=${task.id} reason="<what went wrong>"`)}
+${mc('bakin_block_task', `taskId=${task.id} reason="<what went wrong>"`)}
 
 # Create subtask for another agent
-${mc('beacon_create_task', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
+${mc('bakin_create_task', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
 
 # Register dependency (then stop — you'll be re-dispatched)
-${mc('beacon_register_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
+${mc('bakin_register_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
 
 # Check your task details
-${mc('beacon_get_task', `taskId=${task.id}`)}
+${mc('bakin_get_task', `taskId=${task.id}`)}
 
 # Find content directories (assets, team, etc.)
-${mc('beacon_get_paths', '')}
+${mc('bakin_get_paths', '')}
 \`\`\`
 
 ## EXECUTION TOOLS — for doing actual work
@@ -404,29 +398,29 @@ These tools help you accomplish the work. Use them as your primary way to save f
 
 \`\`\`bash
 # Save any file as a managed asset (handles naming + sidecar metadata)
-${mc('beacon_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
+${mc('bakin_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
 
 # Post to Discord (with optional image/video attachment)
-${mc('beacon_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}
+${mc('bakin_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}
 
 # Generate image via Nano Banana
-${mc('beacon_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}
+${mc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}
 
 # Check workflow gate statuses
-${mc('beacon_exec_check_gates', `taskId=${task.id}`)}
+${mc('bakin_exec_check_gates', `taskId=${task.id}`)}
 ${task.projectId ? `
 # Project tools (this task is part of a project)
-${mc('beacon_exec_project_get', `projectId="${task.projectId}"`)}
-${mc('beacon_exec_project_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
-${mc('beacon_exec_project_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : `
-# Projects: beacon_exec_project_list, beacon_exec_project_create, beacon_exec_project_get`}
+${mc('bakin_exec_project_get', `projectId="${task.projectId}"`)}
+${mc('bakin_exec_project_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
+${mc('bakin_exec_project_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : `
+# Projects: bakin_exec_project_list, bakin_exec_project_create, bakin_exec_project_get`}
 \`\`\`
 
 ## DEPENDENCY PATTERN
 
 If your task requires output from another agent:
-1. Create their task with beacon_create_task (use parentId for immediate dispatch)
-2. Register the dependency with beacon_register_dependency
+1. Create their task with bakin_create_task (use parentId for immediate dispatch)
+2. Register the dependency with bakin_register_dependency
 3. Stop — you will be automatically re-dispatched when their task completes`
 }
 
@@ -464,19 +458,19 @@ async function dispatchWorkflowTask(
 ): Promise<void> {
   // Load or create workflow instance.
   // Pass the task assignee so $assigned steps resolve to whoever owns the task at start time.
-  let instance = loadInstance(task.id, contentDir)
+  let instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
   if (!instance) {
-    instance = createInstance(task.id, task.workflowId, contentDir, task.agent)
+    instance = await hooks().invoke<Record<string, unknown>>('workflows.createInstance', { taskId: task.id, workflowId: task.workflowId, assignee: task.agent }) ?? {}
     log.info('Created workflow instance', { taskId: task.id, workflowId: task.workflowId, resolvedAgent: task.agent })
   } else if (!instance.resolvedAgent && task.agent) {
     // Backfill resolvedAgent if instance was created before $assigned resolution was wired up
     instance.resolvedAgent = task.agent
-    saveInstance(instance, contentDir)
+    await hooks().invoke<void>('workflows.saveInstance', { instance })
     log.info('Backfilled resolvedAgent on existing instance', { taskId: task.id, resolvedAgent: task.agent })
   }
 
   // Get agents for current step
-  const activeAgents = getActiveAgents(task.id, contentDir)
+  const activeAgents = await hooks().invoke<Array<{ agent: string; stepId: string; effectiveTaskId?: string }>>('workflows.getActiveAgents', { taskId: task.id }) ?? []
   if (activeAgents.length === 0) {
     log.debug('No active agents for workflow step', { taskId: task.id })
     return
@@ -486,7 +480,7 @@ async function dispatchWorkflowTask(
   // non-workflow tasks. Prevents the task from sitting in "todo" while the
   // agent is already working on it.
   if (!dispatchedSet.has(task.id)) {
-    const { columns: fresh } = readTaskboard()
+    const { columns: fresh } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; agent?: string; title?: string; workflowId?: string }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const stillInTodo = fresh.todo.some(t => t.id === task.id)
     if (stillInTodo) {
       const firstAgent = activeAgents[0]?.agent || task.agent || 'roscoe'
@@ -499,7 +493,7 @@ async function dispatchWorkflowTask(
   for (const { agent, stepId, effectiveTaskId } of activeAgents) {
     // For nested workflows, use the child's taskId for step context resolution
     const contextTaskId = effectiveTaskId || task.id
-    const stepContext = getCurrentStep(contextTaskId, agent, contentDir)
+    const stepContext = await hooks().invoke<Record<string, unknown>>('workflows.getCurrentStep', { taskId: contextTaskId, agentId: agent })
     if (!stepContext || 'status' in stepContext && (stepContext.status === 'complete' || stepContext.status === 'pending_approval')) {
       continue
     }
@@ -582,7 +576,7 @@ function buildWorkflowDispatchMessage(
   lines.push('## HARD CONSTRAINTS — violations are rejected server-side')
   lines.push('')
   lines.push('1. **SCOPE:** Do ONLY the work described in "YOUR TASK" below. Nothing more. If the task implies work for another step (e.g., generating images when your step is writing copy), STOP — that belongs to a different agent.')
-  lines.push('2. **OUTPUT:** Submit via beacon_submit_step. Describing results in conversation does NOT complete the step. The workflow will not advance.')
+  lines.push('2. **OUTPUT:** Submit via bakin_submit_step. Describing results in conversation does NOT complete the step. The workflow will not advance.')
   lines.push('3. **SCHEMA:** Your output MUST match the JSON schema below. The server validates it. Missing fields = rejection. Extra fields = rejection. Wrong types = rejection.')
   lines.push('4. **NO SIDE EFFECTS:** Do not create subtasks, dispatch other agents, move the task to Done, or post to any channel. The workflow engine handles ALL downstream handoffs — the next agent is already defined in the workflow and will be dispatched automatically when your step is approved. Creating a subtask would duplicate the workflow\'s job.')
   lines.push('5. **ONE SUBMISSION:** Submit your output once via the API, then stop. Do not continue working after submission.')
@@ -672,7 +666,7 @@ function buildWorkflowDispatchMessage(
   // ─── Progress Logging ──────────────────────────────────────────────
   lines.push('## PROGRESS LOGGING — MANDATORY')
   lines.push('')
-  const wfServer = `beacon-${agentName}`
+  const wfServer = `bakin-${agentName}`
   const wfMc = (tool: string, args: string) => `mcporter call ${wfServer}.${tool} ${args}`
 
   lines.push('You MUST log your progress throughout this workflow step. These updates appear in the live activity feed so humans can monitor your work in real-time.')
@@ -689,33 +683,33 @@ function buildWorkflowDispatchMessage(
   // ─── Commands ───────────────────────────────────────────────────────
   lines.push('## COMMANDS')
   lines.push('')
-  lines.push(`Your Beacon MCP server is \`${wfServer}\`. Use mcporter for all interactions:`)
+  lines.push(`Your Bakin MCP server is \`${wfServer}\`. Use mcporter for all interactions:`)
   lines.push('')
   lines.push('```bash')
   lines.push(`# Submit your output (must match the schema above)`)
-  lines.push(`${wfMc('beacon_submit_step', `taskId=${task.id} stepId=${stepContext.stepId} --args '<json output>'`)}`)
+  lines.push(`${wfMc('bakin_submit_step', `taskId=${task.id} stepId=${stepContext.stepId} --args '<json output>'`)}`)
   lines.push('')
   lines.push(`# Log progress (mandatory, every major step)`)
-  lines.push(`${wfMc('beacon_log_progress', `taskId=${task.id} message="<update>"`)}`)
+  lines.push(`${wfMc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}`)
   lines.push('')
   lines.push(`# Check your current step details if needed`)
-  lines.push(`${wfMc('beacon_get_step', `taskId=${task.id}`)}`)
+  lines.push(`${wfMc('bakin_get_step', `taskId=${task.id}`)}`)
   lines.push('')
   lines.push('# --- Execution tools for doing actual work ---')
   lines.push('')
   lines.push(`# Save any file as a managed asset`)
-  lines.push(`${wfMc('beacon_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what>"`)}`);
+  lines.push(`${wfMc('bakin_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what>"`)}`);
   lines.push('')
   lines.push(`# Generate image via Nano Banana`)
-  lines.push(`${wfMc('beacon_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}`);
+  lines.push(`${wfMc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}`);
   lines.push('')
   lines.push(`# Check workflow gate statuses`)
-  lines.push(`${wfMc('beacon_exec_check_gates', `taskId=${task.id}`)}`);
+  lines.push(`${wfMc('bakin_exec_check_gates', `taskId=${task.id}`)}`);
   // Only include post_discord for output/publish steps (non-output steps have "NO SIDE EFFECTS" constraint)
   if (stepContext.type === 'output') {
     lines.push('')
     lines.push(`# Post to Discord (with optional image/video attachment)`)
-    lines.push(`${wfMc('beacon_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}`);
+    lines.push(`${wfMc('bakin_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}`);
   }
   lines.push('```')
   lines.push('')
@@ -723,7 +717,7 @@ function buildWorkflowDispatchMessage(
   // ─── Stop Instruction ───────────────────────────────────────────────
   lines.push('## AFTER SUBMITTING')
   lines.push('')
-  lines.push('After beacon_submit_step returns success, your work is done. Do NOT:')
+  lines.push('After bakin_submit_step returns success, your work is done. Do NOT:')
   lines.push('- Generate additional outputs or deliverables')
   lines.push('- Start work on what you think the next step might be')
   lines.push('- Send messages about what should happen next')
@@ -739,7 +733,7 @@ function buildWorkflowDispatchMessage(
 export async function reconcileOnStartup(contentDir: string): Promise<void> {
   const settings = getSettings()
   try {
-    const { columns } = readTaskboard()
+    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     let recovered = 0
 
     for (const task of [...columns.inProgress]) {
@@ -751,7 +745,7 @@ export async function reconcileOnStartup(contentDir: string): Promise<void> {
 
       if (agentStale && !hasRecentLog) {
         try {
-          await taskLog(task.id, 'system', 'Recovered on server restart: agent heartbeat stale and no recent task logs.')
+          await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'system', message: 'Recovered on server restart: agent heartbeat stale and no recent task logs.' })
           const { moveTask: doMove } = await import('../lib/taskboard')
           await doMove(task.id, 'todo')
           appendAudit(contentDir, 'task.startup_recovered', 'system', { id: task.id, title: task.title, agent: task.agent })

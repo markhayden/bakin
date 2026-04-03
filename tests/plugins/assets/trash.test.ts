@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, rmSync, existsSync, writeFileSync, readFileSync, readdirSync, utimesSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { softDelete, cleanTrash, listTrash, restoreAsset, permanentDelete, emptyTrash, parseTrashName } from '@mc/assets/lib/trash'
+import { softDelete, cleanTrash, listTrash, restoreAsset, permanentDelete, emptyTrash, parseTrashName } from '@bakin/assets/lib/trash'
 
 describe('assets/trash', () => {
-  const testDir = join(tmpdir(), `beacon-test-trash-${Date.now()}`)
+  const testDir = join(tmpdir(), `bakin-test-trash-${Date.now()}`)
   const assetsRoot = join(testDir, 'assets')
   const imagesDir = join(assetsRoot, 'images', 'task123')
 

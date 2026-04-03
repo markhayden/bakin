@@ -220,7 +220,7 @@ Agent: roscoe
   AGENTS.md:
     [OK] Bakin context block present and current
     [OK] Tool list matches registered exec tools
-    [WARN] User section references deprecated tool 'beacon_exec_old_tool'
+    [WARN] User section references deprecated tool 'bakin_exec_old_tool'
   Skills:
     [OK] 5 Bakin-managed skills installed
     [FIX] 1 orphaned skill from uninstalled plugin 'analytics'

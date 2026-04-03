@@ -3,12 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Clock } from 'lucide-react'
 import { Input } from '@/components/ui/input'
-
-interface ParseResult {
-  cron: string
-  human: string
-  nextRuns?: string[]
-}
+import type { ParseResult } from '../types'
 
 export function ScheduleInput({
   value,
@@ -37,7 +32,7 @@ export function ScheduleInput({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch('/api/plugins/schedule/parse-schedule', {
+        const res = await fetch('/api/plugins/schedule/parse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ input: value }),

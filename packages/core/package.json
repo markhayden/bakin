@@ -1,0 +1,23 @@
+{
+  "name": "@bakin/core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./logger": "./src/logger.ts",
+    "./settings": "./src/settings.ts",
+    "./content-dir": "./src/content-dir.ts",
+    "./main-agent": "./src/main-agent.ts",
+    "./vault": "./src/vault.ts",
+    "./plugin-types": "./src/plugin-types.ts",
+    "./constants": "./src/constants.ts",
+    "./storage": "./src/storage/markdown-adapter.ts",
+    "./events": "./src/events/event-bus.ts",
+    "./parsers/*": "./src/parsers/*.ts",
+    "./format": "./src/format.ts"
+  },
+  "dependencies": {}
+}

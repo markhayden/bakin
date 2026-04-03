@@ -14,7 +14,7 @@ vi.mock('../../../src/core/logger', () => ({
   }),
 }))
 
-import { cronAdd, cronEdit, cronRemove, cronRun, cronList } from '@mc/schedule/lib/openclaw-cron'
+import { cronAdd, cronEdit, cronRemove, cronRun, cronList } from '@bakin/schedule/lib/openclaw-cron'
 
 const mockExecFile = vi.mocked(execFile)
 

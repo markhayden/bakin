@@ -33,7 +33,7 @@ async function executeScheduledContent(contentDir: string, port: number): Promis
       const taskDescription = buildContentTaskDescription(item, persona, port)
 
       // Create task via API
-      const res = await fetch(`http://localhost:${port}/api/tasks/create`, {
+      const res = await fetch(`http://localhost:${port}/api/plugins/tasks/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -93,13 +93,13 @@ ${item.brief}
 Instructions:
 1. Write the caption/post text
 2. If this content needs an image or video:
-   a. Create a subtask for Pixel (image) or Rolo (video): POST to /api/tasks/create
+   a. Create a subtask for Pixel (image) or Rolo (video) using bakin_exec_tasks_create
    b. IMPORTANT: Tell Pixel/Rolo to discover the assets path via GET /api/paths?key=assets, then save files there with descriptive filenames like {agent}-{type}.png
-   c. POST to http://localhost:${port}/api/plugins/calendar/items/update with: { "id": "${item.id}", "status": "waiting", "draft": { "caption": "your caption", "imagePrompt": "prompt if applicable", "videoPrompt": "prompt if applicable" } }
-   d. Register dependsOn: POST to /api/tasks/depend with your task ID and the subtask ID
+   c. PUT to http://localhost:${port}/api/plugins/calendar/${item.id} with: { "status": "waiting", "draft": { "caption": "your caption", "imagePrompt": "prompt if applicable", "videoPrompt": "prompt if applicable" } }
+   d. Register dependsOn using bakin_exec_tasks_set_dependency with your task ID and the subtask ID
    e. Exit — you will be re-dispatched when the asset is ready
 3. If this content does NOT need image/video, or when you are re-dispatched after assets complete:
-   - POST to http://localhost:${port}/api/plugins/calendar/items/update with: { "id": "${item.id}", "status": "review", "draft": { "caption": "...", "imagePath": "assets/{filename}.png", "videoPath": "assets/{filename}.mp4" } }
+   - PUT to http://localhost:${port}/api/plugins/calendar/${item.id} with: { "status": "review", "draft": { "caption": "...", "imagePath": "assets/{filename}.png", "videoPath": "assets/{filename}.mp4" } }
    - IMPORTANT: Use relative paths under assets/ (e.g. "assets/nemo-workout.png"), NOT absolute paths. The system will resolve them relative to the content directory.
    - Then mark your task complete
 

@@ -1,13 +1,18 @@
 /**
  * Models plugin — server entry point.
- * API routes for model config, available models, aliases, and defaults.
+ * API routes for model config, available models, aliases, task profiles, and defaults.
  */
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+// Node builtins
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { execFile } from 'child_process'
-import type { AgentModelConfig, AvailableModel } from './types'
+// External
+import { z } from 'zod'
+// Internal
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+// Relative
+import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
 
 const OPENCLAW_JSON = join(homedir(), '.openclaw', 'openclaw.json')
 const AUTH_PROFILES = join(homedir(), '.openclaw', 'agents', 'main', 'agent', 'auth-profiles.json')
@@ -40,22 +45,37 @@ interface OpenclawConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Agent metadata fallback
+// Agent metadata from team hook (cached)
 // ---------------------------------------------------------------------------
-const AGENT_META: Record<string, { name: string; emoji: string }> = {
-  main: { name: 'Roscoe', emoji: '🐾' },
-  patch: { name: 'Patch', emoji: '⚙️' },
-  pixel: { name: 'Pixel', emoji: '🖼️' },
-  rolo: { name: 'Rolo', emoji: '🎬' },
-  basil: { name: 'Basil', emoji: '🥗' },
+interface AgentMeta { id: string; name: string; emoji: string }
+let agentMetaCache: { agents: AgentMeta[]; fetchedAt: number } | null = null
+const META_CACHE_TTL = 30_000 // 30s
+
+async function getAgentMeta(ctx: PluginContext): Promise<AgentMeta[]> {
+  if (agentMetaCache && Date.now() - agentMetaCache.fetchedAt < META_CACHE_TTL) {
+    return agentMetaCache.agents
+  }
+  try {
+    const agents = await ctx.hooks.invoke<AgentMeta[]>('team.listAgents', {})
+    if (agents && Array.isArray(agents)) {
+      agentMetaCache = { agents, fetchedAt: Date.now() }
+      return agents
+    }
+  } catch {
+    // team plugin may not be loaded yet
+  }
+  return []
 }
+
 
 // ---------------------------------------------------------------------------
 // Config read/write helpers
 // ---------------------------------------------------------------------------
 function readConfig(): OpenclawConfig {
   const raw = readFileSync(OPENCLAW_JSON, 'utf-8')
-  const cleaned = raw.replace(/\/\/.*$/gm, '')
+  // Strip whole-line // comments only (lines where // is the first non-whitespace).
+  // Cannot naively strip mid-line // — it breaks URLs inside strings.
+  const cleaned = raw.replace(/^\s*\/\/.*$/gm, '')
   return JSON.parse(cleaned)
 }
 
@@ -70,24 +90,31 @@ function updateConfig(updater: (config: OpenclawConfig) => void): void {
 }
 
 // ---------------------------------------------------------------------------
-// Resolve agents from config
+// Resolve agents from config + team hook metadata
 // ---------------------------------------------------------------------------
-function resolveAgents(config: OpenclawConfig): AgentModelConfig[] {
+async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
+  const config = readConfig()
+  const teamAgents = await getAgentMeta(ctx)
   const defaultModel = config.agents.defaults.model.primary
   const defaultSubagentModel = config.agents.defaults.subagents?.model ?? null
 
   const agents = config.agents.list.map((agent) => {
-    const id = agent.id === 'main' ? 'roscoe' : agent.id
-    const meta = AGENT_META[agent.id] || {
-      name: agent.identity?.name || agent.name || agent.id,
-      emoji: agent.identity?.emoji || '🤖',
-    }
+    const bakinId = agent.id === 'main' ? 'roscoe' : agent.id
+    // Resolve from team hook first, then OpenClaw identity, then ID
+    const teamAgent = teamAgents.find((a) => a.id === bakinId)
+    const rawName = teamAgent?.name || agent.identity?.name || agent.name || agent.id
+    // Capitalize raw IDs that look like slugs (e.g. 'roscoe' → 'Roscoe')
+    const name = rawName === rawName.toLowerCase() && !rawName.includes(' ')
+      ? rawName.charAt(0).toUpperCase() + rawName.slice(1)
+      : rawName
+    const emoji = teamAgent?.emoji || agent.identity?.emoji || '🤖'
+
     const ownModel = agent.model?.primary ?? null
     const subagentModel = agent.subagents?.model ?? null
     return {
-      agentId: id,
-      name: meta.name,
-      emoji: meta.emoji,
+      agentId: bakinId,
+      name,
+      emoji,
       ownModel,
       subagentModel,
       defaultModel,
@@ -129,17 +156,13 @@ function tierFromId(id: string): 'budget' | 'standard' | 'premium' {
 }
 
 function displayNameFromId(id: string): string {
-  // "claude-sonnet-4-6-20250514" -> "Claude Sonnet 4.6"
-  const base = id.replace(/-\d{8}$/, '') // strip date suffix
+  const base = id.replace(/-\d{8}$/, '')
   const parts = base.split('-')
-  // Capitalize each part, join with space
   const name = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')
-  // Fix version numbers: "4 6" -> "4.6", "4 5" -> "4.5"
   return name.replace(/(\d) (\d)/g, '$1.$2')
 }
 
 async function fetchAvailableModels(): Promise<{ models: AvailableModel[]; cached: boolean; cachedAt: number | null }> {
-  // Check cache
   if (modelsCache && Date.now() - modelsCache.fetchedAt < CACHE_TTL) {
     return { models: modelsCache.models, cached: true, cachedAt: modelsCache.fetchedAt }
   }
@@ -214,7 +237,6 @@ function readAliases(config: OpenclawConfig): Record<string, string> {
     } else if (val && typeof val === 'object' && 'alias' in val) {
       result[key] = (val as { alias: string }).alias
     } else {
-      // Key is the model ID, value is config — the key itself is the alias target
       result[key] = key
     }
   }
@@ -222,21 +244,88 @@ function readAliases(config: OpenclawConfig): Record<string, string> {
 }
 
 // ---------------------------------------------------------------------------
+// Task profiles defaults
+// ---------------------------------------------------------------------------
+const DEFAULT_TASK_PROFILES: TaskProfile[] = [
+  { taskType: 'Heartbeat check', recommendedModel: 'claude-haiku-4-5-20251001', notes: 'Fast, cheap' },
+  { taskType: 'Content writing', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Quality output' },
+  { taskType: 'Image brief', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Creative' },
+  { taskType: 'Video production', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Creative' },
+  { taskType: 'Code/development', recommendedModel: 'claude-opus-4-6-20250514', notes: 'Complex reasoning' },
+  { taskType: 'Orchestration', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Multi-step planning' },
+]
+
+// ---------------------------------------------------------------------------
+// Zod schemas for request validation
+// ---------------------------------------------------------------------------
+const ConfigUpdateSchema = z.object({
+  agentId: z.string().min(1, 'agentId required'),
+  ownModel: z.string().nullable().optional(),
+  subagentModel: z.string().nullable().optional(),
+})
+
+const DefaultsUpdateSchema = z.object({
+  defaultModel: z.string().optional(),
+  defaultSubagentModel: z.string().nullable().optional(),
+})
+
+const AliasActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('add'), name: z.string().min(1), target: z.string().min(1) }),
+  z.object({ action: z.literal('delete'), name: z.string().min(1) }),
+  z.object({ action: z.literal('prepopulate') }),
+]).or(z.object({ aliases: z.record(z.string(), z.string()) }))
+
+const TaskProfileSchema = z.object({
+  taskType: z.string().min(1),
+  recommendedModel: z.string().min(1),
+  notes: z.string(),
+})
+
+const TaskProfilesUpdateSchema = z.object({
+  profiles: z.array(TaskProfileSchema),
+})
+
+// ---------------------------------------------------------------------------
 // Plugin definition
 // ---------------------------------------------------------------------------
-const modelsPlugin: MCPlugin = {
+const modelsPlugin: BakinPlugin = {
   id: 'models',
   name: 'Models',
-  version: '2.0.0',
+  version: '2.1.0',
 
-  navItems: [
-    { id: 'models', label: 'Models', icon: 'Cpu', href: '/models', order: 65 },
-  ],
+  settingsSchema: {
+    fields: [
+      { key: 'showUsageMetrics', type: 'boolean', label: 'Show usage metrics', description: 'Display token usage and cost estimates', default: true },
+      { key: 'defaultModel', type: 'select', label: 'Default model', description: 'Default model for new agents', options: [{ value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' }, { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' }, { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }], default: 'claude-sonnet-4-6' },
+    ],
+  },
+
+  // Nav items registered in client.tsx (order: 70) — no server-side duplication
 
   activate(ctx: PluginContext) {
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
+    // Hooks — cross-plugin communication
+    // -------------------------------------------------------------------
+    ctx.hooks.register('models.configChanged', () => {
+      // Notification hook — handlers subscribe externally
+    })
+
+    ctx.hooks.register('models.getEffectiveModel', async (data: Record<string, unknown>) => {
+      const agentId = data.agentId as string
+      if (!agentId) return null
+      const agents = await resolveAgents(ctx)
+      const agent = agents.find((a) => a.agentId === agentId)
+      return agent?.effectiveModel ?? null
+    })
+
+    ctx.hooks.register('models.getAvailableModels', async () => {
+      const result = await fetchAvailableModels()
+      return result.models
+    })
+
+    // -------------------------------------------------------------------
     // GET /api/plugins/models/available
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
     ctx.registerRoute({
       path: '/available',
       method: 'GET',
@@ -250,16 +339,15 @@ const modelsPlugin: MCPlugin = {
       },
     })
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
     // GET /api/plugins/models/config
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
     ctx.registerRoute({
       path: '/config',
       method: 'GET',
       handler: async () => {
         try {
-          const config = readConfig()
-          const agents = resolveAgents(config)
+          const agents = await resolveAgents(ctx)
           return Response.json({ agents })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -267,31 +355,30 @@ const modelsPlugin: MCPlugin = {
       },
     })
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
     // POST /api/plugins/models/config
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
     ctx.registerRoute({
       path: '/config',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
-          const body = await req.json() as {
-            agentId: string
-            ownModel?: string | null
-            subagentModel?: string | null
-          }
+          const raw = await req.json()
+          const body = ConfigUpdateSchema.parse(raw)
           const { agentId } = body
-          if (!agentId) {
-            return Response.json({ error: 'agentId required' }, { status: 400 })
-          }
 
           const ocId = agentId === 'roscoe' ? 'main' : agentId
+
+          // Capture old model for hook notification
+          const agentsBefore = await resolveAgents(ctx)
+          const before = agentsBefore.find((a) => a.agentId === agentId)
+          const oldModel = before?.effectiveModel ?? null
 
           updateConfig((config) => {
             const agent = config.agents.list.find((a) => a.id === ocId)
             if (!agent) throw new Error(`Agent "${agentId}" not found`)
 
-            if ('ownModel' in body) {
+            if (body.ownModel !== undefined) {
               if (body.ownModel) {
                 agent.model = { primary: body.ownModel }
               } else {
@@ -299,7 +386,7 @@ const modelsPlugin: MCPlugin = {
               }
             }
 
-            if ('subagentModel' in body) {
+            if (body.subagentModel !== undefined) {
               if (body.subagentModel) {
                 if (!agent.subagents) agent.subagents = {}
                 agent.subagents.model = body.subagentModel
@@ -309,31 +396,44 @@ const modelsPlugin: MCPlugin = {
             }
           })
 
+          const agentsAfter = await resolveAgents(ctx)
+          const after = agentsAfter.find((a) => a.agentId === agentId)
+          const newModel = after?.effectiveModel ?? null
+
+          ctx.activity.audit('config.updated', 'system', { agentId, ownModel: body.ownModel, subagentModel: body.subagentModel })
+          ctx.activity.log('system', `Updated model config for ${agentId}`, { category: 'models' })
+
+          // Fire notification hook if model changed
+          if (oldModel !== newModel) {
+            try { await ctx.hooks.invoke('models.configChanged', { agentId, oldModel, newModel }) } catch { /* no subscribers */ }
+          }
+
           return Response.json({ ok: true })
         } catch (err) {
+          if (err instanceof z.ZodError) {
+            return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
+          }
           return Response.json({ error: String(err) }, { status: 500 })
         }
       },
     })
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
     // POST /api/plugins/models/defaults
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
     ctx.registerRoute({
       path: '/defaults',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
-          const body = await req.json() as {
-            defaultModel?: string
-            defaultSubagentModel?: string | null
-          }
+          const raw = await req.json()
+          const body = DefaultsUpdateSchema.parse(raw)
 
           updateConfig((config) => {
             if (body.defaultModel) {
               config.agents.defaults.model.primary = body.defaultModel
             }
-            if ('defaultSubagentModel' in body) {
+            if (body.defaultSubagentModel !== undefined) {
               if (!config.agents.defaults.subagents) {
                 config.agents.defaults.subagents = {}
               }
@@ -345,16 +445,21 @@ const modelsPlugin: MCPlugin = {
             }
           })
 
+          ctx.activity.audit('defaults.updated', 'system', { defaultModel: body.defaultModel, defaultSubagentModel: body.defaultSubagentModel })
+          ctx.activity.log('system', `Updated default model${body.defaultModel ? ` to ${body.defaultModel}` : ''}`, { category: 'models' })
           return Response.json({ ok: true })
         } catch (err) {
+          if (err instanceof z.ZodError) {
+            return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
+          }
           return Response.json({ error: String(err) }, { status: 500 })
         }
       },
     })
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
     // GET /api/plugins/models/aliases
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
     ctx.registerRoute({
       path: '/aliases',
       method: 'GET',
@@ -369,19 +474,16 @@ const modelsPlugin: MCPlugin = {
       },
     })
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
     // POST /api/plugins/models/aliases
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
     ctx.registerRoute({
       path: '/aliases',
       method: 'POST',
-      handler: async (req) => {
+      handler: async (req: Request) => {
         try {
-          const body = await req.json() as
-            | { aliases: Record<string, string> }
-            | { action: 'add'; name: string; target: string }
-            | { action: 'delete'; name: string }
-            | { action: 'prepopulate' }
+          const raw = await req.json()
+          const body = AliasActionSchema.parse(raw)
 
           updateConfig((config) => {
             if (!config.agents.defaults.models) {
@@ -389,7 +491,6 @@ const modelsPlugin: MCPlugin = {
             }
 
             if ('aliases' in body) {
-              // Full replacement
               const newModels: Record<string, unknown> = {}
               for (const [alias, target] of Object.entries(body.aliases)) {
                 newModels[alias] = { alias: target }
@@ -411,18 +512,63 @@ const modelsPlugin: MCPlugin = {
             }
           })
 
+          ctx.activity.audit('aliases.updated', 'system')
+          ctx.activity.log('system', 'Updated model aliases', { category: 'models' })
           return Response.json({ ok: true })
+        } catch (err) {
+          if (err instanceof z.ZodError) {
+            return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
+          }
+          return Response.json({ error: String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // -------------------------------------------------------------------
+    // GET /api/plugins/models/profiles
+    // -------------------------------------------------------------------
+    ctx.registerRoute({
+      path: '/profiles',
+      method: 'GET',
+      handler: async () => {
+        try {
+          const settings = ctx.getSettings<ModelsPluginSettings>()
+          const profiles = settings.taskProfiles ?? DEFAULT_TASK_PROFILES
+          return Response.json({ profiles })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
         }
       },
     })
 
-    // -----------------------------------------------------------------------
-    // POST /api/plugins/models/restart
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------
+    // PUT /api/plugins/models/profiles
+    // -------------------------------------------------------------------
     ctx.registerRoute({
-      path: '/restart',
+      path: '/profiles',
+      method: 'PUT',
+      handler: async (req: Request) => {
+        try {
+          const raw = await req.json()
+          const body = TaskProfilesUpdateSchema.parse(raw)
+          ctx.updateSettings({ taskProfiles: body.profiles })
+          ctx.activity.audit('profiles.updated', 'system', { count: body.profiles.length })
+          ctx.activity.log('system', `Updated ${body.profiles.length} task profiles`, { category: 'models' })
+          return Response.json({ ok: true })
+        } catch (err) {
+          if (err instanceof z.ZodError) {
+            return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
+          }
+          return Response.json({ error: String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // -------------------------------------------------------------------
+    // POST /api/plugins/models/gateway/restart
+    // -------------------------------------------------------------------
+    ctx.registerRoute({
+      path: '/gateway/restart',
       method: 'POST',
       handler: async () => {
         return new Promise<Response>((resolve) => {
@@ -430,10 +576,55 @@ const modelsPlugin: MCPlugin = {
             if (err) {
               resolve(Response.json({ ok: false, error: String(err) }, { status: 500 }))
             } else {
+              ctx.activity.audit('gateway.restarted', 'system')
+              ctx.activity.log('system', 'OpenClaw gateway restarted', { category: 'models' })
               resolve(Response.json({ ok: true, message: 'Restart initiated' }))
             }
           })
         })
+      },
+    })
+
+    // -------------------------------------------------------------------
+    // MCP Exec Tools — read-only agent access
+    // -------------------------------------------------------------------
+    ctx.registerExecTool({
+      name: 'bakin_exec_models_list',
+      description: 'List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment.',
+      parameters: {
+        tier: z.enum(['budget', 'standard', 'premium']).optional().describe('Filter by model tier'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        try {
+          const result = await fetchAvailableModels()
+          const tier = params.tier as string | undefined
+          const models = tier ? result.models.filter((m) => m.tier === tier) : result.models
+          return { ok: true, models, cached: result.cached }
+        } catch (err) {
+          return { ok: false, error: String(err) }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_models_get_config',
+      description: 'Get model configuration for all agents or a specific agent. Shows effective model (own override or default), subagent model, and system defaults.',
+      parameters: {
+        agentId: z.string().optional().describe('Specific agent ID to query (omit for all agents)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        try {
+          const agents = await resolveAgents(ctx)
+          const agentId = params.agentId as string | undefined
+          if (agentId) {
+            const agent = agents.find((a) => a.agentId === agentId)
+            if (!agent) return { ok: false, error: `Agent "${agentId}" not found` }
+            return { ok: true, agent }
+          }
+          return { ok: true, agents }
+        } catch (err) {
+          return { ok: false, error: String(err) }
+        }
       },
     })
   },

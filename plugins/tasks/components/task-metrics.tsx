@@ -5,9 +5,10 @@ import type { TaskColumns } from '../types'
 
 interface TaskMetricsProps {
   columns: TaskColumns
+  timestamp?: string
 }
 
-export function TaskMetrics({ columns }: TaskMetricsProps) {
+export function TaskMetrics({ columns, timestamp }: TaskMetricsProps) {
   const metrics = useMemo(() => {
     const active = columns.inProgress.length + columns.review.length
     const blocked = columns.blocked.length
@@ -33,6 +34,11 @@ export function TaskMetrics({ columns }: TaskMetricsProps) {
       <Stat label="Done Today" value={metrics.completedToday} color="text-green-400" dotColor="bg-green-400" />
       <Stat label="Total" value={metrics.total} color="text-foreground" dotColor="bg-foreground/50" />
       <Stat label="Agents" value={metrics.agentsActive} color="text-violet-400" dotColor="bg-violet-400" />
+      {timestamp && (
+        <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+          Updated {timestamp}
+        </span>
+      )}
     </div>
   )
 }

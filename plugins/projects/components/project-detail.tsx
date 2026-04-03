@@ -1,8 +1,11 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { ArrowLeft, Send, Loader2, Paperclip, X, FileText, Image, Film, Music, File, Sparkles, ChevronDown, Search, Pencil, Trash2 } from 'lucide-react'
-import { AGENTS } from '@/lib/constants'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
+import { AgentSelect } from '@/components/agent-select'
+import { AssetDetailModal } from '@bakin/assets/components/asset-detail'
 import { ProjectChecklist } from './project-checklist'
 import { ProjectEditor } from './project-editor'
 import { MarkdownContent } from '@/components/markdown-content'
@@ -103,9 +106,12 @@ function PickerThumb({ asset }: { asset: { path: string; filename: string; type:
 // Component
 // ---------------------------------------------------------------------------
 
-export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack: () => void }) {
+export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditChange }: { projectId?: string; onBack: () => void; initialEdit?: boolean; onEditChange?: (editing: boolean) => void }) {
+  const router = useRouter()
+  const isNew = !projectId
+  const currentId = projectId || ''
   const [project, setProject] = useState<ProjectData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!isNew)
 
   // Edit mode — single toggle for title + spec
   const [editing, setEditing] = useState(false)
@@ -116,22 +122,22 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
 
   // Brainstorm
   const [brainstormOpen, setBrainstormOpen] = useState(true)
-  const [brainstormAgent, setBrainstormAgent] = useState('main')
+  const [brainstormAgent, setBrainstormAgent] = useState('roscoe')
   const [agentPrompt, setAgentPrompt] = useState('')
   const [agentLoading, setAgentLoading] = useState(false)
   const [brainstormMessages, setBrainstormMessages] = useState<Array<{ role: 'user' | 'agent'; agent?: string; content: string }>>([])
   const brainstormEndRef = useRef<HTMLDivElement>(null)
+  const brainstormAgentMeta = useAgent(brainstormAgent)
 
   // Dropdowns
-  const [ownerOpen, setOwnerOpen] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
-  const ownerRef = useRef<HTMLDivElement>(null)
   const statusRef = useRef<HTMLDivElement>(null)
 
   // Assets
   const [assetPickerOpen, setAssetPickerOpen] = useState(false)
   const [assetSearch, setAssetSearch] = useState('')
   const [availableAssets, setAvailableAssets] = useState<Array<{ path: string; filename: string; type: string; description?: string }>>([])
+  const [previewAssetPath, setPreviewAssetPath] = useState<string | null>(null)
 
   // Delete confirmation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -141,9 +147,10 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
   // Data fetching
   // ---------------------------------------------------------------------------
 
-  const fetchProject = useCallback(async () => {
+  const fetchProject = useCallback(async (enterEdit?: boolean) => {
+    if (!currentId) return
     try {
-      const res = await fetch(`/api/plugins/projects/get?id=${projectId}`)
+      const res = await fetch(`/api/plugins/projects/${currentId}`)
       if (res.ok) {
         const data = await res.json()
         setProject(data.project)
@@ -151,19 +158,35 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
         setEditOwner(data.project.owner)
         setEditStatus(data.project.status)
         setEditBody(data.project.body)
-        setEditing(false)
+        const shouldEdit = enterEdit ?? false
+        setEditing(shouldEdit)
+        onEditChange?.(shouldEdit)
       }
     } finally {
       setLoading(false)
     }
-  }, [projectId])
+  }, [currentId, onEditChange])
 
-  useState(() => { fetchProject() })
+  useEffect(() => {
+    if (isNew) {
+      // New project — start in edit mode with empty state
+      setProject({
+        id: '', title: '', status: 'draft', owner: 'roscoe', progress: 0,
+        tasks: [], assets: [], body: '', updated: new Date().toISOString(),
+        resolvedTasks: {}, resolvedAssets: [],
+      })
+      setEditOwner('roscoe')
+      setEditStatus('draft')
+      setEditing(true)
+      onEditChange?.(true)
+    } else {
+      fetchProject(initialEdit)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close dropdowns on outside click
+  // Close status dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ownerRef.current && !ownerRef.current.contains(e.target as Node)) setOwnerOpen(false)
       if (statusRef.current && !statusRef.current.contains(e.target as Node)) setStatusOpen(false)
     }
     document.addEventListener('mousedown', handler)
@@ -174,39 +197,70 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
   // Dirty state — anything changed from server state
   // ---------------------------------------------------------------------------
 
-  const isDirty = project && (
-    editTitle !== project.title ||
-    editOwner !== project.owner ||
-    editStatus !== project.status ||
-    editBody !== project.body
-  )
+  const isDirty = isNew
+    ? (editTitle.trim() !== '' || editBody.trim() !== '')
+    : project && (
+      editTitle !== project.title ||
+      editOwner !== project.owner ||
+      editStatus !== project.status ||
+      editBody !== project.body
+    )
 
   // ---------------------------------------------------------------------------
   // Edit mode actions
   // ---------------------------------------------------------------------------
+
+  const saveField = async (field: string, value: string) => {
+    if (isNew || !currentId) return
+    await fetch(`/api/plugins/projects/${currentId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value }),
+    })
+    fetchProject()
+  }
 
   const enterEdit = () => {
     if (!project) return
     setEditTitle(project.title)
     setEditBody(project.body)
     setEditing(true)
+    onEditChange?.(true)
   }
 
   const cancelEdit = () => {
+    if (isNew) { onBack(); return }
     if (!project) return
     setEditTitle(project.title)
     setEditBody(project.body)
     setEditing(false)
+    onEditChange?.(false)
   }
 
   const handleSave = async () => {
     if (!project || !isDirty) return
-    const updates: Record<string, string> = { id: projectId }
+
+    if (isNew) {
+      // Create the project on first save
+      const title = editTitle.trim() || 'Untitled Project'
+      const res = await fetch('/api/plugins/projects/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, owner: editOwner, body: editBody }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        router.replace(`/projects/${data.id}`, { scroll: false })
+      }
+      return
+    }
+
+    const updates: Record<string, string> = { id: currentId }
     if (editTitle !== project.title) updates.title = editTitle
     if (editOwner !== project.owner) updates.owner = editOwner
     if (editStatus !== project.status) updates.status = editStatus
     if (editBody !== project.body) updates.body = editBody
-    await fetch('/api/plugins/projects/update', {
+    await fetch(`/api/plugins/projects/${currentId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
@@ -219,19 +273,19 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
   // ---------------------------------------------------------------------------
 
   const toggleItem = async (taskItemId: string, checked: boolean) => {
-    await fetch('/api/plugins/projects/checklist/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, taskItemId, checked }) })
+    await fetch(`/api/plugins/projects/${currentId}/checklist/${taskItemId}/toggle`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ checked }) })
     fetchProject()
   }
   const addItem = async (title: string) => {
-    await fetch('/api/plugins/projects/checklist/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, title }) })
+    await fetch(`/api/plugins/projects/${currentId}/checklist`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) })
     fetchProject()
   }
   const removeItem = async (taskItemId: string) => {
-    await fetch('/api/plugins/projects/checklist/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, taskItemId }) })
+    await fetch(`/api/plugins/projects/${currentId}/checklist/${taskItemId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } })
     fetchProject()
   }
   const promoteItem = async (taskItemId: string) => {
-    await fetch('/api/plugins/projects/checklist/promote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, taskItemId }) })
+    await fetch(`/api/plugins/projects/${currentId}/checklist/${taskItemId}/promote`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
     fetchProject()
   }
 
@@ -249,7 +303,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
     setTimeout(() => brainstormEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
     try {
       const history = brainstormMessages.map(m => ({ role: m.role, content: m.content }))
-      const res = await fetch('/api/plugins/projects/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, prompt, agent, history }) })
+      const res = await fetch(`/api/plugins/projects/${currentId}/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: currentId, prompt, agent, history }) })
       const data = await res.json().catch(() => null)
       if (res.ok && data?.reply) {
         setBrainstormMessages(prev => [...prev, { role: 'agent', agent, content: data.reply }])
@@ -269,9 +323,27 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
   // Assets
   // ---------------------------------------------------------------------------
 
-  const openAssetPicker = async () => {
+  const assetPickerRef = useRef<HTMLDivElement>(null)
+
+  // Close asset picker on outside click
+  useEffect(() => {
+    if (!assetPickerOpen) return
+    const handler = (e: MouseEvent) => {
+      if (assetPickerRef.current && !assetPickerRef.current.contains(e.target as Node)) {
+        setAssetPickerOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [assetPickerOpen])
+
+  const toggleAssetPicker = async () => {
+    if (assetPickerOpen) {
+      setAssetPickerOpen(false)
+      return
+    }
     try {
-      const res = await fetch('/api/plugins/assets/list?grouped=false')
+      const res = await fetch('/api/plugins/assets/?grouped=false')
       if (res.ok) {
         const data = await res.json()
         const attached = new Set(project?.assets.map(a => a.path) || [])
@@ -289,13 +361,13 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
   }
 
   const handleAttachAsset = async (assetPath: string) => {
-    await fetch('/api/plugins/projects/assets/attach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, assetPath }) })
+    await fetch(`/api/plugins/projects/${currentId}/assets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assetPath }) })
     setAssetPickerOpen(false)
     fetchProject()
   }
 
   const handleDetachAsset = async (assetPath: string) => {
-    await fetch('/api/plugins/projects/assets/detach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, assetPath }) })
+    await fetch(`/api/plugins/projects/${currentId}/assets/${encodeURIComponent(assetPath)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } })
     fetchProject()
   }
 
@@ -314,10 +386,10 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
   const handleDelete = async (deleteLinkedTasks: boolean) => {
     setDeleting(true)
     try {
-      await fetch('/api/plugins/projects/delete', {
-        method: 'POST',
+      await fetch(`/api/plugins/projects/${currentId}`, {
+        method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: projectId, deleteLinkedTasks }),
+        body: JSON.stringify({ deleteLinkedTasks }),
       })
       onBack()
     } finally {
@@ -334,7 +406,6 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
   if (!project) return <div className="text-sm text-muted-foreground py-8">Project not found.</div>
 
   const statusCfg = STATUS_CONFIG[editStatus]
-  const ownerAgent = AGENTS.find(a => a.id === editOwner)
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -354,7 +425,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
           <div ref={statusRef} className="relative">
             <button
               onClick={() => setStatusOpen(!statusOpen)}
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium text-zinc-300 bg-zinc-800/80 hover:bg-zinc-800 border border-[rgba(255,255,255,0.06)] transition-colors"
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-medium text-zinc-300 bg-zinc-800/80 hover:bg-zinc-800 border border-[rgba(255,255,255,0.06)] transition-colors"
             >
               <span className={`size-1.5 rounded-full ${statusCfg.dot}`} />
               {statusCfg.label}
@@ -365,7 +436,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
                 {(Object.entries(STATUS_CONFIG) as [ProjectStatus, typeof statusCfg][]).map(([val, cfg]) => (
                   <button
                     key={val}
-                    onClick={() => { setEditStatus(val); setStatusOpen(false) }}
+                    onClick={() => { setEditStatus(val); setStatusOpen(false); if (!editing) saveField('status', val) }}
                     className={`w-full text-left px-3 py-1.5 text-[11px] flex items-center gap-2 transition-colors ${
                       val === editStatus ? 'text-foreground bg-zinc-800/60' : 'text-zinc-400 hover:text-foreground hover:bg-zinc-800/40'
                     }`}
@@ -379,45 +450,11 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
           </div>
 
           {/* Owner */}
-          <div ref={ownerRef} className="relative">
-            <button
-              onClick={() => setOwnerOpen(!ownerOpen)}
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] text-zinc-400 hover:text-zinc-300 bg-zinc-800/40 hover:bg-zinc-800/60 border border-[rgba(255,255,255,0.04)] transition-colors"
-            >
-              {ownerAgent && <span className="text-xs">{ownerAgent.emoji}</span>}
-              <span>{ownerAgent?.name || editOwner}</span>
-              <ChevronDown className="size-2.5 text-zinc-600" />
-            </button>
-            {ownerOpen && (
-              <div className="absolute top-full right-0 mt-1 w-52 bg-zinc-900 border border-[rgba(255,255,255,0.08)] rounded-lg shadow-xl z-30 py-1 max-h-52 overflow-y-auto">
-                <div className="px-2 py-1.5">
-                  <input
-                    type="text"
-                    value={editOwner}
-                    onChange={(e) => setEditOwner(e.target.value)}
-                    placeholder="Search or type..."
-                    className="w-full text-[11px] bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-foreground placeholder:text-zinc-600 focus:outline-none focus:border-[#5e6ad2]/50"
-                    autoFocus
-                  />
-                </div>
-                {AGENTS
-                  .filter(a => a.name.toLowerCase().includes(editOwner.toLowerCase()) || a.id.toLowerCase().includes(editOwner.toLowerCase()))
-                  .map(a => (
-                    <button
-                      key={a.id}
-                      onClick={() => { setEditOwner(a.id); setOwnerOpen(false) }}
-                      className={`w-full text-left px-3 py-1.5 text-[11px] flex items-center gap-2 transition-colors ${
-                        a.id === editOwner ? 'text-foreground bg-zinc-800/60' : 'text-zinc-400 hover:text-foreground hover:bg-zinc-800/40'
-                      }`}
-                    >
-                      <span>{a.emoji}</span>
-                      <span>{a.name}</span>
-                      <span className="text-zinc-600 ml-auto font-mono text-[10px]">{a.id}</span>
-                    </button>
-                  ))}
-              </div>
-            )}
-          </div>
+          <AgentSelect
+            value={editOwner}
+            onValueChange={(v) => { setEditOwner(v); if (!editing) saveField('owner', v) }}
+            className="h-7 w-auto min-w-[120px] text-[11px] bg-zinc-800/40 border-[rgba(255,255,255,0.04)]"
+          />
 
           <span className="w-px h-4 bg-[rgba(255,255,255,0.06)]" />
 
@@ -426,14 +463,14 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
             <>
               <button
                 onClick={cancelEdit}
-                className="px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+                className="h-7 px-3 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={!isDirty}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                className={`h-7 px-3 rounded-lg text-xs font-medium transition-all ${
                   isDirty
                     ? 'bg-[#5e6ad2] text-white hover:bg-[#6e7ae2] shadow-sm shadow-[#5e6ad2]/20'
                     : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
@@ -445,7 +482,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
           ) : (
             <button
               onClick={enterEdit}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-[rgba(255,255,255,0.06)] transition-colors"
+              className="inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-[rgba(255,255,255,0.06)] transition-colors"
             >
               <Pencil className="size-3" />
               Edit
@@ -536,7 +573,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
                 type="text"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                className="w-full text-xl font-semibold text-foreground bg-zinc-900/40 border border-[rgba(255,255,255,0.06)] rounded-lg outline-none px-4 py-2.5 placeholder:text-zinc-600 mb-5 tracking-tight focus:border-[#5e6ad2]/40 transition-colors"
+                className="w-full text-xl font-semibold text-foreground bg-zinc-900/40 border border-[rgba(255,255,255,0.06)] rounded-lg outline-none px-4 py-2.5 placeholder:text-zinc-500 mb-5 tracking-tight focus:border-[#5e6ad2]/40 transition-colors"
                 placeholder="Untitled project"
                 autoFocus
               />
@@ -587,19 +624,13 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
                           </div>
                         )
                       }
-                      const agentInfo = AGENTS.find(a => a.id === msg.agent)
                       return (
-                        <div key={i} className="flex gap-2">
-                          <div className="shrink-0 text-xs pt-1">{agentInfo?.emoji || '🤖'}</div>
-                          <div className="max-w-[90%] px-3 py-2 rounded-lg bg-zinc-900/60 border border-[rgba(255,255,255,0.04)] text-sm">
-                            <MarkdownContent content={msg.content} />
-                          </div>
-                        </div>
+                        <BrainstormAgentMessage key={i} agentId={msg.agent || ''} content={msg.content} />
                       )
                     })}
                     {agentLoading && (
                       <div className="flex gap-2">
-                        <div className="shrink-0 text-xs pt-1">{AGENTS.find(a => a.id === brainstormAgent)?.emoji || '🤖'}</div>
+                        <div className="shrink-0 text-xs pt-1">{brainstormAgentMeta?.emoji || '🤖'}</div>
                         <div className="px-3 py-2 rounded-lg bg-zinc-900/60 border border-[rgba(255,255,255,0.04)] text-sm text-zinc-500">
                           <Loader2 className="size-3.5 animate-spin inline-block" /> Thinking...
                         </div>
@@ -611,22 +642,18 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
 
                 {/* Input row */}
                 <div className="flex items-end gap-2">
-                  <select
+                  <AgentSelect
                     value={brainstormAgent}
-                    onChange={(e) => setBrainstormAgent(e.target.value)}
-                    className="text-[11px] bg-zinc-900/60 border border-[rgba(255,255,255,0.06)] rounded-lg px-2 py-2 text-zinc-300 focus:outline-none focus:border-[#5e6ad2]/40 cursor-pointer shrink-0 self-start"
-                  >
-                    {AGENTS.map(a => (
-                      <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>
-                    ))}
-                  </select>
+                    onValueChange={setBrainstormAgent}
+                    className="h-8 w-auto min-w-[130px] text-[11px] bg-zinc-900/60 border-[rgba(255,255,255,0.06)] shrink-0 self-start"
+                  />
                   <textarea
                     value={agentPrompt}
                     onChange={(e) => setAgentPrompt(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAgentAsk() } }}
                     placeholder="Ask about this project..."
                     rows={2}
-                    className="flex-1 text-sm bg-zinc-900/60 border border-[rgba(255,255,255,0.06)] rounded-lg px-3 py-2 text-foreground placeholder:text-zinc-600 focus:outline-none focus:border-[#5e6ad2]/40 transition-colors resize-none"
+                    className="flex-1 text-sm bg-zinc-900/60 border border-[rgba(255,255,255,0.06)] rounded-lg px-3 py-2 text-foreground placeholder:text-zinc-500 focus:outline-none focus:border-[#5e6ad2]/40 transition-colors resize-none"
                   />
                   <button
                     onClick={handleAgentAsk}
@@ -642,7 +669,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
         </div>
 
         {/* ── Right sidebar ── */}
-        <div className="w-[346px] shrink-0 overflow-y-auto space-y-5 border-l border-[rgba(255,255,255,0.06)] pl-6" style={{ scrollbarGutter: 'stable' }}>
+        <div className="w-[346px] shrink-0 overflow-y-auto space-y-5 border-l border-[rgba(255,255,255,0.06)] pl-6 pr-2" style={{ scrollbarGutter: 'stable' }}>
 
           {/* Progress */}
           <div>
@@ -661,7 +688,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
           {/* Checklist */}
           <div className="pt-4 border-t border-[rgba(255,255,255,0.06)]">
             <ProjectChecklist
-              projectId={projectId}
+              projectId={currentId}
               tasks={project.tasks}
               resolvedTasks={project.resolvedTasks}
               onToggle={toggleItem}
@@ -677,7 +704,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
               <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Assets</h3>
 
               <button
-                onClick={openAssetPicker}
+                onClick={toggleAssetPicker}
                 className="flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
               >
                 <Paperclip className="size-3" />
@@ -692,7 +719,8 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
                 {project.resolvedAssets.map((asset) => (
                   <div
                     key={asset.path}
-                    className={`group flex items-start gap-2.5 p-1.5 rounded-lg hover:bg-zinc-800/40 transition-colors ${asset.missing ? 'opacity-40' : ''}`}
+                    className={`group flex items-start gap-2.5 p-1.5 rounded-lg hover:bg-zinc-800/40 transition-colors ${asset.missing ? 'opacity-40 pointer-events-none' : 'cursor-pointer'}`}
+                    onClick={() => !asset.missing && setPreviewAssetPath(asset.path)}
                   >
                     <AssetThumb asset={asset} />
                     <div className="flex-1 min-w-0 pt-0.5">
@@ -710,7 +738,7 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
                       {asset.missing && <span className="text-[10px] text-amber-500/70">missing</span>}
                     </div>
                     <button
-                      onClick={() => handleDetachAsset(asset.path)}
+                      onClick={(e) => { e.stopPropagation(); handleDetachAsset(asset.path) }}
                       className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all shrink-0 mt-1"
                     >
                       <X className="size-3" />
@@ -722,16 +750,16 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
 
             {/* Asset picker */}
             {assetPickerOpen && (
-              <div className="mt-2 border border-[rgba(255,255,255,0.08)] rounded-lg bg-zinc-900 overflow-hidden">
-                <div className="px-2.5 py-2 border-b border-[rgba(255,255,255,0.06)]">
-                  <div className="flex items-center gap-1.5 bg-zinc-800 rounded px-2 py-1">
+              <div ref={assetPickerRef} className="mt-2 mr-2 border border-[rgba(255,255,255,0.08)] rounded-lg bg-zinc-900 overflow-hidden max-w-[310px]">
+                <div className="px-2.5 py-2 border-b border-[rgba(255,255,255,0.06)] flex items-center gap-1.5">
+                  <div className="flex-1 flex items-center gap-1.5 bg-zinc-800 rounded px-2 py-1">
                     <Search className="size-3 text-zinc-500 shrink-0" />
                     <input
                       type="text"
                       value={assetSearch}
                       onChange={(e) => setAssetSearch(e.target.value)}
                       placeholder="Search assets..."
-                      className="flex-1 text-[11px] bg-transparent text-foreground placeholder:text-zinc-600 focus:outline-none"
+                      className="flex-1 text-[11px] bg-transparent text-foreground placeholder:text-zinc-500 focus:outline-none"
                       autoFocus
                     />
                     {assetSearch && (
@@ -740,6 +768,12 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
                       </button>
                     )}
                   </div>
+                  <button
+                    onClick={() => setAssetPickerOpen(false)}
+                    className="text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
+                  >
+                    <X className="size-3.5" />
+                  </button>
                 </div>
                 <div className="max-h-52 overflow-y-auto">
                   {filteredPickerAssets.length === 0 ? (
@@ -762,12 +796,6 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
                     ))
                   )}
                 </div>
-                <button
-                  onClick={() => setAssetPickerOpen(false)}
-                  className="w-full text-center py-1.5 text-[10px] text-zinc-600 hover:text-zinc-400 border-t border-[rgba(255,255,255,0.06)]"
-                >
-                  Close
-                </button>
               </div>
             )}
           </div>
@@ -792,6 +820,26 @@ export function ProjectDetail({ projectId, onBack }: { projectId: string; onBack
           </div>
         </div>
 
+      </div>
+
+      {/* Asset preview overlay */}
+      {previewAssetPath && (
+        <AssetDetailModal
+          assetPath={previewAssetPath}
+          onClose={() => setPreviewAssetPath(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function BrainstormAgentMessage({ agentId, content }: { agentId: string; content: string }) {
+  const agentInfo = useAgent(agentId)
+  return (
+    <div className="flex gap-2">
+      <div className="shrink-0 text-xs pt-1">{agentInfo?.emoji || '🤖'}</div>
+      <div className="max-w-[90%] px-3 py-2 rounded-lg bg-zinc-900/60 border border-[rgba(255,255,255,0.04)] text-sm">
+        <MarkdownContent content={content} />
       </div>
     </div>
   )

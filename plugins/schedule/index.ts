@@ -3,17 +3,17 @@
  * Registers API routes, exec tools, and the cron→task bridge.
  */
 import { z } from 'zod'
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { readMergedJobs } from './lib/jobs-reader'
-import { readSidecar, writeSidecar, upsertJob, removeJob, getJob, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults } from './lib/sidecar'
+import { readSidecar, upsertJob, removeJob, getJob, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults } from './lib/sidecar'
 import { readRuns, getLastRun } from './lib/runs-reader'
-import { parseSchedule, cronToHuman } from './lib/cron-parser'
+import { parseSchedule } from './lib/cron-parser'
 import { cronAdd, cronEdit, cronRemove, cronRun } from './lib/openclaw-cron'
 import { createTaskWithEffects } from '../../src/core/task-service'
-import { appendAudit } from '../../src/core/audit'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
-import type { BeaconJobMeta, BridgePayload, BridgeResult } from './types'
+import { getHookRegistry } from '../../src/lib/plugin-registry'
+import type { BakinJobMeta, BridgePayload, BridgeResult } from './types'
 
 const log = createLogger('schedule')
 
@@ -53,13 +53,16 @@ function expandTemplate(template: string, vars: Record<string, string>): string 
 // Bridge logic (cron → task)
 // ---------------------------------------------------------------------------
 
+/** Module-level ctx set during activate(), used by handleBridge */
+let pluginCtx: PluginContext | null = null
+
 async function handleBridge(req: Request): Promise<Response> {
   const payload = await readBody<BridgePayload>(req)
   const { jobId, runId } = payload
 
   const meta = getJob(jobId)
-  if (!meta || !meta.isBeaconJob) {
-    return json({ ok: true, skipped: 'not-beacon' } satisfies BridgeResult)
+  if (!meta || !meta.isBakinJob) {
+    return json({ ok: true, skipped: 'not-bakin' } satisfies BridgeResult)
   }
 
   const defaults = withDefaults(meta)
@@ -88,13 +91,14 @@ async function handleBridge(req: Request): Promise<Response> {
   // Check overlap
   if (!defaults.allowOverlap && meta.lastTaskId) {
     try {
-      const { readTaskboard } = await import('../../plugins/tasks/taskboard')
-      const board = readTaskboard()
-      const activeColumns = ['todo', 'inProgress', 'review', 'blocked'] as const
-      for (const col of activeColumns) {
-        const tasks = board.columns[col as keyof typeof board.columns] ?? []
-        if (tasks.some(t => t.id === meta.lastTaskId)) {
-          return json({ ok: true, skipped: 'overlap' } satisfies BridgeResult)
+      const board = await getHookRegistry().invoke<{ columns: Record<string, Array<{ id: string }>> }>('tasks.readTaskboard', {})
+      if (board) {
+        const activeColumns = ['todo', 'inProgress', 'review', 'blocked'] as const
+        for (const col of activeColumns) {
+          const tasks = board.columns[col] ?? []
+          if (tasks.some(t => t.id === meta.lastTaskId)) {
+            return json({ ok: true, skipped: 'overlap' } satisfies BridgeResult)
+          }
         }
       }
     } catch {
@@ -106,18 +110,19 @@ async function handleBridge(req: Request): Promise<Response> {
   // Check last task outcome for failure tracking
   if (meta.lastTaskId) {
     try {
-      const { readTaskboard } = await import('../../plugins/tasks/taskboard')
-      const board = readTaskboard()
-      const doneOrConfirmed = [...(board.columns.done ?? []), ...(board.columns.confirmed ?? [])]
-      if (doneOrConfirmed.some(t => t.id === meta.lastTaskId)) {
-        recordSuccess(meta)
-      } else {
-        const blocked = board.columns.blocked ?? []
-        if (blocked.some(t => t.id === meta.lastTaskId)) {
-          const autoPaused = recordFailure(meta)
-          if (autoPaused) {
-            upsertJob(meta)
-            return json({ ok: true, skipped: 'auto-paused' } satisfies BridgeResult)
+      const board2 = await getHookRegistry().invoke<{ columns: Record<string, Array<{ id: string }>> }>('tasks.readTaskboard', {})
+      if (board2) {
+        const doneOrConfirmed = [...(board2.columns.done ?? []), ...(board2.columns.confirmed ?? [])]
+        if (doneOrConfirmed.some(t => t.id === meta.lastTaskId)) {
+          recordSuccess(meta)
+        } else {
+          const blocked = board2.columns.blocked ?? []
+          if (blocked.some(t => t.id === meta.lastTaskId)) {
+            const autoPaused = recordFailure(meta)
+            if (autoPaused) {
+              upsertJob(meta)
+              return json({ ok: true, skipped: 'auto-paused' } satisfies BridgeResult)
+            }
           }
         }
       }
@@ -156,28 +161,10 @@ async function handleBridge(req: Request): Promise<Response> {
     meta.lastTaskId = taskId
     upsertJob(meta)
 
-    // Audit
-    appendAudit(getContentDir(), 'schedule.task_created', 'system', {
-      jobId,
-      runId,
-      taskId,
-      agent: meta.agentId,
-      owner: defaults.owner,
-    })
-
-    // Broadcast for Roscoe / owner visibility
-    const broadcast = (globalThis as Record<string, unknown>).__beaconBroadcast as
-      | ((data: Record<string, unknown>) => void)
-      | undefined
-    if (broadcast) {
-      broadcast({
-        type: 'activity',
-        agent: 'system',
-        message: `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}`,
-        taskId,
-        ts: now.toISOString(),
-        channel: 'system',
-      })
+    // Audit + activity feed
+    if (pluginCtx) {
+      pluginCtx.activity.audit('task_created', 'system', { jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner })
+      pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}`, { taskId })
     }
 
     return json({ ok: true, taskId } satisfies BridgeResult)
@@ -193,115 +180,119 @@ async function handleBridge(req: Request): Promise<Response> {
 // Plugin
 // ---------------------------------------------------------------------------
 
-const schedulePlugin: MCPlugin = {
+const schedulePlugin: BakinPlugin = {
   id: 'schedule',
   name: 'Schedule',
-  version: '1.0.0',
+  version: '2.0.0',
+
+  settingsSchema: {
+    fields: [
+      { key: 'maxConcurrentJobs', type: 'number', label: 'Max concurrent jobs', description: 'Maximum jobs that can run at the same time', default: 3 },
+      { key: 'failureCooldownMs', type: 'number', label: 'Failure cooldown (ms)', description: 'Wait time after failure before retrying', default: 300000 },
+      { key: 'maxFailures', type: 'number', label: 'Max consecutive failures', description: 'Pause job after this many consecutive failures', default: 3 },
+      { key: 'bridgeEnabled', type: 'boolean', label: 'Bridge enabled', description: 'Allow cron jobs to create tasks via the bridge', default: true },
+    ],
+  },
+
   navItems: [],
   contentFiles: [],
 
   activate(ctx: PluginContext) {
+    pluginCtx = ctx
+
     // ── API Routes ─────────────────────────────────────────────────────
 
-    // List all jobs (merged)
+    // GET / — list all jobs (merged)
+    const listJobsHandler = () => {
+      const jobs = readMergedJobs().map(j => ({
+        ...j,
+        cron: j.schedule.type === 'cron' ? j.schedule.value : undefined,
+      }))
+      return json({ jobs })
+    }
+    ctx.registerRoute({ path: '/', method: 'GET', description: 'List all scheduled jobs', handler: listJobsHandler })
+
+    // POST / — create a job
+    const createJobHandler = async (req: Request): Promise<Response> => {
+      const body = await readBody<{
+        name: string
+        schedule: string
+        agentId?: string
+        workflowId?: string
+        taskPrompt?: string
+        taskTitle?: string
+        owner?: string
+        requireTriage?: boolean
+        allowOverlap?: boolean
+        maxFailures?: number
+        tz?: string
+      }>(req)
+
+      if (!body.name || !body.schedule) {
+        return json({ error: 'name and schedule are required' }, 400)
+      }
+
+      const parsed = parseSchedule(body.schedule)
+      if (!parsed) {
+        return json({ error: 'Could not parse schedule expression' }, 400)
+      }
+
+      const tz = body.tz || getSystemTimezone()
+      const port = process.env.PORT || '3737'
+      const jobId = await cronAdd({
+        name: body.name,
+        cron: parsed.cron,
+        session: 'isolated',
+        webhookUrl: `http://localhost:${port}/api/plugins/schedule/bridge`,
+        tz,
+      })
+
+      const meta: BakinJobMeta = {
+        jobId,
+        isBakinJob: true,
+        displayName: body.name,
+        agentId: body.agentId,
+        owner: body.owner ?? 'roscoe',
+        requireTriage: body.requireTriage ?? false,
+        workflowId: body.workflowId,
+        taskPrompt: body.taskPrompt,
+        taskTitle: body.taskTitle,
+        allowOverlap: body.allowOverlap ?? false,
+        maxFailures: body.maxFailures ?? 3,
+        consecutiveFailures: 0,
+        tz,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      upsertJob(meta)
+
+      ctx.activity.audit('job.created', body.owner ?? 'system', { jobId, name: body.name })
+      ctx.activity.log(body.owner ?? 'system', `Created schedule "${body.name}"`)
+      return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz })
+    }
+    ctx.registerRoute({ path: '/', method: 'POST', description: 'Create a scheduled job', handler: createJobHandler })
+
+    // PUT /:jobId — update a job
     ctx.registerRoute({
-      path: '/jobs',
-      method: 'GET',
-      handler: () => {
-        const jobs = readMergedJobs().map(j => ({
-          ...j,
-          // Flatten cron expression for client consumption
-          cron: j.schedule.type === 'cron' ? j.schedule.value : undefined,
-        }))
-        return json({ jobs })
-      },
-    })
-
-    // Create a job
-    ctx.registerRoute({
-      path: '/jobs',
-      method: 'POST',
-      handler: async (req) => {
-        const body = await readBody<{
-          name: string
-          schedule: string
-          agentId?: string
-          workflowId?: string
-          taskPrompt?: string
-          taskTitle?: string
-          owner?: string
-          requireTriage?: boolean
-          allowOverlap?: boolean
-          maxFailures?: number
-          tz?: string
-        }>(req)
-
-        if (!body.name || !body.schedule) {
-          return json({ error: 'name and schedule are required' }, 400)
-        }
-
-        // Parse schedule (NL or raw cron)
-        const parsed = parseSchedule(body.schedule)
-        if (!parsed) {
-          return json({ error: 'Could not parse schedule expression' }, 400)
-        }
-
-        // Resolve timezone — explicit, or system default
-        const tz = body.tz || getSystemTimezone()
-
-        // Create in OpenClaw
-        const port = process.env.PORT || '3737'
-        const jobId = await cronAdd({
-          name: body.name,
-          cron: parsed.cron,
-          session: 'isolated',
-          webhookUrl: `http://localhost:${port}/api/plugins/schedule/bridge`,
-          tz,
-        })
-
-        // Write sidecar
-        const meta: BeaconJobMeta = {
-          jobId,
-          isBeaconJob: true,
-          displayName: body.name,
-          agentId: body.agentId,
-          owner: body.owner ?? 'roscoe',
-          requireTriage: body.requireTriage ?? false,
-          workflowId: body.workflowId,
-          taskPrompt: body.taskPrompt,
-          taskTitle: body.taskTitle,
-          allowOverlap: body.allowOverlap ?? false,
-          maxFailures: body.maxFailures ?? 3,
-          consecutiveFailures: 0,
-          tz,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-        upsertJob(meta)
-
-        return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz })
-      },
-    })
-
-    // Update a job
-    ctx.registerRoute({
-      path: '/jobs/update',
+      path: '/:jobId',
       method: 'PUT',
-      handler: async (req) => {
-        const body = await readBody<{ jobId: string; [key: string]: unknown }>(req)
-        if (!body.jobId) return json({ error: 'jobId required' }, 400)
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await readBody<{ jobId?: string; [key: string]: unknown }>(req)
+        const jobId = url.searchParams.get('jobId') || body.jobId
+        if (!jobId) return json({ error: 'jobId required' }, 400)
 
-        const meta = getJob(body.jobId)
+        const meta = getJob(jobId)
         if (!meta) return json({ error: 'Job not found in sidecar' }, 404)
 
         // Update OpenClaw fields if schedule changed
         if (body.schedule && typeof body.schedule === 'string') {
           const parsed = parseSchedule(body.schedule)
           if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
-          await cronEdit(body.jobId, { cron: parsed.cron })
+          await cronEdit(jobId, { cron: parsed.cron })
         }
         if (body.name && typeof body.name === 'string') {
-          await cronEdit(body.jobId, { name: body.name })
+          await cronEdit(jobId, { name: body.name })
         }
 
         // Update sidecar fields
@@ -316,40 +307,80 @@ const schedulePlugin: MCPlugin = {
         }
         upsertJob(meta)
 
+        ctx.activity.audit('job.updated', 'system', { jobId })
+        ctx.activity.log('system', `Updated schedule "${meta.displayName || jobId}"`)
         return json({ ok: true })
       },
     })
-
-    // Delete a job
+    // GET /:jobId — get single job details
     ctx.registerRoute({
-      path: '/jobs/delete',
-      method: 'POST',
-      handler: async (req) => {
-        const { jobId } = await readBody<{ jobId: string }>(req)
+      path: '/:jobId',
+      method: 'GET',
+      description: 'Get details for a single scheduled job',
+      handler: (req: Request) => {
+        const url = new URL(req.url)
+        const jobId = url.searchParams.get('jobId')
         if (!jobId) return json({ error: 'jobId required' }, 400)
 
-        await cronRemove(jobId)
-        removeJob(jobId)
+        const meta = getJob(jobId)
+        if (!meta) return json({ error: 'Job not found' }, 404)
 
-        return json({ ok: true })
+        const defaults = withDefaults(meta)
+        const lastRun = getLastRun(jobId)
+        return json({
+          job: {
+            id: meta.jobId,
+            name: meta.displayName,
+            agent: meta.agentId,
+            owner: defaults.owner,
+            paused: meta.paused ?? false,
+            pauseReason: meta.pauseReason,
+            pauseUntil: meta.pauseUntil,
+            workflowId: meta.workflowId,
+            taskPrompt: meta.taskPrompt,
+            taskTitle: meta.taskTitle,
+            allowOverlap: defaults.allowOverlap,
+            maxFailures: defaults.maxFailures,
+            consecutiveFailures: meta.consecutiveFailures ?? 0,
+            lastTaskId: meta.lastTaskId,
+            lastRun: lastRun ?? null,
+            tz: meta.tz,
+            createdAt: meta.createdAt,
+          },
+        })
       },
     })
 
-    // Pause/resume/skip
-    ctx.registerRoute({
-      path: '/jobs/pause',
-      method: 'POST',
-      handler: async (req) => {
-        const body = await readBody<{
-          jobId: string
-          action: 'pause' | 'resume' | 'skip'
-          pauseUntil?: string
-          skipN?: number
-        }>(req)
+    // DELETE /:jobId — delete a job
+    const deleteJobHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const body = await readBody<{ jobId?: string }>(req).catch(() => ({}))
+      const jobId = url.searchParams.get('jobId') || (body as Record<string, unknown>).jobId as string | undefined
+      if (!jobId) return json({ error: 'jobId required' }, 400)
 
-        if (!body.jobId || !body.action) return json({ error: 'jobId and action required' }, 400)
+      await cronRemove(jobId)
+      removeJob(jobId)
 
-        const meta = getJob(body.jobId)
+      ctx.activity.audit('job.deleted', 'system', { jobId })
+      ctx.activity.log('system', `Deleted schedule "${jobId}"`)
+      return json({ ok: true })
+    }
+    ctx.registerRoute({ path: '/:jobId', method: 'DELETE', description: 'Delete a scheduled job', handler: deleteJobHandler })
+
+    // POST /:jobId/pause — pause/resume/skip
+    const pauseHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const body = await readBody<{
+        jobId?: string
+        action: 'pause' | 'resume' | 'skip'
+        pauseUntil?: string
+        skipN?: number
+      }>(req)
+
+      const jobId = url.searchParams.get('jobId') || body.jobId
+      if (!jobId || !body.action) return json({ error: 'jobId and action required' }, 400)
+
+      const meta = getJob(jobId)
         if (!meta) return json({ error: 'Job not found' }, 404)
 
         switch (body.action) {
@@ -373,71 +404,63 @@ const schedulePlugin: MCPlugin = {
         }
         upsertJob(meta)
 
+        ctx.activity.audit(`job.${body.action}`, 'system', { jobId })
+        ctx.activity.log('system', `Schedule "${meta.displayName || jobId}" ${body.action}d`)
         return json({ ok: true })
-      },
-    })
+    }
+    ctx.registerRoute({ path: '/:jobId/pause', method: 'POST', description: 'Pause/resume/skip a job', handler: pauseHandler })
 
-    // Run now
-    ctx.registerRoute({
-      path: '/jobs/run-now',
-      method: 'POST',
-      handler: async (req) => {
-        const { jobId } = await readBody<{ jobId: string }>(req)
-        if (!jobId) return json({ error: 'jobId required' }, 400)
-        await cronRun(jobId, true)
-        return json({ ok: true })
-      },
-    })
+    // POST /:jobId/run — trigger immediate run
+    const runNowHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const body = await readBody<{ jobId?: string }>(req).catch(() => ({}))
+      const jobId = url.searchParams.get('jobId') || (body as Record<string, unknown>).jobId as string | undefined
+      if (!jobId) return json({ error: 'jobId required' }, 400)
+      await cronRun(jobId, true)
+      ctx.activity.audit('job.run_now', 'system', { jobId })
+      ctx.activity.log('system', `Triggered immediate run for "${jobId}"`)
+      return json({ ok: true })
+    }
+    ctx.registerRoute({ path: '/:jobId/run', method: 'POST', description: 'Trigger immediate run', handler: runNowHandler })
 
-    // Run history
-    ctx.registerRoute({
-      path: '/runs',
-      method: 'GET',
-      handler: (req) => {
-        const url = new URL(req.url)
-        const jobId = url.searchParams.get('jobId')
-        if (!jobId) return json({ error: 'jobId query param required' }, 400)
-        const limit = parseInt(url.searchParams.get('limit') ?? '50', 10)
-        const runs = readRuns(jobId, limit)
-        return json({ runs })
-      },
-    })
+    // GET /:jobId/runs — run history
+    const runsHandler = (req: Request) => {
+      const url = new URL(req.url)
+      const jobId = url.searchParams.get('jobId')
+      if (!jobId) return json({ error: 'jobId query param required' }, 400)
+      const limit = parseInt(url.searchParams.get('limit') ?? '50', 10)
+      const runs = readRuns(jobId, limit)
+      return json({ runs })
+    }
+    ctx.registerRoute({ path: '/:jobId/runs', method: 'GET', description: 'Get run history for a job', handler: runsHandler })
 
-    // Parse schedule (NL → cron)
-    ctx.registerRoute({
-      path: '/parse-schedule',
-      method: 'POST',
-      handler: async (req) => {
-        const { input } = await readBody<{ input: string }>(req)
-        if (!input) return json({ error: 'input required' }, 400)
+    // POST /parse — parse schedule expression (NL → cron)
+    const parseHandler = async (req: Request) => {
+      const { input } = await readBody<{ input: string }>(req)
+      if (!input) return json({ error: 'input required' }, 400)
+      const result = parseSchedule(input)
+      if (!result) {
+        return json({ error: 'Could not parse schedule. Try a simpler expression or raw cron.' }, 400)
+      }
+      return json(result)
+    }
+    ctx.registerRoute({ path: '/parse', method: 'POST', description: 'Parse schedule expression', handler: parseHandler })
 
-        const result = parseSchedule(input)
-        if (!result) {
-          return json({ error: 'Could not parse schedule. Try a simpler expression or raw cron.' }, 400)
-        }
-        return json(result)
-      },
-    })
-
-    // Bridge (OpenClaw webhook → task creation)
-    ctx.registerRoute({
-      path: '/bridge',
-      method: 'POST',
-      handler: handleBridge,
-    })
+    // POST /bridge — OpenClaw webhook → task creation
+    ctx.registerRoute({ path: '/bridge', method: 'POST', description: 'Cron bridge webhook', handler: handleBridge })
 
     // ── Exec Tools (agent-facing) ──────────────────────────────────────
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_list',
-      description: 'List all scheduled jobs (merged OpenClaw + Beacon view)',
+      name: 'bakin_exec_schedule_list',
+      description: 'List all scheduled jobs (merged OpenClaw + Bakin view)',
       parameters: {
-        filter: z.enum(['beacon', 'all']).optional().describe('Filter by job type'),
+        filter: z.enum(['bakin', 'all']).optional().describe('Filter by job type'),
         agentId: z.string().optional().describe('Filter by assigned agent'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         let jobs = readMergedJobs()
-        if (params.filter === 'beacon') jobs = jobs.filter(j => j.isBeaconJob)
+        if (params.filter === 'bakin') jobs = jobs.filter(j => j.isBakinJob)
         if (params.agentId) jobs = jobs.filter(j => j.agentId === params.agentId)
         return {
           ok: true,
@@ -447,7 +470,7 @@ const schedulePlugin: MCPlugin = {
             agent: j.agentId,
             schedule: j.humanSchedule,
             paused: j.paused,
-            isBeaconJob: j.isBeaconJob,
+            isBakinJob: j.isBakinJob,
             lastTaskId: j.lastTaskId,
           })),
         }
@@ -455,7 +478,7 @@ const schedulePlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_create',
+      name: 'bakin_exec_schedule_create',
       description: 'Create a new scheduled job that creates tasks on the board',
       parameters: {
         name: z.string().describe('Job name (required)'),
@@ -465,7 +488,7 @@ const schedulePlugin: MCPlugin = {
         taskPrompt: z.string().optional().describe('Task description template'),
         taskTitle: z.string().optional().describe('Task title template (supports {date}, {agent})'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         if (!params.name || !params.schedule) {
           return { ok: false, error: 'name and schedule are required' }
         }
@@ -483,9 +506,9 @@ const schedulePlugin: MCPlugin = {
           tz,
         })
 
-        const meta: BeaconJobMeta = {
+        const meta: BakinJobMeta = {
           jobId,
-          isBeaconJob: true,
+          isBakinJob: true,
           displayName: params.name as string,
           agentId: params.agentId as string | undefined,
           owner: 'roscoe',
@@ -506,7 +529,7 @@ const schedulePlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_update',
+      name: 'bakin_exec_schedule_update',
       description: 'Update an existing scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
@@ -517,7 +540,7 @@ const schedulePlugin: MCPlugin = {
         taskPrompt: z.string().optional().describe('New task prompt template'),
         taskTitle: z.string().optional().describe('New task title template'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
 
         const meta = getJob(params.jobId as string)
@@ -542,7 +565,7 @@ const schedulePlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_pause',
+      name: 'bakin_exec_schedule_pause',
       description: 'Pause, resume, or skip runs for a scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
@@ -550,7 +573,7 @@ const schedulePlugin: MCPlugin = {
         pauseUntil: z.string().optional().describe('ISO date to auto-resume (for pause action)'),
         skipN: z.number().optional().describe('Number of runs to skip (for skip action)'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         if (!params.jobId || !params.action) return { ok: false, error: 'jobId and action required' }
 
         const meta = getJob(params.jobId as string)
@@ -582,12 +605,12 @@ const schedulePlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_delete',
+      name: 'bakin_exec_schedule_delete',
       description: 'Delete a scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
         await cronRemove(params.jobId as string)
         removeJob(params.jobId as string)
@@ -596,16 +619,99 @@ const schedulePlugin: MCPlugin = {
     })
 
     ctx.registerExecTool({
-      name: 'beacon_exec_schedule_briefing',
+      name: 'bakin_exec_schedule_get',
+      description: 'Get details for a single scheduled job',
+      parameters: {
+        jobId: z.string().describe('Job ID (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.jobId) return { ok: false, error: 'jobId required' }
+        const meta = getJob(params.jobId as string)
+        if (!meta) return { ok: false, error: 'Job not found' }
+        const defaults = withDefaults(meta)
+        const lastRun = getLastRun(params.jobId as string)
+        return {
+          ok: true,
+          job: {
+            id: meta.jobId,
+            name: meta.displayName,
+            agent: meta.agentId,
+            owner: defaults.owner,
+            paused: meta.paused ?? false,
+            pauseReason: meta.pauseReason,
+            pauseUntil: meta.pauseUntil,
+            workflowId: meta.workflowId,
+            taskPrompt: meta.taskPrompt,
+            taskTitle: meta.taskTitle,
+            allowOverlap: defaults.allowOverlap,
+            maxFailures: defaults.maxFailures,
+            consecutiveFailures: meta.consecutiveFailures ?? 0,
+            lastTaskId: meta.lastTaskId,
+            lastRun: lastRun ?? null,
+            tz: meta.tz,
+            createdAt: meta.createdAt,
+          },
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_schedule_run_now',
+      description: 'Trigger an immediate run of a scheduled job',
+      parameters: {
+        jobId: z.string().describe('Job ID (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.jobId) return { ok: false, error: 'jobId required' }
+        const meta = getJob(params.jobId as string)
+        if (!meta) return { ok: false, error: 'Job not found' }
+        await cronRun(params.jobId as string, true)
+        ctx.activity.audit('job.run_now', 'system', { jobId: params.jobId })
+        ctx.activity.log('system', `Triggered immediate run for "${meta.displayName || params.jobId}"`)
+        return { ok: true, jobId: params.jobId }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_schedule_runs',
+      description: 'Get run history for a scheduled job',
+      parameters: {
+        jobId: z.string().describe('Job ID (required)'),
+        limit: z.number().optional().describe('Max runs to return (default 50)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.jobId) return { ok: false, error: 'jobId required' }
+        const limit = typeof params.limit === 'number' ? params.limit : 50
+        const runs = readRuns(params.jobId as string, limit)
+        return { ok: true, runs }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_schedule_parse',
+      description: 'Parse a natural language or raw cron schedule expression',
+      parameters: {
+        input: z.string().describe('Schedule expression to parse (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.input) return { ok: false, error: 'input required' }
+        const result = parseSchedule(params.input as string)
+        if (!result) return { ok: false, error: 'Could not parse schedule. Try a simpler expression or raw cron.' }
+        return { ok: true, cron: result.cron, human: result.human, nextRuns: result.nextRuns }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_schedule_briefing',
       description: "Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing.",
       parameters: {
         date: z.string().optional().describe('ISO date to check (defaults to today)'),
       },
-      handler: async (params) => {
+      handler: async (params: Record<string, unknown>) => {
         const jobs = readMergedJobs()
-        const beaconJobs = jobs.filter(j => j.isBeaconJob)
+        const bakinJobs = jobs.filter(j => j.isBakinJob)
 
-        const alerts = beaconJobs.filter(j =>
+        const alerts = bakinJobs.filter(j =>
           j.paused || j.consecutiveFailures > 0
         )
 
@@ -613,10 +719,10 @@ const schedulePlugin: MCPlugin = {
           ok: true,
           date: (params.date as string) ?? new Date().toISOString().slice(0, 10),
           totalJobs: jobs.length,
-          beaconJobs: beaconJobs.length,
-          active: beaconJobs.filter(j => !j.paused).length,
-          paused: beaconJobs.filter(j => j.paused).length,
-          jobs: beaconJobs.map(j => ({
+          bakinJobs: bakinJobs.length,
+          active: bakinJobs.filter(j => !j.paused).length,
+          paused: bakinJobs.filter(j => j.paused).length,
+          jobs: bakinJobs.map(j => ({
             id: j.id,
             name: j.displayName,
             agent: j.agentId,
@@ -638,6 +744,17 @@ const schedulePlugin: MCPlugin = {
     })
 
     log.info('Schedule plugin activated')
+  },
+
+  onReady() {
+    const jobs = readMergedJobs()
+    const bakin = jobs.filter(j => j.isBakinJob)
+    const paused = bakin.filter(j => j.paused)
+    log.info(`Ready — ${bakin.length} bakin jobs (${paused.length} paused), ${jobs.length} total`)
+  },
+
+  onShutdown() {
+    log.info('Schedule plugin shutting down')
   },
 }
 

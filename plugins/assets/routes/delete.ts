@@ -1,5 +1,5 @@
 /**
- * DELETE /api/plugins/assets/delete?path=... — soft-delete an asset.
+ * DELETE /api/plugins/assets/:assetPath — soft-delete an asset.
  * Moves asset + sidecar + any variants to .trash/ directory.
  */
 import { join, dirname } from 'path'
@@ -10,7 +10,7 @@ import { removeAsset, detectVariant } from '../lib/asset-index'
 
 export async function handleDelete(req: Request): Promise<Response> {
   const url = new URL(req.url, 'http://localhost')
-  const assetPath = url.searchParams.get('path')
+  const assetPath = url.searchParams.get('assetPath') || url.searchParams.get('path')
 
   if (!assetPath) {
     return Response.json({ error: 'path parameter required' }, { status: 400 })

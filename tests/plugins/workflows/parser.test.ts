@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { parseYAML, validateDefinition, loadDefinition, listDefinitions } from '@mc/workflows/parser'
-import type { WorkflowDefinition } from '@mc/workflows/types'
+import { parseYAML, validateDefinition, loadDefinition, listDefinitions } from '@bakin/workflows/lib/parser'
+import type { WorkflowDefinition } from '@bakin/workflows/types'
 
 describe('parser', () => {
-  const testDir = join(tmpdir(), `beacon-test-parser-${Date.now()}`)
+  const testDir = join(tmpdir(), `bakin-test-parser-${Date.now()}`)
   const defsDir = join(testDir, 'workflows', 'definitions')
 
   beforeEach(() => {

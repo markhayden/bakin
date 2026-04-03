@@ -1,26 +1,51 @@
 /**
  * Tasks plugin — server entry point.
- * Registers API routes for task operations.
+ * Registers API routes, MCP exec tools, and cross-plugin hooks for task operations.
  */
-import type { MCPlugin, PluginContext } from '../../src/lib/plugin-types'
+import { z } from 'zod'
+import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import {
+  readTaskboard,
   createTask,
   deleteTask,
   assignTask,
   addTaskLog,
   blockTask,
   updateTask,
-} from './taskboard'
+  moveTask,
+  setDependency,
+  clearDependency,
+  reorderTasks,
+} from './lib/taskboard'
 import {
   moveTaskWithEffects,
   blockTaskWithEffects,
+  createTaskWithEffects,
+  reportComplete,
+  setDependencyWithEffects,
+  getTaskDetails,
   logProgress,
+  triggerDispatch,
 } from '../../src/core/task-service'
+import { createLogger } from '../../src/core/logger'
 
-const tasksPlugin: MCPlugin = {
+const log = createLogger('tasks')
+
+const COLUMNS = ['backlog', 'todo', 'inProgress', 'review', 'done', 'blocked', 'confirmed'] as const
+
+const tasksPlugin: BakinPlugin = {
   id: 'tasks',
   name: 'Tasks',
-  version: '1.0.0',
+  version: '2.0.0',
+
+  settingsSchema: {
+    fields: [
+      { key: 'defaultColumn', type: 'select', label: 'Default column', description: 'Which column new tasks are created in', options: [{ value: 'backlog', label: 'Backlog' }, { value: 'todo', label: 'Todo' }], default: 'todo' },
+      { key: 'showCompleted', type: 'boolean', label: 'Show completed tasks', description: 'Show tasks in the Done and Confirmed columns by default', default: true },
+      { key: 'autoArchiveDays', type: 'number', label: 'Auto-archive after (days)', description: 'Move completed tasks to archive after this many days. 0 to disable.', default: 0 },
+      { key: 'maxInProgress', type: 'number', label: 'Max in-progress tasks', description: 'Warn when more than this many tasks are in progress', default: 5 },
+    ],
+  },
 
   navItems: [
     { id: 'tasks', label: 'Tasks', icon: 'CheckSquare', href: '/tasks', order: 10 },
@@ -31,40 +56,146 @@ const tasksPlugin: MCPlugin = {
   ],
 
   activate(ctx: PluginContext) {
-    // Register task API routes
+    // ─── Cross-Plugin Hooks ────────────────────────────────────────────
+
+    ctx.hooks.register('tasks.readTaskboard', () => readTaskboard())
+    ctx.hooks.register('tasks.createTask', (d: Record<string, unknown>) => createTask(d.title as string, d.column as string | undefined, d.assignee as string | undefined, d.description as string | undefined, d.workflowId as string | undefined, d.createdBy as string | undefined, d.id as string | undefined, d.parentId as string | undefined, d.projectId as string | undefined))
+    ctx.hooks.register('tasks.moveTask', (d: Record<string, unknown>) => moveTask(d.identifier as string, d.to as string, d.from as string | undefined))
+    ctx.hooks.register('tasks.blockTask', (d: Record<string, unknown>) => blockTask(d.identifier as string, d.reason as string, d.agent as string | undefined))
+    ctx.hooks.register('tasks.addTaskLog', (d: Record<string, unknown>) => addTaskLog(d.identifier as string, d.author as string, d.message as string))
+    ctx.hooks.register('tasks.updateTask', (d: Record<string, unknown>) => updateTask(d.identifier as string, d.updates as Record<string, unknown>))
+    ctx.hooks.register('tasks.deleteTask', (d: Record<string, unknown>) => deleteTask(d.identifier as string))
+    ctx.hooks.register('tasks.setDependency', (d: Record<string, unknown>) => setDependency(d.taskId as string, d.dependsOnId as string))
+    ctx.hooks.register('tasks.clearDependency', (d: Record<string, unknown>) => clearDependency(d.taskId as string))
+
+    // ─── REST API Routes ───────────────────────────────────────────────
+
+    // GET / — list tasks (read taskboard)
     ctx.registerRoute({
-      path: '/create',
-      method: 'POST',
-      handler: async (req) => {
-        const body = await req.json()
-        const { title, description, column, assignee, workflowId, createdBy } = body
-        if (!title) {
-          return Response.json({ error: 'title required' }, { status: 400 })
-        }
+      path: '/',
+      method: 'GET',
+      description: 'List all tasks (read taskboard)',
+      handler: async () => {
         try {
-          const task = await createTask(title, column, assignee, description, workflowId, createdBy)
-          return Response.json({ ok: true, id: task.id })
+          const board = await readTaskboard()
+          return Response.json(board)
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
         }
       },
     })
 
+    // GET /:taskId — get single task details
     ctx.registerRoute({
-      path: '/move',
+      path: '/:taskId',
+      method: 'GET',
+      description: 'Get a single task by ID',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const taskId = url.searchParams.get('taskId')
+        if (!taskId) {
+          return Response.json({ error: 'taskId required' }, { status: 400 })
+        }
+        const result = await getTaskDetails(taskId)
+        if (!result) {
+          return Response.json({ error: 'Task not found' }, { status: 404 })
+        }
+        return Response.json(result)
+      },
+    })
+
+    // POST / — create task
+    ctx.registerRoute({
+      path: '/',
       method: 'POST',
-      handler: async (req) => {
+      description: 'Create a new task',
+      handler: async (req: Request) => {
         const body = await req.json()
-        const { title, id, from, to, agent } = body
-        const identifier = id || title
+        const { title, description, column, assignee, workflowId, skipWorkflowReason, createdBy, parentId, projectId } = body
+        if (!title) {
+          return Response.json({ error: 'title required' }, { status: 400 })
+        }
+        try {
+          const result = await createTaskWithEffects({
+            title, column, assignee, description, workflowId, skipWorkflowReason,
+            createdBy: createdBy || 'system', parentId, projectId, channel: 'rest',
+          })
+          ctx.activity.log(createdBy || 'system', `Created task "${title}"`, { taskId: result.id })
+          return Response.json({ ok: true, id: result.id, workflowId: result.workflowId, suggestedWorkflow: result.suggestedWorkflow })
+        } catch (err) {
+          return Response.json({ error: String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // PUT /:taskId — update task
+    ctx.registerRoute({
+      path: '/:taskId',
+      method: 'PUT',
+      description: 'Update a task',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const taskId = url.searchParams.get('taskId')
+        const body = await req.json()
+        const identifier = taskId || body.id || body.originalTitle
+        if (!identifier) {
+          return Response.json({ error: 'taskId required' }, { status: 400 })
+        }
+        try {
+          const { title, description, agent, column, workflowId } = body
+          await updateTask(identifier, { title, description, agent, column, workflowId })
+          ctx.activity.audit('updated', agent || 'system', { taskId: identifier })
+          ctx.activity.log(agent || 'system', `Updated task "${identifier}"`, { taskId: identifier })
+          return Response.json({ ok: true })
+        } catch (err) {
+          return Response.json({ error: String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // DELETE /:taskId — delete task
+    ctx.registerRoute({
+      path: '/:taskId',
+      method: 'DELETE',
+      description: 'Delete a task',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const taskId = url.searchParams.get('taskId')
+        const body = await req.json().catch(() => ({}))
+        const identifier = taskId || (body as Record<string, unknown>).id || (body as Record<string, unknown>).title
+        if (!identifier) {
+          return Response.json({ error: 'taskId required' }, { status: 400 })
+        }
+        try {
+          await deleteTask(identifier as string)
+          ctx.activity.audit('deleted', 'system', { taskId: identifier })
+          ctx.activity.log('system', `Deleted task "${identifier}"`, { taskId: identifier as string })
+          return Response.json({ ok: true })
+        } catch (err) {
+          return Response.json({ error: String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // POST /:taskId/move — move task to column
+    ctx.registerRoute({
+      path: '/:taskId/move',
+      method: 'POST',
+      description: 'Move a task to a different column',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await req.json()
+        const identifier = url.searchParams.get('taskId') || body.id || body.title
+        const { from, to, agent } = body
         if (!identifier || !to) {
-          return Response.json({ error: 'title/id and to required' }, { status: 400 })
+          return Response.json({ error: 'taskId and to required' }, { status: 400 })
         }
         if (!agent) {
           return Response.json({ error: 'agent field required — who is moving this task?' }, { status: 400 })
         }
         try {
           await moveTaskWithEffects(identifier, to, agent, { from, channel: 'rest' })
+          ctx.activity.log(agent, `Moved task to "${to}"`, { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
           const msg = (err as Error).message
@@ -76,18 +207,22 @@ const tasksPlugin: MCPlugin = {
       },
     })
 
+    // POST /:taskId/assign — assign task to agent
     ctx.registerRoute({
-      path: '/delete',
+      path: '/:taskId/assign',
       method: 'POST',
-      handler: async (req) => {
+      description: 'Assign a task to an agent',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
         const body = await req.json()
-        const { title, id } = body
-        const identifier = id || title
+        const identifier = url.searchParams.get('taskId') || body.id || body.title
         if (!identifier) {
-          return Response.json({ error: 'title or id required' }, { status: 400 })
+          return Response.json({ error: 'taskId required' }, { status: 400 })
         }
         try {
-          await deleteTask(identifier)
+          await assignTask(identifier, body.agent || '')
+          ctx.activity.audit('assigned', 'system', { taskId: identifier, agent: body.agent || '' })
+          ctx.activity.log('system', `Assigned task to "${body.agent || 'unassigned'}"`, { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -95,18 +230,21 @@ const tasksPlugin: MCPlugin = {
       },
     })
 
+    // POST /:taskId/log — add log entry
     ctx.registerRoute({
-      path: '/assign',
+      path: '/:taskId/log',
       method: 'POST',
-      handler: async (req) => {
+      description: 'Add a log entry to a task',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
         const body = await req.json()
-        const { title, id, agent } = body
-        const identifier = id || title
-        if (!identifier) {
-          return Response.json({ error: 'title or id required' }, { status: 400 })
+        const identifier = url.searchParams.get('taskId') || body.id || body.title
+        if (!identifier || !body.message) {
+          return Response.json({ error: 'taskId and message required' }, { status: 400 })
         }
         try {
-          await assignTask(identifier, agent || '')
+          await logProgress(identifier, body.author || 'system', body.message, 'rest')
+          ctx.activity.log(body.agent || body.author || 'system', `Logged progress on task ${identifier}`, { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -114,18 +252,21 @@ const tasksPlugin: MCPlugin = {
       },
     })
 
+    // POST /:taskId/block — block task
     ctx.registerRoute({
-      path: '/log',
+      path: '/:taskId/block',
       method: 'POST',
-      handler: async (req) => {
+      description: 'Mark a task as blocked',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
         const body = await req.json()
-        const { title, id, author, message } = body
-        const identifier = id || title
-        if (!identifier || !message) {
-          return Response.json({ error: 'title/id and message required' }, { status: 400 })
+        const identifier = url.searchParams.get('taskId') || body.id || body.title
+        if (!identifier || !body.reason) {
+          return Response.json({ error: 'taskId and reason required' }, { status: 400 })
         }
         try {
-          await logProgress(identifier, author || 'system', message, 'rest')
+          await blockTaskWithEffects(identifier, body.reason, body.agent || 'system', 'rest')
+          ctx.activity.log(body.agent || 'system', `Blocked task: ${body.reason}`, { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -133,18 +274,21 @@ const tasksPlugin: MCPlugin = {
       },
     })
 
+    // POST /:taskId/dependency — set dependency
     ctx.registerRoute({
-      path: '/block',
+      path: '/:taskId/dependency',
       method: 'POST',
-      handler: async (req) => {
+      description: 'Set a dependency between tasks',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
         const body = await req.json()
-        const { title, id, reason, agent } = body
-        const identifier = id || title
-        if (!identifier || !reason) {
-          return Response.json({ error: 'title/id and reason required' }, { status: 400 })
+        const taskId = url.searchParams.get('taskId') || body.id
+        if (!taskId || !body.dependsOn) {
+          return Response.json({ error: 'taskId and dependsOn required' }, { status: 400 })
         }
         try {
-          await blockTaskWithEffects(identifier, reason, agent || 'system', 'rest')
+          await setDependencyWithEffects(taskId, body.dependsOn, 'rest')
+          ctx.activity.log('system', `Set dependency on ${body.dependsOn}`, { taskId })
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
@@ -152,26 +296,333 @@ const tasksPlugin: MCPlugin = {
       },
     })
 
+    // POST /:taskId/reorder — reorder tasks in a column
     ctx.registerRoute({
-      path: '/update',
+      path: '/reorder',
       method: 'POST',
-      handler: async (req) => {
+      description: 'Reorder tasks within a column',
+      handler: async (req: Request) => {
         const body = await req.json()
-        const { originalTitle, id, title, description, agent, column, workflowId } = body
-        const identifier = id || originalTitle
-        if (!identifier) {
-          return Response.json({ error: 'originalTitle or id required' }, { status: 400 })
+        const { columnId, orderedIds } = body
+        if (!columnId || !Array.isArray(orderedIds)) {
+          return Response.json({ error: 'columnId and orderedIds[] required' }, { status: 400 })
         }
         try {
-          await updateTask(identifier, { title, description, agent, column, workflowId })
+          await reorderTasks(columnId, orderedIds)
+          ctx.activity.audit('reordered', 'system', { columnId, orderedIds })
+          ctx.activity.log('system', `Reordered tasks in ${columnId}`)
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // POST /:taskId/complete — mark task as complete
+    ctx.registerRoute({
+      path: '/:taskId/complete',
+      method: 'POST',
+      description: 'Mark a task as complete',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await req.json()
+        const taskId = url.searchParams.get('taskId') || body.id
+        if (!taskId) {
+          return Response.json({ error: 'taskId required' }, { status: 400 })
+        }
+        const agent = body.agent || 'system'
+        const summary = body.summary || ''
+        try {
+          await reportComplete(taskId, agent, summary, 'rest')
+          ctx.activity.log(agent, `Completed task: ${summary}`, { taskId })
+          return Response.json({ ok: true })
+        } catch (err) {
+          return Response.json({ error: String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // ─── MCP Exec Tools ────────────────────────────────────────────────
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_list',
+      description: 'List all tasks on the board. Optionally filter by column or agent. Returns the full taskboard.',
+      parameters: {
+        column: z.enum(COLUMNS).optional().describe('Filter by column'),
+        agent: z.string().optional().describe('Filter by assigned agent'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const board = await readTaskboard()
+        if (!board) return { ok: false, error: 'Failed to read taskboard' }
+
+        const column = params.column as string | undefined
+        const agent = params.agent as string | undefined
+
+        if (column || agent) {
+          const filtered: Record<string, unknown[]> = {}
+          const columns = board.columns as unknown as Record<string, Array<{ agent?: string }>>
+          for (const [colName, tasks] of Object.entries(columns)) {
+            if (column && colName !== column) continue
+            const matches = agent ? tasks.filter(t => t.agent === agent) : tasks
+            if (matches.length > 0) filtered[colName] = matches
+          }
+          return { ok: true, columns: filtered }
+        }
+
+        return { ok: true, ...board }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_get',
+      description: 'Get details about a task — title, description, current column, logs, dependencies, project context.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const result = await getTaskDetails(params.taskId as string)
+        if (!result) return { ok: false, error: `Task ${params.taskId} not found` }
+
+        // Enrich with project context if task has projectId
+        const pId = (result.task as Record<string, unknown>).projectId as string | undefined
+        if (pId) {
+          try {
+            const project = await ctx.hooks.invoke<{ title: string; status: string; progress: number; body: string }>('projects.readProject', { projectId: pId })
+            if (project) {
+              ;(result as Record<string, unknown>).projectTitle = project.title
+              ;(result as Record<string, unknown>).projectStatus = project.status
+              ;(result as Record<string, unknown>).projectProgress = project.progress
+              ;(result as Record<string, unknown>).projectExcerpt = project.body.slice(0, 500)
+            }
+          } catch { /* project plugin may not be available */ }
+        }
+
+        return { ok: true, ...result }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_create',
+      description: 'Create a new task on the task board. For top-level tasks, you MUST provide either workflowId or skipWorkflowReason. Subtasks (with parentId) are exempt.',
+      parameters: {
+        title: z.string().describe('Task title'),
+        assignee: z.string().optional().describe('Agent to assign (basil, pixel, rolo, patch, nemo, etc.)'),
+        description: z.string().optional().describe('Task description and context'),
+        parentId: z.string().optional().describe('Parent task ID if this is a subtask'),
+        workflowId: z.string().optional().describe('Workflow to start (e.g. image-social-post, video-script). Use bakin_exec_workflows_list to see options.'),
+        skipWorkflowReason: z.string().optional().describe('Reason no workflow applies (required if workflowId is not set and this is not a subtask)'),
+        projectId: z.string().optional().describe('Project ID to link this task to'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const { title, assignee, description, parentId, workflowId, skipWorkflowReason, projectId } = params as {
+          title: string; assignee?: string; description?: string; parentId?: string
+          workflowId?: string; skipWorkflowReason?: string; projectId?: string
+        }
+
+        if (!parentId && !workflowId && !skipWorkflowReason) {
+          return { ok: false, error: 'Top-level tasks require either workflowId or skipWorkflowReason. Use bakin_exec_workflows_list to see available workflows.' }
+        }
+
+        try {
+          const result = await createTaskWithEffects({
+            title, assignee, description, workflowId, skipWorkflowReason,
+            createdBy: agent, parentId, projectId, channel: 'mcp',
+          })
+          if (parentId || assignee) triggerDispatch()
+
+          ctx.activity.log(agent, `Created task "${title}"`, { taskId: result.id })
+          return {
+            ok: true,
+            id: result.id,
+            workflowId: result.workflowId,
+            suggestedWorkflow: result.suggestedWorkflow,
+          }
+        } catch (err) {
+          return { ok: false, error: String(err) }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_move',
+      description: 'Move a task to a different column on the task board.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+        to: z.enum(COLUMNS).describe('Target column'),
+        reason: z.string().optional().describe('Required when moving to "blocked"'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const { taskId, to, reason } = params as { taskId: string; to: string; reason?: string }
+        if (to === 'blocked' && !reason) {
+          return { ok: false, error: 'reason is required when moving to blocked' }
+        }
+        try {
+          await moveTaskWithEffects(taskId, to, agent, { channel: 'mcp' })
+          ctx.activity.log(agent, `Moved task to "${to}"`, { taskId })
+          return { ok: true }
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_block',
+      description: 'Mark a task as blocked with a reason. Use when you cannot proceed.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+        reason: z.string().describe('Why the task is blocked'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        try {
+          await blockTaskWithEffects(params.taskId as string, params.reason as string, agent, 'mcp')
+          ctx.activity.log(agent, `Blocked task: ${params.reason}`, { taskId: params.taskId as string })
+          return { ok: true }
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_complete',
+      description: 'Report that your task is complete. Moves the task to Done and notifies the orchestrator.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+        summary: z.string().describe('Summary of what you accomplished'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        try {
+          await reportComplete(params.taskId as string, agent, params.summary as string, 'mcp')
+          ctx.activity.log(agent, `Completed task: ${params.summary}`, { taskId: params.taskId as string })
+          return { ok: true }
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_log_progress',
+      description: 'Log a human-readable progress update to the live activity feed. Call this at every significant step.',
+      parameters: {
+        taskId: z.string().describe('Task ID (e.g. "fe84ac51")'),
+        message: z.string().describe('Human-readable status update'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        try {
+          await logProgress(params.taskId as string, agent, params.message as string, 'mcp')
+          return { ok: true }
+        } catch (err) {
+          return { ok: false, error: String(err) }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_set_dependency',
+      description: 'Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait.',
+      parameters: {
+        taskId: z.string().describe('Your task ID (the one that depends)'),
+        dependsOn: z.string().describe('Task ID you depend on'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        try {
+          await setDependencyWithEffects(params.taskId as string, params.dependsOn as string, 'mcp')
+          ctx.activity.log(agent, `Set dependency on ${params.dependsOn}`, { taskId: params.taskId as string })
+          return { ok: true, message: `Dependency registered. You will be re-dispatched when ${params.dependsOn} completes. Stop now.` }
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_update',
+      description: 'Update a task on the board — change title, description, or assigned agent.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+        title: z.string().optional().describe('New task title'),
+        description: z.string().optional().describe('New task description'),
+        agent: z.string().optional().describe('New assigned agent'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const { taskId, title, description, agent: assignee } = params as {
+          taskId: string; title?: string; description?: string; agent?: string
+        }
+        try {
+          const updates: Record<string, unknown> = {}
+          if (title !== undefined) updates.title = title
+          if (description !== undefined) updates.description = description
+          if (assignee !== undefined) updates.agent = assignee
+          const result = await ctx.hooks.invoke('tasks.updateTask', { identifier: taskId, updates })
+          ctx.activity.audit('updated', agent, { taskId })
+          ctx.activity.log(agent, `Updated task "${taskId}"`, { taskId })
+          return { ok: true, result }
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_delete',
+      description: 'Delete a task from the board.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const taskId = params.taskId as string
+        try {
+          await ctx.hooks.invoke('tasks.deleteTask', { identifier: taskId })
+          ctx.activity.audit('deleted', agent, { taskId })
+          ctx.activity.log(agent, `Deleted task "${taskId}"`, { taskId })
+          return { ok: true }
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_tasks_assign',
+      description: 'Assign a task to an agent.',
+      parameters: {
+        taskId: z.string().describe('Task ID'),
+        agent: z.string().describe('Agent to assign the task to'),
+      },
+      handler: async (params: Record<string, unknown>, callingAgent: string) => {
+        const taskId = params.taskId as string
+        const targetAgent = params.agent as string
+        try {
+          await assignTask(taskId, targetAgent)
+          ctx.activity.audit('assigned', callingAgent, { taskId, agent: targetAgent })
+          ctx.activity.log(callingAgent, `Assigned task to "${targetAgent}"`, { taskId })
+          return { ok: true }
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
         }
       },
     })
 
     ctx.watchFiles(['TASKBOARD.md'])
+  },
+
+  async onReady() {
+    try {
+      const board = await readTaskboard()
+      if (board) {
+        const columns = board.columns as unknown as Record<string, unknown[]>
+        const counts = Object.entries(columns).map(([col, tasks]) => `${col}: ${tasks.length}`).join(', ')
+        log.info(`Ready — ${counts}`)
+      }
+    } catch (err) {
+      log.error('Failed to read taskboard on ready', err)
+    }
+  },
+
+  onShutdown() {
+    log.info('Shutting down tasks plugin')
   },
 }
 

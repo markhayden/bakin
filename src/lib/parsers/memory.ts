@@ -1,1 +1,1 @@
-export { parseMemoryLog } from '../../../plugins/memory/parser'
+export { parseMemoryLog } from '../../../plugins/memory/lib/parser'

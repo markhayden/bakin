@@ -1,0 +1,232 @@
+# Shared UI Patterns
+
+## BakinDrawer
+
+`src/components/bakin-drawer.tsx` — Resizable right-side drawer used by all detail views.
+
+### Props
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `open` | `boolean` | Controls visibility |
+| `onOpenChange` | `(open: boolean) => void` | Called on close |
+| `title` | `React.ReactNode` | Drawer title in header |
+| `description` | `React.ReactNode` | Subtitle below title |
+| `actions` | `React.ReactNode` | Rendered inline next to title and close button |
+| `children` | `React.ReactNode` | Drawer body content |
+| `defaultWidth` | `number` | Initial width (default 810, min 320, max 960) |
+| `onBack` | `() => void` | When provided, shows a back arrow left of title (for edit→detail navigation) |
+| `dirty` | `boolean` | When true, closing shows an "unsaved changes" confirmation dialog (default false) |
+
+### Header Layout
+
+The header renders as a single row: `[Title] ... [actions] [X close]`
+
+- The built-in SheetContent close button is suppressed (`showCloseButton={false}`)
+- A custom `SheetClose` is rendered inline with the actions
+- Actions and close button are grouped with `flex items-center gap-1`
+
+### Usage with Action Menu
+
+```tsx
+<BakinDrawer
+  open={isOpen}
+  onOpenChange={(open) => { if (!open) onClose() }}
+  title="Task Details"
+  actions={
+    <DropdownMenu>
+      <DropdownMenuTrigger className="p-1.5 rounded-md hover:bg-accent transition-colors">
+        <MoreHorizontal className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-36">
+        <DropdownMenuItem onClick={handleDuplicate}>
+          <Copy className="size-3.5 mr-2" />
+          Duplicate
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleDelete} className="text-red-400 focus:text-red-400">
+          <Trash2 className="size-3.5 mr-2" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  }
+>
+```
+
+## DropdownMenu Action Pattern
+
+Standard pattern for `...` overflow menus on cards, rows, and drawers.
+
+### Trigger Styling
+
+- **On cards (overlay):** `p-1.5 rounded-md bg-black/60 hover:bg-black/80 text-zinc-400 hover:text-zinc-200 transition-colors`
+- **On rows (inline):** `p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100`
+- **In drawers (header):** `p-1.5 rounded-md hover:bg-accent transition-colors`
+
+### Content
+
+Always use `min-w-36` on `DropdownMenuContent` to prevent narrow popups from small triggers.
+
+### Item Styling
+
+- Normal items: default styles (no extra classes)
+- Destructive items: `className="text-red-400 focus:text-red-400"` (not `variant="destructive"`)
+- Focus uses `bg-secondary` (matches Select component), not `bg-accent`
+
+### Where Used
+
+| Plugin | Component | Actions |
+|--------|-----------|---------|
+| Tasks | task-detail-dialog (drawer) | Duplicate, Delete |
+| Assets | asset-card (grid card) | Delete |
+| Assets | assets-list (table row) | Delete |
+| Schedule | job-row (table row) | Edit, Delete, Run Now |
+| Schedule | job-drawer (drawer) | Duplicate, Delete |
+| Calendar | item-detail-drawer (drawer) | Edit, Delete |
+
+### Drawer Content Sections
+
+All drawers follow the same section patterns inside `BakinDrawer`:
+
+- **Hero card** (first element): `flex items-center gap-4 rounded-lg p-4 border border-border bg-surface` — AgentAvatar left, info right
+- **Metadata grid**: `grid grid-cols-2 gap-3` with `rounded-lg bg-surface p-3 space-y-1` cards. Label: `text-[11px] text-muted-foreground uppercase tracking-wider` with optional icon.
+- **Section labels**: `text-[11px] text-muted-foreground uppercase tracking-wider mb-2`
+- **Left-bordered content blocks**: `text-sm text-foreground/90 rounded-lg p-4 border-l-2 bg-surface whitespace-pre-wrap` — use agent/step-type accent color on border
+- **Alert/rejection boxes**: `bg-red-500/10 border border-red-500/20 rounded-lg p-3`
+- **Spacing**: `space-y-6` between major sections, `Separator` between groups
+- **Quick actions**: `flex flex-wrap items-center gap-2` with `Button variant="outline" size="sm"`
+
+### Where BakinDrawer Is Used
+
+| Plugin | Component | Detail |
+|--------|-----------|--------|
+| Tasks | task-detail-dialog | View/edit with hero, gate approval, notes |
+| Calendar | item-detail-drawer | View/edit with hero, metadata grid, draft content |
+| Schedule | job-drawer | View-only with hero, metadata grid, run history |
+| Workflows | step-detail-drawer | View-only, per-step-type sections (agent/gate/output/parallel/workflow) |
+| Team | agent-drawer | View-only with agent profile |
+
+## AgentSelect
+
+`src/components/agent-select.tsx` — Shared agent selection dropdown with avatar in both trigger and dropdown items.
+
+### Props
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `value` | `string` | Selected agent ID |
+| `onValueChange` | `(value: string) => void` | Called when selection changes |
+| `allowNone` | `boolean` | Show "None" option (default false) |
+| `noneLabel` | `string` | Label for none option (default "None") |
+| `placeholder` | `string` | Trigger placeholder text |
+| `agentIds` | `string[]` | Restrict to specific agents (default: all) |
+| `className` | `string` | Extra classes on trigger |
+
+### Where Used
+
+| Plugin | Component | Use |
+|--------|-----------|-----|
+| Tasks | task-detail-dialog | Assignee picker |
+| Schedule | job-form | Agent + Owner pickers |
+| Calendar | item-detail-drawer | Agent picker |
+
+## View/Edit Split Pattern
+
+All detail drawers (Tasks, Calendar, Schedule) follow a two-mode pattern: **detail view** (read-only) and **edit form**.
+
+### State Machine
+
+Parent component manages `editing: boolean`. The drawer component receives:
+
+```tsx
+open: boolean          // drawer visible
+editing: boolean       // true = form, false = detail
+onEdit: () => void     // detail → edit
+onCancelEdit: () => void  // edit → detail (back arrow)
+onClose: () => void    // close drawer entirely
+```
+
+Create mode is derived: `isCreate = editing && !existingItem`
+
+### Detail View
+
+- **Hero card**: `bg-surface border-border rounded-lg p-4` with agent avatar, name, status dot + label
+- **Quick actions**: Edit button, gate approval buttons
+- **Metadata**: workflow progress, description (rendered via MarkdownContent with agent-colored left border)
+- **Actions dropdown**: Edit, Duplicate, Delete
+
+### Edit Form
+
+- BakinDrawer with `onBack={isCreate ? undefined : onCancelEdit}` and `dirty={dirty}`
+- Form fields with `bg-surface` inputs
+- Save/Cancel buttons
+
+### Hero Card Pattern
+
+```tsx
+<div className="flex items-center gap-4 rounded-lg p-4 border border-border bg-surface">
+  <AgentAvatar agentId={agentId} size="lg" />
+  <div className="flex-1 min-w-0">
+    <div className="text-sm font-medium">{agentName}</div>
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className={`size-2 rounded-full ${statusDotColor}`} />
+      {statusLabel}
+    </span>
+  </div>
+</div>
+```
+
+### Where Implemented
+
+| Plugin | Component | URL-driven edit? |
+|--------|-----------|-----------------|
+| Tasks | task-detail-dialog | No (component state) |
+| Calendar | item-detail-drawer | Yes (`mode` param) |
+| Schedule | job-drawer + schedule-page | Yes (`mode` param) |
+| Workflows | step-detail-drawer | N/A (view-only, no edit mode) |
+
+## TaskAssets
+
+`src/components/assets/task-assets.tsx` — Displays linked assets for a task with optional add button.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `taskId` | `string` | Task to show assets for |
+| `readOnly` | `boolean` | Hides "Add" button when true (use in detail view) |
+
+## PluginHeader Actions
+
+`PluginHeader` has an `actions` slot for controls that sit to the right of the search bar.
+
+### What Goes in Actions
+
+- View toggles (Board/Log, Grid/List/Trash)
+- Primary action buttons (New Task, etc.)
+
+### View Toggle Pattern
+
+```tsx
+<div className="flex items-center bg-muted/50 rounded-lg p-0.5">
+  <button
+    onClick={() => setView('kanban')}
+    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+      view === 'kanban'
+        ? 'bg-accent text-accent-foreground'
+        : 'text-muted-foreground hover:text-foreground'
+    }`}
+  >
+    <Kanban className="size-3.5" />
+    Board
+  </button>
+</div>
+```
+
+## Key Files
+
+```
+src/components/bakin-drawer.tsx      — Resizable drawer shell
+src/components/agent-select.tsx      — Agent picker with avatars
+src/components/plugin-header.tsx     — Page header with search + actions
+src/components/ui/dropdown-menu.tsx  — Base dropdown (focus: bg-secondary)
+src/components/ui/sheet.tsx          — Sheet primitive (used by BakinDrawer)
+```

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../src/core/content-dir', () => ({
-  getBeaconPaths: vi.fn(() => ({
-    home: '/tmp/beacon-test',
-    'assets.images': '/tmp/beacon-test/assets/images',
+  getBakinPaths: vi.fn(() => ({
+    home: '/tmp/bakin-test',
+    'assets.images': '/tmp/bakin-test/assets/images',
   })),
 }))
 
@@ -11,7 +11,7 @@ vi.mock('../../scripts/lib/registry', () => ({
   addExecTool: vi.fn(),
 }))
 
-vi.mock('../../scripts/lib/save-asset', () => ({
+vi.mock('../../plugins/assets/lib/save-asset', () => ({
   saveAsset: vi.fn(),
 }))
 
@@ -48,7 +48,7 @@ const mockFetchResponse = (imageData = 'fakebase64data') => ({
 }) as unknown as Response
 
 import { generateImage } from '../../scripts/lib/generate-image'
-import { saveAsset } from '../../scripts/lib/save-asset'
+import { saveAsset } from '../../plugins/assets/lib/save-asset'
 
 const mockSaveAsset = vi.mocked(saveAsset)
 

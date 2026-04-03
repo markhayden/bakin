@@ -10,11 +10,10 @@ import { broadcast } from './sse'
 import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
 import * as openclaw from './openclaw-client'
-import { readTaskboard, moveTask, addTaskLog, blockTask } from '../../plugins/tasks/taskboard'
-import { listInstances, loadInstance, isGateNotified, markGateNotified, getActiveAgents } from '../../plugins/workflows/runtime'
-import { loadDefinition } from '../../plugins/workflows/parser'
+import { getHookRegistry } from '../lib/plugin-registry'
 
 const log = createLogger('watchdog')
+const hooks = () => getHookRegistry()
 
 let watchdogTimer: NodeJS.Timeout | null = null
 
@@ -70,15 +69,18 @@ export function start(contentDir: string, port: number): void {
 
   watchdogTimer = setInterval(async () => {
     try {
-      const { columns } = readTaskboard()
-      const inProgressTasks = columns.inProgress
+      type WdTask = { id: string; title: string; agent?: string; workflowId?: string; log?: Array<{ message: string; timestamp: string }> }
+      const board = await hooks().invoke<{ columns: Record<string, WdTask[]> }>('tasks.readTaskboard', {})
+      if (!board) return
+      const { columns } = board
+      const inProgressTasks = columns.inProgress || []
       const now = Date.now()
 
       for (const task of inProgressTasks) {
         // Skip workflow tasks waiting on a gate or already complete — they're legitimately idle
         const wfCheck = task as typeof task & { workflowId?: string }
         if (wfCheck.workflowId) {
-          const wfInstance = loadInstance(task.id, contentDir)
+          const wfInstance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
           if (wfInstance && (wfInstance.status === 'pending_approval' || wfInstance.status === 'complete')) continue
         }
 
@@ -98,7 +100,7 @@ export function start(contentDir: string, port: number): void {
         const wfTask = task as typeof task & { workflowId?: string }
         let effectiveAgent = task.agent
         if (wfTask.workflowId) {
-          const activeAgents = getActiveAgents(task.id, contentDir)
+          const activeAgents = await hooks().invoke<Array<{ agent: string; stepId: string }>>('workflows.getActiveAgents', { taskId: task.id }) ?? []
           if (activeAgents.length > 0) {
             effectiveAgent = activeAgents[0].agent
           }
@@ -112,8 +114,8 @@ export function start(contentDir: string, port: number): void {
           if (recoveryCount >= settings.watchdog.maxAutoRecoveries) {
             // Escalate to blocked
             try {
-              await blockTask(task.id, `Auto-recovery limit reached (${recoveryCount} attempts). Agent "${task.agent || 'unassigned'}" appears offline.`)
-              await addTaskLog(task.id, 'watchdog', `Escalated to blocked: ${recoveryCount} auto-recoveries exhausted. Manual intervention required.`)
+              await hooks().invoke<void>('tasks.blockTask', { identifier: task.id, reason: `Auto-recovery limit reached (${recoveryCount} attempts). Agent "${task.agent || 'unassigned'}" appears offline.` })
+              await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'watchdog', message: `Escalated to blocked: ${recoveryCount} auto-recoveries exhausted. Manual intervention required.` })
               appendAudit(contentDir, 'task.auto_recovery_exhausted', 'watchdog', { id: task.id, title: task.title, agent: task.agent, recoveryCount })
               log.warn('Task escalated to blocked after max recoveries', { id: task.id, title: task.title, recoveryCount })
             } catch (err) {
@@ -122,8 +124,8 @@ export function start(contentDir: string, port: number): void {
           } else {
             // Move back to todo for re-dispatch
             try {
-              await addTaskLog(task.id, 'watchdog', `Auto-recovered: no agent heartbeat or task log for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch.`)
-              await moveTask(task.id, 'todo')
+              await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'watchdog', message: `Auto-recovered: no agent heartbeat or task log for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch.` })
+              await hooks().invoke<void>('tasks.moveTask', { identifier: task.id, to: 'todo' })
               appendAudit(contentDir, 'task.auto_recovered', 'watchdog', { id: task.id, title: task.title, agent: task.agent, minutesStuck })
               log.info('Task auto-recovered to todo', { id: task.id, title: task.title, minutesStuck })
             } catch (err) {
@@ -137,7 +139,7 @@ export function start(contentDir: string, port: number): void {
           broadcast({ type: 'alert', title: task.title, agent: task.agent, message: alertMsg })
 
           try {
-            await addTaskLog(task.id, 'watchdog', `ALERT: No progress logged in ${minutesStuck}+ minutes`)
+            await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'watchdog', message: `ALERT: No progress logged in ${minutesStuck}+ minutes` })
           } catch (err) {
             log.warn('Failed to log watchdog alert on task', err)
           }
@@ -157,7 +159,7 @@ export function start(contentDir: string, port: number): void {
       // ─── Workflow step timeout detection ─────────────────────────────
       try {
         const wfSettings = settings.workflow
-        const activeInstances = listInstances('in_progress', contentDir)
+        const activeInstances = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; status: string; stepStates: Record<string, { status: string; startedAt?: string; output?: unknown }>; history: Array<{ stepId: string; rejectionReason?: string }> }>>('workflows.listInstances', { statusFilter: 'in_progress' }) ?? []
 
         // Build set of task IDs on the board for orphan detection
         const boardTaskIds = new Set<string>()
@@ -186,8 +188,8 @@ export function start(contentDir: string, port: number): void {
           if (timeoutLogs >= wfSettings.maxRedispatches) {
             // Escalate — block the task
             try {
-              await blockTask(taskId, `Workflow step "${instance.currentStepId}" timed out after ${wfSettings.maxRedispatches} re-dispatches. Agent never submitted output via step/complete API.`)
-              await addTaskLog(taskId, 'watchdog', `Workflow step timeout escalated to blocked after ${wfSettings.maxRedispatches} re-dispatches`)
+              await hooks().invoke<void>('tasks.blockTask', { identifier: taskId, reason: `Workflow step "${instance.currentStepId}" timed out after ${wfSettings.maxRedispatches} re-dispatches. Agent never submitted output via step/complete API.` })
+              await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author: 'watchdog', message: `Workflow step timeout escalated to blocked after ${wfSettings.maxRedispatches} re-dispatches` })
               appendAudit(contentDir, 'workflow.step_timeout_blocked', 'watchdog', { taskId, stepId: instance.currentStepId, timeoutLogs })
               log.warn('Workflow step blocked after max timeouts', { taskId, stepId: instance.currentStepId })
             } catch (err) {
@@ -196,7 +198,7 @@ export function start(contentDir: string, port: number): void {
           } else {
             // Alert — the step will be re-dispatched on next dispatch cycle
             try {
-              await addTaskLog(taskId, 'watchdog', `TIMEOUT: Workflow step "${instance.currentStepId}" has been in_progress for ${minutesStuck}+ minutes with no output submitted via step/complete API.`)
+              await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author: 'watchdog', message: `TIMEOUT: Workflow step "${instance.currentStepId}" has been in_progress for ${minutesStuck}+ minutes with no output submitted via step/complete API.` })
               appendAudit(contentDir, 'workflow.step_timeout', 'watchdog', { taskId, stepId: instance.currentStepId, minutesStuck })
               log.warn('Workflow step timeout', { taskId, stepId: instance.currentStepId, minutesStuck })
             } catch (err) {
@@ -211,22 +213,24 @@ export function start(contentDir: string, port: number): void {
       // ─── Gate notification check (Discord alert) ──────────────────────
       if (settings.notifications.channel !== 'none' && settings.notifications.gateAlerts !== false) {
         try {
-          const pendingGates = listInstances('pending_approval', contentDir)
+          const pendingGates = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; stepStates: Record<string, { status: string; output?: unknown }>; history: Array<Record<string, unknown>> }>>('workflows.listInstances', { statusFilter: 'pending_approval' }) ?? []
 
           for (const instance of pendingGates) {
             const { taskId, currentStepId, workflowId } = instance
-            if (isGateNotified(taskId, currentStepId, contentDir)) continue
+            if (await hooks().invoke<boolean>('workflows.isGateNotified', { taskId, stepId: currentStepId })) continue
 
-            const def = loadDefinition(workflowId, contentDir)
+            const def = await hooks().invoke<{ steps: Array<{ id: string; label?: string; description?: string }> }>('workflows.loadDefinition', { name: workflowId })
             const gateStep = def?.steps.find(s => s.id === currentStepId)
             const label = gateStep?.label || currentStepId
 
             // Find task title from taskboard
-            const { columns } = readTaskboard()
+            const gateBoard = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string }>> }>('tasks.readTaskboard', {})
             let taskTitle = taskId
-            for (const col of Object.values(columns)) {
-              const task = (col as Array<{ id: string; title: string }>).find(t => t.id === taskId)
-              if (task) { taskTitle = task.title; break }
+            if (gateBoard) {
+              for (const col of Object.values(gateBoard.columns)) {
+                const task = col.find(t => t.id === taskId)
+                if (task) { taskTitle = task.title; break }
+              }
             }
 
             const shortId = taskId.slice(0, 6).toUpperCase()
@@ -247,7 +251,7 @@ export function start(contentDir: string, port: number): void {
               }
             }
 
-            msg += `\n\nApprove or reject in Beacon UI.`
+            msg += `\n\nApprove or reject in Bakin UI.`
 
             openclaw.sendChannelMessage(
               settings.notifications.channel,
@@ -257,7 +261,7 @@ export function start(contentDir: string, port: number): void {
               log.error('Gate Discord notification failed', err, { taskId })
             })
 
-            markGateNotified(taskId, currentStepId, contentDir)
+            await hooks().invoke<void>('workflows.markGateNotified', { taskId, stepId: currentStepId })
             log.info('Gate notification sent', { taskId, stepId: currentStepId, label })
           }
         } catch (err) {

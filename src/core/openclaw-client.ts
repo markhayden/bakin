@@ -1,5 +1,5 @@
 /**
- * OpenClaw HTTP client for Beacon.
+ * OpenClaw HTTP client for Bakin.
  * Replaces fragile execFile('openclaw', ...) calls with proper HTTP requests
  * to the OpenClaw gateway API.
  */

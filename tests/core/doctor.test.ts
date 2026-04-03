@@ -25,7 +25,7 @@ vi.mock('@/core/audit', () => ({
   appendAudit: vi.fn(),
 }))
 
-// Mock taskboard so doctor checks don't read/write the real ~/.beacon/TASKBOARD.md
+// Mock taskboard so doctor checks don't read/write the real ~/.bakin/TASKBOARD.md
 vi.mock('../../plugins/tasks/taskboard', () => ({
   readTaskboard: vi.fn(() => ({
     columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] },
@@ -41,9 +41,9 @@ vi.mock('@/core/mcporter', () => ({
     installed: true,
     configExists: true,
     agentEntries: [
-      { agent: 'roscoe', name: 'beacon-roscoe', url: 'http://localhost:3737/mcp?agent=roscoe', correct: true },
-      { agent: 'patch', name: 'beacon-patch', url: 'http://localhost:3737/mcp?agent=patch', correct: true },
-      { agent: 'pixel', name: 'beacon-pixel', url: 'http://localhost:3737/mcp?agent=pixel', correct: true },
+      { agent: 'roscoe', name: 'bakin-roscoe', url: 'http://localhost:3737/mcp?agent=roscoe', correct: true },
+      { agent: 'patch', name: 'bakin-patch', url: 'http://localhost:3737/mcp?agent=patch', correct: true },
+      { agent: 'pixel', name: 'bakin-pixel', url: 'http://localhost:3737/mcp?agent=pixel', correct: true },
     ],
     staleEntries: [],
   })),
@@ -55,7 +55,7 @@ describe('doctor', () => {
   let contentDir: string
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'beacon-doctor-test-'))
+    tempDir = mkdtempSync(join(tmpdir(), 'bakin-doctor-test-'))
     contentDir = join(tempDir, 'content')
     mkdirSync(join(contentDir, 'team', 'personas'), { recursive: true })
   })

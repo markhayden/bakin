@@ -1,26 +1,25 @@
 /**
- * Beacon — Mission Control Server
+ * Bakin — Multi-Agent Orchestration Server
  * Version: 1.0.0
- * Last updated: 2026-03-21
- * 
- * Main entry point for the Beacon server. Bootstraps Next.js,
+ * Last updated: 2026-03-28
+ *
+ * Main entry point for the Bakin server. Bootstraps Next.js,
  * registers plugins, and starts the HTTP server with API routing.
  */
 
 import { createServer } from 'http'
 import next from 'next'
 import { join } from 'path'
-import { existsSync, mkdirSync } from 'fs'
-import { execSync } from 'child_process'
+import { existsSync, mkdirSync, readFileSync } from 'fs'
 
 import { MarkdownStorageAdapter } from './src/lib/storage/markdown-adapter'
-import { MCEventBus } from './src/lib/events/event-bus'
+import { BakinEventBus } from './src/lib/events/event-bus'
 import { pluginRegistry } from './src/lib/plugin-registry'
-import config from './mc.config'
+import config from './bakin.config'
 
 import { createLogger } from './src/core/logger'
 import { getSettings } from './src/core/settings'
-import { getContentDir, getBeaconPaths, isUsingBeaconHome } from './src/core/content-dir'
+import { getContentDir, getBakinPaths, isUsingBakinHome } from './src/core/content-dir'
 import { handleSSE, broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
 import * as vault from './src/core/vault'
@@ -44,13 +43,9 @@ import { recordRequest } from './src/core/request-log'
 
 const log = createLogger('server')
 
-// Git version — computed once at startup
-let BEACON_VERSION = 'unknown'
-try {
-  const hash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
-  const dirty = execSync('git status --porcelain', { encoding: 'utf-8' }).trim() ? '-dirty' : ''
-  BEACON_VERSION = `${hash}${dirty}`
-} catch { /* not a git repo or git not installed */ }
+import { APP_VERSION } from './packages/core/src/constants'
+
+const BAKIN_VERSION = APP_VERSION
 
 const dev = process.env.NODE_ENV !== 'production'
 const port = Number(process.env.PORT || 3737)
@@ -66,7 +61,7 @@ for (const dir of [CONTENT_DIR, join(CONTENT_DIR, 'heartbeats'), join(CONTENT_DI
 
 // Plugin infrastructure
 const storage = new MarkdownStorageAdapter(CONTENT_DIR)
-const eventBus = new MCEventBus(broadcast)
+const eventBus = new BakinEventBus(broadcast)
 
 app.prepare().then(async () => {
   // Initialize vault (load credentials from disk)
@@ -81,8 +76,8 @@ app.prepare().then(async () => {
 
   // Expose registry accessors on globalThis so Next.js API routes (which get
   // separate webpack-compiled module instances) can read the real data.
-  ;(globalThis as any).__beaconGetRegistrySnapshot = () => pluginRegistry.getRegistrySnapshot()
-  ;(globalThis as any).__beaconGetExecToolStats = () => {
+  ;(globalThis as any).__bakinGetRegistrySnapshot = () => pluginRegistry.getRegistrySnapshot()
+  ;(globalThis as any).__bakinGetExecToolStats = () => {
     const { getExecToolStats } = require('./scripts/lib/registry')
     return getExecToolStats()
   }
@@ -150,7 +145,7 @@ app.prepare().then(async () => {
 
     // Version endpoint
     if (url.pathname === '/api/version' && req.method === 'GET') {
-      jsonResponse(res, 200, { version: BEACON_VERSION })
+      jsonResponse(res, 200, { version: BAKIN_VERSION })
       return
     }
 
@@ -239,7 +234,7 @@ app.prepare().then(async () => {
     // Paths endpoint — agents use this to discover content locations
     if (url.pathname === '/api/paths' && req.method === 'GET') {
       const key = url.searchParams.get('key')
-      const paths = getBeaconPaths()
+      const paths = getBakinPaths()
       if (key) {
         const value = (paths as unknown as Record<string, string>)[key]
         if (value === undefined) {
@@ -248,34 +243,9 @@ app.prepare().then(async () => {
           jsonResponse(res, 200, { key, path: value })
         }
       } else {
-        jsonResponse(res, 200, { paths, isBeaconHome: isUsingBeaconHome() })
+        jsonResponse(res, 200, { paths, isBakinHome: isUsingBakinHome() })
       }
       return
-    }
-
-    // Doctor endpoint — returns cached results by default, ?fresh=true forces re-run
-    if (url.pathname === '/api/doctor') {
-      if (req.method === 'GET' || req.method === 'POST') {
-        const fresh = url.searchParams.get('fresh') === 'true' || req.method === 'POST'
-        if (!fresh) {
-          const cached = doctor.getLastResults()
-          if (cached) {
-            const results = cached.results
-            const errors = results.filter(r => r.status === 'error').length
-            const warnings = results.filter(r => r.status === 'warn').length
-            jsonResponse(res, 200, { results, summary: { total: results.length, errors, warnings }, cachedAt: new Date(cached.timestamp).toISOString() })
-            return
-          }
-        }
-        doctor.runDiagnostics(CONTENT_DIR, process.cwd()).then(results => {
-          const errors = results.filter(r => r.status === 'error').length
-          const warnings = results.filter(r => r.status === 'warn').length
-          jsonResponse(res, 200, { results, summary: { total: results.length, errors, warnings } })
-        }).catch(err => {
-          jsonResponse(res, 500, { error: String(err) })
-        })
-        return
-      }
     }
 
     // Reindex endpoint (triggers Antfly full reindex)
@@ -305,6 +275,29 @@ app.prepare().then(async () => {
         const { pluginId } = body as { pluginId: string }
         return pluginInstaller.removePlugin(pluginId, process.cwd())
       })
+      return
+    }
+
+    // Agent avatar route (must be before the agent catch-all)
+    if (url.pathname === '/api/agents/avatar' && req.method === 'GET') {
+      const agentId = url.searchParams.get('id')
+      if (!agentId) {
+        jsonResponse(res, 400, { error: 'Missing id param' })
+        return
+      }
+      const avatarPath = join(CONTENT_DIR, 'agents', agentId, 'avatar.jpg')
+      if (!existsSync(avatarPath)) {
+        res.writeHead(404)
+        res.end()
+        return
+      }
+      const data = readFileSync(avatarPath)
+      res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': data.length,
+        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+      })
+      res.end(data)
       return
     }
 
@@ -377,6 +370,9 @@ app.prepare().then(async () => {
   watchdog.start(CONTENT_DIR, port)
   doctor.start(CONTENT_DIR, process.cwd())
 
+  // Notify all plugins that every plugin is now active
+  await pluginRegistry.onAllReady()
+
   // Register graceful shutdown
   registerShutdownHandlers(server, CONTENT_DIR)
 
@@ -385,7 +381,7 @@ app.prepare().then(async () => {
   dispatchState.serverStart = Date.now()
 
   server.listen(port, '0.0.0.0', () => {
-    log.info(`Beacon ready on http://0.0.0.0:${port}`)
+    log.info(`Bakin ready on http://0.0.0.0:${port}`)
     log.info(`Tailscale: http://100.91.112.69:${port}`)
   })
 

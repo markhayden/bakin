@@ -1,13 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Mock all the self-registering tool imports to prevent side-effect errors
-vi.mock('../../scripts/lib/save-asset', () => ({}))
+// Mock self-registering tool imports to prevent side-effect errors
 vi.mock('../../scripts/lib/log-progress', () => ({}))
-vi.mock('../../scripts/lib/get-step', () => ({}))
-vi.mock('../../scripts/lib/submit-step', () => ({}))
-vi.mock('../../scripts/lib/check-gates', () => ({}))
 vi.mock('../../scripts/lib/generate-image', () => ({}))
 vi.mock('../../scripts/lib/post-discord', () => ({}))
+vi.mock('../../scripts/lib/get-paths', () => ({}))
 
 import {
   addExecTool,
@@ -19,7 +16,7 @@ import {
 
 describe('exec tool registry', () => {
   const mockTool = {
-    name: 'beacon_exec_test_tool',
+    name: 'bakin_exec_test_tool',
     description: 'Test tool',
     source: 'test',
     parameters: {},
@@ -28,7 +25,7 @@ describe('exec tool registry', () => {
 
   it('registers and retrieves a tool', () => {
     addExecTool(mockTool)
-    expect(getExecTool('beacon_exec_test_tool')).toBe(mockTool)
+    expect(getExecTool('bakin_exec_test_tool')).toBe(mockTool)
   })
 
   it('returns undefined for unknown tool', () => {
@@ -38,16 +35,16 @@ describe('exec tool registry', () => {
   it('getAllExecTools returns registered tools', () => {
     addExecTool(mockTool)
     const all = getAllExecTools()
-    expect(all.find(t => t.name === 'beacon_exec_test_tool')).toBeDefined()
+    expect(all.find(t => t.name === 'bakin_exec_test_tool')).toBeDefined()
   })
 
   it('records tool call stats', () => {
     addExecTool(mockTool)
-    recordExecToolCall('beacon_exec_test_tool')
-    recordExecToolCall('beacon_exec_test_tool')
+    recordExecToolCall('bakin_exec_test_tool')
+    recordExecToolCall('bakin_exec_test_tool')
 
     const stats = getExecToolStats()
-    const stat = stats.find(s => s.name === 'beacon_exec_test_tool')
+    const stat = stats.find(s => s.name === 'bakin_exec_test_tool')
     expect(stat).toBeDefined()
     expect(stat!.calls).toBeGreaterThanOrEqual(2)
     expect(stat!.lastUsed).toBeTruthy()
@@ -56,7 +53,7 @@ describe('exec tool registry', () => {
   it('getExecToolStats includes source', () => {
     addExecTool(mockTool)
     const stats = getExecToolStats()
-    const stat = stats.find(s => s.name === 'beacon_exec_test_tool')
+    const stat = stats.find(s => s.name === 'bakin_exec_test_tool')
     expect(stat!.source).toBe('test')
   })
 })

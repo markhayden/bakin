@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragEndEvent,
@@ -14,19 +14,21 @@ import {
 import { arrayMove } from '@dnd-kit/sortable'
 import { KanbanColumn } from './kanban-column'
 import { TaskCardOverlay } from './task-card'
-import { NewTaskDialog } from './new-task-dialog'
 import { DeleteTaskDialog } from './delete-task-dialog'
 import { TaskDetailDrawer } from './task-detail-dialog'
 import { TaskMetrics } from './task-metrics'
+import { PluginHeader } from '@/components/plugin-header'
 import { TaskFilters } from './task-filters'
 import { TaskLogTable } from './task-log-table'
 import { useTaskFilters } from '../hooks/use-task-filters'
 import { WithLoading } from '@/components/layout/skeleton-loader'
 import { useContentStore } from '@/hooks/use-content-store'
-import { parseTasks } from '../parser'
+import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
+import { parseTasks } from '../lib/parser'
 import { toast } from '@/hooks/use-toast'
-import { useGateStatus } from './use-gate-status'
-import { Kanban, Table2 } from 'lucide-react'
+import { useGateStatus } from '../hooks/use-gate-status'
+import { Button } from '@/components/ui/button'
+import { Kanban, Table2, Plus } from 'lucide-react'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
 const COLUMN_ORDER: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
@@ -37,10 +39,10 @@ function parseCompositeId(id: string): { columnId: ColumnId; taskId: string } | 
   return { columnId: parts[0] as ColumnId, taskId: parts[1] }
 }
 
-async function apiFetch(url: string, body: Record<string, unknown>): Promise<boolean> {
+async function apiFetch(url: string, body: Record<string, unknown>, method = 'POST'): Promise<boolean> {
   try {
     const res = await fetch(url, {
-      method: 'POST',
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
@@ -92,23 +94,26 @@ export function KanbanBoard() {
       ...columns,
       confirmed: columns.confirmed.filter(t => {
         if (!t.date) return true
-        return new Date(t.date).getTime() >= cutoff
+        // Parse YYYY-MM-DD as local time, not UTC
+        const d = new Date(t.date.includes('T') ? t.date : t.date + 'T00:00')
+        return d.getTime() >= cutoff
       }),
     }
   }, [columns])
 
   const hiddenConfirmedCount = columns.confirmed.length - displayColumns.confirmed.length
 
-  // Search / filter
-  const {
-    search, setSearch,
-    agentFilter, setAgentFilter,
-    filteredColumns,
-    allTasksFlat,
-  } = useTaskFilters(displayColumns)
+  // URL-backed filter & view state
+  const [view, setView] = useQueryState('view', 'kanban')
+  const [search, setSearch] = useQueryState('q', '')
+  const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
+  const [statusFilter, setStatusFilter] = useQueryArrayState('status')
 
-  // View mode: kanban or table
-  const [view, setView] = useState<'kanban' | 'table'>('kanban')
+  const [taskIdParam, setTaskIdParam] = useQueryState('taskId', '')
+
+  const { filteredColumns, allTasksFlat } = useTaskFilters(displayColumns, {
+    search, agentFilter, statusFilter,
+  })
 
   // Collect workflow task IDs for gate status polling
   const workflowTaskIds = useMemo(() => {
@@ -202,7 +207,7 @@ export function KanbanBoard() {
         return { columns: { ...base, [fromCol]: reordered } }
       })
 
-      const ok = await apiFetch('/api/tasks/reorder', {
+      const ok = await apiFetch('/api/plugins/tasks/reorder', {
         columnId: fromCol,
         orderedIds: reordered.map(t => t.id),
       })
@@ -235,7 +240,7 @@ export function KanbanBoard() {
         columns: { ...base, [fromCol]: fromTasks, [targetCol]: toTasks },
       })
 
-      const ok = await apiFetch('/api/tasks/move', {
+      const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/move', {
         id: task.id, title: task.title, from: fromCol, to: targetCol, agent: 'roscoe',
       })
 
@@ -248,7 +253,7 @@ export function KanbanBoard() {
   }, [parsed.columns, optimistic])
 
   const handleAssign = useCallback(async (task: Task, agent: string) => {
-    const ok = await apiFetch('/api/tasks/assign', { id: task.id, title: task.title, agent })
+    const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/assign', { id: task.id, title: task.title, agent })
     if (ok) {
       await refreshTaskboard()
     } else {
@@ -257,11 +262,31 @@ export function KanbanBoard() {
   }, [])
 
   const [detailTask, setDetailTask] = useState<{ task: Task; columnId: ColumnId } | null>(null)
+  const [editing, setEditing] = useState(false)
+
+  // Deep link: open task from ?taskId= param (e.g. from asset detail)
+  const taskIdHandled = useRef(false)
+  useEffect(() => {
+    if (!taskIdParam || taskIdHandled.current) return
+    taskIdHandled.current = true
+
+    for (const [colId, colTasks] of Object.entries(columns) as [ColumnId, Task[]][]) {
+      const match = colTasks.find(t => t.id === taskIdParam)
+      if (match) {
+        setDetailTask({ task: match, columnId: colId })
+        setEditing(false)
+        setTaskIdParam('')
+        return
+      }
+    }
+    toast('Task not found', 'error')
+    setTaskIdParam('')
+  }, [taskIdParam, columns])
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return
-    const ok = await apiFetch('/api/tasks/delete', { id: deleteTarget.id, title: deleteTarget.title })
+    const ok = await apiFetch('/api/plugins/tasks/' + deleteTarget.id, { id: deleteTarget.id, title: deleteTarget.title }, 'DELETE')
     if (ok) {
       toast(`Deleted "${deleteTarget.title}"`, 'success')
       await refreshTaskboard()
@@ -272,62 +297,63 @@ export function KanbanBoard() {
   return (
     <WithLoading>
       <div className="flex flex-col h-full min-w-0 min-h-0">
-        {/* Metrics bar — visually distinct from task content */}
-        <div className="px-[25px] pt-[25px] pb-2 border-b border-border/50">
-          <TaskMetrics columns={columns} />
+        {/* Metrics bar — hidden on mobile to save space */}
+        <div className="hidden md:block px-6 pt-[25px] pb-2 border-b border-border/50">
+          <TaskMetrics columns={columns} timestamp={timestamp} />
         </div>
 
-        {/* Title row with view toggle */}
-        <div className="flex items-center justify-between px-[25px] pt-4 pb-2">
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">Tasks</h1>
-            {timestamp && (
-              <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                Updated {timestamp}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {/* View toggle */}
-            <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
-              <button
-                onClick={() => setView('kanban')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                  view === 'kanban'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Kanban className="size-3.5" />
-                Board
-              </button>
-              <button
-                onClick={() => setView('table')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                  view === 'table'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Table2 className="size-3.5" />
-                Log
-              </button>
-            </div>
-            <NewTaskDialog />
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="px-[25px] pb-3">
-          <TaskFilters
-            search={search}
-            onSearchChange={setSearch}
-            agentFilter={agentFilter}
-            onAgentChange={setAgentFilter}
-            taskCount={view === 'kanban'
+        {/* Title row with search + view toggle */}
+        <div className="px-6 pt-3 md:pt-4 pb-2">
+          <PluginHeader
+            title="Tasks"
+            count={view === 'kanban'
               ? Object.values(filteredColumns).reduce((s, c) => s + c.length, 0)
               : allTasksFlat.length
             }
+            search={{ value: search, onChange: setSearch, placeholder: 'Search tasks...' }}
+            actions={
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setView('kanban')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                      view === 'kanban'
+                        ? 'bg-accent text-accent-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Kanban className="size-3.5" />
+                    Board
+                  </button>
+                  <button
+                    onClick={() => setView('table')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                      view === 'table'
+                        ? 'bg-accent text-accent-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Table2 className="size-3.5" />
+                    Log
+                  </button>
+                </div>
+                <Button size="sm" onClick={() => { setDetailTask(null); setEditing(true) }}>
+                  <Plus className="size-4" />
+                  New Task
+                </Button>
+              </div>
+            }
+          />
+        </div>
+
+        {/* Filters */}
+        <div className="px-6 pb-3">
+          <TaskFilters
+            agentFilter={agentFilter}
+            onAgentChange={setAgentFilter}
+            statusFilter={statusFilter}
+            onStatusChange={setStatusFilter}
+            showStatusFilter={view === 'table'}
           />
         </div>
 
@@ -335,9 +361,9 @@ export function KanbanBoard() {
         {view === 'kanban' ? (
           <div className="flex-1 overflow-auto min-h-0">
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-            <div className="inline-flex gap-4 items-start p-[25px] pt-0">
+            <div className="inline-flex gap-4 items-start p-[25px] pt-0 md:pl-[25px] pl-4">
               {COLUMN_ORDER.map((colId) => (
-                <div key={colId} className="w-72 shrink-0">
+                <div key={colId} className="w-[75vw] sm:w-72 shrink-0">
                 <KanbanColumn
                   id={colId}
                   tasks={filteredColumns[colId]}
@@ -345,11 +371,11 @@ export function KanbanBoard() {
                   childTaskLabels={childTaskLabels}
                   onAssign={handleAssign}
                   onDelete={setDeleteTarget}
-                  onTaskClick={(task, colId) => setDetailTask({ task, columnId: colId })}
+                  onTaskClick={(task, colId) => { setDetailTask({ task, columnId: colId }); setEditing(false) }}
                   footer={colId === 'confirmed' && hiddenConfirmedCount > 0 ? (
                     <button
                       onClick={() => setView('table')}
-                      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors mt-2"
+                      className="text-[11px] px-3 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                     >
                       {hiddenConfirmedCount} older task{hiddenConfirmedCount !== 1 ? 's' : ''} — View Log
                     </button>
@@ -367,15 +393,37 @@ export function KanbanBoard() {
           </DndContext>
           </div>
         ) : (
-          <div className="flex-1 overflow-auto min-h-0 px-[25px] pb-[25px]">
-            <TaskLogTable currentTasks={allTasksFlat} />
+          <div className="flex-1 overflow-auto min-h-0 px-6 pb-[25px]">
+            <TaskLogTable currentTasks={allTasksFlat} statusFilter={statusFilter} />
           </div>
         )}
 
         <TaskDetailDrawer
           task={detailTask?.task ?? null}
           columnId={detailTask?.columnId ?? null}
-          onClose={() => setDetailTask(null)}
+          open={editing || !!detailTask}
+          editing={editing}
+          onClose={() => { setDetailTask(null); setEditing(false) }}
+          onEdit={() => setEditing(true)}
+          onCancelEdit={() => setEditing(false)}
+          onDelete={(task) => {
+            setDetailTask(null)
+            setEditing(false)
+            setDeleteTarget({ id: task.id, title: task.title })
+          }}
+          onDuplicate={async (task) => {
+            const ok = await apiFetch('/api/plugins/tasks/', {
+              title: `${task.title} (copy)`,
+              description: task.description || undefined,
+              column: detailTask?.columnId || 'todo',
+              assignee: task.agent || undefined,
+              workflowId: task.workflowId || undefined,
+            })
+            if (ok) {
+              toast(`Duplicated "${task.title}"`, 'success')
+              await refreshTaskboard()
+            }
+          }}
         />
 
         <DeleteTaskDialog

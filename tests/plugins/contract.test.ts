@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest'
-import type { PluginContext, MCPlugin, APIRoute, NavItem } from '../../src/lib/plugin-types'
-import { MCEventBus } from '../../src/lib/events/event-bus'
+import type { PluginContext, BakinPlugin, APIRoute, NavItem } from '../../src/lib/plugin-types'
+import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import fs from 'fs'
 import path from 'path'
@@ -11,6 +11,10 @@ import memoryPlugin from '../../plugins/memory'
 import modelsPlugin from '../../plugins/models'
 import calendarPlugin from '../../plugins/calendar'
 import workflowsPlugin from '../../plugins/workflows'
+import assetsPlugin from '../../plugins/assets'
+import projectsPlugin from '../../plugins/projects'
+import schedulePlugin from '../../plugins/schedule'
+import healthPlugin from '../../plugins/health'
 
 const TEST_DIR = path.join(process.cwd(), 'test-content-contract')
 
@@ -27,7 +31,7 @@ function createMockContext(pluginId: string): {
   }
 
   const storage = new MarkdownStorageAdapter(TEST_DIR)
-  const events = new MCEventBus(() => {})
+  const events = new BakinEventBus(() => {})
 
   const ctx: PluginContext = {
     storage,
@@ -39,17 +43,32 @@ function createMockContext(pluginId: string): {
     registerExecTool: () => {},
     registerSkill: () => {},
     watchFiles: () => {},
+    getSettings: (() => ({})) as PluginContext['getSettings'],
+    updateSettings: () => {},
+    activity: {
+      log: () => {},
+      audit: () => {},
+    },
+    hooks: {
+      register: () => () => {},
+      has: () => false,
+      invoke: async () => undefined,
+    },
   }
 
   return { ctx, routes, navItems }
 }
 
-const ALL_PLUGINS: MCPlugin[] = [
+const ALL_PLUGINS: BakinPlugin[] = [
   tasksPlugin,
   memoryPlugin,
   modelsPlugin,
   calendarPlugin,
   workflowsPlugin,
+  assetsPlugin,
+  projectsPlugin,
+  schedulePlugin,
+  healthPlugin,
 ]
 
 describe('Plugin Contract', () => {
@@ -82,6 +101,24 @@ describe('Plugin Contract', () => {
         const { ctx, routes } = createMockContext(plugin.id)
         await plugin.activate(ctx)
         expect(routes.length).toBeGreaterThan(0)
+      })
+
+      it('has a settingsSchema with valid fields', () => {
+        if (!plugin.settingsSchema) return // optional but recommended
+        expect(Array.isArray(plugin.settingsSchema.fields)).toBe(true)
+        for (const field of plugin.settingsSchema.fields) {
+          expect(field.key).toBeDefined()
+          expect(['string', 'number', 'boolean', 'select']).toContain(field.type)
+          expect(field.label).toBeDefined()
+          if (field.type === 'select') {
+            expect(Array.isArray(field.options)).toBe(true)
+          }
+        }
+      })
+
+      it('lifecycle hooks are functions if defined', () => {
+        if (plugin.onReady) expect(typeof plugin.onReady).toBe('function')
+        if (plugin.onShutdown) expect(typeof plugin.onShutdown).toBe('function')
       })
 
       it('all registered routes have valid method and path', async () => {

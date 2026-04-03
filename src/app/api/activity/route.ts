@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import { readTaskboard } from '@mc/tasks/taskboard'
+import { readTaskboard } from '@bakin/tasks/lib/taskboard'
 import { getContentDir } from '@/core/content-dir'
 import { mapAuditMessage } from '@/lib/map-audit-message'
 import type { ActivityEvent } from '@/types'

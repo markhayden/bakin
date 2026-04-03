@@ -125,7 +125,7 @@ function TaskItem({
                 onChange={(e) => setDescDraft(e.target.value)}
                 placeholder="Add details..."
                 rows={2}
-                className="w-full text-[11px] leading-relaxed bg-zinc-900/40 border border-[rgba(255,255,255,0.06)] rounded px-2.5 py-1.5 text-foreground placeholder:text-zinc-600 focus:outline-none focus:border-[#5e6ad2]/40 resize-y"
+                className="w-full text-[11px] leading-relaxed bg-zinc-900/40 border border-[rgba(255,255,255,0.06)] rounded px-2.5 py-1.5 text-foreground placeholder:text-zinc-500 focus:outline-none focus:border-[#5e6ad2]/40 resize-y"
                 autoFocus
               />
               <div className="flex gap-1.5">
@@ -175,10 +175,10 @@ export function ProjectChecklist({
   }
 
   const handleUpdate = async (taskItemId: string, updates: { title?: string; description?: string }) => {
-    await fetch('/api/plugins/projects/checklist/update', {
-      method: 'POST',
+    await fetch(`/api/plugins/projects/${projectId}/checklist/${taskItemId}`, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId, taskItemId, ...updates }),
+      body: JSON.stringify(updates),
     })
     // Parent will refetch via SSE or next interaction
   }
@@ -219,7 +219,7 @@ export function ProjectChecklist({
           onChange={(e) => setNewItemTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
           placeholder="Add task..."
-          className="flex-1 text-[11px] bg-zinc-900/40 border border-[rgba(255,255,255,0.06)] rounded px-2.5 py-1.5 text-foreground placeholder:text-zinc-600 focus:outline-none focus:border-[#5e6ad2]/40 transition-colors"
+          className="flex-1 text-[11px] bg-zinc-900/40 border border-[rgba(255,255,255,0.06)] rounded px-2.5 py-1.5 text-foreground placeholder:text-zinc-500 focus:outline-none focus:border-[#5e6ad2]/40 transition-colors"
         />
         <button
           onClick={handleAdd}

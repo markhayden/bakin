@@ -28,7 +28,7 @@ export function ProjectCard({ project, onClick }: { project: ProjectSummary; onC
     >
       <div className="flex items-start justify-between gap-2 mb-3">
         <h3 className="text-sm font-medium text-foreground group-hover:text-white line-clamp-2">
-          {project.title}
+          {project.title || 'Untitled project'}
         </h3>
         <ProjectStatusBadge status={project.status} />
       </div>

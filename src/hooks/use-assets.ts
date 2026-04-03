@@ -8,10 +8,13 @@ interface UseAssetsOptions {
   agent?: string
   taskId?: string
   tag?: string
+  limit?: number
+  offset?: number
 }
 
 export function useAssets(options: UseAssetsOptions = {}) {
   const [assets, setAssets] = useState<AssetMeta[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const optionsRef = useRef(options)
   optionsRef.current = options
@@ -23,12 +26,15 @@ export function useAssets(options: UseAssetsOptions = {}) {
     if (opts.agent) params.set('agent', opts.agent)
     if (opts.taskId) params.set('taskId', opts.taskId)
     if (opts.tag) params.set('tag', opts.tag)
+    if (opts.limit) params.set('limit', String(opts.limit))
+    if (opts.offset) params.set('offset', String(opts.offset))
 
     try {
-      const res = await fetch(`/api/plugins/assets/list?${params}`)
+      const res = await fetch(`/api/plugins/assets/?${params}`)
       if (res.ok) {
         const data = await res.json()
         setAssets(data.assets || [])
+        setTotal(data.total ?? data.count ?? 0)
       }
     } catch {
       // Network error — keep existing state
@@ -39,7 +45,7 @@ export function useAssets(options: UseAssetsOptions = {}) {
 
   useEffect(() => {
     fetchAssets()
-  }, [fetchAssets, options.type, options.agent, options.taskId, options.tag])
+  }, [fetchAssets, options.type, options.agent, options.taskId, options.tag, options.limit, options.offset])
 
   // Listen for SSE asset events
   useEffect(() => {
@@ -62,8 +68,8 @@ export function useAssets(options: UseAssetsOptions = {}) {
 
   const deleteAsset = useCallback(async (path: string) => {
     try {
-      const res = await fetch(`/api/plugins/assets/delete?path=${encodeURIComponent(path)}`, {
-        method: 'POST',
+      const res = await fetch(`/api/plugins/assets/${encodeURIComponent(path)}`, {
+        method: 'DELETE',
       })
       if (res.ok) {
         setAssets(prev => prev.filter(a => a.path !== path))
@@ -73,7 +79,7 @@ export function useAssets(options: UseAssetsOptions = {}) {
     return false
   }, [])
 
-  return { assets, loading, refresh: fetchAssets, deleteAsset }
+  return { assets, total, loading, refresh: fetchAssets, deleteAsset }
 }
 
 export function useTrash() {
@@ -82,7 +88,7 @@ export function useTrash() {
 
   const fetchTrash = useCallback(async () => {
     try {
-      const res = await fetch('/api/plugins/assets/list-trash')
+      const res = await fetch('/api/plugins/assets/trash')
       if (res.ok) {
         const data = await res.json()
         setItems(data.assets || [])
@@ -118,7 +124,7 @@ export function useTrash() {
 
   const restoreAsset = useCallback(async (filename: string) => {
     try {
-      const res = await fetch(`/api/plugins/assets/restore?file=${encodeURIComponent(filename)}`, {
+      const res = await fetch(`/api/plugins/assets/trash/${encodeURIComponent(filename)}/restore`, {
         method: 'POST',
       })
       if (res.ok) {
@@ -131,8 +137,8 @@ export function useTrash() {
 
   const permanentDeleteAsset = useCallback(async (filename: string) => {
     try {
-      const res = await fetch(`/api/plugins/assets/permanent-delete?file=${encodeURIComponent(filename)}`, {
-        method: 'POST',
+      const res = await fetch(`/api/plugins/assets/trash/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
       })
       if (res.ok) {
         setItems(prev => prev.filter(i => i.filename !== filename))
@@ -144,7 +150,7 @@ export function useTrash() {
 
   const emptyTrash = useCallback(async () => {
     try {
-      const res = await fetch('/api/plugins/assets/empty-trash', { method: 'POST' })
+      const res = await fetch('/api/plugins/assets/trash', { method: 'DELETE' })
       if (res.ok) {
         setItems([])
         return true
