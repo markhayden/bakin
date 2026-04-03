@@ -5,7 +5,7 @@
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import yaml from 'js-yaml'
-import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep } from './types'
+import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep } from '../types'
 import { getContentDir } from './content-dir'
 
 function getDefinitionsDir(contentDir?: string): string {

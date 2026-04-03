@@ -3,9 +3,9 @@
  * Registers API routes for audit log, agent workspaces, and gateway logs.
  */
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
-import { parseAuditLog, filterAuditEntries } from './audit-parser'
-import { parseGatewayLog } from './gateway-parser'
-import { getAgentIds } from '../team/openclaw-adapter'
+import { parseAuditLog, filterAuditEntries } from './lib/audit-parser'
+import { parseGatewayLog } from './lib/gateway-parser'
+import { getAgentIds } from '../team/lib/openclaw-adapter'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'

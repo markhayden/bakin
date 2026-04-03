@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { getContentDir, resetContentDir, initBakinHome } from '@bakin/workflows/content-dir'
+import { getContentDir, resetContentDir, initBakinHome } from '@bakin/workflows/lib/content-dir'
 
 describe('content-dir', () => {
   const testDir = join(tmpdir(), `bakin-test-contentdir-${Date.now()}`)

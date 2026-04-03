@@ -16,7 +16,7 @@ import {
   setDependency,
   clearDependency,
   reorderTasks,
-} from './taskboard'
+} from './lib/taskboard'
 import {
   moveTaskWithEffects,
   blockTaskWithEffects,

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { useContentStore } from '@/hooks/use-content-store'
-import { parseMemoryLog } from '../parser'
+import { parseMemoryLog } from '../lib/parser'
 import { Search, Plus, ChevronDown } from 'lucide-react'
 import type { MemoryEntry } from '@/types'
 

@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import type { CalendarItem } from './types'
-import { getContentDir } from '../../src/core/content-dir'
+import type { CalendarItem } from '../types'
+import { getContentDir } from '../../../src/core/content-dir'
 
 const CONTENT_DIR = getContentDir()
 const CALENDAR_FILE = join(CONTENT_DIR, 'calendar.json')

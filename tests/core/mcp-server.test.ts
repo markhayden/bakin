@@ -25,7 +25,7 @@ vi.mock('@/core/audit', () => ({
   appendAudit: vi.fn(),
 }))
 
-vi.mock('@bakin/workflows/runtime', () => ({
+vi.mock('@bakin/workflows/lib/runtime', () => ({
   getCurrentStep: vi.fn(() => ({
     stepId: 'write-copy',
     label: 'Write Copy',

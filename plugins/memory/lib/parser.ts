@@ -1,4 +1,4 @@
-import type { MemoryDay, MemoryEntry } from '../../src/types'
+import type { MemoryDay, MemoryEntry } from '../../../src/types'
 
 export function parseMemoryLog(content: string): MemoryDay[] {
   const days: MemoryDay[] = []

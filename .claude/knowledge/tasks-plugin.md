@@ -46,7 +46,7 @@ interface TaskLogEntry {
 
 IDs are 8-character hex strings generated from 4 random bytes via `crypto.getRandomValues()` (with `Math.random()` fallback). Compound IDs use the format `parentId--stepId` for workflow child tasks.
 
-**File:** `plugins/tasks/ids.ts`
+**File:** `plugins/tasks/lib/ids.ts`
 
 ## Column System
 
@@ -123,9 +123,9 @@ _Last updated: 03/30/2026, 14:30 MDT_
 - [ ] [i9j0k1l2] Blocked task @chef — BLOCKED: Waiting for API access
 ```
 
-**Parser:** `plugins/tasks/parser.ts` — Pure function, no fs/node dependencies, safe for client components. Handles all metadata lines (createdBy, dependsOn, workflow, projectId), log entries, and description text.
+**Parser:** `plugins/tasks/lib/parser.ts` — Pure function, no fs/node dependencies, safe for client components. Handles all metadata lines (createdBy, dependsOn, workflow, projectId), log entries, and description text.
 
-**Serializer:** `plugins/tasks/taskboard.ts:serializeTaskboard()` — Writes columns in fixed order: backlog, inProgress, todo, review, done, confirmed, blocked. Updates the "Last updated" timestamp on every write.
+**Serializer:** `plugins/tasks/lib/taskboard.ts:serializeTaskboard()` — Writes columns in fixed order: backlog, inProgress, todo, review, done, confirmed, blocked. Updates the "Last updated" timestamp on every write.
 
 ## Architecture
 
@@ -134,9 +134,9 @@ _Last updated: 03/30/2026, 14:30 MDT_
 | File | Purpose |
 |------|---------|
 | `plugins/tasks/index.ts` | Plugin entry: registers 12 API routes + 11 exec tools + 9 hooks + file watcher |
-| `plugins/tasks/taskboard.ts` | Core mutations: create, move, block, update, delete, assign, dependencies, reorder |
-| `plugins/tasks/parser.ts` | Markdown → TaskBoard parser (pure, client-safe) |
-| `plugins/tasks/ids.ts` | Task ID generation (crypto-safe) |
+| `plugins/tasks/lib/taskboard.ts` | Core mutations: create, move, block, update, delete, assign, dependencies, reorder |
+| `plugins/tasks/lib/parser.ts` | Markdown → TaskBoard parser (pure, client-safe) |
+| `plugins/tasks/lib/ids.ts` | Task ID generation (crypto-safe) |
 | `plugins/tasks/types.ts` | TypeScript interfaces (Task, TaskColumns, TaskBoard, ColumnId) |
 | `plugins/tasks/constants.ts` | Column config, header maps, status dot colors, badge styles |
 | `src/core/task-service.ts` | Service layer: wraps mutations with side effects (audit, SSE, workflow guards, continuation) |

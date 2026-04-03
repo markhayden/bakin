@@ -8,5 +8,5 @@ export {
   initBakinHome,
   getBakinPaths,
   isUsingBakinHome,
-} from '../../src/core/content-dir'
-export type { BakinPaths } from '../../src/core/content-dir'
+} from '../../../src/core/content-dir'
+export type { BakinPaths } from '../../../src/core/content-dir'

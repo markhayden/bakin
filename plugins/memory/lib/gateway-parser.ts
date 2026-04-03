@@ -1,4 +1,4 @@
-import type { GatewayLogEntry } from './types'
+import type { GatewayLogEntry } from '../types'
 
 const NOISE_PATTERNS = [
   /discord: skipping guild message/i,

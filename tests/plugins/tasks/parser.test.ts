@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseTasks } from '../../../plugins/tasks/parser'
+import { parseTasks } from '../../../plugins/tasks/lib/parser'
 
 const SAMPLE_TASKBOARD = `# TASKBOARD
 
