@@ -39,6 +39,7 @@ export function getHookRegistry(): HookRegistry {
 
 interface PluginState {
   plugin: BakinPlugin
+  description: string
   navItems: NavItem[]
   routes: APIRoute[]
   slots: UISlotRegistration[]
@@ -237,8 +238,19 @@ class PluginRegistryImpl {
         if (ran > 0) log.info(`Ran ${ran} migration(s) for ${plugin.id}`)
       }
 
+      // Read description from manifest if available
+      let description = ''
+      const manifestPath = join(pluginPath, 'bakin-plugin.json')
+      if (existsSync(manifestPath)) {
+        try {
+          const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+          description = manifest.description || ''
+        } catch { /* use empty */ }
+      }
+
       const state: PluginState = {
         plugin,
+        description,
         navItems: plugin.navItems || [],
         routes: [],
         slots: [],
@@ -295,6 +307,7 @@ class PluginRegistryImpl {
 
           const state: PluginState = {
             plugin,
+            description: manifest.description || '',
             navItems: plugin.navItems || [],
             routes: [],
             slots: [],
@@ -353,6 +366,7 @@ class PluginRegistryImpl {
     id: string
     name: string
     version: string
+    description: string
     source: 'built-in' | 'user'
     routes: number
   }> {
@@ -360,6 +374,7 @@ class PluginRegistryImpl {
       id,
       name: state.plugin.name,
       version: state.plugin.version,
+      description: state.description,
       source: id.startsWith('user:') ? 'user' as const : 'built-in' as const,
       routes: state.routes.length,
     }))

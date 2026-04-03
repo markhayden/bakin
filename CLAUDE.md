@@ -164,7 +164,7 @@ All paths resolved through `getContentDir()` in `src/core/content-dir.ts`. Resol
 Plugins communicate exclusively through the HookRegistry (`packages/core/src/hooks/hook-registry.ts`). Plugins register hooks in `activate()` via `ctx.hooks.register(name, handler)`. Core modules and other plugins invoke hooks via `getHookRegistry().invoke<R>(name, data)`. Hook naming: `{pluginId}.{operation}` (e.g., `tasks.readTaskboard`, `workflows.getCurrentStep`). No direct imports between plugins or from core → plugins — all cross-boundary calls go through hooks.
 
 ### MCP Tool Registration
-All MCP tools are dynamically registered — no hardcoded tools exist in `mcp-server.ts`. Plugins register exec tools via `ctx.registerExecTool()` during activation (70 tools across 7 plugins). Scripts self-register via `addExecTool()` on import (5 tools: log, gen_image, post_discord, get_paths, heartbeat). Total: 75 exec tools. `mcp-server.ts` calls `getAllExecTools()` to build the tool list at startup.
+All MCP tools are dynamically registered — no hardcoded tools exist in `mcp-server.ts`. Plugins register exec tools via `ctx.registerExecTool()` during activation (72 tools across 8 plugins). Scripts self-register via `addExecTool()` on import (5 tools: log, gen_image, post_discord, get_paths, heartbeat). Total: 77 exec tools. `mcp-server.ts` calls `getAllExecTools()` to build the tool list at startup.
 
 ### Plugin Settings
 Each plugin declares a `settingsSchema` with typed fields (string, number, boolean, select). The settings page at `/settings` dynamically fetches and renders schemas via `PluginSettingsRenderer`. Values persisted at `~/.bakin/plugin-settings/{pluginId}.json`, accessible in plugins via `ctx.getSettings<T>()`.

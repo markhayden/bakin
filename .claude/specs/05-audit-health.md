@@ -1,59 +1,62 @@
 # Phase 5: Audit — Health Plugin
 
 **Applies:** `05-audit-template.md` checklist
-**Status:** Pending
+**Status:** Done
 
 ## Current Inventory
 
 | Surface | Count | Details |
 |---------|-------|---------|
-| HTTP routes | 4 | `GET /summary`, `GET /requests`, `GET /usage`, `GET /registry` |
-| MCP exec tools | 0 | |
+| HTTP routes | 5 | `GET /summary`, `GET /requests`, `GET /usage`, `GET /registry`, `GET /doctor` |
+| MCP exec tools | 2 | `bakin_exec_health_status`, `bakin_exec_health_doctor` |
 | Hooks registered | 0 | |
-| Components | 1 | |
-| Settings schema | none | |
-| Lifecycle hooks | none | |
-| Tests | 0 | |
+| Components | 1 | `HealthPage` — dashboard with 8 sections, pagination, search |
+| Settings schema | 2 fields | `refreshInterval` (number), `showDetailedMetrics` (boolean) |
+| Lifecycle hooks | 1 | `onReady()` — logs baseline doctor results |
+| Tests | 1 | Plugin contract test coverage |
 
 ## Phase 5A Items
 
-### Settings Schema
+### Settings Schema — Done
 ```typescript
 settingsSchema: {
-  refreshInterval: { type: 'number', default: 30, label: 'Refresh interval (seconds)', description: 'How often to poll for updated metrics' },
-  showDetailedMetrics: { type: 'boolean', default: true, label: 'Detailed metrics', description: 'Show per-plugin and per-tool breakdowns' },
+  fields: [
+    { key: 'refreshInterval', type: 'number', default: 30 },
+    { key: 'showDetailedMetrics', type: 'boolean', default: true },
+  ],
 }
 ```
 
 ### Activity & Audit
 Read-only/monitoring plugin — no mutations, no audit needed.
 
-### Lifecycle Hooks
-- `onReady()` — run initial doctor check, cache baseline metrics
+### Lifecycle Hooks — Done
+- `onReady()` — logs baseline error/warning counts from cached doctor results
 
 ## Phase 5B Items
 
-### Route Surface Parity
+### Route Surface Parity — Done
 
-| Operation | HTTP API Route | MCP Exec Tool | Agent Use Case |
-|-----------|---------------|---------------|----------------|
-| System summary | `GET /summary` | `bakin_exec_health_status` | **New** — agent checks system health |
-| Request log | `GET /requests` | — | UI-only |
-| Agent usage | `GET /usage` | — | UI-only |
-| Plugin registry | `GET /registry` | — | UI-only |
-| Run doctor | `GET /doctor` | `bakin_exec_health_doctor` | **New** — agent triggers health check |
-| Tool stats | `GET /tools` | — | UI-only |
+| Operation | HTTP API Route | MCP Exec Tool | Status |
+|-----------|---------------|---------------|--------|
+| System summary | `GET /summary` | `bakin_exec_health_status` | Done |
+| Request log | `GET /requests` | — | Done (UI-only) |
+| Agent usage | `GET /usage` | — | Done (UI-only) |
+| Plugin registry | `GET /registry` | — | Done (UI-only) |
+| Run doctor | `GET /doctor` | `bakin_exec_health_doctor` | Done |
 
-**MCP consideration:** One or two exec tools so agents can self-diagnose system health. The `health_status` tool is useful for agents to check if the system is healthy before starting work.
+### Route Migration — Done
+- `/api/doctor` moved from `server.ts` into health plugin as `GET /doctor`
+- CLI updated to use `/api/plugins/health/doctor?fresh=true`
+- `api-docs.ts` core route entry removed (auto-registered via plugin system)
 
-### Route Additions
-- `GET /doctor` — trigger on-demand doctor check, return results
-- `GET /tools` — exec tool usage statistics
-
-### Components
-Only 1 component today. Health dashboard needs:
-- Doctor results display (OK/WARN/ERROR per check)
-- Exec tool usage stats table
-- Per-plugin activity metrics
-
-**Note:** Expanded health dashboard UI may be deferred if scope is too large for Phase 5. Core routes and exec tools are the priority.
+### UI Polish — Done
+- OpenClaw dashboard link (uses browser hostname + gateway port for Tailscale compat)
+- Updated/date combined on one line
+- Section renames: Tool Usage, Session Cost (est.), Active Plugins, Active Tools
+- Plugin descriptions surfaced from `bakin-plugin.json` manifests
+- Tool source chips show `plugin:{id}` format
+- Tools sorted by lastUsed desc, then calls desc
+- Pagination on tools, endpoints, recent requests (page size 20)
+- Search on Active Plugins and Active Tools
+- Memory card shows percentage of total with color-coded progress bar

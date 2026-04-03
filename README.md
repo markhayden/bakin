@@ -133,7 +133,7 @@ Beacon exposes a REST API on the same port as the dashboard. Full documentation 
 | `GET` | `/api/agents/:id/status` | Detailed agent status |
 | `POST` | `/api/agents/:id/message` | Send message to agent |
 | `GET` | `/api/agents/:id/tasks` | Tasks assigned to agent |
-| `GET` | `/api/doctor` | Run health checks |
+| `GET` | `/api/plugins/health/doctor` | Run health checks (`?fresh=true` to force re-run) |
 | `GET` | `/api/search` | Search indexed content (`?q=<query>&table=&agent=&limit=`) |
 | `GET` | `/api/docs` | API documentation (JSON) |
 | `POST` | `/api/reindex` | Reindex all content to Antfly |
@@ -205,7 +205,7 @@ Beacon Doctor runs on startup and every 30 minutes to keep systems healthy. It p
 - **Safe** (auto-fix): Creating files/directories, installing the Beacon skill
 - **Unsafe** (notify): Roster mismatches, gateway down, taskboard corruption — issues requiring human judgment are reported to main-operator via OpenClaw
 
-Run manually: `beacon doctor` or `GET /api/doctor`
+Run manually: `beacon doctor` or `GET /api/plugins/health/doctor?fresh=true`
 
 ---
 

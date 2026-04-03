@@ -325,7 +325,7 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
 }
 
 async function cmdDoctor(): Promise<void> {
-  const result = await apiGet('/api/doctor?fresh=true') as {
+  const result = await apiGet('/api/plugins/health/doctor?fresh=true') as {
     results: Array<{ check: string; status: string; message: string }>
     summary: { total: number; errors: number; warnings: number }
   }

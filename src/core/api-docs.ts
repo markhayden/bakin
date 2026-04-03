@@ -37,7 +37,6 @@ const CORE_ROUTES: RouteDoc[] = [
   { pluginId: 'core', method: 'GET', path: '/api/agents/:id/tasks', fullPath: '/api/agents/:id/tasks', description: 'Get tasks assigned to an agent' },
   { pluginId: 'core', method: 'POST', path: '/api/plugins/install', fullPath: '/api/plugins/install', description: 'Install a plugin', params: '{"source":"string","type":"local|github"}' },
   { pluginId: 'core', method: 'POST', path: '/api/plugins/remove', fullPath: '/api/plugins/remove', description: 'Remove an installed plugin', params: '{"pluginId":"string"}' },
-  { pluginId: 'core', method: 'GET', path: '/api/doctor', fullPath: '/api/doctor', description: 'Run health checks (agent roster, skill sync, gateway, Antfly, taskboard)' },
   { pluginId: 'core', method: 'POST', path: '/api/reindex', fullPath: '/api/reindex', description: 'Trigger full content reindex to Antfly' },
 ]
 
