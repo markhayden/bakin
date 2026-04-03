@@ -72,6 +72,6 @@ export async function handleJsonPost(
     jsonResponse(res, 200, result ?? { ok: true })
   } catch (err) {
     log.error('Request handler error', err)
-    jsonResponse(res, 500, { error: String(err) })
+    jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
   }
 }

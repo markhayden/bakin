@@ -72,7 +72,7 @@ export function getOpenClawConfig(): OpenClawConfig {
     configCache = { data, mtime: stat.mtimeMs }
     return data
   } catch (err) {
-    log.warn('Failed to read openclaw.json', { error: String(err) })
+    log.warn('Failed to read openclaw.json', { error: err instanceof Error ? err.message : String(err) })
     return {}
   }
 }
@@ -369,7 +369,7 @@ export function removeAgent(bakinId: string): boolean {
       renameSync(wsPath, join(trashDir, trashName))
       log.info('Workspace moved to trash', { id: bakinId, trashName })
     } catch (err) {
-      log.warn('Failed to move workspace to trash', { id: bakinId, error: String(err) })
+      log.warn('Failed to move workspace to trash', { id: bakinId, error: err instanceof Error ? err.message : String(err) })
     }
   }
 

@@ -506,7 +506,7 @@ const workflowsPlugin: BakinPlugin = {
 
         return Response.json({ instance })
       } catch (err) {
-        return Response.json({ error: String(err) }, { status: 400 })
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
       }
     }
     ctx.registerRoute({ path: '/instances/start', method: 'POST', description: 'Start a workflow instance for a task', handler: startHandler })
@@ -583,7 +583,7 @@ const workflowsPlugin: BakinPlugin = {
 
           return { ok: true, instance }
         } catch (err) {
-          return { ok: false, error: String(err) }
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
     })
@@ -675,7 +675,7 @@ const workflowsPlugin: BakinPlugin = {
           const formatted = formatStepContext(step)
           return { ok: true, formatted, raw: step }
         } catch (err) {
-          return { ok: false, error: `Failed to get step: ${String(err)}` }
+          return { ok: false, error: `Failed to get step: ${err instanceof Error ? err.message : String(err)}` }
         }
       },
     })
@@ -725,7 +725,7 @@ const workflowsPlugin: BakinPlugin = {
 
           return { ok: true, workflowComplete: result.workflowComplete }
         } catch (err) {
-          const msg = String(err)
+          const msg = err instanceof Error ? err.message : String(err)
           if (msg.includes('near-duplicate') || msg.includes('rejection')) {
             return { ok: false, error: 'Submission rejected: output is too similar to your previous rejected submission. Address the feedback and make substantive changes.' }
           }
@@ -781,7 +781,7 @@ const workflowsPlugin: BakinPlugin = {
 
           return { ok: true, formatted: lines.join('\n') }
         } catch (err) {
-          return { ok: false, error: `Failed to check gates: ${String(err)}` }
+          return { ok: false, error: `Failed to check gates: ${err instanceof Error ? err.message : String(err)}` }
         }
       },
     })

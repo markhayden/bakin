@@ -348,7 +348,7 @@ const modelsPlugin: BakinPlugin = {
           const result = await fetchAvailableModels()
           return Response.json(result)
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -364,7 +364,7 @@ const modelsPlugin: BakinPlugin = {
           const agents = await resolveAgents(ctx)
           return Response.json({ agents })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -428,7 +428,7 @@ const modelsPlugin: BakinPlugin = {
           if (err instanceof z.ZodError) {
             return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
           }
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -468,7 +468,7 @@ const modelsPlugin: BakinPlugin = {
           if (err instanceof z.ZodError) {
             return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
           }
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -485,7 +485,7 @@ const modelsPlugin: BakinPlugin = {
           const aliases = readAliases(config)
           return Response.json({ aliases })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -535,7 +535,7 @@ const modelsPlugin: BakinPlugin = {
           if (err instanceof z.ZodError) {
             return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
           }
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -552,7 +552,7 @@ const modelsPlugin: BakinPlugin = {
           const profiles = settings.taskProfiles ?? DEFAULT_TASK_PROFILES
           return Response.json({ profiles })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -575,7 +575,7 @@ const modelsPlugin: BakinPlugin = {
           if (err instanceof z.ZodError) {
             return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
           }
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -605,7 +605,7 @@ const modelsPlugin: BakinPlugin = {
         return new Promise<Response>((resolve) => {
           execFile(OPENCLAW_BIN, ['gateway', 'restart'], (err) => {
             if (err) {
-              resolve(Response.json({ ok: false, error: String(err) }, { status: 500 }))
+              resolve(Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 }))
             } else {
               markGatewayRestarted()
               ctx.activity.audit('gateway.restarted', 'system')
@@ -633,7 +633,7 @@ const modelsPlugin: BakinPlugin = {
           const models = tier ? result.models.filter((m) => m.tier === tier) : result.models
           return { ok: true, models, cached: result.cached }
         } catch (err) {
-          return { ok: false, error: String(err) }
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
     })
@@ -655,7 +655,7 @@ const modelsPlugin: BakinPlugin = {
           }
           return { ok: true, agents }
         } catch (err) {
-          return { ok: false, error: String(err) }
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
     })

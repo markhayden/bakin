@@ -68,7 +68,7 @@ const memoryPlugin: BakinPlugin = {
 
           return Response.json({ entries: filtered })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -120,7 +120,7 @@ const memoryPlugin: BakinPlugin = {
 
           return Response.json({ files, memoryFiles })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -147,7 +147,7 @@ const memoryPlugin: BakinPlugin = {
 
           return Response.json(result)
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })

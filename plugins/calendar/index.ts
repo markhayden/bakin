@@ -382,7 +382,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
           })
         } catch (err) {
           log.error('Brainstorm error', err)
-          return json({ error: String(err) }, 500)
+          return json({ error: err instanceof Error ? err.message : String(err) }, 500)
         }
       },
     })

@@ -244,7 +244,7 @@ async function handleRequest(
     return await match.route.handler(handlerReq, ctx)
   } catch (err) {
     console.error(`Plugin route error [${pluginId}${routePath}]:`, err)
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }
 

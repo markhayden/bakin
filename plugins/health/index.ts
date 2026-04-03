@@ -151,7 +151,7 @@ const healthPlugin: BakinPlugin = {
           const results = await runDiagnostics(getContentDir(), process.cwd())
           return Response.json(buildDoctorResponse(results))
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -218,7 +218,7 @@ const healthPlugin: BakinPlugin = {
           const results = await runDiagnostics(getContentDir(), process.cwd())
           return { ok: true, ...buildDoctorResponse(results) }
         } catch (err) {
-          return { ok: false, error: String(err) }
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
     })

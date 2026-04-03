@@ -92,6 +92,6 @@ export async function POST(request: NextRequest) {
       entry: { type, agent, text: text.trim(), date: today },
     })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }

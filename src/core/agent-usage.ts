@@ -154,7 +154,7 @@ function parseSessionUsage(filePath: string, agentName: string): AgentUsage | nu
       cost,
     }
   } catch (err) {
-    log.debug('Failed to parse session', { filePath, error: String(err) })
+    log.debug('Failed to parse session', { filePath, error: err instanceof Error ? err.message : String(err) })
     return null
   }
 }
