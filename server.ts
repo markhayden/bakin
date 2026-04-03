@@ -248,31 +248,6 @@ app.prepare().then(async () => {
       return
     }
 
-    // Doctor endpoint — returns cached results by default, ?fresh=true forces re-run
-    if (url.pathname === '/api/doctor') {
-      if (req.method === 'GET' || req.method === 'POST') {
-        const fresh = url.searchParams.get('fresh') === 'true' || req.method === 'POST'
-        if (!fresh) {
-          const cached = doctor.getLastResults()
-          if (cached) {
-            const results = cached.results
-            const errors = results.filter(r => r.status === 'error').length
-            const warnings = results.filter(r => r.status === 'warn').length
-            jsonResponse(res, 200, { results, summary: { total: results.length, errors, warnings }, cachedAt: new Date(cached.timestamp).toISOString() })
-            return
-          }
-        }
-        doctor.runDiagnostics(CONTENT_DIR, process.cwd()).then(results => {
-          const errors = results.filter(r => r.status === 'error').length
-          const warnings = results.filter(r => r.status === 'warn').length
-          jsonResponse(res, 200, { results, summary: { total: results.length, errors, warnings } })
-        }).catch(err => {
-          jsonResponse(res, 500, { error: String(err) })
-        })
-        return
-      }
-    }
-
     // Reindex endpoint (triggers Antfly full reindex)
     if (url.pathname === '/api/reindex' && req.method === 'POST') {
       antfly.reindexAll(CONTENT_DIR).then(count => {

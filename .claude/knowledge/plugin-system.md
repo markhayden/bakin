@@ -141,7 +141,7 @@ const board = await hooks.invoke<TaskBoard>('tasks.readTaskboard', {})
 
 ### Exec tool registrations by plugin
 
-7 plugins register exec tools, 3 don't (memory, models, health):
+8 plugins register exec tools, 2 don't (memory, models):
 
 | Plugin | Exec tools |
 |--------|-----------|
@@ -152,8 +152,9 @@ const board = await hooks.invoke<TaskBoard>('tasks.readTaskboard', {})
 | calendar | 7 |
 | projects | 15 |
 | team | 8 |
+| health | 2 |
 | scripts (non-plugin) | 5 |
-| **Total** | **75** (70 plugin + 5 script) |
+| **Total** | **77** (72 plugin + 5 script) |
 
 **Critical:** No direct imports between plugins or from core → plugins. All cross-boundary calls go through hooks. Verified: `grep -r "from '../../plugins/" src/core/ scripts/lib/` returns 0 results.
 
