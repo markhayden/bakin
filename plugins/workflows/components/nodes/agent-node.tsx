@@ -2,7 +2,7 @@
 
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { User } from 'lucide-react'
-import { AGENTS } from '@/lib/constants'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
 import { AgentAvatar } from '@/components/agent-avatar'
 
 interface AgentNodeData extends Record<string, unknown> {
@@ -15,7 +15,8 @@ const isDynamic = (agent?: string) => agent === '$assigned'
 
 export function AgentNode({ data }: NodeProps) {
   const { label, agent, task } = data as AgentNodeData
-  const agentMeta = agent && !isDynamic(agent) ? AGENTS.find(a => a.id === agent) : undefined
+  const lookedUp = useAgent(agent ?? '')
+  const agentMeta = agent && !isDynamic(agent) ? lookedUp : undefined
 
   // Show first ~80 chars of task as excerpt
   const excerpt = task && task.length > 80 ? task.slice(0, 80).trim() + '…' : task

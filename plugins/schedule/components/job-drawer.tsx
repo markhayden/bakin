@@ -7,7 +7,7 @@ import { AgentAvatar } from '@/components/agent-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { AGENTS } from '@/lib/constants'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -44,6 +44,7 @@ export function JobDrawer({
   onSkipNext: (jobId: string, n?: number) => Promise<boolean>
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const jobAgent = useAgent(job?.agentId ?? '')
 
   if (!job) return null
 
@@ -99,17 +100,16 @@ export function JobDrawer({
       <div className="space-y-6">
         {/* Agent hero */}
         {(() => {
-          const agent = AGENTS.find(a => a.id === job.agentId)
           const agentId = job.agentId || 'system'
           return (
             <div className="flex items-center gap-4 rounded-lg p-4 border border-border bg-surface">
-              {agent ? (
+              {jobAgent ? (
                 <AgentAvatar agentId={agentId} size="lg" />
               ) : (
                 <AgentBadge agentId={undefined} size="lg" showName={false} />
               )}
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-foreground">{agent?.name || 'System'}</div>
+                <div className="text-sm font-medium text-foreground">{jobAgent?.name || 'System'}</div>
                 <div className="flex items-center gap-2 mt-1">
                   {job.paused ? (
                     <Badge className="bg-amber-500/20 text-amber-400">Paused</Badge>

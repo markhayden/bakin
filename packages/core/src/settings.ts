@@ -4,6 +4,7 @@
  */
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
 
@@ -93,7 +94,7 @@ const DEFAULTS: BakinSettings = {
     gatewayPort: 18789,
   },
   models: {},
-  agents: ['main-operator', 'patch', 'pixel', 'rolo', 'chef', 'explorer', 'trainer', 'coach'],
+  agents: [], // populated dynamically from OpenClaw at load time
   antfly: {
     enabled: false,
     url: 'http://localhost:8080',
@@ -119,7 +120,42 @@ const DEFAULTS: BakinSettings = {
   },
 }
 
-let cachedSettings: BakinSettings | null = null
+// Use globalThis to survive Next.js webpack module re-evaluation.
+// Without this, resetSettingsCache() in a plugin route handler wouldn't
+// bust the cache seen by the custom server's /api/settings handler.
+const _g = globalThis as typeof globalThis & {
+  __bakinSettingsCache?: BakinSettings | null
+  __bakinOpenClawMtime?: number
+  __bakinOpenClawAgents?: string[]
+}
+function getCachedSettings(): BakinSettings | null { return _g.__bakinSettingsCache ?? null }
+function setCachedSettings(v: BakinSettings | null) { _g.__bakinSettingsCache = v }
+
+const OPENCLAW_JSON_PATH = path.join(os.homedir(), '.openclaw', 'openclaw.json')
+
+/**
+ * Read agent IDs from ~/.openclaw/openclaw.json with mtime-based caching.
+ * Re-reads when the file changes on disk — picks up agents added via OpenClaw
+ * without needing a Bakin restart or explicit cache bust.
+ */
+function readAgentIdsFromOpenClaw(): string[] {
+  const OPENCLAW_TO_BAKIN: Record<string, string> = { main: 'main-operator' }
+  try {
+    const stat = fs.statSync(OPENCLAW_JSON_PATH)
+    if (_g.__bakinOpenClawMtime === stat.mtimeMs && _g.__bakinOpenClawAgents) {
+      return _g.__bakinOpenClawAgents
+    }
+    const config = JSON.parse(fs.readFileSync(OPENCLAW_JSON_PATH, 'utf-8'))
+    const list = config?.agents?.list as Array<{ id: string }> | undefined
+    if (!Array.isArray(list)) return []
+    const agents = list.map((a) => OPENCLAW_TO_BAKIN[a.id] ?? a.id)
+    _g.__bakinOpenClawMtime = stat.mtimeMs
+    _g.__bakinOpenClawAgents = agents
+    return agents
+  } catch {
+    return []
+  }
+}
 
 function getSettingsPath(): string {
   return path.join(getContentDir(), 'settings.json')
@@ -148,26 +184,45 @@ function deepMerge(defaults: Record<string, unknown>, overrides: Record<string, 
 }
 
 export function getSettings(): BakinSettings {
-  if (cachedSettings) return cachedSettings
+  let settings = getCachedSettings()
 
-  const settingsPath = getSettingsPath()
-  let overrides: Record<string, unknown> = {}
+  if (!settings) {
+    const settingsPath = getSettingsPath()
+    let overrides: Record<string, unknown> = {}
 
-  try {
-    if (fs.existsSync(settingsPath)) {
-      overrides = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
-      log.info('Settings loaded', { path: settingsPath })
+    try {
+      if (fs.existsSync(settingsPath)) {
+        overrides = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+        log.info('Settings loaded', { path: settingsPath })
+      }
+    } catch (err) {
+      log.warn('Failed to read settings, using defaults', err)
     }
-  } catch (err) {
-    log.warn('Failed to read settings, using defaults', err)
+
+    settings = deepMerge(
+      DEFAULTS as unknown as Record<string, unknown>,
+      overrides
+    ) as unknown as BakinSettings
+
+    setCachedSettings(settings)
   }
 
-  cachedSettings = deepMerge(
-    DEFAULTS as unknown as Record<string, unknown>,
-    overrides
-  ) as unknown as BakinSettings
+  // Always refresh agents from OpenClaw (mtime-cached, cheap when unchanged).
+  // This ensures agents added via OpenClaw directly are picked up without
+  // needing a Bakin restart or explicit cache bust.
+  if (!settings.agents.length || _g.__bakinOpenClawAgents === undefined) {
+    settings.agents = readAgentIdsFromOpenClaw()
+  } else {
+    // Check if openclaw.json changed — mtime comparison is a single stat() call
+    try {
+      const stat = fs.statSync(OPENCLAW_JSON_PATH)
+      if (stat.mtimeMs !== _g.__bakinOpenClawMtime) {
+        settings.agents = readAgentIdsFromOpenClaw()
+      }
+    } catch { /* keep cached agents */ }
+  }
 
-  return cachedSettings
+  return settings
 }
 
 export function updateSettings(partial: Record<string, unknown>): BakinSettings {
@@ -190,10 +245,10 @@ export function updateSettings(partial: Record<string, unknown>): BakinSettings 
   log.info('Settings updated', { keys: Object.keys(partial) })
 
   // Invalidate cache
-  cachedSettings = null
+  setCachedSettings(null)
   return getSettings()
 }
 
 export function resetSettingsCache(): void {
-  cachedSettings = null
+  setCachedSettings(null)
 }

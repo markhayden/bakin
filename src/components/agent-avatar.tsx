@@ -3,8 +3,7 @@
 import { useState } from 'react'
 import { User } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
-import { AGENT_MAP } from '@/lib/agents-data'
-import { useAgentColor } from '@/hooks/use-agent-settings'
+import { useAgent, useAgentColor } from '@bakin/team/hooks/use-agent-store'
 import { cn } from '@/lib/utils'
 
 type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
@@ -41,7 +40,7 @@ export function AgentAvatar({
   className,
 }: AgentAvatarProps) {
   const [imgError, setImgError] = useState(false)
-  const agent = AGENT_MAP[agentId]
+  const agent = useAgent(agentId)
   const accentColor = useAgentColor(agentId)
   const config = SIZE_CONFIG[size]
   const initial = agent?.name?.charAt(0).toUpperCase() ?? '?'

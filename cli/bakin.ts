@@ -160,11 +160,12 @@ async function cmdTasksMove(id: string, to: string): Promise<void> {
 }
 
 async function cmdAgentsList(): Promise<void> {
-  const result = await apiGet('/api/agents') as { agents: Array<Record<string, unknown>> }
+  const result = await apiGet('/api/plugins/team/') as {
+    agents: Array<{ id: string; name: string; status: string; model: string }>
+  }
   for (const agent of result.agents) {
-    const active = (agent.activeTasks as Array<{ title: string }>)?.length || 0
-    const lastAct = agent.lastActivity ? ` (last: ${agent.lastActivity})` : ''
-    console.log(`  ${agent.id}: ${active} active tasks${lastAct}`)
+    const statusIcon = agent.status === 'working' ? '●' : agent.status === 'online' ? '○' : '·'
+    console.log(`  ${statusIcon} ${agent.id}: ${agent.name} [${agent.status}] (${agent.model})`)
   }
 }
 
@@ -174,7 +175,7 @@ async function cmdAgentsSend(agentId: string, message: string): Promise<void> {
 }
 
 async function cmdAgentsStatus(agentId: string): Promise<void> {
-  const result = await apiGet(`/api/agents/${agentId}/status`)
+  const result = await apiGet(`/api/plugins/team/${agentId}`)
   print(result)
 }
 

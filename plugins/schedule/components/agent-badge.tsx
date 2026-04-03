@@ -1,6 +1,6 @@
 'use client'
 
-import { AGENTS } from '@/lib/constants'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { Shell } from 'lucide-react'
 
@@ -56,7 +56,7 @@ export function AgentBadge({
   size?: BadgeSize
   showName?: boolean
 }) {
-  const agent = AGENTS.find(a => a.id === agentId)
+  const agent = useAgent(agentId ?? '')
 
   if (!agent) {
     return <SystemBadge size={size} showName={showName} />

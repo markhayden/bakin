@@ -39,7 +39,9 @@
       "@bakin/schedule": ["./plugins/schedule"],
       "@bakin/schedule/*": ["./plugins/schedule/*"],
       "@bakin/projects": ["./plugins/projects"],
-      "@bakin/projects/*": ["./plugins/projects/*"]
+      "@bakin/projects/*": ["./plugins/projects/*"],
+      "@bakin/team": ["./plugins/team"],
+      "@bakin/team/*": ["./plugins/team/*"]
     }
   },
   "include": [

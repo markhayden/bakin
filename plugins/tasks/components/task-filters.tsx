@@ -2,11 +2,10 @@
 
 import { AgentAvatar } from '@/components/agent-avatar'
 import { FacetFilter } from '@/components/facet-filter'
+import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { ListFilter } from 'lucide-react'
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import type { ColumnId } from '../types'
-
-const AGENT_IDS = ['main-operator', 'chef', 'pixel', 'rolo', 'patch', 'explorer', 'trainer', 'coach']
 
 const STATUS_OPTIONS: { value: string; label: string; icon: React.ReactNode }[] =
   (['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed'] as ColumnId[]).map(id => ({
@@ -43,6 +42,8 @@ export function TaskFilters({
   statusFilter, onStatusChange,
   showStatusFilter = false,
 }: TaskFiltersProps) {
+  const agentIds = useAgentIds()
+
   return (
     <div className="flex items-center gap-3 overflow-x-auto">
       <ListFilter className="size-3.5 text-muted-foreground shrink-0" />
@@ -58,7 +59,7 @@ export function TaskFilters({
         >
           All
         </button>
-        {AGENT_IDS.map(id => (
+        {agentIds.map(id => (
           <AgentPill
             key={id}
             agentId={id}

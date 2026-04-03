@@ -76,6 +76,7 @@ import assetsPlugin from '@bakin/assets'
 import healthPlugin from '@bakin/health'
 import schedulePlugin from '@bakin/schedule'
 import projectsPlugin from '@bakin/projects'
+import teamPlugin from '@bakin/team'
 
 interface PluginState {
   plugin: BakinPlugin
@@ -109,7 +110,7 @@ function ensureInitialized() {
   const storage = new MarkdownStorageAdapter()
   const events = new BakinEventBus(relayBroadcast)
 
-  const plugins = [tasksPlugin, memoryPlugin, modelsPlugin, calendarPlugin, workflowsPlugin, assetsPlugin, healthPlugin, schedulePlugin, projectsPlugin]
+  const plugins = [teamPlugin, tasksPlugin, memoryPlugin, modelsPlugin, calendarPlugin, workflowsPlugin, assetsPlugin, healthPlugin, schedulePlugin, projectsPlugin]
 
   for (const plugin of plugins) {
     if (!plugin.id || !plugin.activate) continue

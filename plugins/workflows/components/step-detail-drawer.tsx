@@ -4,7 +4,7 @@ import { BakinDrawer } from '@/components/bakin-drawer'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { AgentAvatar } from '@/components/agent-avatar'
-import { AGENTS } from '@/lib/constants'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
 import {
   User,
   ShieldCheck,
@@ -96,7 +96,8 @@ function DeniedToolsSection({ tools }: { tools?: string[] }) {
 // ─── Step Type Details ─────────────────────────────────────────────
 
 function AgentStepDetail({ step }: { step: AgentStep }) {
-  const agentMeta = step.agent !== '$assigned' ? AGENTS.find(a => a.id === step.agent) : undefined
+  const lookedUp = useAgent(step.agent)
+  const agentMeta = step.agent !== '$assigned' ? lookedUp : undefined
 
   return (
     <div className="space-y-6">

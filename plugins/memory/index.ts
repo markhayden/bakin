@@ -5,7 +5,7 @@
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { parseAuditLog, filterAuditEntries } from './audit-parser'
 import { parseGatewayLog } from './gateway-parser'
-import { AGENT_IDS } from '../../src/lib/agents-data'
+import { getAgentIds } from '../team/openclaw-adapter'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
@@ -82,7 +82,7 @@ const memoryPlugin: BakinPlugin = {
           const url = new URL(req.url)
           const agentId = url.searchParams.get('agentId')
 
-          if (!agentId || !AGENT_IDS.includes(agentId)) {
+          if (!agentId || !getAgentIds().includes(agentId)) {
             return Response.json({ error: 'Invalid agentId' }, { status: 400 })
           }
 

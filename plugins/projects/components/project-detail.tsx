@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Send, Loader2, Paperclip, X, FileText, Image, Film, Music, File, Sparkles, ChevronDown, Search, Pencil, Trash2 } from 'lucide-react'
-import { AGENTS } from '@/lib/constants'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
 import { AgentSelect } from '@/components/agent-select'
 import { AssetDetailModal } from '@bakin/assets/components/asset-detail'
 import { ProjectChecklist } from './project-checklist'
@@ -127,6 +127,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   const [agentLoading, setAgentLoading] = useState(false)
   const [brainstormMessages, setBrainstormMessages] = useState<Array<{ role: 'user' | 'agent'; agent?: string; content: string }>>([])
   const brainstormEndRef = useRef<HTMLDivElement>(null)
+  const brainstormAgentMeta = useAgent(brainstormAgent)
 
   // Dropdowns
   const [statusOpen, setStatusOpen] = useState(false)
@@ -623,19 +624,13 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
                           </div>
                         )
                       }
-                      const agentInfo = AGENTS.find(a => a.id === msg.agent)
                       return (
-                        <div key={i} className="flex gap-2">
-                          <div className="shrink-0 text-xs pt-1">{agentInfo?.emoji || '🤖'}</div>
-                          <div className="max-w-[90%] px-3 py-2 rounded-lg bg-zinc-900/60 border border-[rgba(255,255,255,0.04)] text-sm">
-                            <MarkdownContent content={msg.content} />
-                          </div>
-                        </div>
+                        <BrainstormAgentMessage key={i} agentId={msg.agent || ''} content={msg.content} />
                       )
                     })}
                     {agentLoading && (
                       <div className="flex gap-2">
-                        <div className="shrink-0 text-xs pt-1">{AGENTS.find(a => a.id === brainstormAgent)?.emoji || '🤖'}</div>
+                        <div className="shrink-0 text-xs pt-1">{brainstormAgentMeta?.emoji || '🤖'}</div>
                         <div className="px-3 py-2 rounded-lg bg-zinc-900/60 border border-[rgba(255,255,255,0.04)] text-sm text-zinc-500">
                           <Loader2 className="size-3.5 animate-spin inline-block" /> Thinking...
                         </div>
@@ -834,6 +829,18 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
           onClose={() => setPreviewAssetPath(null)}
         />
       )}
+    </div>
+  )
+}
+
+function BrainstormAgentMessage({ agentId, content }: { agentId: string; content: string }) {
+  const agentInfo = useAgent(agentId)
+  return (
+    <div className="flex gap-2">
+      <div className="shrink-0 text-xs pt-1">{agentInfo?.emoji || '🤖'}</div>
+      <div className="max-w-[90%] px-3 py-2 rounded-lg bg-zinc-900/60 border border-[rgba(255,255,255,0.04)] text-sm">
+        <MarkdownContent content={content} />
+      </div>
     </div>
   )
 }

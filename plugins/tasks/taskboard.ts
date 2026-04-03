@@ -46,7 +46,6 @@ const COLUMN_TO_HEADER: Record<ColumnId, string> = {
   blocked: '🔴 Blocked',
 }
 
-const KNOWN_AGENTS = ['main-operator', 'patch', 'pixel', 'rolo', 'chef']
 
 // ---------------------------------------------------------------------------
 // Valid state transitions — prevents invalid column moves
@@ -378,4 +377,3 @@ export function getAgentTasks(agentId: string): Task[] {
   return columns.todo.filter(t => t.agent === agentId)
 }
 
-export { KNOWN_AGENTS }
