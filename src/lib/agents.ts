@@ -9,7 +9,7 @@ export async function startAgent(agentId: string, message?: string) {
     await openclaw.sendMessage(agentId, msg)
     return { ok: true }
   } catch (err) {
-    return { ok: false, error: String(err) }
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
 
@@ -29,6 +29,6 @@ export async function deliverTaskToAgent(agentId: string, taskTitle: string, det
     await openclaw.sendMessage(agentId, msg)
     return { ok: true }
   } catch (err) {
-    return { ok: false, error: String(err) }
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
 }

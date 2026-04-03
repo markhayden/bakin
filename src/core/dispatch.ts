@@ -200,7 +200,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
           // best effort
         }
 
-        appendAudit(contentDir, 'task.dispatch_failed', targetAgent, { id: task.id, title: task.title, error: String(err), attempt: (prev?.count || 0) + 1 })
+        appendAudit(contentDir, 'task.dispatch_failed', targetAgent, { id: task.id, title: task.title, error: err instanceof Error ? err.message : String(err), attempt: (prev?.count || 0) + 1 })
       }
     }
 
@@ -429,7 +429,7 @@ export function start(contentDir: string, port: number): void {
   dispatchTimer = setInterval(() => {
     dispatchTasks(contentDir, port).catch(err => {
       log.error('Dispatch cycle failed', err)
-      appendAudit(contentDir, 'system.dispatch_error', 'system', { error: String(err) })
+      appendAudit(contentDir, 'system.dispatch_error', 'system', { error: err instanceof Error ? err.message : String(err) })
     })
   }, settings.dispatch.intervalMs)
   log.info('Dispatch started', { intervalMs: settings.dispatch.intervalMs })

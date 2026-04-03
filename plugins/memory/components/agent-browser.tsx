@@ -63,7 +63,7 @@ export function AgentBrowser() {
         return r.json()
       })
       .then((data) => setWorkspace(data))
-      .catch((err) => setError(String(err)))
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false))
   }, [selectedAgent])
 

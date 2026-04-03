@@ -122,7 +122,7 @@ export function ModelsPage() {
       if (data.agents) setAgents(data.agents)
       setError(null)
     } catch (err) {
-      setError(`Failed to load agent config: ${err instanceof Error ? err.message : String(err)}`)
+      setError(`Failed to load agent config: ${err instanceof Error ? err.message : err instanceof Error ? err.message : String(err)}`)
     } finally {
       setLoading(false)
     }

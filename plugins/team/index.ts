@@ -152,7 +152,7 @@ function getLastAuditActivity(): Record<string, number> {
       } catch { /* skip malformed lines */ }
     }
   } catch (err) {
-    log.warn('Failed to read audit.jsonl for activity detection', { error: String(err) })
+    log.warn('Failed to read audit.jsonl for activity detection', { error: err instanceof Error ? err.message : String(err) })
   }
   return result
 }
@@ -315,7 +315,7 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ agents: result, displaySettings, teams })
         } catch (err) {
           log.error('Failed to list agents', err)
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -351,7 +351,7 @@ const teamPlugin: BakinPlugin = {
           const skipRestart = url.searchParams.get('skipRestart') === 'true'
           if (!skipRestart) {
             execFile(OPENCLAW_BIN, ['gateway', 'restart'], (err) => {
-              if (err) log.warn('Failed to restart gateway after agent creation', { error: String(err) })
+              if (err) log.warn('Failed to restart gateway after agent creation', { error: err instanceof Error ? err.message : String(err) })
               else {
                 log.info('Gateway restarted after agent creation', { agent: id })
                 try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
@@ -363,7 +363,7 @@ const teamPlugin: BakinPlugin = {
 
           return Response.json({ ok: true, id, gatewayRestarted: !skipRestart })
         } catch (err) {
-          const msg = String(err)
+          const msg = err instanceof Error ? err.message : String(err)
           const status = msg.includes('already exists') ? 409 : 500
           return Response.json({ error: msg }, { status })
         }
@@ -404,7 +404,7 @@ const teamPlugin: BakinPlugin = {
 
           // Restart OpenClaw gateway
           execFile(OPENCLAW_BIN, ['gateway', 'restart'], (err) => {
-            if (err) log.warn('Failed to restart gateway after agent deletion', { error: String(err) })
+            if (err) log.warn('Failed to restart gateway after agent deletion', { error: err instanceof Error ? err.message : String(err) })
             else {
               log.info('Gateway restarted after agent deletion', { agent: agentId })
               try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
@@ -413,7 +413,7 @@ const teamPlugin: BakinPlugin = {
 
           return Response.json({ ok: true, id: agentId })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -454,7 +454,7 @@ const teamPlugin: BakinPlugin = {
           ctx.activity.audit('agent.avatar.updated', 'system', { agent: agentId })
           return Response.json({ ok: true })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -529,7 +529,7 @@ const teamPlugin: BakinPlugin = {
           ctx.activity.audit('team.file.updated', 'system', { agent: agentId, file: filename })
           return Response.json({ ok: true })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })

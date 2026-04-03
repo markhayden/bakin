@@ -80,7 +80,7 @@ const tasksPlugin: BakinPlugin = {
           const board = await readTaskboard()
           return Response.json(board)
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -123,7 +123,7 @@ const tasksPlugin: BakinPlugin = {
           ctx.activity.log(createdBy || 'system', `Created task "${title}"`, { taskId: result.id })
           return Response.json({ ok: true, id: result.id, workflowId: result.workflowId, suggestedWorkflow: result.suggestedWorkflow })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -148,7 +148,7 @@ const tasksPlugin: BakinPlugin = {
           ctx.activity.log(agent || 'system', `Updated task "${identifier}"`, { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -172,7 +172,7 @@ const tasksPlugin: BakinPlugin = {
           ctx.activity.log('system', `Deleted task "${identifier}"`, { taskId: identifier as string })
           return Response.json({ ok: true })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -225,7 +225,7 @@ const tasksPlugin: BakinPlugin = {
           ctx.activity.log('system', `Assigned task to "${body.agent || 'unassigned'}"`, { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -247,7 +247,7 @@ const tasksPlugin: BakinPlugin = {
           ctx.activity.log(body.agent || body.author || 'system', `Logged progress on task ${identifier}`, { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -269,7 +269,7 @@ const tasksPlugin: BakinPlugin = {
           ctx.activity.log(body.agent || 'system', `Blocked task: ${body.reason}`, { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -291,7 +291,7 @@ const tasksPlugin: BakinPlugin = {
           ctx.activity.log('system', `Set dependency on ${body.dependsOn}`, { taskId })
           return Response.json({ ok: true })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -313,7 +313,7 @@ const tasksPlugin: BakinPlugin = {
           ctx.activity.log('system', `Reordered tasks in ${columnId}`)
           return Response.json({ ok: true })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -337,7 +337,7 @@ const tasksPlugin: BakinPlugin = {
           ctx.activity.log(agent, `Completed task: ${summary}`, { taskId })
           return Response.json({ ok: true })
         } catch (err) {
-          return Response.json({ error: String(err) }, { status: 500 })
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
     })
@@ -438,7 +438,7 @@ const tasksPlugin: BakinPlugin = {
             suggestedWorkflow: result.suggestedWorkflow,
           }
         } catch (err) {
-          return { ok: false, error: String(err) }
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
     })
@@ -514,7 +514,7 @@ const tasksPlugin: BakinPlugin = {
           await logProgress(params.taskId as string, agent, params.message as string, 'mcp')
           return { ok: true }
         } catch (err) {
-          return { ok: false, error: String(err) }
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
     })

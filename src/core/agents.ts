@@ -105,7 +105,7 @@ export async function sendMessageToAgent(
     return { ok: true, reply }
   } catch (err) {
     log.error(`Failed to send message to agent ${agentId}`, err)
-    return { ok: false, error: String(err) }
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
 

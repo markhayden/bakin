@@ -136,7 +136,7 @@ export async function moveTaskWithEffects(
             log.info('Parent task auto-unblocked', { parentTaskId, childTaskId: taskId })
           }
         } catch (err) {
-          log.debug('Could not auto-unblock parent', { parentTaskId, err: String(err) })
+          log.debug('Could not auto-unblock parent', { parentTaskId, err: err instanceof Error ? err.message : String(err) })
         }
       }
     }
@@ -171,7 +171,7 @@ export async function blockTaskWithEffects(
       log.info('Parent task blocked due to child', { parentTaskId, childTaskId: taskId })
     } catch (err) {
       // Parent may already be blocked or in a state that can't transition — that's fine
-      log.debug('Could not propagate block to parent', { parentTaskId, err: String(err) })
+      log.debug('Could not propagate block to parent', { parentTaskId, err: err instanceof Error ? err.message : String(err) })
     }
   }
 }

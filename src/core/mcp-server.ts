@@ -120,8 +120,8 @@ function registerTools(server: McpServer, getAgent: () => string): void {
             : `ERROR: ${result.error}${result.details ? '\n' + JSON.stringify(result.details, null, 2) : ''}`
           return { content: [{ type: 'text' as const, text }], isError: !result.ok }
         } catch (err) {
-          appendAudit(getContentDir(), `exec.${tool.name}.error`, agent, { taskId, error: String(err) }, 'mcp')
-          return { content: [{ type: 'text' as const, text: `Exec tool error: ${String(err)}` }], isError: true }
+          appendAudit(getContentDir(), `exec.${tool.name}.error`, agent, { taskId, error: err instanceof Error ? err.message : String(err) }, 'mcp')
+          return { content: [{ type: 'text' as const, text: `Exec tool error: ${err instanceof Error ? err.message : String(err)}` }], isError: true }
         }
       },
     )
