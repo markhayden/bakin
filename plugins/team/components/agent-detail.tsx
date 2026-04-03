@@ -14,6 +14,7 @@ import {
 import { AgentAvatar } from '@/components/agent-avatar'
 import { MarkdownContent } from '@/components/markdown-content'
 import { ModelSelect } from '@/components/model-select'
+import { useGatewayStatus } from '@/hooks/use-gateway-status'
 import type { AvailableModel } from '@bakin/models/types'
 import { useAgentStore, useAgentColor } from '../hooks/use-agent-store'
 import type { AgentProfile, SkillSummary } from '../types'
@@ -45,8 +46,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
   const [savingModel, setSavingModel] = useState(false)
-  const [restartNeeded, setRestartNeeded] = useState(false)
-  const [restarting, setRestarting] = useState(false)
+  const gateway = useGatewayStatus()
 
   useEffect(() => {
     setLoading(true)
@@ -76,22 +76,10 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       })
       if (res.ok) {
         setProfile({ ...profile, model: modelId === '__default__' ? 'default' : modelId })
-        setRestartNeeded(true)
+        gateway.markDirty()
       }
     } finally {
       setSavingModel(false)
-    }
-  }
-
-  const handleGatewayRestart = async () => {
-    setRestarting(true)
-    try {
-      await fetch('/api/plugins/models/gateway/restart', { method: 'POST' })
-      setRestartNeeded(false)
-    } catch {
-      // silent — banner stays visible so user can retry
-    } finally {
-      setRestarting(false)
     }
   }
 
@@ -229,19 +217,19 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       </div>
 
       {/* Restart banner */}
-      {restartNeeded && (
+      {gateway.restartNeeded && (
         <div className="flex items-center justify-between rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
           <span className="text-sm text-amber-400">
-            Model updated. Restart the gateway to apply changes.
+            Gateway config out of sync. Restart to apply changes.
           </span>
           <Button
-            onClick={handleGatewayRestart}
-            disabled={restarting}
+            onClick={gateway.restart}
+            disabled={gateway.restarting}
             variant="outline"
             size="sm"
             className="border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
           >
-            {restarting ? 'Restarting...' : 'Restart Gateway'}
+            {gateway.restarting ? 'Restarting...' : 'Restart Gateway'}
           </Button>
         </div>
       )}

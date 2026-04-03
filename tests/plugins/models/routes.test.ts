@@ -140,6 +140,7 @@ describe('Models Plugin Activation', () => {
       'GET /aliases',
       'GET /available',
       'GET /config',
+      'GET /gateway/status',
       'GET /profiles',
       'POST /aliases',
       'POST /config',
@@ -157,8 +158,8 @@ describe('Models Plugin Activation', () => {
     ])
   })
 
-  it('registers 3 hooks', () => {
-    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(3)
+  it('registers 5 hooks', () => {
+    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(5)
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof vi.fn>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
@@ -166,6 +167,8 @@ describe('Models Plugin Activation', () => {
       'models.configChanged',
       'models.getAvailableModels',
       'models.getEffectiveModel',
+      'models.markConfigDirty',
+      'models.markGatewayRestarted',
     ])
   })
 
@@ -420,6 +423,31 @@ describe('PUT /profiles', () => {
     const data = await res.json()
     expect(data.ok).toBe(true)
     expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ taskProfiles: newProfiles })
+  })
+})
+
+describe('GET /gateway/status', () => {
+  it('returns restartNeeded=false initially', async () => {
+    const route = findRoute(activated.routes, 'GET', '/gateway/status')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    expect(typeof body.restartNeeded).toBe('boolean')
+  })
+
+  it('returns restartNeeded=true after config change', async () => {
+    // Trigger a config change
+    writeOpenclawConfig()
+    const configRoute = findRoute(activated.routes, 'POST', '/config')!
+    await configRoute.handler(
+      makeRequest('/config', { method: 'POST', body: { agentId: 'patch', ownModel: 'test-model' } }),
+      activated.ctx
+    )
+
+    const statusRoute = findRoute(activated.routes, 'GET', '/gateway/status')!
+    const { body } = await callRoute(statusRoute, activated.ctx)
+    expect(body.restartNeeded).toBe(true)
+
+    writeOpenclawConfig() // reset
   })
 })
 

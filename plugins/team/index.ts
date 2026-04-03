@@ -352,8 +352,13 @@ const teamPlugin: BakinPlugin = {
           if (!skipRestart) {
             execFile(OPENCLAW_BIN, ['gateway', 'restart'], (err) => {
               if (err) log.warn('Failed to restart gateway after agent creation', { error: String(err) })
-              else log.info('Gateway restarted after agent creation', { agent: id })
+              else {
+                log.info('Gateway restarted after agent creation', { agent: id })
+                try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
+              }
             })
+          } else {
+            try { ctx.hooks.invoke('models.markConfigDirty', {}) } catch { /* ok */ }
           }
 
           return Response.json({ ok: true, id, gatewayRestarted: !skipRestart })
@@ -400,7 +405,10 @@ const teamPlugin: BakinPlugin = {
           // Restart OpenClaw gateway
           execFile(OPENCLAW_BIN, ['gateway', 'restart'], (err) => {
             if (err) log.warn('Failed to restart gateway after agent deletion', { error: String(err) })
-            else log.info('Gateway restarted after agent deletion', { agent: agentId })
+            else {
+              log.info('Gateway restarted after agent deletion', { agent: agentId })
+              try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
+            }
           })
 
           return Response.json({ ok: true, id: agentId })
