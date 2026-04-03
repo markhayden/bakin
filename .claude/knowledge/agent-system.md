@@ -37,6 +37,12 @@ Single Zustand store loaded on app init. All components use `useAgent(id)`, `use
 ### Organizational teams
 Teams are a Bakin concept for grouping agents (e.g. "Builders", "Creators"). Stored in `~/.bakin/plugin-settings/team.json` alongside display settings. Each team has a `reportsTo` agent, creating the org chart hierarchy. Agents are assigned to teams via display settings (`teamId` field).
 
+### Model management
+Agent models are changed via the models plugin API, not direct OpenClaw writes:
+- **Agent detail page** (`/team/:id`): `ModelSelect` dropdown in the header saves via `POST /api/plugins/models/config` with `{ agentId, ownModel }`
+- **Agent creation** (`agent-form.tsx`): fetches dynamic model list from `GET /api/plugins/models/available`, selected model stored in `openclaw.json` via `addAgent()`
+- The models plugin writes to `~/.openclaw/openclaw.json` → `agents.list[].model.primary` and fires the `models.configChanged` hook
+
 ### ID mapping
 `main-operator` <-> `main` is the only mapping. Centralized in `toOpenClawId()`/`toBakinId()` in the adapter. All other agents use identity mapping.
 
