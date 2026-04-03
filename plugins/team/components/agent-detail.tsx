@@ -45,6 +45,8 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
   const [savingModel, setSavingModel] = useState(false)
+  const [restartNeeded, setRestartNeeded] = useState(false)
+  const [restarting, setRestarting] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -73,11 +75,23 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         body: JSON.stringify({ agentId, ownModel }),
       })
       if (res.ok) {
-        // Update local state with the new model ID (stripped for display)
         setProfile({ ...profile, model: modelId === '__default__' ? 'default' : modelId })
+        setRestartNeeded(true)
       }
     } finally {
       setSavingModel(false)
+    }
+  }
+
+  const handleGatewayRestart = async () => {
+    setRestarting(true)
+    try {
+      await fetch('/api/plugins/models/gateway/restart', { method: 'POST' })
+      setRestartNeeded(false)
+    } catch {
+      // silent — banner stays visible so user can retry
+    } finally {
+      setRestarting(false)
     }
   }
 
@@ -213,6 +227,24 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           </Button>
         )}
       </div>
+
+      {/* Restart banner */}
+      {restartNeeded && (
+        <div className="flex items-center justify-between rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+          <span className="text-sm text-amber-400">
+            Model updated. Restart the gateway to apply changes.
+          </span>
+          <Button
+            onClick={handleGatewayRestart}
+            disabled={restarting}
+            variant="outline"
+            size="sm"
+            className="border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
+          >
+            {restarting ? 'Restarting...' : 'Restart Gateway'}
+          </Button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border">
