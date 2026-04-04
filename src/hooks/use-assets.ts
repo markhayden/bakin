@@ -68,7 +68,7 @@ export function useAssets(options: UseAssetsOptions = {}) {
 
   const deleteAsset = useCallback(async (path: string) => {
     try {
-      const res = await fetch(`/api/plugins/assets/${encodeURIComponent(path)}`, {
+      const res = await fetch(`/api/plugins/assets?path=${encodeURIComponent(path)}`, {
         method: 'DELETE',
       })
       if (res.ok) {

@@ -1,6 +1,6 @@
 /**
  * Comprehensive tests for the assets plugin routes and exec tools.
- * Tests all 7 API routes and 6 MCP exec tools registered by the plugin.
+ * Tests all 7 API routes and 9 MCP exec tools registered by the plugin.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'fs'
@@ -147,7 +147,7 @@ describe('route registration', () => {
   it.each([
     ['GET', '/'],
     ['GET', '/file'],
-    ['DELETE', '/:assetPath'],
+    ['DELETE', '/'],
     ['GET', '/trash'],
     ['POST', '/trash/:file/restore'],
     ['DELETE', '/trash'],
@@ -361,7 +361,7 @@ describe('GET /file — serve asset file', () => {
 // POST /delete — soft-delete asset
 // ===========================================================================
 
-describe('POST /delete — soft-delete asset', () => {
+describe('DELETE / — soft-delete asset', () => {
   it('soft-deletes an asset to .trash/', async () => {
     // Create a disposable asset
     createAssetFixture('images', 'task-del', 'delete-me.png', 'deletable', {
@@ -370,9 +370,9 @@ describe('POST /delete — soft-delete asset', () => {
       created: '2026-03-25T00:00:00Z',
     })
 
-    const route = findRoute(plugin.routes, 'DELETE', '/:assetPath')!
-    const req = makeRequest('/?assetPath=assets/images/task-del/delete-me.png', {
-      method: 'POST',
+    const route = findRoute(plugin.routes, 'DELETE', '/')!
+    const req = makeRequest('/?path=assets/images/task-del/delete-me.png', {
+      method: 'DELETE',
     })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
@@ -398,9 +398,9 @@ describe('POST /delete — soft-delete asset', () => {
     })
     createAssetFixture('images', 'task-cascade', 'photo.thumb.jpg', 'thumb')
 
-    const route = findRoute(plugin.routes, 'DELETE', '/:assetPath')!
-    const req = makeRequest('/?assetPath=assets/images/task-cascade/photo.png', {
-      method: 'POST',
+    const route = findRoute(plugin.routes, 'DELETE', '/')!
+    const req = makeRequest('/?path=assets/images/task-cascade/photo.png', {
+      method: 'DELETE',
     })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
@@ -418,9 +418,9 @@ describe('POST /delete — soft-delete asset', () => {
       created: '2026-03-25T00:00:00Z',
     })
 
-    const route = findRoute(plugin.routes, 'DELETE', '/:assetPath')!
-    const req = makeRequest('/?assetPath=assets/text/task-audit/log-test.md', {
-      method: 'POST',
+    const route = findRoute(plugin.routes, 'DELETE', '/')!
+    const req = makeRequest('/?path=assets/text/task-audit/log-test.md', {
+      method: 'DELETE',
     })
     await route.handler(req, plugin.ctx)
 
@@ -429,7 +429,7 @@ describe('POST /delete — soft-delete asset', () => {
   })
 
   it('returns 400 when path is missing', async () => {
-    const route = findRoute(plugin.routes, 'DELETE', '/:assetPath')!
+    const route = findRoute(plugin.routes, 'DELETE', '/')!
     const req = makeRequest('/', { method: 'DELETE' })
     const res = await route.handler(req, plugin.ctx)
 
@@ -437,8 +437,8 @@ describe('POST /delete — soft-delete asset', () => {
   })
 
   it('returns 400 for path traversal', async () => {
-    const route = findRoute(plugin.routes, 'DELETE', '/:assetPath')!
-    const req = makeRequest('/?assetPath=assets/../../../etc/passwd', { method: 'POST' })
+    const route = findRoute(plugin.routes, 'DELETE', '/')!
+    const req = makeRequest('/?path=assets/../../../etc/passwd', { method: 'DELETE' })
     const res = await route.handler(req, plugin.ctx)
 
     expect(res.status).toBe(400)
@@ -943,5 +943,115 @@ describe('exec tool: bakin_exec_assets_audit', () => {
     } finally {
       rn(backup, assetsRoot)
     }
+  })
+})
+
+// ===========================================================================
+// DELETE route integration — simulates the full URL path the browser sends
+// ===========================================================================
+
+describe('DELETE route integration — browser URL simulation', () => {
+  /**
+   * Replicates the matchRoute logic from the catch-all API route handler.
+   * This ensures the registered route path actually matches what the browser sends.
+   */
+  function matchRoute(
+    routes: { method: string; path: string }[],
+    routePath: string,
+    method: string
+  ): { route: { method: string; path: string }; params: Record<string, string> } | null {
+    const upperMethod = method.toUpperCase()
+    const exact = routes.find(r => r.path === routePath && r.method === upperMethod)
+    if (exact) return { route: exact, params: {} }
+
+    const reqSegments = routePath.split('/').filter(Boolean)
+    for (const route of routes) {
+      if (route.method !== upperMethod) continue
+      const routeSegments = route.path.split('/').filter(Boolean)
+      if (routeSegments.length !== reqSegments.length) continue
+
+      const params: Record<string, string> = {}
+      let match = true
+      for (let i = 0; i < routeSegments.length; i++) {
+        if (routeSegments[i].startsWith(':')) {
+          params[routeSegments[i].slice(1)] = reqSegments[i]
+        } else if (routeSegments[i] !== reqSegments[i]) {
+          match = false
+          break
+        }
+      }
+      if (match) return { route, params }
+    }
+    return null
+  }
+
+  it('DELETE / matches when browser sends query-param path', () => {
+    // Browser sends: DELETE /api/plugins/assets?path=assets/images/task/file.png
+    // Next.js extracts: pathSegments = [] → routePath = "/"
+    const routePath = '/'
+    const match = matchRoute(plugin.routes, routePath, 'DELETE')
+
+    expect(match).not.toBeNull()
+    expect(match!.route.path).toBe('/')
+    expect(match!.route.method).toBe('DELETE')
+  })
+
+  it('handler receives path from query param and deletes successfully', async () => {
+    createAssetFixture('images', 'task-integ', 'browser-delete.png', 'image-data', {
+      agent: 'pixel',
+      taskId: 'task-integ',
+      created: '2026-03-25T00:00:00Z',
+    })
+
+    // Simulate the exact URL the browser constructs:
+    // fetch(`/api/plugins/assets?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
+    const assetPath = 'assets/images/task-integ/browser-delete.png'
+    const route = findRoute(plugin.routes, 'DELETE', '/')!
+    const req = makeRequest(`/?path=${encodeURIComponent(assetPath)}`, { method: 'DELETE' })
+    const res = await route.handler(req, plugin.ctx)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.trashed).toContain(assetPath)
+    expect(existsSync(join(assetsRoot, 'images', 'task-integ', 'browser-delete.png'))).toBe(false)
+  })
+
+  it('old path-based URL would NOT have matched the parameterized route', () => {
+    // Before the fix, the client sent:
+    // DELETE /api/plugins/assets/assets%2Fimages%2Ftask%2Ffile.png
+    // Next.js decoded this to pathSegments = ["assets", "images", "task", "file.png"]
+    // routePath = "/assets/images/task/file.png" — 4 segments vs 1 in /:assetPath
+    const routePath = '/assets/images/task/file.png'
+    const match = matchRoute(plugin.routes, routePath, 'DELETE')
+
+    // This should NOT match any route (proving the old approach was broken)
+    expect(match).toBeNull()
+  })
+
+  it('DELETE /trash still works alongside DELETE /', async () => {
+    // Seed trash
+    createTrashFixture('coexist.png', Date.now() + 9000, 'data')
+
+    const trashRoute = findRoute(plugin.routes, 'DELETE', '/trash')!
+    const req = makeRequest('/trash', { method: 'DELETE' })
+    const res = await trashRoute.handler(req, plugin.ctx)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+  })
+
+  it('DELETE /trash/:file still works alongside DELETE /', async () => {
+    const ts = Date.now() + 9500
+    const trashFilename = createTrashFixture('coexist-single.png', ts, 'data')
+
+    const trashFileRoute = findRoute(plugin.routes, 'DELETE', '/trash/:file')!
+    const req = makeRequest(`/?file=${trashFilename}`, { method: 'DELETE' })
+    const res = await trashFileRoute.handler(req, plugin.ctx)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
   })
 })
