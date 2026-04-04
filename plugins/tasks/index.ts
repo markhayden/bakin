@@ -16,7 +16,8 @@ import {
   setDependency,
   clearDependency,
   reorderTasks,
-} from './lib/taskboard'
+  archiveOldTasks,
+} from './lib/flow-store'
 import {
   moveTaskWithEffects,
   blockTaskWithEffects,
@@ -49,10 +50,6 @@ const tasksPlugin: BakinPlugin = {
 
   navItems: [
     { id: 'tasks', label: 'Tasks', icon: 'CheckSquare', href: '/tasks', order: 10 },
-  ],
-
-  contentFiles: [
-    { path: 'TASKBOARD.md' },
   ],
 
   activate(ctx: PluginContext) {
@@ -605,7 +602,17 @@ const tasksPlugin: BakinPlugin = {
       },
     })
 
-    ctx.watchFiles(['TASKBOARD.md'])
+    // Auto-archive completed tasks on startup + every 6 hours
+    const taskSettings = ctx.getSettings<{ autoArchiveDays?: number }>()
+    if (taskSettings?.autoArchiveDays && taskSettings.autoArchiveDays > 0) {
+      const days = taskSettings.autoArchiveDays
+      const archived = archiveOldTasks(days)
+      if (archived > 0) log.info(`Archived ${archived} old tasks (>${days} days)`)
+      setInterval(() => {
+        const count = archiveOldTasks(days)
+        if (count > 0) log.info(`Periodic archive: removed ${count} old tasks`)
+      }, 6 * 60 * 60 * 1000)
+    }
   },
 
   async onReady() {

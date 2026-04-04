@@ -3,11 +3,11 @@
   "name": "Tasks",
   "version": "1.0.0",
   "bakin": ">=1.0.0",
-  "description": "Kanban task management with markdown persistence, agent assignment, and dependency tracking",
+  "description": "Kanban task management with SQLite persistence (OpenClaw flow_runs), agent assignment, and dependency tracking",
   "entry": {
     "server": "index.ts"
   },
-  "contentFiles": ["TASKBOARD.md"],
+  "contentFiles": [],
   "secrets": [],
   "tests": "tests/",
   "dependencies": [],

@@ -165,58 +165,24 @@ async function checkGateway(): Promise<DiagnosticResult[]> {
 }
 
 /**
- * Taskboard: verify TASKBOARD.md structure.
- * Auto-fixable only when file is completely missing — creates a fresh one.
- * Existing files with issues are NOT auto-fixed (could destroy task data).
+ * Taskboard: verify flow_runs SQLite table is accessible.
  */
-function checkTaskboard(contentDir: string, autoFix: boolean): DiagnosticResult[] {
-  const results: DiagnosticResult[] = []
-  const taskboardPath = join(contentDir, 'TASKBOARD.md')
-
-  if (!existsSync(taskboardPath)) {
-    if (autoFix) {
-      const template = `# Taskboard\n\n## 📋 TODO\n\n## 🔵 In Progress\n\n## 🚫 Blocked\n\n## ✅ Done\n\n## ✔️ Confirmed\n`
-      writeFileSync(taskboardPath, template, 'utf-8')
-      return [fixed('taskboard', 'Created TASKBOARD.md with standard columns')]
-    }
-    return [warn('taskboard', 'TASKBOARD.md not found', true)]
-  }
-
+function checkTaskboard(_contentDir: string, _autoFix: boolean): DiagnosticResult[] {
   try {
-    const content = readFileSync(taskboardPath, 'utf-8')
-    const taskLines = content.split('\n').filter(l => l.startsWith('- ['))
-
-    // Duplicate IDs
-    const ids = new Set<string>()
-    let duplicates = 0
-    for (const line of taskLines) {
-      const idMatch = line.match(/<!-- id:(\S+) -->/)
-      if (idMatch) {
-        if (ids.has(idMatch[1])) duplicates++
-        ids.add(idMatch[1])
-      }
+    const Database = require('better-sqlite3')
+    const { join } = require('path')
+    const { homedir } = require('os')
+    const dbPath = join(homedir(), '.openclaw', 'flows', 'registry.sqlite')
+    if (!existsSync(dbPath)) {
+      return [warn('taskboard', 'OpenClaw flow_runs database not found at ' + dbPath)]
     }
-    if (duplicates > 0) {
-      results.push(warn('taskboard', `${duplicates} duplicate task IDs in TASKBOARD.md`))
-    }
-
-    // Column headers
-    const lower = content.toLowerCase()
-    const hasInProgress = lower.includes('in progress')
-    const hasTodo = lower.includes('todo')
-    const hasDone = lower.includes('done')
-    if (!hasInProgress || !hasTodo || !hasDone) {
-      results.push(warn('taskboard', 'TASKBOARD.md missing standard column headers'))
-    }
-
-    if (results.length === 0) {
-      results.push(ok('taskboard', `${taskLines.length} tasks, all columns present`))
-    }
+    const db = new Database(dbPath)
+    const count = db.prepare(`SELECT count(*) as n FROM flow_runs WHERE owner_key LIKE 'bakin:task:%'`).get() as { n: number }
+    db.close()
+    return [ok('taskboard', `${count.n} tasks in flow_runs (SQLite)`)]
   } catch (err) {
-    results.push(error('taskboard', `Failed to parse TASKBOARD.md: ${err}`))
+    return [error('taskboard', `Failed to query flow_runs: ${err}`)]
   }
-
-  return results
 }
 
 /**
@@ -763,7 +729,7 @@ mcporter call bakin-${agentId}.bakin_get_paths
 
 ### Task Changes
 - Use \`bakin_report_complete\` when done, \`bakin_block_task\` when stuck
-- Do NOT write to TASKBOARD.md directly — use Bakin tools via mcporter only
+- Use Bakin tools via mcporter for all task operations
 
 ### Heartbeat (every 10 minutes)
 - Write your heartbeat JSON to the heartbeats path (discover via \`bakin_get_paths\`)
@@ -777,7 +743,7 @@ mcporter call bakin-${agentId}.bakin_get_paths
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
 - **NEVER use \`openclaw agent\` to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-${agentId}.bakin_create_task title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
-- **NEVER edit TASKBOARD.md directly.** Use Bakin tools via mcporter only.
+- **NEVER modify task state directly.** Use Bakin tools via mcporter only.
 - **NEVER post to Discord without explicit instruction.** Content goes through Mark's review first.
 - **NEVER hardcode file paths.** Always discover paths via \`mcporter call bakin-${agentId}.bakin_get_paths\`. Hardcoded paths break when the content directory moves.
 - **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Bakin tracking — no MCP call, no Health metrics, no audit log. Always use the MCP tool via \`mcporter call bakin-${agentId}.bakin_exec_<tool> ...\` instead.

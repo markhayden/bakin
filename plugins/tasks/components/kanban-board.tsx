@@ -24,7 +24,6 @@ import { useTaskFilters } from '../hooks/use-task-filters'
 import { WithLoading } from '@/components/layout/skeleton-loader'
 import { useContentStore } from '@/hooks/use-content-store'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
-import { parseTasks } from '../lib/parser'
 import { toast } from '@/hooks/use-toast'
 import { useGateStatus } from '../hooks/use-gate-status'
 import { Button } from '@/components/ui/button'
@@ -58,29 +57,30 @@ async function apiFetch(url: string, body: Record<string, unknown>, method = 'PO
   }
 }
 
-/** Re-fetch TASKBOARD.md and push it into the Zustand store so the board re-renders */
-async function refreshTaskboard() {
-  // Wait for chokidar's stabilityThreshold (300ms) + margin before fetching
-  await new Promise(r => setTimeout(r, 400))
-  try {
-    const res = await fetch('/api/state')
-    if (res.ok) {
-      const files = await res.json()
-      if (files['TASKBOARD.md']) {
-        useContentStore.getState().updateFile('TASKBOARD.md', files['TASKBOARD.md'])
-      }
-    }
-  } catch { /* SSE will eventually sync */ }
-}
+const emptyBoard: TaskColumns = { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] }
 
 export function KanbanBoard() {
-  const files = useContentStore((s) => s.files)
-  const taskboardContent = files['TASKBOARD.md'] || ''
+  const [boardData, setBoardData] = useState<{ columns: TaskColumns; timestamp?: string }>({ columns: emptyBoard })
+  const taskboardVersion = useContentStore((s) => s.taskboardVersion)
 
-  const parsed = useMemo(() => {
-    if (!taskboardContent) return { columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] } as TaskColumns, timestamp: undefined }
-    return parseTasks(taskboardContent)
-  }, [taskboardContent])
+  const fetchBoard = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/tasks/')
+      if (res.ok) {
+        const data = await res.json()
+        setBoardData({ columns: data.columns ?? emptyBoard, timestamp: data.timestamp })
+      }
+    } catch { /* SSE will eventually re-trigger */ }
+  }, [])
+
+  // Initial load + re-fetch on SSE taskboard events (via store version bump)
+  useEffect(() => { fetchBoard() }, [fetchBoard, taskboardVersion])
+
+  const refreshTaskboard = useCallback(async () => {
+    await fetchBoard()
+  }, [fetchBoard])
+
+  const parsed = boardData
 
   // Optimistic overrides — applied on top of parsed data
   const [optimistic, setOptimistic] = useState<{ columns: TaskColumns } | null>(null)
