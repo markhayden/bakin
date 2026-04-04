@@ -33,6 +33,12 @@ vi.mock('../../src/core/openclaw-client', () => ({
   sendMessage: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('../../src/lib/taskboard', () => ({
+  getTodoTasks: vi.fn().mockReturnValue({ todoTasks: [] }),
+  moveTaskToInProgress: vi.fn(),
+  addTaskLog: vi.fn(),
+}))
+
 vi.mock('../../src/lib/plugin-registry', () => ({
   getHookRegistry: vi.fn().mockReturnValue({
     invoke: vi.fn().mockResolvedValue(undefined),
@@ -46,6 +52,9 @@ vi.mock('../../src/lib/format', () => ({
 }))
 
 import { loadDispatchState, start, stop, getDispatchInfo } from '../../src/core/dispatch'
+import { dispatchTasks } from '../../src/core/dispatch'
+import * as openclaw from '../../src/core/openclaw-client'
+import { getHookRegistry } from '../../src/lib/plugin-registry'
 
 describe('dispatch', () => {
   let tempDir: string
@@ -164,6 +173,47 @@ describe('dispatch', () => {
       const info = getDispatchInfo(tempDir)
       // secondsUntilNext should be > 0 (next tick in the future)
       expect(info.secondsUntilNext).toBeGreaterThanOrEqual(0)
+    })
+  })
+
+  describe('workflow re-dispatch guard', () => {
+    it('preserves workflow step dispatch markers for active in-progress tasks', async () => {
+      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify({
+        lastRun: Date.now(),
+        serverStart: Date.now(),
+        dispatched: ['wf-1', 'wf-1:step-generate'],
+        failedDispatches: {},
+      }))
+
+      const invoke = vi.fn(async (hook: string) => {
+        if (hook === 'tasks.readTaskboard') {
+          return {
+            columns: {
+              todo: [],
+              inProgress: [{ id: 'wf-1', title: 'Generate image', workflowId: 'image-flow', agent: 'pixel' }],
+              done: [],
+              confirmed: [],
+            },
+          }
+        }
+        if (hook === 'workflows.getActiveAgents') {
+          return [{ agent: 'pixel', stepId: 'step-generate' }]
+        }
+        return undefined
+      })
+
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke,
+        has: vi.fn().mockReturnValue(false),
+        register: vi.fn(),
+      })
+
+      await dispatchTasks(tempDir, 3737)
+
+      expect(openclaw.sendMessage).not.toHaveBeenCalled()
+
+      const state = JSON.parse(readFileSync(join(tempDir, '.dispatch-state.json'), 'utf-8'))
+      expect(state.dispatched).toContain('wf-1:step-generate')
     })
   })
 })

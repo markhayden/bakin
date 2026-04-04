@@ -11,8 +11,9 @@
  * - Auto-generates WebP thumbnail via ffmpeg for performant UI previews
  */
 import { z } from 'zod'
-import { join } from 'path'
-import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { join, basename } from 'path'
+import { execFileSync } from 'child_process'
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import { getBakinPaths } from '../../src/core/content-dir'
 import {
@@ -50,7 +51,8 @@ function getApiKey(): string | null {
   try {
     const configPath = join(homedir(), '.openclaw', 'openclaw.json')
     const config = JSON.parse(readFileSync(configPath, 'utf-8'))
-    return config?.skills?.entries?.['nano-banana-pro']?.apiKey || null
+    const skill = config?.skills?.entries?.['nano-banana-pro']
+    return skill?.apiKey || skill?.env?.GEMINI_API_KEY || null
   } catch {
     return null
   }
@@ -148,11 +150,31 @@ class GeminiImagenGenerator implements ImageGenerator {
 }
 
 // ---------------------------------------------------------------------------
+// Dimension detection for raw imports
+// ---------------------------------------------------------------------------
+
+function probeImageDimensions(filePath: string): { width: number; height: number } | null {
+  try {
+    const out = execFileSync(
+      'ffprobe',
+      ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', filePath],
+      { stdio: 'pipe', timeout: 10_000 },
+    ).toString().trim()
+    const [w, h] = out.split(',').map(Number)
+    if (w > 0 && h > 0) return { width: w, height: h }
+    return null
+  } catch {
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main function
 // ---------------------------------------------------------------------------
 
 export interface GenImageParams {
-  prompt: string
+  prompt?: string
+  filePath?: string
   taskId: string
   agent: string
   preset?: ImagePreset
@@ -165,12 +187,64 @@ export interface GenImageParams {
 export async function generateImage(params: GenImageParams): Promise<ExecToolResult> {
   const {
     prompt,
+    filePath,
     taskId,
     agent,
     preset = 'social-portrait',
     model = 'flash',
     thumbnail = true,
   } = params
+
+  // --- Raw file import mode ---
+  if (filePath) {
+    if (!existsSync(filePath)) {
+      return fail(`File not found: ${filePath}`)
+    }
+
+    const description = prompt || basename(filePath)
+    const dims = probeImageDimensions(filePath)
+
+    const assetResult = await saveAsset({
+      filePath,
+      taskId,
+      agent,
+      type: 'images',
+      tool: 'raw-import',
+      description: description.slice(0, 200),
+      tags: ['imported'],
+    })
+
+    if (!assetResult.ok) {
+      return fail(`Asset save failed: ${assetResult.error}`)
+    }
+
+    let thumbnailPath: string | null = null
+    if (thumbnail && assetResult.path) {
+      const paths = getBakinPaths()
+      const fullAssetPath = join(paths.home, assetResult.path as string)
+      const thumbPath = fullAssetPath.replace(/\.\w+$/, '.thumb.jpg')
+      thumbnailPath = generateThumbnail(fullAssetPath, thumbPath)
+      if (thumbnailPath) {
+        thumbnailPath = thumbnailPath.replace(paths.home + '/', '')
+      }
+    }
+
+    return succeed({
+      path: assetResult.path,
+      metadataPath: assetResult.metadataPath,
+      thumbnailPath,
+      width: dims?.width ?? 0,
+      height: dims?.height ?? 0,
+      preset: 'custom',
+      model: 'raw-import',
+      prompt: description.slice(0, 500),
+    })
+  }
+
+  // --- Gemini generation mode ---
+  if (!prompt) {
+    return fail('Either prompt or filePath is required')
+  }
 
   const apiKey = getApiKey()
   if (!apiKey) {
@@ -238,10 +312,11 @@ export async function generateImage(params: GenImageParams): Promise<ExecToolRes
 
 addExecTool({
   name: 'bakin_exec_gen_image',
-  description: `Generate an image via Gemini Imagen (Nano Banana). Default model: flash (cheaper). Use model=pro for higher quality. Default: 1080x1920 portrait (9:16) for Stories/Reels. Presets: social-portrait, social-square, social-landscape, custom. Auto-generates thumbnail. Max ${MAX_IMAGE_EDGE}px on any edge.`,
+  description: `Generate an image via Gemini Imagen (Nano Banana), or import an existing image file into the asset pipeline via filePath. Default model: flash (cheaper). Use model=pro for higher quality. Default: 1080x1920 portrait (9:16) for Stories/Reels. Presets: social-portrait, social-square, social-landscape, custom. Auto-generates thumbnail. Max ${MAX_IMAGE_EDGE}px on any edge.`,
   source: 'core',
   parameters: {
-    prompt: z.string().describe('Image generation prompt — front-load the most important visual elements'),
+    prompt: z.string().optional().describe('Image generation prompt (required for Gemini generation, optional description for raw file import)'),
+    filePath: z.string().optional().describe('Path to an existing image file to import through the asset pipeline (skips Gemini generation)'),
     taskId: z.string().describe('Task ID for asset organization'),
     preset: z.enum(PRESET_NAMES).optional().describe('Size preset (default: social-portrait = 1080x1920)'),
     width: z.number().optional().describe(`Custom width (only when preset=custom, max ${MAX_IMAGE_EDGE})`),
