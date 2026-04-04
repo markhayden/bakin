@@ -145,9 +145,13 @@ async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Available models cache
+// Available models cache (globalThis-backed to survive Next.js webpack re-evaluation)
 // ---------------------------------------------------------------------------
-let modelsCache: { models: AvailableModel[]; fetchedAt: number } | null = null
+interface ModelsCache { models: AvailableModel[]; fetchedAt: number }
+const mc = globalThis as typeof globalThis & { __bakinModelsCache?: ModelsCache | null }
+if (!mc.__bakinModelsCache) mc.__bakinModelsCache = null
+function getModelsCache(): ModelsCache | null { return mc.__bakinModelsCache ?? null }
+function setModelsCache(cache: ModelsCache | null) { mc.__bakinModelsCache = cache }
 const CACHE_TTL = 60 * 60 * 1000 // 1 hour
 
 function tierFromId(id: string): 'budget' | 'standard' | 'premium' {
@@ -227,14 +231,16 @@ async function loadConfiguredModelsFromOpenClaw(): Promise<AvailableModel[]> {
 }
 
 async function fetchAvailableModels(): Promise<{ models: AvailableModel[]; cached: boolean; cachedAt: number | null }> {
-  if (modelsCache && Date.now() - modelsCache.fetchedAt < CACHE_TTL) {
-    return { models: modelsCache.models, cached: true, cachedAt: modelsCache.fetchedAt }
+  const cached = getModelsCache()
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
+    return { models: cached.models, cached: true, cachedAt: cached.fetchedAt }
   }
 
   try {
     const models = await loadConfiguredModelsFromOpenClaw()
-    modelsCache = { models, fetchedAt: Date.now() }
-    return { models, cached: false, cachedAt: modelsCache.fetchedAt }
+    const now = Date.now()
+    setModelsCache({ models, fetchedAt: now })
+    return { models, cached: false, cachedAt: now }
   } catch (err) {
     console.error('Failed to fetch models from OpenClaw:', err)
     return { models: fallbackModels(), cached: false, cachedAt: null }
@@ -446,7 +452,7 @@ const modelsPlugin: BakinPlugin = {
           const newModel = after?.effectiveModel ?? null
 
           markConfigDirty()
-          modelsCache = null
+          setModelsCache(null)
           ctx.activity.audit('config.updated', 'system', { agentId, ownModel: body.ownModel, subagentModel: body.subagentModel })
           ctx.activity.log('system', `Updated model config for ${agentId}`, { category: 'models' })
 
@@ -499,7 +505,7 @@ const modelsPlugin: BakinPlugin = {
           })
 
           markConfigDirty()
-          modelsCache = null
+          setModelsCache(null)
           ctx.activity.audit('defaults.updated', 'system', { defaultModel: body.defaultModel, defaultSubagentModel: body.defaultSubagentModel, fallbackModels: body.fallbackModels })
           ctx.activity.log('system', `Updated model defaults${body.defaultModel ? ` to ${body.defaultModel}` : ''}`, { category: 'models' })
           return Response.json({ ok: true })
@@ -567,7 +573,7 @@ const modelsPlugin: BakinPlugin = {
             }
           })
 
-          modelsCache = null
+          setModelsCache(null)
           ctx.activity.audit('aliases.updated', 'system')
           ctx.activity.log('system', 'Updated model aliases', { category: 'models' })
           return Response.json({ ok: true })

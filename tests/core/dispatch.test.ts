@@ -55,6 +55,7 @@ import { loadDispatchState, start, stop, getDispatchInfo } from '../../src/core/
 import { dispatchTasks } from '../../src/core/dispatch'
 import * as openclaw from '../../src/core/openclaw-client'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
+import type { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 
 describe('dispatch', () => {
   let tempDir: string
@@ -206,7 +207,7 @@ describe('dispatch', () => {
         invoke,
         has: vi.fn().mockReturnValue(false),
         register: vi.fn(),
-      })
+      } as unknown as HookRegistry)
 
       await dispatchTasks(tempDir, 3737)
 
