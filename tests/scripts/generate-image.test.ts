@@ -15,6 +15,12 @@ vi.mock('../../plugins/assets/lib/save-asset', () => ({
   saveAsset: vi.fn(),
 }))
 
+vi.mock('child_process', () => ({
+  execFileSync: vi.fn(() => Buffer.from('1080,1920')),
+}))
+
+let mockOpenClawConfig: string | null = null
+
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
   const origReadFileSync = actual.readFileSync as Function
@@ -24,8 +30,9 @@ vi.mock('fs', async (importOriginal) => {
     mkdirSync: vi.fn(),
     writeFileSync: vi.fn(),
     readFileSync: vi.fn((...args: unknown[]) => {
-      // Block reading openclaw config in tests (unless test explicitly sets GEMINI_API_KEY)
+      // Block reading openclaw config in tests unless a test explicitly provides it.
       if (typeof args[0] === 'string' && (args[0] as string).includes('openclaw.json')) {
+        if (mockOpenClawConfig !== null) return mockOpenClawConfig
         throw new Error('mocked: not found')
       }
       return origReadFileSync(...args)
@@ -49,12 +56,15 @@ const mockFetchResponse = (imageData = 'fakebase64data') => ({
 
 import { generateImage } from '../../scripts/lib/generate-image'
 import { saveAsset } from '../../plugins/assets/lib/save-asset'
+import { existsSync } from 'fs'
+import { execFileSync } from 'child_process'
 
 const mockSaveAsset = vi.mocked(saveAsset)
 
 describe('generateImage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockOpenClawConfig = null
     // Set API key for tests
     process.env.GEMINI_API_KEY = 'test-key-123'
   })
@@ -166,6 +176,38 @@ describe('generateImage', () => {
     expect(result.error).toContain('No Gemini API key')
   })
 
+  it('reads Gemini API key from openclaw skill env config', async () => {
+    delete process.env.GEMINI_API_KEY
+    delete process.env.GOOGLE_AI_API_KEY
+    mockOpenClawConfig = JSON.stringify({
+      skills: {
+        entries: {
+          'nano-banana-pro': {
+            env: {
+              GEMINI_API_KEY: 'config-key-123',
+            },
+          },
+        },
+      },
+    })
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
+    mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
+
+    const result = await generateImage({
+      prompt: 'test',
+      taskId: 'task-config-key',
+      agent: 'pixel',
+      thumbnail: false,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('key=config-key-123'),
+      expect.anything(),
+    )
+  })
+
   it('returns fail when Gemini API returns error', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
@@ -213,5 +255,65 @@ describe('generateImage', () => {
 
     expect(result.ok).toBe(true)
     expect((result.prompt as string).length).toBe(500)
+  })
+
+  it('imports raw file through asset pipeline via filePath', async () => {
+    vi.mocked(existsSync).mockReturnValue(true)
+    vi.mocked(execFileSync).mockReturnValue(Buffer.from('1080,1920'))
+    mockSaveAsset.mockResolvedValue({
+      ok: true,
+      path: 'assets/images/task-raw/20260404-imported.jpg',
+      metadataPath: 'assets/images/task-raw/20260404-imported.jpg.meta.json',
+      filename: '20260404-imported.jpg',
+    })
+
+    const result = await generateImage({
+      filePath: '/tmp/some-image.jpg',
+      prompt: 'Backstroke takeoff',
+      taskId: 'task-raw',
+      agent: 'pixel',
+      thumbnail: false,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.model).toBe('raw-import')
+    expect(result.width).toBe(1080)
+    expect(result.height).toBe(1920)
+    expect(result.path).toContain('assets/images/task-raw')
+    expect(mockSaveAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-raw',
+        type: 'images',
+        tool: 'raw-import',
+        tags: ['imported'],
+      }),
+    )
+    // Should NOT call Gemini API
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+
+  it('fails raw import when file does not exist', async () => {
+    vi.mocked(existsSync).mockReturnValue(false)
+
+    const result = await generateImage({
+      filePath: '/tmp/nonexistent.jpg',
+      taskId: 'task-missing',
+      agent: 'pixel',
+      thumbnail: false,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('File not found')
+  })
+
+  it('fails when neither prompt nor filePath is provided', async () => {
+    const result = await generateImage({
+      taskId: 'task-empty',
+      agent: 'pixel',
+      thumbnail: false,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Either prompt or filePath is required')
   })
 })

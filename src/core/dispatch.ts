@@ -53,6 +53,11 @@ function getFailureRecord(entry: FailureRecord | number | undefined): FailureRec
   return entry
 }
 
+function getDispatchMarkerTaskId(marker: string): string {
+  const separator = marker.indexOf(':')
+  return separator === -1 ? marker : marker.slice(0, separator)
+}
+
 export function loadDispatchState(contentDir: string): DispatchState {
   const stateFile = getStateFile(contentDir)
   try {
@@ -98,7 +103,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       ...columns.done.map(t => t.id),
       ...columns.confirmed.map(t => t.id),
     ])
-    state.dispatched = state.dispatched.filter(id => activeIds.has(id))
+    state.dispatched = state.dispatched.filter(id => activeIds.has(getDispatchMarkerTaskId(id)))
     // Rebuild dispatchedSet AFTER reconciliation so tasks moved back to todo are eligible
     const dispatchedSet = new Set(state.dispatched)
     for (const task of columns.inProgress) {

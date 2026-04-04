@@ -85,7 +85,7 @@ Page size persisted in `localStorage` key `assets-page-size` (default: 24).
 
 ## Thumbnail Pipeline
 
-1. **On save** (`scripts/lib/save-asset.ts`): Image assets auto-generate `.thumb.jpg` via `generateThumbnail()` (ffmpeg, 400px wide, quality 5)
+1. **On save** (`plugins/assets/lib/save-asset.ts`): Image assets auto-generate `.thumb.jpg` via `generateThumbnail()` (ffmpeg, 400px wide, quality 5). Both Gemini-generated and raw-imported images (via `bakin_exec_gen_image --filePath`) go through this pipeline. Raw imports use `ffprobe` for dimension detection.
 2. **Audit repair** (`scripts/lib/audit-assets.ts`): `bakin_exec_audit_assets --fix` generates missing thumbnails
 3. **Grid/list display**: UI prefers `variant.role === 'thumbnail'` for preview URLs, falls back to full image
 4. **Lazy loading**: Grid images use `loading="lazy"` for deferred offscreen loading

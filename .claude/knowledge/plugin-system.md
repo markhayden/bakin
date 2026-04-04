@@ -157,7 +157,7 @@ const board = await hooks.invoke<TaskBoard>('tasks.readTaskboard', {})
 | scripts (non-plugin) | 5 |
 | **Total** | **77** (72 plugin + 5 script) |
 
-**Critical:** No direct imports between plugins or from core → plugins. All cross-boundary calls go through hooks. Verified: `grep -r "from '../../plugins/" src/core/ scripts/lib/` returns 0 results.
+**Critical:** No direct imports between plugins or from core → plugins. All cross-boundary calls go through hooks. **Exception:** `scripts/lib/generate-image.ts` imports `saveAsset` from `plugins/assets/lib/save-asset` directly (asset pipeline is a shared utility, not a plugin-to-plugin dependency).
 
 ## Exec Tool Registry
 

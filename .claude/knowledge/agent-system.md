@@ -119,7 +119,7 @@ Agents interact with Bakin through MCP tools served by `src/core/mcp-server.ts`:
 | projects plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_projects_list`, `bakin_exec_projects_create` |
 | team plugin | 8 | `ctx.registerExecTool()` | `bakin_exec_team_list`, `bakin_exec_team_org`, `bakin_exec_team_members`, `bakin_exec_team_my_team` |
 | scripts/lib/log-progress.ts | 1 | `addExecTool()` | `bakin_exec_log` |
-| scripts/lib/gen-image.ts | 1 | `addExecTool()` | `bakin_exec_gen_image` |
+| scripts/lib/generate-image.ts | 1 | `addExecTool()` | `bakin_exec_gen_image` (Gemini generation or raw file import via `filePath` param) |
 | scripts/lib/post-discord.ts | 1 | `addExecTool()` | `bakin_exec_post_discord` |
 | scripts/lib/get-paths.ts | 1 | `addExecTool()` | `bakin_exec_get_paths` |
 | scripts/lib/heartbeat.ts | 1 | `addExecTool()` | `bakin_exec_heartbeat` |
