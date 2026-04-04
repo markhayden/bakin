@@ -44,12 +44,6 @@ const mockOpenclawConfig = {
   },
 }
 
-const mockAuthProfiles = {
-  profiles: {
-    'anthropic:default': { token: 'test-key-123' },
-  },
-}
-
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
@@ -57,8 +51,6 @@ const mockAuthProfiles = {
 // Mock the openclaw.json path by replacing the constants module-level reads
 // We redirect the file reads to our test directory
 const openclawJsonPath = join(mockOpenclawDir, 'openclaw.json')
-const authProfilesPath = join(mockOpenclawDir, 'agents', 'main', 'agent', 'auth-profiles.json')
-
 vi.mock('os', async (importOriginal) => {
   const os = await importOriginal<typeof import('os')>()
   const { join: pathJoin } = await import('path')
@@ -77,23 +69,30 @@ vi.mock('../../../src/core/logger', () => ({
   }),
 }))
 
-// Mock fetch for Anthropic models API
-const mockFetch = vi.fn(async (url: string) => {
-  if (typeof url === 'string' && url.includes('api.anthropic.com/v1/models')) {
-    return {
-      ok: true,
-      json: async () => ({
-        data: [
-          { id: 'claude-opus-4-6-20250514', display_name: 'Claude Opus 4.6' },
-          { id: 'claude-sonnet-4-6-20250514', display_name: 'Claude Sonnet 4.6' },
-          { id: 'claude-haiku-4-5-20251001', display_name: 'Claude Haiku 4.5' },
+vi.mock('child_process', () => ({
+  execFile: vi.fn((file: string, args: string[], optionsOrCb?: unknown, maybeCb?: (err: Error | null, stdout: string, stderr: string) => void) => {
+    const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
+    if (args[0] === 'models' && args[1] === 'list' && args.includes('--all') && args.includes('--json')) {
+      cb?.(null, JSON.stringify({
+        models: [
+          { key: 'openai-codex/gpt-5.4', name: 'GPT-5.4', available: true, local: false, tags: ['default', 'configured'] },
+          { key: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', available: true, local: false, tags: ['configured', 'alias:opus'] },
+          { key: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', available: true, local: false, tags: ['configured', 'fallback#1', 'alias:sonnet'] },
+          { key: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', available: true, local: false, tags: ['configured'] },
+          { key: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', available: true, local: false, tags: [] },
+          { key: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', available: true, local: false, tags: [] },
+          { key: 'xai/grok-4', name: 'Grok 4', available: false, local: false, tags: [] },
         ],
-      }),
+      }), '')
+      return
     }
-  }
-  throw new Error(`unexpected fetch: ${url}`)
-})
-vi.stubGlobal('fetch', mockFetch)
+    if (args[0] === 'gateway' && args[1] === 'restart') {
+      cb?.(null, 'ok', '')
+      return
+    }
+    cb?.(new Error(`unexpected execFile call: ${file} ${args.join(' ')}`), '', '')
+  }),
+}))
 
 // ---------------------------------------------------------------------------
 // Import after mocks
@@ -116,7 +115,6 @@ beforeAll(async () => {
   mkdirSync(testDir, { recursive: true })
   mkdirSync(join(mockOpenclawDir, 'agents', 'main', 'agent'), { recursive: true })
   writeOpenclawConfig()
-  writeFileSync(authProfilesPath, JSON.stringify(mockAuthProfiles))
 
   // Plugin settings dir
   mkdirSync(join(testDir, '.bakin', 'plugin-settings'), { recursive: true })
@@ -290,6 +288,23 @@ describe('POST /defaults', () => {
 
     writeOpenclawConfig() // reset
   })
+
+  it('updates fallback models', async () => {
+    const route = findRoute(activated.routes, 'POST', '/defaults')!
+    const req = makeRequest('/defaults', {
+      method: 'POST',
+      body: { fallbackModels: ['anthropic/claude-opus-4-6', 'anthropic/claude-haiku-4-5'] },
+    })
+    const res = await route.handler(req, activated.ctx)
+    const data = await res.json()
+    expect(data.ok).toBe(true)
+
+    const getRoute = findRoute(activated.routes, 'GET', '/config')!
+    const { body } = await callRoute(getRoute, activated.ctx)
+    expect(body.fallbackModels).toEqual(['anthropic/claude-opus-4-6', 'anthropic/claude-haiku-4-5'])
+
+    writeOpenclawConfig() // reset
+  })
 })
 
 describe('GET /available', () => {
@@ -299,10 +314,20 @@ describe('GET /available', () => {
     expect(status).toBe(200)
 
     const models = body.models as Array<Record<string, unknown>>
-    expect(models.length).toBe(3)
+    expect(models.length).toBe(6)
 
     const opus = models.find((m) => (m.id as string).includes('opus'))!
     expect(opus.tier).toBe('premium')
+    expect(opus.provider).toBe('anthropic')
+
+    const gpt = models.find((m) => m.id === 'openai-codex/gpt-5.4')!
+    expect(gpt.isDefault).toBe(false)
+
+    const sonnet = models.find((m) => m.id === 'anthropic/claude-sonnet-4-6')!
+    expect(sonnet.isDefault).toBe(true)
+
+    const gemini = models.find((m) => m.id === 'google/gemini-2.5-pro')!
+    expect(gemini.provider).toBe('google')
 
     const haiku = models.find((m) => (m.id as string).includes('haiku'))!
     expect(haiku.tier).toBe('budget')
@@ -317,8 +342,8 @@ describe('GET /aliases', () => {
     expect(status).toBe(200)
 
     const aliases = body.aliases as Record<string, string>
-    expect(aliases.haiku).toBe('claude-haiku-4-5')
-    expect(aliases.opus).toBe('claude-opus-4-6')
+    expect(aliases.haiku).toBe('anthropic/claude-haiku-4-5')
+    expect(aliases.opus).toBe('anthropic/claude-opus-4-6')
   })
 })
 
@@ -337,7 +362,7 @@ describe('POST /aliases', () => {
     // Verify it persisted
     const getRoute = findRoute(activated.routes, 'GET', '/aliases')!
     const { body } = await callRoute(getRoute, activated.ctx)
-    expect((body.aliases as Record<string, string>).fast).toBe('claude-haiku-4-5')
+    expect((body.aliases as Record<string, string>).fast).toBe('anthropic/claude-haiku-4-5')
 
     writeOpenclawConfig() // reset
   })
@@ -462,7 +487,7 @@ describe('Exec Tools', () => {
       const result = await callTool(tool, {})
       expect(result.ok).toBe(true)
       expect(Array.isArray(result.models)).toBe(true)
-      expect((result.models as unknown[]).length).toBe(3)
+      expect((result.models as unknown[]).length).toBe(6)
     })
 
     it('filters by tier', async () => {

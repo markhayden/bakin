@@ -11,6 +11,7 @@
     "start": "npx tsx server.ts",
     "lint": "eslint",
     "test": "vitest run",
+    "test:components": "vitest run tests/components",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },
@@ -48,6 +49,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -55,6 +58,7 @@
     "@vitest/coverage-v8": "^4.1.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
+    "jsdom": "^29.0.1",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5",

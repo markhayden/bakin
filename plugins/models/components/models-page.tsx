@@ -3,16 +3,13 @@
 // React
 import { useEffect, useState, useCallback } from 'react'
 // External
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
 // Internal
 import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel,
-} from '@/components/ui/select'
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table'
@@ -21,7 +18,7 @@ import { AgentAvatar } from '@/components/agent-avatar'
 import { ModelSelect } from '@/components/model-select'
 import { useGatewayStatus } from '@/hooks/use-gateway-status'
 // Relative
-import type { AgentModelConfig, AvailableModel, TaskProfile } from '../types'
+import type { AgentModelConfig, AvailableModel, ModelsConfigResponse, TaskProfile } from '../types'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -32,11 +29,12 @@ const TIER_STYLES: Record<string, string> = {
   premium: 'bg-purple-500/10 text-purple-400',
 }
 
-const TOOL_MODELS: Record<string, string> = {
-  pixel: 'Nano Banana Pro',
-  rolo: 'Runway Gen-4, ElevenLabs',
-  patch: 'Claude Code',
-}
+const FALLBACK_MODEL_OPTIONS: AvailableModel[] = [
+  { id: 'openai-codex/gpt-5.4', name: 'GPT-5.4', tier: 'premium', provider: 'openai-codex', configured: true, isDefault: true, fallbackIndex: null },
+  { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', tier: 'standard', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: 0 },
+  { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', tier: 'premium', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: null },
+  { id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', tier: 'budget', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: null },
+]
 
 const TABS = [
   { id: 'agents', label: 'Agent Config' },
@@ -103,6 +101,12 @@ export function ModelsPage() {
   const [profiles, setProfiles] = useState<TaskProfile[]>([])
   const [pendingOwn, setPendingOwn] = useState<Record<string, string>>({})
   const [pendingSub, setPendingSub] = useState<Record<string, string>>({})
+  const [defaultModel, setDefaultModel] = useState('')
+  const [defaultSubagentModel, setDefaultSubagentModel] = useState<string | null>(null)
+  const [fallbackModels, setFallbackModels] = useState<string[]>([])
+  const [pendingDefaultModel, setPendingDefaultModel] = useState<string | null>(null)
+  const [pendingDefaultSubagentModel, setPendingDefaultSubagentModel] = useState<string | null | undefined>(undefined)
+  const [pendingFallbackModels, setPendingFallbackModels] = useState<string[] | null>(null)
   const [pendingProfiles, setPendingProfiles] = useState<TaskProfile[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
@@ -118,8 +122,14 @@ export function ModelsPage() {
     try {
       const res = await fetch('/api/plugins/models/config')
       if (!res.ok) throw new Error(`Config fetch failed (${res.status})`)
-      const data = await res.json()
+      const data = await res.json() as ModelsConfigResponse
       if (data.agents) setAgents(data.agents)
+      setDefaultModel(data.defaultModel)
+      setDefaultSubagentModel(data.defaultSubagentModel)
+      setFallbackModels(data.fallbackModels ?? [])
+      setPendingDefaultModel(null)
+      setPendingDefaultSubagentModel(undefined)
+      setPendingFallbackModels(null)
       setError(null)
     } catch (err) {
       setError(`Failed to load agent config: ${err instanceof Error ? err.message : err instanceof Error ? err.message : String(err)}`)
@@ -214,21 +224,39 @@ export function ModelsPage() {
     }
   }
 
-  const setAsDefault = async (modelId: string) => {
+  const saveDefaults = async (overrides?: { defaultModel?: string; defaultSubagentModel?: string | null; fallbackModels?: string[] }) => {
+    const nextDefaultModel = overrides?.defaultModel ?? pendingDefaultModel ?? defaultModel
+    const nextDefaultSubagentModel = overrides?.defaultSubagentModel ?? (pendingDefaultSubagentModel === undefined
+      ? defaultSubagentModel
+      : pendingDefaultSubagentModel)
+    const nextFallbackModels = [...new Set((overrides?.fallbackModels ?? pendingFallbackModels ?? fallbackModels).filter((id) => id && id !== nextDefaultModel))]
+
+    setSaving('defaults')
     try {
       const res = await fetch('/api/plugins/models/defaults', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ defaultModel: modelId }),
+        body: JSON.stringify({
+          defaultModel: nextDefaultModel,
+          defaultSubagentModel: nextDefaultSubagentModel,
+          fallbackModels: nextFallbackModels,
+        }),
       })
       const data = await res.json()
       if (data.ok) {
         gateway.markDirty()
         await fetchConfig()
+        await fetchAvailable()
       }
     } catch (err) {
       console.error('Failed to set default:', err)
+    } finally {
+      setSaving(null)
     }
+  }
+
+  const setAsDefault = async (modelId: string) => {
+    await saveDefaults({ defaultModel: modelId })
   }
 
   // -------------------------------------------------------------------------
@@ -247,6 +275,7 @@ export function ModelsPage() {
         setNewAliasName('')
         setNewAliasTarget('')
         await fetchAliases()
+        await fetchAvailable()
       }
     } catch (err) {
       console.error('Failed to add alias:', err)
@@ -261,7 +290,10 @@ export function ModelsPage() {
         body: JSON.stringify({ action: 'delete', name }),
       })
       const data = await res.json()
-      if (data.ok) await fetchAliases()
+      if (data.ok) {
+        await fetchAliases()
+        await fetchAvailable()
+      }
     } catch (err) {
       console.error('Failed to delete alias:', err)
     }
@@ -275,7 +307,10 @@ export function ModelsPage() {
         body: JSON.stringify({ action: 'prepopulate' }),
       })
       const data = await res.json()
-      if (data.ok) await fetchAliases()
+      if (data.ok) {
+        await fetchAliases()
+        await fetchAvailable()
+      }
     } catch (err) {
       console.error('Failed to prepopulate aliases:', err)
     }
@@ -323,23 +358,20 @@ export function ModelsPage() {
   }
 
   const hasPending = Object.keys(pendingOwn).length > 0 || Object.keys(pendingSub).length > 0
+  const defaultsDirty = pendingDefaultModel !== null || pendingDefaultSubagentModel !== undefined || pendingFallbackModels !== null
 
   // Build model options (available or fallback)
   const modelOptions: AvailableModel[] = availableModels.length > 0
     ? availableModels
-    : [
-        { id: 'claude-opus-4-6-20250514', name: 'Claude Opus 4.6', tier: 'premium' },
-        { id: 'claude-sonnet-4-6-20250514', name: 'Claude Sonnet 4.6', tier: 'standard' },
-        { id: 'claude-sonnet-4-5-20250414', name: 'Claude Sonnet 4.5', tier: 'standard' },
-        { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', tier: 'budget' },
-      ]
+    : FALLBACK_MODEL_OPTIONS
 
-  // Group available models by tier for the catalog tab
-  const modelsByTier = {
-    premium: modelOptions.filter((m) => m.tier === 'premium'),
-    standard: modelOptions.filter((m) => m.tier === 'standard'),
-    budget: modelOptions.filter((m) => m.tier === 'budget'),
-  }
+  const availableProviders = [...new Set(modelOptions.map((m) => m.provider))].sort((a, b) => a.localeCompare(b))
+  const effectiveDefaultModel = pendingDefaultModel ?? defaultModel
+  const effectiveDefaultSubagentModel = pendingDefaultSubagentModel === undefined
+    ? (defaultSubagentModel || '__default__')
+    : (pendingDefaultSubagentModel || '__default__')
+  const effectiveFallbackModels = pendingFallbackModels ?? fallbackModels
+  const fallbackCandidates = modelOptions.filter((model) => model.id !== effectiveDefaultModel)
 
   const displayProfiles = pendingProfiles ?? profiles
 
@@ -392,6 +424,112 @@ export function ModelsPage() {
       {/* Tab content */}
       {tab === 'agents' && (
         <div className="space-y-4">
+            <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold">Global Defaults</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Controls <code className="text-xs">agents.defaults.model.primary</code>, <code className="text-xs">fallbacks</code>, and the default subagent model.
+                  </p>
+                </div>
+                {defaultsDirty && (
+                  <Button onClick={() => saveDefaults()} disabled={!!saving} size="sm">
+                    Save Defaults
+                  </Button>
+                )}
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Default Model</label>
+                  <ModelSelect
+                    value={effectiveDefaultModel}
+                    onChange={(v) => setPendingDefaultModel(v)}
+                    models={modelOptions}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Default Subagent Model</label>
+                  <ModelSelect
+                    value={effectiveDefaultSubagentModel}
+                    onChange={(v) => setPendingDefaultSubagentModel(v === '__default__' ? null : v)}
+                    models={modelOptions}
+                    defaultLabel={`Use primary default (${effectiveDefaultModel})`}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-xs font-medium text-muted-foreground">Fallback Models</label>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => setPendingFallbackModels([...(pendingFallbackModels ?? fallbackModels), fallbackCandidates[0]?.id ?? ''])}
+                    disabled={fallbackCandidates.length === 0}
+                  >
+                    <Plus className="mr-1 size-3" />
+                    Add Fallback
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {effectiveFallbackModels.length === 0 ? (
+                    <EmptyState message="No fallback models configured." />
+                  ) : (
+                    effectiveFallbackModels.map((modelId, index) => (
+                      <div key={`${modelId}-${index}`} className="flex items-center gap-2">
+                        <span className="w-16 text-xs text-muted-foreground">#{index + 1}</span>
+                        <ModelSelect
+                          value={modelId}
+                          onChange={(value) => {
+                            const next = [...effectiveFallbackModels]
+                            next[index] = value
+                            setPendingFallbackModels([...new Set(next.filter(Boolean).filter((id) => id !== effectiveDefaultModel))])
+                          }}
+                          models={fallbackCandidates}
+                          className="flex-1"
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon-sm"
+                          onClick={() => {
+                            if (index === 0) return
+                            const next = [...effectiveFallbackModels]
+                            ;[next[index - 1], next[index]] = [next[index], next[index - 1]]
+                            setPendingFallbackModels(next)
+                          }}
+                          disabled={index === 0}
+                        >
+                          <ArrowUp className="size-3" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon-sm"
+                          onClick={() => {
+                            if (index === effectiveFallbackModels.length - 1) return
+                            const next = [...effectiveFallbackModels]
+                            ;[next[index], next[index + 1]] = [next[index + 1], next[index]]
+                            setPendingFallbackModels(next)
+                          }}
+                          disabled={index === effectiveFallbackModels.length - 1}
+                        >
+                          <ArrowDown className="size-3" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon-sm"
+                          onClick={() => setPendingFallbackModels(effectiveFallbackModels.filter((_, i) => i !== index))}
+                        >
+                          <X className="size-3" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
             {hasPending && (
               <div className="flex justify-end">
                 <Button onClick={saveAll} disabled={!!saving} size="sm">
@@ -401,7 +539,7 @@ export function ModelsPage() {
             )}
 
             {loading ? (
-              <TableSkeleton rows={5} cols={5} />
+              <TableSkeleton rows={5} cols={4} />
             ) : agents.length === 0 ? (
               <EmptyState message="No agents configured in OpenClaw" />
             ) : (
@@ -412,7 +550,6 @@ export function ModelsPage() {
                       <TableHead className="w-[140px]">Agent</TableHead>
                       <TableHead>Own Model</TableHead>
                       <TableHead>Subagent Model</TableHead>
-                      <TableHead>Tool Models</TableHead>
                       <TableHead className="w-[100px]" />
                     </TableRow>
                   </TableHeader>
@@ -422,7 +559,6 @@ export function ModelsPage() {
                       const subVal = pendingSub[agent.agentId] ?? (agent.subagentModel || '__default__')
                       const hasDirty = agent.agentId in pendingOwn || agent.agentId in pendingSub
                       const isSaving = saving === agent.agentId
-                      const toolModel = TOOL_MODELS[agent.agentId] || '-'
 
                       return (
                         <TableRow key={agent.agentId}>
@@ -447,9 +583,6 @@ export function ModelsPage() {
                               models={modelOptions}
                               defaultLabel={`Default (${agent.defaultSubagentModel || agent.defaultModel})`}
                             />
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-sm text-muted-foreground">{toolModel}</span>
                           </TableCell>
                           <TableCell>
                             {hasDirty && (
@@ -478,14 +611,14 @@ export function ModelsPage() {
               <p className="text-xs text-muted-foreground">Showing cached results (1h TTL)</p>
             )}
 
-            {(['premium', 'standard', 'budget'] as const).map((tier) => {
-              const models = modelsByTier[tier]
+            {availableProviders.map((provider) => {
+              const models = modelOptions.filter((m) => m.provider === provider)
               if (models.length === 0) return null
               return (
-                <div key={tier}>
+                <div key={provider}>
                   <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                    {tier.charAt(0).toUpperCase() + tier.slice(1)}
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${TIER_STYLES[tier]}`}>
+                    {provider.replace(/[-_]/g, ' ')}
+                    <span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
                       {models.length}
                     </span>
                   </h3>
@@ -502,6 +635,13 @@ export function ModelsPage() {
                           </Badge>
                         </div>
                         <div className="font-mono text-xs text-muted-foreground">{m.id}</div>
+                        {m.tags && m.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {m.tags.map((tag) => (
+                              <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
+                            ))}
+                          </div>
+                        )}
                         <div className="pt-1">
                           <Button
                             variant="outline"
@@ -519,7 +659,7 @@ export function ModelsPage() {
             })}
 
             {availableModels.length === 0 && (
-              <EmptyState message="Could not fetch models from Anthropic API. Showing fallback list." />
+              <EmptyState message="Could not fetch models from OpenClaw. Showing fallback list." />
             )}
         </div>
       )}

@@ -40,8 +40,9 @@ Teams are a Bakin concept for grouping agents (e.g. "Builders", "Creators"). Sto
 ### Model management
 Agent models are changed via the models plugin API, not direct OpenClaw writes:
 - **Agent detail page** (`/team/:id`): `ModelSelect` dropdown in the header saves via `POST /api/plugins/models/config` with `{ agentId, ownModel }`
-- **Agent creation** (`agent-form.tsx`): fetches dynamic model list from `GET /api/plugins/models/available`, selected model stored in `openclaw.json` via `addAgent()`
-- The models plugin writes to `~/.openclaw/openclaw.json` → `agents.list[].model.primary` and fires the `models.configChanged` hook
+- **Agent creation** (`agent-form.tsx`): fetches dynamic model list from `GET /api/plugins/models/available`, which is derived from `openclaw models list --all --json` filtered to `available === true`
+- **Models page** (`/models`): manages `agents.defaults.model.primary`, `agents.defaults.model.fallbacks`, per-agent `model.primary`, and default/per-agent subagent model settings
+- The models plugin writes to `~/.openclaw/openclaw.json` and fires the `models.configChanged` hook when agent effective model changes
 
 ### ID mapping
 `main-operator` <-> `main` is the only mapping. Centralized in `toOpenClawId()`/`toBakinId()` in the adapter. All other agents use identity mapping.

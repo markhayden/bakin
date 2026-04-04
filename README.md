@@ -325,7 +325,12 @@ npm run test:watch        # Watch mode
 npm run test:coverage     # With coverage report
 ```
 
-Tests use [Vitest](https://vitest.dev) and cover core modules, plugins, and library utilities. Test files are in `tests/`.
+Tests use [Vitest](https://vitest.dev) and cover core modules, plugins, library utilities, and selected React components. Test files are in `tests/`.
+
+- `pnpm test` — full suite
+- `pnpm test:components` — React component tests
+
+Component tests live in `tests/components/**/*.test.tsx` and use a per-file `// @vitest-environment jsdom` annotation plus Testing Library.
 
 ---
 

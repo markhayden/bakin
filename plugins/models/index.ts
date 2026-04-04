@@ -15,7 +15,6 @@ import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
 
 const OPENCLAW_JSON = join(homedir(), '.openclaw', 'openclaw.json')
-const AUTH_PROFILES = join(homedir(), '.openclaw', 'agents', 'main', 'agent', 'auth-profiles.json')
 const OPENCLAW_BIN = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
 
 // ---------------------------------------------------------------------------
@@ -43,7 +42,7 @@ interface OpenclawAgent {
 interface OpenclawConfig {
   agents: {
     defaults: {
-      model: { primary: string }
+      model: { primary: string; fallbacks?: string[] }
       models?: Record<string, unknown>
       subagents?: { model?: string; [k: string]: unknown }
       [key: string]: unknown
@@ -106,7 +105,9 @@ async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
   const config = readConfig()
   const teamAgents = await getAgentMeta(ctx)
   const defaultModel = config.agents.defaults.model.primary
-  const defaultSubagentModel = config.agents.defaults.subagents?.model ?? null
+  const defaultSubagentModel = config.agents.defaults.subagents?.model
+    ? normalizeModelId(config.agents.defaults.subagents.model)
+    : null
 
   const agents = config.agents.list.map((agent) => {
     const bakinId = agent.id === 'main' ? 'main-operator' : agent.id
@@ -119,17 +120,17 @@ async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
       : rawName
     const emoji = teamAgent?.emoji || agent.identity?.emoji || '🤖'
 
-    const ownModel = agent.model?.primary ?? null
-    const subagentModel = agent.subagents?.model ?? null
+    const ownModel = agent.model?.primary ? normalizeModelId(agent.model.primary) : null
+    const subagentModel = agent.subagents?.model ? normalizeModelId(agent.subagents.model) : null
     return {
       agentId: bakinId,
       name,
       emoji,
       ownModel,
       subagentModel,
-      defaultModel,
+      defaultModel: normalizeModelId(defaultModel),
       defaultSubagentModel,
-      effectiveModel: ownModel ?? defaultModel,
+      effectiveModel: ownModel ?? normalizeModelId(defaultModel),
     }
   })
 
@@ -149,27 +150,80 @@ async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
 let modelsCache: { models: AvailableModel[]; fetchedAt: number } | null = null
 const CACHE_TTL = 60 * 60 * 1000 // 1 hour
 
-function getAnthropicKey(): string | null {
-  try {
-    const raw = readFileSync(AUTH_PROFILES, 'utf-8')
-    const data = JSON.parse(raw)
-    return data.profiles?.['anthropic:default']?.token ?? null
-  } catch {
-    return null
-  }
-}
-
 function tierFromId(id: string): 'budget' | 'standard' | 'premium' {
-  if (id.includes('opus')) return 'premium'
+  if (id.includes('gpt-5') || id.includes('opus') || id.includes('pro')) return 'premium'
+  if (id.includes('flash') || id.includes('haiku') || id.includes('mini')) return 'budget'
   if (id.includes('sonnet')) return 'standard'
   return 'budget'
 }
 
-function displayNameFromId(id: string): string {
-  const base = id.replace(/-\d{8}$/, '')
-  const parts = base.split('-')
-  const name = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')
-  return name.replace(/(\d) (\d)/g, '$1.$2')
+function normalizeModelId(id: string): string {
+  if (id.includes('/')) return id
+  return id.startsWith('claude-') ? `anthropic/${id}` : id
+}
+
+function providerFromId(id: string): string {
+  return id.split('/')[0] || 'other'
+}
+
+function sortModels(a: AvailableModel, b: AvailableModel): number {
+  if (a.provider !== b.provider) return a.provider.localeCompare(b.provider)
+  if ((a.isDefault ? 1 : 0) !== (b.isDefault ? 1 : 0)) return a.isDefault ? -1 : 1
+  if ((a.fallbackIndex ?? 999) !== (b.fallbackIndex ?? 999)) return (a.fallbackIndex ?? 999) - (b.fallbackIndex ?? 999)
+  if ((a.configured ? 1 : 0) !== (b.configured ? 1 : 0)) return a.configured ? -1 : 1
+  return a.name.localeCompare(b.name)
+}
+
+interface OpenClawModelListJson {
+  models?: Array<{
+    key?: string
+    name?: string
+    input?: string
+    contextWindow?: number
+    local?: boolean
+    available?: boolean
+    tags?: string[]
+    missing?: boolean
+  }>
+}
+
+async function loadConfiguredModelsFromOpenClaw(): Promise<AvailableModel[]> {
+  const stdout = await new Promise<string>((resolve, reject) => {
+    execFile(OPENCLAW_BIN, ['models', 'list', '--all', '--json'], { timeout: 30000 }, (err, out) => {
+      if (err) {
+        reject(err)
+        return
+      }
+      resolve(out)
+    })
+  })
+  const parsed = JSON.parse(stdout) as OpenClawModelListJson
+  const config = readConfig()
+  const defaultModel = normalizeModelId(config.agents.defaults.model.primary)
+  const fallbackModels = (config.agents.defaults.model.fallbacks ?? []).map(normalizeModelId)
+
+  return (parsed.models ?? [])
+    .filter((model) => model.key && model.available === true && !model.missing)
+    .map((model) => {
+      const id = normalizeModelId(model.key!)
+      const tags = model.tags ?? []
+      const fallbackIndex = fallbackModels.indexOf(id)
+      return {
+        id,
+        name: model.name || id,
+        tier: tierFromId(id),
+        provider: providerFromId(id),
+        input: model.input,
+        contextWindow: model.contextWindow,
+        local: model.local,
+        available: model.available ?? true,
+        tags,
+        configured: tags.includes('configured'),
+        isDefault: id === defaultModel,
+        fallbackIndex: fallbackIndex >= 0 ? fallbackIndex : null,
+      }
+    })
+    .sort(sortModels)
 }
 
 async function fetchAvailableModels(): Promise<{ models: AvailableModel[]; cached: boolean; cachedAt: number | null }> {
@@ -177,54 +231,22 @@ async function fetchAvailableModels(): Promise<{ models: AvailableModel[]; cache
     return { models: modelsCache.models, cached: true, cachedAt: modelsCache.fetchedAt }
   }
 
-  const apiKey = getAnthropicKey()
-  if (!apiKey) {
-    return { models: fallbackModels(), cached: false, cachedAt: null }
-  }
-
   try {
-    const res = await fetch('https://api.anthropic.com/v1/models', {
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-    })
-
-    if (!res.ok) {
-      console.error(`Anthropic models API returned ${res.status}`)
-      return { models: fallbackModels(), cached: false, cachedAt: null }
-    }
-
-    const data = await res.json() as { data?: Array<{ id: string; display_name?: string }> }
-    const allModels = data.data ?? []
-    const claudeModels = allModels
-      .filter((m) => m.id.startsWith('claude-'))
-      .map((m) => ({
-        id: m.id,
-        name: m.display_name || displayNameFromId(m.id),
-        tier: tierFromId(m.id),
-      }))
-      .sort((a, b) => {
-        const tierOrder = { premium: 0, standard: 1, budget: 2 }
-        const td = tierOrder[a.tier] - tierOrder[b.tier]
-        if (td !== 0) return td
-        return a.name.localeCompare(b.name)
-      })
-
-    modelsCache = { models: claudeModels, fetchedAt: Date.now() }
-    return { models: claudeModels, cached: false, cachedAt: modelsCache.fetchedAt }
+    const models = await loadConfiguredModelsFromOpenClaw()
+    modelsCache = { models, fetchedAt: Date.now() }
+    return { models, cached: false, cachedAt: modelsCache.fetchedAt }
   } catch (err) {
-    console.error('Failed to fetch models from Anthropic:', err)
+    console.error('Failed to fetch models from OpenClaw:', err)
     return { models: fallbackModels(), cached: false, cachedAt: null }
   }
 }
 
 function fallbackModels(): AvailableModel[] {
   return [
-    { id: 'claude-opus-4-6-20250514', name: 'Claude Opus 4.6', tier: 'premium' },
-    { id: 'claude-sonnet-4-6-20250514', name: 'Claude Sonnet 4.6', tier: 'standard' },
-    { id: 'claude-sonnet-4-5-20250414', name: 'Claude Sonnet 4.5', tier: 'standard' },
-    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', tier: 'budget' },
+    { id: 'openai-codex/gpt-5.4', name: 'GPT-5.4', tier: 'premium', provider: 'openai-codex', configured: true, isDefault: true, fallbackIndex: null, tags: ['default', 'configured'] },
+    { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', tier: 'standard', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: 0, tags: ['fallback#1', 'configured'] },
+    { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', tier: 'premium', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: null, tags: ['configured'] },
+    { id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', tier: 'budget', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: null, tags: ['configured'] },
   ]
 }
 
@@ -232,9 +254,9 @@ function fallbackModels(): AvailableModel[] {
 // Aliases helpers
 // ---------------------------------------------------------------------------
 const DEFAULT_ALIASES: Record<string, string> = {
-  haiku: 'claude-haiku-4-5',
-  sonnet: 'claude-sonnet-4-6',
-  opus: 'claude-opus-4-6',
+  haiku: 'anthropic/claude-haiku-4-5',
+  sonnet: 'anthropic/claude-sonnet-4-6',
+  opus: 'anthropic/claude-opus-4-6',
 }
 
 function readAliases(config: OpenclawConfig): Record<string, string> {
@@ -245,9 +267,9 @@ function readAliases(config: OpenclawConfig): Record<string, string> {
     if (typeof val === 'string') {
       result[key] = val
     } else if (val && typeof val === 'object' && 'alias' in val) {
-      result[key] = (val as { alias: string }).alias
+      result[key] = normalizeModelId((val as { alias: string }).alias)
     } else {
-      result[key] = key
+      result[key] = normalizeModelId(key)
     }
   }
   return result
@@ -277,6 +299,7 @@ const ConfigUpdateSchema = z.object({
 const DefaultsUpdateSchema = z.object({
   defaultModel: z.string().optional(),
   defaultSubagentModel: z.string().nullable().optional(),
+  fallbackModels: z.array(z.string()).optional(),
 })
 
 const AliasActionSchema = z.discriminatedUnion('action', [
@@ -306,7 +329,7 @@ const modelsPlugin: BakinPlugin = {
   settingsSchema: {
     fields: [
       { key: 'showUsageMetrics', type: 'boolean', label: 'Show usage metrics', description: 'Display token usage and cost estimates', default: true },
-      { key: 'defaultModel', type: 'select', label: 'Default model', description: 'Default model for new agents', options: [{ value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' }, { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' }, { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }], default: 'claude-sonnet-4-6' },
+      { key: 'defaultModel', type: 'select', label: 'Default model', description: 'Default model for new agents', options: [{ value: 'openai-codex/gpt-5.4', label: 'GPT-5.4' }, { value: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6' }, { value: 'anthropic/claude-opus-4-6', label: 'Claude Opus 4.6' }], default: 'openai-codex/gpt-5.4' },
     ],
   },
 
@@ -362,7 +385,15 @@ const modelsPlugin: BakinPlugin = {
       handler: async () => {
         try {
           const agents = await resolveAgents(ctx)
-          return Response.json({ agents })
+          const config = readConfig()
+          return Response.json({
+            agents,
+            defaultModel: normalizeModelId(config.agents.defaults.model.primary),
+            defaultSubagentModel: config.agents.defaults.subagents?.model
+              ? normalizeModelId(config.agents.defaults.subagents.model)
+              : null,
+            fallbackModels: (config.agents.defaults.model.fallbacks ?? []).map(normalizeModelId),
+          })
         } catch (err) {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
@@ -394,7 +425,7 @@ const modelsPlugin: BakinPlugin = {
 
             if (body.ownModel !== undefined) {
               if (body.ownModel) {
-                agent.model = { primary: body.ownModel }
+                agent.model = { primary: normalizeModelId(body.ownModel) }
               } else {
                 delete agent.model
               }
@@ -403,7 +434,7 @@ const modelsPlugin: BakinPlugin = {
             if (body.subagentModel !== undefined) {
               if (body.subagentModel) {
                 if (!agent.subagents) agent.subagents = {}
-                agent.subagents.model = body.subagentModel
+                agent.subagents.model = normalizeModelId(body.subagentModel)
               } else if (agent.subagents) {
                 delete agent.subagents.model
               }
@@ -415,6 +446,7 @@ const modelsPlugin: BakinPlugin = {
           const newModel = after?.effectiveModel ?? null
 
           markConfigDirty()
+          modelsCache = null
           ctx.activity.audit('config.updated', 'system', { agentId, ownModel: body.ownModel, subagentModel: body.subagentModel })
           ctx.activity.log('system', `Updated model config for ${agentId}`, { category: 'models' })
 
@@ -446,7 +478,13 @@ const modelsPlugin: BakinPlugin = {
 
           updateConfig((config) => {
             if (body.defaultModel) {
-              config.agents.defaults.model.primary = body.defaultModel
+              config.agents.defaults.model.primary = normalizeModelId(body.defaultModel)
+            }
+            if (body.fallbackModels) {
+              const fallbackSet = body.fallbackModels
+                .map(normalizeModelId)
+                .filter((id) => id !== normalizeModelId(config.agents.defaults.model.primary))
+              config.agents.defaults.model.fallbacks = [...new Set(fallbackSet)]
             }
             if (body.defaultSubagentModel !== undefined) {
               if (!config.agents.defaults.subagents) {
@@ -461,8 +499,9 @@ const modelsPlugin: BakinPlugin = {
           })
 
           markConfigDirty()
-          ctx.activity.audit('defaults.updated', 'system', { defaultModel: body.defaultModel, defaultSubagentModel: body.defaultSubagentModel })
-          ctx.activity.log('system', `Updated default model${body.defaultModel ? ` to ${body.defaultModel}` : ''}`, { category: 'models' })
+          modelsCache = null
+          ctx.activity.audit('defaults.updated', 'system', { defaultModel: body.defaultModel, defaultSubagentModel: body.defaultSubagentModel, fallbackModels: body.fallbackModels })
+          ctx.activity.log('system', `Updated model defaults${body.defaultModel ? ` to ${body.defaultModel}` : ''}`, { category: 'models' })
           return Response.json({ ok: true })
         } catch (err) {
           if (err instanceof z.ZodError) {
@@ -509,12 +548,12 @@ const modelsPlugin: BakinPlugin = {
             if ('aliases' in body) {
               const newModels: Record<string, unknown> = {}
               for (const [alias, target] of Object.entries(body.aliases)) {
-                newModels[alias] = { alias: target }
+                newModels[alias] = { alias: normalizeModelId(target) }
               }
               config.agents.defaults.models = newModels
             } else if ('action' in body) {
               if (body.action === 'add') {
-                (config.agents.defaults.models as Record<string, unknown>)[body.name] = { alias: body.target }
+                (config.agents.defaults.models as Record<string, unknown>)[body.name] = { alias: normalizeModelId(body.target) }
               } else if (body.action === 'delete') {
                 delete (config.agents.defaults.models as Record<string, unknown>)[body.name]
               } else if (body.action === 'prepopulate') {
@@ -528,6 +567,7 @@ const modelsPlugin: BakinPlugin = {
             }
           })
 
+          modelsCache = null
           ctx.activity.audit('aliases.updated', 'system')
           ctx.activity.log('system', 'Updated model aliases', { category: 'models' })
           return Response.json({ ok: true })

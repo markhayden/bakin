@@ -42,8 +42,10 @@ export function AgentForm({
       .then((data) => {
         if (data.models) {
           setAvailableModels(data.models)
-          const std = data.models.find((m: AvailableModel) => m.tier === 'standard')
-          if (std && !model) setModel(std.id)
+          const preferred = data.models.find((m: AvailableModel) => m.isDefault)
+            ?? data.models.find((m: AvailableModel) => m.configured)
+            ?? data.models[0]
+          if (preferred && !model) setModel(preferred.id)
         }
       })
       .catch((e) => console.error('Failed to fetch available models:', e))

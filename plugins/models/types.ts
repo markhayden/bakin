@@ -10,10 +10,26 @@ export interface AgentModelConfig {
   effectiveModel: string
 }
 
+export interface ModelsConfigResponse {
+  agents: AgentModelConfig[]
+  defaultModel: string
+  defaultSubagentModel: string | null
+  fallbackModels: string[]
+}
+
 export interface AvailableModel {
   id: string
   name: string
   tier: 'budget' | 'standard' | 'premium'
+  provider: string
+  input?: string
+  contextWindow?: number
+  local?: boolean
+  available?: boolean
+  tags?: string[]
+  configured?: boolean
+  isDefault?: boolean
+  fallbackIndex?: number | null
 }
 
 export interface AvailableModelsResponse {

@@ -223,13 +223,13 @@ Create mode is derived: `isCreate = editing && !existingItem`
 
 ## ModelSelect
 
-`src/components/model-select.tsx` — Shared model selection dropdown that fetches from the models plugin API and groups options by tier.
+`src/components/model-select.tsx` — Shared model selection dropdown fed by the models plugin API and grouped by provider.
 
 ### Props
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `value` | `string` | Selected model ID (e.g. `claude-opus-4-6-20250514`) |
+| `value` | `string` | Selected full model ID (e.g. `anthropic/claude-opus-4-6`) |
 | `onChange` | `(v: string) => void` | Called when selection changes |
 | `models` | `AvailableModel[]` | Available models (from `GET /api/plugins/models/available`) |
 | `defaultLabel` | `string` | Optional "use default" option label — uses value `__default__` |
@@ -237,7 +237,7 @@ Create mode is derived: `isCreate = editing && !existingItem`
 
 ### Option Groups
 
-Options are grouped into three `SelectGroup` tiers: **Premium** (opus), **Standard** (sonnet), **Budget** (haiku). The `AvailableModel` type comes from `plugins/models/types.ts`.
+Options are grouped by provider (`anthropic`, `openai-codex`, `google`, etc.), not by Claude-era tiers. `AvailableModel` now includes provider metadata plus flags such as `configured`, `isDefault`, and `fallbackIndex`.
 
 ### Where Used
 

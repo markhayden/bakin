@@ -61,9 +61,8 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       .catch((e) => console.error('Failed to fetch available models:', e))
   }, [agentId])
 
-  // Resolve profile.model (e.g. "claude-opus-4-6") to a full available model ID
   const profileModel = profile?.model ?? ''
-  const resolvedModelId = availableModels.find((m) => m.id === profileModel || m.id.startsWith(profileModel + '-'))?.id ?? profileModel
+  const resolvedModelId = availableModels.find((m) => m.id === profileModel)?.id ?? profileModel
 
   const handleModelChange = async (modelId: string) => {
     if (!profile) return
