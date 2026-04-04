@@ -3,14 +3,16 @@ import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-// Mock taskboard so tests don't leak child-workflow tasks into the real board
-vi.mock('../../plugins/tasks/lib/taskboard', () => ({
+// Mock flow-store so tests don't leak child-workflow tasks into the real board
+vi.mock('../../plugins/tasks/lib/flow-store', () => ({
   createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
   addTaskLog: vi.fn(() => Promise.resolve()),
   moveTask: vi.fn(() => Promise.resolve()),
   readTaskboard: vi.fn(() => ({
     columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] },
   })),
+  getTask: vi.fn(() => null),
+  getTaskWithColumn: vi.fn(() => null),
 }))
 
 import {
