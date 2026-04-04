@@ -14,6 +14,7 @@ interface ContentStore extends ContentState {
   auditEntries: AuditEntry[]
   activityEvents: ActivityEvent[]
   sseConnected: boolean
+  taskboardVersion: number
   setFiles: (files: Record<string, string>) => void
   updateFile: (key: string, content: string) => void
   setHeartbeats: (heartbeats: Record<string, Heartbeat>) => void
@@ -22,6 +23,7 @@ interface ContentStore extends ContentState {
   appendActivityEvent: (event: ActivityEvent) => void
   setActivityEvents: (events: ActivityEvent[]) => void
   setSseConnected: (connected: boolean) => void
+  bumpTaskboard: () => void
   initialize: () => Promise<void>
 }
 
@@ -33,6 +35,7 @@ export const useContentStore = create<ContentStore>((set, get) => ({
   auditEntries: [],
   activityEvents: [],
   sseConnected: false,
+  taskboardVersion: 0,
 
   setFiles: (files) => set({ files }),
   updateFile: (key, content) =>
@@ -50,6 +53,7 @@ export const useContentStore = create<ContentStore>((set, get) => ({
   setActivityEvents: (events) =>
     set({ activityEvents: events.filter((e) => !isNoisyEvent(e)).slice(0, 100) }),
   setSseConnected: (connected) => set({ sseConnected: connected }),
+  bumpTaskboard: () => set((state) => ({ taskboardVersion: state.taskboardVersion + 1 })),
 
   initialize: async () => {
     try {

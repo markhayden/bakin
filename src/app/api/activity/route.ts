@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import { readTaskboard } from '@bakin/tasks/lib/taskboard'
+import { readTaskboard } from '@bakin/tasks/lib/flow-store'
 import { getContentDir } from '@/core/content-dir'
 import { mapAuditMessage } from '@/lib/map-audit-message'
 import type { ActivityEvent } from '@/types'
@@ -42,7 +42,7 @@ export async function GET() {
     } catch { /* file read error */ }
   }
 
-  // 2. Pull task log entries from TASKBOARD.md
+  // 2. Pull task log entries from flow_runs (SQLite)
   try {
     const board = readTaskboard()
     const columns = board.columns

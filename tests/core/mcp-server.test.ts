@@ -16,7 +16,6 @@ vi.mock('@/core/content-dir', () => ({
   getContentDir: vi.fn(() => '/tmp/test'),
   getBakinPaths: vi.fn(() => ({
     home: '/tmp/test',
-    taskboard: '/tmp/test/TASKBOARD.md',
     assets: '/tmp/test/assets',
   })),
 }))

@@ -18,6 +18,7 @@ export function useSSE() {
   const appendAuditEntry = useContentStore((s) => s.appendAuditEntry)
   const appendActivityEvent = useContentStore((s) => s.appendActivityEvent)
   const setSseConnected = useContentStore((s) => s.setSseConnected)
+  const bumpTaskboard = useContentStore((s) => s.bumpTaskboard)
   const esRef = useRef<EventSource | null>(null)
   const retryRef = useRef(0)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -46,6 +47,12 @@ export function useSSE() {
       es.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data)
+          // Taskboard changed (SQLite mutation) — notify subscribers
+          if (data.type === 'taskboard') {
+            bumpTaskboard()
+            return
+          }
+
           // Agent activity logs (from task log broadcasts via SSE)
           if (data.type === 'activity') {
             appendActivityEvent({
@@ -160,5 +167,5 @@ export function useSSE() {
       esRef.current?.close()
       esRef.current = null
     }
-  }, [updateFile, setConnected, setHeartbeats, initialize, appendAuditEntry, appendActivityEvent, setSseConnected])
+  }, [updateFile, setConnected, setHeartbeats, initialize, appendAuditEntry, appendActivityEvent, setSseConnected, bumpTaskboard])
 }

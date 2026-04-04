@@ -2,7 +2,7 @@
 
 ## Overview
 
-Bakin uses the filesystem as its database. All state is stored as markdown files, JSON files, and JSONL logs in a content directory (`~/.bakin/`). There is no database, no ORM, no migrations in the traditional sense. The filesystem IS the data layer.
+Bakin uses a hybrid storage model. Most state is stored as markdown files, JSON files, and JSONL logs in a content directory (`~/.bakin/`). Tasks are stored in OpenClaw's `flow_runs` SQLite table (`~/.openclaw/flows/registry.sqlite`) — this is the one exception to filesystem-based storage, adopted to share task state with OpenClaw and enable efficient archival.
 
 ## Content Directory
 
@@ -21,7 +21,6 @@ Returns a `BakinPaths` object with absolute paths:
 | Key | Path | Purpose |
 |-----|------|---------|
 | `home` | `~/.bakin/` | Content root |
-| `taskboard` | `TASKBOARD.md` | Task kanban board |
 | `memoryLog` | `MEMORY-LOG.md` | Agent memory log |
 | `calendar` | `calendar.json` | Calendar events |
 | `audit` | `audit.jsonl` | Append-only audit trail |
@@ -64,7 +63,7 @@ interface StorageAdapter {
 ```
 
 Provided to plugins via `PluginContext.storage`. Each plugin reads/writes to namespaced paths by convention (not enforced):
-- Tasks plugin: `TASKBOARD.md`
+- Tasks plugin: SQLite (`~/.openclaw/flows/registry.sqlite`, via `flow-store.ts`)
 - Projects plugin: `projects/*.md`
 - Assets plugin: `assets/{type}/{taskId}/`
 - Schedule plugin: `schedule/`
@@ -72,24 +71,10 @@ Provided to plugins via `PluginContext.storage`. Each plugin reads/writes to nam
 
 ## Key File Formats
 
-### TASKBOARD.md
-Markdown kanban board. Columns are H2 headers with emoji prefix. Tasks are checkbox list items:
-```markdown
-## 🔵 In Progress
-- [ ] [a1b2c3d4] Task title @agent -- 2026-03-30
-  createdBy: roscoe
-  dependsOn: e5f6g7h8
-  workflow: content-pipeline
-  [2026-03-30T14:30:00.000Z pixel] Progress message
+### Task Storage (SQLite)
+Tasks are stored in OpenClaw's `flow_runs` SQLite table, accessed via `plugins/tasks/lib/flow-store.ts` using `better-sqlite3`. Each task is a row filtered by `owner_key LIKE 'bakin:task:%'`. Task metadata (title, agent, description, log entries, dependencies) is stored in the `state_json` column. Column mapping uses `status` + disambiguating fields. See `.claude/knowledge/tasks-plugin.md` for the full column ↔ status mapping.
 
-## 📋 Todo
-...
-
-## ✅ Done
-- [x] [e5f6g7h8] Completed task @rolo -- 2026-03-29
-```
-
-Parsed by `plugins/tasks/lib/parser.ts` (primary) and `plugins/tasks/lib/taskboard.ts`.
+The `src/lib/taskboard.ts` file is a re-export shim that delegates to `flow-store.ts` for backward compatibility with `dispatch.ts` and `continuation.ts`.
 
 ### Project files (`projects/{id}.md`)
 Markdown with YAML frontmatter:
@@ -178,7 +163,7 @@ Plugins can request watch patterns via `ctx.watchFiles(['projects/*.md'])`.
 | `packages/core/src/content-dir.ts` | Content directory resolution, path constants, init |
 | `src/core/content-dir.ts` | Re-export shim for backward compat |
 | `src/lib/storage/markdown-adapter.ts` | StorageAdapter implementation |
-| `src/lib/taskboard.ts` | TASKBOARD.md parsing |
+| `src/lib/taskboard.ts` | Re-export shim delegating to flow-store.ts |
 | `src/lib/parsers/` | Markdown parsing utilities |
 | `src/core/audit.ts` | Audit JSONL writing + broadcast |
 | `src/core/settings.ts` | Settings loading with defaults |

@@ -2,11 +2,12 @@
  * Agent Communication API for Bakin.
  * Core routes for agent-to-agent interaction and status queries.
  */
-import { readFileSync, existsSync, readdirSync, statSync } from 'fs'
+import { readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import * as openclaw from './openclaw-client'
+import { readTaskboard } from '../lib/taskboard'
 
 const log = createLogger('agents')
 
@@ -55,35 +56,30 @@ export async function getAgentStatus(agentId: string, contentDir: string): Promi
 /**
  * Get all tasks assigned to an agent across all columns.
  */
-export function getAgentTasks(agentId: string, contentDir: string): AgentTask[] {
-  const taskboardPath = join(contentDir, 'TASKBOARD.md')
-  if (!existsSync(taskboardPath)) return []
-
-  const content = readFileSync(taskboardPath, 'utf-8')
-  const lines = content.split('\n')
+export function getAgentTasks(agentId: string, _contentDir: string): AgentTask[] {
+  const board = readTaskboard()
   const tasks: AgentTask[] = []
-  let currentColumn = ''
 
-  for (const line of lines) {
-    if (line.startsWith('## ') || line.startsWith('### ')) {
-      if (line.includes('TODO')) currentColumn = 'todo'
-      else if (line.includes('In Progress')) currentColumn = 'in-progress'
-      else if (line.includes('Blocked')) currentColumn = 'blocked'
-      else if (line.includes('Done')) currentColumn = 'done'
-      else currentColumn = ''
-    } else if (line.startsWith('- [') && line.includes(`@${agentId}`)) {
-      const titleMatch = line.replace(/^- \[[ x]\] /, '')
-        .replace(/ @\w+/g, '')
-        .replace(/ — .*$/, '')
-        .trim()
-      const idMatch = line.match(/<!-- id:(\S+) -->/)
-      const id = idMatch ? idMatch[1] : titleMatch.toLowerCase().replace(/\s+/g, '-').slice(0, 20)
+  const columnMap: Record<string, string> = {
+    todo: 'todo',
+    inProgress: 'in-progress',
+    blocked: 'blocked',
+    done: 'done',
+    backlog: 'backlog',
+    review: 'review',
+    confirmed: 'confirmed',
+  }
 
-      tasks.push({
-        id,
-        title: titleMatch,
-        column: currentColumn,
-      })
+  for (const [colName, colTasks] of Object.entries(board.columns)) {
+    for (const task of colTasks as Array<{ id: string; title: string; agent?: string; description?: string }>) {
+      if (task.agent === agentId) {
+        tasks.push({
+          id: task.id,
+          title: task.title,
+          column: columnMap[colName] || colName,
+          description: task.description,
+        })
+      }
     }
   }
 

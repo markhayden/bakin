@@ -17,9 +17,8 @@ vi.mock('../../src/core/openclaw-client', () => ({
   sendMessage: vi.fn().mockResolvedValue(undefined),
 }))
 
-// Mock the taskboard module that gets dynamically imported
-// The source imports from '../lib/taskboard' which resolves to src/lib/taskboard
-// which re-exports from plugins/tasks/lib/taskboard — mock both paths
+// Mock the taskboard shim that gets dynamically imported by continuation.ts
+// (src/lib/taskboard re-exports from plugins/tasks/lib/flow-store)
 const mockReadAllColumns = vi.fn()
 const mockClearDependency = vi.fn().mockResolvedValue(undefined)
 const mockAddTaskLog = vi.fn().mockResolvedValue(undefined)

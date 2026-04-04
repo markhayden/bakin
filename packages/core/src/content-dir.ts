@@ -74,7 +74,6 @@ export function resetContentDir(): void {
  */
 export interface BakinPaths {
   home: string
-  taskboard: string
   memoryLog: string
   calendar: string
   audit: string
@@ -101,7 +100,6 @@ export function getBakinPaths(): BakinPaths {
   const assets = join(home, 'assets')
   return {
     home,
-    taskboard: join(home, 'TASKBOARD.md'),
     memoryLog: join(home, 'MEMORY-LOG.md'),
     calendar: join(home, 'calendar.json'),
     audit: join(home, 'audit.jsonl'),

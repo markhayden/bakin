@@ -55,7 +55,7 @@ const mockSetDependency = vi.fn()
 const mockClearDependency = vi.fn()
 const mockReorderTasks = vi.fn()
 
-vi.mock('../../../plugins/tasks/taskboard', () => ({
+vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
   readTaskboard: (...args: unknown[]) => mockReadTaskboard(...args),
   createTask: (...args: unknown[]) => mockCreateTask(...args),
   deleteTask: (...args: unknown[]) => mockDeleteTask(...args),

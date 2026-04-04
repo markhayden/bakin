@@ -47,7 +47,7 @@ function createBoardTaskForChild(
   childDef: WorkflowDefinition | null,
   assignee?: string,
 ) {
-  import('../../tasks/lib/taskboard').then(({ createTask, addTaskLog }) => {
+  import('../../tasks/lib/flow-store').then(({ createTask, addTaskLog }) => {
     const title = `${nestedStep.label || nestedStep.workflow_id} (sub-workflow)`
     const description = nestedStep.description || childDef?.description || undefined
     // Find the first agent step in the child workflow for the assignee
@@ -525,7 +525,7 @@ export function completeStep(
 
     // Auto-move the task to done on the taskboard + emit audit event
     Promise.all([
-      import('../../tasks/lib/taskboard'),
+      import('../../tasks/lib/flow-store'),
       import('../../../src/core/audit'),
     ]).then(([{ moveTask, addTaskLog, readTaskboard }, { appendAudit }]) => {
       // Resolve task title for the audit message
@@ -594,7 +594,7 @@ function propagateChildCompletion(childInstance: WorkflowInstance, contentDir: s
   })
 
   // Move the child's board task to Done
-  import('../../tasks/lib/taskboard').then(({ moveTask, addTaskLog }) => {
+  import('../../tasks/lib/flow-store').then(({ moveTask, addTaskLog }) => {
     addTaskLog(childInstance.taskId, 'workflow', `Sub-workflow "${childInstance.workflowId}" completed.`)
       .then(() => moveTask(childInstance.taskId, 'done'))
       .catch(() => {})
@@ -610,7 +610,7 @@ function propagateChildCompletion(childInstance: WorkflowInstance, contentDir: s
     } else {
       notifyWorkflowComplete(parentInstance)
       Promise.all([
-        import('../../tasks/lib/taskboard'),
+        import('../../tasks/lib/flow-store'),
         import('../../../src/core/audit'),
       ]).then(([{ moveTask, addTaskLog, readTaskboard }, { appendAudit }]) => {
         let title = parentInstance.taskId
@@ -710,18 +710,11 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     let parentTaskTitle: string | undefined
     let parentTaskDescription: string | undefined
     try {
-      const tbPath = join(contentDir, 'TASKBOARD.md')
-      if (existsSync(tbPath)) {
-        const { parseTasks } = require('../../plugins/tasks/parser')
-        const board = parseTasks(readFileSync(tbPath, 'utf8'))
-        for (const tasks of Object.values(board.columns)) {
-          const found = (tasks as Array<{ id: string; title?: string; description?: string }>).find(t => t.id === instance.taskId)
-          if (found) {
-            parentTaskTitle = found.title
-            parentTaskDescription = found.description
-            break
-          }
-        }
+      const { getTask } = require('../../tasks/lib/flow-store')
+      const found = getTask(instance.taskId)
+      if (found) {
+        parentTaskTitle = found.title
+        parentTaskDescription = found.description
       }
     } catch { /* best effort */ }
 
@@ -751,7 +744,7 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     notifyGateReached(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput)
 
     // Move the task to the review column while awaiting approval
-    import('../../tasks/lib/taskboard').then(({ moveTask }) => {
+    import('../../tasks/lib/flow-store').then(({ moveTask }) => {
       moveTask(instance.taskId, 'review').catch(() => {})
     }).catch(() => {})
   } else {
@@ -814,7 +807,7 @@ export function approveGate(
 
   // Log gate approval to the task so watchdog sees recent activity
   // and move it back to inProgress (from review) unless the workflow just completed
-  import('../../tasks/lib/taskboard').then(({ addTaskLog, moveTask }) => {
+  import('../../tasks/lib/flow-store').then(({ addTaskLog, moveTask }) => {
     addTaskLog(taskId, 'workflow', `Gate "${step.label || stepId}" approved — advancing workflow.`)
       .then(() => {
         if ((instance.status as string) !== 'complete') {
@@ -835,7 +828,7 @@ export function approveGate(
 
     // Auto-move the task to done on the taskboard + emit audit event
     Promise.all([
-      import('../../tasks/lib/taskboard'),
+      import('../../tasks/lib/flow-store'),
       import('../../../src/core/audit'),
     ]).then(([{ moveTask, addTaskLog }, { appendAudit }]) => {
       addTaskLog(instance.taskId, 'workflow', `Workflow "${instance.workflowId}" completed — all steps done.`)
@@ -944,7 +937,7 @@ export function rejectGate(
   clearGateNotified(taskId, stepId, dir)
 
   // Log gate rejection and move task back to inProgress (from review)
-  import('../../tasks/lib/taskboard').then(({ addTaskLog, moveTask }) => {
+  import('../../tasks/lib/flow-store').then(({ addTaskLog, moveTask }) => {
     addTaskLog(taskId, 'workflow', `Gate "${step.label || stepId}" rejected: ${reason}`)
       .then(() => moveTask(taskId, 'inProgress'))
       .catch(() => {})
@@ -971,7 +964,7 @@ export function cancelInstance(taskId: string, contentDir?: string): void {
     if (state.childTaskId && state.status === 'in_progress') {
       cancelInstance(state.childTaskId, dir)
       // Remove the child's board task
-      import('../../tasks/lib/taskboard').then(({ moveTask }) => {
+      import('../../tasks/lib/flow-store').then(({ moveTask }) => {
         moveTask(state.childTaskId!, 'done').catch(() => {})
       }).catch(() => {})
     }

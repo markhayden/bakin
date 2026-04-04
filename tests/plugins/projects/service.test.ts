@@ -33,7 +33,7 @@ vi.mock('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
 
-vi.mock('../../../plugins/tasks/taskboard', () => ({
+vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({
     columns: {
       todo: [{ id: 'board01', title: 'Board Task 1' }],

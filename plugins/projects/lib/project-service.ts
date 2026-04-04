@@ -5,7 +5,7 @@
  */
 import { generateTaskId } from '../../tasks/lib/ids'
 import { readProject, readAllProjects, writeProject, deleteProjectFile, computeProgress, nextTaskItemId } from './parser'
-import { readTaskboard } from '../../tasks/lib/taskboard'
+import { readTaskboard } from '../../tasks/lib/flow-store'
 import { createTaskWithEffects } from '../../../src/core/task-service'
 import { appendAudit } from '../../../src/core/audit'
 import { getContentDir } from '../../../src/core/content-dir'
