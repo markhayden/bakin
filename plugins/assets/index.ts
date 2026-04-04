@@ -87,9 +87,9 @@ const assetsPlugin: BakinPlugin = {
     // GET /file — serve asset file for rendering
     ctx.registerRoute({ path: '/file', method: 'GET', description: 'Serve asset file', handler: handleFile })
 
-    // DELETE /:assetPath — soft-delete an asset
+    // DELETE / — soft-delete an asset (path passed as ?path= query param)
     ctx.registerRoute({
-      path: '/:assetPath',
+      path: '/',
       method: 'DELETE',
       description: 'Soft-delete an asset',
       handler: async (req: Request) => {
