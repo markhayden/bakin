@@ -122,6 +122,23 @@ Defined in `tsconfig.json`, mirrored in `vitest.config.ts`:
 | `@bakin/workflows` | `./plugins/workflows` | Cross-plugin imports in tests/app |
 | `@bakin/{plugin}` | `./plugins/{plugin}` | All 9 plugins |
 
+## Testing Layout
+
+Vitest covers both server-side modules and selected React components.
+
+- `tests/**/*.test.ts` — default Node-environment tests for core modules, routes, plugin logic, and utilities
+- `tests/components/**/*.test.tsx` — component tests using Testing Library
+
+### Component Test Pattern
+
+Component tests use a per-file environment annotation instead of switching the whole suite to a browser-like runtime:
+
+```tsx
+// @vitest-environment jsdom
+```
+
+This keeps the existing Node-focused tests fast and stable while allowing targeted `jsdom` coverage for interactive client components.
+
 ## src/core/ vs. src/lib/
 
 | Directory | Constraints | Examples |

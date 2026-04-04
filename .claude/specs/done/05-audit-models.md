@@ -10,7 +10,7 @@
 | HTTP routes | 9 | `GET /available`, `GET /config`, `POST /config`, `POST /defaults`, `GET /aliases`, `POST /aliases`, `POST /gateway/restart`, `GET /profiles`, `PUT /profiles` |
 | MCP exec tools | 2 | `bakin_exec_models_list`, `bakin_exec_models_get_config` |
 | Hooks registered | 3 | `models.configChanged`, `models.getEffectiveModel`, `models.getAvailableModels` |
-| Components | 1 | `ModelsPage` — 5 tabs (agents, available, aliases, profiles, defaults) |
+| Components | 1 | `ModelsPage` — 4 tabs (agents, available, aliases, profiles) with inline global defaults editor |
 | Settings schema | 2 fields | `showUsageMetrics` (boolean), `defaultModel` (select) |
 | Lifecycle hooks | none | |
 | Tests | 23 | Plugin contract, all routes, exec tools, validation |
@@ -32,7 +32,7 @@ Replaced hardcoded `AGENT_META` with `team.listAgents` hook (30s TTL cache).
 - `models.getAvailableModels` — query hook (→ AvailableModel[])
 
 ### Manifest — Done
-Secrets: `["anthropic-api-key", "gateway-token"]`. Dependencies: `["team"]`.
+Dependencies: `["team"]`.
 
 ## Phase 5B Items — Done
 
@@ -63,10 +63,15 @@ Editable task profiles stored via plugin settings. Each profile: `{ taskType, re
 - URL-backed tab state via `useQueryState('tab', 'agents')` with `<Suspense>`
 - Pink accent tab bar (matching agent detail page)
 - AgentAvatar instead of emoji icons
-- shadcn Select grouped by tier (Premium/Standard/Budget)
+- Shared `ModelSelect` grouped by provider
 - Loading skeletons, error banners, empty states on all tabs
 - Full-width layout (no max-w constraint)
 - PluginHeader with model count badge
+
+### Current Behavior Notes
+- `GET /available` is sourced from `openclaw models list --all --json`, filtered to models where `available === true`
+- The Models page manages global default + fallback models directly from `agents.defaults.model`
+- The previous "Tool Models" display column was removed because it was hardcoded UI, not real config
 
 ### Tests — Done
 23 tests covering: plugin activation contract, all 9 routes, both exec tools, Zod validation edge cases.

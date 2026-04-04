@@ -50,7 +50,10 @@ vi.mock('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
 
-vi.mock('../../../plugins/tasks/taskboard', () => ({
+vi.mock('../../../plugins/tasks/lib/flow-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../plugins/tasks/lib/flow-store')>()
+  return {
+    ...actual,
   readTaskboard: () => ({
     columns: {
       todo: [{ id: 'board01', title: 'Board Task 1' }],
@@ -61,8 +64,9 @@ vi.mock('../../../plugins/tasks/taskboard', () => ({
       blocked: [],
       backlog: [],
     },
-  }),
-}))
+    }),
+  }
+})
 
 const mockSendMessage = vi.fn((..._args: unknown[]) => Promise.resolve('Agent reply here'))
 vi.mock('../../../src/core/openclaw-client', () => ({

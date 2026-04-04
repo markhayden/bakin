@@ -255,7 +255,7 @@ export function getAgentProfile(bakinId: string): AgentProfile | null {
     emoji,
     role: resolveRole(id),
     headshot: `/api/plugins/team/${id}/avatar`,
-    model: model.replace('anthropic/', ''),
+    model,
     workspacePath: getWorkspacePath(bakinId),
     soul: readWorkspaceFile(bakinId, 'SOUL.md'),
     identity: readWorkspaceFile(bakinId, 'IDENTITY.md'),
@@ -275,7 +275,7 @@ export function getAgentModel(bakinId: string): string {
   const agent = config.agents?.list?.find((a) => a.id === openclawId)
   const defaultModel = config.agents?.defaults?.model?.primary ?? 'unknown'
   const raw = agent?.model?.primary ?? defaultModel
-  return raw.replace('anthropic/', '')
+  return raw
 }
 
 // ─── Agent Creation ─────────────────────────────────────────────────────────
