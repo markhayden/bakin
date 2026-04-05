@@ -10,11 +10,14 @@ import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { handleList } from './routes/list'
 import { handleFile } from './routes/file'
 import { handleDelete } from './routes/delete'
+import { handleUpload } from './routes/upload'
 import { handleListTrash } from './routes/list-trash'
 import { handleRestore } from './routes/restore'
 import { handlePermanentDelete } from './routes/permanent-delete'
 import { handleEmptyTrash } from './routes/empty-trash'
-import { buildIndex, upsertAsset, removeAsset, detectVariant } from './lib/asset-index'
+import { handleLink } from './routes/link'
+import { relinkAsset } from './lib/relink'
+import { buildIndex, upsertAsset, removeAsset, detectVariant, listAssets } from './lib/asset-index'
 import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { ASSET_TYPES } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
@@ -45,6 +48,7 @@ const assetsPlugin: BakinPlugin = {
     fields: [
       { key: 'thumbnails', type: 'boolean', label: 'Generate thumbnails', description: 'Auto-create optimized thumbnails on upload', default: true },
       { key: 'maxFileSize', type: 'number', label: 'Max file size (MB)', description: 'Reject uploads larger than this', default: 50 },
+      { key: 'purgeClipboardOnComplete', type: 'boolean', label: 'Purge clipboard assets on task completion', description: 'Auto-delete clipboard-pasted assets when their linked task is marked done', default: false },
     ],
   },
 
@@ -59,6 +63,35 @@ const assetsPlugin: BakinPlugin = {
     ctx.hooks.register('assets.createStub', (d: Record<string, unknown>) => createStub(d.assetPath as string))
     ctx.hooks.register('assets.detectVariant', (d: Record<string, unknown>) => detectVariant(d.filename as string))
     ctx.hooks.register('assets.getAssetTypes', () => ASSET_TYPES)
+
+    // Purge clipboard-source assets when a task completes (if enabled)
+    ctx.hooks.register('assets.purgeClipboardForTask', async (d: Record<string, unknown>) => {
+      const settings = ctx.getSettings<{ purgeClipboardOnComplete?: boolean }>()
+      if (!settings.purgeClipboardOnComplete) return { purged: 0 }
+
+      const taskId = d.taskId as string
+      if (!taskId) return { purged: 0 }
+
+      const contentDir = getContentDir()
+      const assetsRoot = join(contentDir, 'assets')
+      const assets = listAssets({ taskId })
+      let purged = 0
+
+      for (const asset of assets) {
+        if (asset.metadata.source !== 'clipboard') continue
+        const fullPath = join(contentDir, asset.path)
+        if (softDelete(fullPath, assetsRoot)) {
+          removeAsset(asset.path)
+          purged++
+        }
+      }
+
+      if (purged > 0) {
+        log.info(`Purged ${purged} clipboard asset(s) for completed task ${taskId}`)
+        ctx.activity.log('system', `Purged ${purged} clipboard asset(s) for task ${taskId}`)
+      }
+      return { purged }
+    })
     ctx.hooks.register('assets.listTrash', (d: Record<string, unknown>) => listTrash(d.assetsRoot as string))
     ctx.hooks.register('assets.restoreAsset', (d: Record<string, unknown>) => restoreAsset(d.trashFilename as string, d.assetsRoot as string))
     ctx.hooks.register('assets.emptyTrash', (d: Record<string, unknown>) => emptyTrash(d.assetsRoot as string))
@@ -84,6 +117,14 @@ const assetsPlugin: BakinPlugin = {
     // GET / — list assets with filters
     ctx.registerRoute({ path: '/', method: 'GET', description: 'List assets with filters', handler: handleList })
 
+    // POST /upload — multipart file upload
+    ctx.registerRoute({
+      path: '/upload',
+      method: 'POST',
+      description: 'Upload asset files',
+      handler: async (req: Request) => handleUpload(req, ctx),
+    })
+
     // GET /file — serve asset file for rendering
     ctx.registerRoute({ path: '/file', method: 'GET', description: 'Serve asset file', handler: handleFile })
 
@@ -97,6 +138,22 @@ const assetsPlugin: BakinPlugin = {
         if (res.ok) {
           ctx.activity.audit('deleted', 'system')
           ctx.activity.log('system', 'Asset deleted')
+        }
+        return res
+      },
+    })
+
+    // PATCH /link — relink or unlink an asset from a task
+    ctx.registerRoute({
+      path: '/link',
+      method: 'PATCH',
+      description: 'Relink or unlink an asset',
+      handler: async (req: Request) => {
+        const res = await handleLink(req)
+        const data = await res.clone().json()
+        if (data.ok) {
+          ctx.activity.audit('asset.relinked', 'user', { oldPath: data.oldPath, newPath: data.newPath })
+          ctx.activity.log('user', `Relinked asset to ${data.newPath || '_unlinked'}`)
         }
         return res
       },
@@ -238,6 +295,26 @@ const assetsPlugin: BakinPlugin = {
         ctx.activity.log(agent, `Deleted asset "${assetPath}"`)
         ctx.activity.audit('asset.deleted', agent, { path: assetPath })
         return { ok: true, trashed: [assetPath] }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_link',
+      description: 'Link an asset to a different task, or unlink it (set taskId to null). Physically moves the file between task directories and updates sidecar metadata.',
+      parameters: {
+        path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
+        taskId: z.string().nullable().describe('Target task ID, or null to unlink'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const result = relinkAsset({
+          assetPath: params.path as string,
+          newTaskId: (params.taskId as string | null) ?? null,
+        })
+        if (result.ok) {
+          ctx.activity.log(agent, `Relinked asset to ${params.taskId ?? '_unlinked'}`)
+          ctx.activity.audit('asset.relinked', agent, { oldPath: result.oldPath, newPath: result.newPath })
+        }
+        return result
       },
     })
 

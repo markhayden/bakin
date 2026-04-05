@@ -3,7 +3,7 @@
   "name": "Assets",
   "version": "2.0.0",
   "bakin": ">=1.0.0",
-  "description": "Centralized content store for all agent-created artifacts with rich rendering, search, and task linking",
+  "description": "Centralized content store for all artifacts with rich rendering, search, task linking, manual upload, and clipboard paste",
   "entry": {
     "server": "index.ts"
   },

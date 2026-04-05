@@ -3,6 +3,32 @@ import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
+const testDir = join(tmpdir(), `bakin-test-runtime-${Date.now()}`)
+
+// ─── CRITICAL: Mock content-dir to prevent writes to ~/.bakin/ ─────────────
+vi.mock('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  resetContentDir: vi.fn(),
+  initBakinHome: vi.fn(),
+  isUsingBakinHome: () => false,
+}))
+
+// Mock audit to prevent writes to audit.jsonl
+vi.mock('../../../src/core/audit', () => ({
+  appendAudit: vi.fn(),
+}))
+
+// Mock logger to prevent noise
+vi.mock('../../../src/core/logger', () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
+}))
+
 // Mock flow-store so tests don't leak child-workflow tasks into the real board
 vi.mock('../../plugins/tasks/lib/flow-store', () => ({
   createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
@@ -29,7 +55,6 @@ import {
 import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
 
 describe('runtime', () => {
-  const testDir = join(tmpdir(), `bakin-test-runtime-${Date.now()}`)
   const defsDir = join(testDir, 'workflows', 'definitions')
   const skillsDir = join(testDir, 'workflows', 'skills')
   const instancesDir = join(testDir, 'workflows', 'instances')

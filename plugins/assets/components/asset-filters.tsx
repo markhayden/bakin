@@ -2,7 +2,8 @@
 
 import { PluginHeader } from '@/components/plugin-header'
 import { FacetFilter } from '@/components/facet-filter'
-import { FileText, Image, Video, Music, Map, Database, Package, LayoutGrid, List, ListFilter, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { FileText, Image, Video, Music, Map, Database, Package, LayoutGrid, List, ListFilter, Trash2, Plus } from 'lucide-react'
 
 const TYPE_OPTIONS = [
   { value: 'text', label: 'Text', icon: <FileText className="size-3.5" /> },
@@ -22,6 +23,7 @@ interface AssetFiltersProps {
   assetCount: number
   view: string
   onViewChange: (view: string) => void
+  onAdd?: () => void
 }
 
 const VIEW_OPTIONS = [
@@ -30,7 +32,7 @@ const VIEW_OPTIONS = [
   { key: 'trash', label: 'Trash', icon: Trash2 },
 ] as const
 
-export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange, assetCount, view, onViewChange }: AssetFiltersProps) {
+export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange, assetCount, view, onViewChange, onAdd }: AssetFiltersProps) {
   return (
     <div className="flex flex-col gap-3">
       <PluginHeader
@@ -38,7 +40,14 @@ export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange,
         count={assetCount}
         search={{ value: search, onChange: onSearchChange, placeholder: 'Search assets...' }}
         actions={
-          <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
+          <div className="flex items-center gap-2">
+            {onAdd && (
+              <Button size="sm" variant="outline" onClick={onAdd}>
+                <Plus className="size-3.5 mr-1.5" />
+                Add
+              </Button>
+            )}
+            <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
             {VIEW_OPTIONS.map(opt => {
               const Icon = opt.icon
               return (
@@ -56,6 +65,7 @@ export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange,
                 </button>
               )
             })}
+            </div>
           </div>
         }
       />

@@ -2,7 +2,7 @@
  * Task dispatch system for Bakin.
  * Periodically checks for TODO tasks and dispatches them to agents via OpenClaw.
  */
-import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
@@ -321,13 +321,36 @@ export async function dispatchSingleTask(
   })
 }
 
-function buildDispatchMessage(
+/** @internal Exported for testing. */
+export function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
   agentName: string,
   contentDir: string,
   _port: number
 ): string {
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
+
+  // List attached assets for this task by scanning the asset directories
+  let assetsBlock = ''
+  try {
+    const assetsRoot = join(contentDir, 'assets')
+    const assetTypes = ['text', 'images', 'video', 'audio', 'plans', 'data', 'other']
+    const assetPaths: string[] = []
+    for (const type of assetTypes) {
+      const taskDir = join(assetsRoot, type, task.id)
+      if (existsSync(taskDir)) {
+        const files = readdirSync(taskDir).filter(f => !f.endsWith('.meta.json') && !f.startsWith('.'))
+        for (const file of files) {
+          // Skip variants (thumbnails, optimized)
+          if (file.includes('.thumb.') || file.includes('.opt.')) continue
+          assetPaths.push(join(taskDir, file))
+        }
+      }
+    }
+    if (assetPaths.length > 0) {
+      assetsBlock = `\n\n## Attached Assets\nThis task has ${assetPaths.length} linked asset(s). Review them for context before starting:\n${assetPaths.map(p => `- ${p}`).join('\n')}\nFor images, view the file directly. For text/documents, read with cat. Use bakin_exec_assets_get for sidecar metadata.`
+    }
+  } catch { /* assets directory may not exist */ }
 
   // Project context — lightweight mention if task has a projectId
   let projectBlock = ''
@@ -346,14 +369,14 @@ function buildDispatchMessage(
   const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
 
   if (!task.agent) {
-    return `Triage this task: "${task.title}".${detailsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, basil=research/strategy) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, basil=research/strategy) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   if (task.agent === 'roscoe') {
-    return `Work on this task: "${task.title}".${detailsBlock}\n\n${contactsRef} When done: \`${mc('bakin_report_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}\n\n${contactsRef} When done: \`${mc('bakin_report_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
-  return `Work on this task: "${task.title}".${detailsBlock}${projectBlock}
+  return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}${projectBlock}
 
 ## PROGRESS LOGGING — MANDATORY
 

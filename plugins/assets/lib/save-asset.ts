@@ -5,7 +5,9 @@
 import { mkdirSync, copyFileSync, writeFileSync, existsSync } from 'fs'
 import { join, extname, basename } from 'path'
 import { execSync } from 'child_process'
+import { randomBytes } from 'crypto'
 import { getBakinPaths } from '../../../src/core/content-dir'
+import type { AssetSource } from './sidecar'
 
 const ASSET_TYPES = ['text', 'images', 'video', 'audio', 'plans', 'data', 'other'] as const
 type AssetType = typeof ASSET_TYPES[number]
@@ -19,6 +21,8 @@ export interface SaveAssetParams {
   tags?: string[]
   tool?: string
   slug?: string
+  source?: AssetSource
+  originalFilename?: string
 }
 
 export interface SaveAssetResult {
@@ -61,7 +65,7 @@ function generateThumbnail(inputPath: string, outputPath: string, widthPx = 400)
 }
 
 export async function saveAsset(params: SaveAssetParams): Promise<SaveAssetResult> {
-  const { filePath, taskId, type, agent, description, tags, tool, slug } = params
+  const { filePath, taskId, type, agent, description, tags, tool, slug, source, originalFilename } = params
 
   if (!existsSync(filePath)) {
     return { ok: false, error: `Source file not found: ${filePath}` }
@@ -79,8 +83,18 @@ export async function saveAsset(params: SaveAssetParams): Promise<SaveAssetResul
 
   const ext = extname(filePath).slice(1) || getExtension(filePath)
   const fileSlug = slug || slugify(basename(filePath, `.${ext}`))
-  const filename = datePrefixedFilename(fileSlug, ext)
-  const destPath = join(taskDir, filename)
+  let filename = datePrefixedFilename(fileSlug, ext)
+  let destPath = join(taskDir, filename)
+
+  // Handle duplicate filenames by appending a short random suffix
+  if (existsSync(destPath)) {
+    const suffix = randomBytes(2).toString('hex')
+    const dotIdx = filename.lastIndexOf('.')
+    const stem = dotIdx > 0 ? filename.substring(0, dotIdx) : filename
+    const extPart = dotIdx > 0 ? filename.substring(dotIdx) : ''
+    filename = `${stem}-${suffix}${extPart}`
+    destPath = join(taskDir, filename)
+  }
 
   copyFileSync(filePath, destPath)
 
@@ -89,6 +103,8 @@ export async function saveAsset(params: SaveAssetParams): Promise<SaveAssetResul
     ...(tool ? { tool } : {}),
     ...(description ? { description } : {}),
     ...(tags && tags.length > 0 ? { tags } : {}),
+    ...(source ? { source } : {}),
+    ...(originalFilename ? { originalFilename } : {}),
   }
   const metadataPath = join(taskDir, `${filename}.meta.json`)
   writeFileSync(metadataPath, JSON.stringify(sidecar, null, 2))
