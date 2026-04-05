@@ -39,9 +39,12 @@ Without a centralized asset system, agent-created files are scattered across tas
   "tool": "dall-e-3",
   "description": "Hero image for blog post",
   "tags": ["social", "blog"],
-  "originalFilename": "hero.png"
+  "originalFilename": "hero.png",
+  "source": "agent"
 }
 ```
+
+The `source` field tracks how the asset was created: `"agent"` (MCP tool), `"upload"` (manual UI upload), or `"clipboard"` (pasted into task description). Used for lifecycle management (e.g., auto-purging clipboard assets on task completion).
 
 Field aliases are auto-corrected: `author` -> `agent`, `createdAt` -> `created`, `task` -> `taskId`.
 
@@ -58,12 +61,14 @@ All under `/api/plugins/assets/`:
 | Route | Method | Params | Notes |
 |-------|--------|--------|-------|
 | `/` | GET | `type`, `agent`, `taskId`, `tag`, `includeChildren`, `grouped`, `path`, `limit`, `offset` | Main listing with pagination |
+| `/upload` | POST | multipart: `file`, `taskId?`, `description?`, `tags?`, `source?` | Upload files from UI or clipboard paste |
 | `/file` | GET | `path`, `v` (cache bust) | Serves file with MIME type + ETag |
 | `/` | DELETE | `path` | Soft-delete to .trash/ |
 | `/trash` | GET | — | Lists trashed items with expiry |
 | `/trash/:file/restore` | POST | — | Restores from trash to original location |
 | `/trash/:file` | DELETE | — | Permanently removes trashed item |
 | `/trash` | DELETE | — | Bulk delete all trash |
+| `/link` | PATCH | JSON: `path`, `taskId` (string \| null) | Relink asset to different task or unlink (null → `_unlinked`) |
 
 Alternative file serving at `/api/assets/[...path]` supports range requests (video seeking).
 
@@ -121,6 +126,7 @@ Registered in `plugins/assets/index.ts` via `ctx.hooks.register()`:
 - `assets.detectVariant(filename)` — check if file is a variant
 - `assets.getAssetTypes()` — return available asset type enum
 - `assets.listTrash()` / `assets.restoreAsset()` / `assets.emptyTrash()`
+- `assets.purgeClipboardForTask(taskId)` — soft-delete clipboard-source assets for a completed task (gated by `purgeClipboardOnComplete` setting)
 
 ## Key Files
 
@@ -128,6 +134,7 @@ Registered in `plugins/assets/index.ts` via `ctx.hooks.register()`:
 plugins/assets/
   index.ts                    — Plugin entry, hooks, routes, settings
   routes/list.ts              — Asset listing with filters + pagination
+  routes/upload.ts            — Multipart file upload handler
   routes/file.ts              — File serving with MIME types
   routes/delete.ts            — Soft-delete
   routes/list-trash.ts        — Trash listing
@@ -136,10 +143,13 @@ plugins/assets/
   lib/sidecar.ts              — Sidecar read/write/validate/normalize
   lib/constants.ts            — Asset types, extensions, MIME mapping
   lib/trash.ts                — Trash operations
+  lib/relink.ts               — Relink/unlink assets between tasks
+  routes/link.ts              — PATCH /link handler
 
 src/components/assets/
   assets-page.tsx             — Main page with URL state, pagination, sorting
-  asset-filters.tsx           — PluginHeader + FacetFilter + view toggle
+  asset-filters.tsx           — PluginHeader + FacetFilter + view toggle + Add button
+  upload-dialog.tsx           — Drag-drop upload dialog
   asset-card.tsx              — Grid card with thumbnail preview
   assets-grid.tsx             — Responsive grid layout
   assets-list.tsx             — Table layout with sortable columns
@@ -153,3 +163,29 @@ src/hooks/use-assets.ts       — Data fetching + SSE live updates
 scripts/lib/save-asset.ts     — MCP tool for standardized asset saving
 scripts/lib/audit-assets.ts   — Audit tool with thumbnail generation
 ```
+
+## Manual Upload & Clipboard Paste
+
+### Upload Route (`POST /upload`)
+Accepts multipart form data. Used by both the upload dialog and clipboard paste handler.
+- Auto-detects asset type from file extension via `getAssetType()`
+- Writes to temp dir, calls `saveAsset()`, cleans up
+- Sets `source` field: `"upload"` (dialog) or `"clipboard"` (paste)
+- SSE broadcast happens automatically via file watcher
+
+### Upload Dialog
+"Add" button in the Assets page header opens a dialog with drag-and-drop zone, file picker, and optional metadata fields (description, tags, task link). Supports multiple files.
+
+### Clipboard Paste in Task Details
+`onPaste` handler on the task description `<Textarea>`:
+- **Images**: Detected via `image/*` clipboard items. Uploaded as asset, markdown image ref inserted: `![pasted image](/api/assets/{path})`
+- **Long text** (20+ lines or 500+ chars): Saved as `.md` text asset. Compact reference inserted: `[Attached: filename (N lines)](/api/assets/{path})`
+- **Short text**: Passes through normally (no interception)
+
+Asset references use `/api/assets/` URLs, which render natively in `ReactMarkdown` and work in dispatch messages.
+
+### Dispatch Context
+`buildDispatchMessage()` scans task descriptions for `/api/assets/` references and appends an "Attached Context" section with filesystem paths so agents can read the files directly.
+
+### Clipboard Purge
+Plugin setting `purgeClipboardOnComplete` (default: false). When enabled, clipboard-source assets are soft-deleted to trash when their linked task moves to Done. Triggered via the `assets.purgeClipboardForTask` hook from `task-service.ts`.

@@ -140,13 +140,15 @@ afterAll(() => {
 // ===========================================================================
 
 describe('route registration', () => {
-  it('registers all 7 routes', () => {
-    expect(plugin.routes.length).toBe(7)
+  it('registers all 9 routes', () => {
+    expect(plugin.routes.length).toBe(9)
   })
 
   it.each([
     ['GET', '/'],
     ['GET', '/file'],
+    ['POST', '/upload'],
+    ['PATCH', '/link'],
     ['DELETE', '/'],
     ['GET', '/trash'],
     ['POST', '/trash/:file/restore'],
@@ -164,14 +166,15 @@ describe('route registration', () => {
 // ===========================================================================
 
 describe('exec tool registration', () => {
-  it('registers all 9 exec tools', () => {
-    expect(plugin.execTools.length).toBe(9)
+  it('registers all 10 exec tools', () => {
+    expect(plugin.execTools.length).toBe(10)
   })
 
   it.each([
     'bakin_exec_assets_list',
     'bakin_exec_assets_save',
     'bakin_exec_assets_delete',
+    'bakin_exec_assets_link',
     'bakin_exec_assets_list_trash',
     'bakin_exec_assets_restore',
     'bakin_exec_assets_audit',
@@ -949,6 +952,134 @@ describe('exec tool: bakin_exec_assets_audit', () => {
 // ===========================================================================
 // DELETE route integration — simulates the full URL path the browser sends
 // ===========================================================================
+
+// ===========================================================================
+// PATCH /link — relink/unlink asset
+// ===========================================================================
+
+describe('PATCH /link — relink/unlink asset', () => {
+  it('relinks asset from one task to another', async () => {
+    createAssetFixture('images', 'link-src', 'relink-test.png', 'img-data', {
+      agent: 'pixel', taskId: 'link-src', created: '2026-04-05T00:00:00Z',
+    })
+
+    const route = findRoute(plugin.routes, 'PATCH', '/link')!
+    const req = makeRequest('/link', {
+      method: 'PATCH',
+      body: { path: 'assets/images/link-src/relink-test.png', taskId: 'link-dest' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.newPath).toBe('assets/images/link-dest/relink-test.png')
+    expect(existsSync(join(assetsRoot, 'images', 'link-dest', 'relink-test.png'))).toBe(true)
+    expect(existsSync(join(assetsRoot, 'images', 'link-src', 'relink-test.png'))).toBe(false)
+  })
+
+  it('unlinks asset to _unlinked', async () => {
+    createAssetFixture('text', 'link-unl', 'unlink-test.md', '# test', {
+      agent: 'user', taskId: 'link-unl', created: '2026-04-05T00:00:00Z',
+    })
+
+    const route = findRoute(plugin.routes, 'PATCH', '/link')!
+    const req = makeRequest('/link', {
+      method: 'PATCH',
+      body: { path: 'assets/text/link-unl/unlink-test.md', taskId: null },
+    })
+    const res = await route.handler(req, plugin.ctx)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.newPath).toContain('_unlinked')
+    // Sidecar should have null taskId
+    const sidecar = JSON.parse(readFileSync(join(assetsRoot, 'text', '_unlinked', 'unlink-test.md.meta.json'), 'utf-8'))
+    expect(sidecar.taskId).toBeNull()
+  })
+
+  it('returns 400 for missing path', async () => {
+    const route = findRoute(plugin.routes, 'PATCH', '/link')!
+    const req = makeRequest('/link', {
+      method: 'PATCH',
+      body: { taskId: 'some-task' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 404 for non-existent asset', async () => {
+    const route = findRoute(plugin.routes, 'PATCH', '/link')!
+    const req = makeRequest('/link', {
+      method: 'PATCH',
+      body: { path: 'assets/images/ghost/nope.png', taskId: 'x' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 400 for path traversal', async () => {
+    const route = findRoute(plugin.routes, 'PATCH', '/link')!
+    const req = makeRequest('/link', {
+      method: 'PATCH',
+      body: { path: 'assets/../etc/passwd', taskId: 'x' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 for taskId with path separators', async () => {
+    createAssetFixture('images', 'link-sec', 'sec-test.png', 'data', {
+      agent: 'user', taskId: 'link-sec', created: '2026-04-05T00:00:00Z',
+    })
+    const route = findRoute(plugin.routes, 'PATCH', '/link')!
+    const req = makeRequest('/link', {
+      method: 'PATCH',
+      body: { path: 'assets/images/link-sec/sec-test.png', taskId: '../../etc' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+    expect(res.status).toBe(400)
+  })
+})
+
+// ===========================================================================
+// exec tool: bakin_exec_assets_link
+// ===========================================================================
+
+describe('exec tool: bakin_exec_assets_link', () => {
+  it('relinks asset via MCP tool', async () => {
+    createAssetFixture('images', 'tool-src', 'tool-link.png', 'img-data', {
+      agent: 'pixel', taskId: 'tool-src', created: '2026-04-05T00:00:00Z',
+    })
+
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_link')!
+    const result = await callTool(tool, { path: 'assets/images/tool-src/tool-link.png', taskId: 'tool-dest' }, 'pixel')
+
+    expect(result.ok).toBe(true)
+    expect(result.newPath).toBe('assets/images/tool-dest/tool-link.png')
+  })
+
+  it('unlinks asset via MCP tool', async () => {
+    createAssetFixture('text', 'tool-unl', 'tool-unlink.md', '# hi', {
+      agent: 'user', taskId: 'tool-unl', created: '2026-04-05T00:00:00Z',
+    })
+
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_link')!
+    const result = await callTool(tool, { path: 'assets/text/tool-unl/tool-unlink.md', taskId: null }, 'pixel')
+
+    expect(result.ok).toBe(true)
+    expect(result.newPath).toContain('_unlinked')
+  })
+
+  it('returns error for invalid path', async () => {
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_link')!
+    const result = await callTool(tool, { path: 'assets/images/ghost/nope.png', taskId: 'x' }, 'pixel')
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('not found')
+  })
+})
 
 describe('DELETE route integration — browser URL simulation', () => {
   /**
