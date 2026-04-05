@@ -37,6 +37,8 @@ export const EXTENSION_TO_TYPE: Record<string, AssetType> = {
   // Plans
   '.yaml': 'plans',
   '.yml': 'plans',
+  // Documents
+  '.pdf': 'other',
   // Data
   '.json': 'data',
   '.csv': 'data',
@@ -74,6 +76,8 @@ export const EXTENSION_TO_MIME: Record<string, string> = {
   // Plans
   '.yaml': 'text/yaml',
   '.yml': 'text/yaml',
+  // Documents
+  '.pdf': 'application/pdf',
   // Data
   '.json': 'application/json',
   '.csv': 'text/csv',

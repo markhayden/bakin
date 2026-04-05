@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FolderOpen, Image, Video, Music, FileText, Plus } from 'lucide-react'
+import { FolderOpen, Image, Video, Music, FileText, Plus, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { AssetDetailModal } from './asset-detail'
 import type { AssetMeta } from '@/types'
@@ -36,22 +36,53 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
     fetchAssets()
   }, [fetchAssets])
 
-  // Listen for workflow step completions to auto-refresh assets
+  // Listen for asset-related events to auto-refresh
   useEffect(() => {
     const es = new EventSource('/api/events')
     esRef.current = es
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
+        // Refresh on workflow step completions
         if (data.type === 'plugin-event' && data.event === 'workflow.step_complete') {
           if (data.taskId === taskId || data.taskId?.startsWith(taskId + '--')) {
             fetchAssets()
           }
         }
+        // Refresh on asset uploads/changes for this task
+        if (data.type === 'activity' && data.pluginId === 'assets' && data.taskId === taskId) {
+          fetchAssets()
+        }
+        // Refresh on audit events from asset uploads
+        if (data.type === 'audit' && data.event?.startsWith('assets.') && data.taskId === taskId) {
+          fetchAssets()
+        }
       } catch { /* ignore */ }
     }
     return () => { es.close(); esRef.current = null }
   }, [taskId, fetchAssets])
+
+  // Listen for local asset upload events (e.g. clipboard paste in same dialog)
+  // SSE can miss events during React re-renders that recreate the EventSource
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.taskId === taskId) fetchAssets()
+    }
+    window.addEventListener('bakin:asset-uploaded', handler)
+    return () => window.removeEventListener('bakin:asset-uploaded', handler)
+  }, [taskId, fetchAssets])
+
+  const handleUnlink = async (path: string) => {
+    try {
+      const res = await fetch('/api/plugins/assets/link', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, taskId: null }),
+      })
+      if (res.ok) fetchAssets()
+    } catch { /* ignore */ }
+  }
 
   if (loading) return null
 
@@ -76,29 +107,42 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
         {assets.map(asset => {
           const Icon = TYPE_ICONS[asset.type] || FileText
           return (
-            <button
+            <div
               key={asset.path}
-              onClick={() => setPreviewPath(asset.path)}
               className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 hover:border-[rgba(255,255,255,0.15)] transition-colors group text-left w-full"
             >
-              {asset.type === 'images' ? (
-                <img
-                  src={`/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}`}
-                  alt={asset.filename}
-                  className="size-8 rounded object-cover shrink-0"
-                />
-              ) : (
-                <div className="size-8 rounded bg-muted flex items-center justify-center shrink-0">
-                  <Icon className="size-4 text-muted-foreground" />
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-foreground truncate">{asset.filename}</p>
-                {asset.metadata.description && (
-                  <p className="text-[10px] text-muted-foreground truncate">{asset.metadata.description}</p>
+              <button
+                onClick={() => setPreviewPath(asset.path)}
+                className="flex items-center gap-2 flex-1 min-w-0"
+              >
+                {asset.type === 'images' ? (
+                  <img
+                    src={`/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}`}
+                    alt={asset.filename}
+                    className="size-8 rounded object-cover shrink-0"
+                  />
+                ) : (
+                  <div className="size-8 rounded bg-muted flex items-center justify-center shrink-0">
+                    <Icon className="size-4 text-muted-foreground" />
+                  </div>
                 )}
-              </div>
-            </button>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-foreground truncate">{asset.filename}</p>
+                  {asset.metadata.description && (
+                    <p className="text-[10px] text-muted-foreground truncate">{asset.metadata.description}</p>
+                  )}
+                </div>
+              </button>
+              {!readOnly && (
+                <button
+                  onClick={() => handleUnlink(asset.path)}
+                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground shrink-0 p-1 transition-opacity"
+                  title="Remove from task"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
           )
         })}
       </div>

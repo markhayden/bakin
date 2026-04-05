@@ -68,7 +68,7 @@ src/
 plugins/                   — Core plugins (each has bakin-plugin.json manifest)
   tasks/                   — Task board management
   workflows/               — Workflow execution engine (xyflow canvas)
-  assets/                  — Asset management with sidecar metadata
+  assets/                  — Asset management with sidecar metadata, manual upload, clipboard paste
   projects/                — Project tracking with checklists
   schedule/                — Cron job scheduling with OpenClaw bridge
   memory/                  — Audit logs and agent workspaces
@@ -94,7 +94,6 @@ Created by `bakin init`. Per-installation state, NOT in the repo.
   schedule/                — Cron job state
   workflows/               — Definitions, instances, skills
   team/                    — Contacts, personas
-  TASKBOARD.md             — Task kanban board
   MEMORY-LOG.md            — Agent memory log
   audit.jsonl              — Append-only audit trail
 ```
@@ -148,6 +147,30 @@ Conventional commits with scope:
 - `fix(schedule): handle timezone edge case`
 - `refactor(core): extract settings module`
 - `test(workflows): add gate approval test`
+
+## Testing Rules — CRITICAL
+
+**Every test file MUST mock `src/core/content-dir` to use a temp directory.** Tests that touch storage, assets, tasks, or any plugin MUST NOT read from or write to `~/.bakin/`. Leaked test data into the production instance has caused real incidents.
+
+Required mocks for any test that touches the filesystem:
+```typescript
+const testDir = join(tmpdir(), `bakin-test-${Date.now()}`)
+
+vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => { /* return paths under testDir */ },
+}))
+```
+
+Additional mandatory rules:
+- **Always clean up:** `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`
+- **Mock the logger:** `vi.mock('../../src/core/logger', ...)` — prevents noise and avoids side effects
+- **Mock the watcher:** `vi.mock('../../src/core/watcher', ...)` — prevents chokidar from watching real dirs
+- **Mock openclaw-client:** Prevents tests from sending real messages to agents
+- **Never hardcode `~/.bakin/`** or `process.env.HOME` in test fixtures
+- **Use `tests/plugins/test-helpers.ts`** (`activatePlugin`, `callRoute`, `callTool`) for plugin tests — these provide properly isolated mock contexts
+
+If a test does not mock `getContentDir`, it **will** eventually write to `~/.bakin/` and corrupt production data. There are no exceptions to this rule.
 
 ## Key Patterns
 

@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { MarkdownContent } from '@/components/markdown-content'
-import { Trash2, ExternalLink, Download, Clock, User, Wrench, Tag, Layers, Eye } from 'lucide-react'
+import { Trash2, ExternalLink, Download, Clock, User, Wrench, Tag, Layers, Eye, Pencil, Check, X, Unlink } from 'lucide-react'
 import { formatSize } from '@/lib/format'
 import { DeleteAssetDialog } from './delete-asset-dialog'
 import type { AssetMeta } from '@/types'
@@ -18,6 +18,7 @@ interface AssetDetailProps {
   asset: AssetMeta | null
   onClose: () => void
   onDelete: (path: string) => void
+  onRelink?: () => void
 }
 
 function AssetRenderer({ asset }: { asset: AssetMeta }) {
@@ -176,9 +177,30 @@ export function AssetDetailModal({ assetPath, onClose }: { assetPath: string; on
   )
 }
 
-export function AssetDetail({ asset, onClose, onDelete, showOpenInAssets }: AssetDetailProps & { showOpenInAssets?: boolean }) {
+export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAssets }: AssetDetailProps & { showOpenInAssets?: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [activeVariantPath, setActiveVariantPath] = useState<string | null>(null)
+  const [editingTask, setEditingTask] = useState(false)
+  const [newTaskId, setNewTaskId] = useState('')
+  const [relinking, setRelinking] = useState(false)
+
+  const handleRelink = async (taskId: string | null) => {
+    if (!asset) return
+    setRelinking(true)
+    try {
+      const res = await fetch('/api/plugins/assets/link', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: asset.path, taskId }),
+      })
+      if (res.ok) {
+        setEditingTask(false)
+        onRelink?.()
+        onClose()
+      }
+    } catch { /* ignore */ }
+    finally { setRelinking(false) }
+  }
 
   if (!asset) return null
 
@@ -248,18 +270,55 @@ export function AssetDetail({ asset, onClose, onDelete, showOpenInAssets }: Asse
             )}
 
             {/* Task link */}
-            {asset.metadata.taskId && (
-              <div className="flex items-center gap-1.5">
-                <ExternalLink className="size-3 text-muted-foreground" />
-                <span className="text-muted-foreground">Task:</span>
-                <a
-                  href={`/tasks?taskId=${asset.metadata.taskId}`}
-                  className="text-blue-400 hover:text-blue-300"
-                >
-                  {asset.metadata.taskId.slice(0, 8)}...
-                </a>
-              </div>
-            )}
+            <div className="flex items-center gap-1.5">
+              <ExternalLink className="size-3 text-muted-foreground" />
+              <span className="text-muted-foreground">Task:</span>
+              {editingTask ? (
+                <div className="flex items-center gap-1 flex-1 min-w-0">
+                  <input
+                    type="text"
+                    value={newTaskId}
+                    onChange={(e) => setNewTaskId(e.target.value)}
+                    placeholder="Task ID or empty to unlink"
+                    className="flex-1 min-w-0 text-xs bg-zinc-800 border border-border rounded px-1.5 py-0.5 text-foreground"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleRelink(newTaskId.trim() || null)
+                      if (e.key === 'Escape') setEditingTask(false)
+                    }}
+                    disabled={relinking}
+                  />
+                  <button onClick={() => handleRelink(newTaskId.trim() || null)} disabled={relinking} className="text-green-400 hover:text-green-300" title="Save">
+                    <Check className="size-3" />
+                  </button>
+                  <button onClick={() => setEditingTask(false)} className="text-muted-foreground hover:text-foreground" title="Cancel">
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ) : asset.metadata.taskId ? (
+                <>
+                  <a
+                    href={`/tasks?taskId=${asset.metadata.taskId}`}
+                    className="text-blue-400 hover:text-blue-300"
+                  >
+                    {asset.metadata.taskId.slice(0, 8)}...
+                  </a>
+                  <button onClick={() => { setNewTaskId(asset.metadata.taskId || ''); setEditingTask(true) }} className="text-muted-foreground hover:text-foreground" title="Edit task link">
+                    <Pencil className="size-3" />
+                  </button>
+                  <button onClick={() => handleRelink(null)} className="text-muted-foreground hover:text-red-400" title="Unlink from task">
+                    <Unlink className="size-3" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="text-muted-foreground italic">Unlinked</span>
+                  <button onClick={() => { setNewTaskId(''); setEditingTask(true) }} className="text-muted-foreground hover:text-foreground" title="Link to task">
+                    <Pencil className="size-3" />
+                  </button>
+                </>
+              )}
+            </div>
 
             {/* Size */}
             <div className="text-muted-foreground">
