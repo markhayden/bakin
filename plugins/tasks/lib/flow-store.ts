@@ -7,8 +7,7 @@
  * with callers that chain .then() (workflow runtime, dispatch, etc.).
  */
 import Database from 'better-sqlite3'
-import { join } from 'path'
-import { homedir } from 'os'
+import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { cancelInstance } from '../../workflows/lib/runtime'
 import { generateTaskId } from './ids'
 import type { Task, TaskColumns, TaskBoard, ColumnId, TaskLogEntry } from '../types'
@@ -23,7 +22,7 @@ const BAKIN_OWNER_PREFIX = 'bakin:task:'
 // ---------------------------------------------------------------------------
 
 function openDb(): Database.Database {
-  const dbPath = join(homedir(), '.openclaw', 'flows', 'registry.sqlite')
+  const dbPath = getOpenClawPath('flows', 'registry.sqlite')
   const db = new Database(dbPath)
   db.pragma('journal_mode = WAL')
   db.pragma('busy_timeout = 5000')

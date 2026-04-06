@@ -4,8 +4,8 @@
  * No credential is ever serialized to an API response.
  */
 import fs from 'fs'
-import path from 'path'
 import { createLogger } from './logger'
+import { getOpenClawPath } from './openclaw-home'
 
 const log = createLogger('vault')
 
@@ -35,11 +35,7 @@ export function initialize(): void {
 }
 
 function loadFromOpenClawConfig(): void {
-  const configPath = path.join(
-    process.env.HOME || '~',
-    '.openclaw',
-    'openclaw.json'
-  )
+  const configPath = getOpenClawPath('openclaw.json')
 
   try {
     if (!fs.existsSync(configPath)) return
@@ -78,14 +74,7 @@ function loadFromOpenClawConfig(): void {
 }
 
 function loadFromAuthProfiles(): void {
-  const profilePath = path.join(
-    process.env.HOME || '~',
-    '.openclaw',
-    'agents',
-    'main',
-    'agent',
-    'auth-profiles.json'
-  )
+  const profilePath = getOpenClawPath('agents', 'main', 'agent', 'auth-profiles.json')
 
   try {
     if (!fs.existsSync(profilePath)) return

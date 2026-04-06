@@ -16,6 +16,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      '@bakin/core/openclaw-home': path.resolve(__dirname, 'packages/core/src/openclaw-home.ts'),
       '@bakin/core': path.resolve(__dirname, 'packages/core/src/index.ts'),
       '@bakin/tasks': path.resolve(__dirname, 'plugins/tasks'),
       '@bakin/memory': path.resolve(__dirname, 'plugins/memory'),

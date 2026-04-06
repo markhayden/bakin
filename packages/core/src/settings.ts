@@ -4,9 +4,9 @@
  */
 import fs from 'fs'
 import path from 'path'
-import os from 'os'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
+import { getOpenClawPath } from './openclaw-home'
 
 const log = createLogger('settings')
 
@@ -131,7 +131,7 @@ const _g = globalThis as typeof globalThis & {
 function getCachedSettings(): BakinSettings | null { return _g.__bakinSettingsCache ?? null }
 function setCachedSettings(v: BakinSettings | null) { _g.__bakinSettingsCache = v }
 
-const OPENCLAW_JSON_PATH = path.join(os.homedir(), '.openclaw', 'openclaw.json')
+const OPENCLAW_JSON_PATH = getOpenClawPath('openclaw.json')
 
 /**
  * Read agent IDs from ~/.openclaw/openclaw.json with mtime-based caching.

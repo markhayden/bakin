@@ -5,12 +5,11 @@
  * It's resolved at runtime from settings or OpenClaw config.
  */
 import { readFileSync } from 'fs'
-import { join } from 'path'
-import { homedir } from 'os'
 
 import { getSettings } from './settings'
+import { getOpenClawPath } from './openclaw-home'
 
-const OPENCLAW_JSON = join(homedir(), '.openclaw', 'openclaw.json')
+const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
 
 /**
  * Resolve the main/orchestrator agent ID.

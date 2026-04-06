@@ -2,7 +2,7 @@
 
 ## Overview
 
-Bakin uses a hybrid storage model. Most state is stored as markdown files, JSON files, and JSONL logs in a content directory (`~/.bakin/`). Tasks are stored in OpenClaw's `flow_runs` SQLite table (`~/.openclaw/flows/registry.sqlite`) — this is the one exception to filesystem-based storage, adopted to share task state with OpenClaw and enable efficient archival.
+Bakin uses a hybrid storage model. Most state is stored as markdown files, JSON files, and JSONL logs in a content directory (`~/.bakin/`). Tasks are stored in OpenClaw's `flow_runs` SQLite table (`{OPENCLAW_HOME}/flows/registry.sqlite`) — this is the one exception to filesystem-based storage, adopted to share task state with OpenClaw and enable efficient archival. All OpenClaw paths are resolved via `getOpenClawPath()` from `packages/core/src/openclaw-home.ts`, respecting the `OPENCLAW_HOME` env var (defaults to `~/.openclaw/`).
 
 ## Content Directory
 
@@ -63,7 +63,7 @@ interface StorageAdapter {
 ```
 
 Provided to plugins via `PluginContext.storage`. Each plugin reads/writes to namespaced paths by convention (not enforced):
-- Tasks plugin: SQLite (`~/.openclaw/flows/registry.sqlite`, via `flow-store.ts`)
+- Tasks plugin: SQLite (`{OPENCLAW_HOME}/flows/registry.sqlite`, via `flow-store.ts`)
 - Projects plugin: `projects/*.md`
 - Assets plugin: `assets/{type}/{taskId}/`
 - Schedule plugin: `schedule/`

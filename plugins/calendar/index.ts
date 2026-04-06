@@ -284,7 +284,6 @@ const calendarPlugin: BakinPlugin = {
         try {
           const { readFileSync, existsSync } = await import('fs')
           const { join } = await import('path')
-          const { homedir } = await import('os')
 
           const CONTENT_DIR = getContentDir()
           const personaPath = join(CONTENT_DIR, 'team', 'personas', `${body.agentId}.md`)
@@ -327,7 +326,8 @@ Format: conversational response in your voice, then a JSON block:
 
 ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says: ${body.message}`
 
-          const configPath = join(homedir(), '.openclaw', 'openclaw.json')
+          const { getOpenClawPath } = await import('@bakin/core/openclaw-home')
+          const configPath = getOpenClawPath('openclaw.json')
           let gwToken = ''
           if (existsSync(configPath)) {
             try {
