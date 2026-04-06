@@ -12,6 +12,7 @@
     "./content-dir": "./src/content-dir.ts",
     "./main-agent": "./src/main-agent.ts",
     "./vault": "./src/vault.ts",
+    "./openclaw-home": "./src/openclaw-home.ts",
     "./plugin-types": "./src/plugin-types.ts",
     "./constants": "./src/constants.ts",
     "./storage": "./src/storage/markdown-adapter.ts",

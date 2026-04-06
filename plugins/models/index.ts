@@ -4,17 +4,16 @@
  */
 // Node builtins
 import { readFileSync, writeFileSync } from 'fs'
-import { join } from 'path'
-import { homedir } from 'os'
 import { execFile } from 'child_process'
 // External
 import { z } from 'zod'
 // Internal
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 // Relative
+import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
 
-const OPENCLAW_JSON = join(homedir(), '.openclaw', 'openclaw.json')
+const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
 const OPENCLAW_BIN = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
 
 // ---------------------------------------------------------------------------

@@ -13,7 +13,10 @@
     "test": "vitest run",
     "test:components": "vitest run tests/components",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "dev:mock": "npx tsx dev/imitation-crab/index.ts --with-bakin",
+    "mock:start": "npx tsx dev/imitation-crab/index.ts",
+    "mock:seed": "npx tsx dev/imitation-crab/seed.ts"
   },
   "dependencies": {
     "@antfly/sdk": "^0.0.14",
@@ -21,6 +24,7 @@
     "@base-ui/react": "^1.3.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.2",
     "@modelcontextprotocol/sdk": "^1.27.0",
     "@types/js-yaml": "^4.0.9",

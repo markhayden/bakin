@@ -7,7 +7,7 @@ The Tasks plugin provides a kanban-style task management system backed by OpenCl
 **Plugin ID:** `tasks`
 **Dependencies:** none (other plugins depend on it)
 **Permissions:** `storage.read`, `storage.write`, `events.emit`
-**Storage:** SQLite — `~/.openclaw/flows/registry.sqlite` (shared with OpenClaw)
+**Storage:** SQLite — `{OPENCLAW_HOME}/flows/registry.sqlite` (shared with OpenClaw, resolved via `getOpenClawPath()`)
 
 ## Data Model
 

@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 
 import { join, dirname } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
+import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { appendAudit } from './audit'
 import { isUsingBakinHome, getContentDir } from './content-dir'
 import * as openclaw from './openclaw-client'
@@ -63,7 +64,7 @@ function fixed(check: string, message: string): DiagnosticResult {
 function checkAgentRoster(contentDir: string): DiagnosticResult[] {
   const results: DiagnosticResult[] = []
   const settings = getSettings()
-  const openclawConfigPath = join(process.env.HOME || '~', '.openclaw', 'openclaw.json')
+  const openclawConfigPath = getOpenClawPath('openclaw.json')
 
   if (!existsSync(openclawConfigPath)) {
     results.push(warn('agent-roster', 'openclaw.json not found — cannot verify agent roster'))
@@ -170,9 +171,7 @@ async function checkGateway(): Promise<DiagnosticResult[]> {
 function checkTaskboard(_contentDir: string, _autoFix: boolean): DiagnosticResult[] {
   try {
     const Database = require('better-sqlite3')
-    const { join } = require('path')
-    const { homedir } = require('os')
-    const dbPath = join(homedir(), '.openclaw', 'flows', 'registry.sqlite')
+    const dbPath = getOpenClawPath('flows', 'registry.sqlite')
     if (!existsSync(dbPath)) {
       return [warn('taskboard', 'OpenClaw flow_runs database not found at ' + dbPath)]
     }
@@ -195,7 +194,7 @@ function checkAndSyncSkill(projectRoot: string, autoFix: boolean): DiagnosticRes
     return [error('skill', 'Bakin skill source not found at skill/SKILL.md')]
   }
 
-  const workspaceSkillDir = join(process.env.HOME || '~', '.openclaw', 'workspace', 'skills', 'bakin')
+  const workspaceSkillDir = getOpenClawPath('workspace', 'skills', 'bakin')
   const targetSkill = join(workspaceSkillDir, 'SKILL.md')
   const sourceContent = readFileSync(sourceSkill, 'utf-8')
 
@@ -376,7 +375,7 @@ async function resolveOrchestratorRules(): Promise<string> {
 }
 
 async function checkOrchestratorRules(autoFix: boolean): Promise<DiagnosticResult[]> {
-  const agentsPath = join(process.env.HOME || '~', '.openclaw', 'workspace', 'AGENTS.md')
+  const agentsPath = getOpenClawPath('workspace', 'AGENTS.md')
 
   if (!existsSync(agentsPath)) {
     return [warn('orchestrator-rules', 'AGENTS.md not found — cannot verify orchestrator rules')]
@@ -650,7 +649,7 @@ interface ManagedBlockDef {
 function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): DiagnosticResult[] {
   const settings = getSettings()
   const results: DiagnosticResult[] = []
-  const openclawBase = join(process.env.HOME || '~', '.openclaw')
+  const openclawBase = getOpenClawPath()
   const startMarker = `<!-- bakin:${def.blockId}:start -->`
   const endMarker = `<!-- bakin:${def.blockId}:end -->`
   const checkName = `agent-${def.blockId}`
@@ -1271,15 +1270,15 @@ function checkScheduleSync(autoFix: boolean): DiagnosticResult[] {
   // Resolve OpenClaw jobs path — configurable, absent on fresh installs
   let jobsPath: string
   try {
-    const configPath = join(process.env.HOME || '~', '.openclaw', 'config.json')
+    const configPath = getOpenClawPath('config.json')
     if (existsSync(configPath)) {
       const config = JSON.parse(readFileSync(configPath, 'utf-8'))
-      jobsPath = config?.cron?.store ?? join(process.env.HOME || '~', '.openclaw', 'cron', 'jobs.json')
+      jobsPath = config?.cron?.store ?? getOpenClawPath('cron', 'jobs.json')
     } else {
-      jobsPath = join(process.env.HOME || '~', '.openclaw', 'cron', 'jobs.json')
+      jobsPath = getOpenClawPath('cron', 'jobs.json')
     }
   } catch {
-    jobsPath = join(process.env.HOME || '~', '.openclaw', 'cron', 'jobs.json')
+    jobsPath = getOpenClawPath('cron', 'jobs.json')
   }
 
   if (!existsSync(jobsPath)) {

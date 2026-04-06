@@ -2,20 +2,15 @@
  * Reads OpenClaw cron jobs and merges with Bakin sidecar metadata.
  */
 import { readFileSync, existsSync } from 'fs'
-import { join } from 'path'
 import { createLogger } from '../../../src/core/logger'
+import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { readSidecar, withDefaults } from './sidecar'
 import { cronToHuman } from './cron-parser'
 import type { OpenClawJob, OpenClawJobsFile, MergedJob, BakinJobMeta } from '../types'
 
 const log = createLogger('schedule:jobs')
 
-const OPENCLAW_JOBS_PATH = join(
-  process.env.HOME || '~',
-  '.openclaw',
-  'cron',
-  'jobs.json'
-)
+const OPENCLAW_JOBS_PATH = getOpenClawPath('cron', 'jobs.json')
 
 /** Read raw OpenClaw jobs from disk. */
 export function readOpenClawJobs(jobsPath?: string): OpenClawJob[] {
