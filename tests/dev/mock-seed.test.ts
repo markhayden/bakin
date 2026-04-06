@@ -17,7 +17,7 @@ describe('mock seed', () => {
     // The seed module uses a hardcoded path (~/.imitationcrab).
     // For testing, we import the seed function and check that the fixture files exist.
     // We'll verify the fixtures directory contains the expected files.
-    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'openclaw-mock', 'fixtures')
+    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
 
     expect(existsSync(join(fixturesDir, 'openclaw.json'))).toBe(true)
     expect(existsSync(join(fixturesDir, 'auth-profiles.json'))).toBe(true)
@@ -30,7 +30,7 @@ describe('mock seed', () => {
   })
 
   it('fixture openclaw.json has valid agent roster', () => {
-    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'openclaw-mock', 'fixtures')
+    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
     const config = JSON.parse(readFileSync(join(fixturesDir, 'openclaw.json'), 'utf-8'))
 
     expect(config.agents.list).toHaveLength(8)
@@ -53,7 +53,7 @@ describe('mock seed', () => {
   })
 
   it('fixture openclaw.json has gateway and channel config', () => {
-    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'openclaw-mock', 'fixtures')
+    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
     const config = JSON.parse(readFileSync(join(fixturesDir, 'openclaw.json'), 'utf-8'))
 
     expect(config.gateway.auth.token).toBeTruthy()
@@ -62,7 +62,7 @@ describe('mock seed', () => {
   })
 
   it('fixture jobs.json has valid cron jobs', () => {
-    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'openclaw-mock', 'fixtures')
+    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
     const data = JSON.parse(readFileSync(join(fixturesDir, 'jobs.json'), 'utf-8'))
 
     expect(data.version).toBe(1)
@@ -75,7 +75,7 @@ describe('mock seed', () => {
   })
 
   it('fixture seed.sql creates flow_runs with seed tasks', () => {
-    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'openclaw-mock', 'fixtures')
+    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
     const sql = readFileSync(join(fixturesDir, 'seed.sql'), 'utf-8')
 
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS flow_runs')
@@ -89,7 +89,7 @@ describe('mock seed', () => {
   })
 
   it('has workspace files for all subagents', () => {
-    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'openclaw-mock', 'fixtures')
+    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
     const subagents = ['pixel', 'rolo', 'basil', 'scout', 'nemo', 'zen', 'patch']
 
     for (const agent of subagents) {

@@ -91,7 +91,7 @@ function seedGatewayLog(): void {
   }
 }
 
-// Run directly: npx tsx dev/openclaw-mock/seed.ts [--force]
+// Run directly: npx tsx dev/imitation-crab/seed.ts [--force]
 if (import.meta.url === `file://${process.argv[1]}`) {
   const force = process.argv.includes('--force')
   seed(force)
