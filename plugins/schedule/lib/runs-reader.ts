@@ -5,16 +5,12 @@
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '../../../src/core/logger'
+import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import type { RunEntry } from '../types'
 
 const log = createLogger('schedule:runs')
 
-const OPENCLAW_RUNS_DIR = join(
-  process.env.HOME || '~',
-  '.openclaw',
-  'cron',
-  'runs'
-)
+const OPENCLAW_RUNS_DIR = getOpenClawPath('cron', 'runs')
 
 /** Read run history for a specific job. Returns newest-first. */
 export function readRuns(jobId: string, limit = 50, runsDir?: string): RunEntry[] {

@@ -1,0 +1,66 @@
+{
+  "agents": {
+    "defaults": {
+      "model": { "primary": "anthropic/claude-sonnet-4-20250514" },
+      "workspace": "~/.openclaw/workspace"
+    },
+    "list": [
+      {
+        "id": "main",
+        "identity": { "name": "Roscoe", "emoji": "🐕" },
+        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
+      },
+      {
+        "id": "pixel",
+        "identity": { "name": "Pixel", "emoji": "🎨" },
+        "model": { "primary": "anthropic/claude-sonnet-4-20250514" },
+        "subagents": { "allowAgents": ["scout"], "model": "anthropic/claude-haiku-4-5-20251001" }
+      },
+      {
+        "id": "rolo",
+        "identity": { "name": "Rolo", "emoji": "📊" },
+        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
+      },
+      {
+        "id": "basil",
+        "identity": { "name": "Basil", "emoji": "🌿" },
+        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
+      },
+      {
+        "id": "scout",
+        "identity": { "name": "Scout", "emoji": "🔍" },
+        "model": { "primary": "anthropic/claude-haiku-4-5-20251001" }
+      },
+      {
+        "id": "nemo",
+        "identity": { "name": "Nemo", "emoji": "🐟" },
+        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
+      },
+      {
+        "id": "zen",
+        "identity": { "name": "Zen", "emoji": "🧘" },
+        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
+      },
+      {
+        "id": "patch",
+        "identity": { "name": "Patch", "emoji": "🩹" },
+        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
+      }
+    ]
+  },
+  "gateway": {
+    "auth": { "token": "mock-gateway-token-imitationcrab" }
+  },
+  "channels": {
+    "discord": {
+      "token": "mock-discord-token",
+      "guilds": { "000000000000": { "name": "mock-server" } }
+    }
+  },
+  "skills": {
+    "entries": {
+      "web-search": { "apiKey": "mock-websearch-key" },
+      "nano-banana-pro": { "apiKey": "mock-gemini-key", "env": { "GEMINI_API_KEY": "mock-gemini-key" } }
+    }
+  }
+}

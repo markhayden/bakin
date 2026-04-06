@@ -4,15 +4,14 @@
  * This is core (not plugin) because model selection affects all agents.
  */
 import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { join } from 'path'
-import { homedir } from 'os'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import * as vault from './vault'
+import { getOpenClawPath } from '@bakin/core/openclaw-home'
 
 const log = createLogger('models')
 
-const OPENCLAW_JSON = join(homedir(), '.openclaw', 'openclaw.json')
+const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
 
 // ---------------------------------------------------------------------------
 // OpenClaw config types

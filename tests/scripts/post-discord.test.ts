@@ -63,7 +63,9 @@ describe('postDiscord', () => {
     delete process.env.DISCORD_GUILD_ID
     // Prevent fallback to openclaw.json on this machine
     const origHome = process.env.HOME
+    const origOpenClawHome = process.env.OPENCLAW_HOME
     process.env.HOME = '/tmp/nonexistent-home'
+    process.env.OPENCLAW_HOME = '/tmp/nonexistent-openclaw'
     try {
       const result = await postDiscord({
         channel: 'general',
@@ -74,6 +76,8 @@ describe('postDiscord', () => {
       expect(result.error).toContain('Discord not configured')
     } finally {
       process.env.HOME = origHome
+      if (origOpenClawHome !== undefined) process.env.OPENCLAW_HOME = origOpenClawHome
+      else delete process.env.OPENCLAW_HOME
     }
   })
 

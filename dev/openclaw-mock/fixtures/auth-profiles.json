@@ -1,0 +1,7 @@
+[
+  {
+    "provider": "anthropic",
+    "apiKey": "mock-anthropic-key-imitationcrab",
+    "label": "Mock Anthropic (dev)"
+  }
+]
