@@ -10,7 +10,7 @@ describe('mock gateway request handling', () => {
 
   beforeAll(async () => {
     // Dynamically import and start on a random port for testing
-    const { startGateway: _start, ...rest } = await import('../../dev/openclaw-mock/gateway')
+    const { startGateway: _start, ...rest } = await import('../../dev/imitation-crab/gateway')
 
     // Instead of using startGateway (which binds to 18789), we'll test via fetch
     // against a server on a random port. We'll re-implement the handler inline.

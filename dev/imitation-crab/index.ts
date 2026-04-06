@@ -2,8 +2,8 @@
  * Imitation Crab — OpenClaw mock orchestrator for Bakin development.
  *
  * Usage:
- *   npx tsx dev/openclaw-mock/index.ts              # Start mock only
- *   npx tsx dev/openclaw-mock/index.ts --with-bakin  # Start mock + Bakin dev server
+ *   npx tsx dev/imitation-crab/index.ts              # Start mock only
+ *   npx tsx dev/imitation-crab/index.ts --with-bakin  # Start mock + Bakin dev server
  *
  * Sets OPENCLAW_HOME=~/.imitationcrab and OPENCLAW_PATH to the CLI shim,
  * then starts the mock HTTP gateway on :18789.
