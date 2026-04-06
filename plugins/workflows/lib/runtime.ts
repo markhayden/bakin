@@ -1035,7 +1035,7 @@ export function getActiveAgents(
       // a blocked child (e.g., API spending cap, external service down).
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { readTaskboard } = require('../../tasks/lib/taskboard') as { readTaskboard: () => { columns: { blocked: Array<{ id: string }> } } }
+        const { readTaskboard } = require('../../tasks/lib/flow-store') as { readTaskboard: () => { columns: { blocked: Array<{ id: string }> } } }
         const { columns } = readTaskboard()
         if (columns.blocked.some(t => t.id === stepState.childTaskId)) return []
       } catch {
