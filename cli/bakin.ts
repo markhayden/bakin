@@ -5,6 +5,7 @@
  */
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
@@ -18,7 +19,7 @@ const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 // first, falls back to the AGENT_META mapping ('main' → 'main-operator').
 function getCliAgent(): string {
   try {
-    const configPath = join(process.env.HOME || '~', '.openclaw', 'openclaw.json')
+    const configPath = getOpenClawPath('openclaw.json')
     const config = JSON.parse(readFileSync(configPath, 'utf-8'))
     const mainAgent = (config.agents?.list as Array<{ id: string; identity?: { name?: string } }>)
       ?.find(a => a.id === 'main')
@@ -409,7 +410,7 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
   const { readFileSync, writeFileSync, existsSync } = await import('fs')
   const { join } = await import('path')
 
-  const agentsPath = join(process.env.HOME || '~', '.openclaw', 'workspace', 'AGENTS.md')
+  const agentsPath = getOpenClawPath('workspace', 'AGENTS.md')
 
   if (!existsSync(agentsPath)) {
     console.error(`[FAIL] AGENTS.md not found at ${agentsPath}`)

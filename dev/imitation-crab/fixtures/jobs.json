@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "daily-brief",
+      "name": "Daily Brief",
+      "schedule": { "kind": "cron", "expr": "0 9 * * *", "tz": "America/Denver" },
+      "enabled": true,
+      "delivery": { "mode": "none" },
+      "payload": { "message": "bakin:schedule:daily-brief" },
+      "createdAt": "2026-03-15T12:00:00Z"
+    },
+    {
+      "id": "weekly-review",
+      "name": "Weekly Review",
+      "schedule": { "kind": "cron", "expr": "0 14 * * 5", "tz": "America/Denver" },
+      "enabled": true,
+      "delivery": { "mode": "none" },
+      "payload": { "message": "bakin:schedule:weekly-review" },
+      "createdAt": "2026-03-15T12:00:00Z"
+    },
+    {
+      "id": "content-pipeline",
+      "name": "Content Pipeline",
+      "schedule": { "kind": "every", "expr": "6h" },
+      "enabled": false,
+      "delivery": { "mode": "none" },
+      "payload": { "message": "bakin:schedule:content-pipeline" },
+      "createdAt": "2026-03-20T08:00:00Z"
+    }
+  ]
+}

@@ -13,7 +13,7 @@ Runs on a Mac mini, accessed via Tailscale. No database, no SaaS dependencies.
 - **Agents:** Managed via OpenClaw gateway, communicate through MCP tools
 - **Plugins:** 10 core plugins, extensible architecture for addons
 - **Search:** Antfly SDK for full-text indexing
-- **OpenClaw Adapter Principle:** Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw. Agent identity, soul, rules, tools, models, and workspace data all live in `~/.openclaw/`. Bakin owns only UI-specific data (display settings, avatars, heartbeats). Question any pattern that duplicates OpenClaw state into Bakin code or storage.
+- **OpenClaw Adapter Principle:** Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw. Agent identity, soul, rules, tools, models, and workspace data all live in the OpenClaw home directory (`OPENCLAW_HOME` env var, defaults to `~/.openclaw/`). Bakin owns only UI-specific data (display settings, avatars, heartbeats). Question any pattern that duplicates OpenClaw state into Bakin code or storage. All OpenClaw paths MUST use `getOpenClawPath()` from `packages/core/src/openclaw-home.ts` — never hardcode `~/.openclaw/`.
 
 ## Directory Map
 
@@ -78,6 +78,13 @@ plugins/                   — Core plugins (each has bakin-plugin.json manifest
   health/                  — System health dashboard
 scripts/lib/               — MCP exec tools (self-registering via registry.ts)
 cli/                       — CLI tool (wraps HTTP API)
+dev/imitation-crab/         — Imitation Crab: OpenClaw mock for dev without real OpenClaw
+  index.ts                 — Orchestrator (safety check → seed → gateway → optional Bakin)
+  safety.ts                — Blocks if real OpenClaw detected
+  seed.ts                  — Creates ~/.imitationcrab/ with fixture data
+  gateway.ts               — Mock HTTP gateway on :18789
+  cli-shim.ts              — Mock CLI (openclaw cron/message/gateway commands)
+  fixtures/                — Agent config, workspace files, cron jobs, SQLite seed
 ```
 
 ### Runtime Data Directory (`~/.bakin/`)
@@ -179,6 +186,9 @@ Real-time updates via `broadcast()` from `src/core/sse.ts`. Uses `globalThis.__b
 
 ### Agent Activity
 Agents report progress via `bakin_log_progress` MCP tool → `logProgress()` in task-service → SSE broadcast. Structured audit via `appendAudit()` → `audit.jsonl` + SSE + Antfly.
+
+### OpenClaw Home Directory
+All OpenClaw paths resolved through `getOpenClawHome()` / `getOpenClawPath()` in `packages/core/src/openclaw-home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/` fallback. For development without OpenClaw: `npm run dev:mock` starts the Imitation Crab mock (`dev/imitation-crab/`), which seeds `~/.imitationcrab/` and sets `OPENCLAW_HOME` automatically.
 
 ### Content Directory
 All paths resolved through `getContentDir()` in `src/core/content-dir.ts`. Resolution: `BAKIN_HOME` env → `~/.bakin/` → `./content/` fallback. Well-known paths via `getBakinPaths()`.

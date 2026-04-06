@@ -14,7 +14,7 @@ import { z } from 'zod'
 import { join, basename } from 'path'
 import { execFileSync } from 'child_process'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
-import { homedir } from 'os'
+import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { getBakinPaths } from '../../src/core/content-dir'
 import {
   succeed,
@@ -49,7 +49,7 @@ function getApiKey(): string | null {
 
   // Check openclaw config
   try {
-    const configPath = join(homedir(), '.openclaw', 'openclaw.json')
+    const configPath = getOpenClawPath('openclaw.json')
     const config = JSON.parse(readFileSync(configPath, 'utf-8'))
     const skill = config?.skills?.entries?.['nano-banana-pro']
     return skill?.apiKey || skill?.env?.GEMINI_API_KEY || null

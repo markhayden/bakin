@@ -8,11 +8,13 @@ Bakin orchestrates a team of AI agents via the OpenClaw gateway. Each agent has 
 
 ### Source of truth: OpenClaw via Team Plugin
 
-Agent data lives in `~/.openclaw/` and is accessed through the team plugin adapter (`plugins/team/lib/openclaw-adapter.ts`). **Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw.**
+Agent data lives in the OpenClaw home directory and is accessed through the team plugin adapter (`plugins/team/lib/openclaw-adapter.ts`). **Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw.**
 
-- `~/.openclaw/openclaw.json` — agent roster (IDs, names, models, identity, subagent perms)
-- `~/.openclaw/workspace/` — main agent (main-operator) workspace files
-- `~/.openclaw/workspaces/{id}/` — subagent workspace files (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md, etc.)
+All OpenClaw paths are resolved via `getOpenClawHome()` / `getOpenClawPath()` from `packages/core/src/openclaw-home.ts`. This respects the `OPENCLAW_HOME` env var (defaults to `~/.openclaw/`), enabling dev/test environments via the Imitation Crab mock (`dev/imitation-crab/`).
+
+- `{OPENCLAW_HOME}/openclaw.json` — agent roster (IDs, names, models, identity, subagent perms)
+- `{OPENCLAW_HOME}/workspace/` — main agent (main-operator) workspace files
+- `{OPENCLAW_HOME}/workspaces/{id}/` — subagent workspace files (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md, etc.)
 
 ```typescript
 // Lightweight (dropdowns, badges) — from plugins/team/types.ts
@@ -42,7 +44,7 @@ Agent models are changed via the models plugin API, not direct OpenClaw writes:
 - **Agent detail page** (`/team/:id`): `ModelSelect` dropdown in the header saves via `POST /api/plugins/models/config` with `{ agentId, ownModel }`
 - **Agent creation** (`agent-form.tsx`): fetches dynamic model list from `GET /api/plugins/models/available`, which is derived from `openclaw models list --all --json` filtered to `available === true`
 - **Models page** (`/models`): manages `agents.defaults.model.primary`, `agents.defaults.model.fallbacks`, per-agent `model.primary`, and default/per-agent subagent model settings
-- The models plugin writes to `~/.openclaw/openclaw.json` and fires the `models.configChanged` hook when agent effective model changes
+- The models plugin writes to `{OPENCLAW_HOME}/openclaw.json` and fires the `models.configChanged` hook when agent effective model changes
 
 ### ID mapping
 `main-operator` <-> `main` is the only mapping. Centralized in `toOpenClawId()`/`toBakinId()` in the adapter. All other agents use identity mapping.

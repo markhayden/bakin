@@ -11,16 +11,16 @@
  */
 import { readFileSync, readdirSync, writeFileSync, existsSync, statSync, mkdirSync, renameSync } from 'fs'
 import { join } from 'path'
-import { homedir } from 'os'
 import { createLogger } from '../../../src/core/logger'
+import { getOpenClawHome, getOpenClawPath } from '@bakin/core/openclaw-home'
 import type { AgentMeta, AgentProfile, SkillSummary } from '../types'
 
 const log = createLogger('team:openclaw')
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
-const OPENCLAW_ROOT = join(homedir(), '.openclaw')
-const OPENCLAW_JSON = join(OPENCLAW_ROOT, 'openclaw.json')
+const OPENCLAW_ROOT = getOpenClawHome()
+const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
 
 // ─── ID Mapping ──────────────────────────────────────────────────────────────
 

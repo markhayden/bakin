@@ -1,0 +1,4 @@
+{"runId":"run-001","jobId":"daily-brief","timestamp":"2026-04-04T15:00:02Z","status":"success","duration":45200,"taskId":"task-db-001"}
+{"runId":"run-002","jobId":"daily-brief","timestamp":"2026-04-03T15:00:01Z","status":"success","duration":38100,"taskId":"task-db-002"}
+{"runId":"run-003","jobId":"daily-brief","timestamp":"2026-04-02T15:00:03Z","status":"failure","duration":5020,"error":"Gateway timeout"}
+{"runId":"run-004","jobId":"daily-brief","timestamp":"2026-04-01T15:00:01Z","status":"success","duration":41300,"taskId":"task-db-004"}

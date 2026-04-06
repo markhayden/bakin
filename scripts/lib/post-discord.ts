@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
+import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
@@ -28,7 +29,7 @@ function loadDiscordConfig(): DiscordConfig | null {
 
   // 2. Read from openclaw.json
   try {
-    const configPath = join(process.env.HOME || '~', '.openclaw', 'openclaw.json')
+    const configPath = getOpenClawPath('openclaw.json')
     const config = JSON.parse(readFileSync(configPath, 'utf-8'))
     const discord = config.channels?.discord
     if (!discord?.token) return null

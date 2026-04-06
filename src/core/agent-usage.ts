@@ -4,12 +4,12 @@
  */
 import { readdirSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
-import { homedir } from 'os'
 import { createLogger } from './logger'
+import { getOpenClawPath } from '@bakin/core/openclaw-home'
 
 const log = createLogger('agent-usage')
 
-const OPENCLAW_AGENTS_DIR = join(homedir(), '.openclaw', 'agents')
+const OPENCLAW_AGENTS_DIR = getOpenClawPath('agents')
 
 export interface AgentUsage {
   agent: string
