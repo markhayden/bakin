@@ -120,7 +120,7 @@ interface TaskCardProps {
 
 export function TaskCard({ task, columnId, gateLabel, childTaskId, onAssign, onDelete, onClick }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: `${columnId}::${task.id}`,
+    id: task.id,
     data: { task, columnId },
   })
 
@@ -134,8 +134,10 @@ export function TaskCard({ task, columnId, gateLabel, childTaskId, onAssign, onD
       <div
         ref={setNodeRef}
         style={style}
-        className="w-full min-h-[80px] rounded-xl border-2 border-dashed border-blue-500/50 bg-blue-500/5 animate-pulse"
-      />
+        className="rounded-xl border-2 border-dashed border-blue-500/30 bg-card/50 opacity-40"
+      >
+        <TaskCardContent task={task} columnId={columnId} className="p-4" />
+      </div>
     )
   }
 
