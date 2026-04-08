@@ -19,10 +19,9 @@ interface KanbanColumnProps {
 }
 
 export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign, onDelete, onTaskClick, onAddTask, footer }: KanbanColumnProps) {
-  const { setNodeRef, isOver, active } = useDroppable({ id })
+  const { setNodeRef } = useDroppable({ id })
   const config = COLUMN_CONFIG[id]
   const dotColor = STATUS_DOT_COLORS[id]
-  const showEmptyPlaceholder = isOver && !!active && tasks.length === 0
 
   return (
     <div className="flex flex-col">
@@ -49,7 +48,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign,
         </div>
 
         <SortableContext
-          items={tasks.map((t) => `${id}::${t.id}`)}
+          items={tasks.map((t) => t.id)}
           strategy={verticalListSortingStrategy}
         >
           <div className="flex flex-col gap-1.5 flex-1">
@@ -65,9 +64,6 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign,
                 onClick={onTaskClick}
               />
             ))}
-            {showEmptyPlaceholder && (
-              <div className="w-full min-h-[80px] rounded-xl border-2 border-dashed border-blue-500/50 bg-blue-500/5 animate-pulse" />
-            )}
           </div>
         </SortableContext>
       </div>

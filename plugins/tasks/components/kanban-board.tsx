@@ -4,12 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragEndEvent,
+  DragOverEvent,
   DragStartEvent,
   DragOverlay,
   PointerSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
+  closestCenter,
+  pointerWithin,
+  type CollisionDetection,
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
 import { KanbanColumn } from './kanban-column'
@@ -32,10 +36,10 @@ import type { Task, TaskColumns, ColumnId } from '../types'
 
 const COLUMN_ORDER: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
 
-function parseCompositeId(id: string): { columnId: ColumnId; taskId: string } | null {
-  const parts = String(id).split('::')
-  if (parts.length !== 2) return null
-  return { columnId: parts[0] as ColumnId, taskId: parts[1] }
+const multiContainerCollision: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args)
+  if (pointerCollisions.length > 0) return pointerCollisions
+  return closestCenter(args)
 }
 
 async function apiFetch(url: string, body: Record<string, unknown>, method = 'POST'): Promise<boolean> {
@@ -147,6 +151,7 @@ export function KanbanBoard() {
   // Drag overlay state
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [activeColumnId, setActiveColumnId] = useState<ColumnId | null>(null)
+  const dragStartColumnsRef = useRef<TaskColumns | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -157,53 +162,129 @@ export function KanbanBoard() {
     const data = event.active.data.current as { columnId: string; task: Task }
     setActiveTask(data.task)
     setActiveColumnId(data.columnId as ColumnId)
+    dragStartColumnsRef.current = optimistic?.columns ?? parsed.columns
+  }, [optimistic, parsed.columns])
+
+  // Move items between columns in state so dnd-kit can show displacement in the target column.
+  // Works because sortable IDs are plain task.id (not composite), so dnd-kit tracks the
+  // active item across containers.
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const { active, over } = event
+    if (!over) return
+
+    const activeData = active.data.current as { columnId: string; task: Task } | undefined
+    if (!activeData?.task) return
+    const task = activeData.task
+
+    const overId = String(over.id)
+
+    // Determine target column
+    let targetCol: ColumnId
+    if (COLUMN_ORDER.includes(overId as ColumnId)) {
+      targetCol = overId as ColumnId
+    } else {
+      // over.id is a task ID — get its column from the sortable data
+      const overData = over.data.current as { columnId: string } | undefined
+      if (overData?.columnId) {
+        targetCol = overData.columnId as ColumnId
+      } else {
+        return
+      }
+    }
+
+    setOptimistic(prev => {
+      const currentColumns = prev?.columns ?? parsed.columns
+
+      // Find which column currently holds the active task
+      let currentCol: ColumnId | null = null
+      for (const colId of COLUMN_ORDER) {
+        if (currentColumns[colId].some(t => t.id === task.id)) {
+          currentCol = colId
+          break
+        }
+      }
+
+      if (!currentCol || currentCol === targetCol) return prev
+
+      const fromTasks = currentColumns[currentCol].filter(t => t.id !== task.id)
+      const toTasks = [...currentColumns[targetCol]]
+
+      // Insert at over position or append
+      if (!COLUMN_ORDER.includes(overId as ColumnId)) {
+        const idx = toTasks.findIndex(t => t.id === overId)
+        if (idx !== -1) {
+          toTasks.splice(idx, 0, task)
+        } else {
+          toTasks.push(task)
+        }
+      } else {
+        toTasks.push(task)
+      }
+
+      return { columns: { ...currentColumns, [currentCol]: fromTasks, [targetCol]: toTasks } }
+    })
+  }, [parsed.columns])
+
+  const handleDragCancel = useCallback(() => {
+    setActiveTask(null)
+    setActiveColumnId(null)
+    if (dragStartColumnsRef.current) {
+      setOptimistic({ columns: dragStartColumnsRef.current })
+    }
+    dragStartColumnsRef.current = null
+    setTimeout(() => setOptimistic(null), 0)
   }, [])
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event
 
-    // Clear overlay state
     setActiveTask(null)
     setActiveColumnId(null)
 
-    if (!over) return
+    const originalColumns = dragStartColumnsRef.current
+    dragStartColumnsRef.current = null
 
-    const activeData = active.data.current as { columnId: string; task: Task }
+    if (!over || !originalColumns) {
+      setOptimistic(null)
+      return
+    }
+
+    const activeData = active.data.current as { columnId: string; task: Task } | undefined
+    if (!activeData?.task) {
+      setOptimistic(null)
+      return
+    }
     const task = activeData.task
     const fromCol = activeData.columnId as ColumnId
 
-    // Determine target column and position
-    const overId = String(over.id)
-    let targetCol: ColumnId
-    let overTaskId: string | null = null
-
-    if (COLUMN_ORDER.includes(overId as ColumnId)) {
-      // Dropped on the column droppable itself
-      targetCol = overId as ColumnId
-    } else {
-      // Dropped on a task — parse composite ID
-      const parsed = parseCompositeId(overId)
-      if (parsed) {
-        targetCol = parsed.columnId
-        overTaskId = parsed.taskId
-      } else {
-        const overData = over.data.current as { columnId: string } | undefined
-        targetCol = (overData?.columnId || overId) as ColumnId
+    // Find which column currently holds the task (after onDragOver moves)
+    const currentColumns = optimistic?.columns ?? originalColumns
+    let targetCol: ColumnId = fromCol
+    for (const colId of COLUMN_ORDER) {
+      if (currentColumns[colId].some(t => t.id === task.id)) {
+        targetCol = colId
+        break
       }
     }
 
     if (fromCol === targetCol) {
-      // Within-column reorder
-      const colTasks = [...(optimistic?.columns ?? parsed.columns)[fromCol]]
+      // Same-column reorder — onDragOver skips same-column, compute new order here
+      const colTasks = [...currentColumns[fromCol]]
       const oldIndex = colTasks.findIndex(t => t.id === task.id)
-      const newIndex = overTaskId ? colTasks.findIndex(t => t.id === overTaskId) : colTasks.length - 1
+      const overId = String(over.id)
+      const newIndex = !COLUMN_ORDER.includes(overId as ColumnId)
+        ? colTasks.findIndex(t => t.id === overId)
+        : colTasks.length - 1
 
-      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
+        setOptimistic(null)
+        return
+      }
 
       const reordered = arrayMove(colTasks, oldIndex, newIndex)
 
       setOptimistic(prev => {
-        const base = prev?.columns ?? parsed.columns
+        const base = prev?.columns ?? currentColumns
         return { columns: { ...base, [fromCol]: reordered } }
       })
 
@@ -212,45 +293,28 @@ export function KanbanBoard() {
         orderedIds: reordered.map(t => t.id),
       })
 
-      if (!ok) {
-        toast(`Failed to reorder tasks`, 'error')
-      }
+      if (!ok) toast('Failed to reorder tasks', 'error')
       await refreshTaskboard()
       setOptimistic(null)
     } else {
-      // Cross-column move
-      const base = optimistic?.columns ?? parsed.columns
-      const fromTasks = base[fromCol].filter(t => t.id !== task.id)
-      const toTasks = [...base[targetCol]]
+      // Cross-column move — task already in target column via onDragOver
       const movedTask = { ...task, checked: targetCol === 'done' || targetCol === 'confirmed' }
-
-      // Insert at the correct position
-      if (overTaskId) {
-        const idx = toTasks.findIndex(t => t.id === overTaskId)
-        if (idx !== -1) {
-          toTasks.splice(idx, 0, movedTask)
-        } else {
-          toTasks.push(movedTask)
-        }
-      } else {
-        toTasks.push(movedTask)
-      }
-
+      const updatedTarget = currentColumns[targetCol].map(
+        t => t.id === task.id ? movedTask : t
+      )
       setOptimistic({
-        columns: { ...base, [fromCol]: fromTasks, [targetCol]: toTasks },
+        columns: { ...currentColumns, [targetCol]: updatedTarget },
       })
 
       const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/move', {
         id: task.id, title: task.title, from: fromCol, to: targetCol, agent: 'main-operator',
       })
 
-      if (!ok) {
-        toast(`Failed to move "${task.title}"`, 'error')
-      }
+      if (!ok) toast(`Failed to move "${task.title}"`, 'error')
       await refreshTaskboard()
       setOptimistic(null)
     }
-  }, [parsed.columns, optimistic])
+  }, [parsed.columns, optimistic, refreshTaskboard])
 
   const handleAssign = useCallback(async (task: Task, agent: string) => {
     const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/assign', { id: task.id, title: task.title, agent })
@@ -360,7 +424,14 @@ export function KanbanBoard() {
         {/* Content — kanban or table */}
         {view === 'kanban' ? (
           <div className="flex-1 overflow-auto min-h-0">
-          <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={multiContainerCollision}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
             <div className="inline-flex gap-4 items-start p-[25px] pt-0 md:pl-[25px] pl-4">
               {COLUMN_ORDER.map((colId) => (
                 <div key={colId} className="w-[75vw] sm:w-72 shrink-0">
