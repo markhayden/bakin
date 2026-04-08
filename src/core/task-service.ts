@@ -2,7 +2,7 @@
  * Task service layer for Bakin.
  *
  * Shared functions that both REST route handlers and MCP tool handlers call.
- * Each function wraps core taskboard mutations with their required side effects:
+ * Each function wraps core task mutations with their required side effects:
  * SSE broadcast, audit logging, continuation triggers, Antfly indexing, etc.
  *
  * This prevents logic duplication and drift between the REST and MCP paths.
@@ -56,7 +56,7 @@ export type Channel = 'mcp' | 'rest' | 'cli' | 'system'
 
 /**
  * Log a progress message for a task.
- * Broadcasts to SSE immediately, then persists to taskboard.
+ * Broadcasts to SSE immediately, then persists to task log.
  */
 export async function logProgress(
   taskId: string,

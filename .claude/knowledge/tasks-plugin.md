@@ -129,11 +129,11 @@ confirmed  → done, todo
 | File | Purpose |
 |------|---------|
 | `plugins/tasks/index.ts` | Plugin entry: registers 12 API routes + 11 exec tools + 9 hooks + archival |
-| `plugins/tasks/lib/flow-store.ts` | SQLite adapter: CRUD, transitions, reorder, archive — replaces taskboard.ts |
+| `plugins/tasks/lib/flow-store.ts` | SQLite adapter: CRUD, transitions, reorder, archive |
 | `plugins/tasks/lib/ids.ts` | Task ID generation (crypto-safe) |
 | `plugins/tasks/types.ts` | TypeScript interfaces (Task, TaskColumns, TaskBoard, ColumnId) |
 | `plugins/tasks/constants.ts` | Column config, header maps, status dot colors, badge styles |
-| `src/lib/taskboard.ts` | Re-export shim (delegates to flow-store for backward compat) |
+| `src/lib/taskboard.ts` | Re-export shim (delegates to flow-store) |
 | `src/core/task-service.ts` | Service layer: wraps mutations with side effects (audit, SSE, workflow guards, continuation) |
 | `src/core/dispatch.ts` | Task dispatch engine (auto-assigns todo tasks to agents) |
 | `src/core/continuation.ts` | Dependent task unblocking when a task completes |
@@ -158,7 +158,7 @@ confirmed  → done, todo
 2. The SSE server sends this as a `type: 'taskboard'` event to all connected clients
 3. The global `use-sse.ts` hook receives the event and calls `bumpTaskboard()` on the Zustand store
 4. `kanban-board.tsx` subscribes to `taskboardVersion` and re-fetches from `/api/plugins/tasks/` on change
-5. No file watcher needed — SQLite writes trigger SSE directly
+5. No file watcher needed — SQLite writes trigger SSE broadcasts directly
 
 ### Database Access Pattern
 

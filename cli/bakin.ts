@@ -113,7 +113,7 @@ async function cmdDispatch(): Promise<void> {
 }
 
 async function cmdTasksList(column?: string): Promise<void> {
-  // Read tasks from the API - for now we parse the taskboard file
+  // Read tasks from the API
   const result = await apiGet('/api/plugins/tasks/') as { columns: Record<string, Array<Record<string, unknown>>> }
   const columns = result.columns || {}
 
@@ -1152,7 +1152,7 @@ Commands:
   setup service [--uninstall]       Install/remove macOS LaunchAgent for auto-start
   setup antfly                     Install AntflyDB + enable + reindex (one command)
   setup mcporter                   Install mcporter + sync per-agent MCP config
-  paths [key]                      Show content directory paths (keys: home, taskboard, assets, etc.)
+  paths [key]                      Show content directory paths (keys: home, assets, projects, etc.)
   init                             Initialize ~/.bakin/ directory with defaults
   agent-rules [--apply|--check]    Manage orchestrator rules block in AGENTS.md
   agent-rules --apply-all          Apply all managed blocks to all agent AGENTS.md files

@@ -77,7 +77,7 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_team_org` | Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines. |
 | `bakin_exec_team_members` | Get agents that belong to a specific team (e.g. "builders", "creators"). |
 | `bakin_exec_team_my_team` | Get the team that a specific agent belongs to, including all teammates. |
-| `bakin_exec_tasks_list` | List all tasks on the board. Optionally filter by column or agent. Returns the full taskboard. |
+| `bakin_exec_tasks_list` | List all tasks on the board. Optionally filter by column or agent. |
 | `bakin_exec_tasks_get` | Get details about a task — title, description, current column, logs, dependencies, project context. |
 | `bakin_exec_tasks_create` | Create a new task on the task board. For top-level tasks, you MUST provide either workflowId or skipWorkflowReason. Subtasks (with parentId) are exempt. |
 | `bakin_exec_tasks_move` | Move a task to a different column on the task board. |
@@ -92,7 +92,6 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_assets_get` | Retrieve a single asset's sidecar metadata by path. |
 | `bakin_exec_assets_save` | Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically. |
 | `bakin_exec_assets_delete` | Soft-delete an asset (moves to trash with 30-day expiry). |
-| `bakin_exec_assets_link` | Link an asset to a different task, or unlink it (set taskId to null). Physically moves the file between task directories and updates sidecar metadata. |
 | `bakin_exec_assets_list_trash` | List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge. |
 | `bakin_exec_assets_restore` | Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename. |
 | `bakin_exec_assets_audit` | Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars. |
@@ -219,7 +218,7 @@ curl -s http://localhost:3737/api/docs
 
 **NEVER hardcode or construct filesystem paths.** Always use `beacon_get_paths` to discover where files live.
 
-Available path keys: `home`, `taskboard`, `memoryLog`, `calendar`, `audit`, `assets`, `assets.text`, `assets.images`, `assets.video`, `assets.audio`, `assets.plans`, `assets.data`, `assets.other`, `personas`, `team`, `heartbeats`, `inbox`, `projects`, `workflows`, `settings`.
+Available path keys: `home`, `memoryLog`, `calendar`, `audit`, `assets`, `assets.text`, `assets.images`, `assets.video`, `assets.audio`, `assets.plans`, `assets.data`, `assets.other`, `personas`, `team`, `heartbeats`, `inbox`, `projects`, `workflows`, `settings`.
 
 ### Querying Assets
 
@@ -268,7 +267,7 @@ Your agent identity is automatically injected by the MCP server. Use your real a
 
 ### Mandatory: Use the API, never edit files
 
-Always use Beacon tools (via mcporter) to manage tasks. Direct edits to TASKBOARD.md bypass locking, validation, and audit logging.
+Always use Beacon tools (via mcporter) to manage tasks. Direct database edits bypass locking, validation, and audit logging.
 
 ### Mandatory: Never run scripts/bin/*.ts directly
 
@@ -291,7 +290,7 @@ Always use `beacon_report_complete` when done — it handles notification automa
 - **Invalid state transition** → Tool returns error with allowed transitions
 - **Move without agent** → Tool returns error
 - **Done without logs** → Tool returns error
-- **Direct TASKBOARD.md edit** → Bypasses all validation, breaks locking
+- **Direct database edit** → Bypasses all validation, breaks locking
 - **Bypass patterns detected** (workaround language in logs) → Alert sent to roscoe, audit logged
 - **Stuck task + stale heartbeat** → Auto-recovered to Todo, then Blocked after 3 recoveries
 
@@ -299,7 +298,7 @@ Always use `beacon_report_complete` when done — it handles notification automa
 
 These rules apply to ALL subagents (Basil, Pixel, Rolo, Patch, etc.). Violating them breaks the pipeline.
 
-1. **Never edit TASKBOARD.md directly.** Direct edits are auto-reverted. Always use Beacon tools.
+1. **Never edit the task database directly.** Always use Beacon tools.
 
 2. **Never hardcode filesystem paths.** Always use `beacon_get_paths`.
 
