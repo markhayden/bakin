@@ -112,8 +112,8 @@ async function handleBridge(req: Request): Promise<Response> {
     try {
       const board2 = await getHookRegistry().invoke<{ columns: Record<string, Array<{ id: string }>> }>('tasks.readTaskboard', {})
       if (board2) {
-        const doneOrConfirmed = [...(board2.columns.done ?? []), ...(board2.columns.confirmed ?? [])]
-        if (doneOrConfirmed.some(t => t.id === meta.lastTaskId)) {
+        const doneOrArchived = [...(board2.columns.done ?? []), ...(board2.columns.archived ?? [])]
+        if (doneOrArchived.some(t => t.id === meta.lastTaskId)) {
           recordSuccess(meta)
         } else {
           const blocked = board2.columns.blocked ?? []

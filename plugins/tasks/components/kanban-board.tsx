@@ -34,7 +34,7 @@ import { Button } from '@/components/ui/button'
 import { Kanban, Table2, Plus } from 'lucide-react'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
-const COLUMN_ORDER: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
+const COLUMN_ORDER: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived']
 
 const multiContainerCollision: CollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(args)
@@ -61,7 +61,7 @@ async function apiFetch(url: string, body: Record<string, unknown>, method = 'PO
   }
 }
 
-const emptyBoard: TaskColumns = { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] }
+const emptyBoard: TaskColumns = { backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [] }
 
 export function KanbanBoard() {
   const [boardData, setBoardData] = useState<{ columns: TaskColumns; timestamp?: string }>({ columns: emptyBoard })
@@ -91,27 +91,28 @@ export function KanbanBoard() {
   const columns = optimistic?.columns ?? parsed.columns
   const { timestamp } = parsed
 
-  // Filter confirmed column to last 24 hours for kanban display
+  // URL-backed filter & view state
+  const [view, setView] = useQueryState('view', 'kanban')
+  const [search, setSearch] = useQueryState('q', '')
+  const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
+  const [statusFilter, setStatusFilter] = useQueryArrayState('status')
+
+  // Filter archived column to last 24 hours for kanban display (table view shows all)
   const displayColumns = useMemo(() => {
+    if (view === 'table') return columns
     const cutoff = Date.now() - 24 * 60 * 60 * 1000
     return {
       ...columns,
-      confirmed: columns.confirmed.filter(t => {
+      archived: columns.archived.filter(t => {
         if (!t.date) return true
         // Parse YYYY-MM-DD as local time, not UTC
         const d = new Date(t.date.includes('T') ? t.date : t.date + 'T00:00')
         return d.getTime() >= cutoff
       }),
     }
-  }, [columns])
+  }, [columns, view])
 
-  const hiddenConfirmedCount = columns.confirmed.length - displayColumns.confirmed.length
-
-  // URL-backed filter & view state
-  const [view, setView] = useQueryState('view', 'kanban')
-  const [search, setSearch] = useQueryState('q', '')
-  const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
-  const [statusFilter, setStatusFilter] = useQueryArrayState('status')
+  const hiddenArchivedCount = columns.archived.length - displayColumns.archived.length
 
   const [taskIdParam, setTaskIdParam] = useQueryState('taskId', '')
 
@@ -309,7 +310,7 @@ export function KanbanBoard() {
       setOptimistic(null)
     } else {
       // Cross-column move — insert at the drop position
-      const movedTask = { ...task, checked: targetCol === 'done' || targetCol === 'confirmed' }
+      const movedTask = { ...task, checked: targetCol === 'done' || targetCol === 'archived' }
       const targetTasks = [...originalColumns[targetCol]]
 
       if (COLUMN_ORDER.includes(overId as ColumnId)) {
@@ -475,12 +476,12 @@ export function KanbanBoard() {
                   onAssign={handleAssign}
                   onDelete={setDeleteTarget}
                   onTaskClick={(task, colId) => { setDetailTask({ task, columnId: colId }); setEditing(false) }}
-                  footer={colId === 'confirmed' && hiddenConfirmedCount > 0 ? (
+                  footer={colId === 'archived' && hiddenArchivedCount > 0 ? (
                     <button
                       onClick={() => setView('table')}
                       className="text-[11px] px-3 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                     >
-                      {hiddenConfirmedCount} older task{hiddenConfirmedCount !== 1 ? 's' : ''} — View Log
+                      {hiddenArchivedCount} older task{hiddenArchivedCount !== 1 ? 's' : ''} — View Log
                     </button>
                   ) : undefined}
                 />

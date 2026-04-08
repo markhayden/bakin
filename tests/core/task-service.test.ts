@@ -37,7 +37,7 @@ const mockReadTaskboard = vi.fn((..._args: unknown[]) => ({
     review: [],
     done: [],
     blocked: [],
-    confirmed: [],
+    archived: [],
   }
 }))
 const mockSetDependency = vi.fn((..._args: unknown[]) => Promise.resolve())
@@ -178,7 +178,7 @@ describe('task-service', () => {
           review: [],
           done: [],
           blocked: [],
-          confirmed: [],
+          archived: [],
         }
       })
       mockLoadInstance.mockReturnValueOnce({ status: 'in_progress' } as any)
@@ -255,7 +255,7 @@ describe('task-service', () => {
           review: [],
           done: [],
           blocked: [],
-          confirmed: [],
+          archived: [],
         }
       })
       mockLoadInstance.mockReturnValueOnce({ status: 'in_progress' } as any)

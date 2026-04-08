@@ -68,7 +68,6 @@
   --color-status-review: var(--status-review);
   --color-status-done: var(--status-done);
   --color-status-blocked: var(--status-blocked);
-  --color-status-confirmed: var(--status-confirmed);
 }
 
 :root {
@@ -146,7 +145,6 @@
   --status-review: #f59e0b;
   --status-done: #22c55e;
   --status-blocked: #ef4444;
-  --status-confirmed: #a855f7;
   /* Agent accent colors (overridden at runtime by AgentThemeProvider) */
   --agent-main-operator: #60a5fa;
   --agent-chef: #4ade80;

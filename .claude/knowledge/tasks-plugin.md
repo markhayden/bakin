@@ -26,7 +26,7 @@ Tasks are stored as rows in OpenClaw's `flow_runs` table, filtered by `owner_key
 | `blocked_task_id` | Sentinel `'blocked'` for blocked column (distinguishes from review) |
 | `blocked_summary` | Blocked reason string |
 | `created_at` / `updated_at` | Unix ms timestamps |
-| `ended_at` | Set when task reaches done/confirmed |
+| `ended_at` | Set when task reaches done/archived |
 
 ### Column ↔ Status Mapping
 
@@ -37,8 +37,8 @@ Tasks are stored as rows in OpenClaw's `flow_runs` table, filtered by `owner_key
 | inProgress | `running` | — |
 | review | `waiting` | `blocked_task_id IS NULL` |
 | blocked | `waiting` | `blocked_task_id = 'blocked'` |
-| done | `succeeded` | `state_json.confirmed` falsy |
-| confirmed | `succeeded` | `state_json.confirmed = true` |
+| done | `succeeded` | `state_json.archived` falsy |
+| archived | `succeeded` | `state_json.archived = true` |
 
 Failed/cancelled flows map to `done` column.
 
@@ -56,8 +56,8 @@ interface BakinTaskState {
   workflowId?: string      // linked workflow definition ID
   projectId?: string       // linked project ID
   scheduleJobId?: string   // linked schedule job ID
-  confirmed?: boolean      // true for confirmed column
-  date?: string            // YYYY-MM-DD, set when entering inProgress/review/done/confirmed
+  archived?: boolean       // true for archived column
+  date?: string            // YYYY-MM-DD, set when entering inProgress/review/done/archived
   log?: TaskLogEntry[]     // timestamped progress entries
 }
 ```
@@ -70,7 +70,7 @@ interface Task {
   title: string
   agent?: string
   createdBy?: string
-  checked: boolean         // true when in done or confirmed columns
+  checked: boolean         // true when in done or archived columns
   date?: string            // YYYY-MM-DD
   blockedReason?: string
   description?: string
@@ -101,7 +101,7 @@ IDs are 8-character hex strings generated from 4 random bytes via `crypto.getRan
 | inProgress | 🔵 In Progress | 🔵 | false | yes |
 | review | 🔍 Review | 🔍 | false | yes |
 | done | ✅ Done | ✅ | true | yes |
-| confirmed | 🟣 Confirmed | 🟣 | true | yes |
+| archived | 📦 Archived | 📦 | true | yes |
 
 ### Valid State Transitions
 
@@ -111,8 +111,8 @@ todo       → inProgress, blocked, done, backlog
 inProgress → review, done, blocked, todo
 blocked    → todo, inProgress, backlog
 review     → done, inProgress, todo
-done       → confirmed, todo, inProgress
-confirmed  → done, todo
+done       → archived, todo, inProgress
+archived   → done, todo
 ```
 
 **Key constraints:**
@@ -264,7 +264,7 @@ Configurable via `/settings` page:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `defaultColumn` | select | `"todo"` | Which column new tasks are created in |
-| `showCompleted` | boolean | `true` | Show Done and Confirmed columns by default |
+| `showCompleted` | boolean | `true` | Show Done and Archived columns by default |
 | `autoArchiveDays` | number | `0` | Auto-archive completed tasks after N days (0 = disabled) |
 | `maxInProgress` | number | `5` | Warn when too many tasks are in progress |
 
@@ -283,7 +283,7 @@ When `autoArchiveDays > 0`, the plugin deletes `flow_runs` rows with `status IN 
 
 ### Projects Plugin
 - Tasks can be linked to projects via `projectId`
-- When a task moves to done or confirmed, `projects.autoCheckLinkedItem` hook is invoked
+- When a task moves to done or archived, `projects.autoCheckLinkedItem` hook is invoked
 
 ### Dispatch Engine
 - `src/core/dispatch.ts` reads todo tasks and assigns them to available agents
@@ -304,7 +304,7 @@ When `autoArchiveDays > 0`, the plugin deletes `flow_runs` rows with `status IN 
 ## Date Handling
 
 - `localDateString()` returns `YYYY-MM-DD` using the server's local timezone (not UTC)
-- Dates are set when tasks enter: `inProgress`, `review`, `done`, `confirmed`
+- Dates are set when tasks enter: `inProgress`, `review`, `done`, `archived`
 - Dates are cleared when tasks enter: `blocked`
 - No date is set for: `backlog`, `todo`
 

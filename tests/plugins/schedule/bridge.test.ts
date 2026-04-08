@@ -39,7 +39,7 @@ const mockTaskboard = {
     review: [] as Array<{ id: string }>,
     blocked: [] as Array<{ id: string }>,
     done: [] as Array<{ id: string }>,
-    confirmed: [] as Array<{ id: string }>,
+    archived: [] as Array<{ id: string }>,
     backlog: [] as Array<{ id: string }>,
   },
 }

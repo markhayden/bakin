@@ -42,7 +42,7 @@ function getCreatedAt(t: TaskRow): string | undefined {
 function getCompletedAt(t: TaskRow): string | undefined {
   if ('completedAt' in t) return (t as HistoricalTask).completedAt
   const flat = t as FlatTask
-  return (flat.status === 'done' || flat.status === 'confirmed') ? flat.date : undefined
+  return (flat.status === 'done' || flat.status === 'archived') ? flat.date : undefined
 }
 
 type SortField = 'title' | 'agent' | 'status' | 'createdAt' | 'completedAt'
@@ -87,7 +87,7 @@ export function TaskLogTable({ currentTasks, statusFilter }: TaskLogTableProps) 
           }
           if (entry.type === 'task.moved' && entry.data?.to) {
             existing.status = entry.data.to as ColumnId
-            if (entry.data.to === 'done' || entry.data.to === 'confirmed') {
+            if (entry.data.to === 'done' || entry.data.to === 'archived') {
               existing.completedAt = entry.timestamp
             }
           }

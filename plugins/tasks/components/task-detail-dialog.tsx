@@ -127,7 +127,7 @@ interface TaskDetailDrawerProps {
   onDuplicate?: (task: Task) => void
 }
 
-const COLUMN_IDS: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
+const COLUMN_IDS: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived']
 
 const STEP_DOT_COLORS: Record<string, string> = {
   complete: 'bg-green-400',
