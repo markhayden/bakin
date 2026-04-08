@@ -450,6 +450,86 @@ describe('KanbanBoard drag and drop', () => {
     })
   })
 
+  it('cross-column move preserves drop position and calls /reorder', async () => {
+    const task1 = makeTask('task-1', 'Move Me')
+    const task2 = makeTask('task-2', 'First In Progress')
+    const task3 = makeTask('task-3', 'Second In Progress')
+
+    await renderBoard({ todo: [task1], inProgress: [task2, task3] })
+
+    act(() => {
+      capturedDndProps.onDragStart(makeDragEvent(
+        'task-1',
+        { task: task1, columnId: 'todo' },
+      ))
+    })
+
+    // Drop on task-3 — should insert before task-3 in inProgress
+    await act(async () => {
+      capturedDndProps.onDragEnd(makeDragEvent(
+        'task-1',
+        { task: task1, columnId: 'todo' },
+        'task-3',
+        { task: task3, columnId: 'inProgress' },
+      ))
+    })
+
+    await waitFor(() => {
+      const moveCall = fetchCalls.find(c => c.url.includes('/move'))
+      expect(moveCall).toBeTruthy()
+      expect(moveCall!.body.from).toBe('todo')
+      expect(moveCall!.body.to).toBe('inProgress')
+
+      // After /move, a /reorder call should persist the drop position
+      const reorderCall = fetchCalls.find(c => c.url.includes('/reorder'))
+      expect(reorderCall).toBeTruthy()
+      expect(reorderCall!.body.columnId).toBe('inProgress')
+      // task-1 inserted before task-3 → [task-2, task-1, task-3]
+      expect(reorderCall!.body.orderedIds).toEqual(['task-2', 'task-1', 'task-3'])
+    })
+  })
+
+  it('cross-column move uses drag-start column, not stale active.data.current.columnId', async () => {
+    const task1 = makeTask('task-1', 'Move Me')
+
+    await renderBoard({ todo: [task1], inProgress: [] })
+
+    // Start drag — captures fromCol as 'todo'
+    act(() => {
+      capturedDndProps.onDragStart(makeDragEvent(
+        'task-1',
+        { task: task1, columnId: 'todo' },
+      ))
+    })
+
+    // Simulate what happens in real dnd-kit: handleDragOver moves the task,
+    // useSortable re-renders with new columnId, and active.data.current updates
+    act(() => {
+      capturedDndProps.onDragOver(makeDragEvent(
+        'task-1',
+        { task: task1, columnId: 'todo' },
+        'inProgress',
+      ))
+    })
+
+    // Drop — active.data.current.columnId is now 'inProgress' (stale ref from
+    // useSortable re-render), but the handler should use the drag-start ref
+    await act(async () => {
+      capturedDndProps.onDragEnd(makeDragEvent(
+        'task-1',
+        { task: task1, columnId: 'inProgress' }, // simulates stale useSortable data
+        'inProgress',
+      ))
+    })
+
+    await waitFor(() => {
+      const moveCall = fetchCalls.find(c => c.url.includes('/move'))
+      expect(moveCall).toBeTruthy()
+      expect(moveCall!.body.from).toBe('todo') // from drag-start ref, not stale 'inProgress'
+      expect(moveCall!.body.to).toBe('inProgress')
+    })
+  })
+
   it('same-column reorder with no change is a no-op', async () => {
     const task1 = makeTask('task-1', 'First')
     const task2 = makeTask('task-2', 'Second')
