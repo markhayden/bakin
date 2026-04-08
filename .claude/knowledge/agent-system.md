@@ -58,7 +58,7 @@ Agents run as OpenClaw agent instances. Communication flows:
 3. Agent → `bakin_log_progress` → SSE broadcast to dashboard
 
 ### Key functions in `src/core/agents.ts`:
-- `getAgentStatus(agentId)` — reads heartbeat + taskboard to determine status
+- `getAgentStatus(agentId)` — reads heartbeat + task board to determine status
 - `sendMessageToAgent(agentId, message)` — delegates to OpenClaw HTTP client
 - `startAgent(agentId)` — start agent session
 - `deliverTaskToAgent(agentId, taskId)` — deliver task with context
@@ -66,7 +66,7 @@ Agents run as OpenClaw agent instances. Communication flows:
 ## Dispatch Engine (`src/core/dispatch.ts`)
 
 The dispatch system assigns tasks to agents:
-1. Reads TASKBOARD.md for tasks in `todo` column with an `@agent` assignment
+1. Reads `flow_runs` SQLite for tasks in `todo` column with an agent assignment
 2. Checks agent availability (heartbeat, current task count, cooldown)
 3. Sends task to agent via OpenClaw with context (task details, workflow step if applicable)
 4. Moves task to `inProgress` column
@@ -136,7 +136,7 @@ MCP sessions bind agent identity via `?agent=basil` query param at connection ti
 ### Live activity feed
 `bakin_log_progress` → `logProgress()` in `src/core/task-service.ts`:
 1. Broadcasts immediately via SSE: `{ type: 'activity', agent, message, ts, taskId, channel }`
-2. Appends to task's log in TASKBOARD.md
+2. Appends to task's log in `flow_runs` SQLite
 
 ### Structured categories (from `scripts/lib/log-progress.ts`):
 `[START]`, `[PROGRESS]`, `[MILESTONE]`, `[BLOCKED]`, `[COMPLETE]`

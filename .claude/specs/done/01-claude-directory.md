@@ -60,7 +60,6 @@ Created automatically when Bakin is installed (`bakin init`). NOT part of the re
   workflows/                       ← workflow definitions & instances
   team/                            ← team contacts, personas
   inbox/                           ← incoming items
-  TASKBOARD.md                     ← task kanban board
   MEMORY-LOG.md                    ← agent memory log
   audit.jsonl                      ← append-only audit trail
 ```
@@ -171,18 +170,18 @@ Deep reference on:
 ### agent-system.md
 Deep reference on:
 - Agent data: `src/lib/agents-data.ts` — `AgentProfile` interface, `AGENT_PROFILES`, `AGENT_MAP`
-- Agent resolution: `src/core/agents.ts` — status from heartbeats + taskboard
+- Agent resolution: `src/core/agents.ts` — status from heartbeats + task board
 - Dispatch: `src/core/dispatch.ts` — how tasks get delivered to agents via OpenClaw
 - Heartbeat system: `~/.bakin/heartbeats/{agentId}.json`
 - MCP tool access: agents get tools via MCP sessions, identity from `?agent=` query param
-- Activity logging: `bakin_log_progress` → `logProgress()` → SSE broadcast + taskboard append
+- Activity logging: `bakin_log_progress` → `logProgress()` → SSE broadcast + task log append
 - Audit trail: `appendAudit()` → `audit.jsonl` + SSE + Antfly indexing
 
 ### storage-model.md
 Deep reference on:
 - Content directory: `~/.bakin/` — created by `bakin init`, resolved via `getContentDir()` in `src/core/content-dir.ts`
 - Markdown storage: `MarkdownStorageAdapter` in `src/lib/storage/markdown-adapter.ts`
-- Key files: `TASKBOARD.md` (kanban), `MEMORY-LOG.md` (audit), `projects/*.md`
+- Key files: `MEMORY-LOG.md` (audit), `projects/*.md`. Tasks in OpenClaw `flow_runs` SQLite.
 - Sidecar metadata pattern: `{filename}.meta.json` alongside content files
 - Asset structure: `~/.bakin/assets/{type}/{taskId}/`
 - Antfly indexing: fire-and-forget via `src/core/antfly.ts`

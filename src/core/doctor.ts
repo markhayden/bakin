@@ -4,7 +4,7 @@
  *
  * Auto-fix policy:
  *   SAFE (auto-fix):   Creating new files, installing/updating skill, making dirs
- *   UNSAFE (notify):   Agent roster mismatches, gateway down, taskboard corruption,
+ *   UNSAFE (notify):   Agent roster mismatches, gateway down, task DB issues,
  *                      anything requiring human judgment
  *
  * Unsafe issues are reported to roscoe via OpenClaw so they show up in conversation.

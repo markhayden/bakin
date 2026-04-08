@@ -152,7 +152,7 @@ interface AntflyCore {
 **Tables (matching SPEC.md):**
 | Table | Source | Indexed when |
 |-------|--------|-------------|
-| `tasks` | TASKBOARD.md entries | On task completion (move to Done) |
+| `tasks` | flow_runs SQLite entries | On task completion (move to Done) |
 | `decisions` | MEMORY-LOG.md | On write (via watcher sync hook) |
 | `audit` | audit.jsonl entries | On every audit event |
 | `content` | Calendar items, project docs | On create/update |
@@ -192,7 +192,7 @@ tests/
     antfly.test.ts          — sync, search, disabled-mode no-op
   plugins/
     contract.test.ts        — load all plugins, verify BakinPlugin interface
-    tasks/taskboard.test.ts — CRUD, mutex, serialization roundtrip
+    tasks/flow-store.test.ts — CRUD, transitions, column mapping
     tasks/parser.test.ts    — markdown parsing edge cases
     calendar/storage.test.ts
   lib/
@@ -274,9 +274,9 @@ Every plugin gets a `bakin-plugin.json`:
   "name": "Tasks",
   "version": "1.0.0",
   "beacon": ">=1.0.0",
-  "description": "Kanban task management with markdown persistence",
+  "description": "Kanban task management backed by OpenClaw flow_runs",
   "entry": { "server": "index.ts", "client": "client.tsx" },
-  "contentFiles": ["TASKBOARD.md"],
+  "contentFiles": [],
   "secrets": [],
   "tests": "tests/",
   "dependencies": [],

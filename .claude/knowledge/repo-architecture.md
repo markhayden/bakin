@@ -153,7 +153,6 @@ Created by `bakin init` or `initBakinHome()`. Symlinked from `~/.beacon/` for ba
 ```
 ~/.bakin/
 ├── settings.json          ← runtime config (deep-merged with defaults)
-├── TASKBOARD.md           ← kanban board
 ├── MEMORY-LOG.md          ← agent memory log
 ├── audit.jsonl            ← append-only audit trail
 ├── calendar.json          ← calendar events
