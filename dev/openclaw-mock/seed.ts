@@ -57,6 +57,9 @@ export function seed(force = false): void {
   // Create a sample gateway log for today
   seedGatewayLog()
 
+  // Seed audit entries for watchdog recoveries into ~/.bakin/audit.jsonl
+  seedAuditLog()
+
   console.log(`[seed] Done — ${MOCK_HOME} ready`)
 }
 
@@ -88,6 +91,29 @@ function seedGatewayLog(): void {
     ].join('\n') + '\n'
     writeFileSync(logPath, sampleLog)
     console.log(`[seed] Gateway log created at ${logPath}`)
+  }
+}
+
+function seedAuditLog(): void {
+  const { appendFileSync, writeFileSync } = require('fs')
+  const bakinHome = process.env.BAKIN_HOME || join(homedir(), '.bakin')
+  const auditPath = join(bakinHome, 'audit.jsonl')
+
+  // Watchdog recovery audit entries matching the seeded tasks
+  const entries = [
+    { ts: '2026-04-05T08:45:00Z', event: 'task.auto_recovered', agent: 'watchdog', data: { id: 'task-td-004', title: 'Resize product photos for email template', agent: 'pixel', minutesStuck: 153 } },
+    { ts: '2026-04-05T17:22:00Z', event: 'task.auto_recovered', agent: 'watchdog', data: { id: 'task-ip-003', title: 'Compile weekly engagement metrics report', agent: 'rolo', minutesStuck: 202 } },
+  ]
+
+  const lines = entries.map(e => JSON.stringify(e)).join('\n') + '\n'
+
+  // Append rather than overwrite — other seed steps or prior runs may have written entries
+  try {
+    if (!existsSync(bakinHome)) mkdirSync(bakinHome, { recursive: true })
+    appendFileSync(auditPath, lines)
+    console.log(`[seed] Audit log entries appended to ${auditPath}`)
+  } catch (err) {
+    console.warn('[seed] Could not seed audit log:', (err as Error).message)
   }
 }
 
