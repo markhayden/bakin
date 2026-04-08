@@ -370,7 +370,7 @@ export async function promoteItemToTask(projectId: string, taskItemId: string, o
 }
 
 // ---------------------------------------------------------------------------
-// Auto-check: called when a board task reaches done/confirmed
+// Auto-check: called when a board task reaches done/archived
 // ---------------------------------------------------------------------------
 
 export async function autoCheckLinkedItem(boardTaskId: string): Promise<void> {

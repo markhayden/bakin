@@ -28,7 +28,7 @@ function shortId(id: string): string {
 /** Presentational card — used by DragOverlay */
 export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string }) {
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
-  const isComplete = task.checked || columnId === 'done' || columnId === 'confirmed'
+  const isComplete = task.checked || columnId === 'done' || columnId === 'archived'
 
   return (
     <div className={className}>
@@ -146,7 +146,7 @@ export function TaskCard({ task, columnId, gateLabel, childTaskId, onAssign, onD
       <div
         onClick={() => onClick(task, columnId as ColumnId)}
         className={`group relative rounded-xl border border-border bg-card cursor-grab active:cursor-grabbing hover:border-zinc-700 hover:shadow-sm shadow-sm shadow-black/20 select-none ${
-          task.checked || columnId === 'done' || columnId === 'confirmed' ? 'opacity-60' : ''
+          task.checked || columnId === 'done' || columnId === 'archived' ? 'opacity-60' : ''
         } ${task.blockedReason ? 'border-l-2 border-l-destructive' : ''}`}
       >
       {/* Delete button — top-right, shows on hover */}

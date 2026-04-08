@@ -40,7 +40,7 @@ vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
       inProgress: [],
       review: [],
       done: [{ id: 'board02', title: 'Done Task' }],
-      confirmed: [],
+      archived: [],
       blocked: [],
       backlog: [],
     },

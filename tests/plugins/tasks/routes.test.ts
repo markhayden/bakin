@@ -67,6 +67,8 @@ vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
   setDependency: (...args: unknown[]) => mockSetDependency(...args),
   clearDependency: (...args: unknown[]) => mockClearDependency(...args),
   reorderTasks: (...args: unknown[]) => mockReorderTasks(...args),
+  autoArchiveDoneTasks: vi.fn().mockReturnValue(0),
+  archiveOldTasks: vi.fn().mockReturnValue(0),
 }))
 
 // Mock task-service functions

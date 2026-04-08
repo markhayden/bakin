@@ -116,7 +116,7 @@ When OpenClaw fires a job, the bridge endpoint runs these checks in order:
 3. **Skip count?** — Decrement `skipNextN` if active
 4. **Failure limit?** — Auto-pause if `consecutiveFailures >= maxFailures`
 5. **Overlap?** — If `allowOverlap: false`, skip if the previous task is still active (todo/inProgress/review/blocked)
-6. **Track outcomes** — Check if last task succeeded (done/confirmed) or failed (blocked) to update failure counter
+6. **Track outcomes** — Check if last task succeeded (done/archived) or failed (blocked) to update failure counter
 7. **Create task** — Title from template, assign agent (unless `requireTriage`), attach workflow
 
 ## Settings
