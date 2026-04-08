@@ -71,7 +71,7 @@ The activity feed has exactly **two data sources**:
 
 1. **`audit.jsonl`** — system-level events: `task.created`, `task.moved`, `task.dispatched`, `workflow.gate_approved`, etc. These are infrastructure events, not agent narration.
 
-2. **Task log entries from `TASKBOARD.md`** — agents post these via `POST /api/plugins/tasks/:taskId/log`. But agents currently barely use this. Looking at the dispatch message in `dispatch.ts`, agents are *told* to log:
+2. **Task log entries** — agents post these via `POST /api/plugins/tasks/:taskId/log`. But agents currently barely use this. Looking at the dispatch message in `dispatch.ts`, agents are *told* to log:
 
    > "Log your progress at EVERY major step — not just start and done."
 
@@ -97,7 +97,7 @@ Of those 8 steps, only 1 and 8 produce log entries. Steps 2-7 are invisible.
 
 This endpoint already exists (handled in `server.ts:190-196`) and broadcasts `{ type: 'activity' }` events. The task log API (`/api/plugins/tasks/:taskId/log`) also fire-and-forgets to `/api/activity/emit`. So the plumbing is there.
 
-**What's needed:** A simpler, lower-friction logging endpoint that agents can call frequently without it being persisted to the taskboard markdown. Think of it as "ephemeral narration" vs "permanent log."
+**What's needed:** A simpler, lower-friction logging endpoint that agents can call frequently without it being persisted to the task database. Think of it as "ephemeral narration" vs "permanent log."
 
 The current `/api/activity/emit` is perfect for this but it's **not in any agent's dispatch instructions**. Agents only know about `/api/plugins/tasks/:taskId/log`.
 

@@ -103,7 +103,6 @@ and are managed by OpenClaw — they're not part of this repo.
 ├── com.openclaw.mc.plist             ← launchd service (auto-start on boot)
 │
 ├── content/                          ← Agent-written content files (watched by server)
-│   ├── TASKBOARD.md                  ← Live task tracking (Main Operator writes, @agent tags)
 │   ├── CALENDAR.md                   ← Upcoming events & deadlines
 │   ├── MEMORY-LOG.md                 ← Notable agent decisions (public-safe)
 │   ├── OFFICE.md                     ← ASCII office map + multi-agent status
@@ -150,9 +149,9 @@ and are managed by OpenClaw — they're not part of this repo.
 
 ### 1. 🗂️ Task Board
 
-**File:** `content/TASKBOARD.md`
+**Storage:** OpenClaw `flow_runs` SQLite table (migrated from markdown)
 
-This is the most important section. Main Operator updates it whenever tasks are
+This is the most important section. Tasks are managed through the API whenever they are
 assigned, started, completed, or blocked.
 
 **File format:**
@@ -402,7 +401,7 @@ Everyone and everything in the ecosystem — humans, sub-agents, tools, services
 **Dashboard rendering:**
 - Card grid — one card per team member
 - Status dot on each card
-- Agent cards show current task from TASKBOARD.md
+- Agent cards show current task from the task board (SQLite)
 - Agent cards show health: last heartbeat, error count, uptime
 
 ---
@@ -857,13 +856,13 @@ Agents communicate through OpenClaw's built-in mechanisms:
    Agents can send messages directly to other agents within the gateway.
 
 3. **Shared state via files** — all agents have read/write access to
-   `content/` files. TASKBOARD.md is the coordination hub.
+   `content/` files. the task board (SQLite) is the coordination hub.
    - `@agent-name` ownership tags on tasks indicate assignment
    - `@unassigned` tasks are available for Main Operator to delegate
 
 4. **Results flow back through Main Operator** — when a sub-agent completes, OpenClaw
    announces the result back to the requesting agent. Main Operator then updates
-   TASKBOARD.md and relays to Discord if needed.
+   the task board (SQLite) and relays to Discord if needed.
 
 ### Heartbeat System
 
@@ -900,7 +899,7 @@ Each agent writes a heartbeat file to the shared mission-control directory:
 ```markdown
 - [ ] Write heartbeat JSON to content/heartbeats/<my-id>.json
 - [ ] Update my status line in content/OFFICE.md
-- [ ] Check content/TASKBOARD.md for new tasks assigned to me
+- [ ] Check content/the task board (SQLite) for new tasks assigned to me
 ```
 
 **Main Operator's HEARTBEAT.md additionally contains:**
@@ -908,20 +907,20 @@ Each agent writes a heartbeat file to the shared mission-control directory:
 - [ ] Check all heartbeat files in content/heartbeats/
 - [ ] If any agent missed 3 consecutive heartbeats (15 min), post Discord alert
 - [ ] Update OFFICE.md agent status table
-- [ ] Verify TASKBOARD.md task states are consistent
+- [ ] Verify the task board (SQLite) task states are consistent
 ```
 
 ### Concurrency & File Locking
 
-Multiple agents writing to shared files (TASKBOARD.md, OFFICE.md) risks
+Multiple agents writing to shared files (the task board (SQLite), OFFICE.md) risks
 corruption. Mitigation strategy:
 
 1. **Main Operator is the primary writer** for shared files. Other agents write to
    their own heartbeat JSON files (no conflict — one file per agent).
 
-2. **TASKBOARD.md updates flow through Main Operator.** When Patch or Chef finishes
+2. **the task board (SQLite) updates flow through Main Operator.** When Patch or Chef finishes
    a task, they tell Main Operator via agent-to-agent messaging. Main Operator updates
-   TASKBOARD.md. This serializes writes through a single agent.
+   the task board (SQLite). This serializes writes through a single agent.
 
 3. **OFFICE.md is rebuilt by Main Operator** on each heartbeat cycle. Main Operator reads
    all heartbeat JSON files and regenerates the office map + status table.
@@ -938,7 +937,7 @@ corruption. Mitigation strategy:
 Dashboard POST /api/plugins/tasks/:taskId/assign
   → MC server writes content/inbox/1710782400-assign.json
   → Main Operator picks up on next heartbeat (≤5 min)
-  → Main Operator updates TASKBOARD.md
+  → Main Operator updates the task board (SQLite)
   → fs.watch fires → SSE pushes update to dashboard
 ```
 
@@ -1077,16 +1076,16 @@ brief that produced it.
 ## Mission Control Integration
 
 On every session start:
-1. Read `content/TASKBOARD.md` — know what's active and assigned to you
+1. Read `content/the task board (SQLite)` — know what's active and assigned to you
 2. Read `content/CALENDAR.md` — know what's coming up
 
 On task changes:
 - Notify Main Operator via agent-to-agent message when tasks start, complete, or block
-- Do NOT write to TASKBOARD.md directly — Main Operator manages the shared board
+- Do NOT write to the task board (SQLite) directly — Main Operator manages the shared board
 
 On heartbeat (every 5 minutes):
 - Write your heartbeat JSON to content/heartbeats/<your-id>.json
-- Check TASKBOARD.md for new tasks assigned to you
+- Check the task board (SQLite) for new tasks assigned to you
 ```
 
 ### Main Operator's AGENTS.md additionally includes:
@@ -1099,10 +1098,10 @@ You are the orchestrator. You coordinate all other agents.
 On every session start:
 1. Read all files in content/ — know full system state
 2. Check heartbeats/ — verify all agents are healthy
-3. Review TASKBOARD.md — ensure assignments are current
+3. Review the task board (SQLite) — ensure assignments are current
 
 On task assignment (from Mark via dashboard or Discord):
-- Update TASKBOARD.md with @agent-name tag
+- Update the task board (SQLite) with @agent-name tag
 - Spawn sub-agent or send agent-to-agent message to assigned agent
 - Confirm assignment in Discord #mc-tasks
 
@@ -1118,7 +1117,7 @@ On heartbeat (every 5 minutes):
 - Read all heartbeat JSONs, rebuild OFFICE.md agent status table
 - Log heartbeat events to audit.jsonl for each agent
 - Process any items in content/inbox/
-- Verify TASKBOARD.md consistency
+- Verify the task board (SQLite) consistency
 - Update your own heartbeat JSON
 - If audit.jsonl > 10MB, rotate to audit-YYYY-MM-DD.jsonl
 ```
@@ -1127,7 +1126,7 @@ On heartbeat (every 5 minutes):
 
 | Trigger | File | Writer |
 |---------|------|--------|
-| Task state change | TASKBOARD.md | Main Operator only |
+| Task state change | flow_runs SQLite | Bakin API |
 | Heartbeat | heartbeats/<agent>.json | Each agent |
 | Heartbeat | OFFICE.md | Main Operator only |
 | Significant decision | MEMORY-LOG.md | Any agent (append-only) |
@@ -1160,7 +1159,7 @@ Discord is already configured as an OpenClaw channel.
 @main-operator restart rolo
 @main-operator prioritize "Build MC server v1"
 ```
-Main Operator parses these and acts accordingly — updates TASKBOARD.md, runs CLI
+Main Operator parses these and acts accordingly — updates the task board (SQLite), runs CLI
 commands, etc.
 
 ### Outbound Notifications
@@ -1202,7 +1201,7 @@ commands, etc.
 
 **Content files:**
 - [x] Write SPEC.md (this file)
-- [ ] Create `content/TASKBOARD.md` with ownership tags template
+- [x] ~~Create task board~~ (migrated to SQLite)
 - [ ] Create `content/CALENDAR.md` with template
 - [ ] Create `content/MEMORY-LOG.md` with template
 - [ ] Create `content/OFFICE.md` with multi-agent ASCII map
@@ -1330,7 +1329,7 @@ day one — because only the relevant ~10 chunks load, not the entire history.
 
 | Content Type | Source | How Indexed |
 |---|---|---|
-| Task history | TASKBOARD.md entries | On completion, write to Antfly with tags |
+| Task history | flow_runs SQLite | On completion, write to Antfly with tags |
 | Decisions | MEMORY-LOG.md entries | On write, sync to Antfly |
 | Project context | projects/*.md | On create/update, sync to Antfly |
 | Conversation summaries | End of session | Agent writes summary to Antfly |

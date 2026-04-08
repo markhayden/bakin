@@ -44,7 +44,7 @@ Dependencies: none (tasks is foundational). Permissions: correct as-is.
 
 | Operation | HTTP API Route | MCP Exec Tool | Notes |
 |-----------|---------------|---------------|-------|
-| List/read | `GET /` | `bakin_exec_tasks_list` | New. Return filtered taskboard |
+| List/read | `GET /` | `bakin_exec_tasks_list` | New. Return filtered task board |
 | Get one | `GET /{taskId}` | `bakin_exec_tasks_get` | New. Single task detail |
 | Create | `POST /` | `bakin_exec_tasks_create` | Existing core MCP tool → migrate to plugin exec tool |
 | Move | `POST /{taskId}/move` | `bakin_exec_tasks_move` | Existing core MCP tool → migrate to plugin exec tool |

@@ -185,7 +185,7 @@ Plugins:
 
 Content Directory:
   [OK] ~/.bakin/ exists with correct structure
-  [OK] TASKBOARD.md readable (23 tasks)
+  [OK] flow_runs SQLite accessible (23 tasks)
   [WARN] 2 orphaned heartbeat files (agents no longer in roster)
 
 Settings:
