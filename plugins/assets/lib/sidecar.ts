@@ -6,6 +6,8 @@ import { createLogger } from '../../../src/core/logger'
 
 const log = createLogger('assets:sidecar')
 
+export type AssetSource = 'agent' | 'upload' | 'clipboard'
+
 export interface SidecarMeta {
   agent: string
   taskId: string | null
@@ -14,6 +16,7 @@ export interface SidecarMeta {
   description?: string
   tags?: string[]
   originalFilename?: string
+  source?: AssetSource
 }
 
 const REQUIRED_FIELDS = ['agent', 'taskId', 'created'] as const
@@ -31,7 +34,7 @@ export const FIELD_ALIASES: Record<string, string> = {
 
 /** All valid fields in a sidecar .meta.json file. */
 export const KNOWN_FIELDS = new Set([
-  'agent', 'taskId', 'created', 'tool', 'description', 'tags', 'originalFilename',
+  'agent', 'taskId', 'created', 'tool', 'description', 'tags', 'originalFilename', 'source',
 ])
 
 export function getSidecarPath(assetPath: string): string {
@@ -111,6 +114,7 @@ function validateAndNormalize(meta: Record<string, unknown>): SidecarMeta {
     description: typeof meta.description === 'string' ? meta.description : undefined,
     tags: Array.isArray(meta.tags) ? meta.tags.filter((t): t is string => typeof t === 'string') : undefined,
     originalFilename: typeof meta.originalFilename === 'string' ? meta.originalFilename : undefined,
+    source: typeof meta.source === 'string' && ['agent', 'upload', 'clipboard'].includes(meta.source) ? meta.source as AssetSource : undefined,
   }
 }
 

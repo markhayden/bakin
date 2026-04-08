@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,35 @@ import { ArrowLeft, X } from 'lucide-react'
 const MIN_WIDTH = 320
 const MAX_WIDTH = 960
 const DEFAULT_WIDTH = 810
+const DRAWER_WIDTH_STORAGE_KEY = 'bakin-drawer-width'
+
+function clampDrawerWidth(width: number) {
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width))
+}
+
+function getDrawerWidthStorageKey(storageKey?: string) {
+  return storageKey ? `${DRAWER_WIDTH_STORAGE_KEY}:${storageKey}` : DRAWER_WIDTH_STORAGE_KEY
+}
+
+function getStoredDrawerWidth(defaultWidth: number, storageKey?: string) {
+  const fallbackWidth = clampDrawerWidth(defaultWidth)
+
+  if (typeof window === 'undefined') {
+    return fallbackWidth
+  }
+
+  try {
+    const storedWidth = window.localStorage.getItem(getDrawerWidthStorageKey(storageKey))
+    if (!storedWidth) {
+      return fallbackWidth
+    }
+
+    const parsedWidth = Number.parseInt(storedWidth, 10)
+    return Number.isFinite(parsedWidth) ? clampDrawerWidth(parsedWidth) : fallbackWidth
+  } catch {
+    return fallbackWidth
+  }
+}
 
 export function BakinDrawer({
   open,
@@ -18,6 +47,7 @@ export function BakinDrawer({
   actions,
   children,
   defaultWidth = DEFAULT_WIDTH,
+  storageKey,
   onBack,
   dirty = false,
 }: {
@@ -28,32 +58,55 @@ export function BakinDrawer({
   actions?: React.ReactNode
   children: React.ReactNode
   defaultWidth?: number
+  /** Optional suffix for per-context drawer width persistence */
+  storageKey?: string
   /** When provided, a back arrow appears left of the title */
   onBack?: () => void
   /** When true, closing the drawer shows an "unsaved changes" confirmation */
   dirty?: boolean
 }) {
-  const [width, setWidth] = useState(defaultWidth)
+  const [width, setWidth] = useState(() => getStoredDrawerWidth(defaultWidth, storageKey))
   const [showDirtyConfirm, setShowDirtyConfirm] = useState(false)
   const dragging = useRef(false)
   const startX = useRef(0)
   const startWidth = useRef(0)
+  const widthRef = useRef(width)
+
+  useEffect(() => {
+    setWidth(getStoredDrawerWidth(defaultWidth, storageKey))
+  }, [defaultWidth, storageKey])
+
+  useEffect(() => {
+    widthRef.current = width
+  }, [width])
+
+  const persistWidth = useCallback((nextWidth: number) => {
+    if (typeof window === 'undefined') return
+
+    try {
+      window.localStorage.setItem(getDrawerWidthStorageKey(storageKey), String(clampDrawerWidth(nextWidth)))
+    } catch {
+      // Ignore storage failures; the drawer should still resize normally.
+    }
+  }, [storageKey])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     dragging.current = true
     startX.current = e.clientX
-    startWidth.current = width
+    startWidth.current = widthRef.current
 
     const handleMouseMove = (ev: MouseEvent) => {
       if (!dragging.current) return
       const delta = startX.current - ev.clientX
-      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + delta))
+      const newWidth = clampDrawerWidth(startWidth.current + delta)
+      widthRef.current = newWidth
       setWidth(newWidth)
     }
 
     const handleMouseUp = () => {
       dragging.current = false
+      persistWidth(widthRef.current)
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
       document.body.style.cursor = ''
@@ -64,7 +117,7 @@ export function BakinDrawer({
     document.addEventListener('mouseup', handleMouseUp)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
-  }, [width])
+  }, [persistWidth])
 
   const requestClose = useCallback(() => {
     if (dirty) {
@@ -161,4 +214,12 @@ export function BakinDrawer({
   )
 }
 
-export { MIN_WIDTH, MAX_WIDTH, DEFAULT_WIDTH }
+export {
+  MIN_WIDTH,
+  MAX_WIDTH,
+  DEFAULT_WIDTH,
+  DRAWER_WIDTH_STORAGE_KEY,
+  clampDrawerWidth,
+  getDrawerWidthStorageKey,
+  getStoredDrawerWidth,
+}

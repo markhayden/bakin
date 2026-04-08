@@ -10,7 +10,7 @@ Bakin orchestrates a team of AI agents via the OpenClaw gateway. Each agent has 
 
 Agent data lives in the OpenClaw home directory and is accessed through the team plugin adapter (`plugins/team/lib/openclaw-adapter.ts`). **Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw.**
 
-All OpenClaw paths are resolved via `getOpenClawHome()` / `getOpenClawPath()` from `packages/core/src/openclaw-home.ts`. This respects the `OPENCLAW_HOME` env var (defaults to `~/.openclaw/`), enabling dev/test environments via the Imitation Crab mock (`dev/openclaw-mock/`).
+All OpenClaw paths are resolved via `getOpenClawHome()` / `getOpenClawPath()` from `packages/core/src/openclaw-home.ts`. This respects the `OPENCLAW_HOME` env var (defaults to `~/.openclaw/`), enabling dev/test environments via the Imitation Crab mock (`dev/imitation-crab/`).
 
 - `{OPENCLAW_HOME}/openclaw.json` — agent roster (IDs, names, models, identity, subagent perms)
 - `{OPENCLAW_HOME}/workspace/` — main agent (main-operator) workspace files
