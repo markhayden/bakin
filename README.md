@@ -70,7 +70,6 @@ beacon/
 │   ├── models/             # AI model configuration
 │   └── workflows/          # Workflow template library
 ├── content/                # Runtime data (auto-created)
-│   ├── TASKBOARD.md        # Task board (markdown)
 │   ├── MEMORY-LOG.md       # Decision log
 │   ├── calendar.json       # Calendar items
 │   ├── audit.jsonl         # Audit trail
@@ -104,7 +103,7 @@ Plugins are configured in `mc.config.ts` and loaded at startup. Each plugin can 
 
 | Plugin | Description | Key Routes |
 |--------|-------------|------------|
-| **tasks** | Kanban board backed by `TASKBOARD.md` | `/api/plugins/tasks/` (CRUD + move, log, block) |
+| **tasks** | Kanban board backed by OpenClaw `flow_runs` SQLite | `/api/plugins/tasks/` (CRUD + move, log, block) |
 | **calendar** | Content pipeline (draft → published) | `/api/plugins/calendar/` |
 | **memory** | Audit log viewer + agent workspace inspector | `/api/plugins/memory/audit`, `/workspace` |
 | **models** | Agent model assignments + available models | `/api/plugins/models/*` |
@@ -196,14 +195,14 @@ Beacon Doctor runs on startup and every 30 minutes to keep systems healthy. It p
 |-------|-----------|-------------|
 | **agent-roster** | No | Verifies Beacon agents match OpenClaw config |
 | **personas** | Yes | Creates stub persona files for missing agents |
-| **taskboard** | Yes (new only) | Creates `TASKBOARD.md` if missing; won't modify existing |
+| **taskboard** | No | Validates OpenClaw `flow_runs` SQLite is accessible |
 | **skill** | Yes | Installs/updates the Beacon skill in OpenClaw |
 | **gateway** | No | Pings the OpenClaw gateway |
 | **antfly** | No | Verifies Antfly connection when enabled |
 
 **Auto-fix policy:**
 - **Safe** (auto-fix): Creating files/directories, installing the Beacon skill
-- **Unsafe** (notify): Roster mismatches, gateway down, taskboard corruption — issues requiring human judgment are reported to main-operator via OpenClaw
+- **Unsafe** (notify): Roster mismatches, gateway down, task DB issues — issues requiring human judgment are reported to main-operator via OpenClaw
 
 Run manually: `beacon doctor` or `GET /api/plugins/health/doctor?fresh=true`
 
@@ -375,7 +374,7 @@ npm run build     # Production build
 ### Project Conventions
 
 - **TypeScript strict mode** with path aliases (`@/` → `src/`, `@mc/*` → `plugins/*`)
-- **Markdown-based storage** — tasks, decisions, and content stored as files in `content/`
+- **Hybrid storage** — tasks in OpenClaw SQLite, decisions and content as files in `~/.bakin/`
 - **Plugin architecture** — extend via `plugins/` directory and `mc.config.ts`
 - **Structured audit logging** — all state changes logged to `content/audit.jsonl`
 - **OpenClaw HTTP client** — no CLI exec; all agent communication goes through the gateway API

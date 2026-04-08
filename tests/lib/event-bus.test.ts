@@ -90,11 +90,11 @@ describe('EventBus', () => {
     const handler = vi.fn()
 
     bus.on('file.change', handler)
-    bus.injectFileEvent('TASKBOARD.md', 'change', 'content here')
+    bus.injectFileEvent('MEMORY-LOG.md', 'change', 'content here')
 
     expect(handler).toHaveBeenCalledOnce()
     expect(handler.mock.calls[0][1]).toMatchObject({
-      file: 'TASKBOARD.md',
+      file: 'MEMORY-LOG.md',
       event: 'change',
       content: 'content here',
     })

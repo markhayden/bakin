@@ -1,7 +1,7 @@
 # Spec 08: Migrate Task Persistence to OpenClaw Task Flow
 
 **Issues:** [#4](https://github.com/markhayden/bakin/issues/4), [#29](https://github.com/markhayden/bakin/issues/29)
-**Status:** Draft
+**Status:** Complete
 **Created:** 2026-04-03
 
 ## Summary

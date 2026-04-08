@@ -67,11 +67,11 @@ const tasksPlugin: BakinPlugin = {
 
     // ─── REST API Routes ───────────────────────────────────────────────
 
-    // GET / — list tasks (read taskboard)
+    // GET / — list all tasks
     ctx.registerRoute({
       path: '/',
       method: 'GET',
-      description: 'List all tasks (read taskboard)',
+      description: 'List all tasks',
       handler: async () => {
         try {
           const board = await readTaskboard()
@@ -343,14 +343,14 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_list',
-      description: 'List all tasks on the board. Optionally filter by column or agent. Returns the full taskboard.',
+      description: 'List all tasks on the board. Optionally filter by column or agent.',
       parameters: {
         column: z.enum(COLUMNS).optional().describe('Filter by column'),
         agent: z.string().optional().describe('Filter by assigned agent'),
       },
       handler: async (params: Record<string, unknown>) => {
         const board = await readTaskboard()
-        if (!board) return { ok: false, error: 'Failed to read taskboard' }
+        if (!board) return { ok: false, error: 'Failed to read task board' }
 
         const column = params.column as string | undefined
         const agent = params.agent as string | undefined
@@ -624,7 +624,7 @@ const tasksPlugin: BakinPlugin = {
         log.info(`Ready — ${counts}`)
       }
     } catch (err) {
-      log.error('Failed to read taskboard on ready', err)
+      log.error('Failed to read task board on ready', err)
     }
   },
 

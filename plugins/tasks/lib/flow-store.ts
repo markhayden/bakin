@@ -1,6 +1,5 @@
 /**
  * SQLite-backed task store using OpenClaw's flow_runs table.
- * Replaces TASKBOARD.md with direct SQLite reads/writes.
  *
  * Internal operations are synchronous (better-sqlite3's sync API).
  * Exported mutating functions return Promises for backward compatibility

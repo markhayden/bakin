@@ -289,12 +289,6 @@ async function searchTable(tableName: string, query: string, limit: number, agen
 export async function syncFile(relativePath: string, content: string): Promise<void> {
   if (!enabled()) return
 
-  // TASKBOARD.md no longer exists — tasks are in SQLite now.
-  // Keep the guard in case a stale file triggers the watcher.
-  if (relativePath === 'TASKBOARD.md') {
-    return
-  }
-
   if (relativePath === 'MEMORY-LOG.md') {
     await index('decisions', {
       id: `decisions-${Date.now()}`,

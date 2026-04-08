@@ -74,7 +74,7 @@ Provided to plugins via `PluginContext.storage`. Each plugin reads/writes to nam
 ### Task Storage (SQLite)
 Tasks are stored in OpenClaw's `flow_runs` SQLite table, accessed via `plugins/tasks/lib/flow-store.ts` using `better-sqlite3`. Each task is a row filtered by `owner_key LIKE 'bakin:task:%'`. Task metadata (title, agent, description, log entries, dependencies) is stored in the `state_json` column. Column mapping uses `status` + disambiguating fields. See `.claude/knowledge/tasks-plugin.md` for the full column ↔ status mapping.
 
-The `src/lib/taskboard.ts` file is a re-export shim that delegates to `flow-store.ts` for backward compatibility with `dispatch.ts` and `continuation.ts`.
+The `src/lib/taskboard.ts` file is a re-export shim that delegates to `flow-store.ts`.
 
 ### Project files (`projects/{id}.md`)
 Markdown with YAML frontmatter:
@@ -163,7 +163,7 @@ Plugins can request watch patterns via `ctx.watchFiles(['projects/*.md'])`.
 | `packages/core/src/content-dir.ts` | Content directory resolution, path constants, init |
 | `src/core/content-dir.ts` | Re-export shim for backward compat |
 | `src/lib/storage/markdown-adapter.ts` | StorageAdapter implementation |
-| `src/lib/taskboard.ts` | Re-export shim delegating to flow-store.ts |
+| `src/lib/taskboard.ts` | Re-export shim delegating to flow-store.ts (naming is historical) |
 | `src/lib/parsers/` | Markdown parsing utilities |
 | `src/core/audit.ts` | Audit JSONL writing + broadcast |
 | `src/core/settings.ts` | Settings loading with defaults |
