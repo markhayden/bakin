@@ -25,7 +25,7 @@ describe('mock safety gate', () => {
     mockExistsSync.mockReturnValue(false)
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
 
-    const { checkSafety } = await import('../../dev/openclaw-mock/safety')
+    const { checkSafety } = await import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
     expect(result.safe).toBe(true)
     expect(result.reasons).toHaveLength(0)
@@ -37,7 +37,7 @@ describe('mock safety gate', () => {
     })
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
 
-    const { checkSafety } = await import('../../dev/openclaw-mock/safety')
+    const { checkSafety } = await import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
     expect(result.safe).toBe(false)
     expect(result.reasons.some(r => r.includes('binary'))).toBe(true)
@@ -49,7 +49,7 @@ describe('mock safety gate', () => {
     })
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
 
-    const { checkSafety } = await import('../../dev/openclaw-mock/safety')
+    const { checkSafety } = await import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
     expect(result.safe).toBe(false)
     expect(result.reasons.some(r => r.includes('config'))).toBe(true)
@@ -59,7 +59,7 @@ describe('mock safety gate', () => {
     mockExistsSync.mockReturnValue(false)
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
 
-    const { checkSafety } = await import('../../dev/openclaw-mock/safety')
+    const { checkSafety } = await import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
     expect(result.safe).toBe(false)
     expect(result.reasons.some(r => r.includes('Gateway'))).toBe(true)
@@ -70,7 +70,7 @@ describe('mock safety gate', () => {
     mockExistsSync.mockReturnValue(true)
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
 
-    const { checkSafety } = await import('../../dev/openclaw-mock/safety')
+    const { checkSafety } = await import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
     expect(result.safe).toBe(true)
   })

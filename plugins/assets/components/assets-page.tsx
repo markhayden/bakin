@@ -10,6 +10,7 @@ import { TrashGrid } from './trash-grid'
 import { AssetDetail } from './asset-detail'
 import { AssetFilters } from './asset-filters'
 import { AssetPagination } from './asset-pagination'
+import { UploadDialog } from './upload-dialog'
 import type { AssetMeta } from '@/types'
 
 const DEFAULT_PAGE_SIZE = 24
@@ -50,6 +51,14 @@ export function AssetsPage() {
     const qs = params.toString()
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }, [router, pathname, searchParams])
+
+  const linkTo = searchParams.get('linkTo')
+  const [uploadOpen, setUploadOpen] = useState(false)
+
+  // Auto-open upload dialog when navigating from TaskAssets "Add" button
+  useEffect(() => {
+    if (linkTo) setUploadOpen(true)
+  }, [linkTo])
 
   const page = Math.max(1, parseInt(pageStr, 10) || 1)
   const isTrash = view === 'trash'
@@ -135,6 +144,7 @@ export function AssetsPage() {
         assetCount={activeCount}
         view={view}
         onViewChange={setView}
+        onAdd={() => setUploadOpen(true)}
       />
 
       {activeLoading ? (
@@ -185,6 +195,8 @@ export function AssetsPage() {
           }}
         />
       )}
+
+      <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} defaultTaskId={linkTo || undefined} />
     </div>
   )
 }

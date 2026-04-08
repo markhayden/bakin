@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { BakinDrawer } from '@/components/bakin-drawer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Send, Check, X, RefreshCw, MoreHorizontal, Copy, Trash2, Pencil } from 'lucide-react'
+import { Send, Check, X, RefreshCw, MoreHorizontal, Copy, Trash2, Pencil, Loader2 } from 'lucide-react'
 import { MarkdownContent } from '@/components/markdown-content'
 import { TaskAssets } from '@bakin/assets/components/task-assets'
 import { AgentAvatar } from '@/components/agent-avatar'
@@ -147,6 +147,10 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [pasting, setPasting] = useState(false)
+  const descriptionRef = useRef<HTMLTextAreaElement>(null)
+  // Provisional ID for new tasks — ensures pasted assets land in the right directory
+  const [provisionalId] = useState(() => crypto.randomUUID().slice(0, 8))
   const [logMessage, setLogMessage] = useState('')
   const [addingLog, setAddingLog] = useState(false)
   const [showAllNotes, setShowAllNotes] = useState(false)
@@ -276,6 +280,116 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
 
   function markDirty() { setDirty(true) }
 
+  const CLIPBOARD_MAX_SIZE_MB = 10
+  const CLIPBOARD_MAX_SIZE_BYTES = CLIPBOARD_MAX_SIZE_MB * 1024 * 1024
+  const LONG_TEXT_LINE_THRESHOLD = 20
+  const LONG_TEXT_CHAR_THRESHOLD = 500
+
+  /** Insert text at the textarea cursor position and update description state. */
+  function insertAtCursor(text: string) {
+    const el = descriptionRef.current
+    if (!el) {
+      setDescription(prev => prev + text)
+      markDirty()
+      return
+    }
+    const start = el.selectionStart
+    const end = el.selectionEnd
+    const before = description.substring(0, start)
+    const after = description.substring(end)
+    const newValue = before + text + after
+    setDescription(newValue)
+    markDirty()
+    // Restore cursor after React re-render
+    requestAnimationFrame(() => {
+      el.selectionStart = el.selectionEnd = start + text.length
+      el.focus()
+    })
+  }
+
+  /** Upload a file to the assets system and return the result. */
+  async function uploadAsset(file: File, taskId: string, source: 'clipboard' | 'upload'): Promise<{ ok: boolean; path?: string; filename?: string; error?: string }> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('taskId', taskId)
+    formData.append('source', source)
+    const res = await fetch('/api/plugins/assets/upload', { method: 'POST', body: formData })
+    return res.json()
+  }
+
+  /** Handle paste events — intercepts images and long text, uploads as task assets. */
+  async function handleDescriptionPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    const currentTaskId = task?.id || provisionalId
+
+    // Check for image data first
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (!file) continue
+
+        if (file.size > CLIPBOARD_MAX_SIZE_BYTES) {
+          toast(`Pasted image exceeds ${CLIPBOARD_MAX_SIZE_MB}MB limit (${(file.size / 1024 / 1024).toFixed(1)}MB)`, 'error')
+          return
+        }
+
+        setPasting(true)
+        try {
+          const result = await uploadAsset(file, currentTaskId, 'clipboard')
+          if (result.ok) {
+            const ref = `![${result.filename || 'pasted image'}](/api/plugins/assets/file?path=${encodeURIComponent(result.path!)})`
+            insertAtCursor(ref)
+            window.dispatchEvent(new CustomEvent('bakin:asset-uploaded', { detail: { taskId: currentTaskId } }))
+            toast('Image added to task assets', 'success')
+          } else {
+            toast(result.error || 'Failed to upload pasted image', 'error')
+          }
+        } catch {
+          toast('Failed to upload pasted image', 'error')
+        } finally {
+          setPasting(false)
+        }
+        return
+      }
+    }
+
+    // Check for long text paste — save as text asset instead of bloating description
+    const text = e.clipboardData.getData('text/plain')
+    if (text) {
+      const lineCount = text.split('\n').length
+      if (lineCount >= LONG_TEXT_LINE_THRESHOLD || text.length >= LONG_TEXT_CHAR_THRESHOLD) {
+        e.preventDefault()
+        setPasting(true)
+        try {
+          const blob = new Blob([text], { type: 'text/markdown' })
+          const filename = `pasted-text-${Date.now()}.md`
+          const file = new File([blob], filename, { type: 'text/markdown' })
+          const result = await uploadAsset(file, currentTaskId, 'clipboard')
+          if (result.ok) {
+            const ref = `[Attached: ${result.filename} (${lineCount} lines)](/api/plugins/assets/file?path=${encodeURIComponent(result.path!)})`
+            insertAtCursor(ref)
+            window.dispatchEvent(new CustomEvent('bakin:asset-uploaded', { detail: { taskId: currentTaskId } }))
+            toast(`Text saved as task asset (${lineCount} lines)`, 'success')
+          } else {
+            // Fallback: paste text inline if upload fails
+            insertAtCursor(text)
+            toast(result.error || 'Failed to save as asset, pasted inline', 'error')
+          }
+        } catch {
+          // Fallback: paste text inline
+          insertAtCursor(text)
+          toast('Failed to save as asset, pasted inline', 'error')
+        } finally {
+          setPasting(false)
+        }
+        return
+      }
+    }
+  }
+
   async function handleCreate() {
     if (!title.trim()) return
     setSaving(true)
@@ -284,6 +398,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: provisionalId,
           title: title.trim(),
           description: description.trim() || undefined,
           column,
@@ -629,11 +744,16 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
           </div>
 
           <div>
-            <label className="text-sm text-muted-foreground mb-1 block">Details</label>
+            <label className="text-sm text-muted-foreground mb-1 block">
+              Details
+              {pasting && <Loader2 className="inline size-3.5 ml-1.5 animate-spin text-muted-foreground" />}
+            </label>
             <Textarea
+              ref={descriptionRef}
               value={description}
               onChange={(e) => { setDescription(e.target.value); markDirty() }}
-              placeholder="Describe what needs to happen, any constraints, links, or context the agent needs..."
+              onPaste={handleDescriptionPaste}
+              placeholder="Describe what needs to happen, any constraints, links, or context the agent needs... (paste images or long text to auto-attach)"
               rows={8}
               className="min-h-[120px] resize-y bg-surface"
             />

@@ -36,7 +36,7 @@ export interface NavItem {
 
 export interface APIRoute {
   path: string
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   handler: (req: Request, ctx: PluginContext) => Response | Promise<Response>
   description?: string
   params?: string

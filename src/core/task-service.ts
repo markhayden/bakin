@@ -107,6 +107,8 @@ export async function moveTaskWithEffects(
     checkAndContinueDependents(taskId, title, getContentDir(), getPort()).catch((err) => {
       log.error('Continuation trigger failed', err)
     })
+    // Purge clipboard-source assets if the setting is enabled
+    hooks().invoke('assets.purgeClipboardForTask', { taskId }).catch(() => {})
   }
 
   // Auto-check project checklist items when task reaches done or confirmed
@@ -181,6 +183,7 @@ export async function blockTaskWithEffects(
  * Returns the created task.
  */
 export async function createTaskWithEffects(opts: {
+  id?: string
   title: string
   column?: string
   assignee?: string
@@ -197,6 +200,7 @@ export async function createTaskWithEffects(opts: {
   const effectiveWorkflowId = opts.workflowId || undefined
 
   const task = await hooks().invoke<{ id: string }>('tasks.createTask', {
+    id: opts.id,
     title: opts.title,
     column: opts.column,
     assignee: opts.assignee,

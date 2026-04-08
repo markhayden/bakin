@@ -68,7 +68,7 @@ src/
 plugins/                   — Core plugins (each has bakin-plugin.json manifest)
   tasks/                   — Task board management
   workflows/               — Workflow execution engine (xyflow canvas)
-  assets/                  — Asset management with sidecar metadata
+  assets/                  — Asset management with sidecar metadata, manual upload, clipboard paste
   projects/                — Project tracking with checklists
   schedule/                — Cron job scheduling with OpenClaw bridge
   memory/                  — Audit logs and agent workspaces
@@ -78,7 +78,7 @@ plugins/                   — Core plugins (each has bakin-plugin.json manifest
   health/                  — System health dashboard
 scripts/lib/               — MCP exec tools (self-registering via registry.ts)
 cli/                       — CLI tool (wraps HTTP API)
-dev/openclaw-mock/         — Imitation Crab: OpenClaw mock for dev without real OpenClaw
+dev/imitation-crab/         — Imitation Crab: OpenClaw mock for dev without real OpenClaw
   index.ts                 — Orchestrator (safety check → seed → gateway → optional Bakin)
   safety.ts                — Blocks if real OpenClaw detected
   seed.ts                  — Creates ~/.imitationcrab/ with fixture data
@@ -101,7 +101,6 @@ Created by `bakin init`. Per-installation state, NOT in the repo.
   schedule/                — Cron job state
   workflows/               — Definitions, instances, skills
   team/                    — Contacts, personas
-  TASKBOARD.md             — Task kanban board
   MEMORY-LOG.md            — Agent memory log
   audit.jsonl              — Append-only audit trail
 ```
@@ -156,6 +155,30 @@ Conventional commits with scope:
 - `refactor(core): extract settings module`
 - `test(workflows): add gate approval test`
 
+## Testing Rules — CRITICAL
+
+**Every test file MUST mock `src/core/content-dir` to use a temp directory.** Tests that touch storage, assets, tasks, or any plugin MUST NOT read from or write to `~/.bakin/`. Leaked test data into the production instance has caused real incidents.
+
+Required mocks for any test that touches the filesystem:
+```typescript
+const testDir = join(tmpdir(), `bakin-test-${Date.now()}`)
+
+vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => { /* return paths under testDir */ },
+}))
+```
+
+Additional mandatory rules:
+- **Always clean up:** `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`
+- **Mock the logger:** `vi.mock('../../src/core/logger', ...)` — prevents noise and avoids side effects
+- **Mock the watcher:** `vi.mock('../../src/core/watcher', ...)` — prevents chokidar from watching real dirs
+- **Mock openclaw-client:** Prevents tests from sending real messages to agents
+- **Never hardcode `~/.bakin/`** or `process.env.HOME` in test fixtures
+- **Use `tests/plugins/test-helpers.ts`** (`activatePlugin`, `callRoute`, `callTool`) for plugin tests — these provide properly isolated mock contexts
+
+If a test does not mock `getContentDir`, it **will** eventually write to `~/.bakin/` and corrupt production data. There are no exceptions to this rule.
+
 ## Key Patterns
 
 ### SSE Broadcasting
@@ -165,7 +188,7 @@ Real-time updates via `broadcast()` from `src/core/sse.ts`. Uses `globalThis.__b
 Agents report progress via `bakin_log_progress` MCP tool → `logProgress()` in task-service → SSE broadcast. Structured audit via `appendAudit()` → `audit.jsonl` + SSE + Antfly.
 
 ### OpenClaw Home Directory
-All OpenClaw paths resolved through `getOpenClawHome()` / `getOpenClawPath()` in `packages/core/src/openclaw-home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/` fallback. For development without OpenClaw: `npm run dev:mock` starts the Imitation Crab mock (`dev/openclaw-mock/`), which seeds `~/.imitationcrab/` and sets `OPENCLAW_HOME` automatically.
+All OpenClaw paths resolved through `getOpenClawHome()` / `getOpenClawPath()` in `packages/core/src/openclaw-home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/` fallback. For development without OpenClaw: `npm run dev:mock` starts the Imitation Crab mock (`dev/imitation-crab/`), which seeds `~/.imitationcrab/` and sets `OPENCLAW_HOME` automatically.
 
 ### Content Directory
 All paths resolved through `getContentDir()` in `src/core/content-dir.ts`. Resolution: `BAKIN_HOME` env → `~/.bakin/` → `./content/` fallback. Well-known paths via `getBakinPaths()`.

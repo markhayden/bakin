@@ -16,7 +16,7 @@ Create a single utility module that centralizes all `~/.openclaw/` path resoluti
 
 ### Part 2: Mock server + fixtures (dev tooling)
 
-A standalone dev tool under `dev/openclaw-mock/` that seeds an `OPENCLAW_HOME` directory with fixture data, runs a mock HTTP gateway, and provides a CLI shim.
+A standalone dev tool under `dev/imitation-crab/` that seeds an `OPENCLAW_HOME` directory with fixture data, runs a mock HTTP gateway, and provides a CLI shim.
 
 ---
 
@@ -72,7 +72,7 @@ Each file replaces its hardcoded `join(homedir(), '.openclaw', ...)` with `getOp
 ### Directory structure
 
 ```
-dev/openclaw-mock/
+dev/imitation-crab/
   index.ts              — Orchestrator: safety check → seed → start gateway → launch Bakin
   safety.ts             — Detects real OpenClaw (binary, real ~/.openclaw/, running gateway)
   seed.ts               — Creates mock OPENCLAW_HOME with all fixture data
@@ -161,9 +161,9 @@ No symlinks. No cleanup required on crash. `OPENCLAW_HOME` is only set for child
 ### npm Scripts
 
 ```json
-"dev:mock": "npx tsx dev/openclaw-mock/index.ts --with-bakin",
-"mock:start": "npx tsx dev/openclaw-mock/index.ts",
-"mock:seed": "npx tsx dev/openclaw-mock/seed.ts"
+"dev:mock": "npx tsx dev/imitation-crab/index.ts --with-bakin",
+"mock:start": "npx tsx dev/imitation-crab/index.ts",
+"mock:seed": "npx tsx dev/imitation-crab/seed.ts"
 ```
 
 ---
@@ -176,19 +176,19 @@ No symlinks. No cleanup required on crash. `OPENCLAW_HOME` is only set for child
 3. Verify: `npm run dev` still works on a machine with real OpenClaw (no behavior change when `OPENCLAW_HOME` is unset)
 
 ### Phase 2: Mock foundation
-4. `dev/openclaw-mock/safety.ts` — safety gate
-5. `dev/openclaw-mock/fixtures/openclaw.json` — canonical agent fixture config
-6. `dev/openclaw-mock/fixtures/auth-profiles.json` — fake credentials
-7. `dev/openclaw-mock/seed.ts` — filesystem seeder
-8. `dev/openclaw-mock/gateway.ts` — HTTP mock server
-9. `dev/openclaw-mock/index.ts` — orchestrator
+4. `dev/imitation-crab/safety.ts` — safety gate
+5. `dev/imitation-crab/fixtures/openclaw.json` — canonical agent fixture config
+6. `dev/imitation-crab/fixtures/auth-profiles.json` — fake credentials
+7. `dev/imitation-crab/seed.ts` — filesystem seeder
+8. `dev/imitation-crab/gateway.ts` — HTTP mock server
+9. `dev/imitation-crab/index.ts` — orchestrator
 
 ### Phase 3: CLI + fixtures
-10. `dev/openclaw-mock/cli-shim.ts` + `cli-shim.sh`
-11. `dev/openclaw-mock/fixtures/workspace/` — main agent workspace files (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md)
-12. `dev/openclaw-mock/fixtures/workspaces/` — subagent workspace dirs
-13. `dev/openclaw-mock/fixtures/jobs.json` + `fixtures/runs/` — cron fixture data
-14. `dev/openclaw-mock/fixtures/seed.sql` — SQLite seed for flow_runs
+10. `dev/imitation-crab/cli-shim.ts` + `cli-shim.sh`
+11. `dev/imitation-crab/fixtures/workspace/` — main agent workspace files (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md)
+12. `dev/imitation-crab/fixtures/workspaces/` — subagent workspace dirs
+13. `dev/imitation-crab/fixtures/jobs.json` + `fixtures/runs/` — cron fixture data
+14. `dev/imitation-crab/fixtures/seed.sql` — SQLite seed for flow_runs
 
 ### Phase 4: Integration + polish
 15. Add npm scripts to `package.json`
@@ -202,7 +202,7 @@ No symlinks. No cleanup required on crash. `OPENCLAW_HOME` is only set for child
 - **`OPENCLAW_HOME` env var, not symlinks** — Clean, crash-safe, follows OpenClaw's own test pattern. Requires updating 17 files but centralizes path logic permanently.
 - **Single utility module** — `getOpenClawPath()` replaces 20+ different path constructions. DRY, testable, consistent.
 - **Real SQLite** — Seed creates actual `registry.sqlite` with real schema, matching existing test patterns in `tests/plugins/tasks/flow-store.test.ts`.
-- **Fixture files in repo** — Version-controlled under `dev/openclaw-mock/fixtures/`. Copied to `~/.imitationcrab/` by seeder. All devs get the same baseline.
+- **Fixture files in repo** — Version-controlled under `dev/imitation-crab/fixtures/`. Copied to `~/.imitationcrab/` by seeder. All devs get the same baseline.
 - **Idempotent seeder** — First run creates everything. Subsequent runs skip (preserving dev state). `--force` resets.
 - **No `if (mock)` branches** — Production code only knows about `OPENCLAW_HOME`. The mock concept is invisible to it.
 
@@ -248,10 +248,10 @@ No symlinks. No cleanup required on crash. `OPENCLAW_HOME` is only set for child
 - `scripts/lib/generate-image.ts`
 
 **New (Part 2 — mock tooling):**
-- `dev/openclaw-mock/index.ts`
-- `dev/openclaw-mock/safety.ts`
-- `dev/openclaw-mock/seed.ts`
-- `dev/openclaw-mock/gateway.ts`
-- `dev/openclaw-mock/cli-shim.ts`
-- `dev/openclaw-mock/cli-shim.sh`
-- `dev/openclaw-mock/fixtures/*`
+- `dev/imitation-crab/index.ts`
+- `dev/imitation-crab/safety.ts`
+- `dev/imitation-crab/seed.ts`
+- `dev/imitation-crab/gateway.ts`
+- `dev/imitation-crab/cli-shim.ts`
+- `dev/imitation-crab/cli-shim.sh`
+- `dev/imitation-crab/fixtures/*`

@@ -108,13 +108,13 @@ const tasksPlugin: BakinPlugin = {
       description: 'Create a new task',
       handler: async (req: Request) => {
         const body = await req.json()
-        const { title, description, column, assignee, workflowId, skipWorkflowReason, createdBy, parentId, projectId } = body
+        const { id, title, description, column, assignee, workflowId, skipWorkflowReason, createdBy, parentId, projectId } = body
         if (!title) {
           return Response.json({ error: 'title required' }, { status: 400 })
         }
         try {
           const result = await createTaskWithEffects({
-            title, column, assignee, description, workflowId, skipWorkflowReason,
+            id, title, column, assignee, description, workflowId, skipWorkflowReason,
             createdBy: createdBy || 'system', parentId, projectId, channel: 'rest',
           })
           ctx.activity.log(createdBy || 'system', `Created task "${title}"`, { taskId: result.id })
