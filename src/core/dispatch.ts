@@ -101,7 +101,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     const activeIds = new Set([
       ...columns.inProgress.map(t => t.id),
       ...columns.done.map(t => t.id),
-      ...columns.confirmed.map(t => t.id),
+      ...columns.archived.map(t => t.id),
     ])
     state.dispatched = state.dispatched.filter(id => activeIds.has(getDispatchMarkerTaskId(id)))
     // Rebuild dispatchedSet AFTER reconciliation so tasks moved back to todo are eligible

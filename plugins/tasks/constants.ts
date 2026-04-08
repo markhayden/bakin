@@ -6,7 +6,7 @@ export const COLUMN_CONFIG = {
   todo: { label: 'Todo', emoji: '📋' },
   review: { label: 'Review', emoji: '🔍' },
   done: { label: 'Done', emoji: '✅' },
-  confirmed: { label: 'Confirmed', emoji: '🟣' },
+  archived: { label: 'Archived', emoji: '📦' },
   blocked: { label: 'Blocked', emoji: '🔴' },
 } as const
 
@@ -16,7 +16,7 @@ export const COLUMN_HEADERS: Record<string, ColumnId> = {
   '📋 Todo': 'todo',
   '🔍 Review': 'review',
   '✅ Done': 'done',
-  '🟣 Confirmed': 'confirmed',
+  '📦 Archived': 'archived',
   '🔴 Blocked': 'blocked',
 }
 
@@ -26,8 +26,18 @@ export const STATUS_DOT_COLORS: Record<ColumnId, string> = {
   todo:       'bg-status-todo',
   review:     'bg-status-review',
   done:       'bg-status-done',
-  confirmed:  'bg-status-done',
+  archived:   'bg-zinc-500',
   blocked:    'bg-status-blocked',
+}
+
+export const VALID_TRANSITIONS: Record<ColumnId, ColumnId[]> = {
+  backlog:    ['todo'],
+  todo:       ['inProgress', 'blocked', 'done', 'backlog'],
+  inProgress: ['review', 'done', 'blocked', 'todo'],
+  blocked:    ['todo', 'inProgress', 'backlog'],
+  review:     ['done', 'inProgress', 'todo'],
+  done:       ['archived', 'todo', 'inProgress'],
+  archived:   ['done', 'todo'],
 }
 
 export const STATUS_BADGE_STYLES: Record<ColumnId, { bg: string; label: string }> = {
@@ -37,5 +47,5 @@ export const STATUS_BADGE_STYLES: Record<ColumnId, { bg: string; label: string }
   review:     { bg: 'bg-status-review/10 text-status-review border border-status-review/20', label: 'Review' },
   done:       { bg: 'bg-status-done/10 text-status-done border border-status-done/20', label: 'Done' },
   blocked:    { bg: 'bg-status-blocked/10 text-status-blocked border border-status-blocked/20', label: 'Blocked' },
-  confirmed:  { bg: 'bg-status-confirmed/10 text-status-confirmed border border-status-confirmed/20', label: 'Confirmed' },
+  archived:   { bg: 'bg-zinc-500/10 text-zinc-400 border border-zinc-500/20', label: 'Archived' },
 }

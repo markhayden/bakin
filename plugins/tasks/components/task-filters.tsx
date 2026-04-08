@@ -8,7 +8,7 @@ import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import type { ColumnId } from '../types'
 
 const STATUS_OPTIONS: { value: string; label: string; icon: React.ReactNode }[] =
-  (['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed'] as ColumnId[]).map(id => ({
+  (['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as ColumnId[]).map(id => ({
     value: id,
     label: COLUMN_CONFIG[id].label,
     icon: <span className={`size-2 rounded-full ${STATUS_DOT_COLORS[id]}`} />,

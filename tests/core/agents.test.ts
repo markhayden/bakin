@@ -6,7 +6,7 @@ import { tmpdir } from 'os'
 // Mock flow-store to avoid touching real SQLite
 const mockTasks: Array<{ id: string; title: string; agent?: string; description?: string }> = []
 const mockColumns: Record<string, typeof mockTasks> = {
-  backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [],
+  backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [],
 }
 
 vi.mock('../../src/lib/taskboard', () => ({

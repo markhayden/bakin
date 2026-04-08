@@ -7,7 +7,7 @@ export interface FlatTask extends Task {
   status: ColumnId
 }
 
-const COLUMN_IDS: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'confirmed']
+const COLUMN_IDS: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived']
 
 function matchesSearch(task: Task, q: string): boolean {
   const lower = q.toLowerCase()

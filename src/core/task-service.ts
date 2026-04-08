@@ -111,8 +111,8 @@ export async function moveTaskWithEffects(
     hooks().invoke('assets.purgeClipboardForTask', { taskId }).catch(() => {})
   }
 
-  // Auto-check project checklist items when task reaches done or confirmed
-  if (to.toLowerCase() === 'done' || to.toLowerCase() === 'confirmed') {
+  // Auto-check project checklist items when task reaches done or archived
+  if (to.toLowerCase() === 'done' || to.toLowerCase() === 'archived') {
     hooks().invoke<void>('projects.autoCheckLinkedItem', { taskId }).catch(() => {})
   }
 

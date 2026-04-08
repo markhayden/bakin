@@ -92,6 +92,7 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_assets_get` | Retrieve a single asset's sidecar metadata by path. |
 | `bakin_exec_assets_save` | Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically. |
 | `bakin_exec_assets_delete` | Soft-delete an asset (moves to trash with 30-day expiry). |
+| `bakin_exec_assets_link` | Link an asset to a different task, or unlink it (set taskId to null). Physically moves the file between task directories and updates sidecar metadata. |
 | `bakin_exec_assets_list_trash` | List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge. |
 | `bakin_exec_assets_restore` | Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename. |
 | `bakin_exec_assets_audit` | Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars. |
@@ -171,7 +172,7 @@ When you receive a task:
 4. If blocked, block the task with a clear reason
 5. When done, report complete with a summary
 
-Valid transitions: backlog→todo, todo→inProgress/blocked/done/backlog, inProgress→done/blocked/todo, blocked→todo/inProgress/backlog, done→confirmed/todo. The `confirmed` column is terminal — nothing leaves it. The `backlog` column is for planning only — tasks there are never auto-dispatched to agents.
+Valid transitions: backlog→todo, todo→inProgress/blocked/done/backlog, inProgress→done/blocked/todo, blocked→todo/inProgress/backlog, done→archived/todo. The `archived` column holds completed work — tasks auto-archive after 24 hours in done, and can be recovered back to done or todo. The `backlog` column is for planning only — tasks there are never auto-dispatched to agents.
 
 ### Report Completion
 

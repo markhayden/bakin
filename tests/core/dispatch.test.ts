@@ -193,7 +193,7 @@ describe('dispatch', () => {
               todo: [],
               inProgress: [{ id: 'wf-1', title: 'Generate image', workflowId: 'image-flow', agent: 'pixel' }],
               done: [],
-              confirmed: [],
+              archived: [],
             },
           }
         }

@@ -27,7 +27,7 @@ export interface TaskColumns {
   todo: Task[]
   review: Task[]
   done: Task[]
-  confirmed: Task[]
+  archived: Task[]
   blocked: Task[]
 }
 
