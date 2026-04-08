@@ -152,6 +152,20 @@ confirmed  → done, todo
 | `plugins/tasks/components/task-metrics.tsx` | Summary metrics row (counts by column) |
 | `plugins/tasks/components/task-log-table.tsx` | Table view of tasks (alternative to kanban) |
 
+### Drag-and-Drop (dnd-kit)
+
+The kanban board uses `@dnd-kit/core` v6 + `@dnd-kit/sortable` v10 for drag-and-drop:
+
+- **Sortable IDs** are plain `task.id` (not composite), so dnd-kit tracks items across containers.
+- **`useSortable` data** includes custom `{ task, columnId }` plus dnd-kit's internal `sortable: { containerId, index, items }`.
+- **Collision detection** uses `pointerWithin` + `closestCenter` fallback for reliable multi-container detection.
+- **`handleDragOver`** moves items between columns in optimistic state (via `setOptimistic`) so dnd-kit shows displacement in the target column during drag.
+- **`handleDragCancel`** restores the drag-start column snapshot.
+
+**Critical: stale-ref pitfall.** `active.data.current.columnId` is a live ref that `useSortable` updates when the component re-renders in a new column (after `handleDragOver`). In `handleDragEnd`, it reflects the *target* column, not the source. The source column must be captured in a ref at drag start (`dragFromColRef`). Similarly, target column must be read from `over.data.current` / `over.id`, not from optimistic state (which may be stale in the `useCallback` closure).
+
+**Ordering.** Tasks within columns are ordered by `updated_at DESC`. The `/reorder` endpoint stamps `updated_at` values (now-0, now-1, ...) to encode position. Cross-column moves call `/move` then `/reorder` to persist drop position.
+
 ### Real-Time Updates (SSE)
 
 1. Every write operation in `flow-store.ts` calls `broadcastChange()` which fires `globalThis.__bakinBroadcast({ type: 'taskboard' })`
