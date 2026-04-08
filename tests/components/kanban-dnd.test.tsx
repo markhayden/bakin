@@ -161,7 +161,7 @@ function makeTask(id: string, title: string, overrides?: Partial<Task>): Task {
 function makeBoardResponse(columns: Partial<TaskColumns>) {
   return {
     columns: {
-      backlog: [], todo: [], blocked: [], inProgress: [], review: [], done: [], confirmed: [],
+      backlog: [], todo: [], blocked: [], inProgress: [], review: [], done: [], archived: [],
       ...columns,
     },
     timestamp: '2026-04-07T00:00:00Z',
@@ -318,7 +318,7 @@ describe('KanbanBoard drag and drop', () => {
   it('cross-column move to empty column calls /move API', async () => {
     const task1 = makeTask('task-1', 'Move Me')
 
-    await renderBoard({ todo: [task1], review: [] })
+    await renderBoard({ todo: [task1], inProgress: [] })
 
     act(() => {
       capturedDndProps.onDragStart(makeDragEvent(
@@ -327,31 +327,31 @@ describe('KanbanBoard drag and drop', () => {
       ))
     })
 
-    // Drag over the empty review column droppable
+    // Drag over the empty inProgress column droppable (valid: todo → inProgress)
     act(() => {
       capturedDndProps.onDragOver(makeDragEvent(
         'task-1',
         { task: task1, columnId: 'todo' },
-        'review',
+        'inProgress',
       ))
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('column-review').textContent).toContain('Move Me')
+      expect(screen.getByTestId('column-inProgress').textContent).toContain('Move Me')
     })
 
     await act(async () => {
       capturedDndProps.onDragEnd(makeDragEvent(
         'task-1',
         { task: task1, columnId: 'todo' },
-        'review',
+        'inProgress',
       ))
     })
 
     await waitFor(() => {
       const moveCall = fetchCalls.find(c => c.url.includes('/move'))
       expect(moveCall).toBeTruthy()
-      expect(moveCall!.body.to).toBe('review')
+      expect(moveCall!.body.to).toBe('inProgress')
     })
   })
 

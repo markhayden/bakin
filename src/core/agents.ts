@@ -67,7 +67,7 @@ export function getAgentTasks(agentId: string, _contentDir: string): AgentTask[]
     done: 'done',
     backlog: 'backlog',
     review: 'review',
-    confirmed: 'confirmed',
+    archived: 'archived',
   }
 
   for (const [colName, colTasks] of Object.entries(board.columns)) {

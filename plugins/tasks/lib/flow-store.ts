@@ -56,19 +56,9 @@ export function localDateString(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-// ---------------------------------------------------------------------------
-// Valid state transitions
-// ---------------------------------------------------------------------------
-
-export const VALID_TRANSITIONS: Record<ColumnId, ColumnId[]> = {
-  backlog:    ['todo'],
-  todo:       ['inProgress', 'blocked', 'done', 'backlog'],
-  inProgress: ['review', 'done', 'blocked', 'todo'],
-  blocked:    ['todo', 'inProgress', 'backlog'],
-  review:     ['done', 'inProgress', 'todo'],
-  done:       ['confirmed', 'todo', 'inProgress'],
-  confirmed:  ['done', 'todo'],
-}
+// Re-export valid transitions from constants (single source of truth)
+export { VALID_TRANSITIONS } from '../constants'
+import { VALID_TRANSITIONS } from '../constants'
 
 // ---------------------------------------------------------------------------
 // Column normalization
@@ -81,7 +71,7 @@ function normalizeColumn(col: string): ColumnId | null {
   if (lower === 'todo') return 'todo'
   if (lower === 'review') return 'review'
   if (lower === 'done') return 'done'
-  if (lower === 'confirmed') return 'confirmed'
+  if (lower === 'archived' || lower === 'confirmed') return 'archived'
   if (lower === 'blocked') return 'blocked'
   return null
 }
@@ -116,6 +106,8 @@ interface BakinTaskState {
   workflowId?: string
   projectId?: string
   scheduleJobId?: string
+  archived?: boolean
+  /** @deprecated Use `archived` — kept for backward compatibility with existing rows */
   confirmed?: boolean
   date?: string
   log?: TaskLogEntry[]
@@ -131,7 +123,7 @@ function getColumn(flow: FlowRunRow): ColumnId {
     case 'waiting':
       return flow.blocked_task_id ? 'blocked' : 'review'
     case 'succeeded':
-      return state.confirmed ? 'confirmed' : 'done'
+      return (state.archived || state.confirmed) ? 'archived' : 'done'
     case 'failed':
     case 'cancelled':
       return 'done'
@@ -153,7 +145,7 @@ function flowToTask(flow: FlowRunRow): Task {
     title: state.title || flow.goal,
     agent: state.agent,
     createdBy: state.createdBy,
-    checked: column === 'done' || column === 'confirmed',
+    checked: column === 'done' || column === 'archived',
     date: state.date,
     blockedReason: flow.blocked_summary || undefined,
     description: state.description,
@@ -167,7 +159,7 @@ function flowToTask(flow: FlowRunRow): Task {
 }
 
 function emptyColumns(): TaskColumns {
-  return { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] }
+  return { backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [] }
 }
 
 function flowsToBoard(flows: FlowRunRow[]): TaskBoard {
@@ -194,7 +186,7 @@ function columnToStatus(col: ColumnId): string {
     case 'blocked':
       return 'waiting'
     case 'done':
-    case 'confirmed':
+    case 'archived':
       return 'succeeded'
   }
 }
@@ -316,11 +308,11 @@ export function createTask(
     if (colId === 'backlog' || colId === 'todo') {
       state.column = colId
     }
-    if (colId === 'inProgress' || colId === 'review' || colId === 'done' || colId === 'confirmed') {
+    if (colId === 'inProgress' || colId === 'review' || colId === 'done' || colId === 'archived') {
       state.date = localDateString()
     }
-    if (colId === 'done' || colId === 'confirmed') {
-      state.confirmed = colId === 'confirmed'
+    if (colId === 'done' || colId === 'archived') {
+      state.archived = colId === 'archived' || undefined
     }
 
     const status = columnToStatus(colId)
@@ -348,7 +340,7 @@ export function createTask(
         JSON.stringify(state),
         now,
         now,
-        (colId === 'done' || colId === 'confirmed') ? now : null,
+        (colId === 'done' || colId === 'archived') ? now : null,
       )
     })
 
@@ -359,7 +351,7 @@ export function createTask(
       title,
       agent: assignee,
       createdBy,
-      checked: colId === 'done' || colId === 'confirmed',
+      checked: colId === 'done' || colId === 'archived',
       date: state.date,
       description,
       parentId,
@@ -402,10 +394,11 @@ export function moveTask(identifier: string, to: string, from?: string): Promise
       } else {
         delete state.column
       }
-      if (toCol === 'inProgress' || toCol === 'review' || toCol === 'done' || toCol === 'confirmed') {
+      if (toCol === 'inProgress' || toCol === 'review' || toCol === 'done' || toCol === 'archived') {
         state.date = localDateString()
       }
-      state.confirmed = toCol === 'confirmed' ? true : undefined
+      state.archived = toCol === 'archived' ? true : undefined
+      delete state.confirmed
 
       const now = Date.now()
       let waitJson: string | null = null
@@ -414,7 +407,7 @@ export function moveTask(identifier: string, to: string, from?: string): Promise
         waitJson = JSON.stringify({ type: 'gate_approval', requestedAt: new Date().toISOString() })
       }
 
-      const endedAt = (toCol === 'done' || toCol === 'confirmed') ? now : null
+      const endedAt = (toCol === 'done' || toCol === 'archived') ? now : null
 
       db.prepare(`
         UPDATE flow_runs SET
@@ -601,10 +594,11 @@ export function updateTask(
         } else {
           delete state.column
         }
-        if (updates.column === 'inProgress' || updates.column === 'review' || updates.column === 'done' || updates.column === 'confirmed') {
+        if (updates.column === 'inProgress' || updates.column === 'review' || updates.column === 'done' || updates.column === 'archived') {
           state.date = localDateString()
         }
-        state.confirmed = updates.column === 'confirmed' ? true : undefined
+        state.archived = updates.column === 'archived' ? true : undefined
+        delete state.confirmed
 
         if (updates.column !== 'blocked') {
           blockedTaskId = null
@@ -613,7 +607,7 @@ export function updateTask(
         if (updates.column !== 'review') {
           waitJson = null
         }
-        if (updates.column === 'done' || updates.column === 'confirmed') {
+        if (updates.column === 'done' || updates.column === 'archived') {
           endedAt = Date.now()
         }
       }
@@ -771,4 +765,44 @@ export function archiveOldTasks(olderThanDays: number): number {
 
 export function getArchivedCount(): number {
   return 0
+}
+
+/**
+ * Move done tasks older than `olderThanMs` to the archived column.
+ * Sets state.archived = true on succeeded rows whose ended_at is past the cutoff.
+ * Returns the number of tasks archived.
+ */
+export function autoArchiveDoneTasks(olderThanMs: number = 24 * 60 * 60 * 1000): number {
+  return withDb(db => {
+    const cutoff = Date.now() - olderThanMs
+    // Find succeeded tasks that are in the "done" column (no archived/confirmed flag)
+    const rows = db.prepare(`
+      SELECT flow_id, state_json FROM flow_runs
+      WHERE owner_key LIKE 'bakin:task:%'
+      AND status = 'succeeded'
+      AND ended_at IS NOT NULL
+      AND ended_at < ?
+      AND json_extract(state_json, '$.archived') IS NULL
+      AND json_extract(state_json, '$.confirmed') IS NULL
+    `).all(cutoff) as Array<{ flow_id: string; state_json: string | null }>
+
+    if (rows.length === 0) return 0
+
+    const stmt = db.prepare(`
+      UPDATE flow_runs SET state_json = ?, revision = revision + 1, updated_at = ? WHERE flow_id = ?
+    `)
+    const now = Date.now()
+    const tx = db.transaction(() => {
+      for (const row of rows) {
+        const state = parseStateJson(row.state_json)
+        state.archived = true
+        delete state.confirmed
+        stmt.run(JSON.stringify(state), now, row.flow_id)
+      }
+    })
+    tx()
+
+    if (rows.length > 0) broadcastChange()
+    return rows.length
+  })
 }

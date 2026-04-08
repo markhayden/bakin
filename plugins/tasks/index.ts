@@ -17,6 +17,7 @@ import {
   clearDependency,
   reorderTasks,
   archiveOldTasks,
+  autoArchiveDoneTasks,
 } from './lib/flow-store'
 import {
   moveTaskWithEffects,
@@ -32,7 +33,7 @@ import { createLogger } from '../../src/core/logger'
 
 const log = createLogger('tasks')
 
-const COLUMNS = ['backlog', 'todo', 'inProgress', 'review', 'done', 'blocked', 'confirmed'] as const
+const COLUMNS = ['backlog', 'todo', 'inProgress', 'review', 'done', 'blocked', 'archived'] as const
 
 const tasksPlugin: BakinPlugin = {
   id: 'tasks',
@@ -602,15 +603,23 @@ const tasksPlugin: BakinPlugin = {
       },
     })
 
-    // Auto-archive completed tasks on startup + every 6 hours
+    // Auto-archive: move done tasks to archived after 24 hours (runs hourly)
+    const autoArchived = autoArchiveDoneTasks()
+    if (autoArchived > 0) log.info(`Auto-archived ${autoArchived} done tasks (>24h)`)
+    setInterval(() => {
+      const count = autoArchiveDoneTasks()
+      if (count > 0) log.info(`Auto-archive: moved ${count} done tasks to archived`)
+    }, 60 * 60 * 1000)
+
+    // Hard-delete old completed tasks on startup + every 6 hours
     const taskSettings = ctx.getSettings<{ autoArchiveDays?: number }>()
     if (taskSettings?.autoArchiveDays && taskSettings.autoArchiveDays > 0) {
       const days = taskSettings.autoArchiveDays
-      const archived = archiveOldTasks(days)
-      if (archived > 0) log.info(`Archived ${archived} old tasks (>${days} days)`)
+      const deleted = archiveOldTasks(days)
+      if (deleted > 0) log.info(`Deleted ${deleted} old tasks (>${days} days)`)
       setInterval(() => {
         const count = archiveOldTasks(days)
-        if (count > 0) log.info(`Periodic archive: removed ${count} old tasks`)
+        if (count > 0) log.info(`Periodic cleanup: deleted ${count} old tasks`)
       }, 6 * 60 * 60 * 1000)
     }
   },

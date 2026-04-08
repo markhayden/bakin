@@ -15,7 +15,7 @@ export function TaskMetrics({ columns, timestamp }: TaskMetricsProps) {
     const total = Object.values(columns).reduce((sum, col) => sum + col.length, 0)
 
     const todayStr = new Date().toISOString().slice(0, 10)
-    const completedToday = [...columns.done, ...columns.confirmed].filter(
+    const completedToday = [...columns.done, ...columns.archived].filter(
       t => t.date?.startsWith(todayStr)
     ).length
 

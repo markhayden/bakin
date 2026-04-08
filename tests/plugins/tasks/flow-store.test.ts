@@ -314,15 +314,15 @@ describe('moveTask', () => {
     expect(row.ended_at).toBeGreaterThan(0)
   })
 
-  it('moves done → confirmed', async () => {
+  it('moves done → archived', async () => {
     const task = await createTask('Confirm me', 'todo')
     await addTaskLog(task.id, 'pixel', 'Done')
     await moveTask(task.id, 'done')
-    await moveTask(task.id, 'confirmed')
+    await moveTask(task.id, 'archived')
 
     const board = readTaskboard()
-    expect(board.columns.confirmed).toHaveLength(1)
-    expect(board.columns.confirmed[0].checked).toBe(true)
+    expect(board.columns.archived).toHaveLength(1)
+    expect(board.columns.archived[0].checked).toBe(true)
   })
 })
 
@@ -624,7 +624,7 @@ describe('column mapping', () => {
 
 describe('VALID_TRANSITIONS', () => {
   it('defines transitions for all 7 columns', () => {
-    const columns = ['backlog', 'todo', 'inProgress', 'blocked', 'review', 'done', 'confirmed']
+    const columns = ['backlog', 'todo', 'inProgress', 'blocked', 'review', 'done', 'archived']
     for (const col of columns) {
       expect(VALID_TRANSITIONS[col as keyof typeof VALID_TRANSITIONS]).toBeDefined()
     }

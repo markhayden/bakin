@@ -28,7 +28,7 @@ vi.mock('@/core/audit', () => ({
 // Mock taskboard
 vi.mock('../../plugins/tasks/taskboard', () => ({
   readTaskboard: vi.fn(() => ({
-    columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], confirmed: [], blocked: [] },
+    columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [] },
   })),
   clearDependency: vi.fn(),
 }))

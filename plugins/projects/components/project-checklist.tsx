@@ -10,7 +10,7 @@ const COLUMN_COLORS: Record<string, string> = {
   inProgress: 'bg-blue-500/20 text-blue-400',
   review: 'bg-amber-500/20 text-amber-400',
   done: 'bg-emerald-500/20 text-emerald-400',
-  confirmed: 'bg-purple-500/20 text-purple-400',
+  archived: 'bg-purple-500/20 text-purple-400',
   blocked: 'bg-red-500/20 text-red-400',
 }
 
