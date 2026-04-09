@@ -256,13 +256,15 @@ function getColumnPositions(db: Database.Database, col: ColumnId): Array<{ flowI
  */
 function computeInsertPosition(db: Database.Database, col: ColumnId, afterTaskId?: string, beforeTaskId?: string, _depth = 0): number {
   if (_depth > 2) {
-    // Safety: prevent infinite recursion if rebalance doesn't fix gaps
     const max = getMaxPositionInColumn(db, col)
+    console.log('[Position] depth limit reached, appending:', max + POSITION_GAP)
     return max + POSITION_GAP
   }
 
   if (afterTaskId || beforeTaskId) {
     const positions = getColumnPositions(db, col)
+    console.log(`[Position] computing for col=${col}, afterTaskId=${afterTaskId}, beforeTaskId=${beforeTaskId}`)
+    console.log(`[Position] column positions:`, positions.map(p => `${p.flowId}@${p.position}`))
 
     // When both neighbors are provided and found, compute midpoint directly
     if (afterTaskId && beforeTaskId) {
@@ -311,6 +313,7 @@ function computeInsertPosition(db: Database.Database, col: ColumnId, afterTaskId
 
   // Default: append to end
   const max = getMaxPositionInColumn(db, col)
+  console.log(`[Position] fallthrough to append: col=${col}, max=${max}, result=${max + POSITION_GAP}`)
   return max + POSITION_GAP
 }
 

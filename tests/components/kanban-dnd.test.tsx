@@ -468,7 +468,18 @@ describe('KanbanBoard drag and drop', () => {
       ))
     })
 
-    // Drop on task-3 — should insert before task-3 in inProgress
+    // Simulate handleDragOver moving task-1 into inProgress before task-3
+    // (this populates dragOptimisticRef which handleDragEnd reads)
+    act(() => {
+      capturedDndProps.onDragOver(makeDragEvent(
+        'task-1',
+        { task: task1, columnId: 'todo' },
+        'task-3',
+        { task: task3, columnId: 'inProgress' },
+      ))
+    })
+
+    // Drop — handleDragEnd reads position from dragOptimisticRef
     await act(async () => {
       capturedDndProps.onDragEnd(makeDragEvent(
         'task-1',
@@ -483,12 +494,10 @@ describe('KanbanBoard drag and drop', () => {
       expect(moveCall).toBeTruthy()
       expect(moveCall!.body.from).toBe('todo')
       expect(moveCall!.body.to).toBe('inProgress')
-      // Single atomic move — position computed from neighbors, no follow-up /reorder
       expect(moveCall!.body.agent).toBe('human')
       expect(moveCall!.body.channel).toBe('human')
       expect(moveCall!.body.afterTaskId).toBe('task-2')
       expect(moveCall!.body.beforeTaskId).toBe('task-3')
-      // No /reorder call — position is atomic in the /move call
       const reorderCall = fetchCalls.find(c => c.url.includes('/reorder'))
       expect(reorderCall).toBeFalsy()
     })

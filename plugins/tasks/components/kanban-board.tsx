@@ -155,6 +155,10 @@ export function KanbanBoard() {
   const [activeColumnId, setActiveColumnId] = useState<ColumnId | null>(null)
   const dragStartColumnsRef = useRef<TaskColumns | null>(null)
   const dragFromColRef = useRef<ColumnId | null>(null)
+  // Tracks the latest optimistic column layout during drag — updated by handleDragOver,
+  // read by handleDragEnd. Using a ref avoids the stale closure problem where useCallback
+  // captures an old `optimistic` value.
+  const dragOptimisticRef = useRef<TaskColumns | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -167,6 +171,7 @@ export function KanbanBoard() {
     setActiveColumnId(data.columnId as ColumnId)
     dragStartColumnsRef.current = optimistic?.columns ?? parsed.columns
     dragFromColRef.current = data.columnId as ColumnId
+    dragOptimisticRef.current = null
   }, [optimistic, parsed.columns])
 
   // Move items between columns in state so dnd-kit can show displacement in the target column.
@@ -210,10 +215,10 @@ export function KanbanBoard() {
 
       if (!currentCol || currentCol === targetCol) return prev
 
+      // Cross-column move — remove from source, insert into target
       const fromTasks = currentColumns[currentCol].filter(t => t.id !== task.id)
       const toTasks = [...currentColumns[targetCol]]
 
-      // Insert at over position or append
       if (!COLUMN_ORDER.includes(overId as ColumnId)) {
         const idx = toTasks.findIndex(t => t.id === overId)
         if (idx !== -1) {
@@ -225,7 +230,9 @@ export function KanbanBoard() {
         toTasks.push(task)
       }
 
-      return { columns: { ...currentColumns, [currentCol]: fromTasks, [targetCol]: toTasks } }
+      const updated = { ...currentColumns, [currentCol]: fromTasks, [targetCol]: toTasks }
+      dragOptimisticRef.current = updated
+      return { columns: updated }
     })
   }, [parsed.columns])
 
@@ -236,6 +243,7 @@ export function KanbanBoard() {
       setOptimistic({ columns: dragStartColumnsRef.current })
     }
     dragStartColumnsRef.current = null
+    dragOptimisticRef.current = null
     setTimeout(() => setOptimistic(null), 0)
   }, [])
 
@@ -310,24 +318,31 @@ export function KanbanBoard() {
       await refreshTaskboard()
       setOptimistic(null)
     } else {
-      // Cross-column move — insert at the drop position
+      // Cross-column move — determine insert position using pointer position
+      // relative to the over card's midpoint. This is the same heuristic dnd-kit
+      // uses internally for sortable displacement. We can't rely on handleDragOver's
+      // optimistic state because dnd-kit doesn't fire onDragOver for within-column
+      // movement after the initial cross-column entry.
       const movedTask = { ...task, checked: targetCol === 'done' || targetCol === 'archived' }
-      const targetTasks = [...originalColumns[targetCol]]
-      let insertIdx = targetTasks.length // default: append
+      const originalTargetTasks = originalColumns[targetCol]
+      let insertIdx = originalTargetTasks.length // default: append
 
-      if (COLUMN_ORDER.includes(overId as ColumnId)) {
-        // Dropped on the column itself — append
-        targetTasks.push(movedTask)
-      } else {
-        // Dropped on a specific task — insert at its position
-        const idx = targetTasks.findIndex(t => t.id === overId)
+      if (!COLUMN_ORDER.includes(overId as ColumnId)) {
+        // Dropped on/near a card — find it in the target column
+        const idx = originalTargetTasks.findIndex(t => t.id === overId)
         if (idx !== -1) {
-          insertIdx = idx
-          targetTasks.splice(idx, 0, movedTask)
-        } else {
-          targetTasks.push(movedTask)
+          // Compare pointer Y to the over card's vertical midpoint
+          const pointerY = (event.activatorEvent as PointerEvent).clientY + event.delta.y
+          const overRect = over.rect
+          const midY = overRect.top + overRect.height / 2
+          insertIdx = pointerY > midY ? idx + 1 : idx
         }
+        // If overId not found (e.g. it's the dragged task), fall through to append
       }
+
+      // Build the target column with the moved task inserted
+      const targetTasks = [...originalTargetTasks]
+      targetTasks.splice(insertIdx, 0, movedTask)
 
       const updatedColumns = { ...originalColumns }
       updatedColumns[fromCol] = originalColumns[fromCol].filter(t => t.id !== task.id)
@@ -336,7 +351,6 @@ export function KanbanBoard() {
 
       // Compute position neighbors for atomic move
       const afterTaskId = insertIdx > 0 ? targetTasks[insertIdx - 1]?.id : undefined
-      // The task itself is at insertIdx, so the one after it is at insertIdx + 1
       const beforeTaskId = insertIdx + 1 < targetTasks.length ? targetTasks[insertIdx + 1]?.id : undefined
 
       // Blocked column requires a reason — defer the API call to the dialog
