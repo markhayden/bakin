@@ -58,7 +58,8 @@ export function localDateString(): string {
 
 // Re-export valid transitions from constants (single source of truth)
 export { VALID_TRANSITIONS } from '../constants'
-import { VALID_TRANSITIONS } from '../constants'
+import { VALID_TRANSITIONS, POSITION_GAP } from '../constants'
+export { POSITION_GAP } from '../constants'
 
 // ---------------------------------------------------------------------------
 // Column normalization
@@ -111,6 +112,7 @@ interface BakinTaskState {
   confirmed?: boolean
   date?: string
   log?: TaskLogEntry[]
+  position?: number
 }
 
 function getColumn(flow: FlowRunRow): ColumnId {
@@ -155,6 +157,7 @@ function flowToTask(flow: FlowRunRow): Task {
     workflowId: state.workflowId,
     scheduleJobId: state.scheduleJobId,
     projectId: state.projectId,
+    position: state.position,
   }
 }
 
@@ -192,10 +195,144 @@ function columnToStatus(col: ColumnId): string {
 }
 
 // ---------------------------------------------------------------------------
+// Position helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a SQL WHERE clause fragment that matches tasks in a given column.
+ * Mirrors the getColumn() logic using flow_runs fields.
+ */
+function getColumnWhereClause(col: ColumnId): string {
+  const base = `owner_key LIKE 'bakin:task:%'`
+  switch (col) {
+    case 'backlog':
+      return `${base} AND status = 'queued' AND json_extract(state_json, '$.column') = 'backlog'`
+    case 'todo':
+      return `${base} AND status = 'queued' AND (json_extract(state_json, '$.column') IS NULL OR json_extract(state_json, '$.column') != 'backlog')`
+    case 'inProgress':
+      return `${base} AND status = 'running'`
+    case 'blocked':
+      return `${base} AND status = 'waiting' AND blocked_task_id IS NOT NULL`
+    case 'review':
+      return `${base} AND status = 'waiting' AND (blocked_task_id IS NULL)`
+    case 'done':
+      return `${base} AND status IN ('succeeded', 'failed', 'cancelled') AND (json_extract(state_json, '$.archived') IS NULL OR json_extract(state_json, '$.archived') = false) AND (json_extract(state_json, '$.confirmed') IS NULL OR json_extract(state_json, '$.confirmed') = false)`
+    case 'archived':
+      return `${base} AND status = 'succeeded' AND (json_extract(state_json, '$.archived') = true OR json_extract(state_json, '$.confirmed') = true)`
+  }
+}
+
+/**
+ * Get the maximum position value in a column. Returns 0 if column is empty.
+ */
+function getMaxPositionInColumn(db: Database.Database, col: ColumnId): number {
+  const where = getColumnWhereClause(col)
+  const row = db.prepare(`SELECT MAX(json_extract(state_json, '$.position')) as maxPos FROM flow_runs WHERE ${where}`).get() as { maxPos: number | null } | undefined
+  return row?.maxPos ?? 0
+}
+
+/**
+ * Get the position of a specific task by ID.
+ */
+function getTaskPosition(db: Database.Database, taskId: string): number | null {
+  const row = db.prepare(`SELECT json_extract(state_json, '$.position') as pos FROM flow_runs WHERE flow_id = ? AND owner_key LIKE 'bakin:task:%'`).get(taskId) as { pos: number | null } | undefined
+  return row?.pos ?? null
+}
+
+/**
+ * Get all positions in a column, sorted ascending.
+ */
+function getColumnPositions(db: Database.Database, col: ColumnId): Array<{ flowId: string; position: number }> {
+  const where = getColumnWhereClause(col)
+  const rows = db.prepare(`SELECT flow_id, json_extract(state_json, '$.position') as pos FROM flow_runs WHERE ${where} ORDER BY pos ASC`).all() as Array<{ flow_id: string; pos: number | null }>
+  return rows.map(r => ({ flowId: r.flow_id, position: r.pos ?? 0 }))
+}
+
+/**
+ * Compute the position for inserting a task into a column.
+ * - afterTaskId: insert after this task
+ * - beforeTaskId: insert before this task
+ * - If neither: append to end of column
+ */
+function computeInsertPosition(db: Database.Database, col: ColumnId, afterTaskId?: string, beforeTaskId?: string, _depth = 0): number {
+  if (_depth > 2) {
+    // Safety: prevent infinite recursion if rebalance doesn't fix gaps
+    const max = getMaxPositionInColumn(db, col)
+    return max + POSITION_GAP
+  }
+
+  if (afterTaskId || beforeTaskId) {
+    const positions = getColumnPositions(db, col)
+
+    // When both neighbors are provided and found, compute midpoint directly
+    if (afterTaskId && beforeTaskId) {
+      const afterIdx = positions.findIndex(p => p.flowId === afterTaskId)
+      const beforeIdx = positions.findIndex(p => p.flowId === beforeTaskId)
+      if (afterIdx !== -1 && beforeIdx !== -1) {
+        const afterPos = positions[afterIdx].position
+        const beforePos = positions[beforeIdx].position
+        const gap = beforePos - afterPos
+        if (gap < 2) {
+          rebalanceColumn(db, col)
+          return computeInsertPosition(db, col, afterTaskId, beforeTaskId, _depth + 1)
+        }
+        return Math.floor((afterPos + beforePos) / 2)
+      }
+    }
+
+    if (afterTaskId) {
+      const afterIdx = positions.findIndex(p => p.flowId === afterTaskId)
+      if (afterIdx !== -1) {
+        const afterPos = positions[afterIdx].position
+        const nextPos = afterIdx + 1 < positions.length ? positions[afterIdx + 1].position : afterPos + POSITION_GAP * 2
+        const gap = nextPos - afterPos
+        if (gap < 2) {
+          rebalanceColumn(db, col)
+          return computeInsertPosition(db, col, afterTaskId, undefined, _depth + 1)
+        }
+        return Math.floor((afterPos + nextPos) / 2)
+      }
+    }
+
+    if (beforeTaskId) {
+      const beforeIdx = positions.findIndex(p => p.flowId === beforeTaskId)
+      if (beforeIdx !== -1) {
+        const beforePos = positions[beforeIdx].position
+        const prevPos = beforeIdx > 0 ? positions[beforeIdx - 1].position : 0
+        const gap = beforePos - prevPos
+        if (gap < 2) {
+          rebalanceColumn(db, col)
+          return computeInsertPosition(db, col, undefined, beforeTaskId, _depth + 1)
+        }
+        return Math.floor((prevPos + beforePos) / 2)
+      }
+    }
+  }
+
+  // Default: append to end
+  const max = getMaxPositionInColumn(db, col)
+  return max + POSITION_GAP
+}
+
+/**
+ * Rebalance all positions in a column with clean POSITION_GAP intervals.
+ */
+function rebalanceColumn(db: Database.Database, col: ColumnId): void {
+  const positions = getColumnPositions(db, col)
+  const stmt = db.prepare(`UPDATE flow_runs SET state_json = json_set(state_json, '$.position', ?) WHERE flow_id = ?`)
+  const rebalance = db.transaction(() => {
+    for (let i = 0; i < positions.length; i++) {
+      stmt.run((i + 1) * POSITION_GAP, positions[i].flowId)
+    }
+  })
+  rebalance()
+}
+
+// ---------------------------------------------------------------------------
 // SQL queries
 // ---------------------------------------------------------------------------
 
-const SELECT_ALL = `SELECT * FROM flow_runs WHERE owner_key LIKE 'bakin:task:%' ORDER BY updated_at DESC`
+const SELECT_ALL = `SELECT * FROM flow_runs WHERE owner_key LIKE 'bakin:task:%' ORDER BY json_extract(state_json, '$.position') ASC, updated_at DESC`
 const SELECT_BY_ID = `SELECT * FROM flow_runs WHERE flow_id = ? AND owner_key LIKE 'bakin:task:%'`
 
 // ---------------------------------------------------------------------------
@@ -289,6 +426,7 @@ export function createTask(
   id?: string,
   parentId?: string,
   projectId?: string,
+  afterTaskId?: string,
 ): Promise<Task> {
   try {
     const flowId = id || generateTaskId()
@@ -318,6 +456,8 @@ export function createTask(
     const status = columnToStatus(colId)
 
     withDb(db => {
+      state.position = computeInsertPosition(db, colId, afterTaskId)
+
       db.prepare(`
         INSERT INTO flow_runs (
           flow_id, shape, sync_mode, owner_key, requester_origin_json,
@@ -357,16 +497,19 @@ export function createTask(
       parentId,
       workflowId,
       projectId,
+      position: state.position,
     })
   } catch (err) {
     return Promise.reject(err)
   }
 }
 
-export function moveTask(identifier: string, to: string, from?: string): Promise<void> {
+export function moveTask(identifier: string, to: string, from?: string, channel?: string, afterTaskId?: string, beforeTaskId?: string): Promise<void> {
   try {
     const toCol = normalizeColumn(to)
     if (!toCol) throw new Error(`Invalid column: ${to}`)
+
+    const isHuman = channel === 'human'
 
     withDb(db => {
       const flow = findFlowRow(db, identifier)
@@ -374,18 +517,23 @@ export function moveTask(identifier: string, to: string, from?: string): Promise
 
       const currentCol = getColumn(flow)
 
-      // State transition guard
-      const allowed = VALID_TRANSITIONS[currentCol]
-      if (allowed && !allowed.includes(toCol)) {
-        throw new Error(`Invalid transition: ${currentCol} → ${toCol}. Allowed: ${allowed.join(', ') || 'none'}`)
+      // State transition guard — human channel bypasses (operator can force any state)
+      if (!isHuman) {
+        const allowed = VALID_TRANSITIONS[currentCol]
+        if (allowed && !allowed.includes(toCol)) {
+          throw new Error(`Invalid transition: ${currentCol} → ${toCol}. Allowed: ${allowed.join(', ') || 'none'}`)
+        }
       }
 
       const state = parseStateJson(flow.state_json)
 
-      // Require at least one log entry before moving to done
-      if (toCol === 'done' && (!state.log || state.log.length === 0)) {
+      // Require at least one log entry before moving to done — human channel bypasses
+      if (!isHuman && toCol === 'done' && (!state.log || state.log.length === 0)) {
         throw new Error('Cannot move to done: task has no log entries. Log your work first via bakin_exec_tasks_log_progress')
       }
+
+      // Compute position in target column
+      state.position = computeInsertPosition(db, toCol, afterTaskId, beforeTaskId)
 
       // Update state for new column
       const newStatus = columnToStatus(toCol)
@@ -514,6 +662,7 @@ export function blockTask(identifier: string, reason: string, agent?: string): P
       const state = parseStateJson(flow.state_json)
       state.date = undefined
       delete state.column
+      state.position = computeInsertPosition(db, 'blocked')
 
       const now = Date.now()
 
@@ -547,9 +696,11 @@ export function blockTask(identifier: string, reason: string, agent?: string): P
 
 export function updateTask(
   identifier: string,
-  updates: { title?: string; description?: string; agent?: string; column?: ColumnId; workflowId?: string; projectId?: string },
+  updates: { title?: string; description?: string; agent?: string; column?: ColumnId; workflowId?: string; projectId?: string; channel?: string },
 ): Promise<void> {
   try {
+    const isHuman = updates.channel === 'human'
+
     withDb(db => {
       const flow = findFlowRow(db, identifier)
       if (!flow) throw new Error(`Task not found: ${identifier}`)
@@ -580,15 +731,18 @@ export function updateTask(
       let endedAt = flow.ended_at
 
       if (updates.column !== undefined && updates.column !== currentCol) {
-        const allowed = VALID_TRANSITIONS[currentCol]
-        if (allowed && !allowed.includes(updates.column)) {
-          throw new Error(`Invalid transition: ${currentCol} → ${updates.column}. Allowed: ${allowed.join(', ') || 'none'}`)
+        if (!isHuman) {
+          const allowed = VALID_TRANSITIONS[currentCol]
+          if (allowed && !allowed.includes(updates.column)) {
+            throw new Error(`Invalid transition: ${currentCol} → ${updates.column}. Allowed: ${allowed.join(', ') || 'none'}`)
+          }
         }
-        if (updates.column === 'done' && (!state.log || state.log.length === 0)) {
+        if (!isHuman && updates.column === 'done' && (!state.log || state.log.length === 0)) {
           throw new Error('Cannot move to done: task has no log entries. Log your work first via bakin_exec_tasks_log_progress')
         }
 
         newStatus = columnToStatus(updates.column)
+        state.position = computeInsertPosition(db, updates.column)
         if (updates.column === 'backlog' || updates.column === 'todo') {
           state.column = updates.column
         } else {
@@ -699,11 +853,17 @@ export function clearDependency(taskId: string): Promise<void> {
 export function reorderTasks(columnId: ColumnId, orderedIds: string[]): Promise<void> {
   try {
     withDb(db => {
+      const stmt = db.prepare(`
+        UPDATE flow_runs SET
+          state_json = json_set(state_json, '$.position', ?),
+          revision = revision + 1,
+          updated_at = ?
+        WHERE flow_id = ? AND owner_key LIKE 'bakin:task:%'
+      `)
       const now = Date.now()
-      const stmt = db.prepare(`UPDATE flow_runs SET updated_at = ? WHERE flow_id = ? AND owner_key LIKE 'bakin:task:%'`)
       const reorder = db.transaction(() => {
         for (let i = 0; i < orderedIds.length; i++) {
-          stmt.run(now - i, orderedIds[i])
+          stmt.run((i + 1) * POSITION_GAP, now, orderedIds[i])
         }
       })
       reorder()
@@ -727,6 +887,7 @@ export function moveTaskToInProgress(identifier: string, agentTag?: string): Pro
       state.date = localDateString()
       if (agentTag && !state.agent) state.agent = agentTag
       delete state.column
+      state.position = computeInsertPosition(db, 'inProgress')
 
       db.prepare(`
         UPDATE flow_runs SET
@@ -792,11 +953,14 @@ export function autoArchiveDoneTasks(olderThanMs: number = 24 * 60 * 60 * 1000):
       UPDATE flow_runs SET state_json = ?, revision = revision + 1, updated_at = ? WHERE flow_id = ?
     `)
     const now = Date.now()
+    let nextPos = getMaxPositionInColumn(db, 'archived') + POSITION_GAP
     const tx = db.transaction(() => {
       for (const row of rows) {
         const state = parseStateJson(row.state_json)
         state.archived = true
         delete state.confirmed
+        state.position = nextPos
+        nextPos += POSITION_GAP
         stmt.run(JSON.stringify(state), now, row.flow_id)
       }
     })

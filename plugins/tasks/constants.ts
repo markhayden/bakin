@@ -1,5 +1,8 @@
 import type { ColumnId } from './types'
 
+/** Gap between position values — large enough to split ~50 times before rebalancing */
+export const POSITION_GAP = 1_000_000
+
 export const COLUMN_CONFIG = {
   backlog: { label: 'Backlog', emoji: '📦' },
   inProgress: { label: 'In Progress', emoji: '🔵' },
