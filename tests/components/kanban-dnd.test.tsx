@@ -55,7 +55,7 @@ vi.mock('@dnd-kit/sortable', () => ({
     result.splice(to, 0, removed)
     return result
   },
-  useSortable: (...args: any[]) => mockUseSortable(...args),
+  useSortable: (...args: unknown[]) => mockUseSortable(...(args as [unknown])),
 }))
 
 vi.mock('@dnd-kit/utilities', () => ({
@@ -84,6 +84,10 @@ vi.mock('../../plugins/tasks/components/task-card', () => ({
 
 vi.mock('../../plugins/tasks/components/delete-task-dialog', () => ({
   DeleteTaskDialog: () => null,
+}))
+
+vi.mock('../../plugins/tasks/components/block-reason-dialog', () => ({
+  BlockReasonDialog: () => null,
 }))
 
 vi.mock('../../plugins/tasks/components/task-detail-dialog', () => ({
@@ -479,13 +483,14 @@ describe('KanbanBoard drag and drop', () => {
       expect(moveCall).toBeTruthy()
       expect(moveCall!.body.from).toBe('todo')
       expect(moveCall!.body.to).toBe('inProgress')
-
-      // After /move, a /reorder call should persist the drop position
+      // Single atomic move — position computed from neighbors, no follow-up /reorder
+      expect(moveCall!.body.agent).toBe('human')
+      expect(moveCall!.body.channel).toBe('human')
+      expect(moveCall!.body.afterTaskId).toBe('task-2')
+      expect(moveCall!.body.beforeTaskId).toBe('task-3')
+      // No /reorder call — position is atomic in the /move call
       const reorderCall = fetchCalls.find(c => c.url.includes('/reorder'))
-      expect(reorderCall).toBeTruthy()
-      expect(reorderCall!.body.columnId).toBe('inProgress')
-      // task-1 inserted before task-3 → [task-2, task-1, task-3]
-      expect(reorderCall!.body.orderedIds).toEqual(['task-2', 'task-1', 'task-3'])
+      expect(reorderCall).toBeFalsy()
     })
   })
 
@@ -553,6 +558,62 @@ describe('KanbanBoard drag and drop', () => {
     })
 
     expect(fetchCalls.filter(c => c.url.includes('/reorder'))).toHaveLength(0)
+  })
+
+  it('drop on blocked column does NOT fire /move — defers to reason dialog', async () => {
+    const task1 = makeTask('task-1', 'Block Me')
+
+    await renderBoard({ todo: [task1], blocked: [] })
+
+    act(() => {
+      capturedDndProps.onDragStart(makeDragEvent(
+        'task-1',
+        { task: task1, columnId: 'todo' },
+      ))
+    })
+
+    await act(async () => {
+      capturedDndProps.onDragEnd(makeDragEvent(
+        'task-1',
+        { task: task1, columnId: 'todo' },
+        'blocked',
+      ))
+    })
+
+    // The blocked reason dialog intercepts — no /move call fired
+    await waitFor(() => {
+      const moveCall = fetchCalls.find(c => c.url.includes('/move'))
+      expect(moveCall).toBeFalsy()
+    })
+  })
+
+  it('drop on archived column fires /move with to=archived', async () => {
+    const task1 = makeTask('task-1', 'Archive Me')
+
+    await renderBoard({ todo: [task1], archived: [] })
+
+    act(() => {
+      capturedDndProps.onDragStart(makeDragEvent(
+        'task-1',
+        { task: task1, columnId: 'todo' },
+      ))
+    })
+
+    await act(async () => {
+      capturedDndProps.onDragEnd(makeDragEvent(
+        'task-1',
+        { task: task1, columnId: 'todo' },
+        'archived',
+      ))
+    })
+
+    await waitFor(() => {
+      const moveCall = fetchCalls.find(c => c.url.includes('/move'))
+      expect(moveCall).toBeTruthy()
+      expect(moveCall!.body.to).toBe('archived')
+      expect(moveCall!.body.agent).toBe('human')
+      expect(moveCall!.body.channel).toBe('human')
+    })
   })
 })
 
