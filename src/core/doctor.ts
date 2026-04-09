@@ -1453,6 +1453,93 @@ mcporter call bakin-<agent>.bakin_exec_schedule_list
  * Run all health checks with auto-fix for safe issues.
  * Notifies main-operator via OpenClaw about issues that need human judgment.
  */
+// ---------------------------------------------------------------------------
+// Task position integrity
+// ---------------------------------------------------------------------------
+
+function checkTaskPositionIntegrity(autoFix: boolean): DiagnosticResult[] {
+  const CHECK = 'tasks.position_integrity'
+  try {
+    const Database = require('better-sqlite3')
+    const dbPath = getOpenClawPath('flows', 'registry.sqlite')
+    if (!existsSync(dbPath)) return [ok(CHECK, 'No task database found (OK for fresh install)')]
+
+    const db = new Database(dbPath)
+    db.pragma('journal_mode = WAL')
+    db.pragma('busy_timeout = 5000')
+
+    try {
+      const rows = db.prepare(
+        `SELECT flow_id, status, state_json, blocked_task_id, updated_at FROM flow_runs WHERE owner_key LIKE 'bakin:task:%'`
+      ).all() as Array<{ flow_id: string; status: string; state_json: string | null; blocked_task_id: string | null; updated_at: number }>
+
+      if (rows.length === 0) return [ok(CHECK, 'No tasks to check')]
+
+      // Check for missing or invalid positions
+      let missingCount = 0
+      const byColumn = new Map<string, Array<{ flowId: string; position: number | null; updatedAt: number }>>()
+
+      for (const row of rows) {
+        const state = row.state_json ? JSON.parse(row.state_json) : {}
+        const pos = typeof state.position === 'number' ? state.position : null
+
+        // Derive column (inlined from flow-store.ts)
+        let col: string
+        switch (row.status) {
+          case 'queued': col = state.column === 'backlog' ? 'backlog' : 'todo'; break
+          case 'running': col = 'inProgress'; break
+          case 'waiting': col = row.blocked_task_id ? 'blocked' : 'review'; break
+          case 'succeeded': col = (state.archived || state.confirmed) ? 'archived' : 'done'; break
+          default: col = 'backlog'
+        }
+
+        if (pos === null) missingCount++
+        if (!byColumn.has(col)) byColumn.set(col, [])
+        byColumn.get(col)!.push({ flowId: row.flow_id, position: pos, updatedAt: row.updated_at })
+      }
+
+      // Check for duplicates within columns
+      let duplicateCount = 0
+      for (const [, colTasks] of byColumn) {
+        const positions = colTasks.filter(t => t.position !== null).map(t => t.position!)
+        const unique = new Set(positions)
+        if (unique.size < positions.length) duplicateCount += positions.length - unique.size
+      }
+
+      if (missingCount === 0 && duplicateCount === 0) {
+        return [ok(CHECK, `All ${rows.length} tasks have valid unique positions`)]
+      }
+
+      const issues = []
+      if (missingCount > 0) issues.push(`${missingCount} missing`)
+      if (duplicateCount > 0) issues.push(`${duplicateCount} duplicates`)
+
+      if (!autoFix) {
+        return [warn(CHECK, `Position issues: ${issues.join(', ')} across ${rows.length} tasks`, true)]
+      }
+
+      // Auto-fix: reassign positions per column based on updated_at order
+      const { POSITION_GAP } = require('../../plugins/tasks/constants')
+      const stmt = db.prepare(`UPDATE flow_runs SET state_json = json_set(state_json, '$.position', ?) WHERE flow_id = ?`)
+      const tx = db.transaction(() => {
+        for (const [, colTasks] of byColumn) {
+          colTasks.sort((a, b) => b.updatedAt - a.updatedAt)
+          for (let i = 0; i < colTasks.length; i++) {
+            stmt.run((i + 1) * POSITION_GAP, colTasks[i].flowId)
+          }
+        }
+      })
+      tx()
+
+      return [fixed(CHECK, `Fixed position issues (${issues.join(', ')}) across ${rows.length} tasks`)]
+    } finally {
+      db.close()
+    }
+  } catch (err) {
+    return [error(CHECK, `Position check failed: ${(err as Error).message}`)]
+  }
+}
+
 export async function runDiagnostics(
   contentDir: string,
   projectRoot: string
@@ -1479,6 +1566,7 @@ export async function runDiagnostics(
   results.push(...checkScheduleSync(autoFix))
   results.push(...checkMcporter(Number(process.env.PORT || 3737), autoFix))
   results.push(...checkService(projectRoot))
+  results.push(...checkTaskPositionIntegrity(autoFix))
 
   // Async checks (network, not auto-fixable) — run in parallel
   const [gatewayResults, antflyResults] = await Promise.all([
