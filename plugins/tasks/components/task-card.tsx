@@ -42,12 +42,6 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
         <span className="text-[10px] font-mono text-muted-foreground/50 uppercase tracking-widest">
           {shortId(task.id)}
         </span>
-        {/* DEBUG: show position weight */}
-        {task.position !== undefined && (
-          <span className="text-[12px] font-mono text-amber-400 ml-auto font-bold">
-            pos:{task.position}
-          </span>
-        )}
       </div>
 
       {/* Title */}

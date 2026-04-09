@@ -155,10 +155,6 @@ export function KanbanBoard() {
   const [activeColumnId, setActiveColumnId] = useState<ColumnId | null>(null)
   const dragStartColumnsRef = useRef<TaskColumns | null>(null)
   const dragFromColRef = useRef<ColumnId | null>(null)
-  // Tracks the latest optimistic column layout during drag — updated by handleDragOver,
-  // read by handleDragEnd. Using a ref avoids the stale closure problem where useCallback
-  // captures an old `optimistic` value.
-  const dragOptimisticRef = useRef<TaskColumns | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -171,7 +167,6 @@ export function KanbanBoard() {
     setActiveColumnId(data.columnId as ColumnId)
     dragStartColumnsRef.current = optimistic?.columns ?? parsed.columns
     dragFromColRef.current = data.columnId as ColumnId
-    dragOptimisticRef.current = null
   }, [optimistic, parsed.columns])
 
   // Move items between columns in state so dnd-kit can show displacement in the target column.
@@ -230,9 +225,7 @@ export function KanbanBoard() {
         toTasks.push(task)
       }
 
-      const updated = { ...currentColumns, [currentCol]: fromTasks, [targetCol]: toTasks }
-      dragOptimisticRef.current = updated
-      return { columns: updated }
+      return { columns: { ...currentColumns, [currentCol]: fromTasks, [targetCol]: toTasks } }
     })
   }, [parsed.columns])
 
@@ -243,7 +236,6 @@ export function KanbanBoard() {
       setOptimistic({ columns: dragStartColumnsRef.current })
     }
     dragStartColumnsRef.current = null
-    dragOptimisticRef.current = null
     setTimeout(() => setOptimistic(null), 0)
   }, [])
 
