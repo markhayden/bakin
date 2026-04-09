@@ -101,6 +101,7 @@ import {
   getTasksByAgent,
   getAgentTasks,
   VALID_TRANSITIONS,
+  POSITION_GAP,
   localDateString,
 } from '../../../plugins/tasks/lib/flow-store'
 
@@ -670,5 +671,202 @@ describe('error handling returns rejected promises', () => {
 
   it('clearDependency rejects with promise on task not found', async () => {
     await expect(clearDependency('ghost')).rejects.toThrow('Task not found')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Two-tier permissions (human vs agent channel)
+// ---------------------------------------------------------------------------
+
+describe('two-tier permissions', () => {
+  it('human channel: any transition succeeds (backlog → done)', async () => {
+    const task = await createTask('human-override', 'backlog')
+    // backlog → done is NOT in VALID_TRANSITIONS, but human bypasses
+    await moveTask(task.id, 'done', 'backlog', 'human')
+    const result = getTaskWithColumn(task.id)
+    expect(result?.column).toBe('done')
+  })
+
+  it('human channel: no log entries needed for done', async () => {
+    const task = await createTask('skip-logs', 'todo')
+    // No log entries, but human can still move to done
+    await moveTask(task.id, 'done', 'todo', 'human')
+    const result = getTaskWithColumn(task.id)
+    expect(result?.column).toBe('done')
+  })
+
+  it('human channel: can move blocked → done directly', async () => {
+    const task = await createTask('blocked-to-done', 'todo')
+    await blockTask(task.id, 'test reason')
+    // blocked → done is NOT in VALID_TRANSITIONS
+    await moveTask(task.id, 'done', 'blocked', 'human')
+    const result = getTaskWithColumn(task.id)
+    expect(result?.column).toBe('done')
+  })
+
+  it('agent channel: invalid transition rejected', async () => {
+    const task = await createTask('agent-invalid', 'backlog')
+    // backlog → done is NOT allowed for agents
+    await expect(moveTask(task.id, 'done', 'backlog', 'mcp')).rejects.toThrow('Invalid transition')
+  })
+
+  it('agent channel: log entries required for done', async () => {
+    const task = await createTask('agent-no-logs', 'todo')
+    await moveTask(task.id, 'inProgress')
+    // inProgress → done requires log entries for agents
+    await expect(moveTask(task.id, 'done', 'inProgress', 'mcp')).rejects.toThrow('Cannot move to done')
+  })
+
+  it('no channel (default): enforces transition guard', async () => {
+    const task = await createTask('no-channel', 'backlog')
+    // No channel specified — should enforce guards (backward compat)
+    await expect(moveTask(task.id, 'done')).rejects.toThrow('Invalid transition')
+  })
+
+  it('human channel: updateTask column change bypasses guards', async () => {
+    const task = await createTask('update-human', 'backlog')
+    await updateTask(task.id, { column: 'done', channel: 'human' })
+    const result = getTaskWithColumn(task.id)
+    expect(result?.column).toBe('done')
+  })
+
+  it('agent channel: updateTask column change enforces guards', async () => {
+    const task = await createTask('update-agent', 'backlog')
+    await expect(updateTask(task.id, { column: 'done', channel: 'mcp' })).rejects.toThrow('Invalid transition')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Position / ordering
+// ---------------------------------------------------------------------------
+
+describe('position ordering', () => {
+  it('new task in empty column gets POSITION_GAP', async () => {
+    const task = await createTask('first-task', 'todo')
+    expect(task.position).toBe(POSITION_GAP)
+  })
+
+  it('new task appends with position = max + GAP', async () => {
+    const t1 = await createTask('task-one', 'todo')
+    const t2 = await createTask('task-two', 'todo')
+    expect(t2.position).toBe(t1.position! + POSITION_GAP)
+  })
+
+  it('tasks returned in position order (ascending)', async () => {
+    await createTask('first', 'todo')
+    await createTask('second', 'todo')
+    await createTask('third', 'todo')
+    const board = readTaskboard()
+    const titles = board.columns.todo.map(t => t.title)
+    expect(titles).toEqual(['first', 'second', 'third'])
+  })
+
+  it('moveTask to different column assigns new position', async () => {
+    const t = await createTask('movable', 'todo')
+    await moveTask(t.id, 'inProgress')
+    const result = getTaskWithColumn(t.id)
+    expect(result?.column).toBe('inProgress')
+    const task = getTask(t.id)
+    expect(task?.position).toBe(POSITION_GAP) // first in inProgress
+  })
+
+  it('moveTask with afterTaskId inserts at correct position', async () => {
+    const t1 = await createTask('anchor-1', 'todo')
+    const t2 = await createTask('anchor-2', 'todo')
+    const t3 = await createTask('insertee', 'backlog')
+    // Insert between t1 and t2 in todo column (human can do backlog → todo)
+    await moveTask(t3.id, 'todo', 'backlog', 'human', t1.id)
+    const board = readTaskboard()
+    const todoTitles = board.columns.todo.map(t => t.title)
+    expect(todoTitles).toEqual(['anchor-1', 'insertee', 'anchor-2'])
+  })
+
+  it('moveTask with beforeTaskId inserts before target', async () => {
+    const t1 = await createTask('first', 'todo')
+    const t2 = await createTask('second', 'todo')
+    const t3 = await createTask('before-first', 'backlog')
+    await moveTask(t3.id, 'todo', 'backlog', 'human', undefined, t1.id)
+    const board = readTaskboard()
+    const todoTitles = board.columns.todo.map(t => t.title)
+    expect(todoTitles).toEqual(['before-first', 'first', 'second'])
+  })
+
+  it('position preserved on non-move mutations (assign, log)', async () => {
+    const t = await createTask('stable', 'todo')
+    const originalPos = t.position
+    await assignTask(t.id, 'agent-x')
+    await addTaskLog(t.id, 'agent-x', 'working on it')
+    const task = getTask(t.id)
+    expect(task?.position).toBe(originalPos)
+  })
+
+  it('reorderTasks assigns clean i * GAP positions', async () => {
+    const t1 = await createTask('alpha', 'todo')
+    const t2 = await createTask('beta', 'todo')
+    const t3 = await createTask('gamma', 'todo')
+    // Reverse order
+    await reorderTasks('todo', [t3.id, t1.id, t2.id])
+    const board = readTaskboard()
+    const todoTitles = board.columns.todo.map(t => t.title)
+    expect(todoTitles).toEqual(['gamma', 'alpha', 'beta'])
+    // Verify clean positions
+    expect(board.columns.todo[0].position).toBe(POSITION_GAP)
+    expect(board.columns.todo[1].position).toBe(POSITION_GAP * 2)
+    expect(board.columns.todo[2].position).toBe(POSITION_GAP * 3)
+  })
+
+  it('blockTask assigns position in blocked column', async () => {
+    const t = await createTask('blockable', 'todo')
+    await blockTask(t.id, 'waiting on API')
+    const task = getTask(t.id)
+    expect(task?.position).toBe(POSITION_GAP) // first in blocked
+  })
+
+  it('createTask with afterTaskId inserts at correct position', async () => {
+    const t1 = await createTask('existing-1', 'todo')
+    const t2 = await createTask('existing-2', 'todo')
+    const t3 = await createTask('inserted', 'todo', undefined, undefined, undefined, undefined, undefined, undefined, undefined, t1.id)
+    const board = readTaskboard()
+    const todoTitles = board.columns.todo.map(t => t.title)
+    expect(todoTitles).toEqual(['existing-1', 'inserted', 'existing-2'])
+  })
+
+  it('concurrent creates get distinct positions', async () => {
+    const t1 = await createTask('task-a', 'todo')
+    const t2 = await createTask('task-b', 'todo')
+    const t3 = await createTask('task-c', 'todo')
+    const positions = [
+      getTask(t1.id)?.position,
+      getTask(t2.id)?.position,
+      getTask(t3.id)?.position,
+    ]
+    // All distinct
+    expect(new Set(positions).size).toBe(3)
+    // All ascending
+    expect(positions[0]!).toBeLessThan(positions[1]!)
+    expect(positions[1]!).toBeLessThan(positions[2]!)
+  })
+
+  it('insert at start of column gets position before first task', async () => {
+    const t1 = await createTask('existing', 'todo')
+    const t2 = await createTask('before-all', 'backlog')
+    // Insert before t1 (beforeTaskId = t1.id)
+    await moveTask(t2.id, 'todo', 'backlog', 'human', undefined, t1.id)
+    const board = readTaskboard()
+    const todoTitles = board.columns.todo.map(t => t.title)
+    expect(todoTitles).toEqual(['before-all', 'existing'])
+    // beforeAll should have a lower position
+    expect(board.columns.todo[0].position!).toBeLessThan(board.columns.todo[1].position!)
+  })
+
+  it('move without position params appends to end', async () => {
+    const t1 = await createTask('first', 'todo')
+    const t2 = await createTask('second', 'todo')
+    const t3 = await createTask('appended', 'backlog')
+    // Move without afterTaskId/beforeTaskId — should append
+    await moveTask(t3.id, 'todo', 'backlog', 'human')
+    const board = readTaskboard()
+    const todoTitles = board.columns.todo.map(t => t.title)
+    expect(todoTitles).toEqual(['first', 'second', 'appended'])
   })
 })
