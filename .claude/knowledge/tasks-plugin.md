@@ -59,6 +59,7 @@ interface BakinTaskState {
   archived?: boolean       // true for archived column
   date?: string            // YYYY-MM-DD, set when entering inProgress/review/done/archived
   log?: TaskLogEntry[]     // timestamped progress entries
+  order?: number           // zero-indexed order within the current column
 }
 ```
 
@@ -80,6 +81,7 @@ interface Task {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  order?: number
 }
 ```
 
@@ -154,17 +156,26 @@ archived   → done, todo
 
 ### Drag-and-Drop (dnd-kit)
 
-The kanban board uses `@dnd-kit/core` v6 + `@dnd-kit/sortable` v10 for drag-and-drop:
+The kanban board uses the newer `@dnd-kit/react` stack:
 
-- **Sortable IDs** are plain `task.id` (not composite), so dnd-kit tracks items across containers.
-- **`useSortable` data** includes custom `{ task, columnId }` plus dnd-kit's internal `sortable: { containerId, index, items }`.
-- **Collision detection** uses `pointerWithin` + `closestCenter` fallback for reliable multi-container detection.
-- **`handleDragOver`** moves items between columns in optimistic state (via `setOptimistic`) so dnd-kit shows displacement in the target column during drag.
-- **`handleDragCancel`** restores the drag-start column snapshot.
+- `@dnd-kit/react`
+- `@dnd-kit/react/sortable`
+- `@dnd-kit/dom`
+- `@dnd-kit/helpers`
 
-**Critical: stale-ref pitfall.** `active.data.current.columnId` is a live ref that `useSortable` updates when the component re-renders in a new column (after `handleDragOver`). In `handleDragEnd`, it reflects the *target* column, not the source. The source column must be captured in a ref at drag start (`dragFromColRef`). Similarly, target column must be read from `over.data.current` / `over.id`, not from optimistic state (which may be stale in the `useCallback` closure).
+The board follows the official multi-list pattern:
 
-**Ordering.** Tasks within columns are ordered by `updated_at DESC`. The `/reorder` endpoint stamps `updated_at` values (now-0, now-1, ...) to encode position. Cross-column moves call `/move` then `/reorder` to persist drop position.
+- **Sortable IDs** are plain `task.id` (not composite), so tasks can move across columns.
+- **Columns are droppable only.** Columns themselves are not sortable.
+- **Task cards** use `useSortable({ id, group: columnId, type: 'item', feedback: 'clone' })`.
+- **`handleDragOver`** applies `move(items, event)` into optimistic board state so what you see during drag is the order that will be persisted.
+- **`handleDragEnd`** persists that optimistic order. Same-column drops call `/reorder`; cross-column drops call `/move` and then `/reorder` for source and target columns.
+
+**Critical: stale-ref pitfall.** The drag source column cannot be trusted from the live drag payload at drop time because sortable data can reflect the target column after optimistic re-render. The source column is captured at drag start (`dragFromColRef`) and used during persistence.
+
+**Filtered board caveat.** When search/agent filters are active, drag reorder operates on the visible subset first and then merges that visible order back into the full column order so hidden tasks keep their relative positions.
+
+**Ordering.** Tasks are ordered explicitly by `state_json.order` (zero-indexed, contiguous within each column). The board query sorts by `json_extract(state_json, '$.order') ASC, updated_at DESC`. New tasks and cross-column moves append with `order = count`; `/reorder` writes the final zero-indexed order snapshot.
 
 ### Real-Time Updates (SSE)
 
