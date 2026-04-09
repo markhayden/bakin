@@ -77,7 +77,7 @@ export async function moveTaskWithEffects(
   taskId: string,
   to: string,
   agent: string,
-  opts?: { from?: string; skipDoneGuard?: boolean; channel?: Channel; afterTaskId?: string; beforeTaskId?: string },
+  opts?: { from?: string; skipDoneGuard?: boolean; channel?: Channel; afterTaskId?: string; beforeTaskId?: string; reason?: string },
 ): Promise<void> {
   // Workflow done-guard: workflow tasks can only reach Done via the workflow engine
   // Human channel bypasses this guard — the operator can force any state
@@ -97,7 +97,7 @@ export async function moveTaskWithEffects(
     }
   }
 
-  await hooks().invoke<void>('tasks.moveTask', { identifier: taskId, to, from: opts?.from, channel: opts?.channel, afterTaskId: opts?.afterTaskId, beforeTaskId: opts?.beforeTaskId })
+  await hooks().invoke<void>('tasks.moveTask', { identifier: taskId, to, from: opts?.from, channel: opts?.channel, afterTaskId: opts?.afterTaskId, beforeTaskId: opts?.beforeTaskId, reason: opts?.reason })
 
   const title = await resolveTitle(taskId)
   appendAudit(getContentDir(), 'task.moved', agent, { id: taskId, title, from: opts?.from, to }, opts?.channel)

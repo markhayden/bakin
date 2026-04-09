@@ -449,19 +449,20 @@ describe('POST /:taskId/move — Move Task', () => {
     expect(body.error).toContain('reason required when moving to blocked')
   })
 
-  it('calls blockTaskWithEffects when moving to blocked with reason', async () => {
-    mockBlockTaskWithEffects.mockResolvedValue(undefined)
+  it('calls moveTaskWithEffects with reason when moving to blocked', async () => {
+    mockMoveTaskWithEffects.mockResolvedValue(undefined)
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     const { status, body } = await callRoute(route, activated.ctx, {
       searchParams: { taskId: 'task-blk' },
-      body: { to: 'blocked', agent: 'human', channel: 'human', reason: 'waiting on API' },
+      body: { to: 'blocked', agent: 'human', channel: 'human', reason: 'waiting on API', afterTaskId: 'task-a' },
     })
 
     expect(status).toBe(200)
     expect(body.ok).toBe(true)
-    expect(mockBlockTaskWithEffects).toHaveBeenCalledWith('task-blk', 'waiting on API', 'human', 'human')
-    expect(mockMoveTaskWithEffects).not.toHaveBeenCalled()
+    expect(mockMoveTaskWithEffects).toHaveBeenCalledWith('task-blk', 'blocked', 'human', {
+      from: undefined, channel: 'human', afterTaskId: 'task-a', beforeTaskId: undefined, reason: 'waiting on API',
+    })
   })
 
   it('defaults channel to rest when not provided', async () => {
