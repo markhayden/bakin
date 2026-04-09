@@ -19,6 +19,7 @@ import { arrayMove } from '@dnd-kit/sortable'
 import { KanbanColumn } from './kanban-column'
 import { TaskCardOverlay } from './task-card'
 import { DeleteTaskDialog } from './delete-task-dialog'
+import { BlockReasonDialog } from './block-reason-dialog'
 import { TaskDetailDrawer } from './task-detail-dialog'
 import { TaskMetrics } from './task-metrics'
 import { PluginHeader } from '@/components/plugin-header'
@@ -312,15 +313,17 @@ export function KanbanBoard() {
       // Cross-column move — insert at the drop position
       const movedTask = { ...task, checked: targetCol === 'done' || targetCol === 'archived' }
       const targetTasks = [...originalColumns[targetCol]]
+      let insertIdx = targetTasks.length // default: append
 
       if (COLUMN_ORDER.includes(overId as ColumnId)) {
         // Dropped on the column itself — append
         targetTasks.push(movedTask)
       } else {
         // Dropped on a specific task — insert at its position
-        const insertIdx = targetTasks.findIndex(t => t.id === overId)
-        if (insertIdx !== -1) {
-          targetTasks.splice(insertIdx, 0, movedTask)
+        const idx = targetTasks.findIndex(t => t.id === overId)
+        if (idx !== -1) {
+          insertIdx = idx
+          targetTasks.splice(idx, 0, movedTask)
         } else {
           targetTasks.push(movedTask)
         }
@@ -331,18 +334,26 @@ export function KanbanBoard() {
       updatedColumns[targetCol] = targetTasks
       setOptimistic({ columns: updatedColumns })
 
+      // Compute position neighbors for atomic move
+      const afterTaskId = insertIdx > 0 ? targetTasks[insertIdx - 1]?.id : undefined
+      // The task itself is at insertIdx, so the one after it is at insertIdx + 1
+      const beforeTaskId = insertIdx + 1 < targetTasks.length ? targetTasks[insertIdx + 1]?.id : undefined
+
+      // Blocked column requires a reason — defer the API call to the dialog
+      if (targetCol === 'blocked') {
+        setPendingBlock({ task, fromCol, afterTaskId, beforeTaskId })
+        return // optimistic state stays until dialog confirms or cancels
+      }
+
+      // Single atomic move call — position computed server-side from neighbors
       const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/move', {
-        id: task.id, title: task.title, from: fromCol, to: targetCol, agent: 'roscoe',
+        id: task.id, title: task.title, from: fromCol, to: targetCol,
+        agent: 'human', channel: 'human',
+        afterTaskId, beforeTaskId,
       })
 
       if (!ok) {
         toast(`Failed to move "${task.title}"`, 'error')
-      } else {
-        // Persist drop position — reorder uses updated_at stamps to encode order
-        await apiFetch('/api/plugins/tasks/reorder', {
-          columnId: targetCol,
-          orderedIds: targetTasks.map(t => t.id),
-        })
       }
       await refreshTaskboard()
       setOptimistic(null)
@@ -380,6 +391,12 @@ export function KanbanBoard() {
     setTaskIdParam('')
   }, [taskIdParam, columns])
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
+
+  // Blocked reason dialog state — when a task is dropped on the blocked column,
+  // we hold the move in a pending state until the user provides a reason.
+  const [pendingBlock, setPendingBlock] = useState<{
+    task: Task; fromCol: ColumnId; afterTaskId?: string; beforeTaskId?: string
+  } | null>(null)
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return
@@ -470,20 +487,15 @@ export function KanbanBoard() {
                 <div key={colId} className="w-[75vw] sm:w-72 shrink-0">
                 <KanbanColumn
                   id={colId}
-                  tasks={filteredColumns[colId]}
+                  tasks={colId === 'archived' ? [] : filteredColumns[colId]}
                   gateLabels={gateLabels}
                   childTaskLabels={childTaskLabels}
                   onAssign={handleAssign}
                   onDelete={setDeleteTarget}
                   onTaskClick={(task, colId) => { setDetailTask({ task, columnId: colId }); setEditing(false) }}
-                  footer={colId === 'archived' && hiddenArchivedCount > 0 ? (
-                    <button
-                      onClick={() => setView('table')}
-                      className="text-[11px] px-3 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                    >
-                      {hiddenArchivedCount} older task{hiddenArchivedCount !== 1 ? 's' : ''} — View Log
-                    </button>
-                  ) : undefined}
+                  compact={colId === 'archived'}
+                  totalCount={colId === 'archived' ? columns.archived.length : undefined}
+                  onHeaderClick={colId === 'archived' ? () => { setView('table'); setStatusFilter(['archived']) } : undefined}
                 />
                 </div>
               ))}
@@ -534,6 +546,27 @@ export function KanbanBoard() {
           title={deleteTarget}
           onConfirm={confirmDelete}
           onCancel={() => setDeleteTarget(null)}
+        />
+
+        <BlockReasonDialog
+          taskTitle={pendingBlock?.task.title ?? null}
+          onConfirm={async (reason) => {
+            if (!pendingBlock) return
+            const { task, fromCol, afterTaskId, beforeTaskId } = pendingBlock
+            setPendingBlock(null)
+            const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/move', {
+              id: task.id, title: task.title, from: fromCol, to: 'blocked',
+              agent: 'human', channel: 'human', reason,
+              afterTaskId, beforeTaskId,
+            })
+            if (!ok) toast(`Failed to block "${task.title}"`, 'error')
+            await refreshTaskboard()
+            setOptimistic(null)
+          }}
+          onCancel={() => {
+            setPendingBlock(null)
+            setOptimistic(null)
+          }}
         />
       </div>
     </WithLoading>

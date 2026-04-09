@@ -16,12 +16,38 @@ interface KanbanColumnProps {
   onTaskClick: (task: Task, columnId: ColumnId) => void
   onAddTask?: (columnId: ColumnId) => void
   footer?: React.ReactNode
+  compact?: boolean
+  totalCount?: number
+  onHeaderClick?: () => void
 }
 
-export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign, onDelete, onTaskClick, onAddTask, footer }: KanbanColumnProps) {
+export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, onHeaderClick }: KanbanColumnProps) {
   const { setNodeRef } = useDroppable({ id })
   const config = COLUMN_CONFIG[id]
   const dotColor = STATUS_DOT_COLORS[id]
+
+  const count = totalCount ?? tasks.length
+
+  if (compact) {
+    return (
+      <div className="flex flex-col">
+        <div
+          ref={setNodeRef}
+          className="flex flex-col min-h-[80px] rounded-lg border border-border border-dashed bg-surface/50 p-3 cursor-pointer hover:bg-surface transition-colors"
+          onClick={onHeaderClick}
+        >
+          <div className="flex items-center gap-2">
+            <span className={`size-2 rounded-full ${dotColor} shrink-0`} />
+            <span className="text-sm font-medium text-foreground">{config.label}</span>
+            <span className="text-[11px] font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded-full tabular-nums leading-none">
+              {count}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">Drop here to archive</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col">
@@ -34,7 +60,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign,
             <span className={`size-2 rounded-full ${dotColor} shrink-0`} />
             <span className="text-sm font-medium text-foreground">{config.label}</span>
             <span className="text-[11px] font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded-full tabular-nums leading-none">
-              {tasks.length}
+              {count}
             </span>
           </div>
           {onAddTask && (
