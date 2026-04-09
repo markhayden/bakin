@@ -469,7 +469,7 @@ describe('KanbanBoard drag and drop', () => {
     })
 
     // Simulate handleDragOver moving task-1 into inProgress before task-3
-    // (this populates dragOptimisticRef which handleDragEnd reads)
+    // Simulate handleDragOver moving the task into the target column
     act(() => {
       capturedDndProps.onDragOver(makeDragEvent(
         'task-1',
@@ -479,7 +479,7 @@ describe('KanbanBoard drag and drop', () => {
       ))
     })
 
-    // Drop — handleDragEnd reads position from dragOptimisticRef
+    // Drop — handleDragEnd uses pointer midpoint vs over.rect to determine position
     await act(async () => {
       capturedDndProps.onDragEnd(makeDragEvent(
         'task-1',
