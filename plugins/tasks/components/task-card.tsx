@@ -7,11 +7,6 @@ import { AgentAvatar } from '@/components/agent-avatar'
 import { STATUS_BADGE_STYLES } from '../constants'
 import type { Task, ColumnId } from '../types'
 
-export type DragCardRect = {
-  width: number
-  height: number
-}
-
 function formatRelativeDate(dateStr: string): string {
   // Parse YYYY-MM-DD as local date, not UTC (appending T00:00 forces local interpretation)
   const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00')
@@ -30,7 +25,6 @@ function shortId(id: string): string {
   return id.slice(0, 6).toUpperCase()
 }
 
-/** Presentational card — used by DragOverlay */
 export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, style }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; style?: CSSProperties }) {
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
   const isComplete = task.checked || columnId === 'done' || columnId === 'archived'
@@ -119,7 +113,6 @@ interface TaskCardProps {
   index?: number
   gateLabel?: string
   childTaskId?: string
-  dragRect?: DragCardRect | null
   onAssign: (task: Task, agent: string) => void
   onDelete: (task: { id: string; title: string }) => void
   onClick: (task: Task, columnId: ColumnId) => void
@@ -169,23 +162,5 @@ export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, on
       />
       </div>
     </div>
-  )
-}
-
-/** Lightweight overlay card rendered in DragOverlay — no sortable hooks */
-export function TaskCardOverlay({ task, columnId, dragRect }: { task: Task; columnId: ColumnId; dragRect?: DragCardRect | null }) {
-  const style: CSSProperties | undefined = dragRect
-    ? { width: dragRect.width, minHeight: dragRect.height }
-    : undefined
-
-  return (
-    <TaskCardContent
-      task={task}
-      columnId={columnId}
-      className={`rounded-xl border border-border bg-card p-4 shadow-2xl ring-1 ring-border ${
-        task.blockedReason ? 'border-l-2 border-l-destructive' : ''
-      }`}
-      style={style}
-    />
   )
 }
