@@ -3,7 +3,6 @@
 import { CollisionPriority } from '@dnd-kit/abstract'
 import { useDroppable } from '@dnd-kit/react'
 import { TaskCard } from './task-card'
-import type { DragCardRect } from './task-card'
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import type { Task, ColumnId } from '../types'
 
@@ -12,8 +11,6 @@ interface KanbanColumnProps {
   tasks: Task[]
   gateLabels?: Record<string, string>
   childTaskLabels?: Record<string, string>
-  activeTaskId?: string | null
-  activeDragRect?: DragCardRect | null
   onAssign: (task: Task, agent: string) => void
   onDelete: (task: { id: string; title: string }) => void
   onTaskClick: (task: Task, columnId: ColumnId) => void
@@ -24,7 +21,7 @@ interface KanbanColumnProps {
   onHeaderClick?: () => void
 }
 
-export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, activeTaskId, activeDragRect, onAssign, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, onHeaderClick }: KanbanColumnProps) {
+export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, onHeaderClick }: KanbanColumnProps) {
   const { ref, isDropTarget } = useDroppable({
     id,
     accept: 'item',
@@ -119,7 +116,6 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, activeTas
                 index={index}
                 gateLabel={gateLabels?.[task.id]}
                 childTaskId={childTaskLabels?.[task.id]}
-                dragRect={task.id === activeTaskId ? activeDragRect : null}
                 onAssign={onAssign}
                 onDelete={onDelete}
                 onClick={onTaskClick}
