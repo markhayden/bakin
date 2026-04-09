@@ -101,7 +101,6 @@ import {
   getTasksByAgent,
   getAgentTasks,
   VALID_TRANSITIONS,
-  POSITION_GAP,
   localDateString,
 } from '../../../plugins/tasks/lib/flow-store'
 
@@ -737,22 +736,23 @@ describe('two-tier permissions', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Position / ordering
+// Order / ordering
 // ---------------------------------------------------------------------------
 
-describe('position ordering', () => {
-  it('new task in empty column gets POSITION_GAP', async () => {
+describe('order-based ordering', () => {
+  it('new task in empty column gets order 0', async () => {
     const task = await createTask('first-task', 'todo')
-    expect(task.position).toBe(POSITION_GAP)
+    expect(task.order).toBe(0)
   })
 
-  it('new task appends with position = max + GAP', async () => {
+  it('new task appends with order = count', async () => {
     const t1 = await createTask('task-one', 'todo')
     const t2 = await createTask('task-two', 'todo')
-    expect(t2.position).toBe(t1.position! + POSITION_GAP)
+    expect(t1.order).toBe(0)
+    expect(t2.order).toBe(1)
   })
 
-  it('tasks returned in position order (ascending)', async () => {
+  it('tasks returned in order (ascending)', async () => {
     await createTask('first', 'todo')
     await createTask('second', 'todo')
     await createTask('third', 'todo')
@@ -761,46 +761,35 @@ describe('position ordering', () => {
     expect(titles).toEqual(['first', 'second', 'third'])
   })
 
-  it('moveTask to different column assigns new position', async () => {
+  it('moveTask to different column assigns new order', async () => {
     const t = await createTask('movable', 'todo')
     await moveTask(t.id, 'inProgress')
     const result = getTaskWithColumn(t.id)
     expect(result?.column).toBe('inProgress')
     const task = getTask(t.id)
-    expect(task?.position).toBe(POSITION_GAP) // first in inProgress
+    expect(task?.order).toBe(0) // first in inProgress
   })
 
-  it('moveTask with afterTaskId inserts at correct position', async () => {
+  it('moveTask always appends to end of target column', async () => {
     const t1 = await createTask('anchor-1', 'todo')
     const t2 = await createTask('anchor-2', 'todo')
-    const t3 = await createTask('insertee', 'backlog')
-    // Insert between t1 and t2 in todo column (human can do backlog → todo)
-    await moveTask(t3.id, 'todo', 'backlog', 'human', t1.id)
+    const t3 = await createTask('appended', 'backlog')
+    await moveTask(t3.id, 'todo', 'backlog', 'human')
     const board = readTaskboard()
     const todoTitles = board.columns.todo.map(t => t.title)
-    expect(todoTitles).toEqual(['anchor-1', 'insertee', 'anchor-2'])
+    expect(todoTitles).toEqual(['anchor-1', 'anchor-2', 'appended'])
   })
 
-  it('moveTask with beforeTaskId inserts before target', async () => {
-    const t1 = await createTask('first', 'todo')
-    const t2 = await createTask('second', 'todo')
-    const t3 = await createTask('before-first', 'backlog')
-    await moveTask(t3.id, 'todo', 'backlog', 'human', undefined, t1.id)
-    const board = readTaskboard()
-    const todoTitles = board.columns.todo.map(t => t.title)
-    expect(todoTitles).toEqual(['before-first', 'first', 'second'])
-  })
-
-  it('position preserved on non-move mutations (assign, log)', async () => {
+  it('order preserved on non-move mutations (assign, log)', async () => {
     const t = await createTask('stable', 'todo')
-    const originalPos = t.position
+    const originalOrder = t.order
     await assignTask(t.id, 'agent-x')
     await addTaskLog(t.id, 'agent-x', 'working on it')
     const task = getTask(t.id)
-    expect(task?.position).toBe(originalPos)
+    expect(task?.order).toBe(originalOrder)
   })
 
-  it('reorderTasks assigns clean i * GAP positions', async () => {
+  it('reorderTasks assigns clean zero-indexed order values', async () => {
     const t1 = await createTask('alpha', 'todo')
     const t2 = await createTask('beta', 'todo')
     const t3 = await createTask('gamma', 'todo')
@@ -809,64 +798,28 @@ describe('position ordering', () => {
     const board = readTaskboard()
     const todoTitles = board.columns.todo.map(t => t.title)
     expect(todoTitles).toEqual(['gamma', 'alpha', 'beta'])
-    // Verify clean positions
-    expect(board.columns.todo[0].position).toBe(POSITION_GAP)
-    expect(board.columns.todo[1].position).toBe(POSITION_GAP * 2)
-    expect(board.columns.todo[2].position).toBe(POSITION_GAP * 3)
+    // Verify zero-indexed order
+    expect(board.columns.todo[0].order).toBe(0)
+    expect(board.columns.todo[1].order).toBe(1)
+    expect(board.columns.todo[2].order).toBe(2)
   })
 
-  it('blockTask assigns position in blocked column', async () => {
+  it('blockTask assigns order in blocked column', async () => {
     const t = await createTask('blockable', 'todo')
     await blockTask(t.id, 'waiting on API')
     const task = getTask(t.id)
-    expect(task?.position).toBe(POSITION_GAP) // first in blocked
+    expect(task?.order).toBe(0) // first in blocked
   })
 
-  it('createTask with afterTaskId inserts at correct position', async () => {
-    const t1 = await createTask('existing-1', 'todo')
-    const t2 = await createTask('existing-2', 'todo')
-    const t3 = await createTask('inserted', 'todo', undefined, undefined, undefined, undefined, undefined, undefined, undefined, t1.id)
-    const board = readTaskboard()
-    const todoTitles = board.columns.todo.map(t => t.title)
-    expect(todoTitles).toEqual(['existing-1', 'inserted', 'existing-2'])
-  })
-
-  it('concurrent creates get distinct positions', async () => {
+  it('concurrent creates get distinct contiguous orders', async () => {
     const t1 = await createTask('task-a', 'todo')
     const t2 = await createTask('task-b', 'todo')
     const t3 = await createTask('task-c', 'todo')
-    const positions = [
-      getTask(t1.id)?.position,
-      getTask(t2.id)?.position,
-      getTask(t3.id)?.position,
+    const orders = [
+      getTask(t1.id)?.order,
+      getTask(t2.id)?.order,
+      getTask(t3.id)?.order,
     ]
-    // All distinct
-    expect(new Set(positions).size).toBe(3)
-    // All ascending
-    expect(positions[0]!).toBeLessThan(positions[1]!)
-    expect(positions[1]!).toBeLessThan(positions[2]!)
-  })
-
-  it('insert at start of column gets position before first task', async () => {
-    const t1 = await createTask('existing', 'todo')
-    const t2 = await createTask('before-all', 'backlog')
-    // Insert before t1 (beforeTaskId = t1.id)
-    await moveTask(t2.id, 'todo', 'backlog', 'human', undefined, t1.id)
-    const board = readTaskboard()
-    const todoTitles = board.columns.todo.map(t => t.title)
-    expect(todoTitles).toEqual(['before-all', 'existing'])
-    // beforeAll should have a lower position
-    expect(board.columns.todo[0].position!).toBeLessThan(board.columns.todo[1].position!)
-  })
-
-  it('move without position params appends to end', async () => {
-    const t1 = await createTask('first', 'todo')
-    const t2 = await createTask('second', 'todo')
-    const t3 = await createTask('appended', 'backlog')
-    // Move without afterTaskId/beforeTaskId — should append
-    await moveTask(t3.id, 'todo', 'backlog', 'human')
-    const board = readTaskboard()
-    const todoTitles = board.columns.todo.map(t => t.title)
-    expect(todoTitles).toEqual(['first', 'second', 'appended'])
+    expect(orders).toEqual([0, 1, 2])
   })
 })

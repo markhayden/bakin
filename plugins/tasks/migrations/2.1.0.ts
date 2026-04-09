@@ -1,17 +1,15 @@
 /**
- * Migration: Backfill position values in task state_json for weight-based ordering.
+ * Migration: Backfill order values in task state_json for array-index ordering.
  *
- * Before this migration, task ordering relied on updated_at DESC which was fragile
- * (any mutation could scramble order). This adds an explicit position field to each
- * task's state_json, preserving the existing visual order based on updated_at.
+ * Converts from sparse position values (POSITION_GAP = 1M) to contiguous
+ * zero-indexed order values per column. Also renames the field from
+ * `position` to `order` in state_json.
  */
 import Database from 'better-sqlite3'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { createLogger } from '../../../src/core/logger'
 
 const log = createLogger('tasks:migration:2.1.0')
-
-const POSITION_GAP = 1_000_000
 
 interface FlowRunRow {
   flow_id: string
@@ -44,7 +42,7 @@ function getColumn(flow: FlowRunRow): string {
 }
 
 export const version = '2.1.0'
-export const description = 'Backfill position values in task state_json for weight-based ordering'
+export const description = 'Migrate position to zero-indexed order values in task state_json'
 
 export async function up(): Promise<void> {
   const dbPath = getOpenClawPath('flows', 'registry.sqlite')
@@ -70,25 +68,36 @@ export async function up(): Promise<void> {
       byColumn.get(col)!.push(row)
     }
 
-    // Sort each column by updated_at DESC (preserves current visual order)
-    // Then assign positions: index 0 (most recent) gets lowest position
+    // Sort each column by existing position (if present) or updated_at DESC,
+    // then assign zero-indexed order and remove old position field.
     const stmt = db.prepare(
-      `UPDATE flow_runs SET state_json = json_set(state_json, '$.position', ?) WHERE flow_id = ?`
+      `UPDATE flow_runs SET state_json = ? WHERE flow_id = ?`
     )
 
     let totalUpdated = 0
     const tx = db.transaction(() => {
-      for (const [col, colRows] of byColumn) {
-        colRows.sort((a, b) => b.updated_at - a.updated_at)
+      for (const [, colRows] of byColumn) {
+        colRows.sort((a, b) => {
+          const stateA = a.state_json ? JSON.parse(a.state_json) : {}
+          const stateB = b.state_json ? JSON.parse(b.state_json) : {}
+          // Sort by existing position if available, otherwise by updated_at DESC
+          if (typeof stateA.position === 'number' && typeof stateB.position === 'number') {
+            return stateA.position - stateB.position
+          }
+          return b.updated_at - a.updated_at
+        })
         for (let i = 0; i < colRows.length; i++) {
-          stmt.run((i + 1) * POSITION_GAP, colRows[i].flow_id)
+          const state = colRows[i].state_json ? JSON.parse(colRows[i].state_json!) : {}
+          delete state.position
+          state.order = i
+          stmt.run(JSON.stringify(state), colRows[i].flow_id)
           totalUpdated++
         }
       }
     })
     tx()
 
-    log.info(`Backfilled positions for ${totalUpdated} tasks across ${byColumn.size} columns`)
+    log.info(`Migrated ${totalUpdated} tasks to zero-indexed order across ${byColumn.size} columns`)
   } finally {
     db.close()
   }

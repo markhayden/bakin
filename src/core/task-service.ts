@@ -77,7 +77,7 @@ export async function moveTaskWithEffects(
   taskId: string,
   to: string,
   agent: string,
-  opts?: { from?: string; skipDoneGuard?: boolean; channel?: Channel; afterTaskId?: string; beforeTaskId?: string; reason?: string },
+  opts?: { from?: string; skipDoneGuard?: boolean; channel?: Channel },
 ): Promise<void> {
   // Workflow done-guard: workflow tasks can only reach Done via the workflow engine
   // Human channel bypasses this guard — the operator can force any state
@@ -97,7 +97,7 @@ export async function moveTaskWithEffects(
     }
   }
 
-  await hooks().invoke<void>('tasks.moveTask', { identifier: taskId, to, from: opts?.from, channel: opts?.channel, afterTaskId: opts?.afterTaskId, beforeTaskId: opts?.beforeTaskId, reason: opts?.reason })
+  await hooks().invoke<void>('tasks.moveTask', { identifier: taskId, to, from: opts?.from, channel: opts?.channel })
 
   const title = await resolveTitle(taskId)
   appendAudit(getContentDir(), 'task.moved', agent, { id: taskId, title, from: opts?.from, to }, opts?.channel)
@@ -195,7 +195,6 @@ export async function createTaskWithEffects(opts: {
   parentId?: string
   projectId?: string
   channel?: Channel
-  afterTaskId?: string
 }): Promise<{ id: string; workflowId?: string; suggestedWorkflow?: string }> {
   // Auto-match workflow if none was explicitly provided
   const suggested = !opts.workflowId ? (await hooks().invoke<string | null>('workflows.matchWorkflow', { title: opts.title, description: opts.description }) || undefined) : undefined
@@ -211,7 +210,6 @@ export async function createTaskWithEffects(opts: {
     createdBy: opts.createdBy,
     parentId: opts.parentId,
     projectId: opts.projectId,
-    afterTaskId: opts.afterTaskId,
   })
   if (!task) throw new Error('Failed to create task')
 

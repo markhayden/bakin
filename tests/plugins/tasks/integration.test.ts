@@ -86,7 +86,6 @@ import {
   reorderTasks,
   getTask,
   getTaskWithColumn,
-  POSITION_GAP,
 } from '../../../plugins/tasks/lib/flow-store'
 
 initTestDb()
@@ -105,7 +104,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe('integration: human drag backlog → done (full bypass)', () => {
-  it('succeeds and assigns correct position', async () => {
+  it('succeeds and assigns correct order', async () => {
     const task = await createTask('Human Override Task', 'backlog')
     expect(getTaskWithColumn(task.id)?.column).toBe('backlog')
 
@@ -116,7 +115,7 @@ describe('integration: human drag backlog → done (full bypass)', () => {
     expect(result?.column).toBe('done')
 
     const taskData = getTask(task.id)
-    expect(taskData?.position).toBe(POSITION_GAP) // first in done column
+    expect(taskData?.order).toBe(0) // first in done column
   })
 })
 
@@ -132,29 +131,26 @@ describe('integration: agent move backlog → done (rejected)', () => {
 })
 
 describe('integration: agent happy path todo → inProgress → done', () => {
-  it('maintains positions through transitions', async () => {
+  it('maintains order through transitions', async () => {
     const task = await createTask('Agent Task', 'todo')
-    const initialPos = getTask(task.id)?.position
-    expect(initialPos).toBe(POSITION_GAP)
+    expect(getTask(task.id)?.order).toBe(0)
 
     // Move to inProgress
     await moveTask(task.id, 'inProgress', 'todo', 'mcp')
-    const ipTask = getTask(task.id)
-    expect(ipTask?.position).toBe(POSITION_GAP) // first in inProgress
+    expect(getTask(task.id)?.order).toBe(0) // first in inProgress
 
     // Add log entry (required for done)
     await addTaskLog(task.id, 'agent', 'Work complete')
 
     // Move to done
     await moveTask(task.id, 'done', 'inProgress', 'mcp')
-    const doneTask = getTask(task.id)
-    expect(doneTask?.position).toBe(POSITION_GAP) // first in done
+    expect(getTask(task.id)?.order).toBe(0) // first in done
     expect(getTaskWithColumn(task.id)?.column).toBe('done')
   })
 })
 
-describe('integration: create 5 tasks, reorder, verify positions', () => {
-  it('reorder assigns clean POSITION_GAP positions', async () => {
+describe('integration: create 5 tasks, reorder, verify order', () => {
+  it('reorder assigns clean zero-indexed order values', async () => {
     const tasks = []
     for (let i = 0; i < 5; i++) {
       tasks.push(await createTask(`Task ${i}`, 'todo'))
@@ -176,77 +172,73 @@ describe('integration: create 5 tasks, reorder, verify positions', () => {
       'Task 4', 'Task 3', 'Task 2', 'Task 1', 'Task 0',
     ])
 
-    // Verify clean positions
-    const positions = board2.columns.todo.map(t => t.position!)
-    expect(positions).toEqual([
-      POSITION_GAP, POSITION_GAP * 2, POSITION_GAP * 3, POSITION_GAP * 4, POSITION_GAP * 5,
-    ])
+    // Verify zero-indexed order
+    const orders = board2.columns.todo.map(t => t.order!)
+    expect(orders).toEqual([0, 1, 2, 3, 4])
   })
 })
 
-describe('integration: move between columns preserves other positions', () => {
-  it('non-moved tasks keep their positions', async () => {
+describe('integration: move between columns preserves other order', () => {
+  it('non-moved tasks keep their order', async () => {
     const t1 = await createTask('Stay 1', 'todo')
     const t2 = await createTask('Moving', 'todo')
     const t3 = await createTask('Stay 2', 'todo')
 
-    const beforePositions = {
-      t1: getTask(t1.id)?.position,
-      t3: getTask(t3.id)?.position,
+    const beforeOrders = {
+      t1: getTask(t1.id)?.order,
+      t3: getTask(t3.id)?.order,
     }
 
     // Move t2 to inProgress (human channel to avoid needing agent assignment)
     await moveTask(t2.id, 'inProgress', 'todo', 'human')
 
-    // t1 and t3 keep their positions
-    expect(getTask(t1.id)?.position).toBe(beforePositions.t1)
-    expect(getTask(t3.id)?.position).toBe(beforePositions.t3)
+    // t1 and t3 keep their order
+    expect(getTask(t1.id)?.order).toBe(beforeOrders.t1)
+    expect(getTask(t3.id)?.order).toBe(beforeOrders.t3)
 
-    // t2 gets a new position in inProgress
-    expect(getTask(t2.id)?.position).toBe(POSITION_GAP) // first in inProgress
+    // t2 gets order 0 in inProgress (first task)
+    expect(getTask(t2.id)?.order).toBe(0)
     expect(getTaskWithColumn(t2.id)?.column).toBe('inProgress')
   })
 })
 
-describe('integration: move with afterTaskId preserves drop position', () => {
-  it('card lands between specified neighbors in inProgress', async () => {
+describe('integration: moveTask always appends, reorder sets final order', () => {
+  it('moveTask appends to end of inProgress', async () => {
     const t1 = await createTask('First', 'inProgress')
     const t2 = await createTask('Second', 'inProgress')
-    const t3 = await createTask('Third', 'inProgress')
     const mover = await createTask('Mover', 'todo')
 
-    // Move mover between t1 and t2 in inProgress (human channel)
-    await moveTask(mover.id, 'inProgress', 'todo', 'human', t1.id, t2.id)
+    await moveTask(mover.id, 'inProgress', 'todo', 'human')
 
     const board = readTaskboard()
     const ipTitles = board.columns.inProgress.map(t => t.title)
-    expect(ipTitles).toEqual(['First', 'Mover', 'Second', 'Third'])
+    expect(ipTitles).toEqual(['First', 'Second', 'Mover'])
   })
 
-  it('card lands between specified neighbors in backlog', async () => {
-    const bl1 = await createTask('BL-First', 'backlog')
-    const bl2 = await createTask('BL-Second', 'backlog')
+  it('reorder after move sets correct final order', async () => {
+    const t1 = await createTask('First', 'inProgress')
+    const t2 = await createTask('Second', 'inProgress')
     const mover = await createTask('Mover', 'todo')
 
-    await moveTask(mover.id, 'backlog', 'todo', 'human', bl1.id, bl2.id)
+    await moveTask(mover.id, 'inProgress', 'todo', 'human')
+    // Reorder to insert mover between t1 and t2
+    await reorderTasks('inProgress', [t1.id, mover.id, t2.id])
 
     const board = readTaskboard()
-    const titles = board.columns.backlog.map(t => t.title)
-    expect(titles).toEqual(['BL-First', 'Mover', 'BL-Second'])
+    const ipTitles = board.columns.inProgress.map(t => t.title)
+    expect(ipTitles).toEqual(['First', 'Mover', 'Second'])
+    expect(board.columns.inProgress.map(t => t.order)).toEqual([0, 1, 2])
   })
 
-  it('blockTask with position params lands at correct position', async () => {
+  it('blockTask appends to blocked column', async () => {
     const bk1 = await createTask('Blocked-1', 'todo')
     await blockTask(bk1.id, 'reason 1')
     const bk2 = await createTask('Blocked-2', 'todo')
     await blockTask(bk2.id, 'reason 2')
 
-    const mover = await createTask('New-Block', 'todo')
-    // Move to blocked, positioned after bk1
-    await moveTask(mover.id, 'blocked', 'todo', 'human', bk1.id, bk2.id)
-
     const board = readTaskboard()
     const titles = board.columns.blocked.map(t => t.title)
-    expect(titles).toEqual(['Blocked-1', 'New-Block', 'Blocked-2'])
+    expect(titles).toEqual(['Blocked-1', 'Blocked-2'])
+    expect(board.columns.blocked.map(t => t.order)).toEqual([0, 1])
   })
 })
