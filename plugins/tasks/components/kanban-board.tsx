@@ -12,7 +12,7 @@ import { TaskMetrics } from './task-metrics'
 import { PluginHeader } from '@/components/plugin-header'
 import { TaskFilters } from './task-filters'
 import { TaskLogTable } from './task-log-table'
-import { useTaskFilters } from '../hooks/use-task-filters'
+import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
 import { WithLoading } from '@/components/layout/skeleton-loader'
 import { useContentStore } from '@/hooks/use-content-store'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
@@ -88,6 +88,43 @@ function applyMove(columns: TaskColumns, event: unknown): TaskColumns {
   )
 }
 
+function mergeVisibleColumns(
+  fullColumns: TaskColumns,
+  currentVisibleColumns: TaskColumns,
+  nextVisibleColumns: TaskColumns,
+): TaskColumns {
+  return normalizeColumns(
+    Object.fromEntries(
+      COLUMN_ORDER.map((colId) => {
+        const visibleIds = new Set(currentVisibleColumns[colId].map((task) => task.id))
+        const nextVisibleTasks = [...nextVisibleColumns[colId]]
+        const merged: Task[] = []
+        let lastVisibleIndex = -1
+
+        for (const task of fullColumns[colId]) {
+          if (!visibleIds.has(task.id)) {
+            merged.push(task)
+            continue
+          }
+
+          const nextVisibleTask = nextVisibleTasks.shift()
+          if (nextVisibleTask) {
+            merged.push(nextVisibleTask)
+            lastVisibleIndex = merged.length - 1
+          }
+        }
+
+        if (nextVisibleTasks.length > 0) {
+          const insertAt = lastVisibleIndex === -1 ? merged.length : lastVisibleIndex + 1
+          merged.splice(insertAt, 0, ...nextVisibleTasks)
+        }
+
+        return [colId, merged]
+      }),
+    ) as unknown as TaskColumns
+  )
+}
+
 export function KanbanBoard() {
   const [boardData, setBoardData] = useState<{ columns: TaskColumns; timestamp?: string }>({ columns: emptyBoard })
   const taskboardVersion = useContentStore((s) => s.taskboardVersion)
@@ -134,6 +171,7 @@ export function KanbanBoard() {
   const hiddenArchivedCount = columns.archived.length - displayColumns.archived.length
 
   const [taskIdParam, setTaskIdParam] = useQueryState('taskId', '')
+  const hasBoardFilters = Boolean(search) || agentFilter !== 'all'
 
   const { filteredColumns, allTasksFlat } = useTaskFilters(displayColumns, {
     search, agentFilter, statusFilter,
@@ -188,11 +226,17 @@ export function KanbanBoard() {
     if (!source || source.type !== 'item') return
 
     const currentColumns = optimistic?.columns ?? dragStartColumnsRef.current ?? parsed.columns
-    const nextColumns = applyMove(currentColumns, event)
+    const nextColumns = hasBoardFilters
+      ? mergeVisibleColumns(
+          currentColumns,
+          filterBoardColumns(currentColumns, search, agentFilter),
+          applyMove(filterBoardColumns(currentColumns, search, agentFilter), event),
+        )
+      : applyMove(currentColumns, event)
     if (areTaskOrdersEqual(currentColumns, nextColumns)) return
 
     setOptimistic({ columns: nextColumns })
-  }, [optimistic, parsed.columns])
+  }, [agentFilter, hasBoardFilters, optimistic, parsed.columns, search])
 
   const handleDragEnd = useCallback<DragDropEventHandlers['onDragEnd']>(async (event) => {
     const { source, target } = event.operation
@@ -215,7 +259,15 @@ export function KanbanBoard() {
     }
 
     const finalColumns = target
-      ? (optimistic?.columns ?? applyMove(originalColumns, event))
+      ? (optimistic?.columns ?? (
+          hasBoardFilters
+            ? mergeVisibleColumns(
+                originalColumns,
+                filterBoardColumns(originalColumns, search, agentFilter),
+                applyMove(filterBoardColumns(originalColumns, search, agentFilter), event),
+              )
+            : applyMove(originalColumns, event)
+        ))
       : originalColumns
     const finalCol = findTaskColumn(finalColumns, task.id) ?? fromCol
 
@@ -266,7 +318,7 @@ export function KanbanBoard() {
 
     await refreshTaskboard()
     setOptimistic(null)
-  }, [optimistic, parsed.columns, refreshTaskboard])
+  }, [agentFilter, hasBoardFilters, optimistic, parsed.columns, refreshTaskboard, search])
 
   const handleAssign = useCallback(async (task: Task, agent: string) => {
     const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/assign', { id: task.id, title: task.title, agent })

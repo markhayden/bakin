@@ -9,6 +9,10 @@ const { mockMove, mockUseSortable } = vi.hoisted(() => ({
   mockUseSortable: vi.fn(),
 }))
 
+const { queryStateDefaults } = vi.hoisted(() => ({
+  queryStateDefaults: {} as Record<string, string>,
+}))
+
 let capturedProviderProps: Record<string, any> = {}
 
 const COLUMN_IDS = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as const
@@ -165,7 +169,7 @@ vi.mock('@/components/ui/button', () => ({
 vi.mock('@/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
-    return React.useState(defaultValue)
+    return React.useState(queryStateDefaults[_key] ?? defaultValue)
   },
   useQueryArrayState: () => {
     const React = require('react') as typeof import('react')
@@ -179,10 +183,6 @@ vi.mock('@/hooks/use-content-store', () => ({
 
 vi.mock('@/hooks/use-toast', () => ({
   toast: vi.fn(),
-}))
-
-vi.mock('../../plugins/tasks/hooks/use-task-filters', () => ({
-  useTaskFilters: (columns: TaskColumns) => ({ filteredColumns: columns, allTasksFlat: [] }),
 }))
 
 vi.mock('../../plugins/tasks/hooks/use-gate-status', () => ({
@@ -250,6 +250,9 @@ describe('KanbanBoard drag and drop', () => {
     capturedProviderProps = {}
     mockMove.mockClear()
     mockUseSortable.mockClear()
+    for (const key of Object.keys(queryStateDefaults)) {
+      delete queryStateDefaults[key]
+    }
   })
 
   afterEach(() => {
@@ -571,6 +574,55 @@ describe('KanbanBoard drag and drop', () => {
     await waitFor(() => {
       const moveCall = fetchCalls.find((call) => call.url.includes('/move'))
       expect(moveCall!.body.to).toBe('archived')
+    })
+  })
+
+  it('same-column reorder with search filter preserves hidden task positions', async () => {
+    queryStateDefaults.q = 'match'
+
+    const hiddenTop = makeTask('task-1', 'Alpha')
+    const visibleA = makeTask('task-2', 'Match A')
+    const hiddenMiddle = makeTask('task-3', 'Bravo')
+    const visibleB = makeTask('task-4', 'Match B')
+
+    await renderBoard({ todo: [hiddenTop, visibleA, hiddenMiddle, visibleB] })
+
+    act(() => {
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: 'task-4',
+        sourceData: { task: visibleB, columnId: 'todo', group: 'todo' },
+      }))
+    })
+
+    act(() => {
+      capturedProviderProps.onDragOver(makeDragEvent({
+        sourceId: 'task-4',
+        sourceData: { task: visibleB, columnId: 'todo', group: 'todo' },
+        targetId: 'todo',
+        targetData: { columnId: 'todo', group: 'todo', insertIndex: 0 },
+      }))
+    })
+
+    await waitFor(() => {
+      expect(getColumnTaskTitles('todo')).toEqual(['Match B', 'Match A'])
+    })
+
+    await act(async () => {
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: 'task-4',
+        sourceData: { task: visibleB, columnId: 'todo', group: 'todo' },
+        targetId: 'todo',
+        targetData: { columnId: 'todo', group: 'todo', insertIndex: 0 },
+      }))
+    })
+
+    await waitFor(() => {
+      const reorderCall = fetchCalls.find((call) => call.url.includes('/reorder'))
+      expect(reorderCall).toBeTruthy()
+      expect(reorderCall!.body).toEqual({
+        columnId: 'todo',
+        orderedIds: ['task-1', 'task-4', 'task-3', 'task-2'],
+      })
     })
   })
 })
