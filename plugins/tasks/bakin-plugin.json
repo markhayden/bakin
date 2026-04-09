@@ -1,7 +1,7 @@
 {
   "id": "tasks",
   "name": "Tasks",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "bakin": ">=1.0.0",
   "description": "Kanban task management with SQLite persistence (OpenClaw flow_runs), agent assignment, and dependency tracking",
   "entry": {
