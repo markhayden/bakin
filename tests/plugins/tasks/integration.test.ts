@@ -82,6 +82,7 @@ import {
   createTask,
   moveTask,
   addTaskLog,
+  blockTask,
   reorderTasks,
   getTask,
   getTaskWithColumn,
@@ -208,7 +209,7 @@ describe('integration: move between columns preserves other positions', () => {
 })
 
 describe('integration: move with afterTaskId preserves drop position', () => {
-  it('card lands between specified neighbors', async () => {
+  it('card lands between specified neighbors in inProgress', async () => {
     const t1 = await createTask('First', 'inProgress')
     const t2 = await createTask('Second', 'inProgress')
     const t3 = await createTask('Third', 'inProgress')
@@ -220,5 +221,32 @@ describe('integration: move with afterTaskId preserves drop position', () => {
     const board = readTaskboard()
     const ipTitles = board.columns.inProgress.map(t => t.title)
     expect(ipTitles).toEqual(['First', 'Mover', 'Second', 'Third'])
+  })
+
+  it('card lands between specified neighbors in backlog', async () => {
+    const bl1 = await createTask('BL-First', 'backlog')
+    const bl2 = await createTask('BL-Second', 'backlog')
+    const mover = await createTask('Mover', 'todo')
+
+    await moveTask(mover.id, 'backlog', 'todo', 'human', bl1.id, bl2.id)
+
+    const board = readTaskboard()
+    const titles = board.columns.backlog.map(t => t.title)
+    expect(titles).toEqual(['BL-First', 'Mover', 'BL-Second'])
+  })
+
+  it('blockTask with position params lands at correct position', async () => {
+    const bk1 = await createTask('Blocked-1', 'todo')
+    await blockTask(bk1.id, 'reason 1')
+    const bk2 = await createTask('Blocked-2', 'todo')
+    await blockTask(bk2.id, 'reason 2')
+
+    const mover = await createTask('New-Block', 'todo')
+    // Move to blocked, positioned after bk1
+    await moveTask(mover.id, 'blocked', 'todo', 'human', bk1.id, bk2.id)
+
+    const board = readTaskboard()
+    const titles = board.columns.blocked.map(t => t.title)
+    expect(titles).toEqual(['Blocked-1', 'New-Block', 'Blocked-2'])
   })
 })

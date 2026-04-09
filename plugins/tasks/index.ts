@@ -58,7 +58,7 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.hooks.register('tasks.readTaskboard', () => readTaskboard())
     ctx.hooks.register('tasks.createTask', (d: Record<string, unknown>) => createTask(d.title as string, d.column as string | undefined, d.assignee as string | undefined, d.description as string | undefined, d.workflowId as string | undefined, d.createdBy as string | undefined, d.id as string | undefined, d.parentId as string | undefined, d.projectId as string | undefined, d.afterTaskId as string | undefined))
-    ctx.hooks.register('tasks.moveTask', (d: Record<string, unknown>) => moveTask(d.identifier as string, d.to as string, d.from as string | undefined, d.channel as string | undefined, d.afterTaskId as string | undefined, d.beforeTaskId as string | undefined))
+    ctx.hooks.register('tasks.moveTask', (d: Record<string, unknown>) => moveTask(d.identifier as string, d.to as string, d.from as string | undefined, d.channel as string | undefined, d.afterTaskId as string | undefined, d.beforeTaskId as string | undefined, d.reason as string | undefined))
     ctx.hooks.register('tasks.blockTask', (d: Record<string, unknown>) => blockTask(d.identifier as string, d.reason as string, d.agent as string | undefined))
     ctx.hooks.register('tasks.addTaskLog', (d: Record<string, unknown>) => addTaskLog(d.identifier as string, d.author as string, d.message as string))
     ctx.hooks.register('tasks.updateTask', (d: Record<string, unknown>) => {
@@ -204,12 +204,7 @@ const tasksPlugin: BakinPlugin = {
           // Only accept 'human' from REST when the caller explicitly identifies as the
           // UI operator (agent === 'human'). MCP tools hardcode 'mcp' server-side.
           const effectiveChannel = (body.channel === 'human' && agent === 'human') ? 'human' as const : 'rest' as const
-          if (to === 'blocked' && reason) {
-            // Use blockTaskWithEffects which sets blocked_task_id/blocked_summary
-            await blockTaskWithEffects(identifier, reason, agent, effectiveChannel)
-          } else {
-            await moveTaskWithEffects(identifier, to, agent, { from, channel: effectiveChannel, afterTaskId, beforeTaskId })
-          }
+          await moveTaskWithEffects(identifier, to, agent, { from, channel: effectiveChannel, afterTaskId, beforeTaskId, reason })
           ctx.activity.log(agent, `Moved task to "${to}"`, { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {

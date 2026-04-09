@@ -504,7 +504,7 @@ export function createTask(
   }
 }
 
-export function moveTask(identifier: string, to: string, from?: string, channel?: string, afterTaskId?: string, beforeTaskId?: string): Promise<void> {
+export function moveTask(identifier: string, to: string, from?: string, channel?: string, afterTaskId?: string, beforeTaskId?: string, reason?: string): Promise<void> {
   try {
     const toCol = normalizeColumn(to)
     if (!toCol) throw new Error(`Invalid column: ${to}`)
@@ -557,13 +557,18 @@ export function moveTask(identifier: string, to: string, from?: string, channel?
 
       const endedAt = (toCol === 'done' || toCol === 'archived') ? now : null
 
+      // When moving to blocked, set the sentinel blocked_task_id + reason.
+      // Otherwise clear blocked fields.
+      const blockedTaskId = toCol === 'blocked' ? 'blocked' : null
+      const blockedSummary = toCol === 'blocked' ? (reason || null) : null
+
       db.prepare(`
         UPDATE flow_runs SET
           status = ?,
           state_json = ?,
           wait_json = ?,
-          blocked_task_id = NULL,
-          blocked_summary = NULL,
+          blocked_task_id = ?,
+          blocked_summary = ?,
           revision = revision + 1,
           updated_at = ?,
           ended_at = COALESCE(?, ended_at)
@@ -572,6 +577,8 @@ export function moveTask(identifier: string, to: string, from?: string, channel?
         newStatus,
         JSON.stringify(state),
         waitJson,
+        blockedTaskId,
+        blockedSummary,
         now,
         endedAt,
         flow.flow_id,
