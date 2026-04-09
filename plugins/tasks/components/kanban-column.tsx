@@ -69,7 +69,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, onAssign,
           {onHeaderClick ? (
             <button
               type="button"
-              className="mt-3 self-center text-xs font-medium text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground"
+              className="mt-3 self-center cursor-pointer text-xs font-medium text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground"
               onClick={(event) => {
                 event.stopPropagation()
                 onHeaderClick()

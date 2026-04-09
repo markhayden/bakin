@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KeyboardSensor, PointerSensor } from '@dnd-kit/dom'
 import { move } from '@dnd-kit/helpers'
 import { DragDropProvider, type DragDropEventHandlers } from '@dnd-kit/react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { KanbanColumn } from './kanban-column'
 import { DeleteTaskDialog } from './delete-task-dialog'
 import { BlockReasonDialog } from './block-reason-dialog'
@@ -126,6 +127,9 @@ function mergeVisibleColumns(
 }
 
 export function KanbanBoard() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [boardData, setBoardData] = useState<{ columns: TaskColumns; timestamp?: string }>({ columns: emptyBoard })
   const taskboardVersion = useContentStore((s) => s.taskboardVersion)
 
@@ -361,6 +365,14 @@ export function KanbanBoard() {
     setDeleteTarget(null)
   }, [deleteTarget, refreshTaskboard])
 
+  const openArchivedLog = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('view', 'table')
+    params.set('status', 'archived')
+    const qs = params.toString()
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [pathname, router, searchParams])
+
   return (
     <WithLoading>
       <div className="flex flex-col h-full min-w-0 min-h-0">
@@ -442,7 +454,7 @@ export function KanbanBoard() {
                       onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}
                       compact={colId === 'archived'}
                       totalCount={colId === 'archived' ? columns.archived.length : undefined}
-                      onHeaderClick={colId === 'archived' ? () => { setView('table'); setStatusFilter(['archived']) } : undefined}
+                      onHeaderClick={colId === 'archived' ? openArchivedLog : undefined}
                     />
                   </div>
                 ))}
