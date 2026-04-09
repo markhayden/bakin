@@ -1454,11 +1454,11 @@ mcporter call bakin-<agent>.bakin_exec_schedule_list
  * Notifies roscoe via OpenClaw about issues that need human judgment.
  */
 // ---------------------------------------------------------------------------
-// Task position integrity
+// Task order integrity
 // ---------------------------------------------------------------------------
 
 function checkTaskPositionIntegrity(autoFix: boolean): DiagnosticResult[] {
-  const CHECK = 'tasks.position_integrity'
+  const CHECK = 'tasks.order_integrity'
   try {
     const Database = require('better-sqlite3')
     const dbPath = getOpenClawPath('flows', 'registry.sqlite')
@@ -1475,13 +1475,13 @@ function checkTaskPositionIntegrity(autoFix: boolean): DiagnosticResult[] {
 
       if (rows.length === 0) return [ok(CHECK, 'No tasks to check')]
 
-      // Check for missing or invalid positions
+      // Check for missing or invalid order values
       let missingCount = 0
-      const byColumn = new Map<string, Array<{ flowId: string; position: number | null; updatedAt: number }>>()
+      const byColumn = new Map<string, Array<{ flowId: string; order: number | null; updatedAt: number }>>()
 
       for (const row of rows) {
         const state = row.state_json ? JSON.parse(row.state_json) : {}
-        const pos = typeof state.position === 'number' ? state.position : null
+        const ord = typeof state.order === 'number' ? state.order : null
 
         // Derive column (inlined from flow-store.ts)
         let col: string
@@ -1493,21 +1493,21 @@ function checkTaskPositionIntegrity(autoFix: boolean): DiagnosticResult[] {
           default: col = 'backlog'
         }
 
-        if (pos === null) missingCount++
+        if (ord === null) missingCount++
         if (!byColumn.has(col)) byColumn.set(col, [])
-        byColumn.get(col)!.push({ flowId: row.flow_id, position: pos, updatedAt: row.updated_at })
+        byColumn.get(col)!.push({ flowId: row.flow_id, order: ord, updatedAt: row.updated_at })
       }
 
       // Check for duplicates within columns
       let duplicateCount = 0
       for (const [, colTasks] of byColumn) {
-        const positions = colTasks.filter(t => t.position !== null).map(t => t.position!)
-        const unique = new Set(positions)
-        if (unique.size < positions.length) duplicateCount += positions.length - unique.size
+        const orders = colTasks.filter(t => t.order !== null).map(t => t.order!)
+        const unique = new Set(orders)
+        if (unique.size < orders.length) duplicateCount += orders.length - unique.size
       }
 
       if (missingCount === 0 && duplicateCount === 0) {
-        return [ok(CHECK, `All ${rows.length} tasks have valid unique positions`)]
+        return [ok(CHECK, `All ${rows.length} tasks have valid unique order values`)]
       }
 
       const issues = []
@@ -1515,28 +1515,27 @@ function checkTaskPositionIntegrity(autoFix: boolean): DiagnosticResult[] {
       if (duplicateCount > 0) issues.push(`${duplicateCount} duplicates`)
 
       if (!autoFix) {
-        return [warn(CHECK, `Position issues: ${issues.join(', ')} across ${rows.length} tasks`, true)]
+        return [warn(CHECK, `Order issues: ${issues.join(', ')} across ${rows.length} tasks`, true)]
       }
 
-      // Auto-fix: reassign positions per column based on updated_at order
-      const { POSITION_GAP } = require('../../plugins/tasks/constants')
-      const stmt = db.prepare(`UPDATE flow_runs SET state_json = json_set(state_json, '$.position', ?) WHERE flow_id = ?`)
+      // Auto-fix: reassign order per column (zero-indexed) based on updated_at order
+      const stmt = db.prepare(`UPDATE flow_runs SET state_json = json_set(state_json, '$.order', ?) WHERE flow_id = ?`)
       const tx = db.transaction(() => {
         for (const [, colTasks] of byColumn) {
           colTasks.sort((a, b) => b.updatedAt - a.updatedAt)
           for (let i = 0; i < colTasks.length; i++) {
-            stmt.run((i + 1) * POSITION_GAP, colTasks[i].flowId)
+            stmt.run(i, colTasks[i].flowId)
           }
         }
       })
       tx()
 
-      return [fixed(CHECK, `Fixed position issues (${issues.join(', ')}) across ${rows.length} tasks`)]
+      return [fixed(CHECK, `Fixed order issues (${issues.join(', ')}) across ${rows.length} tasks`)]
     } finally {
       db.close()
     }
   } catch (err) {
-    return [error(CHECK, `Position check failed: ${(err as Error).message}`)]
+    return [error(CHECK, `Order check failed: ${(err as Error).message}`)]
   }
 }
 

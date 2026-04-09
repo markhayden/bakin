@@ -1,11 +1,16 @@
 'use client'
 
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import type { CSSProperties } from 'react'
+import { useSortable } from '@dnd-kit/react/sortable'
 import { X } from 'lucide-react'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { STATUS_BADGE_STYLES } from '../constants'
 import type { Task, ColumnId } from '../types'
+
+export type DragCardRect = {
+  width: number
+  height: number
+}
 
 function formatRelativeDate(dateStr: string): string {
   // Parse YYYY-MM-DD as local date, not UTC (appending T00:00 forces local interpretation)
@@ -26,12 +31,12 @@ function shortId(id: string): string {
 }
 
 /** Presentational card — used by DragOverlay */
-export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string }) {
+export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, style }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; style?: CSSProperties }) {
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
   const isComplete = task.checked || columnId === 'done' || columnId === 'archived'
 
   return (
-    <div className={className}>
+    <div className={className} style={style}>
       {/* Top: status badge + ID */}
       <div className="flex items-center gap-1.5 mb-3">
         {badge && (
@@ -42,12 +47,6 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
         <span className="text-[10px] font-mono text-muted-foreground/50 uppercase tracking-widest">
           {shortId(task.id)}
         </span>
-        {/* DEBUG: show position weight */}
-        {task.position !== undefined && (
-          <span className="text-[12px] font-mono text-amber-400 ml-auto font-bold">
-            pos:{task.position}
-          </span>
-        )}
       </div>
 
       {/* Title */}
@@ -117,43 +116,40 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
 interface TaskCardProps {
   task: Task
   columnId: string
+  index?: number
   gateLabel?: string
   childTaskId?: string
+  dragRect?: DragCardRect | null
   onAssign: (task: Task, agent: string) => void
   onDelete: (task: { id: string; title: string }) => void
   onClick: (task: Task, columnId: ColumnId) => void
 }
 
-export function TaskCard({ task, columnId, gateLabel, childTaskId, onAssign, onDelete, onClick }: TaskCardProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, onAssign, onDelete, onClick }: TaskCardProps) {
+  const { ref, isDragging } = useSortable({
     id: task.id,
-    data: { task, columnId },
+    group: columnId,
+    accept: 'item',
+    type: 'item',
+    feedback: 'clone',
+    index,
+    data: { group: columnId, columnId, task },
   })
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: isDragging ? 'none' : transition,
-  }
-
-  if (isDragging) {
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        className="rounded-xl border-2 border-dashed border-blue-500/30 bg-card/50 opacity-40"
-      >
-        <TaskCardContent task={task} columnId={columnId} className="p-4" />
-      </div>
-    )
-  }
-
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div
+      ref={ref as never}
+      data-task-id={task.id}
+      data-column-id={columnId}
+    >
       <div
         onClick={() => onClick(task, columnId as ColumnId)}
+        style={isDragging ? { borderColor: 'var(--accent)', boxShadow: '0 0 0 1px color-mix(in oklab, var(--accent) 35%, transparent), 0 24px 48px rgba(0, 0, 0, 0.35)' } : undefined}
         className={`group relative rounded-xl border border-border bg-card cursor-grab active:cursor-grabbing hover:border-zinc-700 hover:shadow-sm shadow-sm shadow-black/20 select-none ${
           task.checked || columnId === 'done' || columnId === 'archived' ? 'opacity-60' : ''
-        } ${task.blockedReason ? 'border-l-2 border-l-destructive' : ''}`}
+        } ${task.blockedReason ? 'border-l-2 border-l-destructive' : ''} ${
+          isDragging ? 'ring-1 ring-[var(--accent)]/30' : ''
+        }`}
       >
       {/* Delete button — top-right, shows on hover */}
       <button
@@ -177,14 +173,19 @@ export function TaskCard({ task, columnId, gateLabel, childTaskId, onAssign, onD
 }
 
 /** Lightweight overlay card rendered in DragOverlay — no sortable hooks */
-export function TaskCardOverlay({ task, columnId }: { task: Task; columnId: ColumnId }) {
+export function TaskCardOverlay({ task, columnId, dragRect }: { task: Task; columnId: ColumnId; dragRect?: DragCardRect | null }) {
+  const style: CSSProperties | undefined = dragRect
+    ? { width: dragRect.width, minHeight: dragRect.height }
+    : undefined
+
   return (
     <TaskCardContent
       task={task}
       columnId={columnId}
-      className={`w-72 rounded-xl border border-border bg-card p-4 shadow-2xl ring-1 ring-border scale-105 ${
+      className={`rounded-xl border border-border bg-card p-4 shadow-2xl ring-1 ring-border ${
         task.blockedReason ? 'border-l-2 border-l-destructive' : ''
       }`}
+      style={style}
     />
   )
 }
