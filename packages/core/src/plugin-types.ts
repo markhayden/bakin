@@ -32,6 +32,7 @@ export interface NavItem {
   icon: string // lucide icon name
   href: string
   order?: number
+  children?: NavItem[]
 }
 
 export interface APIRoute {

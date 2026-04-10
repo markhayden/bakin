@@ -1120,7 +1120,7 @@ async function cmdTrashEmpty(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Calendar commands
+// Messaging commands
 // ---------------------------------------------------------------------------
 
 function parseFlag(args: string[], flag: string): string | undefined {
@@ -1128,28 +1128,28 @@ function parseFlag(args: string[], flag: string): string | undefined {
   return f ? f.split('=').slice(1).join('=') : undefined
 }
 
-async function cmdCalendarList(opts: { month?: string; status?: string; agent?: string; channel?: string }): Promise<void> {
+async function cmdMessagingList(opts: { month?: string; status?: string; agent?: string; channel?: string }): Promise<void> {
   const params = new URLSearchParams()
   if (opts.month) params.set('month', opts.month)
   if (opts.status) params.set('status', opts.status)
   if (opts.agent) params.set('agent', opts.agent)
   if (opts.channel) params.set('channel', opts.channel)
   const qs = params.toString()
-  const result = await apiGet(`/api/plugins/calendar/${qs ? `?${qs}` : ''}`) as { items: Array<Record<string, unknown>> }
+  const result = await apiGet(`/api/plugins/messaging/${qs ? `?${qs}` : ''}`) as { items: Array<Record<string, unknown>> }
   printTable(result.items, ['id', 'title', 'agent', 'status', 'scheduledAt', 'contentType'])
 }
 
-async function cmdCalendarGet(id: string): Promise<void> {
-  const result = await apiGet(`/api/plugins/calendar/${id}`)
+async function cmdMessagingGet(id: string): Promise<void> {
+  const result = await apiGet(`/api/plugins/messaging/${id}`)
   print(result)
 }
 
-async function cmdCalendarCreate(args: string[]): Promise<void> {
+async function cmdMessagingCreate(args: string[]): Promise<void> {
   const positional = args.filter(a => !a.startsWith('--'))
   const title = positional[0]
   const agent = positional[1] || 'chef'
   const scheduledAt = positional[2] || new Date().toISOString()
-  if (!title) { console.error('Usage: bakin calendar create <title> [agent] [scheduledAt] [--channels=dc,ig] [--type=recipe] [--tone=calm]'); process.exit(1) }
+  if (!title) { console.error('Usage: bakin messaging create <title> [agent] [scheduledAt] [--channels=dc,ig] [--type=recipe] [--tone=calm]'); process.exit(1) }
   const channelsStr = parseFlag(args, 'channels')
   const body: Record<string, unknown> = {
     title,
@@ -1160,11 +1160,11 @@ async function cmdCalendarCreate(args: string[]): Promise<void> {
     brief: parseFlag(args, 'brief') || '',
   }
   if (channelsStr) body.channels = channelsStr.split(',')
-  const result = await apiPost('/api/plugins/calendar/', body)
+  const result = await apiPost('/api/plugins/messaging/', body)
   print(result)
 }
 
-async function cmdCalendarUpdate(id: string, args: string[]): Promise<void> {
+async function cmdMessagingUpdate(id: string, args: string[]): Promise<void> {
   const body: Record<string, unknown> = {}
   const title = parseFlag(args, 'title')
   const status = parseFlag(args, 'status')
@@ -1176,25 +1176,25 @@ async function cmdCalendarUpdate(id: string, args: string[]): Promise<void> {
   if (scheduledAt) body.scheduledAt = scheduledAt
   if (brief) body.brief = brief
   if (tone) body.tone = tone
-  const result = await api(`/api/plugins/calendar/${id}`, {
+  const result = await api(`/api/plugins/messaging/${id}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   })
   print(result)
 }
 
-async function cmdCalendarDelete(id: string): Promise<void> {
-  const result = await apiDelete(`/api/plugins/calendar/${id}`)
+async function cmdMessagingDelete(id: string): Promise<void> {
+  const result = await apiDelete(`/api/plugins/messaging/${id}`)
   print(result)
 }
 
-async function cmdCalendarApprove(id: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/calendar/${id}/approve`)
+async function cmdMessagingApprove(id: string): Promise<void> {
+  const result = await apiPost(`/api/plugins/messaging/${id}/approve`)
   print(result)
 }
 
-async function cmdCalendarReject(id: string, note?: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/calendar/${id}/reject`, note ? { note } : undefined)
+async function cmdMessagingReject(id: string, note?: string): Promise<void> {
+  const result = await apiPost(`/api/plugins/messaging/${id}/reject`, note ? { note } : undefined)
   print(result)
 }
 
@@ -1204,19 +1204,19 @@ async function cmdSessionList(opts: { status?: string; agent?: string }): Promis
   if (opts.status) params.set('status', opts.status)
   if (opts.agent) params.set('agentId', opts.agent)
   const qs = params.toString()
-  const result = await apiGet(`/api/plugins/calendar/sessions${qs ? `?${qs}` : ''}`) as { sessions: Array<Record<string, unknown>> }
+  const result = await apiGet(`/api/plugins/messaging/sessions${qs ? `?${qs}` : ''}`) as { sessions: Array<Record<string, unknown>> }
   printTable(result.sessions, ['id', 'agentId', 'title', 'status', 'proposalCount', 'approvedCount', 'updatedAt'])
 }
 
 async function cmdSessionGet(id: string): Promise<void> {
-  const result = await apiGet(`/api/plugins/calendar/sessions/${id}`)
+  const result = await apiGet(`/api/plugins/messaging/sessions/${id}`)
   print(result)
 }
 
 async function cmdSessionCreate(agentId: string, title?: string): Promise<void> {
   const body: Record<string, string> = { agentId }
   if (title) body.title = title
-  const result = await apiPost('/api/plugins/calendar/sessions', body)
+  const result = await apiPost('/api/plugins/messaging/sessions', body)
   print(result)
 }
 
@@ -1224,7 +1224,7 @@ async function cmdSessionUpdate(id: string, args: string[]): Promise<void> {
   const body: Record<string, unknown> = {}
   const title = parseFlag(args, 'title')
   if (title) body.title = title
-  const result = await api(`/api/plugins/calendar/sessions/${id}`, {
+  const result = await api(`/api/plugins/messaging/sessions/${id}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   })
@@ -1232,18 +1232,18 @@ async function cmdSessionUpdate(id: string, args: string[]): Promise<void> {
 }
 
 async function cmdSessionDelete(id: string): Promise<void> {
-  const result = await apiDelete(`/api/plugins/calendar/sessions/${id}`)
+  const result = await apiDelete(`/api/plugins/messaging/sessions/${id}`)
   print(result)
 }
 
 async function cmdSessionMessage(id: string, message: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/calendar/sessions/${id}/messages`, { message })
+  const result = await apiPost(`/api/plugins/messaging/sessions/${id}/messages`, { message })
   // This returns an SSE stream; for CLI we just print what we get
   print(result)
 }
 
 async function cmdSessionConfirm(id: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/calendar/sessions/${id}/confirm`)
+  const result = await apiPost(`/api/plugins/messaging/sessions/${id}/confirm`)
   print(result)
 }
 
@@ -1258,7 +1258,7 @@ async function cmdProposalUpdate(sessionId: string, proposalId: string, args: st
   // Convenience flags
   if (args.includes('--approve')) body.status = 'approved'
   if (args.includes('--reject')) body.status = 'rejected'
-  const result = await api(`/api/plugins/calendar/sessions/${sessionId}/proposals/${proposalId}`, {
+  const result = await api(`/api/plugins/messaging/sessions/${sessionId}/proposals/${proposalId}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   })
@@ -1317,21 +1317,21 @@ Commands:
   trash [list]                       List trashed assets (7-day soft-delete window)
   trash restore <filename>           Restore a trashed asset to its original location
   trash empty                        Permanently delete all items in trash
-  calendar list [options]            List calendar items (--month, --status, --agent, --channel)
-  calendar get <id>                  Get calendar item details
-  calendar create <title> [agent]    Create item (--channels, --type, --tone, --brief)
-  calendar update <id> [flags]       Update item (--title, --status, --scheduledAt, --brief, --tone)
-  calendar delete <id>               Delete a calendar item
-  calendar approve <id>              Approve/schedule a calendar item
-  calendar reject <id> [note]        Reject a calendar item
-  calendar sessions [options]        List planning sessions (--status, --agent)
-  calendar session <id>              Get session details
-  calendar session-create <agent>    Create session (optional title as 2nd arg)
-  calendar session-update <id>       Update session (--title)
-  calendar session-delete <id>       Delete a planning session
-  calendar message <id> <text>       Send message to session
-  calendar confirm <id>              Confirm plan (creates calendar items from approved proposals)
-  calendar proposal <sid> <pid>      Update proposal (--approve, --reject, --status, --title, --note)
+  messaging list [options]            List messaging items (--month, --status, --agent, --channel)
+  messaging get <id>                  Get messaging item details
+  messaging create <title> [agent]    Create item (--channels, --type, --tone, --brief)
+  messaging update <id> [flags]       Update item (--title, --status, --scheduledAt, --brief, --tone)
+  messaging delete <id>               Delete a messaging item
+  messaging approve <id>              Approve/schedule a messaging item
+  messaging reject <id> [note]        Reject a messaging item
+  messaging sessions [options]        List planning sessions (--status, --agent)
+  messaging session <id>              Get session details
+  messaging session-create <agent>    Create session (optional title as 2nd arg)
+  messaging session-update <id>       Update session (--title)
+  messaging session-delete <id>       Delete a planning session
+  messaging message <id> <text>       Send message to session
+  messaging confirm <id>              Confirm plan (creates messaging items from approved proposals)
+  messaging proposal <sid> <pid>      Update proposal (--approve, --reject, --status, --title, --note)
   search <query> [options]          Search across indexed content
     --table=<name>                   Filter by table (tasks, decisions, audit, content, assets)
     --agent=<name>                   Filter by agent (e.g. patch, pixel, rolo)
@@ -1597,59 +1597,59 @@ async function main(): Promise<void> {
         }
         break
 
-      case 'calendar':
+      case 'messaging':
         if (!sub || sub === 'list') {
-          await cmdCalendarList({
+          await cmdMessagingList({
             month: parseFlag(args, 'month'),
             status: parseFlag(args, 'status'),
             agent: parseFlag(args, 'agent'),
             channel: parseFlag(args, 'channel'),
           })
         } else if (sub === 'get') {
-          if (!args[2]) { console.error('Usage: bakin calendar get <id>'); process.exit(1) }
-          await cmdCalendarGet(args[2])
+          if (!args[2]) { console.error('Usage: bakin messaging get <id>'); process.exit(1) }
+          await cmdMessagingGet(args[2])
         } else if (sub === 'create') {
-          await cmdCalendarCreate(args.slice(2))
+          await cmdMessagingCreate(args.slice(2))
         } else if (sub === 'update') {
-          if (!args[2]) { console.error('Usage: bakin calendar update <id> [--title=X --status=Y]'); process.exit(1) }
-          await cmdCalendarUpdate(args[2], args.slice(3))
+          if (!args[2]) { console.error('Usage: bakin messaging update <id> [--title=X --status=Y]'); process.exit(1) }
+          await cmdMessagingUpdate(args[2], args.slice(3))
         } else if (sub === 'delete') {
-          if (!args[2]) { console.error('Usage: bakin calendar delete <id>'); process.exit(1) }
-          await cmdCalendarDelete(args[2])
+          if (!args[2]) { console.error('Usage: bakin messaging delete <id>'); process.exit(1) }
+          await cmdMessagingDelete(args[2])
         } else if (sub === 'approve') {
-          if (!args[2]) { console.error('Usage: bakin calendar approve <id>'); process.exit(1) }
-          await cmdCalendarApprove(args[2])
+          if (!args[2]) { console.error('Usage: bakin messaging approve <id>'); process.exit(1) }
+          await cmdMessagingApprove(args[2])
         } else if (sub === 'reject') {
-          if (!args[2]) { console.error('Usage: bakin calendar reject <id> [note]'); process.exit(1) }
-          await cmdCalendarReject(args[2], args[3])
+          if (!args[2]) { console.error('Usage: bakin messaging reject <id> [note]'); process.exit(1) }
+          await cmdMessagingReject(args[2], args[3])
         } else if (sub === 'sessions') {
           await cmdSessionList({
             status: parseFlag(args, 'status'),
             agent: parseFlag(args, 'agent'),
           })
         } else if (sub === 'session') {
-          if (!args[2]) { console.error('Usage: bakin calendar session <id>'); process.exit(1) }
+          if (!args[2]) { console.error('Usage: bakin messaging session <id>'); process.exit(1) }
           await cmdSessionGet(args[2])
         } else if (sub === 'session-create') {
-          if (!args[2]) { console.error('Usage: bakin calendar session-create <agentId> [title]'); process.exit(1) }
+          if (!args[2]) { console.error('Usage: bakin messaging session-create <agentId> [title]'); process.exit(1) }
           await cmdSessionCreate(args[2], args[3])
         } else if (sub === 'session-update') {
-          if (!args[2]) { console.error('Usage: bakin calendar session-update <id> --title=X'); process.exit(1) }
+          if (!args[2]) { console.error('Usage: bakin messaging session-update <id> --title=X'); process.exit(1) }
           await cmdSessionUpdate(args[2], args.slice(3))
         } else if (sub === 'session-delete') {
-          if (!args[2]) { console.error('Usage: bakin calendar session-delete <id>'); process.exit(1) }
+          if (!args[2]) { console.error('Usage: bakin messaging session-delete <id>'); process.exit(1) }
           await cmdSessionDelete(args[2])
         } else if (sub === 'message') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin calendar message <sessionId> <text>'); process.exit(1) }
+          if (!args[2] || !args[3]) { console.error('Usage: bakin messaging message <sessionId> <text>'); process.exit(1) }
           await cmdSessionMessage(args[2], args.slice(3).join(' '))
         } else if (sub === 'confirm') {
-          if (!args[2]) { console.error('Usage: bakin calendar confirm <sessionId>'); process.exit(1) }
+          if (!args[2]) { console.error('Usage: bakin messaging confirm <sessionId>'); process.exit(1) }
           await cmdSessionConfirm(args[2])
         } else if (sub === 'proposal') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin calendar proposal <sessionId> <proposalId> [--approve|--reject|--status=X]'); process.exit(1) }
+          if (!args[2] || !args[3]) { console.error('Usage: bakin messaging proposal <sessionId> <proposalId> [--approve|--reject|--status=X]'); process.exit(1) }
           await cmdProposalUpdate(args[2], args[3], args.slice(4))
         } else {
-          console.error(`Unknown calendar subcommand: ${sub}`)
+          console.error(`Unknown messaging subcommand: ${sub}`)
           process.exit(1)
         }
         break

@@ -9,7 +9,7 @@ import path from 'path'
 import tasksPlugin from '../../plugins/tasks'
 import memoryPlugin from '../../plugins/memory'
 import modelsPlugin from '../../plugins/models'
-import calendarPlugin from '../../plugins/calendar'
+import messagingPlugin from '../../plugins/messaging'
 import workflowsPlugin from '../../plugins/workflows'
 import assetsPlugin from '../../plugins/assets'
 import projectsPlugin from '../../plugins/projects'
@@ -66,7 +66,7 @@ const ALL_PLUGINS: BakinPlugin[] = [
   tasksPlugin,
   memoryPlugin,
   modelsPlugin,
-  calendarPlugin,
+  messagingPlugin,
   workflowsPlugin,
   assetsPlugin,
   projectsPlugin,
