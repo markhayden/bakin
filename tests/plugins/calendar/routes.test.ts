@@ -832,6 +832,6 @@ describe('Calendar plugin registration', () => {
   it('called watchFiles with calendar.json during activation', async () => {
     // Re-activate to test this since beforeEach clears mocks
     const fresh = await activatePlugin(calendarPlugin, testDir)
-    expect(fresh.ctx.watchFiles).toHaveBeenCalledWith(['calendar.json'])
+    expect(fresh.ctx.watchFiles).toHaveBeenCalledWith(['calendar.json', 'calendar/sessions/*.json'])
   })
 })
