@@ -1,52 +1,52 @@
 ---
-name: beacon
-description: Mission control integration for multi-agent coordination. Provides task management, logging, search, and agent communication via mcporter MCP tools. Required for all agents in the Beacon ecosystem.
+name: bakin
+description: Mission control integration for multi-agent coordination. Provides task management, logging, search, and agent communication via mcporter MCP tools. Required for all agents in the Bakin ecosystem.
 ---
 
-# Beacon Mission Control
+# Bakin Mission Control
 
-You are part of a multi-agent team coordinated by Beacon. You interact with Beacon through **mcporter** — a CLI that calls Beacon's MCP server.
+You are part of a multi-agent team coordinated by Bakin. You interact with Bakin through **mcporter** — a CLI that calls Bakin's MCP server.
 
-Your Beacon MCP server is `beacon-<your-agent-name>` (e.g., `beacon-pixel`, `beacon-chef`). Your dispatch message will tell you which server to use.
+Your Bakin MCP server is `bakin-<your-agent-name>` (e.g., `bakin-pixel`, `bakin-chef`). Your dispatch message will tell you which server to use.
 
 ## Quick Reference
 
 ```bash
 # Log progress (mandatory, every major step)
-mcporter call beacon-<agent>.beacon_log_progress taskId=<id> message="<update>"
+mcporter call bakin-<agent>.bakin_log_progress taskId=<id> message="<update>"
 # Report complete (moves to done + notifies orchestrator)
-mcporter call beacon-<agent>.beacon_report_complete taskId=<id> summary="<what you did>"
+mcporter call bakin-<agent>.bakin_report_complete taskId=<id> summary="<what you did>"
 # Block task (if stuck)
-mcporter call beacon-<agent>.beacon_block_task taskId=<id> reason="<what went wrong>"
+mcporter call bakin-<agent>.bakin_block_task taskId=<id> reason="<what went wrong>"
 # Move task between columns
-mcporter call beacon-<agent>.beacon_move_task taskId=<id> to=inProgress
+mcporter call bakin-<agent>.bakin_move_task taskId=<id> to=inProgress
 # Create subtask for another agent
-mcporter call beacon-<agent>.beacon_create_task title="<subtask>" assignee="<agent>" description="<brief>"
+mcporter call bakin-<agent>.bakin_create_task title="<subtask>" assignee="<agent>" description="<brief>"
 # Register dependency (then stop — you'll be re-dispatched)
-mcporter call beacon-<agent>.beacon_register_dependency taskId=<id> dependsOn="<other-id>"
+mcporter call bakin-<agent>.bakin_register_dependency taskId=<id> dependsOn="<other-id>"
 # Check your task details
-mcporter call beacon-<agent>.beacon_get_task taskId=<id>
+mcporter call bakin-<agent>.bakin_get_task taskId=<id>
 # Discover filesystem paths (never hardcode)
-mcporter call beacon-<agent>.beacon_get_paths
+mcporter call bakin-<agent>.bakin_get_paths
 # Workflow: submit step output
-mcporter call beacon-<agent>.beacon_submit_step taskId=<id> stepId=<step> --args '<json>'
+mcporter call bakin-<agent>.bakin_submit_step taskId=<id> stepId=<step> --args '<json>'
 # Workflow: check current step
-mcporter call beacon-<agent>.beacon_get_step taskId=<id>```
+mcporter call bakin-<agent>.bakin_get_step taskId=<id>```
 
 ## MCP Tools
 
 | Tool | Purpose |
 |------|---------|
-| `beacon_log_progress` | Log what you're doing (mandatory, every major step) |
-| `beacon_move_task` | Move task between columns |
-| `beacon_create_task` | Create subtasks for other agents |
-| `beacon_block_task` | Block a task with a reason |
-| `beacon_report_complete` | Mark task done + notify orchestrator (includes summary) |
-| `beacon_get_task` | Check your task details |
-| `beacon_get_step` | Get current workflow step details |
-| `beacon_submit_step` | Submit workflow step output |
-| `beacon_get_paths` | Discover filesystem paths (never hardcode) |
-| `beacon_register_dependency` | Register a dependency on another task |
+| `bakin_log_progress` | Log what you're doing (mandatory, every major step) |
+| `bakin_move_task` | Move task between columns |
+| `bakin_create_task` | Create subtasks for other agents |
+| `bakin_block_task` | Block a task with a reason |
+| `bakin_report_complete` | Mark task done + notify orchestrator (includes summary) |
+| `bakin_get_task` | Check your task details |
+| `bakin_get_step` | Get current workflow step details |
+| `bakin_submit_step` | Submit workflow step output |
+| `bakin_get_paths` | Discover filesystem paths (never hardcode) |
+| `bakin_register_dependency` | Register a dependency on another task |
 
 Your agent identity is automatically injected by the MCP server — you do not need to specify it.
 
@@ -107,6 +107,14 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_calendar_approve` | Approve a calendar item (draft → scheduled, review → published) |
 | `bakin_exec_calendar_reject` | Reject a calendar item back to draft status |
 | `bakin_exec_calendar_delete` | Delete a calendar item |
+| `bakin_exec_calendar_session_list` | List planning sessions with optional filters |
+| `bakin_exec_calendar_session_get` | Get a planning session with full message history and proposals |
+| `bakin_exec_calendar_session_create` | Create a new planning session for an agent |
+| `bakin_exec_calendar_session_update` | Update a planning session title or status |
+| `bakin_exec_calendar_session_delete` | Delete a planning session |
+| `bakin_exec_calendar_session_message` | Send a message in a planning session (non-streaming, returns full response) |
+| `bakin_exec_calendar_proposal_update` | Update a proposal status or fields (approve, reject, edit) |
+| `bakin_exec_calendar_session_confirm` | Confirm a planning session — creates calendar items from approved proposals |
 | `bakin_exec_workflows_list` | List all workflow definitions (templates). Returns name, filename, description, and step count for each. |
 | `bakin_exec_workflows_get_definition` | Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows. |
 | `bakin_exec_workflows_start` | Start a workflow instance for a task. The task must exist on the board. Returns the created instance. |
@@ -176,17 +184,17 @@ Valid transitions: backlog→todo, todo→inProgress/blocked/done/backlog, inPro
 
 ### Report Completion
 
-Use `beacon_report_complete` — it moves the task to Done, logs the summary, and notifies the orchestrator automatically.
+Use `bakin_report_complete` — it moves the task to Done, logs the summary, and notifies the orchestrator automatically.
 
-**Do NOT use this for workflow tasks.** Workflow tasks complete via `beacon_submit_step`.
+**Do NOT use this for workflow tasks.** Workflow tasks complete via `bakin_submit_step`.
 
 ## Creating Subtasks
 
-If your task requires work from another agent, create a subtask with `beacon_create_task`. Include `parentId` for immediate dispatch.
+If your task requires work from another agent, create a subtask with `bakin_create_task`. Include `parentId` for immediate dispatch.
 
 ## Dependencies
 
-Register a dependency with `beacon_register_dependency`, then **stop**. You will be automatically re-dispatched when the dependency completes.
+Register a dependency with `bakin_register_dependency`, then **stop**. You will be automatically re-dispatched when the dependency completes.
 
 ## Search
 
@@ -217,7 +225,7 @@ curl -s http://localhost:3737/api/docs
 
 ## Discovering Paths (REQUIRED)
 
-**NEVER hardcode or construct filesystem paths.** Always use `beacon_get_paths` to discover where files live.
+**NEVER hardcode or construct filesystem paths.** Always use `bakin_get_paths` to discover where files live.
 
 Available path keys: `home`, `memoryLog`, `calendar`, `audit`, `assets`, `assets.text`, `assets.images`, `assets.video`, `assets.audio`, `assets.plans`, `assets.data`, `assets.other`, `personas`, `team`, `heartbeats`, `inbox`, `projects`, `workflows`, `settings`.
 
@@ -246,7 +254,7 @@ curl -s -X DELETE 'http://localhost:3737/api/plugins/assets/assets%2Fimages%2Fta
 
 ### Writing Assets
 
-Use `beacon_exec_save_asset` to save any agent-created content. The tool handles
+Use `bakin_exec_assets_save` to save any agent-created content. The tool handles
 directory creation, naming conventions (YYYYMMDD-slug.ext), and sidecar metadata
 automatically. Never write assets manually.
 
@@ -268,15 +276,15 @@ Your agent identity is automatically injected by the MCP server. Use your real a
 
 ### Mandatory: Use the API, never edit files
 
-Always use Beacon tools (via mcporter) to manage tasks. Direct database edits bypass locking, validation, and audit logging.
+Always use Bakin tools (via mcporter) to manage tasks. Direct file edits bypass locking, validation, and audit logging.
 
 ### Mandatory: Never run scripts/bin/*.ts directly
 
-The `scripts/bin/` directory contains debug wrappers that call tool functions directly, bypassing Beacon's MCP server entirely. This means no Health metrics, no audit log, no tracking. Always use the MCP tool via `mcporter call beacon-<agent>.beacon_exec_<tool> ...` instead.
+The `scripts/bin/` directory contains debug wrappers that call tool functions directly, bypassing Bakin's MCP server entirely. This means no Health metrics, no audit log, no tracking. Always use the MCP tool via `mcporter call bakin-<agent>.bakin_exec_<tool> ...` instead.
 
-### Mandatory: Discover paths via beacon_get_paths
+### Mandatory: Discover paths via bakin_get_paths
 
-Never hardcode `content/`, `~/.beacon/`, or any absolute path. Always use `beacon_get_paths`. Paths change between environments.
+Never hardcode `content/`, `~/.bakin/`, or any absolute path. Always use `bakin_get_paths`. Paths change between environments.
 
 ### Mandatory: Log progress every major step
 
@@ -284,7 +292,7 @@ The watchdog monitors for stuck tasks. If no log update in 30 minutes and your h
 
 ### Mandatory: Report back
 
-Always use `beacon_report_complete` when done — it handles notification automatically. For blocks, use `beacon_block_task`.
+Always use `bakin_report_complete` when done — it handles notification automatically. For blocks, use `bakin_block_task`.
 
 ### What happens when you violate these rules
 
@@ -299,9 +307,9 @@ Always use `beacon_report_complete` when done — it handles notification automa
 
 These rules apply to ALL subagents (Chef, Pixel, Rolo, Patch, etc.). Violating them breaks the pipeline.
 
-1. **Never edit the task database directly.** Always use Beacon tools.
+1. **Never edit task files directly.** Always use Bakin tools.
 
-2. **Never hardcode filesystem paths.** Always use `beacon_get_paths`.
+2. **Never hardcode filesystem paths.** Always use `bakin_get_paths`.
 
 3. **Stay in your lane.** Don't do work assigned to another agent. Create subtasks instead.
 
@@ -325,22 +333,22 @@ When you receive a message that starts with "# WORKFLOW STEP ASSIGNMENT", you ar
 
 - You are executing ONE step of a multi-step pipeline
 - You cannot see other steps — by design, not by accident
-- The ONLY valid completion is calling `beacon_submit_step` via mcporter
+- The ONLY valid completion is calling `bakin_submit_step` via mcporter
 - The workflow engine advances the pipeline — you do not
 
 ### What you MUST do
 
 1. Read the step instructions completely before starting
 2. Produce output that matches the JSON schema provided in the dispatch message
-3. Submit output via `beacon_submit_step`
-4. Log progress at each major milestone via `beacon_log_progress`
+3. Submit output via `bakin_submit_step`
+4. Log progress at each major milestone via `bakin_log_progress`
 5. Your `agentId` is automatically included in tool calls
 
 ### What you MUST NOT do
 
 - Generate deliverables outside your step's scope (e.g., do not generate images if your step is "write copy")
 - Move the task to Done or any other column — the workflow engine handles task state
-- Message main-operator with "TASK COMPLETE" — workflow tasks complete through `beacon_submit_step`, not messages
+- Message main-operator with "TASK COMPLETE" — workflow tasks complete through `bakin_submit_step`, not messages
 - Create subtasks for other agents — the workflow defines who does what
 - Attempt to read or infer what future steps contain
 - Resubmit the same output after a rejection without addressing the feedback — the server detects near-duplicates and rejects them
@@ -352,7 +360,7 @@ If your step is re-dispatched with a "REVISION REQUIRED" section, the reviewer f
 1. Read the rejection reason carefully
 2. Identify what specifically needs to change
 3. Produce genuinely revised output — not the same output with minor tweaks
-4. Submit via `beacon_submit_step` as before
+4. Submit via `bakin_submit_step` as before
 
 ### What happens automatically
 
