@@ -1,7 +1,7 @@
 /**
  * Calendar plugin — route and exec tool tests.
  *
- * Tests all 7 HTTP routes and 6 exec tools registered by the calendar plugin.
+ * Tests the original 8 HTTP routes and 7 exec tools registered by the calendar plugin.
  * Uses a temp directory backed by the real storage module (calendar.json on disk).
  */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
@@ -821,12 +821,12 @@ describe('Calendar exec tools', () => {
 // ===========================================================================
 
 describe('Calendar plugin registration', () => {
-  it('registers exactly 8 routes', () => {
-    expect(plugin.routes.length).toBe(8)
+  it('registers exactly 16 routes', () => {
+    expect(plugin.routes.length).toBe(16)
   })
 
-  it('registers exactly 7 exec tools', () => {
-    expect(plugin.execTools.length).toBe(7)
+  it('registers exactly 15 exec tools', () => {
+    expect(plugin.execTools.length).toBe(15)
   })
 
   it('called watchFiles with calendar.json during activation', async () => {
