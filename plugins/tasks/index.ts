@@ -38,7 +38,7 @@ const COLUMNS = ['backlog', 'todo', 'inProgress', 'review', 'done', 'blocked', '
 const tasksPlugin: BakinPlugin = {
   id: 'tasks',
   name: 'Tasks',
-  version: '2.0.0',
+  version: '2.1.0',
 
   settingsSchema: {
     fields: [
@@ -58,10 +58,14 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.hooks.register('tasks.readTaskboard', () => readTaskboard())
     ctx.hooks.register('tasks.createTask', (d: Record<string, unknown>) => createTask(d.title as string, d.column as string | undefined, d.assignee as string | undefined, d.description as string | undefined, d.workflowId as string | undefined, d.createdBy as string | undefined, d.id as string | undefined, d.parentId as string | undefined, d.projectId as string | undefined))
-    ctx.hooks.register('tasks.moveTask', (d: Record<string, unknown>) => moveTask(d.identifier as string, d.to as string, d.from as string | undefined))
+    ctx.hooks.register('tasks.moveTask', (d: Record<string, unknown>) => moveTask(d.identifier as string, d.to as string, d.from as string | undefined, d.channel as string | undefined))
     ctx.hooks.register('tasks.blockTask', (d: Record<string, unknown>) => blockTask(d.identifier as string, d.reason as string, d.agent as string | undefined))
     ctx.hooks.register('tasks.addTaskLog', (d: Record<string, unknown>) => addTaskLog(d.identifier as string, d.author as string, d.message as string))
-    ctx.hooks.register('tasks.updateTask', (d: Record<string, unknown>) => updateTask(d.identifier as string, d.updates as Record<string, unknown>))
+    ctx.hooks.register('tasks.updateTask', (d: Record<string, unknown>) => {
+      const updates = { ...(d.updates as Record<string, unknown>) }
+      delete updates.channel // Never trust channel from hook callers — only the REST route controls this
+      return updateTask(d.identifier as string, updates)
+    })
     ctx.hooks.register('tasks.deleteTask', (d: Record<string, unknown>) => deleteTask(d.identifier as string))
     ctx.hooks.register('tasks.setDependency', (d: Record<string, unknown>) => setDependency(d.taskId as string, d.dependsOnId as string))
     ctx.hooks.register('tasks.clearDependency', (d: Record<string, unknown>) => clearDependency(d.taskId as string))
@@ -184,15 +188,32 @@ const tasksPlugin: BakinPlugin = {
         const url = new URL(req.url)
         const body = await req.json()
         const identifier = url.searchParams.get('taskId') || body.id || body.title
-        const { from, to, agent } = body
+        const { from, to, agent, reason } = body
         if (!identifier || !to) {
           return Response.json({ error: 'taskId and to required' }, { status: 400 })
         }
         if (!agent) {
           return Response.json({ error: 'agent field required — who is moving this task?' }, { status: 400 })
         }
+        // Blocked column requires a reason — use blockTaskWithEffects
+        if (to === 'blocked') {
+          if (!reason) {
+            return Response.json({ error: 'reason required when moving to blocked' }, { status: 400 })
+          }
+          try {
+            await blockTaskWithEffects(identifier, reason, agent, (body.channel === 'human' && agent === 'human') ? 'human' : 'rest')
+            ctx.activity.log(agent, `Blocked task: ${reason}`, { taskId: identifier })
+            return Response.json({ ok: true })
+          } catch (err) {
+            return Response.json({ error: (err as Error).message }, { status: 500 })
+          }
+        }
         try {
-          await moveTaskWithEffects(identifier, to, agent, { from, channel: 'rest' })
+          // Channel determines guard bypass: 'human' skips transition/log guards.
+          // Only accept 'human' from REST when the caller explicitly identifies as the
+          // UI operator (agent === 'human'). MCP tools hardcode 'mcp' server-side.
+          const effectiveChannel = (body.channel === 'human' && agent === 'human') ? 'human' as const : 'rest' as const
+          await moveTaskWithEffects(identifier, to, agent, { from, channel: effectiveChannel })
           ctx.activity.log(agent, `Moved task to "${to}"`, { taskId: identifier })
           return Response.json({ ok: true })
         } catch (err) {

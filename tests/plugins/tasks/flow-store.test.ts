@@ -672,3 +672,154 @@ describe('error handling returns rejected promises', () => {
     await expect(clearDependency('ghost')).rejects.toThrow('Task not found')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Two-tier permissions (human vs agent channel)
+// ---------------------------------------------------------------------------
+
+describe('two-tier permissions', () => {
+  it('human channel: any transition succeeds (backlog → done)', async () => {
+    const task = await createTask('human-override', 'backlog')
+    // backlog → done is NOT in VALID_TRANSITIONS, but human bypasses
+    await moveTask(task.id, 'done', 'backlog', 'human')
+    const result = getTaskWithColumn(task.id)
+    expect(result?.column).toBe('done')
+  })
+
+  it('human channel: no log entries needed for done', async () => {
+    const task = await createTask('skip-logs', 'todo')
+    // No log entries, but human can still move to done
+    await moveTask(task.id, 'done', 'todo', 'human')
+    const result = getTaskWithColumn(task.id)
+    expect(result?.column).toBe('done')
+  })
+
+  it('human channel: can move blocked → done directly', async () => {
+    const task = await createTask('blocked-to-done', 'todo')
+    await blockTask(task.id, 'test reason')
+    // blocked → done is NOT in VALID_TRANSITIONS
+    await moveTask(task.id, 'done', 'blocked', 'human')
+    const result = getTaskWithColumn(task.id)
+    expect(result?.column).toBe('done')
+  })
+
+  it('agent channel: invalid transition rejected', async () => {
+    const task = await createTask('agent-invalid', 'backlog')
+    // backlog → done is NOT allowed for agents
+    await expect(moveTask(task.id, 'done', 'backlog', 'mcp')).rejects.toThrow('Invalid transition')
+  })
+
+  it('agent channel: log entries required for done', async () => {
+    const task = await createTask('agent-no-logs', 'todo')
+    await moveTask(task.id, 'inProgress')
+    // inProgress → done requires log entries for agents
+    await expect(moveTask(task.id, 'done', 'inProgress', 'mcp')).rejects.toThrow('Cannot move to done')
+  })
+
+  it('no channel (default): enforces transition guard', async () => {
+    const task = await createTask('no-channel', 'backlog')
+    // No channel specified — should enforce guards (backward compat)
+    await expect(moveTask(task.id, 'done')).rejects.toThrow('Invalid transition')
+  })
+
+  it('human channel: updateTask column change bypasses guards', async () => {
+    const task = await createTask('update-human', 'backlog')
+    await updateTask(task.id, { column: 'done', channel: 'human' })
+    const result = getTaskWithColumn(task.id)
+    expect(result?.column).toBe('done')
+  })
+
+  it('agent channel: updateTask column change enforces guards', async () => {
+    const task = await createTask('update-agent', 'backlog')
+    await expect(updateTask(task.id, { column: 'done', channel: 'mcp' })).rejects.toThrow('Invalid transition')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Order / ordering
+// ---------------------------------------------------------------------------
+
+describe('order-based ordering', () => {
+  it('new task in empty column gets order 0', async () => {
+    const task = await createTask('first-task', 'todo')
+    expect(task.order).toBe(0)
+  })
+
+  it('new task appends with order = count', async () => {
+    const t1 = await createTask('task-one', 'todo')
+    const t2 = await createTask('task-two', 'todo')
+    expect(t1.order).toBe(0)
+    expect(t2.order).toBe(1)
+  })
+
+  it('tasks returned in order (ascending)', async () => {
+    await createTask('first', 'todo')
+    await createTask('second', 'todo')
+    await createTask('third', 'todo')
+    const board = readTaskboard()
+    const titles = board.columns.todo.map(t => t.title)
+    expect(titles).toEqual(['first', 'second', 'third'])
+  })
+
+  it('moveTask to different column assigns new order', async () => {
+    const t = await createTask('movable', 'todo')
+    await moveTask(t.id, 'inProgress')
+    const result = getTaskWithColumn(t.id)
+    expect(result?.column).toBe('inProgress')
+    const task = getTask(t.id)
+    expect(task?.order).toBe(0) // first in inProgress
+  })
+
+  it('moveTask always appends to end of target column', async () => {
+    const t1 = await createTask('anchor-1', 'todo')
+    const t2 = await createTask('anchor-2', 'todo')
+    const t3 = await createTask('appended', 'backlog')
+    await moveTask(t3.id, 'todo', 'backlog', 'human')
+    const board = readTaskboard()
+    const todoTitles = board.columns.todo.map(t => t.title)
+    expect(todoTitles).toEqual(['anchor-1', 'anchor-2', 'appended'])
+  })
+
+  it('order preserved on non-move mutations (assign, log)', async () => {
+    const t = await createTask('stable', 'todo')
+    const originalOrder = t.order
+    await assignTask(t.id, 'agent-x')
+    await addTaskLog(t.id, 'agent-x', 'working on it')
+    const task = getTask(t.id)
+    expect(task?.order).toBe(originalOrder)
+  })
+
+  it('reorderTasks assigns clean zero-indexed order values', async () => {
+    const t1 = await createTask('alpha', 'todo')
+    const t2 = await createTask('beta', 'todo')
+    const t3 = await createTask('gamma', 'todo')
+    // Reverse order
+    await reorderTasks('todo', [t3.id, t1.id, t2.id])
+    const board = readTaskboard()
+    const todoTitles = board.columns.todo.map(t => t.title)
+    expect(todoTitles).toEqual(['gamma', 'alpha', 'beta'])
+    // Verify zero-indexed order
+    expect(board.columns.todo[0].order).toBe(0)
+    expect(board.columns.todo[1].order).toBe(1)
+    expect(board.columns.todo[2].order).toBe(2)
+  })
+
+  it('blockTask assigns order in blocked column', async () => {
+    const t = await createTask('blockable', 'todo')
+    await blockTask(t.id, 'waiting on API')
+    const task = getTask(t.id)
+    expect(task?.order).toBe(0) // first in blocked
+  })
+
+  it('concurrent creates get distinct contiguous orders', async () => {
+    const t1 = await createTask('task-a', 'todo')
+    const t2 = await createTask('task-b', 'todo')
+    const t3 = await createTask('task-c', 'todo')
+    const orders = [
+      getTask(t1.id)?.order,
+      getTask(t2.id)?.order,
+      getTask(t3.id)?.order,
+    ]
+    expect(orders).toEqual([0, 1, 2])
+  })
+})
