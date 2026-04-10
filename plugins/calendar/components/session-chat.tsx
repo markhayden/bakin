@@ -225,12 +225,12 @@ export function SessionChat({
           </div>
         ))}
 
-        {/* Streaming message bubble */}
+        {/* Streaming message bubble — plain text while streaming, markdown applied on completion */}
         {streaming.isStreaming && streaming.streamedText && (
           <div className="flex items-start gap-2.5">
             <AgentAvatar agentId={agentId} size="sm" className="mt-0.5 shrink-0 animate-pulse" />
-            <div className="rounded-lg p-2.5 bg-surface max-w-[85%] text-xs [&_.prose-invert]:text-xs [&_.prose-invert]:leading-relaxed">
-              <MarkdownContent content={streaming.streamedText} />
+            <div className="rounded-lg p-2.5 bg-surface max-w-[85%]">
+              <p className="text-xs whitespace-pre-wrap">{streaming.streamedText}</p>
             </div>
           </div>
         )}
