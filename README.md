@@ -21,6 +21,16 @@ open http://localhost:3737
 
 The server auto-creates a `content/` directory on first run with default settings and required subdirectories.
 
+### CI Contract
+
+The repo now uses a workspace-level CI contract built for monorepo growth:
+
+- every app/package should define `lint`, `typecheck`, `test`, and `build` when those tasks apply
+- pull requests run affected checks through Turbo
+- pushes to `main` run the full workspace safety-net checks
+
+Today the required CI lane focuses on `test` and `build`, while `lint` and `typecheck` remain available for packages that are ready to enforce them.
+
 ### Environment Variables
 
 | Variable | Default | Description |
