@@ -90,6 +90,22 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
     onSessionUpdated?.()
   }, [onSessionUpdated])
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Don't intercept when typing in inputs
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (session?.status === 'completed') return
+
+      if (e.key === 'Escape') {
+        onBack?.()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [session?.status, onBack])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
