@@ -3,6 +3,10 @@
 import { useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import { BakinDrawer } from '@/components/bakin-drawer'
 import { CheckCircle, Loader2 } from 'lucide-react'
 import { ProposalCard } from './proposal-card'
 import type { ProposedItem } from '../types'
@@ -28,6 +32,14 @@ export function ReviewPanel({
 }: Props) {
   const [confirming, setConfirming] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
+  const [editingProposal, setEditingProposal] = useState<ProposedItem | null>(null)
+  const [editForm, setEditForm] = useState({
+    title: '',
+    brief: '',
+    scheduledAt: '',
+    contentType: '',
+    tone: '',
+  })
 
   const approvedCount = useMemo(
     () => proposals.filter((p) => p.status === 'approved').length,
@@ -109,6 +121,59 @@ export function ReviewPanel({
     }
   }
 
+  const handleOpenEdit = (proposalId: string) => {
+    const p = proposals.find((pr) => pr.id === proposalId)
+    if (!p) return
+    setEditingProposal(p)
+    setEditForm({
+      title: p.title,
+      brief: p.brief,
+      scheduledAt: p.scheduledAt.slice(0, 16), // trim to datetime-local format
+      contentType: p.contentType,
+      tone: p.tone,
+    })
+  }
+
+  const handleEditSave = async () => {
+    if (!editingProposal) return
+    try {
+      const res = await fetch(
+        `/api/plugins/calendar/sessions/${sessionId}/proposals/${editingProposal.id}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editForm),
+        }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        onProposalUpdate?.(data.proposal)
+        setEditingProposal(null)
+      }
+    } catch {
+      // Silently fail
+    }
+  }
+
+  const handleTitleChange = async (proposalId: string, title: string) => {
+    try {
+      const res = await fetch(
+        `/api/plugins/calendar/sessions/${sessionId}/proposals/${proposalId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        onProposalUpdate?.(data.proposal)
+      }
+    } catch {
+      // Silently fail
+    }
+  }
+
   if (proposals.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center text-center text-muted-foreground py-16 px-4">
@@ -148,7 +213,8 @@ export function ReviewPanel({
                     proposal={proposal}
                     onApprove={!isCompleted && !confirmed ? handleApprove : undefined}
                     onReject={!isCompleted && !confirmed ? handleReject : undefined}
-                    onEdit={!isCompleted && !confirmed ? () => onEditProposal?.(proposal.id) : undefined}
+                    onEdit={!isCompleted && !confirmed ? () => handleOpenEdit(proposal.id) : undefined}
+                    onTitleChange={!isCompleted && !confirmed ? handleTitleChange : undefined}
                   />
                 </div>
               ))}
@@ -187,6 +253,79 @@ export function ReviewPanel({
           </Badge>
         </div>
       )}
+
+      {/* Edit drawer */}
+      <BakinDrawer
+        open={!!editingProposal}
+        onOpenChange={(open) => { if (!open) setEditingProposal(null) }}
+        title="Edit Proposal"
+        defaultWidth={480}
+        storageKey="proposal-edit"
+      >
+        {editingProposal && (
+          <div className="space-y-4 p-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-title">Title</Label>
+              <Input
+                id="edit-title"
+                value={editForm.title}
+                onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-brief">Brief</Label>
+              <Textarea
+                id="edit-brief"
+                value={editForm.brief}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setEditForm((f) => ({ ...f, brief: e.target.value }))
+                }
+                className="min-h-[100px]"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-scheduledAt">Scheduled At</Label>
+              <Input
+                id="edit-scheduledAt"
+                type="datetime-local"
+                value={editForm.scheduledAt}
+                onChange={(e) => setEditForm((f) => ({ ...f, scheduledAt: e.target.value }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-contentType">Content Type</Label>
+                <Input
+                  id="edit-contentType"
+                  value={editForm.contentType}
+                  onChange={(e) => setEditForm((f) => ({ ...f, contentType: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-tone">Tone</Label>
+                <Input
+                  id="edit-tone"
+                  value={editForm.tone}
+                  onChange={(e) => setEditForm((f) => ({ ...f, tone: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button onClick={handleEditSave} className="flex-1">
+                Save Changes
+              </Button>
+              <Button variant="outline" onClick={() => setEditingProposal(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </BakinDrawer>
     </div>
   )
 }

@@ -29,6 +29,20 @@ vi.mock('lucide-react', () => ({
   Loader2: () => <span data-testid="loader" />,
 }))
 
+vi.mock('@/components/ui/textarea', () => ({
+  Textarea: (props: Record<string, unknown>) => <textarea {...props} />,
+}))
+
+vi.mock('@/components/ui/label', () => ({
+  Label: ({ children, ...props }: Record<string, unknown>) => <label {...props}>{children as React.ReactNode}</label>,
+}))
+
+vi.mock('@/components/bakin-drawer', () => ({
+  BakinDrawer: ({ children, open }: { children: React.ReactNode; open: boolean }) => (
+    open ? <div data-testid="edit-drawer">{children}</div> : null
+  ),
+}))
+
 vi.mock('@/components/agent-avatar', () => ({
   AgentAvatar: () => <span />,
 }))
