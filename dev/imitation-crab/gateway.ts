@@ -41,7 +41,19 @@ function json(res: ServerResponse, data: unknown, status = 200): void {
   res.end(JSON.stringify(data))
 }
 
-async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+type GatewayRequest = {
+  method?: string
+  url?: string
+  headers?: IncomingMessage['headers']
+  body?: string
+}
+
+type GatewayResponse = {
+  status: number
+  body: unknown
+}
+
+export async function handleGatewayRequest(req: GatewayRequest): Promise<GatewayResponse> {
   const method = req.method || 'GET'
   const url = req.url || '/'
 
@@ -49,14 +61,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   // GET /health
   if (url === '/health' && method === 'GET') {
-    json(res, { status: 'ok', mock: true })
-    return
+    return { status: 200, body: { status: 'ok', mock: true } }
   }
 
   // POST /v1/chat/completions
   if (url === '/v1/chat/completions' && method === 'POST') {
-    const body = await readBody(req)
-    const agentId = req.headers['x-openclaw-agent-id'] as string || 'unknown'
+    const body = req.body || ''
+    const agentHeader = req.headers?.['x-openclaw-agent-id']
+    const agentId = (Array.isArray(agentHeader) ? agentHeader[0] : agentHeader) || 'unknown'
     const agentName = AGENT_NAMES[agentId] || agentId
 
     let parsed: { messages?: Array<{ content?: string }> } = {}
@@ -70,8 +82,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         reply = `[mock:${agentName}] ${userMessage}`
         break
       case 'error':
-        json(res, { error: 'Mock error mode' }, 500)
-        return
+        return { status: 500, body: { error: 'Mock error mode' } }
       case 'canned':
       default:
         reply = `[mock:${agentName}] Acknowledged. Task understood — working on it.`
@@ -79,31 +90,43 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
     console.log(`  → agent=${agentId} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)
 
-    json(res, {
-      choices: [{
-        message: {
-          role: 'assistant',
-          content: reply,
-        },
-      }],
-    })
-    return
+    return {
+      status: 200,
+      body: {
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: reply,
+          },
+        }],
+      },
+    }
   }
 
   // POST /tools/invoke
   if (url === '/tools/invoke' && method === 'POST') {
-    const body = await readBody(req)
+    const body = req.body || ''
     let parsed: { tool?: string; args?: unknown } = {}
     try { parsed = JSON.parse(body) } catch { /* */ }
 
     console.log(`  → tool=${parsed.tool || 'unknown'} args=${JSON.stringify(parsed.args || {}).slice(0, 100)}`)
 
-    json(res, { ok: true, mock: true })
-    return
+    return { status: 200, body: { ok: true, mock: true } }
   }
 
   // 404 for anything else
-  json(res, { error: 'Not found', mock: true }, 404)
+  return { status: 404, body: { error: 'Not found', mock: true } }
+}
+
+async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readBody(req)
+  const response = await handleGatewayRequest({
+    method: req.method,
+    url: req.url,
+    headers: req.headers,
+    body,
+  })
+  json(res, response.body, response.status)
 }
 
 export function startGateway(): Promise<void> {

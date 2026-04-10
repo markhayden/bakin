@@ -2,6 +2,11 @@
   "name": "bakin",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.24.0",
+  "engines": {
+    "node": "22.13.1",
+    "pnpm": "10.24.0"
+  },
   "bin": {
     "bakin": "./cli/bakin.ts"
   },
@@ -9,11 +14,14 @@
     "dev": "npx tsx server.ts",
     "build": "next build",
     "start": "npx tsx server.ts",
-    "lint": "eslint",
+    "lint": "eslint src plugins tests scripts dev cli server.ts bakin.config.ts next.config.ts vitest.config.ts eslint.config.mjs",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "test": "vitest run",
     "test:components": "vitest run tests/components",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "ci:affected": "turbo run test build --affected",
+    "ci:full": "turbo run test build",
     "dev:mock": "npx tsx dev/imitation-crab/index.ts --with-bakin",
     "mock:start": "npx tsx dev/imitation-crab/index.ts",
     "mock:seed": "npx tsx dev/imitation-crab/seed.ts"
@@ -66,6 +74,7 @@
     "jsdom": "^29.0.1",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
+    "turbo": "^2.9.5",
     "typescript": "^5",
     "vitest": "^4.1.0"
   },

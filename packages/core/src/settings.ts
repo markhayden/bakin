@@ -210,7 +210,7 @@ export function getSettings(): BakinSettings {
   // Always refresh agents from OpenClaw (mtime-cached, cheap when unchanged).
   // This ensures agents added via OpenClaw directly are picked up without
   // needing a Bakin restart or explicit cache bust.
-  if (!settings.agents.length || _g.__bakinOpenClawAgents === undefined) {
+  if (!settings.agents.length) {
     settings.agents = readAgentIdsFromOpenClaw()
   } else {
     // Check if openclaw.json changed — mtime comparison is a single stat() call

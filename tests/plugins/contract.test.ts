@@ -17,6 +17,8 @@ import schedulePlugin from '../../plugins/schedule'
 import healthPlugin from '../../plugins/health'
 
 const TEST_DIR = path.join(process.cwd(), 'test-content-contract')
+const TEST_OPENCLAW_HOME = path.join(TEST_DIR, '.openclaw')
+const ORIGINAL_OPENCLAW_HOME = process.env.OPENCLAW_HOME
 
 function createMockContext(pluginId: string): {
   ctx: PluginContext
@@ -29,6 +31,7 @@ function createMockContext(pluginId: string): {
   if (!fs.existsSync(TEST_DIR)) {
     fs.mkdirSync(TEST_DIR, { recursive: true })
   }
+  process.env.OPENCLAW_HOME = TEST_OPENCLAW_HOME
 
   const storage = new MarkdownStorageAdapter(TEST_DIR)
   const events = new BakinEventBus(() => {})
@@ -73,6 +76,8 @@ const ALL_PLUGINS: BakinPlugin[] = [
 
 describe('Plugin Contract', () => {
   afterAll(() => {
+    if (ORIGINAL_OPENCLAW_HOME === undefined) delete process.env.OPENCLAW_HOME
+    else process.env.OPENCLAW_HOME = ORIGINAL_OPENCLAW_HOME
     if (fs.existsSync(TEST_DIR)) {
       fs.rmSync(TEST_DIR, { recursive: true })
     }
@@ -126,7 +131,7 @@ describe('Plugin Contract', () => {
         await plugin.activate(ctx)
 
         for (const route of routes) {
-          expect(['GET', 'POST', 'PUT', 'DELETE']).toContain(route.method)
+          expect(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).toContain(route.method)
           expect(route.path).toMatch(/^\//)
           expect(typeof route.handler).toBe('function')
         }

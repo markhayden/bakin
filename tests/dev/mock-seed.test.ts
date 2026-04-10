@@ -5,7 +5,7 @@ import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 
 describe('mock seed', () => {
-  let tempHome: string
+  let tempHome: string | undefined
 
   afterEach(() => {
     if (tempHome && existsSync(tempHome)) {
