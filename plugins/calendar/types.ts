@@ -72,6 +72,7 @@ export interface PlanningSession {
   updatedAt: string
   messages: SessionMessage[]
   proposals: ProposedItem[]
+  participants?: string[]
 }
 
 export const AGENT_INFO: Record<ContentAgent, { name: string; emoji: string; color: string }> = {
