@@ -27,6 +27,19 @@ vi.mock('lucide-react', () => ({
   Plus: () => <span />,
   MessageSquare: () => <span />,
   CheckCircle: () => <span data-testid="check-circle" />,
+  MoreHorizontal: () => <span />,
+  Trash2: () => <span />,
+}))
+
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
+  DropdownMenuTrigger: ({ children, onClick }: Record<string, unknown>) => <div onClick={onClick as () => void}>{children as React.ReactNode}</div>,
+  DropdownMenuContent: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
+  DropdownMenuItem: ({ children, onClick }: Record<string, unknown>) => <div onClick={onClick as () => void}>{children as React.ReactNode}</div>,
+}))
+
+vi.mock('../../../plugins/messaging/components/delete-session-dialog', () => ({
+  DeleteSessionDialog: () => null,
 }))
 
 import { SessionList } from '../../../plugins/messaging/components/session-list'

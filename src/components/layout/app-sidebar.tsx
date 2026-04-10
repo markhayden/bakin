@@ -53,7 +53,17 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   const { collapsed, toggle } = useSidebarContext()
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+    // Seed initial state: expand any group whose section is active on load
+    const initial = new Set<string>()
+    for (const item of allNavItems) {
+      if (!item.children?.length) continue
+      if (pathname === item.href || pathname.startsWith(item.href + '/')) {
+        initial.add(item.id)
+      }
+    }
+    return initial
+  })
   const prevPathRef = useRef(pathname)
 
   const settingsActive = pathname === '/settings'
