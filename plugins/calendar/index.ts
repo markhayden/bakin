@@ -181,17 +181,18 @@ const calendarPlugin: BakinPlugin = {
         return json({ error: 'title, agent, and scheduledAt required' }, 400)
       }
 
+      const resolvedChannels = (channels as string[]) || (channel ? [channel as string] : ['discord'])
       const item = createItem({
         title: title as string,
         agent: (agent as string) as CalendarItem['agent'],
-        channel: ((channel as string) || 'discord') as CalendarItem['channel'],
+        channel: ((channel as string) || resolvedChannels[0] || 'discord') as CalendarItem['channel'],
         channelTarget: (channelTarget as string) || '1483917792745885768',
         contentType: ((contentType as string) || 'tip') as CalendarItem['contentType'],
         tone: ((tone as string) || 'conversational') as CalendarItem['tone'],
         scheduledAt: scheduledAt as string,
         brief: (brief as string) || '',
         status: ((status as string) as ContentStatus) || 'draft',
-        channels: (channels as string[]) || undefined,
+        channels: resolvedChannels,
       })
 
       ctx.activity.audit('item.created', agent as string, { itemId: item.id, title })
