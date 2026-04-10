@@ -726,6 +726,183 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
       },
     })
 
+    // ── Session Exec Tools (agent-facing) ─────────────────────────────
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_list',
+      description: 'List planning sessions with optional filters',
+      parameters: {
+        status: z.string().optional().describe('Filter by status (active, completed)'),
+        agentId: z.string().optional().describe('Filter by agent ID'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const sessions = listSessions({
+          status: params.status as string | undefined,
+          agentId: params.agentId as string | undefined,
+        })
+        return { ok: true, count: sessions.length, sessions }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_get',
+      description: 'Get a planning session with full message history and proposals',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId) return { ok: false, error: 'sessionId required' }
+        const session = loadSession(params.sessionId as string)
+        if (!session) return { ok: false, error: 'Session not found' }
+        return { ok: true, session }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_create',
+      description: 'Create a new planning session for an agent',
+      parameters: {
+        agentId: z.string().describe('Agent ID (required)'),
+        title: z.string().optional().describe('Session title'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.agentId) return { ok: false, error: 'agentId required' }
+        const session = createSession({
+          agentId: params.agentId as string,
+          title: params.title as string | undefined,
+        })
+        ctx.activity.audit('session.created', params.agentId as string, { sessionId: session.id })
+        return { ok: true, session }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_update',
+      description: 'Update a planning session title or status',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+        title: z.string().optional().describe('New title'),
+        status: z.string().optional().describe('New status (active, completed)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId) return { ok: false, error: 'sessionId required' }
+        try {
+          const session = updateSessionFn(params.sessionId as string, {
+            title: params.title as string | undefined,
+            status: params.status as 'active' | 'completed' | undefined,
+          })
+          return { ok: true, session }
+        } catch (e: unknown) {
+          return { ok: false, error: (e as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_delete',
+      description: 'Delete a planning session',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId) return { ok: false, error: 'sessionId required' }
+        try {
+          deleteSessionFn(params.sessionId as string)
+          ctx.activity.audit('session.deleted', 'system', { sessionId: params.sessionId })
+          return { ok: true }
+        } catch (e: unknown) {
+          return { ok: false, error: (e as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_message',
+      description: 'Send a message in a planning session (non-streaming, returns full response)',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+        message: z.string().describe('User message content (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId || !params.message) return { ok: false, error: 'sessionId and message required' }
+        const session = loadSession(params.sessionId as string)
+        if (!session) return { ok: false, error: 'Session not found' }
+        if (session.status === 'completed') return { ok: false, error: 'Session is completed' }
+
+        const userMsg = appendMessage(params.sessionId as string, {
+          role: 'user',
+          content: params.message as string,
+        })
+
+        // Non-streaming placeholder — streaming upgrade in PR 2
+        const assistantMsg = appendMessage(params.sessionId as string, {
+          role: 'assistant',
+          content: 'Planning session message received. Streaming upgrade pending.',
+        })
+
+        return {
+          ok: true,
+          response: assistantMsg.content,
+          messageId: assistantMsg.id,
+          userMessageId: userMsg.id,
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_proposal_update',
+      description: 'Update a proposal status or fields (approve, reject, edit)',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+        proposalId: z.string().describe('Proposal ID (required)'),
+        status: z.string().optional().describe('New status (proposed, approved, rejected, revised)'),
+        title: z.string().optional().describe('Updated title'),
+        brief: z.string().optional().describe('Updated brief'),
+        tone: z.string().optional().describe('Updated tone'),
+        scheduledAt: z.string().optional().describe('Updated schedule datetime'),
+        channels: z.array(z.string()).optional().describe('Updated channels'),
+        rejectionNote: z.string().optional().describe('Note explaining rejection'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId || !params.proposalId) return { ok: false, error: 'sessionId and proposalId required' }
+        try {
+          const proposal = updateProposal(params.sessionId as string, params.proposalId as string, {
+            status: params.status as ProposalStatus | undefined,
+            title: params.title as string | undefined,
+            brief: params.brief as string | undefined,
+            tone: params.tone as string | undefined,
+            scheduledAt: params.scheduledAt as string | undefined,
+            channels: params.channels as string[] | undefined,
+            rejectionNote: params.rejectionNote as string | undefined,
+          })
+          return { ok: true, proposal }
+        } catch (e: unknown) {
+          return { ok: false, error: (e as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_confirm',
+      description: 'Confirm a planning session — creates calendar items from approved proposals',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId) return { ok: false, error: 'sessionId required' }
+        try {
+          const result = confirmSession(params.sessionId as string)
+          ctx.activity.audit('session.confirmed', 'system', {
+            sessionId: params.sessionId,
+            itemsCreated: result.itemsCreated,
+          })
+          return { ok: true, ...result }
+        } catch (e: unknown) {
+          return { ok: false, error: (e as Error).message }
+        }
+      },
+    })
+
     ctx.watchFiles(['calendar.json'])
     log.info('Calendar plugin activated')
   },
