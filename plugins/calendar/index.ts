@@ -903,7 +903,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
       },
     })
 
-    ctx.watchFiles(['calendar.json'])
+    ctx.watchFiles(['calendar.json', 'calendar/sessions/*.json'])
     log.info('Calendar plugin activated')
   },
 
