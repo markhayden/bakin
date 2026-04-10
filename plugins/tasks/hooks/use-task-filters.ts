@@ -25,18 +25,24 @@ interface TaskFilterState {
   statusFilter: string[]
 }
 
+export function filterBoardColumns(columns: TaskColumns, search: string, agentFilter: string): TaskColumns {
+  const result = {} as TaskColumns
+
+  for (const colId of COLUMN_IDS) {
+    let tasks = columns[colId]
+    if (search) tasks = tasks.filter(t => matchesSearch(t, search))
+    if (agentFilter !== 'all') tasks = tasks.filter(t => t.agent === agentFilter)
+    result[colId] = tasks
+  }
+
+  return result
+}
+
 export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
   const { search, agentFilter, statusFilter } = state
 
   const filteredColumns = useMemo(() => {
-    const result = {} as TaskColumns
-    for (const colId of COLUMN_IDS) {
-      let tasks = columns[colId]
-      if (search) tasks = tasks.filter(t => matchesSearch(t, search))
-      if (agentFilter !== 'all') tasks = tasks.filter(t => t.agent === agentFilter)
-      result[colId] = tasks
-    }
-    return result
+    return filterBoardColumns(columns, search, agentFilter)
   }, [columns, search, agentFilter])
 
   const allTasksFlat = useMemo(() => {

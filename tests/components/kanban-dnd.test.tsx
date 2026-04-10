@@ -2,88 +2,149 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
-import type { Task, TaskColumns, ColumnId } from '../../plugins/tasks/types'
+import type { Task, TaskColumns } from '../../plugins/tasks/types'
 
-// ── Capture DndContext props so tests can invoke handlers directly ──
-
-let capturedDndProps: Record<string, any> = {}
-
-vi.mock('@dnd-kit/core', () => ({
-  DndContext: (props: any) => {
-    capturedDndProps = props
-    return <div data-testid="dnd-context">{props.children}</div>
-  },
-  DragOverlay: ({ children }: any) => <div data-testid="drag-overlay">{children}</div>,
-  PointerSensor: class {},
-  KeyboardSensor: class {},
-  useSensor: () => ({}),
-  useSensors: () => [],
-  closestCenter: vi.fn(),
-  pointerWithin: vi.fn(),
-  useDroppable: () => ({ setNodeRef: vi.fn(), isOver: false }),
+const { mockMove, mockUseSortable } = vi.hoisted(() => ({
+  mockMove: vi.fn(),
+  mockUseSortable: vi.fn(),
 }))
 
-const mockUseSortable = vi.fn(({ id, data }: any) => ({
-  attributes: {},
-  listeners: {},
-  setNodeRef: vi.fn(),
-  transform: null,
-  transition: null,
+const { queryStateDefaults } = vi.hoisted(() => ({
+  queryStateDefaults: {} as Record<string, string>,
+}))
+
+const { replaceSpy } = vi.hoisted(() => ({
+  replaceSpy: vi.fn(),
+}))
+
+let capturedProviderProps: Record<string, any> = {}
+
+const COLUMN_IDS = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as const
+
+function findTaskColumn(columns: TaskColumns, taskId: string) {
+  return COLUMN_IDS.find((columnId) => columns[columnId].some((task) => task.id === taskId)) ?? null
+}
+
+function cloneColumns(columns: TaskColumns): TaskColumns {
+  return {
+    backlog: [...columns.backlog],
+    todo: [...columns.todo],
+    blocked: [...columns.blocked],
+    inProgress: [...columns.inProgress],
+    review: [...columns.review],
+    done: [...columns.done],
+    archived: [...columns.archived],
+  }
+}
+
+mockMove.mockImplementation((items: TaskColumns, event: any) => {
+  const source = event.operation?.source
+  const target = event.operation?.target
+
+  if (!source || !target) {
+    return items
+  }
+
+  const sourceId = String(source.id)
+  const sourceColumn = (source.data?.columnId ?? source.data?.group ?? findTaskColumn(items, sourceId)) as keyof TaskColumns | null
+  const targetColumn = (
+    target.data?.columnId ??
+    target.data?.group ??
+    (COLUMN_IDS.includes(String(target.id) as any) ? String(target.id) : null)
+  ) as keyof TaskColumns | null
+
+  if (!sourceColumn || !targetColumn) {
+    return items
+  }
+
+  const task = items[sourceColumn].find((entry) => entry.id === sourceId)
+  if (!task) {
+    return items
+  }
+
+  const next = cloneColumns(items)
+
+  for (const columnId of COLUMN_IDS) {
+    next[columnId] = next[columnId].filter((entry) => entry.id !== sourceId)
+  }
+
+  const insertIndex = typeof target.data?.insertIndex === 'number'
+    ? target.data.insertIndex
+    : COLUMN_IDS.includes(String(target.id) as any)
+      ? next[targetColumn].length
+      : Math.max(0, next[targetColumn].findIndex((entry) => entry.id === String(target.id)))
+
+  next[targetColumn].splice(insertIndex, 0, task)
+  return next
+})
+
+mockUseSortable.mockImplementation(() => ({
+  handleRef: vi.fn(),
+  ref: vi.fn(),
+  sourceRef: vi.fn(),
+  targetRef: vi.fn(),
   isDragging: false,
-  active: null,
-  activeIndex: 0,
-  data: {},
-  index: 0,
-  isOver: false,
-  isSorting: false,
-  items: [],
-  newIndex: 0,
-  over: null,
-  overIndex: 0,
-  rect: { current: null },
-  setActivatorNodeRef: vi.fn(),
-  setDroppableNodeRef: vi.fn(),
-  setDraggableNodeRef: vi.fn(),
+  isDropping: false,
+  isDragSource: false,
+  isDropTarget: false,
 }))
 
-vi.mock('@dnd-kit/sortable', () => ({
-  SortableContext: ({ children }: any) => <div>{children}</div>,
-  verticalListSortingStrategy: {},
-  arrayMove: (arr: any[], from: number, to: number) => {
-    const result = [...arr]
-    const [removed] = result.splice(from, 1)
-    result.splice(to, 0, removed)
-    return result
+vi.mock('@dnd-kit/dom', () => {
+  class MockPointerSensor {
+    static configure() {
+      return {}
+    }
+  }
+
+  class MockKeyboardSensor {}
+
+  return {
+    PointerSensor: MockPointerSensor,
+    KeyboardSensor: MockKeyboardSensor,
+  }
+})
+
+vi.mock('@dnd-kit/helpers', () => ({
+  move: (...args: unknown[]) => mockMove(...args),
+}))
+
+vi.mock('@dnd-kit/react', () => ({
+  DragDropProvider: (props: any) => {
+    capturedProviderProps = props
+    return <div data-testid="dnd-provider">{props.children}</div>
   },
-  useSortable: (...args: any[]) => mockUseSortable(...args),
+  useDroppable: () => ({ ref: vi.fn(), isDropTarget: false }),
 }))
 
-vi.mock('@dnd-kit/utilities', () => ({
-  CSS: { Transform: { toString: () => null } },
+vi.mock('@dnd-kit/react/sortable', () => ({
+  useSortable: (...args: unknown[]) => mockUseSortable(...args),
 }))
 
-// ── Mock child components: KanbanColumn renders task IDs for assertions ──
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    replace: replaceSpy,
+    push: vi.fn(),
+  }),
+  usePathname: () => '/tasks',
+  useSearchParams: () => new URLSearchParams(),
+}))
 
 vi.mock('../../plugins/tasks/components/kanban-column', () => ({
   KanbanColumn: ({ id, tasks }: { id: string; tasks: Task[] }) => (
     <div data-testid={`column-${id}`}>
-      {tasks.map((t: Task) => (
-        <div key={t.id} data-testid={`task-${t.id}`}>{t.title}</div>
+      {tasks.map((task) => (
+        <div key={task.id} data-testid={`task-${task.id}`}>{task.title}</div>
       ))}
     </div>
   ),
 }))
 
-vi.mock('../../plugins/tasks/components/task-card', () => ({
-  TaskCard: ({ task }: { task: Task }) => <div data-testid={`card-${task.id}`}>{task.title}</div>,
-  TaskCardOverlay: ({ task }: { task: Task }) => <div data-testid="overlay">{task.title}</div>,
-  TaskCardContent: ({ task, className }: { task: Task; className?: string }) => (
-    <div className={className}>{task.title}</div>
-  ),
-}))
-
 vi.mock('../../plugins/tasks/components/delete-task-dialog', () => ({
   DeleteTaskDialog: () => null,
+}))
+
+vi.mock('../../plugins/tasks/components/block-reason-dialog', () => ({
+  BlockReasonDialog: () => null,
 }))
 
 vi.mock('../../plugins/tasks/components/task-detail-dialog', () => ({
@@ -119,9 +180,9 @@ vi.mock('@/components/ui/button', () => ({
 }))
 
 vi.mock('@/hooks/use-query-state', () => ({
-  useQueryState: (key: string, defaultValue: string) => {
+  useQueryState: (_key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
-    return React.useState(defaultValue)
+    return React.useState(queryStateDefaults[_key] ?? defaultValue)
   },
   useQueryArrayState: () => {
     const React = require('react') as typeof import('react')
@@ -137,10 +198,6 @@ vi.mock('@/hooks/use-toast', () => ({
   toast: vi.fn(),
 }))
 
-vi.mock('../../plugins/tasks/hooks/use-task-filters', () => ({
-  useTaskFilters: (columns: TaskColumns) => ({ filteredColumns: columns, allTasksFlat: [] }),
-}))
-
 vi.mock('../../plugins/tasks/hooks/use-gate-status', () => ({
   useGateStatus: () => ({}),
 }))
@@ -152,8 +209,6 @@ vi.mock('lucide-react', () => ({
   X: () => null,
 }))
 
-// ── Helpers ──
-
 function makeTask(id: string, title: string, overrides?: Partial<Task>): Task {
   return { id, title, checked: false, ...overrides }
 }
@@ -161,41 +216,56 @@ function makeTask(id: string, title: string, overrides?: Partial<Task>): Task {
 function makeBoardResponse(columns: Partial<TaskColumns>) {
   return {
     columns: {
-      backlog: [], todo: [], blocked: [], inProgress: [], review: [], done: [], archived: [],
+      backlog: [],
+      todo: [],
+      blocked: [],
+      inProgress: [],
+      review: [],
+      done: [],
+      archived: [],
       ...columns,
     },
     timestamp: '2026-04-07T00:00:00Z',
   }
 }
 
-// Plain task IDs (not composite) — matches the new sortable ID scheme
-function makeDragEvent(activeId: string, activeData: any, overId?: string, overData?: any) {
+function makeDragEvent(options: {
+  sourceId: string
+  sourceData: any
+  targetId?: string
+  targetData?: any
+  canceled?: boolean
+}) {
   return {
-    active: {
-      id: activeId,
-      data: { current: activeData },
-      rect: { current: { initial: null, translated: null } },
+    canceled: options.canceled ?? false,
+    operation: {
+      source: {
+        id: options.sourceId,
+        type: 'item',
+        data: options.sourceData,
+      },
+      target: options.targetId
+        ? {
+            id: options.targetId,
+            type: COLUMN_IDS.includes(options.targetId as any) ? 'column' : 'item',
+            data: options.targetData ?? {},
+          }
+        : null,
     },
-    over: overId ? {
-      id: overId,
-      data: { current: overData },
-      rect: { width: 288, height: 100, top: 0, left: 0, right: 288, bottom: 100 },
-      disabled: false,
-    } : null,
-    activatorEvent: new Event('pointer'),
-    collisions: null,
-    delta: { x: 0, y: 0 },
   }
 }
-
-// ── Tests ──
 
 describe('KanbanBoard drag and drop', () => {
   let fetchCalls: Array<{ url: string; body: any; method: string }>
 
   beforeEach(() => {
     fetchCalls = []
-    capturedDndProps = {}
+    capturedProviderProps = {}
+    mockMove.mockClear()
+    mockUseSortable.mockClear()
+    for (const key of Object.keys(queryStateDefaults)) {
+      delete queryStateDefaults[key]
+    }
   })
 
   afterEach(() => {
@@ -215,381 +285,382 @@ describe('KanbanBoard drag and drop', () => {
         })
         return { ok: true, json: async () => ({}) } as Response
       }
+
       return { ok: true, json: async () => boardResponse } as Response
     }))
 
     const { KanbanBoard } = await import('../../plugins/tasks/components/kanban-board')
-    let result: ReturnType<typeof render>
+
     await act(async () => {
-      result = render(<KanbanBoard />)
+      render(<KanbanBoard />)
     })
 
-    // Wait for initial fetch
     await waitFor(() => {
-      expect(screen.getByTestId('dnd-context')).toBeTruthy()
+      expect(screen.getByTestId('dnd-provider')).toBeTruthy()
     })
-
-    return result!
   }
 
-  it('same-column reorder calls /reorder API with new order', async () => {
+  function getColumnTaskTitles(columnId: string) {
+    const column = screen.getByTestId(`column-${columnId}`)
+    return Array.from(column.querySelectorAll('[data-testid^="task-"]')).map((el) => el.textContent)
+  }
+
+  it('same-column reorder calls /reorder with the optimistic order', async () => {
     const task1 = makeTask('task-1', 'First')
     const task2 = makeTask('task-2', 'Second')
     const task3 = makeTask('task-3', 'Third')
 
     await renderBoard({ todo: [task1, task2, task3] })
 
-    // Start dragging task-1
     act(() => {
-      capturedDndProps.onDragStart(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-      ))
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: task1, columnId: 'todo', group: 'todo' },
+      }))
     })
 
-    // Drop on task-3 position (within same column)
+    act(() => {
+      capturedProviderProps.onDragOver(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: task1, columnId: 'todo', group: 'todo' },
+        targetId: 'todo',
+        targetData: { columnId: 'todo', group: 'todo', insertIndex: 2 },
+      }))
+    })
+
     await act(async () => {
-      capturedDndProps.onDragEnd(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-        'task-3',
-        { task: task3, columnId: 'todo' },
-      ))
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: task1, columnId: 'todo', group: 'todo' },
+        targetId: 'todo',
+        targetData: { columnId: 'todo', group: 'todo', insertIndex: 2 },
+      }))
     })
 
     await waitFor(() => {
-      const reorderCall = fetchCalls.find(c => c.url.includes('/reorder'))
+      const reorderCall = fetchCalls.find((call) => call.url.includes('/reorder'))
       expect(reorderCall).toBeTruthy()
-      expect(reorderCall!.body.columnId).toBe('todo')
-      expect(reorderCall!.body.orderedIds).toEqual(['task-2', 'task-3', 'task-1'])
+      expect(reorderCall!.body).toEqual({
+        columnId: 'todo',
+        orderedIds: ['task-2', 'task-3', 'task-1'],
+      })
     })
   })
 
-  it('cross-column move to populated column via onDragOver and calls /move API', async () => {
-    const task1 = makeTask('task-1', 'Move Me')
-    const task2 = makeTask('task-2', 'Existing A')
-    const task3 = makeTask('task-3', 'Existing B')
+  it('cross-column move to populated column calls /move and both /reorder endpoints', async () => {
+    const moveMe = makeTask('task-1', 'Move Me')
+    const existingA = makeTask('task-2', 'Existing A')
+    const existingB = makeTask('task-3', 'Existing B')
 
-    await renderBoard({ todo: [task1], inProgress: [task2, task3] })
+    await renderBoard({ todo: [moveMe], inProgress: [existingA, existingB] })
 
-    // Start dragging task-1 from todo
     act(() => {
-      capturedDndProps.onDragStart(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-      ))
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+      }))
     })
 
-    // Drag over task-2 in inProgress — onDragOver moves it in state
     act(() => {
-      capturedDndProps.onDragOver(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-        'task-2',
-        { task: task2, columnId: 'inProgress' },
-      ))
+      capturedProviderProps.onDragOver(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+        targetId: 'inProgress',
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 1 },
+      }))
     })
 
-    // Task-1 moved to inProgress column, gone from todo
     await waitFor(() => {
-      expect(screen.getByTestId('column-inProgress').textContent).toContain('Move Me')
-      expect(screen.getByTestId('column-todo').textContent).not.toContain('Move Me')
+      expect(getColumnTaskTitles('inProgress')).toEqual(['Existing A', 'Move Me', 'Existing B'])
     })
 
-    // Drop
     await act(async () => {
-      capturedDndProps.onDragEnd(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-        'task-2',
-        { task: task2, columnId: 'inProgress' },
-      ))
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+        targetId: 'inProgress',
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 1 },
+      }))
     })
 
     await waitFor(() => {
-      const moveCall = fetchCalls.find(c => c.url.includes('/move'))
+      const moveCall = fetchCalls.find((call) => call.url.includes('/move'))
       expect(moveCall).toBeTruthy()
       expect(moveCall!.body.from).toBe('todo')
       expect(moveCall!.body.to).toBe('inProgress')
-      expect(moveCall!.body.id).toBe('task-1')
+
+      const reorderCalls = fetchCalls.filter((call) => call.url.includes('/reorder'))
+      expect(reorderCalls).toHaveLength(2)
+      expect(reorderCalls.map((call) => call.body.columnId).sort()).toEqual(['inProgress', 'todo'])
     })
   })
 
-  it('cross-column move to empty column calls /move API', async () => {
-    const task1 = makeTask('task-1', 'Move Me')
+  it('cross-column move to empty column calls /move', async () => {
+    const moveMe = makeTask('task-1', 'Move Me')
 
-    await renderBoard({ todo: [task1], inProgress: [] })
+    await renderBoard({ todo: [moveMe], inProgress: [] })
 
     act(() => {
-      capturedDndProps.onDragStart(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-      ))
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+      }))
     })
 
-    // Drag over the empty inProgress column droppable (valid: todo → inProgress)
     act(() => {
-      capturedDndProps.onDragOver(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-        'inProgress',
-      ))
+      capturedProviderProps.onDragOver(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+        targetId: 'inProgress',
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 0 },
+      }))
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('column-inProgress').textContent).toContain('Move Me')
+      expect(getColumnTaskTitles('inProgress')).toEqual(['Move Me'])
     })
 
     await act(async () => {
-      capturedDndProps.onDragEnd(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-        'inProgress',
-      ))
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+        targetId: 'inProgress',
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 0 },
+      }))
     })
 
     await waitFor(() => {
-      const moveCall = fetchCalls.find(c => c.url.includes('/move'))
-      expect(moveCall).toBeTruthy()
+      const moveCall = fetchCalls.find((call) => call.url.includes('/move'))
       expect(moveCall!.body.to).toBe('inProgress')
     })
   })
 
-  it('drag cancel restores original state with no API calls', async () => {
-    const task1 = makeTask('task-1', 'Move Me')
-    const task2 = makeTask('task-2', 'Stay Here')
+  it('canceled drag restores state with no API calls', async () => {
+    const moveMe = makeTask('task-1', 'Move Me')
+    const stayHere = makeTask('task-2', 'Stay Here')
 
-    await renderBoard({ todo: [task1], inProgress: [task2] })
+    await renderBoard({ todo: [moveMe], inProgress: [stayHere] })
 
     act(() => {
-      capturedDndProps.onDragStart(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-      ))
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+      }))
     })
 
-    // Move to inProgress via onDragOver
     act(() => {
-      capturedDndProps.onDragOver(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-        'inProgress',
-      ))
+      capturedProviderProps.onDragOver(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+        targetId: 'inProgress',
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 1 },
+      }))
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('column-inProgress').textContent).toContain('Move Me')
+      expect(getColumnTaskTitles('inProgress')).toEqual(['Stay Here', 'Move Me'])
     })
 
-    // Cancel
-    act(() => {
-      capturedDndProps.onDragCancel()
+    await act(async () => {
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+        targetId: 'inProgress',
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 1 },
+        canceled: true,
+      }))
     })
 
-    // Task restored to todo
     await waitFor(() => {
-      expect(screen.getByTestId('column-todo').textContent).toContain('Move Me')
+      expect(getColumnTaskTitles('todo')).toEqual(['Move Me'])
+      expect(fetchCalls).toHaveLength(0)
+    })
+  })
+
+  it('drag end with no target is a no-op', async () => {
+    const task = makeTask('task-1', 'Task')
+
+    await renderBoard({ todo: [task] })
+
+    act(() => {
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task, columnId: 'todo', group: 'todo' },
+      }))
+    })
+
+    await act(async () => {
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task, columnId: 'todo', group: 'todo' },
+      }))
     })
 
     expect(fetchCalls).toHaveLength(0)
   })
 
-  it('drag end with no over target is a no-op', async () => {
-    const task1 = makeTask('task-1', 'Task')
+  it('uses the drag-start column for persistence, not stale source data on drop', async () => {
+    const moveMe = makeTask('task-1', 'Move Me')
 
-    await renderBoard({ todo: [task1] })
+    await renderBoard({ todo: [moveMe], inProgress: [] })
 
     act(() => {
-      capturedDndProps.onDragStart(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-      ))
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+      }))
+    })
+
+    act(() => {
+      capturedProviderProps.onDragOver(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+        targetId: 'inProgress',
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 0 },
+      }))
     })
 
     await act(async () => {
-      capturedDndProps.onDragEnd(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-      ))
-    })
-
-    expect(fetchCalls).toHaveLength(0)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('column-todo').textContent).toContain('Task')
-    })
-  })
-
-  it('onDragOver within same column is a no-op', async () => {
-    const task1 = makeTask('task-1', 'First')
-    const task2 = makeTask('task-2', 'Second')
-
-    await renderBoard({ todo: [task1, task2] })
-
-    act(() => {
-      capturedDndProps.onDragStart(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-      ))
-    })
-
-    // Drag over task-2 in the same column — should not move items in state
-    act(() => {
-      capturedDndProps.onDragOver(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-        'task-2',
-        { task: task2, columnId: 'todo' },
-      ))
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'inProgress', group: 'inProgress' },
+        targetId: 'inProgress',
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 0 },
+      }))
     })
 
     await waitFor(() => {
-      const todoCol = screen.getByTestId('column-todo')
-      expect(todoCol.textContent).toContain('First')
-      expect(todoCol.textContent).toContain('Second')
-    })
-  })
-
-  it('cross-column move preserves drop position and calls /reorder', async () => {
-    const task1 = makeTask('task-1', 'Move Me')
-    const task2 = makeTask('task-2', 'First In Progress')
-    const task3 = makeTask('task-3', 'Second In Progress')
-
-    await renderBoard({ todo: [task1], inProgress: [task2, task3] })
-
-    act(() => {
-      capturedDndProps.onDragStart(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-      ))
-    })
-
-    // Drop on task-3 — should insert before task-3 in inProgress
-    await act(async () => {
-      capturedDndProps.onDragEnd(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-        'task-3',
-        { task: task3, columnId: 'inProgress' },
-      ))
-    })
-
-    await waitFor(() => {
-      const moveCall = fetchCalls.find(c => c.url.includes('/move'))
-      expect(moveCall).toBeTruthy()
+      const moveCall = fetchCalls.find((call) => call.url.includes('/move'))
       expect(moveCall!.body.from).toBe('todo')
       expect(moveCall!.body.to).toBe('inProgress')
-
-      // After /move, a /reorder call should persist the drop position
-      const reorderCall = fetchCalls.find(c => c.url.includes('/reorder'))
-      expect(reorderCall).toBeTruthy()
-      expect(reorderCall!.body.columnId).toBe('inProgress')
-      // task-1 inserted before task-3 → [task-2, task-1, task-3]
-      expect(reorderCall!.body.orderedIds).toEqual(['task-2', 'task-1', 'task-3'])
     })
   })
 
-  it('cross-column move uses drag-start column, not stale active.data.current.columnId', async () => {
-    const task1 = makeTask('task-1', 'Move Me')
+  it('drop on blocked defers to the block dialog path', async () => {
+    const task = makeTask('task-1', 'Block Me')
 
-    await renderBoard({ todo: [task1], inProgress: [] })
+    await renderBoard({ todo: [task], blocked: [] })
 
-    // Start drag — captures fromCol as 'todo'
     act(() => {
-      capturedDndProps.onDragStart(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-      ))
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task, columnId: 'todo', group: 'todo' },
+      }))
     })
 
-    // Simulate what happens in real dnd-kit: handleDragOver moves the task,
-    // useSortable re-renders with new columnId, and active.data.current updates
-    act(() => {
-      capturedDndProps.onDragOver(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-        'inProgress',
-      ))
-    })
-
-    // Drop — active.data.current.columnId is now 'inProgress' (stale ref from
-    // useSortable re-render), but the handler should use the drag-start ref
     await act(async () => {
-      capturedDndProps.onDragEnd(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'inProgress' }, // simulates stale useSortable data
-        'inProgress',
-      ))
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task, columnId: 'todo', group: 'todo' },
+        targetId: 'blocked',
+        targetData: { columnId: 'blocked', group: 'blocked', insertIndex: 0 },
+      }))
     })
 
     await waitFor(() => {
-      const moveCall = fetchCalls.find(c => c.url.includes('/move'))
-      expect(moveCall).toBeTruthy()
-      expect(moveCall!.body.from).toBe('todo') // from drag-start ref, not stale 'inProgress'
-      expect(moveCall!.body.to).toBe('inProgress')
+      const moveCall = fetchCalls.find((call) => call.url.includes('/move'))
+      expect(moveCall).toBeFalsy()
     })
   })
 
-  it('same-column reorder with no change is a no-op', async () => {
-    const task1 = makeTask('task-1', 'First')
-    const task2 = makeTask('task-2', 'Second')
+  it('drop on archived calls /move with to=archived', async () => {
+    const task = makeTask('task-1', 'Archive Me')
 
-    await renderBoard({ todo: [task1, task2] })
+    await renderBoard({ todo: [task], archived: [] })
 
     act(() => {
-      capturedDndProps.onDragStart(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-      ))
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task, columnId: 'todo', group: 'todo' },
+      }))
     })
 
     await act(async () => {
-      capturedDndProps.onDragEnd(makeDragEvent(
-        'task-1',
-        { task: task1, columnId: 'todo' },
-        'task-1',
-        { task: task1, columnId: 'todo' },
-      ))
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task, columnId: 'todo', group: 'todo' },
+        targetId: 'archived',
+        targetData: { columnId: 'archived', group: 'archived', insertIndex: 0 },
+      }))
     })
 
-    expect(fetchCalls.filter(c => c.url.includes('/reorder'))).toHaveLength(0)
+    await waitFor(() => {
+      const moveCall = fetchCalls.find((call) => call.url.includes('/move'))
+      expect(moveCall!.body.to).toBe('archived')
+    })
+  })
+
+  it('same-column reorder with search filter preserves hidden task positions', async () => {
+    queryStateDefaults.q = 'match'
+
+    const hiddenTop = makeTask('task-1', 'Alpha')
+    const visibleA = makeTask('task-2', 'Match A')
+    const hiddenMiddle = makeTask('task-3', 'Bravo')
+    const visibleB = makeTask('task-4', 'Match B')
+
+    await renderBoard({ todo: [hiddenTop, visibleA, hiddenMiddle, visibleB] })
+
+    act(() => {
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: 'task-4',
+        sourceData: { task: visibleB, columnId: 'todo', group: 'todo' },
+      }))
+    })
+
+    act(() => {
+      capturedProviderProps.onDragOver(makeDragEvent({
+        sourceId: 'task-4',
+        sourceData: { task: visibleB, columnId: 'todo', group: 'todo' },
+        targetId: 'todo',
+        targetData: { columnId: 'todo', group: 'todo', insertIndex: 0 },
+      }))
+    })
+
+    await waitFor(() => {
+      expect(getColumnTaskTitles('todo')).toEqual(['Match B', 'Match A'])
+    })
+
+    await act(async () => {
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: 'task-4',
+        sourceData: { task: visibleB, columnId: 'todo', group: 'todo' },
+        targetId: 'todo',
+        targetData: { columnId: 'todo', group: 'todo', insertIndex: 0 },
+      }))
+    })
+
+    await waitFor(() => {
+      const reorderCall = fetchCalls.find((call) => call.url.includes('/reorder'))
+      expect(reorderCall).toBeTruthy()
+      expect(reorderCall!.body).toEqual({
+        columnId: 'todo',
+        orderedIds: ['task-1', 'task-4', 'task-3', 'task-2'],
+      })
+    })
   })
 })
 
-describe('TaskCard ghost rendering', () => {
+describe('TaskCard rendering', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
   })
 
-  it('renders light clone placeholder when isDragging is true', async () => {
+  it('renders the card with drag styling when isDragging is true', async () => {
     mockUseSortable.mockReturnValue({
-      attributes: {},
-      listeners: {},
-      setNodeRef: vi.fn(),
-      transform: null,
-      transition: null,
+      handleRef: vi.fn(),
+      ref: vi.fn(),
+      sourceRef: vi.fn(),
+      targetRef: vi.fn(),
       isDragging: true,
-      active: null,
-      activeIndex: 0,
-      data: {},
-      index: 0,
-      isOver: false,
-      isSorting: false,
-      items: [],
-      newIndex: 0,
-      over: null,
-      overIndex: 0,
-      rect: { current: null },
-      setActivatorNodeRef: vi.fn(),
-      setDroppableNodeRef: vi.fn(),
-      setDraggableNodeRef: vi.fn(),
+      isDropping: false,
+      isDragSource: true,
+      isDropTarget: false,
     })
 
     const { TaskCard } = await vi.importActual<typeof import('../../plugins/tasks/components/task-card')>('../../plugins/tasks/components/task-card')
 
-    const task = { id: 'task-1', title: 'Test Task', checked: false } as Task
-
+    const task = makeTask('task-1', 'Test Task')
     const { container } = render(
       <TaskCard
         task={task}
@@ -597,56 +668,39 @@ describe('TaskCard ghost rendering', () => {
         onAssign={vi.fn()}
         onDelete={vi.fn()}
         onClick={vi.fn()}
-      />,
-    )
-
-    const placeholderEl = container.firstElementChild as HTMLElement
-    expect(placeholderEl.className).toContain('border-dashed')
-    expect(placeholderEl.className).toContain('opacity-40')
-    // Should show card content (light clone), not invisible
-    expect(placeholderEl.textContent).toContain('Test Task')
-  })
-
-  it('renders normal card when isDragging is false', async () => {
-    mockUseSortable.mockReturnValue({
-      attributes: {},
-      listeners: {},
-      setNodeRef: vi.fn(),
-      transform: null,
-      transition: null,
-      isDragging: false,
-      active: null,
-      activeIndex: 0,
-      data: {},
-      index: 0,
-      isOver: false,
-      isSorting: false,
-      items: [],
-      newIndex: 0,
-      over: null,
-      overIndex: 0,
-      rect: { current: null },
-      setActivatorNodeRef: vi.fn(),
-      setDroppableNodeRef: vi.fn(),
-      setDraggableNodeRef: vi.fn(),
-    })
-
-    const { TaskCard } = await vi.importActual<typeof import('../../plugins/tasks/components/task-card')>('../../plugins/tasks/components/task-card')
-
-    const task = { id: 'task-1', title: 'Test Task', checked: false } as Task
-
-    const { container } = render(
-      <TaskCard
-        task={task}
-        columnId="todo"
-        onAssign={vi.fn()}
-        onDelete={vi.fn()}
-        onClick={vi.fn()}
-      />,
+      />
     )
 
     expect(container.textContent).toContain('Test Task')
-    const cardDiv = container.querySelector('.cursor-grab')
-    expect(cardDiv).toBeTruthy()
+    expect(container.querySelector('.ring-\\[var\\(--accent\\)\\]\\/30')).toBeTruthy()
+  })
+
+  it('renders the normal draggable card when isDragging is false', async () => {
+    mockUseSortable.mockReturnValue({
+      handleRef: vi.fn(),
+      ref: vi.fn(),
+      sourceRef: vi.fn(),
+      targetRef: vi.fn(),
+      isDragging: false,
+      isDropping: false,
+      isDragSource: false,
+      isDropTarget: false,
+    })
+
+    const { TaskCard } = await vi.importActual<typeof import('../../plugins/tasks/components/task-card')>('../../plugins/tasks/components/task-card')
+
+    const task = makeTask('task-1', 'Test Task')
+    const { container } = render(
+      <TaskCard
+        task={task}
+        columnId="todo"
+        onAssign={vi.fn()}
+        onDelete={vi.fn()}
+        onClick={vi.fn()}
+      />
+    )
+
+    expect(container.textContent).toContain('Test Task')
+    expect(container.querySelector('.cursor-grab')).toBeTruthy()
   })
 })

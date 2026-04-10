@@ -48,7 +48,7 @@ function getPort(): number {
 // Channel type — tracks whether a call originated from MCP, REST, CLI, etc.
 // ---------------------------------------------------------------------------
 
-export type Channel = 'mcp' | 'rest' | 'cli' | 'system'
+export type Channel = 'human' | 'mcp' | 'rest' | 'cli' | 'system'
 
 // ---------------------------------------------------------------------------
 // Service functions
@@ -80,7 +80,8 @@ export async function moveTaskWithEffects(
   opts?: { from?: string; skipDoneGuard?: boolean; channel?: Channel },
 ): Promise<void> {
   // Workflow done-guard: workflow tasks can only reach Done via the workflow engine
-  if (to.toLowerCase() === 'done' && !opts?.skipDoneGuard) {
+  // Human channel bypasses this guard — the operator can force any state
+  if (to.toLowerCase() === 'done' && !opts?.skipDoneGuard && opts?.channel !== 'human') {
     const board = await hooks().invoke<{ columns: Record<string, Array<{ id: string; workflowId?: string }>> }>('tasks.readTaskboard', {})
     if (board) {
       for (const col of Object.values(board.columns)) {
@@ -96,7 +97,7 @@ export async function moveTaskWithEffects(
     }
   }
 
-  await hooks().invoke<void>('tasks.moveTask', { identifier: taskId, to, from: opts?.from })
+  await hooks().invoke<void>('tasks.moveTask', { identifier: taskId, to, from: opts?.from, channel: opts?.channel })
 
   const title = await resolveTitle(taskId)
   appendAudit(getContentDir(), 'task.moved', agent, { id: taskId, title, from: opts?.from, to }, opts?.channel)

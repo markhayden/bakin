@@ -19,6 +19,7 @@ export interface Task {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  order?: number
 }
 
 export interface TaskColumns {

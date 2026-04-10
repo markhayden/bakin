@@ -111,6 +111,7 @@ interface BakinTaskState {
   confirmed?: boolean
   date?: string
   log?: TaskLogEntry[]
+  order?: number
 }
 
 function getColumn(flow: FlowRunRow): ColumnId {
@@ -155,6 +156,7 @@ function flowToTask(flow: FlowRunRow): Task {
     workflowId: state.workflowId,
     scheduleJobId: state.scheduleJobId,
     projectId: state.projectId,
+    order: state.order,
   }
 }
 
@@ -192,10 +194,47 @@ function columnToStatus(col: ColumnId): string {
 }
 
 // ---------------------------------------------------------------------------
+// Order helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a SQL WHERE clause fragment that matches tasks in a given column.
+ * Mirrors the getColumn() logic using flow_runs fields.
+ */
+function getColumnWhereClause(col: ColumnId): string {
+  const base = `owner_key LIKE 'bakin:task:%'`
+  switch (col) {
+    case 'backlog':
+      return `${base} AND status = 'queued' AND json_extract(state_json, '$.column') = 'backlog'`
+    case 'todo':
+      return `${base} AND status = 'queued' AND (json_extract(state_json, '$.column') IS NULL OR json_extract(state_json, '$.column') != 'backlog')`
+    case 'inProgress':
+      return `${base} AND status = 'running'`
+    case 'blocked':
+      return `${base} AND status = 'waiting' AND blocked_task_id IS NOT NULL`
+    case 'review':
+      return `${base} AND status = 'waiting' AND (blocked_task_id IS NULL)`
+    case 'done':
+      return `${base} AND status IN ('succeeded', 'failed', 'cancelled') AND (json_extract(state_json, '$.archived') IS NULL OR json_extract(state_json, '$.archived') = false) AND (json_extract(state_json, '$.confirmed') IS NULL OR json_extract(state_json, '$.confirmed') = false)`
+    case 'archived':
+      return `${base} AND status = 'succeeded' AND (json_extract(state_json, '$.archived') = true OR json_extract(state_json, '$.confirmed') = true)`
+  }
+}
+
+/**
+ * Count tasks in a column. Used to assign order = count (append to end).
+ */
+function getColumnTaskCount(db: Database.Database, col: ColumnId): number {
+  const where = getColumnWhereClause(col)
+  const row = db.prepare(`SELECT COUNT(*) as cnt FROM flow_runs WHERE ${where}`).get() as { cnt: number }
+  return row.cnt
+}
+
+// ---------------------------------------------------------------------------
 // SQL queries
 // ---------------------------------------------------------------------------
 
-const SELECT_ALL = `SELECT * FROM flow_runs WHERE owner_key LIKE 'bakin:task:%' ORDER BY updated_at DESC`
+const SELECT_ALL = `SELECT * FROM flow_runs WHERE owner_key LIKE 'bakin:task:%' ORDER BY json_extract(state_json, '$.order') ASC, updated_at DESC`
 const SELECT_BY_ID = `SELECT * FROM flow_runs WHERE flow_id = ? AND owner_key LIKE 'bakin:task:%'`
 
 // ---------------------------------------------------------------------------
@@ -318,6 +357,8 @@ export function createTask(
     const status = columnToStatus(colId)
 
     withDb(db => {
+      state.order = getColumnTaskCount(db, colId)
+
       db.prepare(`
         INSERT INTO flow_runs (
           flow_id, shape, sync_mode, owner_key, requester_origin_json,
@@ -357,16 +398,19 @@ export function createTask(
       parentId,
       workflowId,
       projectId,
+      order: state.order,
     })
   } catch (err) {
     return Promise.reject(err)
   }
 }
 
-export function moveTask(identifier: string, to: string, from?: string): Promise<void> {
+export function moveTask(identifier: string, to: string, from?: string, channel?: string): Promise<void> {
   try {
     const toCol = normalizeColumn(to)
     if (!toCol) throw new Error(`Invalid column: ${to}`)
+
+    const isHuman = channel === 'human'
 
     withDb(db => {
       const flow = findFlowRow(db, identifier)
@@ -374,18 +418,23 @@ export function moveTask(identifier: string, to: string, from?: string): Promise
 
       const currentCol = getColumn(flow)
 
-      // State transition guard
-      const allowed = VALID_TRANSITIONS[currentCol]
-      if (allowed && !allowed.includes(toCol)) {
-        throw new Error(`Invalid transition: ${currentCol} → ${toCol}. Allowed: ${allowed.join(', ') || 'none'}`)
+      // State transition guard — human channel bypasses (operator can force any state)
+      if (!isHuman) {
+        const allowed = VALID_TRANSITIONS[currentCol]
+        if (allowed && !allowed.includes(toCol)) {
+          throw new Error(`Invalid transition: ${currentCol} → ${toCol}. Allowed: ${allowed.join(', ') || 'none'}`)
+        }
       }
 
       const state = parseStateJson(flow.state_json)
 
-      // Require at least one log entry before moving to done
-      if (toCol === 'done' && (!state.log || state.log.length === 0)) {
+      // Require at least one log entry before moving to done — human channel bypasses
+      if (!isHuman && toCol === 'done' && (!state.log || state.log.length === 0)) {
         throw new Error('Cannot move to done: task has no log entries. Log your work first via bakin_exec_tasks_log_progress')
       }
+
+      // Append to end of target column
+      state.order = getColumnTaskCount(db, toCol)
 
       // Update state for new column
       const newStatus = columnToStatus(toCol)
@@ -409,13 +458,17 @@ export function moveTask(identifier: string, to: string, from?: string): Promise
 
       const endedAt = (toCol === 'done' || toCol === 'archived') ? now : null
 
+      // Clear blocked fields (blocked moves go through blockTask instead)
+      const blockedTaskId = null
+      const blockedSummary = null
+
       db.prepare(`
         UPDATE flow_runs SET
           status = ?,
           state_json = ?,
           wait_json = ?,
-          blocked_task_id = NULL,
-          blocked_summary = NULL,
+          blocked_task_id = ?,
+          blocked_summary = ?,
           revision = revision + 1,
           updated_at = ?,
           ended_at = COALESCE(?, ended_at)
@@ -424,6 +477,8 @@ export function moveTask(identifier: string, to: string, from?: string): Promise
         newStatus,
         JSON.stringify(state),
         waitJson,
+        blockedTaskId,
+        blockedSummary,
         now,
         endedAt,
         flow.flow_id,
@@ -514,6 +569,7 @@ export function blockTask(identifier: string, reason: string, agent?: string): P
       const state = parseStateJson(flow.state_json)
       state.date = undefined
       delete state.column
+      state.order = getColumnTaskCount(db, 'blocked')
 
       const now = Date.now()
 
@@ -547,9 +603,11 @@ export function blockTask(identifier: string, reason: string, agent?: string): P
 
 export function updateTask(
   identifier: string,
-  updates: { title?: string; description?: string; agent?: string; column?: ColumnId; workflowId?: string; projectId?: string },
+  updates: { title?: string; description?: string; agent?: string; column?: ColumnId; workflowId?: string; projectId?: string; channel?: string },
 ): Promise<void> {
   try {
+    const isHuman = updates.channel === 'human'
+
     withDb(db => {
       const flow = findFlowRow(db, identifier)
       if (!flow) throw new Error(`Task not found: ${identifier}`)
@@ -580,15 +638,18 @@ export function updateTask(
       let endedAt = flow.ended_at
 
       if (updates.column !== undefined && updates.column !== currentCol) {
-        const allowed = VALID_TRANSITIONS[currentCol]
-        if (allowed && !allowed.includes(updates.column)) {
-          throw new Error(`Invalid transition: ${currentCol} → ${updates.column}. Allowed: ${allowed.join(', ') || 'none'}`)
+        if (!isHuman) {
+          const allowed = VALID_TRANSITIONS[currentCol]
+          if (allowed && !allowed.includes(updates.column)) {
+            throw new Error(`Invalid transition: ${currentCol} → ${updates.column}. Allowed: ${allowed.join(', ') || 'none'}`)
+          }
         }
-        if (updates.column === 'done' && (!state.log || state.log.length === 0)) {
+        if (!isHuman && updates.column === 'done' && (!state.log || state.log.length === 0)) {
           throw new Error('Cannot move to done: task has no log entries. Log your work first via bakin_exec_tasks_log_progress')
         }
 
         newStatus = columnToStatus(updates.column)
+        state.order = getColumnTaskCount(db, updates.column)
         if (updates.column === 'backlog' || updates.column === 'todo') {
           state.column = updates.column
         } else {
@@ -699,11 +760,17 @@ export function clearDependency(taskId: string): Promise<void> {
 export function reorderTasks(columnId: ColumnId, orderedIds: string[]): Promise<void> {
   try {
     withDb(db => {
+      const stmt = db.prepare(`
+        UPDATE flow_runs SET
+          state_json = json_set(state_json, '$.order', ?),
+          revision = revision + 1,
+          updated_at = ?
+        WHERE flow_id = ? AND owner_key LIKE 'bakin:task:%'
+      `)
       const now = Date.now()
-      const stmt = db.prepare(`UPDATE flow_runs SET updated_at = ? WHERE flow_id = ? AND owner_key LIKE 'bakin:task:%'`)
       const reorder = db.transaction(() => {
         for (let i = 0; i < orderedIds.length; i++) {
-          stmt.run(now - i, orderedIds[i])
+          stmt.run(i, now, orderedIds[i])
         }
       })
       reorder()
@@ -727,6 +794,7 @@ export function moveTaskToInProgress(identifier: string, agentTag?: string): Pro
       state.date = localDateString()
       if (agentTag && !state.agent) state.agent = agentTag
       delete state.column
+      state.order = getColumnTaskCount(db, 'inProgress')
 
       db.prepare(`
         UPDATE flow_runs SET
@@ -792,11 +860,14 @@ export function autoArchiveDoneTasks(olderThanMs: number = 24 * 60 * 60 * 1000):
       UPDATE flow_runs SET state_json = ?, revision = revision + 1, updated_at = ? WHERE flow_id = ?
     `)
     const now = Date.now()
+    let nextOrder = getColumnTaskCount(db, 'archived')
     const tx = db.transaction(() => {
       for (const row of rows) {
         const state = parseStateJson(row.state_json)
         state.archived = true
         delete state.confirmed
+        state.order = nextOrder
+        nextOrder++
         stmt.run(JSON.stringify(state), now, row.flow_id)
       }
     })
