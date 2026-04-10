@@ -31,12 +31,18 @@ interface StreamingState {
   streamedText: string
 }
 
-/** Strip proposal blocks (machine-readable data) from streaming display text */
+/** Strip proposal and reply blocks (machine-readable data) from streaming display text */
 function stripProposalBlocks(text: string): string {
+  // Remove complete <reply>...</reply> blocks (handled as separate message events)
+  let cleaned = text.replace(/<reply>[\s\S]*?<\/reply>/g, '')
+  // Remove incomplete <reply> block at the end (still streaming)
+  cleaned = cleaned.replace(/<reply[\s\S]*$/, '')
   // Remove complete <proposals>...</proposals> blocks
-  let cleaned = text.replace(/<proposals>[\s\S]*?<\/proposals>/g, '')
+  cleaned = cleaned.replace(/<proposals>[\s\S]*?<\/proposals>/g, '')
   // Remove incomplete <proposals> block at the end (still streaming)
-  cleaned = cleaned.replace(/<proposals>[\s\S]*$/, '')
+  cleaned = cleaned.replace(/<proposals[\s\S]*$/, '')
+  // Remove partial opening tags at the end (e.g., "<r", "<re", "<prop")
+  cleaned = cleaned.replace(/<(?:r(?:e(?:p(?:l(?:y)?)?)?)?|p(?:r(?:o(?:p(?:o(?:s(?:a(?:ls?)?)?)?)?)?)?)?)?$/i, '')
   // Fallback: also strip ```json blocks if model ignores instructions
   cleaned = cleaned.replace(/```json[\s\S]*?```/g, '')
   cleaned = cleaned.replace(/```json[\s\S]*$/, '')
@@ -141,6 +147,19 @@ export function SessionChat({
                   setStreaming({ isStreaming: true, streamedText: accumulated })
                   break
 
+                case 'message':
+                  // Intermediate reply bubble from Explorer (ack, question, etc.)
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: data.id || `reply-${Date.now()}`,
+                      role: 'assistant',
+                      content: data.text || '',
+                      timestamp: new Date().toISOString(),
+                    },
+                  ])
+                  break
+
                 case 'proposals':
                   if (data.proposals && onProposalsReceived) {
                     onProposalsReceived(data.proposals)
@@ -148,14 +167,17 @@ export function SessionChat({
                   break
 
                 case 'done': {
-                  // Replace streamed text with final message
-                  const finalMsg: SessionMessage = {
-                    id: data.messageId || `msg-${Date.now()}`,
-                    role: 'assistant',
-                    content: data.content || accumulated,
-                    timestamp: new Date().toISOString(),
+                  // Replace streamed text with final message (skip if reply-only turn)
+                  const finalContent = data.content || stripProposalBlocks(accumulated)
+                  if (finalContent.trim()) {
+                    const finalMsg: SessionMessage = {
+                      id: data.messageId || `msg-${Date.now()}`,
+                      role: 'assistant',
+                      content: finalContent,
+                      timestamp: new Date().toISOString(),
+                    }
+                    setMessages((prev) => [...prev, finalMsg])
                   }
-                  setMessages((prev) => [...prev, finalMsg])
                   setStreaming({ isStreaming: false, streamedText: '' })
                   break
                 }
@@ -263,7 +285,7 @@ export function SessionChat({
                 <span className="size-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
                 <span className="size-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
               </span>
-              <span className="text-xs">{agentInfo.name} is thinking...</span>
+              {/* dots animation is sufficient — no text label needed */}
             </div>
           </div>
         )}
