@@ -124,6 +124,8 @@ export function ContentCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showAgentPicker, setShowAgentPicker] = useState(false)
+  const [creatingSession, setCreatingSession] = useState(false)
 
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
@@ -210,6 +212,26 @@ export function ContentCalendar() {
   // --- Transitions ---
   const openItem = (item: CalendarItem) => pushItemId(item.id)
   const closeItem = () => updateParams({ itemId: null, mode: null, date: null })
+
+  const handleCreateSession = async (agentId: string) => {
+    setCreatingSession(true)
+    try {
+      const res = await fetch('/api/plugins/calendar/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        pushSessionId(data.session.id)
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setCreatingSession(false)
+      setShowAgentPicker(false)
+    }
+  }
 
   const openCreate = (defaultDate?: string) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -514,10 +536,37 @@ export function ContentCalendar() {
                 </button>
               ))}
             </div>
-            <Button size="sm" onClick={() => openCreate()}>
-              <Plus className="size-3.5" data-icon="inline-start" />
-              New Item
-            </Button>
+            {view === 'brainstorm' && !sessionId ? (
+              <div className="relative">
+                <Button size="sm" onClick={() => setShowAgentPicker(!showAgentPicker)} disabled={creatingSession}>
+                  <Plus className="size-3.5" data-icon="inline-start" />
+                  New Session
+                </Button>
+                {showAgentPicker && (
+                  <div className="absolute right-0 top-full mt-1 z-10 bg-popover border border-border rounded-lg shadow-lg p-2 min-w-[200px]">
+                    {(Object.keys(AGENT_INFO) as ContentAgent[]).map(agentId => {
+                      const info = AGENT_INFO[agentId]
+                      return (
+                        <button
+                          key={agentId}
+                          onClick={() => handleCreateSession(agentId)}
+                          disabled={creatingSession}
+                          className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm text-left hover:bg-muted/50 transition-colors"
+                        >
+                          <AgentAvatar agentId={agentId} size="xs" />
+                          <span>{info.name}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : view !== 'brainstorm' ? (
+              <Button size="sm" onClick={() => openCreate()}>
+                <Plus className="size-3.5" data-icon="inline-start" />
+                New Item
+              </Button>
+            ) : null}
           </div>
         }
       />
