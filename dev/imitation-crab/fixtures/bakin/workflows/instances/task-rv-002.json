@@ -1,0 +1,48 @@
+{
+  "instanceId": "wf_mock_copy_gate",
+  "workflowId": "approval-copy",
+  "taskId": "task-rv-002",
+  "currentStepId": "copy-gate",
+  "status": "pending_approval",
+  "stepStates": {
+    "draft-copy": {
+      "status": "complete",
+      "startedAt": "2026-04-06T15:00:00Z",
+      "completedAt": "2026-04-06T15:18:00Z",
+      "output": {
+        "caption": "Sunrise trail report: snow is melting fast, but the north-facing switchbacks are still slick before 9am.",
+        "body": "## Trail Notes\n\nThe lower mile is clear and runnable. The shaded upper section still has patchy ice, so microspikes are the safest recommendation for early hikers.\n\n### Recommendation\n\n- Publish this as a quick conditions post\n- Lead with the safety note in the first sentence\n- Keep the tone helpful and matter-of-fact",
+        "hashtags": [
+          "#markhayden",
+          "#trailreport",
+          "#springhiking"
+        ],
+        "editor_notes": "Prefer the second paragraph as-is. The only open question is whether we want a stronger CTA for checking the daily conditions page."
+      }
+    },
+    "copy-gate": {
+      "status": "pending_approval",
+      "startedAt": "2026-04-06T15:18:00Z"
+    }
+  },
+  "history": [
+    {
+      "stepId": "draft-copy",
+      "status": "complete",
+      "completedAt": "2026-04-06T15:18:00Z",
+      "output": {
+        "caption": "Sunrise trail report: snow is melting fast, but the north-facing switchbacks are still slick before 9am.",
+        "body": "## Trail Notes\n\nThe lower mile is clear and runnable. The shaded upper section still has patchy ice, so microspikes are the safest recommendation for early hikers.\n\n### Recommendation\n\n- Publish this as a quick conditions post\n- Lead with the safety note in the first sentence\n- Keep the tone helpful and matter-of-fact",
+        "hashtags": [
+          "#markhayden",
+          "#trailreport",
+          "#springhiking"
+        ],
+        "editor_notes": "Prefer the second paragraph as-is. The only open question is whether we want a stronger CTA for checking the daily conditions page."
+      }
+    }
+  ],
+  "createdAt": "2026-04-06T15:00:00Z",
+  "updatedAt": "2026-04-06T15:18:00Z",
+  "resolvedAgent": "chef"
+}

@@ -1,0 +1,56 @@
+{
+  "instanceId": "wf_mock_bundle_gate",
+  "workflowId": "approval-bundle",
+  "taskId": "task-rv-004",
+  "currentStepId": "bundle-gate",
+  "status": "pending_approval",
+  "stepStates": {
+    "package-bundle": {
+      "status": "complete",
+      "startedAt": "2026-04-07T09:10:00Z",
+      "completedAt": "2026-04-07T09:41:00Z",
+      "output": {
+        "summary_markdown": "## Launch Recommendation\n\nLead with the quick tip carousel today, then follow with the longer trail report tomorrow morning.\n\n### Sequence\n\n1. Publish the visual card first\n2. Follow with the detailed caption in the comments\n3. Reuse the same hook in Discord later in the day",
+        "recommended_channels": [
+          "instagram",
+          "discord",
+          "newsletter"
+        ],
+        "handoff": {
+          "owner_decision": "Approve sequence and tone before scheduling",
+          "copy_ready": true,
+          "image_ready": false
+        },
+        "risk_notes": "If conditions change after tonight's freeze, the timing recommendation should be updated before posting."
+      }
+    },
+    "bundle-gate": {
+      "status": "pending_approval",
+      "startedAt": "2026-04-07T09:41:00Z"
+    }
+  },
+  "history": [
+    {
+      "stepId": "package-bundle",
+      "status": "complete",
+      "completedAt": "2026-04-07T09:41:00Z",
+      "output": {
+        "summary_markdown": "## Launch Recommendation\n\nLead with the quick tip carousel today, then follow with the longer trail report tomorrow morning.\n\n### Sequence\n\n1. Publish the visual card first\n2. Follow with the detailed caption in the comments\n3. Reuse the same hook in Discord later in the day",
+        "recommended_channels": [
+          "instagram",
+          "discord",
+          "newsletter"
+        ],
+        "handoff": {
+          "owner_decision": "Approve sequence and tone before scheduling",
+          "copy_ready": true,
+          "image_ready": false
+        },
+        "risk_notes": "If conditions change after tonight's freeze, the timing recommendation should be updated before posting."
+      }
+    }
+  ],
+  "createdAt": "2026-04-07T09:10:00Z",
+  "updatedAt": "2026-04-07T09:41:00Z",
+  "resolvedAgent": "explorer"
+}

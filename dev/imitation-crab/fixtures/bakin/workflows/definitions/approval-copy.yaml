@@ -1,0 +1,21 @@
+id: approval-copy
+name: Copy Approval
+description: Draft copy and pause for owner approval before publishing
+version: 1
+
+steps:
+  - id: draft-copy
+    type: agent
+    label: Draft Copy
+    agent: chef
+    skill: write-copy
+
+  - id: copy-gate
+    type: gate
+    label: Approve Copy
+    description: Review the proposed caption and supporting copy
+    approval_required: true
+    on_approve: done
+    on_reject:
+      goto: draft-copy
+      note_to_agent: true
