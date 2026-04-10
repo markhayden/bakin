@@ -36,6 +36,43 @@ vi.mock('../../../src/core/audit', () => ({
   appendAudit: vi.fn(),
 }))
 
+vi.mock('../../../src/core/watcher', () => ({
+  watchDir: vi.fn(),
+}))
+
+// Mock the gateway module so tests don't hit a real gateway
+vi.mock('../../../plugins/calendar/lib/gateway', () => ({
+  streamChatCompletion: vi.fn(async () => {
+    // Return a mock Response with SSE body
+    const encoder = new TextEncoder()
+    const body = new ReadableStream({
+      start(controller) {
+        const reply = '[mock:Basil] Acknowledged. Task understood — working on it.'
+        const words = reply.split(/(\s+)/)
+        for (const word of words) {
+          if (!word) continue
+          const chunk = JSON.stringify({ choices: [{ delta: { content: word } }] })
+          controller.enqueue(encoder.encode(`data: ${chunk}\n\n`))
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+      },
+    })
+    return new Response(body, {
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }),
+  chatCompletion: vi.fn(async () =>
+    '[mock:Basil] Acknowledged. Task understood — working on it.'
+  ),
+}))
+
+// Mock openclaw-home to prevent filesystem access
+vi.mock('@bakin/core/openclaw-home', () => ({
+  getOpenClawPath: vi.fn(() => '/tmp/mock-openclaw.json'),
+  getOpenClawHome: vi.fn(() => '/tmp/mock-openclaw'),
+}))
+
 // Suppress SSE broadcast
 ;(globalThis as any).__bakinBroadcast = vi.fn()
 
@@ -317,7 +354,7 @@ describe('Session routes', () => {
       expect(findRoute(plugin.routes, 'POST', '/sessions/:id/messages')).toBeDefined()
     })
 
-    it('appends user and assistant messages', async () => {
+    it('returns SSE stream and persists messages', async () => {
       const postRoute = findRoute(plugin.routes, 'POST', '/sessions')!
       const { body: createBody } = await callRoute(postRoute, plugin.ctx, {
         body: { agentId: 'basil' },
@@ -325,13 +362,20 @@ describe('Session routes', () => {
       const sessionId = (createBody.session as Record<string, unknown>).id as string
 
       const msgRoute = findRoute(plugin.routes, 'POST', '/sessions/:id/messages')!
-      const { status, body } = await callRoute(msgRoute, plugin.ctx, {
-        searchParams: { id: sessionId },
+      const { makeRequest } = await import('../test-helpers')
+      const req = makeRequest('/sessions/:id/messages', {
+        method: 'POST',
         body: { message: 'Plan some content for next week' },
+        searchParams: { id: sessionId },
       })
-      expect(status).toBe(200)
-      expect(body.ok).toBe(true)
-      expect(body.messageId).toBeDefined()
+      const res = await msgRoute.handler(req, plugin.ctx)
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toBe('text/event-stream')
+
+      // Consume the SSE stream
+      const text = await res.text()
+      expect(text).toContain('event: token')
+      expect(text).toContain('event: done')
 
       // Verify messages were stored
       const getRoute = findRoute(plugin.routes, 'GET', '/sessions/:id')!

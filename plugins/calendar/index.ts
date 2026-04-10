@@ -19,9 +19,12 @@ import {
   updateSession as updateSessionFn,
   deleteSession as deleteSessionFn,
   appendMessage,
+  addProposals,
   updateProposal,
   confirmSession,
 } from './lib/sessions'
+import { buildMessages } from './lib/prompt-builder'
+import { streamChatCompletion, chatCompletion } from './lib/gateway'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 
@@ -483,11 +486,11 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
       },
     })
 
-    // POST /sessions/:id/messages — send message (non-streaming for now)
+    // POST /sessions/:id/messages — send message with SSE streaming
     ctx.registerRoute({
       path: '/sessions/:id/messages',
       method: 'POST',
-      description: 'Send a message in a planning session',
+      description: 'Send a message in a planning session (SSE streaming)',
       handler: async (req: Request) => {
         const url = new URL(req.url)
         const body = await readBody<{ id?: string; message?: string }>(req)
@@ -502,17 +505,158 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         // Append user message
         const userMsg = appendMessage(id, { role: 'user', content: body.message })
 
-        // For now, return a placeholder — streaming upgrade in PR 2
-        const assistantMsg = appendMessage(id, {
-          role: 'assistant',
-          content: 'Planning session message received. Streaming upgrade pending.',
+        // Build messages array with full session history
+        const messages = buildMessages(session, body.message)
+        const sessionKey = `session-${id}-${Date.now()}`
+
+        // Create a ReadableStream that pipes gateway SSE to the client
+        const stream = new ReadableStream({
+          async start(controller) {
+            const encoder = new TextEncoder()
+
+            function send(event: string, data: unknown): void {
+              controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+            }
+
+            try {
+              let fullContent = ''
+
+              // Try streaming first, fall back to non-streaming
+              let useStreaming = true
+              let gwResponse: Response | null = null
+
+              try {
+                gwResponse = await streamChatCompletion({
+                  messages,
+                  agentId: session.agentId,
+                  sessionKey,
+                })
+
+                const contentType = gwResponse.headers.get('content-type') || ''
+                if (!contentType.includes('text/event-stream')) {
+                  // Gateway returned non-streaming response
+                  useStreaming = false
+                }
+              } catch (err) {
+                // Gateway doesn't support streaming — fall back
+                useStreaming = false
+                gwResponse = null
+              }
+
+              if (useStreaming && gwResponse?.body) {
+                // Stream gateway SSE chunks to client
+                const reader = gwResponse.body.getReader()
+                const decoder = new TextDecoder()
+                let buffer = ''
+
+                while (true) {
+                  const { done, value } = await reader.read()
+                  if (done) break
+
+                  buffer += decoder.decode(value, { stream: true })
+                  const lines = buffer.split('\n')
+                  buffer = lines.pop() || ''
+
+                  for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue
+                    const data = line.slice(6).trim()
+                    if (data === '[DONE]') continue
+
+                    try {
+                      const parsed = JSON.parse(data)
+                      const token = parsed.choices?.[0]?.delta?.content
+                      if (token) {
+                        fullContent += token
+                        send('token', { text: token })
+                      }
+                    } catch {
+                      // Skip malformed chunks
+                    }
+                  }
+                }
+              } else {
+                // Non-streaming fallback
+                try {
+                  fullContent = await chatCompletion({
+                    messages,
+                    agentId: session.agentId,
+                    sessionKey,
+                  })
+                  // Send entire response as a single token event
+                  send('token', { text: fullContent })
+                } catch (err) {
+                  send('error', { message: err instanceof Error ? err.message : String(err) })
+                  controller.close()
+                  return
+                }
+              }
+
+              // Parse proposals from response
+              let proposals: Array<{
+                title: string
+                scheduledAt: string
+                contentType: string
+                tone: string
+                brief: string
+                channels?: string[]
+              }> = []
+
+              const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)\s*```/)
+              if (jsonMatch) {
+                try {
+                  proposals = JSON.parse(jsonMatch[1])
+                } catch { /* ignore malformed JSON */ }
+              }
+
+              // Save assistant message
+              const cleanContent = fullContent.replace(/```json[\s\S]*?```/g, '').trim()
+              const assistantMsg = appendMessage(id, {
+                role: 'assistant',
+                content: cleanContent,
+              }, proposals.length > 0 ? [] : undefined)
+
+              // Save proposals if found
+              if (proposals.length > 0) {
+                const savedProposals = addProposals(id, assistantMsg.id, proposals)
+                // Update message with proposal IDs
+                const reloadedSession = loadSession(id)
+                if (reloadedSession) {
+                  const msg = reloadedSession.messages.find(m => m.id === assistantMsg.id)
+                  if (msg) {
+                    msg.proposalIds = savedProposals.map(p => p.id)
+                    const { writeFileSync } = await import('fs')
+                    const { join } = await import('path')
+                    writeFileSync(
+                      join(getContentDir(), 'calendar', 'sessions', `${id}.json`),
+                      JSON.stringify(reloadedSession, null, 2)
+                    )
+                  }
+                }
+
+                send('proposals', {
+                  proposals: savedProposals,
+                  messageId: assistantMsg.id,
+                })
+              }
+
+              send('done', {
+                messageId: assistantMsg.id,
+                content: cleanContent,
+              })
+            } catch (err) {
+              send('error', { message: err instanceof Error ? err.message : String(err) })
+            } finally {
+              controller.close()
+            }
+          },
         })
 
-        return json({
-          ok: true,
-          response: assistantMsg.content,
-          suggestions: [],
-          messageId: assistantMsg.id,
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
         })
       },
     })
@@ -834,17 +978,48 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
           content: params.message as string,
         })
 
-        // Non-streaming placeholder — streaming upgrade in PR 2
+        // Non-streaming: call gateway synchronously and collect full response
+        const messages = buildMessages(session, params.message as string)
+        const sessionKey = `session-${params.sessionId}-${Date.now()}`
+
+        let fullContent: string
+        try {
+          fullContent = await chatCompletion({
+            messages,
+            agentId: session.agentId,
+            sessionKey,
+          })
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+
+        // Parse proposals
+        let proposals: Array<{
+          title: string; scheduledAt: string; contentType: string;
+          tone: string; brief: string; channels?: string[]
+        }> = []
+        const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)\s*```/)
+        if (jsonMatch) {
+          try { proposals = JSON.parse(jsonMatch[1]) } catch { /* ignore */ }
+        }
+
+        const cleanContent = fullContent.replace(/```json[\s\S]*?```/g, '').trim()
         const assistantMsg = appendMessage(params.sessionId as string, {
           role: 'assistant',
-          content: 'Planning session message received. Streaming upgrade pending.',
+          content: cleanContent,
         })
+
+        let savedProposals: unknown[] = []
+        if (proposals.length > 0) {
+          savedProposals = addProposals(params.sessionId as string, assistantMsg.id, proposals)
+        }
 
         return {
           ok: true,
-          response: assistantMsg.content,
+          response: cleanContent,
           messageId: assistantMsg.id,
           userMessageId: userMsg.id,
+          proposals: savedProposals,
         }
       },
     })
