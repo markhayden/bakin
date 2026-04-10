@@ -1,11 +1,13 @@
 'use client'
 
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   CheckSquare,
   Calendar,
   CalendarDays,
+  ChevronRight,
   FolderOpen,
   Brain,
   FileText,
@@ -51,8 +53,37 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   const { collapsed, toggle } = useSidebarContext()
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const prevPathRef = useRef(pathname)
 
   const settingsActive = pathname === '/settings'
+
+  // Auto-expand when navigating into a section, auto-collapse when leaving
+  useEffect(() => {
+    const prev = prevPathRef.current
+    prevPathRef.current = pathname
+
+    setExpandedIds(current => {
+      const next = new Set(current)
+      for (const item of allNavItems) {
+        if (!item.children?.length) continue
+        const wasActive = prev === item.href || prev.startsWith(item.href + '/')
+        const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+        if (isActive && !wasActive) next.add(item.id)
+        if (!isActive && wasActive) next.delete(item.id)
+      }
+      return next
+    })
+  }, [pathname])
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds(current => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   return (
     <nav className="flex flex-col gap-0.5 px-2 py-3 flex-1">
@@ -61,25 +92,35 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
         const hasChildren = item.children && item.children.length > 0
         const active = pathname === item.href || pathname.startsWith(item.href + '/')
 
-        // Items with children: parent link navigates to first child, children expand when active
+        // Items with children: clickable parent with chevron toggle
         if (hasChildren && !collapsed) {
-          const expanded = active
+          const expanded = expandedIds.has(item.id)
           return (
             <div key={item.id} className="flex flex-col">
-              <Link
-                href={item.children![0].href}
-                onClick={onNavigate}
+              <div
                 className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                   active
                     ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
                     : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
                 }`}
               >
-                {Icon && <Icon className="size-4 shrink-0" />}
-                <span>{item.label}</span>
-              </Link>
+                <button
+                  onClick={() => toggleExpand(item.id)}
+                  className="shrink-0 -ml-1 p-0.5 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors"
+                >
+                  <ChevronRight className={`size-3 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`} />
+                </button>
+                <Link
+                  href={item.children![0].href}
+                  onClick={onNavigate}
+                  className="flex items-center gap-3 flex-1 min-w-0"
+                >
+                  {Icon && <Icon className="size-4 shrink-0" />}
+                  <span>{item.label}</span>
+                </Link>
+              </div>
               {expanded && (
-                <div className="flex flex-col gap-0.5 ml-4 mt-0.5">
+                <div className="flex flex-col gap-0.5 ml-7 mt-0.5">
                   {item.children!.map((child) => {
                     const ChildIcon = ICONS[child.icon]
                     const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
