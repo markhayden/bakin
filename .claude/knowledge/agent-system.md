@@ -117,7 +117,7 @@ Agents interact with Bakin through MCP tools served by `src/core/mcp-server.ts`:
 | workflows plugin | 10 | `ctx.registerExecTool()` | `bakin_exec_workflows_list_definitions`, `bakin_exec_workflows_get_step` |
 | assets plugin | 9 | `ctx.registerExecTool()` | `bakin_exec_assets_save`, `bakin_exec_assets_list` |
 | schedule plugin | 10 | `ctx.registerExecTool()` | `bakin_exec_schedule_list`, `bakin_exec_schedule_fire` |
-| calendar plugin | 7 | `ctx.registerExecTool()` | `bakin_exec_calendar_list`, `bakin_exec_calendar_create` |
+| messaging plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_messaging_list`, `bakin_exec_messaging_create`, `bakin_exec_messaging_session_list` |
 | projects plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_projects_list`, `bakin_exec_projects_create` |
 | team plugin | 8 | `ctx.registerExecTool()` | `bakin_exec_team_list`, `bakin_exec_team_org`, `bakin_exec_team_members`, `bakin_exec_team_my_team` |
 | scripts/lib/log-progress.ts | 1 | `addExecTool()` | `bakin_exec_log` |

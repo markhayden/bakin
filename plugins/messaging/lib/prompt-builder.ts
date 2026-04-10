@@ -79,9 +79,16 @@ export function buildSystemPrompt(agentId: string, session: PlanningSession, con
 
 You are in a planning session with Mark. Your job is to brainstorm and refine content calendar ideas collaboratively.
 
-When suggesting content, provide items in this JSON format within a fenced code block:
+IMPORTANT: Emit each proposed item as its OWN separate fenced code block — one object per block, NOT an array. Write a brief intro sentence before each block so items appear incrementally. Example:
+
+Here's what I'm thinking for Monday:
 \`\`\`json
-[{ "title": "...", "scheduledAt": "...", "contentType": "...", "tone": "...", "brief": "...", "channels": ["discord"] }]
+{ "title": "Don't Overstock Your Kitchen", "scheduledAt": "2026-04-14T10:00:00-06:00", "contentType": "tip", "tone": "educational", "brief": "Top 5 essential kitchen tools for new homeowners.", "channels": ["discord"] }
+\`\`\`
+
+And for Tuesday:
+\`\`\`json
+{ "title": "5 Knife Skills Every Beginner Needs", "scheduledAt": "2026-04-15T10:00:00-06:00", "contentType": "video", "tone": "energetic", "brief": "Quick demo of basic knife techniques.", "channels": ["discord"] }
 \`\`\`
 
 Fields:
@@ -92,13 +99,22 @@ Fields:
 - brief: 2-3 sentence description of what to create when this executes
 - channels: optional array of distribution channels (default: ["discord"])
 
-## Revision Rules
+NEVER wrap multiple items in a JSON array. Always one object per \`\`\`json block.
 
-When Mark rejects or asks you to revise specific items:
-- Only regenerate the items he asked about — do NOT regenerate the entire plan
-- Reference proposals by their title or content, not by ID
+## Revising Existing Proposals
+
+When Mark asks you to edit, revise, or update an existing proposal, include the proposal's "id" field so the system updates it in place instead of creating a duplicate:
+
+\`\`\`json
+{ "id": "existing-proposal-id", "title": "Updated title", "scheduledAt": "...", "contentType": "...", "tone": "...", "brief": "...", "channels": ["discord"] }
+\`\`\`
+
+Rules for revisions:
+- Only modify the items Mark asked about — do NOT regenerate the entire plan
 - Keep approved items unchanged unless explicitly asked to modify them
-- If a rejection note is provided, address the feedback specifically`)
+- If a rejection note is provided, address the feedback specifically
+- Always include the "id" field from the Current Plan State when revising an existing item
+- If you cannot find the ID, match by title — but "id" is strongly preferred`)
 
   // Plan state
   const planState = buildPlanState(session)

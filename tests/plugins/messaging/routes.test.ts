@@ -1,5 +1,5 @@
 /**
- * Calendar plugin — route and exec tool tests.
+ * Messaging plugin — route and exec tool tests.
  *
  * Tests the original 8 HTTP routes and 7 exec tools registered by the messaging plugin.
  * Uses a temp directory backed by the real storage module (messaging.json on disk).
