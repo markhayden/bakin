@@ -41,14 +41,20 @@ export function ReviewPanel({
     tone: '',
   })
 
-  const approvedCount = useMemo(
-    () => proposals.filter((p) => p.status === 'approved').length,
+  // Filter out superseded proposals — they've been replaced by revisions
+  const activeProposals = useMemo(
+    () => proposals.filter((p) => p.status !== 'superseded'),
     [proposals]
+  )
+
+  const approvedCount = useMemo(
+    () => activeProposals.filter((p) => p.status === 'approved').length,
+    [activeProposals]
   )
 
   const proposalsByDate = useMemo(() => {
     const groups: Record<string, ProposedItem[]> = {}
-    for (const p of proposals) {
+    for (const p of activeProposals) {
       const date = new Date(p.scheduledAt).toLocaleDateString('en-US', {
         weekday: 'long',
         month: 'long',
@@ -190,7 +196,7 @@ export function ReviewPanel({
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-medium">Review</h3>
           <Badge variant="outline" className="text-[10px]">
-            {approvedCount}/{proposals.length} approved
+            {approvedCount}/{activeProposals.length} approved
           </Badge>
         </div>
       </div>

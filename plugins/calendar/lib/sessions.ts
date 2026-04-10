@@ -96,6 +96,7 @@ export function listSessions(opts?: {
       if (opts?.status && session.status !== opts.status) continue
       if (opts?.agentId && session.agentId !== opts.agentId) continue
 
+      const active = session.proposals.filter(p => p.status !== 'superseded')
       summaries.push({
         id: session.id,
         agentId: session.agentId,
@@ -103,8 +104,8 @@ export function listSessions(opts?: {
         status: session.status,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
-        proposalCount: session.proposals.length,
-        approvedCount: session.proposals.filter(p => p.status === 'approved').length,
+        proposalCount: active.length,
+        approvedCount: active.filter(p => p.status === 'approved').length,
       })
     } catch {
       // skip malformed files
@@ -195,6 +196,27 @@ export function addProposals(
     channels: item.channels,
     status: 'proposed' as ProposalStatus,
   }))
+
+  // Supersede rejected proposals that share a date with incoming revisions
+  const rejectedByDate = new Map<string, ProposedItem[]>()
+  for (const p of session.proposals) {
+    if (p.status === 'rejected') {
+      const date = p.scheduledAt.slice(0, 10)
+      if (!rejectedByDate.has(date)) rejectedByDate.set(date, [])
+      rejectedByDate.get(date)!.push(p)
+    }
+  }
+
+  for (const newP of proposals) {
+    const date = newP.scheduledAt.slice(0, 10)
+    const rejected = rejectedByDate.get(date)
+    if (rejected && rejected.length > 0) {
+      const old = rejected.shift()!
+      old.status = 'superseded'
+      old.supersededBy = newP.id
+      newP.revision = old.revision + 1
+    }
+  }
 
   session.proposals.push(...proposals)
   session.updatedAt = new Date().toISOString()

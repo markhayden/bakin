@@ -12,6 +12,7 @@ const STATUS_STYLES: Record<ProposalStatus, { label: string; className: string }
   approved: { label: 'Approved', className: 'bg-emerald-500/20 text-emerald-400' },
   rejected: { label: 'Rejected', className: 'bg-red-500/20 text-red-400 opacity-60' },
   revised: { label: 'Revised', className: 'bg-amber-500/20 text-amber-400' },
+  superseded: { label: 'Superseded', className: 'bg-muted text-muted-foreground opacity-40' },
 }
 
 interface Props {

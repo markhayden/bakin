@@ -37,7 +37,7 @@ export interface CalendarItem {
 // Planning Sessions
 // ---------------------------------------------------------------------------
 
-export type ProposalStatus = 'proposed' | 'approved' | 'rejected' | 'revised'
+export type ProposalStatus = 'proposed' | 'approved' | 'rejected' | 'revised' | 'superseded'
 
 export interface ProposedItem {
   id: string
@@ -53,6 +53,8 @@ export interface ProposedItem {
   status: ProposalStatus
   calendarItemId?: string
   rejectionNote?: string
+  /** ID of the proposal that replaced this one (set when status = superseded) */
+  supersededBy?: string
 }
 
 export interface SessionMessage {

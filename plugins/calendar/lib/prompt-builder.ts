@@ -36,10 +36,12 @@ function loadPersona(agentId: string, contentDir?: string): string {
  * Build a summary of the current plan state (proposals with statuses).
  */
 function buildPlanState(session: PlanningSession): string {
-  if (session.proposals.length === 0) return ''
+  // Exclude superseded proposals — they've been replaced
+  const active = session.proposals.filter(p => p.status !== 'superseded')
+  if (active.length === 0) return ''
 
   const lines = ['## Current Plan State\n']
-  for (const p of session.proposals) {
+  for (const p of active) {
     const statusTag = p.status.toUpperCase()
     let line = `- [${statusTag}] (${p.id}) "${p.title}" — ${p.scheduledAt}, ${p.contentType}, ${p.tone}`
     if (p.rejectionNote) {
@@ -48,9 +50,9 @@ function buildPlanState(session: PlanningSession): string {
     lines.push(line)
   }
 
-  const approved = session.proposals.filter(p => p.status === 'approved').length
-  const rejected = session.proposals.filter(p => p.status === 'rejected').length
-  const proposed = session.proposals.filter(p => p.status === 'proposed').length
+  const approved = active.filter(p => p.status === 'approved').length
+  const rejected = active.filter(p => p.status === 'rejected').length
+  const proposed = active.filter(p => p.status === 'proposed').length
   lines.push(`\nSummary: ${approved} approved, ${rejected} rejected, ${proposed} pending`)
 
   return lines.join('\n')
