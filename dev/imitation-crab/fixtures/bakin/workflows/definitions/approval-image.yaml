@@ -1,0 +1,21 @@
+id: approval-image
+name: Image Recommendation
+description: Produce a visual recommendation and pause for owner approval
+version: 1
+
+steps:
+  - id: recommend-image
+    type: agent
+    label: Recommend Image
+    agent: pixel
+    skill: generate-image
+
+  - id: concept-gate
+    type: gate
+    label: Approve Image Direction
+    description: Review the recommended concept image before production
+    approval_required: true
+    on_approve: done
+    on_reject:
+      goto: recommend-image
+      note_to_agent: true

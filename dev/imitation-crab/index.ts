@@ -59,12 +59,14 @@ async function main(): Promise<void> {
   // 4. Set environment for child processes
   const env = {
     ...process.env,
+    BAKIN_HOME: mockHome,
     OPENCLAW_HOME: mockHome,
     OPENCLAW_PATH: shimPath,
     PATH: `${join(mockHome, 'bin')}:${process.env.PATH}`,
   }
 
   console.log('')
+  console.log(`  BAKIN_HOME = ${mockHome}`)
   console.log(`  OPENCLAW_HOME = ${mockHome}`)
   console.log(`  OPENCLAW_PATH = ${shimPath}`)
   console.log('')
@@ -90,7 +92,7 @@ async function main(): Promise<void> {
     console.log('')
     console.log('Mock gateway is running. Start Bakin in another terminal with:')
     console.log('')
-    console.log(`  OPENCLAW_HOME=${mockHome} OPENCLAW_PATH=${shimPath} npm run dev`)
+    console.log(`  BAKIN_HOME=${mockHome} OPENCLAW_HOME=${mockHome} OPENCLAW_PATH=${shimPath} npm run dev`)
     console.log('')
   }
 }

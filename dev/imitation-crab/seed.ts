@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, cpSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { homedir } from 'os'
+import { initBakinHome } from '../../packages/core/src/content-dir'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MOCK_HOME = join(homedir(), '.imitationcrab')
@@ -22,6 +23,9 @@ export function seed(force = false): void {
   }
 
   console.log(`[seed] Creating ${MOCK_HOME}`)
+
+  // Create Bakin content structure (assets/, workflows/, settings.json, etc.)
+  initBakinHome(MOCK_HOME)
 
   // Create directory structure
   mkdirSync(join(MOCK_HOME, 'agents', 'main', 'agent'), { recursive: true })
@@ -40,6 +44,12 @@ export function seed(force = false): void {
 
   // Copy main workspace
   cpSync(join(FIXTURES_DIR, 'workspace'), join(MOCK_HOME, 'workspace'), { recursive: true })
+
+  // Copy Bakin-specific mock content (workflow defs, instances, assets)
+  const bakinFixtures = join(FIXTURES_DIR, 'bakin')
+  if (existsSync(bakinFixtures)) {
+    cpSync(bakinFixtures, MOCK_HOME, { recursive: true })
+  }
 
   // Copy subagent workspaces
   const subagents = ['pixel', 'rolo', 'basil', 'scout', 'nemo', 'zen', 'patch']
@@ -96,7 +106,7 @@ function seedGatewayLog(): void {
 
 function seedAuditLog(): void {
   const { appendFileSync, writeFileSync } = require('fs')
-  const bakinHome = process.env.BAKIN_HOME || join(homedir(), '.bakin')
+  const bakinHome = process.env.BAKIN_HOME || MOCK_HOME
   const auditPath = join(bakinHome, 'audit.jsonl')
 
   // Watchdog recovery audit entries matching the seeded tasks
