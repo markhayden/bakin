@@ -28,7 +28,7 @@ import { handleJsonPost, jsonResponse } from './src/core/middleware'
 import * as watcher from './src/core/watcher'
 import * as dispatch from './src/core/dispatch'
 import * as watchdog from './src/core/watchdog'
-import * as calendarCron from './src/core/calendar-cron'
+import * as messagingCron from './src/core/messaging-cron'
 import { registerShutdownHandlers } from './src/core/lifecycle'
 import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
@@ -366,7 +366,7 @@ app.prepare().then(async () => {
   watcher.start({ contentDir: CONTENT_DIR, eventBus, onInboxFile: handleInboxFile })
   dispatch.start(CONTENT_DIR, port)
   dispatch.reconcileOnStartup(CONTENT_DIR)
-  // calendarCron.start(CONTENT_DIR, port) — deprecated: schedule plugin bridge replaces this
+  // messagingCron.start(CONTENT_DIR, port) — deprecated: schedule plugin bridge replaces this
   watchdog.start(CONTENT_DIR, port)
   doctor.start(CONTENT_DIR, process.cwd())
 

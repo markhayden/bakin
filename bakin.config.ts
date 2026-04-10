@@ -6,7 +6,7 @@ const config: BakinConfig = {
     { path: 'plugins/tasks' },
     { path: 'plugins/memory' },
     { path: 'plugins/models' },
-    { path: 'plugins/calendar' },
+    { path: 'plugins/messaging' },
     { path: 'plugins/workflows' },
     { path: 'plugins/assets' },
     { path: 'plugins/schedule' },
