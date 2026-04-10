@@ -26,6 +26,8 @@ import { CONTENT_AGENTS, STATUS_BADGE, CONTENT_TYPE_LABELS, CHANNEL_LABELS } fro
 import { ItemDetailDrawer } from './item-detail-drawer'
 import { CalendarWeek } from './calendar-week'
 import { BrainstormPanel } from './brainstorm-panel'
+import { SessionList } from './session-list'
+import { PlanningLayout } from './planning-layout'
 
 /**
  * Agent colors use CSS custom properties from the agent settings system.
@@ -112,6 +114,7 @@ export function ContentCalendar() {
   const [statusFilter, setStatusFilter] = useQueryArrayState('status')
   const [typeFilter, setTypeFilter] = useQueryArrayState('type')
   const [channelFilter, setChannelFilter] = useQueryArrayState('channel')
+  const [sessionId, setSessionId, pushSessionId] = useQueryState('session', '')
   const [search, setSearch] = useQueryState('q', '')
   const [itemIdParam, setItemIdParam, pushItemId] = useQueryState('itemId', '')
   const [mode, setMode, pushMode] = useQueryState('mode', '')
@@ -580,7 +583,17 @@ export function ContentCalendar() {
           )}
           {view === 'list' && renderList()}
           {view === 'brainstorm' && (
-            <BrainstormPanel onItemCreated={fetchItems} />
+            sessionId ? (
+              <div className="h-[calc(100vh-180px)]">
+                <PlanningLayout
+                  sessionId={sessionId}
+                  onBack={() => setSessionId('')}
+                  onSessionUpdated={fetchItems}
+                />
+              </div>
+            ) : (
+              <SessionList onSelectSession={pushSessionId} />
+            )
           )}
         </>
       )}
