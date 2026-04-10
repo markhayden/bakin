@@ -608,15 +608,20 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
                 channels?: string[]
               }> = []
 
-              const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)\s*```/)
+              // Primary: <proposals> XML tags; fallback: ```json fenced blocks
+              let jsonMatch = fullContent.match(/<proposals>\s*([\s\S]*?)\s*<\/proposals>/)
+              if (!jsonMatch) jsonMatch = fullContent.match(/```json\s*([\s\S]*?)\s*```/)
               if (jsonMatch) {
                 try {
                   proposals = JSON.parse(jsonMatch[1])
                 } catch { /* ignore malformed JSON */ }
               }
 
-              // Save assistant message
-              const cleanContent = fullContent.replace(/```json[\s\S]*?```/g, '').trim()
+              // Save assistant message — strip both proposal formats
+              const cleanContent = fullContent
+                .replace(/<proposals>[\s\S]*?<\/proposals>/g, '')
+                .replace(/```json[\s\S]*?```/g, '')
+                .trim()
               const assistantMsg = appendMessage(id, {
                 role: 'assistant',
                 content: cleanContent,
@@ -1011,17 +1016,21 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
 
-        // Parse proposals
+        // Parse proposals — primary: <proposals> tags; fallback: ```json blocks
         let proposals: Array<{
           title: string; scheduledAt: string; contentType: string;
           tone: string; brief: string; channels?: string[]
         }> = []
-        const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)\s*```/)
+        let jsonMatch = fullContent.match(/<proposals>\s*([\s\S]*?)\s*<\/proposals>/)
+        if (!jsonMatch) jsonMatch = fullContent.match(/```json\s*([\s\S]*?)\s*```/)
         if (jsonMatch) {
           try { proposals = JSON.parse(jsonMatch[1]) } catch { /* ignore */ }
         }
 
-        const cleanContent = fullContent.replace(/```json[\s\S]*?```/g, '').trim()
+        const cleanContent = fullContent
+          .replace(/<proposals>[\s\S]*?<\/proposals>/g, '')
+          .replace(/```json[\s\S]*?```/g, '')
+          .trim()
         const assistantMsg = appendMessage(params.sessionId as string, {
           role: 'assistant',
           content: cleanContent,

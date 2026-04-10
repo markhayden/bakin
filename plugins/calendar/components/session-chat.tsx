@@ -31,11 +31,14 @@ interface StreamingState {
   streamedText: string
 }
 
-/** Strip JSON code blocks (proposal data) from streaming display text */
-function stripJsonBlocks(text: string): string {
-  // Remove complete ```json...``` blocks
-  let cleaned = text.replace(/```json[\s\S]*?```/g, '')
-  // Remove incomplete ```json block at the end (still streaming)
+/** Strip proposal blocks (machine-readable data) from streaming display text */
+function stripProposalBlocks(text: string): string {
+  // Remove complete <proposals>...</proposals> blocks
+  let cleaned = text.replace(/<proposals>[\s\S]*?<\/proposals>/g, '')
+  // Remove incomplete <proposals> block at the end (still streaming)
+  cleaned = cleaned.replace(/<proposals>[\s\S]*$/, '')
+  // Fallback: also strip ```json blocks if model ignores instructions
+  cleaned = cleaned.replace(/```json[\s\S]*?```/g, '')
   cleaned = cleaned.replace(/```json[\s\S]*$/, '')
   return cleaned.trim()
 }
@@ -236,7 +239,7 @@ export function SessionChat({
 
         {/* Streaming message bubble — styled as thinking, JSON blocks hidden */}
         {streaming.isStreaming && streaming.streamedText && (() => {
-          const displayText = stripJsonBlocks(streaming.streamedText)
+          const displayText = stripProposalBlocks(streaming.streamedText)
           if (!displayText) return null
           return (
             <div className="flex items-start gap-2.5">
@@ -251,7 +254,7 @@ export function SessionChat({
         })()}
 
         {/* Thinking indicator when streaming but no displayable text yet */}
-        {streaming.isStreaming && !stripJsonBlocks(streaming.streamedText) && (
+        {streaming.isStreaming && !stripProposalBlocks(streaming.streamedText) && (
           <div className="flex items-center gap-2.5 text-muted-foreground">
             <AgentAvatar agentId={agentId} size="sm" className="shrink-0 animate-pulse" />
             <div className="flex items-center gap-1.5">

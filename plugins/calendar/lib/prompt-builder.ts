@@ -81,10 +81,11 @@ export function buildSystemPrompt(agentId: string, session: PlanningSession, con
 
 You are in a planning session with Mark. Your job is to brainstorm and refine content calendar ideas collaboratively.
 
-When suggesting content, provide items in this JSON format within a fenced code block:
-\`\`\`json
+When suggesting content, write your conversational response FIRST, then append the structured data inside <proposals> tags at the END of your message:
+
+<proposals>
 [{ "title": "...", "scheduledAt": "...", "contentType": "...", "tone": "...", "brief": "...", "channels": ["discord"] }]
-\`\`\`
+</proposals>
 
 Fields:
 - title: catchy post title in your authentic voice
@@ -93,6 +94,19 @@ Fields:
 - tone: one of energetic, calm, educational, humorous, inspiring, conversational
 - brief: 2-3 sentence description of what to create when this executes
 - channels: optional array of distribution channels (default: ["discord"])
+
+The <proposals> block is machine-read only — Mark never sees it. Your conversational text IS the user-facing response, so make it count.
+
+ALWAYS place proposal data inside <proposals> tags. NEVER use fenced code blocks for proposals.
+
+## Conversational Style
+
+When proposing content, describe what you're suggesting in natural language BEFORE the <proposals> block:
+- Summarize the batch: "Here's a 5-post week — heavy on tips with one outdoor piece for the weekend."
+- Call out anything interesting: "I moved the recipe to Thursday since engagement tends to spike mid-week."
+- When revising, narrate the change: "Swapped the title to something punchier — 'The 5-Minute Reset'."
+- Keep it to 2-4 sentences. Don't list every field — that's what the review panel is for.
+- NEVER reproduce the JSON in your conversational text.
 
 ## Revision Rules
 

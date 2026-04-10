@@ -182,12 +182,12 @@ describe('Streaming endpoint', () => {
     expect(doneEvents[0].data.content).toContain('All done')
   })
 
-  it('extracts proposals from JSON block and sends proposals event', async () => {
+  it('extracts proposals from <proposals> tags and sends proposals event', async () => {
     const responseWithProposals = `Great ideas for next week!
 
-\`\`\`json
+<proposals>
 [{"title":"Monday Recipe","scheduledAt":"2026-04-13T10:00:00Z","contentType":"recipe","tone":"energetic","brief":"A quick pasta dish"}]
-\`\`\``
+</proposals>`
 
     mockStreamChatCompletion.mockResolvedValueOnce(
       makeSSEResponse(responseWithProposals)
@@ -224,7 +224,7 @@ describe('Streaming endpoint', () => {
   })
 
   it('persists proposals to session file', async () => {
-    const responseWithProposals = `Ideas:\n\`\`\`json\n[{"title":"Test","scheduledAt":"2026-04-13T10:00:00Z","contentType":"tip","tone":"calm","brief":"A tip"}]\n\`\`\``
+    const responseWithProposals = `Ideas:\n<proposals>\n[{"title":"Test","scheduledAt":"2026-04-13T10:00:00Z","contentType":"tip","tone":"calm","brief":"A tip"}]\n</proposals>`
     mockStreamChatCompletion.mockResolvedValueOnce(
       makeSSEResponse(responseWithProposals)
     )
@@ -240,7 +240,7 @@ describe('Streaming endpoint', () => {
   })
 
   it('links proposals to their message via proposalIds', async () => {
-    const responseWithProposals = `Here:\n\`\`\`json\n[{"title":"Linked","scheduledAt":"2026-04-13T10:00:00Z","contentType":"tip","tone":"calm","brief":"A tip"}]\n\`\`\``
+    const responseWithProposals = `Here:\n<proposals>\n[{"title":"Linked","scheduledAt":"2026-04-13T10:00:00Z","contentType":"tip","tone":"calm","brief":"A tip"}]\n</proposals>`
     mockStreamChatCompletion.mockResolvedValueOnce(
       makeSSEResponse(responseWithProposals)
     )
@@ -306,10 +306,10 @@ describe('Streaming endpoint', () => {
     expect(status).toBe(404)
   })
 
-  it('strips JSON block from stored assistant message content', async () => {
-    const responseWithJson = `Great plan!\n\`\`\`json\n[{"title":"X","scheduledAt":"2026-04-13T10:00:00Z","contentType":"tip","tone":"calm","brief":"Y"}]\n\`\`\``
+  it('strips <proposals> tags from stored assistant message content', async () => {
+    const responseWithProposals = `Great plan!\n<proposals>\n[{"title":"X","scheduledAt":"2026-04-13T10:00:00Z","contentType":"tip","tone":"calm","brief":"Y"}]\n</proposals>`
     mockStreamChatCompletion.mockResolvedValueOnce(
-      makeSSEResponse(responseWithJson)
+      makeSSEResponse(responseWithProposals)
     )
     const sessionId = await createTestSession()
     const res = await sendMessage(sessionId, 'Plan')
@@ -318,8 +318,24 @@ describe('Streaming endpoint', () => {
     const sessionPath = join(testDir, 'calendar', 'sessions', `${sessionId}.json`)
     const session = JSON.parse(readFileSync(sessionPath, 'utf-8'))
     const assistantMsg = session.messages.find((m: Record<string, unknown>) => m.role === 'assistant')
-    expect(assistantMsg.content).not.toContain('```json')
+    expect(assistantMsg.content).not.toContain('<proposals>')
     expect(assistantMsg.content).toContain('Great plan!')
+  })
+
+  it('falls back to ```json extraction when <proposals> tags are missing', async () => {
+    const responseWithJson = `Fallback test!\n\`\`\`json\n[{"title":"Fallback","scheduledAt":"2026-04-13T10:00:00Z","contentType":"tip","tone":"calm","brief":"Y"}]\n\`\`\``
+    mockStreamChatCompletion.mockResolvedValueOnce(
+      makeSSEResponse(responseWithJson)
+    )
+    const sessionId = await createTestSession()
+    const res = await sendMessage(sessionId, 'Plan')
+    const text = await res.text()
+    const events = parseSSEEvents(text)
+
+    const proposalEvents = events.filter(e => e.event === 'proposals')
+    expect(proposalEvents.length).toBe(1)
+    const proposals = proposalEvents[0].data.proposals as Array<Record<string, unknown>>
+    expect(proposals[0].title).toBe('Fallback')
   })
 })
 
