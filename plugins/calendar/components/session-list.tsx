@@ -4,6 +4,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Plus, MessageSquare, CheckCircle, Trash2 } from 'lucide-react'
 import type { ContentAgent } from '../types'
 import { AGENT_INFO } from '../types'
@@ -30,7 +36,7 @@ export function SessionList({ onSelectSession }: Props) {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [showAgentPicker, setShowAgentPicker] = useState(false)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<SessionSummary | null>(null)
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -70,18 +76,19 @@ export function SessionList({ onSelectSession }: Props) {
     }
   }
 
-  const handleDeleteSession = async (sessionId: string) => {
+  const handleDeleteSession = async () => {
+    if (!deleteTarget) return
     try {
-      const res = await fetch(`/api/plugins/calendar/sessions/${sessionId}`, {
+      const res = await fetch(`/api/plugins/calendar/sessions/${deleteTarget.id}`, {
         method: 'DELETE',
       })
       if (res.ok) {
-        setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+        setSessions((prev) => prev.filter((s) => s.id !== deleteTarget.id))
       }
     } catch {
       // Silently fail
     } finally {
-      setConfirmDeleteId(null)
+      setDeleteTarget(null)
     }
   }
 
@@ -236,29 +243,16 @@ export function SessionList({ onSelectSession }: Props) {
                           Active
                         </Badge>
                       )}
-                      {confirmDeleteId === session.id ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteSession(session.id)
-                          }}
-                          className="text-[10px] text-red-400 hover:text-red-300 font-medium px-1.5 py-0.5 rounded border border-red-400/30 hover:bg-red-400/10 transition-colors"
-                          data-testid={`confirm-delete-${session.id}`}
-                        >
-                          Delete?
-                        </button>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setConfirmDeleteId(session.id)
-                          }}
-                          className="text-muted-foreground hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                          data-testid={`delete-${session.id}`}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeleteTarget(session)
+                        }}
+                        className="text-muted-foreground hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                        data-testid={`delete-${session.id}`}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
                     </div>
                   </button>
                 ))}
@@ -267,6 +261,26 @@ export function SessionList({ onSelectSession }: Props) {
           )
         })}
       </div>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null) }}>
+        <DialogContent className="bg-card border-border max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete session?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will permanently delete <span className="text-foreground font-medium">{deleteTarget?.title}</span> and all its proposals. This cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteSession} data-testid="confirm-delete">
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

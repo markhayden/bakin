@@ -23,6 +23,13 @@ vi.mock('@/components/agent-avatar', () => ({
   ),
 }))
 
+vi.mock('@/components/ui/dialog', () => ({
+  Dialog: ({ children, open }: Record<string, unknown>) => open ? <div data-testid="dialog">{children as React.ReactNode}</div> : null,
+  DialogContent: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
+  DialogHeader: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
+  DialogTitle: ({ children }: Record<string, unknown>) => <h2>{children as React.ReactNode}</h2>,
+}))
+
 vi.mock('lucide-react', () => ({
   Plus: () => <span />,
   MessageSquare: () => <span />,
