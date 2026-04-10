@@ -50,6 +50,9 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
   const [brief, setBrief] = useState('')
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [draftCaption, setDraftCaption] = useState('')
+  const [draftImagePrompt, setDraftImagePrompt] = useState('')
+  const [draftVideoPrompt, setDraftVideoPrompt] = useState('')
 
   // Detail state
   const [rejectionNote, setRejectionNote] = useState('')
@@ -70,6 +73,9 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
       setTone(item.tone)
       setScheduledAt(item.scheduledAt.slice(0, 16))
       setBrief(item.brief || '')
+      setDraftCaption(item.draft?.caption || '')
+      setDraftImagePrompt(item.draft?.imagePrompt || '')
+      setDraftVideoPrompt(item.draft?.videoPrompt || '')
     } else if (isCreate) {
       // New item
       setTitle('')
@@ -106,17 +112,27 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
           }),
         })
       } else if (item) {
+        const updates: Record<string, unknown> = {
+          title: title.trim(),
+          agent,
+          contentType,
+          tone,
+          scheduledAt: new Date(scheduledAt).toISOString(),
+          brief: brief.trim(),
+        }
+        // Include draft fields if item has a draft or any draft field is filled
+        if (item.draft || draftCaption || draftImagePrompt || draftVideoPrompt) {
+          updates.draft = {
+            ...item.draft,
+            caption: draftCaption,
+            imagePrompt: draftImagePrompt,
+            videoPrompt: draftVideoPrompt,
+          }
+        }
         await fetch(`/api/plugins/calendar/${item.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: title.trim(),
-            agent,
-            contentType,
-            tone,
-            scheduledAt: new Date(scheduledAt).toISOString(),
-            brief: brief.trim(),
-          }),
+          body: JSON.stringify(updates),
         })
       }
       onUpdated()
@@ -251,6 +267,53 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
               className="bg-surface min-h-[100px]"
             />
           </div>
+
+          {/* Draft fields — only show when item has draft content or is being edited */}
+          {item?.draft !== undefined && (
+            <>
+              <Separator />
+              <h3 className="text-sm font-medium">Draft Content</h3>
+
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Caption</label>
+                <Textarea
+                  value={draftCaption}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => { setDraftCaption(e.target.value); setDirty(true) }}
+                  placeholder="Post caption..."
+                  className="bg-surface min-h-[80px]"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Image Prompt</label>
+                <Textarea
+                  value={draftImagePrompt}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => { setDraftImagePrompt(e.target.value); setDirty(true) }}
+                  placeholder="Image generation prompt..."
+                  className="bg-surface min-h-[60px]"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Video Prompt</label>
+                <Textarea
+                  value={draftVideoPrompt}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => { setDraftVideoPrompt(e.target.value); setDirty(true) }}
+                  placeholder="Video generation prompt..."
+                  className="bg-surface min-h-[60px]"
+                />
+              </div>
+
+              {item?.draft?.agentNotes && (
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Agent Notes (read-only)</label>
+                  <p className="text-sm text-muted-foreground bg-surface rounded-lg p-3 italic">
+                    {item.draft.agentNotes}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={isCreate ? onClose : onCancelEdit}>
