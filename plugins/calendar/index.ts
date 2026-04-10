@@ -133,6 +133,7 @@ const calendarPlugin: BakinPlugin = {
     fields: [
       { key: 'defaultView', type: 'select', label: 'Default view', description: 'Calendar view shown on page load', options: [{ value: 'month', label: 'Month' }, { value: 'week', label: 'Week' }, { value: 'list', label: 'List' }], default: 'month' },
       { key: 'showScheduleJobs', type: 'boolean', label: 'Show schedule jobs', description: 'Display recurring schedule jobs on the calendar', default: false },
+      { key: 'channels', type: 'string', label: 'Channels', description: 'Comma-separated list of available distribution channels (e.g., discord,instagram,email)', default: 'discord' },
     ],
   },
 
@@ -145,12 +146,16 @@ const calendarPlugin: BakinPlugin = {
   activate(ctx: PluginContext) {
     // ── API Routes ─────────────────────────────────────────────────────
 
-    // GET / — list items (optional ?month=YYYY-MM filter)
+    // GET / — list items (optional ?month=YYYY-MM&channel=discord filter)
     const listHandler = async (req: Request) => {
       const url = new URL(req.url)
       const month = url.searchParams.get('month')
+      const channel = url.searchParams.get('channel')
       let items = loadCalendarItems()
       if (month) items = items.filter(i => i.scheduledAt.startsWith(month))
+      if (channel) items = items.filter(i =>
+        (i.channels && i.channels.includes(channel)) || i.channel === channel
+      )
       items.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
       return json({ items })
     }
@@ -170,26 +175,27 @@ const calendarPlugin: BakinPlugin = {
     // POST / — create item
     const createHandler = async (req: Request) => {
       const body = await readBody<Record<string, unknown>>(req)
-      const { title, agent, channel, channelTarget, contentType, tone, scheduledAt, brief, status } = body as Record<string, string>
+      const { title, agent, channel, channelTarget, contentType, tone, scheduledAt, brief, status, channels } = body as Record<string, unknown>
 
       if (!title || !agent || !scheduledAt) {
         return json({ error: 'title, agent, and scheduledAt required' }, 400)
       }
 
       const item = createItem({
-        title,
-        agent: agent as CalendarItem['agent'],
-        channel: (channel || 'discord') as CalendarItem['channel'],
-        channelTarget: channelTarget || '1483917792745885768',
-        contentType: (contentType || 'tip') as CalendarItem['contentType'],
-        tone: (tone || 'conversational') as CalendarItem['tone'],
-        scheduledAt,
-        brief: brief || '',
-        status: (status as ContentStatus) || 'draft',
+        title: title as string,
+        agent: (agent as string) as CalendarItem['agent'],
+        channel: ((channel as string) || 'discord') as CalendarItem['channel'],
+        channelTarget: (channelTarget as string) || '1483917792745885768',
+        contentType: ((contentType as string) || 'tip') as CalendarItem['contentType'],
+        tone: ((tone as string) || 'conversational') as CalendarItem['tone'],
+        scheduledAt: scheduledAt as string,
+        brief: (brief as string) || '',
+        status: ((status as string) as ContentStatus) || 'draft',
+        channels: (channels as string[]) || undefined,
       })
 
-      ctx.activity.audit('item.created', agent, { itemId: item.id, title })
-      ctx.activity.log(agent, `Created calendar item "${title}"`)
+      ctx.activity.audit('item.created', agent as string, { itemId: item.id, title })
+      ctx.activity.log(agent as string, `Created calendar item "${title}"`)
       return json({ ok: true, item })
     }
     ctx.registerRoute({ path: '/', method: 'POST', description: 'Create calendar item', handler: createHandler })
@@ -719,12 +725,19 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         month: z.string().optional().describe('Filter by month (YYYY-MM)'),
         status: z.string().optional().describe('Filter by status (draft, scheduled, review, published, etc.)'),
         agent: z.string().optional().describe('Filter by assigned agent'),
+        channel: z.string().optional().describe('Filter by channel (e.g. discord, instagram)'),
       },
       handler: async (params: Record<string, unknown>) => {
         let items = loadCalendarItems()
         if (params.month) items = items.filter(i => i.scheduledAt.startsWith(params.month as string))
         if (params.status) items = items.filter(i => i.status === params.status)
         if (params.agent) items = items.filter(i => i.agent === params.agent)
+        if (params.channel) {
+          const ch = params.channel as string
+          items = items.filter(i =>
+            (i.channels && i.channels.includes(ch)) || i.channel === ch
+          )
+        }
         items.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
         return {
           ok: true,
@@ -736,6 +749,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
             status: i.status,
             scheduledAt: i.scheduledAt,
             channel: i.channel,
+            channels: i.channels,
             contentType: i.contentType,
           })),
         }
@@ -764,6 +778,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         agent: z.string().describe('Assigned agent (required)'),
         scheduledAt: z.string().describe('ISO datetime for scheduling (required)'),
         channel: z.string().optional().describe('Channel (default: discord)'),
+        channels: z.array(z.string()).optional().describe('Distribution channels (e.g. ["discord", "instagram"])'),
         channelTarget: z.string().optional().describe('Channel target ID'),
         contentType: z.string().optional().describe('Content type (recipe, tip, motivation, etc.)'),
         tone: z.string().optional().describe('Content tone (energetic, calm, educational, etc.)'),
@@ -774,11 +789,13 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         if (!params.title || !params.agent || !params.scheduledAt) {
           return { ok: false, error: 'title, agent, and scheduledAt required' }
         }
+        const channels = (params.channels as string[]) || (params.channel ? [params.channel as string] : ['discord'])
         const item = createItem({
           title: params.title as string,
           agent: params.agent as CalendarItem['agent'],
           scheduledAt: params.scheduledAt as string,
-          channel: ((params.channel as string) || 'discord') as CalendarItem['channel'],
+          channel: ((params.channel as string) || channels[0] || 'discord') as CalendarItem['channel'],
+          channels,
           channelTarget: (params.channelTarget as string) || '1483917792745885768',
           contentType: ((params.contentType as string) || 'tip') as CalendarItem['contentType'],
           tone: ((params.tone as string) || 'conversational') as CalendarItem['tone'],
