@@ -71,10 +71,10 @@ export async function handleGatewayRequest(req: GatewayRequest): Promise<Gateway
     const agentId = (Array.isArray(agentHeader) ? agentHeader[0] : agentHeader) || 'unknown'
     const agentName = AGENT_NAMES[agentId] || agentId
 
-    let parsed: { messages?: Array<{ content?: string }> } = {}
+    let parsed: { messages?: Array<{ content?: string }>; stream?: boolean } = {}
     try { parsed = JSON.parse(body) } catch { /* */ }
 
-    const userMessage = parsed.messages?.[0]?.content || ''
+    const userMessage = parsed.messages?.[parsed.messages.length - 1]?.content || ''
 
     let reply: string
     switch (CHAT_MODE) {
@@ -88,7 +88,15 @@ export async function handleGatewayRequest(req: GatewayRequest): Promise<Gateway
         reply = `[mock:${agentName}] Acknowledged. Task understood — working on it.`
     }
 
-    console.log(`  → agent=${agentId} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)
+    console.log(`  → agent=${agentId} stream=${!!parsed.stream} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)
+
+    // Streaming: return a marker so handleRequest can send SSE
+    if (parsed.stream) {
+      return {
+        status: 200,
+        body: { __stream: true, content: reply },
+      }
+    }
 
     return {
       status: 200,
@@ -118,6 +126,30 @@ export async function handleGatewayRequest(req: GatewayRequest): Promise<Gateway
   return { status: 404, body: { error: 'Not found', mock: true } }
 }
 
+/**
+ * Stream a response as SSE chunks in OpenAI-compatible format.
+ * Splits content into word-level chunks for realistic streaming simulation.
+ */
+function sendSSE(res: ServerResponse, content: string): void {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  })
+
+  const words = content.split(/(\s+)/)
+  for (const word of words) {
+    if (!word) continue
+    const chunk = JSON.stringify({
+      choices: [{ delta: { content: word } }],
+    })
+    res.write(`data: ${chunk}\n\n`)
+  }
+
+  res.write('data: [DONE]\n\n')
+  res.end()
+}
+
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = await readBody(req)
   const response = await handleGatewayRequest({
@@ -126,6 +158,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     headers: req.headers,
     body,
   })
+
+  // Check for streaming marker
+  const responseBody = response.body as Record<string, unknown>
+  if (responseBody && responseBody.__stream === true) {
+    sendSSE(res, responseBody.content as string)
+    return
+  }
+
   json(res, response.body, response.status)
 }
 
