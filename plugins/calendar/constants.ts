@@ -1,4 +1,4 @@
-import type { ContentAgent, ContentStatus, ContentType, ContentTone } from './types'
+import type { ContentAgent, ContentChannel, ContentStatus, ContentType, ContentTone } from './types'
 import { AGENT_INFO } from './types'
 
 export const CONTENT_AGENTS = Object.keys(AGENT_INFO) as ContentAgent[]
@@ -30,4 +30,22 @@ export const TONE_LABELS: Record<ContentTone, string> = {
   humorous: 'Humorous',
   inspiring: 'Inspiring',
   conversational: 'Conversational',
+}
+
+export const CHANNEL_LABELS: Record<ContentChannel, string> = {
+  discord: 'Discord',
+  instagram: 'Instagram',
+  email: 'Email',
+  twitter: 'Twitter',
+  youtube: 'YouTube',
+  tiktok: 'TikTok',
+}
+
+export const CHANNEL_INITIALS: Record<ContentChannel, string> = {
+  discord: 'DC',
+  instagram: 'IG',
+  email: 'EM',
+  twitter: 'TW',
+  youtube: 'YT',
+  tiktok: 'TK',
 }

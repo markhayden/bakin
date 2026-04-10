@@ -24,9 +24,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import type { CalendarItem, ContentAgent, ContentType, ContentTone } from '../types'
+import type { CalendarItem, ContentAgent, ContentChannel, ContentType, ContentTone } from '../types'
 import { AGENT_INFO, DISCORD_GENERAL } from '../types'
-import { CONTENT_AGENTS, CONTENT_TYPE_LABELS, TONE_LABELS, STATUS_BADGE } from '../constants'
+import { CONTENT_AGENTS, CONTENT_TYPE_LABELS, TONE_LABELS, STATUS_BADGE, CHANNEL_LABELS, CHANNEL_INITIALS } from '../constants'
 
 interface Props {
   item: CalendarItem | null
@@ -50,6 +50,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
   const [brief, setBrief] = useState('')
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [channels, setChannels] = useState<string[]>(['discord'])
   const [draftCaption, setDraftCaption] = useState('')
   const [draftImagePrompt, setDraftImagePrompt] = useState('')
   const [draftVideoPrompt, setDraftVideoPrompt] = useState('')
@@ -73,6 +74,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
       setTone(item.tone)
       setScheduledAt(item.scheduledAt.slice(0, 16))
       setBrief(item.brief || '')
+      setChannels(item.channels || (item.channel ? [item.channel] : ['discord']))
       setDraftCaption(item.draft?.caption || '')
       setDraftImagePrompt(item.draft?.imagePrompt || '')
       setDraftVideoPrompt(item.draft?.videoPrompt || '')
@@ -84,6 +86,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
       setTone('conversational')
       setScheduledAt(defaultDate || new Date().toISOString().slice(0, 16))
       setBrief('')
+      setChannels(['discord'])
     }
     setRejectionNote('')
     setShowRejectForm(false)
@@ -106,7 +109,8 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
             tone,
             scheduledAt: new Date(scheduledAt).toISOString(),
             brief: brief.trim(),
-            channel: 'discord',
+            channels,
+            channel: channels[0] || 'discord',
             channelTarget: DISCORD_GENERAL,
             status: 'draft',
           }),
@@ -117,6 +121,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
           agent,
           contentType,
           tone,
+          channels,
           scheduledAt: new Date(scheduledAt).toISOString(),
           brief: brief.trim(),
         }
@@ -255,6 +260,34 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
                 onChange={(e) => { setScheduledAt(e.target.value); setDirty(true) }}
                 className="bg-surface"
               />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm text-muted-foreground mb-1 block">Channels</label>
+            <div className="flex flex-wrap gap-1.5 p-2 rounded-md border border-border bg-surface min-h-[38px]">
+              {(Object.entries(CHANNEL_LABELS) as [ContentChannel, string][]).map(([ch, label]) => {
+                const active = channels.includes(ch)
+                return (
+                  <button
+                    key={ch}
+                    type="button"
+                    onClick={() => {
+                      setChannels(prev =>
+                        active ? prev.filter(c => c !== ch) : [...prev, ch]
+                      )
+                      setDirty(true)
+                    }}
+                    className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                      active
+                        ? 'bg-accent text-accent-foreground border-accent'
+                        : 'bg-transparent text-muted-foreground border-border hover:border-foreground/30'
+                    }`}
+                  >
+                    {CHANNEL_INITIALS[ch]} {label}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
@@ -458,22 +491,26 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
             <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Tone</div>
             <div className="text-sm font-medium">{TONE_LABELS[item.tone]}</div>
           </div>
-          {item.channel && (
-            <div className="rounded-lg bg-surface p-3 space-y-1 col-span-2">
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground uppercase tracking-wider">
-                <MessageSquare className="size-3" />
-                Channel
-              </div>
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <span className="capitalize">{item.channel}</span>
-                {item.channelTarget && (
-                  <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                    <Hash className="size-3" />{item.channelTarget}
-                  </span>
-                )}
-              </div>
+          <div className="rounded-lg bg-surface p-3 space-y-1 col-span-2">
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground uppercase tracking-wider">
+              <MessageSquare className="size-3" />
+              Channels
             </div>
-          )}
+            <div className="flex items-center gap-2 text-sm font-medium">
+              {(item.channels || (item.channel ? [item.channel] : [])).map(ch => (
+                <Badge key={ch} variant="outline" className="text-[10px]">
+                  {CHANNEL_INITIALS[ch as ContentChannel] || ch.slice(0, 2).toUpperCase()}
+                  {' '}
+                  {CHANNEL_LABELS[ch as ContentChannel] || ch}
+                </Badge>
+              ))}
+              {item.channelTarget && (
+                <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                  <Hash className="size-3" />{item.channelTarget}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Brief */}
