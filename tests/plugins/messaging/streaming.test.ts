@@ -197,12 +197,11 @@ describe('Streaming endpoint', () => {
     const text = await res.text()
     const events = parseSSEEvents(text)
 
-    const proposalEvents = events.filter(e => e.event === 'proposals')
+    const proposalEvents = events.filter(e => e.event === 'proposal')
     expect(proposalEvents.length).toBe(1)
-    const proposals = proposalEvents[0].data.proposals as Array<Record<string, unknown>>
-    expect(proposals.length).toBe(1)
-    expect(proposals[0].title).toBe('Monday Recipe')
-    expect(proposals[0].status).toBe('proposed')
+    const proposal = proposalEvents[0].data.proposal as Record<string, unknown>
+    expect(proposal.title).toBe('Monday Recipe')
+    expect(proposal.status).toBe('proposed')
   })
 
   it('persists user and assistant messages to session file', async () => {

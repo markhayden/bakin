@@ -202,6 +202,79 @@ export function addProposals(
   return proposals
 }
 
+/**
+ * Upsert proposals — if an item has an `id` matching an existing proposal, update it.
+ * Otherwise create a new one. Returns the full list of affected proposals.
+ */
+export function upsertProposals(
+  sessionId: string,
+  messageId: string,
+  items: Array<{
+    id?: string
+    title: string
+    scheduledAt: string
+    contentType: string
+    tone: string
+    brief: string
+    channels?: string[]
+  }>
+): ProposedItem[] {
+  const session = loadSession(sessionId)
+  if (!session) throw new Error(`Session ${sessionId} not found`)
+
+  const result: ProposedItem[] = []
+
+  for (const item of items) {
+    // Try to match existing proposal by id, then by title
+    let existing: ProposedItem | undefined
+    if (item.id) {
+      existing = session.proposals.find(p => p.id === item.id)
+    }
+    if (!existing) {
+      // Fallback: match by title (case-insensitive, trimmed)
+      const titleLower = item.title.toLowerCase().trim()
+      existing = session.proposals.find(
+        p => p.title.toLowerCase().trim() === titleLower && p.status !== 'approved'
+      )
+    }
+
+    if (existing) {
+      // Update in place
+      existing.title = item.title
+      existing.scheduledAt = item.scheduledAt
+      existing.contentType = item.contentType
+      existing.tone = item.tone
+      existing.brief = item.brief
+      if (item.channels) existing.channels = item.channels
+      existing.messageId = messageId
+      existing.revision += 1
+      if (existing.status === 'rejected') existing.status = 'revised'
+      result.push(existing)
+    } else {
+      // Create new
+      const newProposal: ProposedItem = {
+        id: generateId(),
+        messageId,
+        revision: 1,
+        agentId: session.agentId,
+        title: item.title,
+        scheduledAt: item.scheduledAt,
+        contentType: item.contentType,
+        tone: item.tone,
+        brief: item.brief,
+        channels: item.channels,
+        status: 'proposed',
+      }
+      session.proposals.push(newProposal)
+      result.push(newProposal)
+    }
+  }
+
+  session.updatedAt = new Date().toISOString()
+  writeFileSync(getSessionPath(sessionId), JSON.stringify(session, null, 2))
+  return result
+}
+
 export function updateProposal(
   sessionId: string,
   proposalId: string,

@@ -84,10 +84,17 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
   const handleProposalsReceived = useCallback((newProposals: ProposedItem[]) => {
     setSession((prev) => {
       if (!prev) return prev
-      return {
-        ...prev,
-        proposals: [...prev.proposals, ...newProposals],
+      // Upsert: replace existing proposals by id, append new ones
+      const updatedProposals = [...prev.proposals]
+      for (const np of newProposals) {
+        const idx = updatedProposals.findIndex(p => p.id === np.id)
+        if (idx >= 0) {
+          updatedProposals[idx] = np
+        } else {
+          updatedProposals.push(np)
+        }
       }
+      return { ...prev, proposals: updatedProposals }
     })
   }, [])
 
@@ -106,7 +113,9 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
   const handleConfirm = useCallback(() => {
     setSession((prev) => prev ? { ...prev, status: 'completed' } : prev)
     onSessionUpdated?.()
-  }, [onSessionUpdated])
+    // Kick back to session list after a brief delay so the toast is visible
+    setTimeout(() => onBack?.(), 600)
+  }, [onSessionUpdated, onBack])
 
   // Must be before early returns to satisfy Rules of Hooks
   const proposalDates = useMemo(
@@ -239,12 +248,12 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
           <DropdownMenuTrigger className="h-7 w-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.06)] transition-colors">
             <MoreHorizontal className="w-4 h-4" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-36">
+          <DropdownMenuContent align="end" className="min-w-[160px]">
             <DropdownMenuItem
               onClick={() => setShowDeleteDialog(true)}
-              className="text-red-400 focus:text-red-400"
+              className="text-red-400 focus:text-red-400 whitespace-nowrap"
             >
-              <Trash2 className="size-3.5 mr-2" />
+              <Trash2 className="size-3.5 mr-2 shrink-0" />
               Delete session
             </DropdownMenuItem>
           </DropdownMenuContent>

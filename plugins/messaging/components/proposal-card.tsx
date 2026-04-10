@@ -131,7 +131,7 @@ export function ProposalCard({ proposal, onApprove, onReject, onEdit, onTitleCha
                 size="sm"
                 variant="ghost"
                 className="h-6 w-6 p-0 text-emerald-400 hover:text-emerald-300"
-                onClick={() => onApprove?.(proposal.id)}
+                onClick={(e) => { e.stopPropagation(); onApprove?.(proposal.id) }}
                 title="Approve"
               >
                 <Check className="w-3.5 h-3.5" />
@@ -140,7 +140,7 @@ export function ProposalCard({ proposal, onApprove, onReject, onEdit, onTitleCha
                 size="sm"
                 variant="ghost"
                 className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
-                onClick={() => setShowRejectInput(!showRejectInput)}
+                onClick={(e) => { e.stopPropagation(); setShowRejectInput(!showRejectInput) }}
                 title="Reject"
               >
                 <X className="w-3.5 h-3.5" />
@@ -149,7 +149,7 @@ export function ProposalCard({ proposal, onApprove, onReject, onEdit, onTitleCha
                 size="sm"
                 variant="ghost"
                 className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                onClick={() => onEdit?.(proposal.id)}
+                onClick={(e) => { e.stopPropagation(); onEdit?.(proposal.id) }}
                 title="Edit"
               >
                 <Pencil className="w-3.5 h-3.5" />
@@ -160,7 +160,7 @@ export function ProposalCard({ proposal, onApprove, onReject, onEdit, onTitleCha
       </div>
 
       {showRejectInput && (
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex gap-2" onClick={(e) => e.stopPropagation()}>
           <Input
             value={rejectionNote}
             onChange={(e) => setRejectionNote(e.target.value)}

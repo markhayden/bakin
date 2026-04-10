@@ -16,6 +16,7 @@ import { AGENT_INFO } from '../types'
 import type { ContentAgent } from '../types'
 import { SessionList } from './session-list'
 import { PlanningLayout } from './planning-layout'
+import { NewSessionDialog } from './new-session-dialog'
 
 const CONTENT_AGENTS = Object.keys(AGENT_INFO) as ContentAgent[]
 
@@ -28,6 +29,7 @@ export function BrainstormView() {
   const [search, setSearch] = useState('')
   const [creating, setCreating] = useState(false)
   const [sessionCount, setSessionCount] = useState<number | undefined>(undefined)
+  const [pendingAgent, setPendingAgent] = useState<ContentAgent | null>(null)
 
   const pushSessionId = useCallback((id: string) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -39,13 +41,20 @@ export function BrainstormView() {
     router.push(`${pathname}?${params.toString()}`)
   }, [searchParams, router, pathname])
 
-  const handleCreateSession = async (agentId: string) => {
+  // Open the naming dialog for a given agent
+  const handleStartCreate = (agentId: string) => {
+    setPendingAgent(agentId as ContentAgent)
+  }
+
+  // Actually create the session with a name
+  const handleCreateSession = async (agentId: string, title: string) => {
+    setPendingAgent(null)
     setCreating(true)
     try {
       const res = await fetch('/api/plugins/messaging/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId }),
+        body: JSON.stringify({ agentId, title }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -96,7 +105,7 @@ export function BrainstormView() {
                 return (
                   <DropdownMenuItem
                     key={agentId}
-                    onClick={() => handleCreateSession(agentId)}
+                    onClick={() => handleStartCreate(agentId)}
                     data-testid={`agent-option-${agentId}`}
                   >
                     <AgentAvatar agentId={agentId} size="xs" />
@@ -114,10 +123,17 @@ export function BrainstormView() {
           onSelectSession={pushSessionId}
           search={search}
           onCountChange={setSessionCount}
-          onCreateSession={handleCreateSession}
+          onCreateSession={handleStartCreate}
           creating={creating}
         />
       </div>
+
+      <NewSessionDialog
+        open={!!pendingAgent}
+        agentId={pendingAgent}
+        onConfirm={handleCreateSession}
+        onCancel={() => setPendingAgent(null)}
+      />
     </div>
   )
 }

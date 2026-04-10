@@ -53,7 +53,7 @@ describe('buildSystemPrompt', () => {
     const prompt = buildSystemPrompt('basil', makeSession(), testDir)
     expect(prompt).toContain('You are Basil')
     expect(prompt).toContain('Planning Instructions')
-    expect(prompt).toContain('Revision Rules')
+    expect(prompt).toContain('Revising Existing Proposals')
   })
 
   it('includes persona when file exists', () => {
@@ -101,7 +101,7 @@ describe('buildSystemPrompt', () => {
 
   it('omits plan state when no proposals exist', () => {
     const prompt = buildSystemPrompt('basil', makeSession(), testDir)
-    expect(prompt).not.toContain('Current Plan State')
+    expect(prompt).not.toContain('## Current Plan State')
   })
 
   it('handles unknown agent gracefully', () => {

@@ -20,6 +20,7 @@ import {
   deleteSession as deleteSessionFn,
   appendMessage,
   addProposals,
+  upsertProposals,
   updateProposal,
   confirmSession,
 } from './lib/sessions'
@@ -131,8 +132,8 @@ const messagingPlugin: BakinPlugin = {
 
   settingsSchema: {
     fields: [
-      { key: 'defaultView', type: 'select', label: 'Default view', description: 'Calendar view shown on page load', options: [{ value: 'month', label: 'Month' }, { value: 'week', label: 'Week' }, { value: 'list', label: 'List' }], default: 'month' },
-      { key: 'showScheduleJobs', type: 'boolean', label: 'Show schedule jobs', description: 'Display recurring schedule jobs on the calendar', default: false },
+      { key: 'defaultView', type: 'select', label: 'Default view', description: 'Default messaging view on page load', options: [{ value: 'month', label: 'Month' }, { value: 'week', label: 'Week' }, { value: 'list', label: 'List' }], default: 'month' },
+      { key: 'showScheduleJobs', type: 'boolean', label: 'Show schedule jobs', description: 'Display recurring schedule jobs on the content calendar', default: false },
       { key: 'channels', type: 'string', label: 'Channels', description: 'Comma-separated list of available distribution channels (e.g., discord,instagram,email)', default: 'discord' },
     ],
   },
@@ -551,6 +552,37 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
             try {
               let fullContent = ''
+              // Track proposals emitted incrementally during streaming
+              const streamedProposalIds: string[] = []
+              const sessionId = id as string // narrowed by early return above
+
+              /**
+               * Check fullContent for newly completed ```json blocks.
+               * Parse and upsert each one, emit SSE event immediately.
+               * Uses a temp message ID during streaming; patched to real ID after.
+               */
+              function checkForCompletedBlocks(): void {
+                // Find all complete ```json...``` blocks we haven't processed yet
+                const processed = streamedProposalIds.length
+                const blockRegex = /```json\s*\n([\s\S]*?)```/g
+                let match: RegExpExecArray | null
+                let blockIndex = 0
+                while ((match = blockRegex.exec(fullContent)) !== null) {
+                  if (blockIndex < processed) { blockIndex++; continue }
+                  try {
+                    const parsed = JSON.parse(match[1].trim())
+                    const items = Array.isArray(parsed) ? parsed : [parsed]
+                    const saved = upsertProposals(sessionId, `streaming-${Date.now()}`, items)
+                    for (const p of saved) {
+                      streamedProposalIds.push(p.id)
+                      send('proposal', { proposal: p })
+                    }
+                  } catch {
+                    // JSON not valid yet or malformed — skip
+                  }
+                  blockIndex++
+                }
+              }
 
               // Try streaming first, fall back to non-streaming
               let useStreaming = true
@@ -599,6 +631,10 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
                       if (token) {
                         fullContent += token
                         send('token', { text: token })
+                        // Check if a ```json block just completed
+                        if (token.includes('`')) {
+                          checkForCompletedBlocks()
+                        }
                       }
                     } catch {
                       // Skip malformed chunks
@@ -622,57 +658,81 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
                 }
               }
 
-              // Parse proposals from response
-              let proposals: Array<{
-                title: string
-                scheduledAt: string
-                contentType: string
-                tone: string
-                brief: string
-                channels?: string[]
-              }> = []
+              // Final pass: pick up any remaining ```json blocks not caught during streaming
+              checkForCompletedBlocks()
 
-              const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)\s*```/)
-              if (jsonMatch) {
-                try {
-                  proposals = JSON.parse(jsonMatch[1])
-                } catch { /* ignore malformed JSON */ }
+              // Also handle legacy array format (single block with [...])
+              if (streamedProposalIds.length === 0) {
+                const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)\s*```/)
+                if (jsonMatch) {
+                  try {
+                    const parsed = JSON.parse(jsonMatch[1].trim())
+                    const items = Array.isArray(parsed) ? parsed : [parsed]
+                    const saved = upsertProposals(sessionId, `final-${Date.now()}`, items)
+                    for (const p of saved) {
+                      streamedProposalIds.push(p.id)
+                      send('proposal', { proposal: p })
+                    }
+                  } catch { /* ignore malformed JSON */ }
+                }
               }
 
-              // Save assistant message
-              const cleanContent = fullContent.replace(/```json[\s\S]*?```/g, '').trim()
-              const assistantMsg = appendMessage(id, {
-                role: 'assistant',
-                content: cleanContent,
-              }, proposals.length > 0 ? [] : undefined)
+              // Split content at JSON block boundaries into separate messages
+              // e.g. "intro text ```json...``` day one text ```json...``` closing"
+              // becomes 3 messages: "intro text", "day one text", "closing"
+              const segments = fullContent
+                .split(/```json[\s\S]*?```/)
+                .map(s => s.trim())
+                .filter(s => s.length > 0)
 
-              // Save proposals if found
-              if (proposals.length > 0) {
-                const savedProposals = addProposals(id, assistantMsg.id, proposals)
-                // Update message with proposal IDs
-                const reloadedSession = loadSession(id)
-                if (reloadedSession) {
-                  const msg = reloadedSession.messages.find(m => m.id === assistantMsg.id)
-                  if (msg) {
-                    msg.proposalIds = savedProposals.map(p => p.id)
-                    const { writeFileSync } = await import('fs')
-                    const { join } = await import('path')
-                    writeFileSync(
-                      join(getContentDir(), 'messaging', 'sessions', `${id}.json`),
-                      JSON.stringify(reloadedSession, null, 2)
-                    )
-                  }
-                }
-
-                send('proposals', {
-                  proposals: savedProposals,
-                  messageId: assistantMsg.id,
+              const messageIds: string[] = []
+              for (const segment of segments) {
+                const msg = appendMessage(sessionId, {
+                  role: 'assistant',
+                  content: segment,
                 })
+                messageIds.push(msg.id)
+              }
+
+              // If no text segments (pure JSON response), save a placeholder
+              if (messageIds.length === 0) {
+                const msg = appendMessage(sessionId, {
+                  role: 'assistant',
+                  content: '',
+                }, streamedProposalIds)
+                messageIds.push(msg.id)
+              }
+
+              // Link proposals to the first message and patch messageIds on proposals
+              if (streamedProposalIds.length > 0) {
+                const { writeFileSync } = await import('fs')
+                const { join } = await import('path')
+                const reloadedSession = loadSession(sessionId)
+                if (reloadedSession) {
+                  // Attach proposalIds to the first assistant message
+                  const firstMsg = reloadedSession.messages.find(m => m.id === messageIds[0])
+                  if (firstMsg) firstMsg.proposalIds = streamedProposalIds
+
+                  // Patch proposal messageIds to real assistant message
+                  for (const p of reloadedSession.proposals) {
+                    if (streamedProposalIds.includes(p.id)) {
+                      p.messageId = messageIds[0]
+                    }
+                  }
+                  writeFileSync(
+                    join(getContentDir(), 'messaging', 'sessions', `${sessionId}.json`),
+                    JSON.stringify(reloadedSession, null, 2)
+                  )
+                }
               }
 
               send('done', {
-                messageId: assistantMsg.id,
-                content: cleanContent,
+                messageId: messageIds[0],
+                content: segments.join('\n\n'),
+                segments: segments.map((content, i) => ({
+                  id: messageIds[i],
+                  content,
+                })),
               })
             } catch (err) {
               send('error', { message: err instanceof Error ? err.message : String(err) })
@@ -1037,7 +1097,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
         // Parse proposals
         let proposals: Array<{
-          title: string; scheduledAt: string; contentType: string;
+          id?: string; title: string; scheduledAt: string; contentType: string;
           tone: string; brief: string; channels?: string[]
         }> = []
         const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)\s*```/)
@@ -1053,7 +1113,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
         let savedProposals: unknown[] = []
         if (proposals.length > 0) {
-          savedProposals = addProposals(params.sessionId as string, assistantMsg.id, proposals)
+          savedProposals = upsertProposals(params.sessionId as string, assistantMsg.id, proposals)
         }
 
         return {
@@ -1134,7 +1194,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
   },
 
   onShutdown() {
-    log.info('Calendar plugin shutting down')
+    log.info('Messaging plugin shutting down')
   },
 }
 

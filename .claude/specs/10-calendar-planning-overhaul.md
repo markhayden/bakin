@@ -88,14 +88,14 @@ Every session endpoint gets a corresponding exec tool so agents can interact wit
 
 | Tool Name | Description | Key Params |
 |-----------|-------------|------------|
-| `bakin_exec_calendar_session_list` | List planning sessions | `status?` (active/completed), `agentId?` |
-| `bakin_exec_calendar_session_get` | Get full session with messages + proposals | `sessionId` |
-| `bakin_exec_calendar_session_create` | Create a new planning session | `agentId`, `title?` |
-| `bakin_exec_calendar_session_update` | Update session metadata | `sessionId`, `title?`, `status?` |
-| `bakin_exec_calendar_session_delete` | Delete a session | `sessionId` |
-| `bakin_exec_calendar_session_message` | Add a message to a session (triggers agent response) | `sessionId`, `message` |
-| `bakin_exec_calendar_proposal_update` | Update a proposal (approve, reject, edit) | `sessionId`, `proposalId`, `status?`, `title?`, `brief?`, `tone?`, `scheduledAt?`, `channels?`, `rejectionNote?` |
-| `bakin_exec_calendar_session_confirm` | Confirm plan — commit approved proposals to calendar | `sessionId` |
+| `bakin_exec_messaging_session_list` | List planning sessions | `status?` (active/completed), `agentId?` |
+| `bakin_exec_messaging_session_get` | Get full session with messages + proposals | `sessionId` |
+| `bakin_exec_messaging_session_create` | Create a new planning session | `agentId`, `title?` |
+| `bakin_exec_messaging_session_update` | Update session metadata | `sessionId`, `title?`, `status?` |
+| `bakin_exec_messaging_session_delete` | Delete a session | `sessionId` |
+| `bakin_exec_messaging_session_message` | Add a message to a session (triggers agent response) | `sessionId`, `message` |
+| `bakin_exec_messaging_proposal_update` | Update a proposal (approve, reject, edit) | `sessionId`, `proposalId`, `status?`, `title?`, `brief?`, `tone?`, `scheduledAt?`, `channels?`, `rejectionNote?` |
+| `bakin_exec_messaging_session_confirm` | Confirm plan — commit approved proposals to calendar | `sessionId` |
 
 Note: `session_message` via MCP is non-streaming — it makes the full OpenClaw call and returns the complete response. Streaming is a UI concern; agents calling this tool get the same result synchronously.
 
@@ -392,9 +392,9 @@ Read logic: if `channels` is present, use it. If not, fall back to `[channel]` f
 ### MCP + CLI Updates
 
 **Exec tools** — update existing tools to support `channels`:
-- `bakin_exec_calendar_create` — add `channels?: string[]` param
-- `bakin_exec_calendar_update` — add `channels?: string[]` param
-- `bakin_exec_calendar_list` — add `channel?: string` filter param (matches any item containing that channel)
+- `bakin_exec_messaging_create` — add `channels?: string[]` param
+- `bakin_exec_messaging_update` — add `channels?: string[]` param
+- `bakin_exec_messaging_list` — add `channel?: string` filter param (matches any item containing that channel)
 
 **CLI** — update existing commands:
 - `bakin calendar create` — add `--channels discord,instagram` flag
@@ -450,25 +450,25 @@ After all phases, the calendar plugin registers these exec tools (existing + new
 ### Existing (7 tools — unchanged unless noted)
 | Tool | Notes |
 |------|-------|
-| `bakin_exec_calendar_list` | Add `channel` filter param (Phase 5) |
-| `bakin_exec_calendar_get` | No changes |
-| `bakin_exec_calendar_create` | Add `channels` param (Phase 5) |
-| `bakin_exec_calendar_update` | Add `channels` param (Phase 5) |
-| `bakin_exec_calendar_approve` | No changes |
-| `bakin_exec_calendar_reject` | No changes |
-| `bakin_exec_calendar_delete` | No changes |
+| `bakin_exec_messaging_list` | Add `channel` filter param (Phase 5) |
+| `bakin_exec_messaging_get` | No changes |
+| `bakin_exec_messaging_create` | Add `channels` param (Phase 5) |
+| `bakin_exec_messaging_update` | Add `channels` param (Phase 5) |
+| `bakin_exec_messaging_approve` | No changes |
+| `bakin_exec_messaging_reject` | No changes |
+| `bakin_exec_messaging_delete` | No changes |
 
 ### New (8 tools — Phase 1)
 | Tool | Params | Returns |
 |------|--------|---------|
-| `bakin_exec_calendar_session_list` | `status?`, `agentId?` | `{ sessions: [{ id, agentId, title, status, updatedAt, proposalCount, approvedCount }] }` |
-| `bakin_exec_calendar_session_get` | `sessionId` | `{ session: PlanningSession }` (full session with messages + proposals) |
-| `bakin_exec_calendar_session_create` | `agentId`, `title?` | `{ session: PlanningSession }` |
-| `bakin_exec_calendar_session_update` | `sessionId`, `title?`, `status?` | `{ session: PlanningSession }` |
-| `bakin_exec_calendar_session_delete` | `sessionId` | `{ ok: true }` |
-| `bakin_exec_calendar_session_message` | `sessionId`, `message` | `{ response, suggestions, messageId }` (non-streaming for MCP) |
-| `bakin_exec_calendar_proposal_update` | `sessionId`, `proposalId`, `status?`, `title?`, `brief?`, `tone?`, `scheduledAt?`, `channels?`, `rejectionNote?` | `{ proposal: ProposedItem }` |
-| `bakin_exec_calendar_session_confirm` | `sessionId` | `{ ok: true, itemsCreated: number, itemIds: string[] }` |
+| `bakin_exec_messaging_session_list` | `status?`, `agentId?` | `{ sessions: [{ id, agentId, title, status, updatedAt, proposalCount, approvedCount }] }` |
+| `bakin_exec_messaging_session_get` | `sessionId` | `{ session: PlanningSession }` (full session with messages + proposals) |
+| `bakin_exec_messaging_session_create` | `agentId`, `title?` | `{ session: PlanningSession }` |
+| `bakin_exec_messaging_session_update` | `sessionId`, `title?`, `status?` | `{ session: PlanningSession }` |
+| `bakin_exec_messaging_session_delete` | `sessionId` | `{ ok: true }` |
+| `bakin_exec_messaging_session_message` | `sessionId`, `message` | `{ response, suggestions, messageId }` (non-streaming for MCP) |
+| `bakin_exec_messaging_proposal_update` | `sessionId`, `proposalId`, `status?`, `title?`, `brief?`, `tone?`, `scheduledAt?`, `channels?`, `rejectionNote?` | `{ proposal: ProposedItem }` |
+| `bakin_exec_messaging_session_confirm` | `sessionId` | `{ ok: true, itemsCreated: number, itemIds: string[] }` |
 
 **Total after all phases: 15 exec tools** (up from 7).
 

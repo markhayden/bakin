@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { BakinDrawer } from '@/components/bakin-drawer'
-import { CheckCircle, Loader2 } from 'lucide-react'
+import { Check, CheckCircle, Loader2, X } from 'lucide-react'
+import { toast } from '@/hooks/use-toast'
 import { ProposalCard } from './proposal-card'
 import type { ProposedItem } from '../types'
 
@@ -40,6 +41,8 @@ export function ReviewPanel({
     contentType: '',
     tone: '',
   })
+  const [drawerRejectNote, setDrawerRejectNote] = useState('')
+  const [showDrawerReject, setShowDrawerReject] = useState(false)
 
   const approvedCount = useMemo(
     () => proposals.filter((p) => p.status === 'approved').length,
@@ -112,10 +115,12 @@ export function ReviewPanel({
       if (res.ok) {
         const data = await res.json()
         setConfirmed(true)
+        const count = data.itemsCreated ?? approvedCount
+        toast(`${count} ${count === 1 ? 'item' : 'items'} added to calendar`, 'success')
         onConfirm?.(data)
       }
     } catch {
-      // Error handling
+      toast('Failed to confirm plan', 'error')
     } finally {
       setConfirming(false)
     }
@@ -132,6 +137,8 @@ export function ReviewPanel({
       contentType: p.contentType,
       tone: p.tone,
     })
+    setShowDrawerReject(false)
+    setDrawerRejectNote('')
   }
 
   const handleEditSave = async () => {
@@ -206,8 +213,12 @@ export function ReviewPanel({
               {dateProposals.map((proposal) => (
                 <div
                   key={proposal.id}
-                  onClick={() => onScrollToMessage?.(proposal.messageId)}
-                  className="cursor-pointer"
+                  onClick={() => {
+                    if (!isCompleted && !confirmed) {
+                      handleOpenEdit(proposal.id)
+                    }
+                  }}
+                  className={!isCompleted && !confirmed ? 'cursor-pointer' : ''}
                 >
                   <ProposalCard
                     proposal={proposal}
@@ -315,13 +326,69 @@ export function ReviewPanel({
               </div>
             </div>
 
+            {/* Reject input */}
+            {showDrawerReject && (
+              <div className="space-y-2 pt-2 border-t border-border">
+                <Label htmlFor="drawer-reject-note">Rejection Note (optional)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="drawer-reject-note"
+                    value={drawerRejectNote}
+                    onChange={(e) => setDrawerRejectNote(e.target.value)}
+                    placeholder="What should change?"
+                    className="text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleReject(editingProposal.id, drawerRejectNote)
+                        setEditingProposal(null)
+                      }
+                      if (e.key === 'Escape') setShowDrawerReject(false)
+                    }}
+                    autoFocus
+                  />
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      handleReject(editingProposal.id, drawerRejectNote)
+                      setEditingProposal(null)
+                    }}
+                  >
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
             <div className="flex gap-2 pt-2">
               <Button onClick={handleEditSave} className="flex-1">
                 Save Changes
               </Button>
-              <Button variant="outline" onClick={() => setEditingProposal(null)}>
-                Cancel
-              </Button>
+              {(editingProposal.status === 'proposed' || editingProposal.status === 'revised') && (
+                <>
+                  <Button
+                    variant="outline"
+                    className="text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                    onClick={() => {
+                      handleApprove(editingProposal.id)
+                      setEditingProposal(null)
+                    }}
+                    title="Approve"
+                  >
+                    <Check className="w-4 h-4 mr-1" />
+                    Approve
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="text-red-400 border-red-500/30 hover:bg-red-500/10"
+                    onClick={() => setShowDrawerReject(true)}
+                    title="Reject"
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    Reject
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         )}
