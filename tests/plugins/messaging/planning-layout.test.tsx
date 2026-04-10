@@ -46,10 +46,23 @@ vi.mock('lucide-react', () => ({
   Check: () => <span />,
   X: () => <span />,
   Calendar: () => <span />,
+  MoreHorizontal: () => <span />,
+  Trash2: () => <span />,
+}))
+
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
+  DropdownMenuTrigger: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
+  DropdownMenuContent: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
+  DropdownMenuItem: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
 }))
 
 vi.mock('../../../plugins/messaging/components/mini-calendar', () => ({
   MiniCalendar: () => <div data-testid="mini-calendar">Mini Calendar</div>,
+}))
+
+vi.mock('../../../plugins/messaging/components/delete-session-dialog', () => ({
+  DeleteSessionDialog: () => null,
 }))
 
 import { PlanningLayout } from '../../../plugins/messaging/components/planning-layout'

@@ -5,10 +5,17 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
-import { ArrowLeft, PanelRight, PanelRightClose, Pencil, Check, X, Calendar } from 'lucide-react'
+import { ArrowLeft, PanelRight, PanelRightClose, Pencil, Check, X, Calendar, MoreHorizontal, Trash2 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import { SessionChat } from './session-chat'
 import { ReviewPanel } from './review-panel'
 import { MiniCalendar } from './mini-calendar'
+import { DeleteSessionDialog } from './delete-session-dialog'
 import type { ContentAgent, PlanningSession, ProposedItem } from '../types'
 import { AGENT_INFO } from '../types'
 
@@ -25,6 +32,7 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const [showMiniCal, setShowMiniCal] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
 
   const fetchSession = useCallback(async () => {
@@ -61,6 +69,16 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
       // Silently fail
     }
     setEditingTitle(false)
+  }
+
+  const handleDeleteSession = async () => {
+    try {
+      await fetch(`/api/plugins/messaging/sessions/${sessionId}`, { method: 'DELETE' })
+      onBack?.()
+    } catch {
+      // Silently fail
+    }
+    setShowDeleteDialog(false)
   }
 
   const handleProposalsReceived = useCallback((newProposals: ProposedItem[]) => {
@@ -216,6 +234,21 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
             <PanelRight className="w-4 h-4" />
           )}
         </Button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger className="h-7 w-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.06)] transition-colors">
+            <MoreHorizontal className="w-4 h-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-36">
+            <DropdownMenuItem
+              onClick={() => setShowDeleteDialog(true)}
+              className="text-red-400 focus:text-red-400"
+            >
+              <Trash2 className="size-3.5 mr-2" />
+              Delete session
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Split layout */}
@@ -254,6 +287,13 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
           <MiniCalendar proposalDates={proposalDates} />
         </div>
       )}
+
+      <DeleteSessionDialog
+        open={showDeleteDialog}
+        title={session.title}
+        onConfirm={handleDeleteSession}
+        onCancel={() => setShowDeleteDialog(false)}
+      />
     </div>
   )
 }
