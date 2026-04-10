@@ -163,16 +163,14 @@ describe('SessionList', () => {
     expect(onSelect).toHaveBeenCalledWith('s1')
   })
 
-  it('creates new session via empty state agent card', async () => {
+  it('calls onCreateSession via empty state agent card', async () => {
     globalThis.fetch = mockFetch([])
-    const onSelect = vi.fn()
-    render(<SessionList onSelectSession={onSelect} />)
+    const onCreate = vi.fn()
+    render(<SessionList onSelectSession={vi.fn()} onCreateSession={onCreate} />)
     await waitFor(() => {
       expect(screen.getByTestId('agent-card-chef')).toBeDefined()
     })
     fireEvent.click(screen.getByTestId('agent-card-chef'))
-    await waitFor(() => {
-      expect(onSelect).toHaveBeenCalledWith('new-session-id')
-    })
+    expect(onCreate).toHaveBeenCalledWith('chef')
   })
 })
