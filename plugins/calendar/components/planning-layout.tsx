@@ -90,10 +90,15 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
     onSessionUpdated?.()
   }, [onSessionUpdated])
 
+  // Must be before early returns to satisfy Rules of Hooks
+  const proposalDates = useMemo(
+    () => session ? [...new Set(session.proposals.map(p => p.scheduledAt.slice(0, 10)))] : [],
+    [session]
+  )
+
   // Keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      // Don't intercept when typing in inputs
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
       if (session?.status === 'completed') return
@@ -128,10 +133,6 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
   const agentId = session.agentId as ContentAgent
   const agentInfo = AGENT_INFO[agentId]
   const isCompleted = session.status === 'completed'
-  const proposalDates = useMemo(
-    () => [...new Set(session.proposals.map(p => p.scheduledAt.slice(0, 10)))],
-    [session.proposals]
-  )
 
   return (
     <div className="flex flex-col h-full" data-testid="planning-layout">

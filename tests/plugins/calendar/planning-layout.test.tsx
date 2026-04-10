@@ -45,6 +45,11 @@ vi.mock('lucide-react', () => ({
   Pencil: () => <span />,
   Check: () => <span />,
   X: () => <span />,
+  Calendar: () => <span />,
+}))
+
+vi.mock('../../../plugins/calendar/components/mini-calendar', () => ({
+  MiniCalendar: () => <div data-testid="mini-calendar">Mini Calendar</div>,
 }))
 
 import { PlanningLayout } from '../../../plugins/calendar/components/planning-layout'
