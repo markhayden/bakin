@@ -31,6 +31,15 @@ interface StreamingState {
   streamedText: string
 }
 
+/** Strip JSON code blocks (proposal data) from streaming display text */
+function stripJsonBlocks(text: string): string {
+  // Remove complete ```json...``` blocks
+  let cleaned = text.replace(/```json[\s\S]*?```/g, '')
+  // Remove incomplete ```json block at the end (still streaming)
+  cleaned = cleaned.replace(/```json[\s\S]*$/, '')
+  return cleaned.trim()
+}
+
 export function SessionChat({
   sessionId,
   agentId,
@@ -225,18 +234,24 @@ export function SessionChat({
           </div>
         ))}
 
-        {/* Streaming message bubble — plain text while streaming, markdown applied on completion */}
-        {streaming.isStreaming && streaming.streamedText && (
-          <div className="flex items-start gap-2.5">
-            <AgentAvatar agentId={agentId} size="sm" className="mt-0.5 shrink-0 animate-pulse" />
-            <div className="rounded-lg p-2.5 bg-surface max-w-[85%]">
-              <p className="text-xs whitespace-pre-wrap">{streaming.streamedText}</p>
+        {/* Streaming message bubble — styled as thinking, JSON blocks hidden */}
+        {streaming.isStreaming && streaming.streamedText && (() => {
+          const displayText = stripJsonBlocks(streaming.streamedText)
+          if (!displayText) return null
+          return (
+            <div className="flex items-start gap-2.5">
+              <AgentAvatar agentId={agentId} size="sm" className="mt-0.5 shrink-0 animate-pulse" />
+              <div className="rounded-lg p-2.5 bg-surface/50 max-w-[85%] border border-border/30">
+                <p className="text-xs italic text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                  {displayText}
+                </p>
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
-        {/* Thinking indicator when streaming but no text yet */}
-        {streaming.isStreaming && !streaming.streamedText && (
+        {/* Thinking indicator when streaming but no displayable text yet */}
+        {streaming.isStreaming && !stripJsonBlocks(streaming.streamedText) && (
           <div className="flex items-center gap-2.5 text-muted-foreground">
             <AgentAvatar agentId={agentId} size="sm" className="shrink-0 animate-pulse" />
             <div className="flex items-center gap-1.5">
