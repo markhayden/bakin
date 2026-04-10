@@ -22,7 +22,7 @@ import { AgentAvatar } from '@/components/agent-avatar'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import type { CalendarItem, ContentAgent } from '../types'
 import { AGENT_INFO } from '../types'
-import { CONTENT_AGENTS, STATUS_BADGE, CONTENT_TYPE_LABELS } from '../constants'
+import { CONTENT_AGENTS, STATUS_BADGE, CONTENT_TYPE_LABELS, CHANNEL_LABELS } from '../constants'
 import { ItemDetailDrawer } from './item-detail-drawer'
 import { CalendarWeek } from './calendar-week'
 import { BrainstormPanel } from './brainstorm-panel'
@@ -51,6 +51,7 @@ const STATUS_OPTIONS = [
 ]
 
 const TYPE_OPTIONS = Object.entries(CONTENT_TYPE_LABELS).map(([value, label]) => ({ value, label }))
+const CHANNEL_OPTIONS = Object.entries(CHANNEL_LABELS).map(([value, label]) => ({ value, label }))
 
 type ViewMode = 'month' | 'week' | 'list' | 'brainstorm'
 
@@ -110,6 +111,7 @@ export function ContentCalendar() {
   const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
   const [statusFilter, setStatusFilter] = useQueryArrayState('status')
   const [typeFilter, setTypeFilter] = useQueryArrayState('type')
+  const [channelFilter, setChannelFilter] = useQueryArrayState('channel')
   const [search, setSearch] = useQueryState('q', '')
   const [itemIdParam, setItemIdParam, pushItemId] = useQueryState('itemId', '')
   const [mode, setMode, pushMode] = useQueryState('mode', '')
@@ -161,6 +163,10 @@ export function ContentCalendar() {
     if (agentFilter !== 'all' && i.agent !== agentFilter) return false
     if (statusFilter.length > 0 && !statusFilter.includes(i.status)) return false
     if (typeFilter.length > 0 && !typeFilter.includes(i.contentType)) return false
+    if (channelFilter.length > 0) {
+      const itemChannels = i.channels || (i.channel ? [i.channel] : [])
+      if (!channelFilter.some(ch => itemChannels.includes(ch))) return false
+    }
     if (search) {
       const q = search.toLowerCase()
       if (
@@ -528,6 +534,12 @@ export function ContentCalendar() {
             options={TYPE_OPTIONS}
             selected={typeFilter}
             onChange={setTypeFilter}
+          />
+          <FacetFilter
+            label="Channel"
+            options={CHANNEL_OPTIONS}
+            selected={channelFilter}
+            onChange={setChannelFilter}
           />
 
           {/* Date navigation — far right */}
