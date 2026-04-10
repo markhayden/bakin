@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
-import { Plus, MessageSquare, CheckCircle } from 'lucide-react'
+import { Plus, MessageSquare, CheckCircle, Trash2 } from 'lucide-react'
 import type { ContentAgent } from '../types'
 import { AGENT_INFO } from '../types'
 
@@ -30,6 +30,7 @@ export function SessionList({ onSelectSession }: Props) {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [showAgentPicker, setShowAgentPicker] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -66,6 +67,21 @@ export function SessionList({ onSelectSession }: Props) {
     } finally {
       setCreating(false)
       setShowAgentPicker(false)
+    }
+  }
+
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/plugins/calendar/sessions/${sessionId}`, {
+        method: 'DELETE',
+      })
+      if (res.ok) {
+        setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setConfirmDeleteId(null)
     }
   }
 
@@ -191,7 +207,7 @@ export function SessionList({ onSelectSession }: Props) {
                   <button
                     key={session.id}
                     onClick={() => onSelectSession(session.id)}
-                    className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-muted/50 transition-colors text-left"
+                    className="group flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-muted/50 transition-colors text-left"
                     data-testid={`session-entry-${session.id}`}
                   >
                     <div className="flex-1 min-w-0">
@@ -219,6 +235,29 @@ export function SessionList({ onSelectSession }: Props) {
                         <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-400/30">
                           Active
                         </Badge>
+                      )}
+                      {confirmDeleteId === session.id ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteSession(session.id)
+                          }}
+                          className="text-[10px] text-red-400 hover:text-red-300 font-medium px-1.5 py-0.5 rounded border border-red-400/30 hover:bg-red-400/10 transition-colors"
+                          data-testid={`confirm-delete-${session.id}`}
+                        >
+                          Delete?
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setConfirmDeleteId(session.id)
+                          }}
+                          className="text-muted-foreground hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                          data-testid={`delete-${session.id}`}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
                       )}
                     </div>
                   </button>

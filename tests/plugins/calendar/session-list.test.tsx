@@ -27,6 +27,7 @@ vi.mock('lucide-react', () => ({
   Plus: () => <span />,
   MessageSquare: () => <span />,
   CheckCircle: () => <span data-testid="check-circle" />,
+  Trash2: () => <span data-testid="trash-icon" />,
 }))
 
 import { SessionList } from '../../../plugins/calendar/components/session-list'
