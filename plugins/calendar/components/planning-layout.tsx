@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
-import { ArrowLeft, PanelRight, PanelRightClose, Pencil, Check, X } from 'lucide-react'
+import { ArrowLeft, PanelRight, PanelRightClose, Pencil, Check, X, Calendar } from 'lucide-react'
 import { SessionChat } from './session-chat'
 import { ReviewPanel } from './review-panel'
+import { MiniCalendar } from './mini-calendar'
 import type { ContentAgent, PlanningSession, ProposedItem } from '../types'
 import { AGENT_INFO } from '../types'
 
@@ -23,6 +24,7 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
   const [showReview, setShowReview] = useState(true)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
+  const [showMiniCal, setShowMiniCal] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
 
   const fetchSession = useCallback(async () => {
@@ -87,6 +89,27 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
     setSession((prev) => prev ? { ...prev, status: 'completed' } : prev)
     onSessionUpdated?.()
   }, [onSessionUpdated])
+
+  // Must be before early returns to satisfy Rules of Hooks
+  const proposalDates = useMemo(
+    () => session ? [...new Set(session.proposals.map(p => p.scheduledAt.slice(0, 10)))] : [],
+    [session]
+  )
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (session?.status === 'completed') return
+
+      if (e.key === 'Escape') {
+        onBack?.()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [session?.status, onBack])
 
   if (loading) {
     return (
@@ -174,6 +197,16 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
           variant="ghost"
           size="sm"
           className="h-7 w-7 p-0"
+          onClick={() => setShowMiniCal(!showMiniCal)}
+          title={showMiniCal ? 'Hide calendar' : 'Show calendar'}
+        >
+          <Calendar className="w-4 h-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
           onClick={() => setShowReview(!showReview)}
           title={showReview ? 'Hide review panel' : 'Show review panel'}
         >
@@ -214,6 +247,13 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
           </div>
         )}
       </div>
+
+      {/* Mini-calendar — collapsible */}
+      {showMiniCal && (
+        <div className="border-t border-border p-3 max-w-[240px]" data-testid="mini-calendar-panel">
+          <MiniCalendar proposalDates={proposalDates} />
+        </div>
+      )}
     </div>
   )
 }

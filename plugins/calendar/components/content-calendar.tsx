@@ -15,6 +15,7 @@ import {
   X,
   Trash2,
   ListFilter,
+  Link2,
 } from 'lucide-react'
 import { PluginHeader } from '@/components/plugin-header'
 import { FacetFilter } from '@/components/facet-filter'
@@ -368,10 +369,24 @@ export function ContentCalendar() {
                       key={item.id}
                       role="button"
                       onClick={(e) => { e.stopPropagation(); openItem(item) }}
-                      className="text-[10px] leading-tight px-1 py-0.5 rounded border cursor-pointer hover:brightness-125 transition-all"
+                      className="text-[10px] leading-tight px-1 py-0.5 rounded border cursor-pointer hover:brightness-125 transition-all flex items-center gap-0.5"
                       style={agentColorStyle(item.agent)}
                     >
-                      {item.title}
+                      {item.sessionId && (
+                        <Link2
+                          className="size-2.5 shrink-0 opacity-60"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setView('brainstorm')
+                            // Navigate to session via URL
+                            const params = new URLSearchParams(searchParams.toString())
+                            params.set('view', 'brainstorm')
+                            params.set('session', item.sessionId!)
+                            router.push(`${pathname}?${params.toString()}`, { scroll: false })
+                          }}
+                        />
+                      )}
+                      <span className="truncate">{item.title}</span>
                     </div>
                   ))}
                   {dayItems.length > 3 && (
@@ -424,7 +439,12 @@ export function ContentCalendar() {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{item.contentType}</td>
-                    <td className="px-3 py-2 text-foreground max-w-[240px] truncate">{item.title}</td>
+                    <td className="px-3 py-2 text-foreground max-w-[240px] truncate">
+                      <span className="flex items-center gap-1">
+                        {item.sessionId && <Link2 className="size-3 text-muted-foreground shrink-0" />}
+                        {item.title}
+                      </span>
+                    </td>
                     <td className="px-3 py-2">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_BADGE[item.status]}`}>
                         {item.status === 'waiting'
