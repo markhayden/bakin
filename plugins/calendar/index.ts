@@ -11,7 +11,17 @@ import {
   deleteItem,
   getItem,
 } from './lib/storage'
-import type { CalendarItem, ContentStatus } from './types'
+import type { CalendarItem, ContentStatus, ProposalStatus } from './types'
+import {
+  createSession,
+  loadSession,
+  listSessions,
+  updateSession as updateSessionFn,
+  deleteSession as deleteSessionFn,
+  appendMessage,
+  updateProposal,
+  confirmSession,
+} from './lib/sessions'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 
@@ -387,7 +397,176 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
       },
     })
 
-    // ── Exec Tools (agent-facing) ──────��───────────────────────────────
+    // ── Session Routes ──────────────────────────────────────────────────
+
+    // GET /sessions — list planning sessions
+    ctx.registerRoute({
+      path: '/sessions',
+      method: 'GET',
+      description: 'List planning sessions',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const status = url.searchParams.get('status') || undefined
+        const agentId = url.searchParams.get('agentId') || undefined
+        const sessions = listSessions({ status, agentId })
+        return json({ sessions })
+      },
+    })
+
+    // GET /sessions/:id — get full session
+    ctx.registerRoute({
+      path: '/sessions/:id',
+      method: 'GET',
+      description: 'Get a planning session',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const id = url.searchParams.get('id')
+        if (!id) return json({ error: 'id required' }, 400)
+        const session = loadSession(id)
+        if (!session) return json({ error: 'Session not found' }, 404)
+        return json({ session })
+      },
+    })
+
+    // POST /sessions — create session
+    ctx.registerRoute({
+      path: '/sessions',
+      method: 'POST',
+      description: 'Create a planning session',
+      handler: async (req: Request) => {
+        const body = await readBody<{ agentId?: string; title?: string }>(req)
+        if (!body.agentId) return json({ error: 'agentId required' }, 400)
+        const session = createSession({ agentId: body.agentId, title: body.title })
+        ctx.activity.audit('session.created', body.agentId, { sessionId: session.id })
+        ctx.activity.log(body.agentId, `Created planning session "${session.title}"`)
+        return json({ ok: true, session })
+      },
+    })
+
+    // PUT /sessions/:id — update session metadata
+    ctx.registerRoute({
+      path: '/sessions/:id',
+      method: 'PUT',
+      description: 'Update a planning session',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await readBody<{ id?: string; title?: string; status?: 'active' | 'completed' }>(req)
+        const id = url.searchParams.get('id') || body.id
+        if (!id) return json({ error: 'id required' }, 400)
+        try {
+          const session = updateSessionFn(id, { title: body.title, status: body.status })
+          return json({ ok: true, session })
+        } catch (e: unknown) {
+          return json({ error: (e as Error).message }, 404)
+        }
+      },
+    })
+
+    // DELETE /sessions/:id — delete session
+    ctx.registerRoute({
+      path: '/sessions/:id',
+      method: 'DELETE',
+      description: 'Delete a planning session',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await readBody<{ id?: string }>(req).catch(() => ({} as { id?: string }))
+        const id = url.searchParams.get('id') || body.id
+        if (!id) return json({ error: 'id required' }, 400)
+        try {
+          deleteSessionFn(id)
+          ctx.activity.audit('session.deleted', 'system', { sessionId: id })
+          ctx.activity.log('system', `Deleted planning session ${id}`)
+          return json({ ok: true })
+        } catch (e: unknown) {
+          return json({ error: (e as Error).message }, 404)
+        }
+      },
+    })
+
+    // POST /sessions/:id/messages — send message (non-streaming for now)
+    ctx.registerRoute({
+      path: '/sessions/:id/messages',
+      method: 'POST',
+      description: 'Send a message in a planning session',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await readBody<{ id?: string; message?: string }>(req)
+        const id = url.searchParams.get('id') || body.id
+        if (!id) return json({ error: 'id required' }, 400)
+        if (!body.message) return json({ error: 'message required' }, 400)
+
+        const session = loadSession(id)
+        if (!session) return json({ error: 'Session not found' }, 404)
+        if (session.status === 'completed') return json({ error: 'Session is completed' }, 400)
+
+        // Append user message
+        const userMsg = appendMessage(id, { role: 'user', content: body.message })
+
+        // For now, return a placeholder — streaming upgrade in PR 2
+        const assistantMsg = appendMessage(id, {
+          role: 'assistant',
+          content: 'Planning session message received. Streaming upgrade pending.',
+        })
+
+        return json({
+          ok: true,
+          response: assistantMsg.content,
+          suggestions: [],
+          messageId: assistantMsg.id,
+        })
+      },
+    })
+
+    // PUT /sessions/:id/proposals/:proposalId — update proposal
+    ctx.registerRoute({
+      path: '/sessions/:id/proposals/:proposalId',
+      method: 'PUT',
+      description: 'Update a proposal in a planning session',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await readBody<Record<string, unknown>>(req)
+        const sessionId = url.searchParams.get('id')
+        const proposalId = url.searchParams.get('proposalId')
+        if (!sessionId || !proposalId) return json({ error: 'sessionId and proposalId required' }, 400)
+        try {
+          const proposal = updateProposal(sessionId, proposalId, {
+            status: body.status as ProposalStatus | undefined,
+            title: body.title as string | undefined,
+            brief: body.brief as string | undefined,
+            tone: body.tone as string | undefined,
+            scheduledAt: body.scheduledAt as string | undefined,
+            channels: body.channels as string[] | undefined,
+            rejectionNote: body.rejectionNote as string | undefined,
+          })
+          return json({ ok: true, proposal })
+        } catch (e: unknown) {
+          return json({ error: (e as Error).message }, 404)
+        }
+      },
+    })
+
+    // POST /sessions/:id/confirm — confirm plan
+    ctx.registerRoute({
+      path: '/sessions/:id/confirm',
+      method: 'POST',
+      description: 'Confirm plan and create calendar items',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await readBody<{ id?: string }>(req).catch(() => ({} as { id?: string }))
+        const id = url.searchParams.get('id') || body.id
+        if (!id) return json({ error: 'id required' }, 400)
+        try {
+          const result = confirmSession(id)
+          ctx.activity.audit('session.confirmed', 'system', { sessionId: id, itemsCreated: result.itemsCreated })
+          ctx.activity.log('system', `Confirmed planning session — ${result.itemsCreated} items created`)
+          return json({ ok: true, ...result })
+        } catch (e: unknown) {
+          return json({ error: (e as Error).message }, 400)
+        }
+      },
+    })
+
+    // ── Exec Tools (agent-facing) ─────────────────────────────────────
 
     ctx.registerExecTool({
       name: 'bakin_exec_calendar_list',
