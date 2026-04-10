@@ -11,7 +11,17 @@ import {
   deleteItem,
   getItem,
 } from './lib/storage'
-import type { CalendarItem, ContentStatus } from './types'
+import type { CalendarItem, ContentStatus, ProposalStatus } from './types'
+import {
+  createSession,
+  loadSession,
+  listSessions,
+  updateSession as updateSessionFn,
+  deleteSession as deleteSessionFn,
+  appendMessage,
+  updateProposal,
+  confirmSession,
+} from './lib/sessions'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 
@@ -387,7 +397,176 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
       },
     })
 
-    // ── Exec Tools (agent-facing) ──────��───────────────────────────────
+    // ── Session Routes ──────────────────────────────────────────────────
+
+    // GET /sessions — list planning sessions
+    ctx.registerRoute({
+      path: '/sessions',
+      method: 'GET',
+      description: 'List planning sessions',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const status = url.searchParams.get('status') || undefined
+        const agentId = url.searchParams.get('agentId') || undefined
+        const sessions = listSessions({ status, agentId })
+        return json({ sessions })
+      },
+    })
+
+    // GET /sessions/:id — get full session
+    ctx.registerRoute({
+      path: '/sessions/:id',
+      method: 'GET',
+      description: 'Get a planning session',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const id = url.searchParams.get('id')
+        if (!id) return json({ error: 'id required' }, 400)
+        const session = loadSession(id)
+        if (!session) return json({ error: 'Session not found' }, 404)
+        return json({ session })
+      },
+    })
+
+    // POST /sessions — create session
+    ctx.registerRoute({
+      path: '/sessions',
+      method: 'POST',
+      description: 'Create a planning session',
+      handler: async (req: Request) => {
+        const body = await readBody<{ agentId?: string; title?: string }>(req)
+        if (!body.agentId) return json({ error: 'agentId required' }, 400)
+        const session = createSession({ agentId: body.agentId, title: body.title })
+        ctx.activity.audit('session.created', body.agentId, { sessionId: session.id })
+        ctx.activity.log(body.agentId, `Created planning session "${session.title}"`)
+        return json({ ok: true, session })
+      },
+    })
+
+    // PUT /sessions/:id — update session metadata
+    ctx.registerRoute({
+      path: '/sessions/:id',
+      method: 'PUT',
+      description: 'Update a planning session',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await readBody<{ id?: string; title?: string; status?: 'active' | 'completed' }>(req)
+        const id = url.searchParams.get('id') || body.id
+        if (!id) return json({ error: 'id required' }, 400)
+        try {
+          const session = updateSessionFn(id, { title: body.title, status: body.status })
+          return json({ ok: true, session })
+        } catch (e: unknown) {
+          return json({ error: (e as Error).message }, 404)
+        }
+      },
+    })
+
+    // DELETE /sessions/:id — delete session
+    ctx.registerRoute({
+      path: '/sessions/:id',
+      method: 'DELETE',
+      description: 'Delete a planning session',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await readBody<{ id?: string }>(req).catch(() => ({} as { id?: string }))
+        const id = url.searchParams.get('id') || body.id
+        if (!id) return json({ error: 'id required' }, 400)
+        try {
+          deleteSessionFn(id)
+          ctx.activity.audit('session.deleted', 'system', { sessionId: id })
+          ctx.activity.log('system', `Deleted planning session ${id}`)
+          return json({ ok: true })
+        } catch (e: unknown) {
+          return json({ error: (e as Error).message }, 404)
+        }
+      },
+    })
+
+    // POST /sessions/:id/messages — send message (non-streaming for now)
+    ctx.registerRoute({
+      path: '/sessions/:id/messages',
+      method: 'POST',
+      description: 'Send a message in a planning session',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await readBody<{ id?: string; message?: string }>(req)
+        const id = url.searchParams.get('id') || body.id
+        if (!id) return json({ error: 'id required' }, 400)
+        if (!body.message) return json({ error: 'message required' }, 400)
+
+        const session = loadSession(id)
+        if (!session) return json({ error: 'Session not found' }, 404)
+        if (session.status === 'completed') return json({ error: 'Session is completed' }, 400)
+
+        // Append user message
+        const userMsg = appendMessage(id, { role: 'user', content: body.message })
+
+        // For now, return a placeholder — streaming upgrade in PR 2
+        const assistantMsg = appendMessage(id, {
+          role: 'assistant',
+          content: 'Planning session message received. Streaming upgrade pending.',
+        })
+
+        return json({
+          ok: true,
+          response: assistantMsg.content,
+          suggestions: [],
+          messageId: assistantMsg.id,
+        })
+      },
+    })
+
+    // PUT /sessions/:id/proposals/:proposalId — update proposal
+    ctx.registerRoute({
+      path: '/sessions/:id/proposals/:proposalId',
+      method: 'PUT',
+      description: 'Update a proposal in a planning session',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await readBody<Record<string, unknown>>(req)
+        const sessionId = url.searchParams.get('id')
+        const proposalId = url.searchParams.get('proposalId')
+        if (!sessionId || !proposalId) return json({ error: 'sessionId and proposalId required' }, 400)
+        try {
+          const proposal = updateProposal(sessionId, proposalId, {
+            status: body.status as ProposalStatus | undefined,
+            title: body.title as string | undefined,
+            brief: body.brief as string | undefined,
+            tone: body.tone as string | undefined,
+            scheduledAt: body.scheduledAt as string | undefined,
+            channels: body.channels as string[] | undefined,
+            rejectionNote: body.rejectionNote as string | undefined,
+          })
+          return json({ ok: true, proposal })
+        } catch (e: unknown) {
+          return json({ error: (e as Error).message }, 404)
+        }
+      },
+    })
+
+    // POST /sessions/:id/confirm — confirm plan
+    ctx.registerRoute({
+      path: '/sessions/:id/confirm',
+      method: 'POST',
+      description: 'Confirm plan and create calendar items',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const body = await readBody<{ id?: string }>(req).catch(() => ({} as { id?: string }))
+        const id = url.searchParams.get('id') || body.id
+        if (!id) return json({ error: 'id required' }, 400)
+        try {
+          const result = confirmSession(id)
+          ctx.activity.audit('session.confirmed', 'system', { sessionId: id, itemsCreated: result.itemsCreated })
+          ctx.activity.log('system', `Confirmed planning session — ${result.itemsCreated} items created`)
+          return json({ ok: true, ...result })
+        } catch (e: unknown) {
+          return json({ error: (e as Error).message }, 400)
+        }
+      },
+    })
+
+    // ── Exec Tools (agent-facing) ─────────────────────────────────────
 
     ctx.registerExecTool({
       name: 'bakin_exec_calendar_list',
@@ -547,7 +726,184 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
       },
     })
 
-    ctx.watchFiles(['calendar.json'])
+    // ── Session Exec Tools (agent-facing) ─────────────────────────────
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_list',
+      description: 'List planning sessions with optional filters',
+      parameters: {
+        status: z.string().optional().describe('Filter by status (active, completed)'),
+        agentId: z.string().optional().describe('Filter by agent ID'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const sessions = listSessions({
+          status: params.status as string | undefined,
+          agentId: params.agentId as string | undefined,
+        })
+        return { ok: true, count: sessions.length, sessions }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_get',
+      description: 'Get a planning session with full message history and proposals',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId) return { ok: false, error: 'sessionId required' }
+        const session = loadSession(params.sessionId as string)
+        if (!session) return { ok: false, error: 'Session not found' }
+        return { ok: true, session }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_create',
+      description: 'Create a new planning session for an agent',
+      parameters: {
+        agentId: z.string().describe('Agent ID (required)'),
+        title: z.string().optional().describe('Session title'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.agentId) return { ok: false, error: 'agentId required' }
+        const session = createSession({
+          agentId: params.agentId as string,
+          title: params.title as string | undefined,
+        })
+        ctx.activity.audit('session.created', params.agentId as string, { sessionId: session.id })
+        return { ok: true, session }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_update',
+      description: 'Update a planning session title or status',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+        title: z.string().optional().describe('New title'),
+        status: z.string().optional().describe('New status (active, completed)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId) return { ok: false, error: 'sessionId required' }
+        try {
+          const session = updateSessionFn(params.sessionId as string, {
+            title: params.title as string | undefined,
+            status: params.status as 'active' | 'completed' | undefined,
+          })
+          return { ok: true, session }
+        } catch (e: unknown) {
+          return { ok: false, error: (e as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_delete',
+      description: 'Delete a planning session',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId) return { ok: false, error: 'sessionId required' }
+        try {
+          deleteSessionFn(params.sessionId as string)
+          ctx.activity.audit('session.deleted', 'system', { sessionId: params.sessionId })
+          return { ok: true }
+        } catch (e: unknown) {
+          return { ok: false, error: (e as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_message',
+      description: 'Send a message in a planning session (non-streaming, returns full response)',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+        message: z.string().describe('User message content (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId || !params.message) return { ok: false, error: 'sessionId and message required' }
+        const session = loadSession(params.sessionId as string)
+        if (!session) return { ok: false, error: 'Session not found' }
+        if (session.status === 'completed') return { ok: false, error: 'Session is completed' }
+
+        const userMsg = appendMessage(params.sessionId as string, {
+          role: 'user',
+          content: params.message as string,
+        })
+
+        // Non-streaming placeholder — streaming upgrade in PR 2
+        const assistantMsg = appendMessage(params.sessionId as string, {
+          role: 'assistant',
+          content: 'Planning session message received. Streaming upgrade pending.',
+        })
+
+        return {
+          ok: true,
+          response: assistantMsg.content,
+          messageId: assistantMsg.id,
+          userMessageId: userMsg.id,
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_proposal_update',
+      description: 'Update a proposal status or fields (approve, reject, edit)',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+        proposalId: z.string().describe('Proposal ID (required)'),
+        status: z.string().optional().describe('New status (proposed, approved, rejected, revised)'),
+        title: z.string().optional().describe('Updated title'),
+        brief: z.string().optional().describe('Updated brief'),
+        tone: z.string().optional().describe('Updated tone'),
+        scheduledAt: z.string().optional().describe('Updated schedule datetime'),
+        channels: z.array(z.string()).optional().describe('Updated channels'),
+        rejectionNote: z.string().optional().describe('Note explaining rejection'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId || !params.proposalId) return { ok: false, error: 'sessionId and proposalId required' }
+        try {
+          const proposal = updateProposal(params.sessionId as string, params.proposalId as string, {
+            status: params.status as ProposalStatus | undefined,
+            title: params.title as string | undefined,
+            brief: params.brief as string | undefined,
+            tone: params.tone as string | undefined,
+            scheduledAt: params.scheduledAt as string | undefined,
+            channels: params.channels as string[] | undefined,
+            rejectionNote: params.rejectionNote as string | undefined,
+          })
+          return { ok: true, proposal }
+        } catch (e: unknown) {
+          return { ok: false, error: (e as Error).message }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_calendar_session_confirm',
+      description: 'Confirm a planning session — creates calendar items from approved proposals',
+      parameters: {
+        sessionId: z.string().describe('Session ID (required)'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        if (!params.sessionId) return { ok: false, error: 'sessionId required' }
+        try {
+          const result = confirmSession(params.sessionId as string)
+          ctx.activity.audit('session.confirmed', 'system', {
+            sessionId: params.sessionId,
+            itemsCreated: result.itemsCreated,
+          })
+          return { ok: true, ...result }
+        } catch (e: unknown) {
+          return { ok: false, error: (e as Error).message }
+        }
+      },
+    })
+
+    ctx.watchFiles(['calendar.json', 'calendar/sessions/*.json'])
     log.info('Calendar plugin activated')
   },
 
