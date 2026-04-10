@@ -29,6 +29,49 @@ export interface CalendarItem {
   publishedMessageId?: string
   taskId?: string
   rejectionNote?: string
+  sessionId?: string
+  channels?: string[]
+}
+
+// ---------------------------------------------------------------------------
+// Planning Sessions
+// ---------------------------------------------------------------------------
+
+export type ProposalStatus = 'proposed' | 'approved' | 'rejected' | 'revised'
+
+export interface ProposedItem {
+  id: string
+  messageId: string
+  revision: number
+  agentId: string
+  title: string
+  scheduledAt: string
+  contentType: string
+  tone: string
+  brief: string
+  channels?: string[]
+  status: ProposalStatus
+  calendarItemId?: string
+  rejectionNote?: string
+}
+
+export interface SessionMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+  proposalIds?: string[]
+}
+
+export interface PlanningSession {
+  id: string
+  agentId: string
+  title: string
+  status: 'active' | 'completed'
+  createdAt: string
+  updatedAt: string
+  messages: SessionMessage[]
+  proposals: ProposedItem[]
 }
 
 export const AGENT_INFO: Record<ContentAgent, { name: string; emoji: string; color: string }> = {
