@@ -19,11 +19,14 @@ interface Props {
   onApprove?: (id: string) => void
   onReject?: (id: string, note: string) => void
   onEdit?: (id: string) => void
+  onTitleChange?: (id: string, title: string) => void
 }
 
-export function ProposalCard({ proposal, onApprove, onReject, onEdit }: Props) {
+export function ProposalCard({ proposal, onApprove, onReject, onEdit, onTitleChange }: Props) {
   const [showRejectInput, setShowRejectInput] = useState(false)
   const [rejectionNote, setRejectionNote] = useState('')
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(proposal.title)
 
   const statusStyle = STATUS_STYLES[proposal.status]
   const canAct = proposal.status === 'proposed' || proposal.status === 'revised'
@@ -47,7 +50,46 @@ export function ProposalCard({ proposal, onApprove, onReject, onEdit }: Props) {
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <h4 className="font-medium text-xs truncate">{proposal.title}</h4>
+          {editingTitle && canAct && onTitleChange ? (
+            <Input
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              className="h-6 text-xs font-medium"
+              data-testid="title-input"
+              autoFocus
+              onBlur={() => {
+                if (titleDraft.trim() && titleDraft !== proposal.title) {
+                  onTitleChange(proposal.id, titleDraft.trim())
+                }
+                setEditingTitle(false)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (titleDraft.trim() && titleDraft !== proposal.title) {
+                    onTitleChange(proposal.id, titleDraft.trim())
+                  }
+                  setEditingTitle(false)
+                }
+                if (e.key === 'Escape') {
+                  setTitleDraft(proposal.title)
+                  setEditingTitle(false)
+                }
+              }}
+            />
+          ) : (
+            <h4
+              className={`font-medium text-xs truncate ${canAct && onTitleChange ? 'cursor-pointer hover:underline' : ''}`}
+              onClick={() => {
+                if (canAct && onTitleChange) {
+                  setTitleDraft(proposal.title)
+                  setEditingTitle(true)
+                }
+              }}
+              data-testid="proposal-title"
+            >
+              {proposal.title}
+            </h4>
+          )}
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-[11px] text-muted-foreground">
               {new Date(proposal.scheduledAt).toLocaleDateString('en-US', {
