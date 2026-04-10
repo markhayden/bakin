@@ -188,7 +188,7 @@ Real-time updates via `broadcast()` from `src/core/sse.ts`. Uses `globalThis.__b
 Agents report progress via `bakin_log_progress` MCP tool → `logProgress()` in task-service → SSE broadcast. Structured audit via `appendAudit()` → `audit.jsonl` + SSE + Antfly.
 
 ### OpenClaw Home Directory
-All OpenClaw paths resolved through `getOpenClawHome()` / `getOpenClawPath()` in `packages/core/src/openclaw-home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/` fallback. For development without OpenClaw: `npm run dev:mock` starts the Imitation Crab mock (`dev/imitation-crab/`), which seeds `~/.imitationcrab/` and sets `OPENCLAW_HOME` automatically.
+All OpenClaw paths resolved through `getOpenClawHome()` / `getOpenClawPath()` in `packages/core/src/openclaw-home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/` fallback. For development without OpenClaw: `npm run dev:mock` starts the Imitation Crab mock (`dev/imitation-crab/`), which seeds `~/.imitationcrab/` and sets both `OPENCLAW_HOME` and `BAKIN_HOME` automatically. To reseed fixtures manually, run `pnpm mock:seed --force`.
 
 ### Content Directory
 All paths resolved through `getContentDir()` in `src/core/content-dir.ts`. Resolution: `BAKIN_HOME` env → `~/.bakin/` → `./content/` fallback. Well-known paths via `getBakinPaths()`.
