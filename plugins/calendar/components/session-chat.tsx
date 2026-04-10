@@ -6,8 +6,16 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { Send, Loader2 } from 'lucide-react'
+import { MarkdownContent } from '@/components/markdown-content'
 import type { ContentAgent, PlanningSession, ProposedItem, SessionMessage } from '../types'
 import { AGENT_INFO } from '../types'
+
+const QUICK_REPLIES = [
+  { label: 'More like this', prompt: 'Give me more ideas like the last ones' },
+  { label: 'Different tone', prompt: 'Try a different tone for these suggestions' },
+  { label: 'Next week instead', prompt: 'Reschedule these to next week instead' },
+  { label: 'More variety', prompt: 'Add more variety in content types' },
+]
 
 interface Props {
   sessionId: string
@@ -209,8 +217,8 @@ export function SessionChat({
             ) : (
               <div className="flex items-start gap-2.5">
                 <AgentAvatar agentId={agentId} size="sm" className="mt-0.5 shrink-0" />
-                <div className="rounded-lg p-2.5 bg-surface max-w-[85%]">
-                  <p className="text-xs whitespace-pre-wrap">{msg.content}</p>
+                <div className="rounded-lg p-2.5 bg-surface max-w-[85%] text-xs [&_.prose-invert]:text-xs [&_.prose-invert]:leading-relaxed">
+                  <MarkdownContent content={msg.content} />
                 </div>
               </div>
             )}
@@ -220,9 +228,9 @@ export function SessionChat({
         {/* Streaming message bubble */}
         {streaming.isStreaming && streaming.streamedText && (
           <div className="flex items-start gap-2.5">
-            <AgentAvatar agentId={agentId} size="sm" className="mt-0.5 shrink-0" />
-            <div className="rounded-lg p-2.5 bg-surface max-w-[85%]">
-              <p className="text-xs whitespace-pre-wrap">{streaming.streamedText}</p>
+            <AgentAvatar agentId={agentId} size="sm" className="mt-0.5 shrink-0 animate-pulse" />
+            <div className="rounded-lg p-2.5 bg-surface max-w-[85%] text-xs [&_.prose-invert]:text-xs [&_.prose-invert]:leading-relaxed">
+              <MarkdownContent content={streaming.streamedText} />
             </div>
           </div>
         )}
@@ -230,14 +238,38 @@ export function SessionChat({
         {/* Thinking indicator when streaming but no text yet */}
         {streaming.isStreaming && !streaming.streamedText && (
           <div className="flex items-center gap-2.5 text-muted-foreground">
-            <AgentAvatar agentId={agentId} size="sm" className="shrink-0" />
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            <span className="text-xs">{agentInfo.name} is thinking...</span>
+            <AgentAvatar agentId={agentId} size="sm" className="shrink-0 animate-pulse" />
+            <div className="flex items-center gap-1.5">
+              <span className="flex gap-0.5">
+                <span className="size-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
+                <span className="size-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
+                <span className="size-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
+              </span>
+              <span className="text-xs">{agentInfo.name} is thinking...</span>
+            </div>
           </div>
         )}
 
         <div ref={scrollRef} />
       </div>
+
+      {/* Quick-reply chips */}
+      {!isCompleted && messages.length > 0 && !streaming.isStreaming && (
+        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-border/50 overflow-x-auto">
+          {QUICK_REPLIES.map((chip) => (
+            <button
+              key={chip.label}
+              onClick={() => {
+                setInput(chip.prompt)
+              }}
+              className="shrink-0 text-[11px] px-2.5 py-1 rounded-full border border-border bg-surface text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+              data-testid={`quick-reply-${chip.label.toLowerCase().replace(/\s+/g, '-')}`}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Input */}
       {!isCompleted && (
