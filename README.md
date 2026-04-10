@@ -21,6 +21,26 @@ open http://localhost:3737
 
 The server auto-creates a `content/` directory on first run with default settings and required subdirectories.
 
+### Mock Dev
+
+For local development without a real OpenClaw install, use the Imitation Crab mock:
+
+```bash
+# Reseed the mock home with fresh fixtures
+pnpm mock:seed --force
+
+# Start the mock gateway and Bakin together
+pnpm dev:mock
+```
+
+The mock seeds `~/.imitationcrab/` and uses it for both `BAKIN_HOME` and `OPENCLAW_HOME`.
+
+If you want to start Bakin separately after reseeding:
+
+```bash
+BAKIN_HOME=~/.imitationcrab OPENCLAW_HOME=~/.imitationcrab OPENCLAW_PATH=~/.imitationcrab/bin/openclaw npm run dev
+```
+
 ### CI Contract
 
 The repo now uses a workspace-level CI contract built for monorepo growth:
