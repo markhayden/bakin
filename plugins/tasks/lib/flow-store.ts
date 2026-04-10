@@ -6,6 +6,8 @@
  * with callers that chain .then() (workflow runtime, dispatch, etc.).
  */
 import Database from 'better-sqlite3'
+import { existsSync, mkdirSync } from 'fs'
+import { dirname } from 'path'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { cancelInstance } from '../../workflows/lib/runtime'
 import { generateTaskId } from './ids'
@@ -22,6 +24,8 @@ const BAKIN_OWNER_PREFIX = 'bakin:task:'
 
 function openDb(): Database.Database {
   const dbPath = getOpenClawPath('flows', 'registry.sqlite')
+  const dbDir = dirname(dbPath)
+  if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true })
   const db = new Database(dbPath)
   db.pragma('journal_mode = WAL')
   db.pragma('busy_timeout = 5000')
@@ -35,6 +39,15 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
   } finally {
     db.close()
   }
+}
+
+function hasFlowRunsTable(db: Database.Database): boolean {
+  const row = db.prepare(`
+    SELECT 1 as present
+    FROM sqlite_master
+    WHERE type = 'table' AND name = 'flow_runs'
+  `).get() as { present?: number } | undefined
+  return row?.present === 1
 }
 
 // ---------------------------------------------------------------------------
@@ -819,6 +832,7 @@ export function moveTaskToInProgress(identifier: string, agentTag?: string): Pro
 
 export function archiveOldTasks(olderThanDays: number): number {
   return withDb(db => {
+    if (!hasFlowRunsTable(db)) return 0
     const cutoff = Date.now() - (olderThanDays * 24 * 60 * 60 * 1000)
     const result = db.prepare(`
       DELETE FROM flow_runs
@@ -842,6 +856,7 @@ export function getArchivedCount(): number {
  */
 export function autoArchiveDoneTasks(olderThanMs: number = 24 * 60 * 60 * 1000): number {
   return withDb(db => {
+    if (!hasFlowRunsTable(db)) return 0
     const cutoff = Date.now() - olderThanMs
     // Find succeeded tasks that are in the "done" column (no archived/confirmed flag)
     const rows = db.prepare(`
