@@ -1,0 +1,20 @@
+id: approval-bundle
+name: Content Bundle Approval
+description: Assemble a launch recommendation bundle and pause for approval
+version: 1
+
+steps:
+  - id: package-bundle
+    type: agent
+    label: Package Bundle
+    agent: scout
+
+  - id: bundle-gate
+    type: gate
+    label: Approve Bundle
+    description: Review the recommendation bundle before downstream work starts
+    approval_required: true
+    on_approve: done
+    on_reject:
+      goto: package-bundle
+      note_to_agent: true

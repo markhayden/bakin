@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" role="img" aria-labelledby="title desc">
+  <title id="title">Trail status concept art</title>
+  <desc id="desc">Mock concept art for a sunrise trail conditions post.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#17335c"/>
+      <stop offset="55%" stop-color="#f49f63"/>
+      <stop offset="100%" stop-color="#f3d8a6"/>
+    </linearGradient>
+    <linearGradient id="ridge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1f4868"/>
+      <stop offset="100%" stop-color="#0e2439"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1350" fill="url(#sky)"/>
+  <circle cx="860" cy="210" r="96" fill="#fff3cb" opacity="0.9"/>
+  <path d="M0 810C152 720 262 694 388 722c99 22 155 38 246 4 120-45 188-119 446-103v727H0z" fill="url(#ridge)"/>
+  <path d="M0 937c173-70 297-72 431-18 122 49 234 42 355-19 108-55 177-63 294-41v491H0z" fill="#234d61"/>
+  <rect x="122" y="204" width="384" height="650" rx="34" fill="#123928" opacity="0.96"/>
+  <rect x="146" y="228" width="336" height="602" rx="22" fill="#1f6a49"/>
+  <text x="314" y="344" text-anchor="middle" font-size="74" font-family="Georgia, serif" fill="#f6ebcf">Trail</text>
+  <text x="314" y="428" text-anchor="middle" font-size="74" font-family="Georgia, serif" fill="#f6ebcf">Status</text>
+  <text x="314" y="520" text-anchor="middle" font-size="40" font-family="Arial, sans-serif" fill="#d7f3de" letter-spacing="5">SUNRISE LOOP</text>
+  <rect x="192" y="608" width="244" height="108" rx="18" fill="#f7d86d"/>
+  <text x="314" y="674" text-anchor="middle" font-size="40" font-family="Arial, sans-serif" font-weight="700" fill="#53370d">ICY BEFORE 9AM</text>
+  <text x="628" y="1006" font-size="116" font-family="Georgia, serif" fill="#fef4db">Early Miles Are Clear.</text>
+  <text x="628" y="1090" font-size="52" font-family="Arial, sans-serif" fill="#153048">North-facing switchbacks still need traction.</text>
+</svg>

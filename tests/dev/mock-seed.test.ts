@@ -27,6 +27,13 @@ describe('mock seed', () => {
     expect(existsSync(join(fixturesDir, 'workspace', 'IDENTITY.md'))).toBe(true)
     expect(existsSync(join(fixturesDir, 'workspace', 'AGENTS.md'))).toBe(true)
     expect(existsSync(join(fixturesDir, 'workspace', 'TOOLS.md'))).toBe(true)
+    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'definitions', 'approval-copy.yaml'))).toBe(true)
+    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'definitions', 'approval-image.yaml'))).toBe(true)
+    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'definitions', 'approval-bundle.yaml'))).toBe(true)
+    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'instances', 'task-rv-002.json'))).toBe(true)
+    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'instances', 'task-rv-003.json'))).toBe(true)
+    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'instances', 'task-rv-004.json'))).toBe(true)
+    expect(existsSync(join(fixturesDir, 'bakin', 'assets', 'images', 'task-rv-003', 'trail-status-concept.svg'))).toBe(true)
   })
 
   it('fixture openclaw.json has valid agent roster', () => {
@@ -86,6 +93,28 @@ describe('mock seed', () => {
     expect(sql).toContain("'running'")
     expect(sql).toContain("'waiting'")
     expect(sql).toContain("'succeeded'")
+    expect(sql).toContain('"workflowId":"approval-copy"')
+    expect(sql).toContain('"workflowId":"approval-image"')
+    expect(sql).toContain('"workflowId":"approval-bundle"')
+  })
+
+  it('approval workflow fixtures are pending approval with representative output types', () => {
+    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures', 'bakin', 'workflows', 'instances')
+    const copy = JSON.parse(readFileSync(join(fixturesDir, 'task-rv-002.json'), 'utf-8'))
+    const image = JSON.parse(readFileSync(join(fixturesDir, 'task-rv-003.json'), 'utf-8'))
+    const bundle = JSON.parse(readFileSync(join(fixturesDir, 'task-rv-004.json'), 'utf-8'))
+
+    expect(copy.status).toBe('pending_approval')
+    expect(copy.stepStates['draft-copy'].output.caption).toBeTruthy()
+    expect(copy.stepStates['draft-copy'].output.body).toContain('## Trail Notes')
+
+    expect(image.status).toBe('pending_approval')
+    expect(image.stepStates['recommend-image'].output.image_path).toContain('/assets/images/task-rv-003/')
+    expect(image.stepStates['recommend-image'].output.recommendation_markdown).toContain('### Why this direction works')
+
+    expect(bundle.status).toBe('pending_approval')
+    expect(bundle.stepStates['package-bundle'].output.summary_markdown).toContain('## Launch Recommendation')
+    expect(bundle.stepStates['package-bundle'].output.handoff.owner_decision).toBeTruthy()
   })
 
   it('has workspace files for all subagents', () => {
