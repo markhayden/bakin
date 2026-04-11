@@ -15,6 +15,7 @@ interface ContentStore extends ContentState {
   activityEvents: ActivityEvent[]
   sseConnected: boolean
   taskboardVersion: number
+  debug: boolean
   setFiles: (files: Record<string, string>) => void
   updateFile: (key: string, content: string) => void
   setHeartbeats: (heartbeats: Record<string, Heartbeat>) => void
@@ -24,6 +25,7 @@ interface ContentStore extends ContentState {
   setActivityEvents: (events: ActivityEvent[]) => void
   setSseConnected: (connected: boolean) => void
   bumpTaskboard: () => void
+  setDebug: (debug: boolean) => void
   initialize: () => Promise<void>
 }
 
@@ -36,6 +38,7 @@ export const useContentStore = create<ContentStore>((set, get) => ({
   activityEvents: [],
   sseConnected: false,
   taskboardVersion: 0,
+  debug: false,
 
   setFiles: (files) => set({ files }),
   updateFile: (key, content) =>
@@ -54,8 +57,13 @@ export const useContentStore = create<ContentStore>((set, get) => ({
     set({ activityEvents: events.filter((e) => !isNoisyEvent(e)).slice(0, 100) }),
   setSseConnected: (connected) => set({ sseConnected: connected }),
   bumpTaskboard: () => set((state) => ({ taskboardVersion: state.taskboardVersion + 1 })),
+  setDebug: (debug) => {
+    set({ debug })
+    try { localStorage.setItem('bakin-debug', String(debug)) } catch {}
+  },
 
   initialize: async () => {
+    try { if (localStorage.getItem('bakin-debug') === 'true') set({ debug: true }) } catch {}
     try {
       const [stateRes, healthRes, activityRes] = await Promise.all([
         fetch('/api/state'),
