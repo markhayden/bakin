@@ -90,25 +90,41 @@ export async function start(): Promise<boolean> {
   const dataDir = join(process.env.HOME || '~', '.antfly', 'data')
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
 
-  // Write a minimal Antfly config file to disable SSRF-defense private-IP
-  // blocking. Bakin exposes asset files on a loopback-only HTTP listener
-  // (src/core/antfly-internal-server.ts) so Antfly's remotePDF and
-  // remoteMedia template helpers can fetch them during multimodal indexing.
-  // Antfly's default policy blocks private-IP fetches, which would reject
-  // 127.0.0.1. Disabling the block is safe here because Bakin is a single-
-  // user deployment where Antfly is fully controlled by Bakin and no
-  // untrusted input ever reaches its template helpers — templates are
-  // hardcoded in plugin source, not user input.
+  // Write an Antfly config file with two settings:
   //
-  // Env var ANTFLY_CONTENT_SECURITY_BLOCK_PRIVATE_IPS does not work here
-  // because Antfly reads content_security via viper struct unmarshal and
-  // viper.AutomaticEnv() has a known gotcha where env bindings don't
-  // propagate to nested struct fields. A config file is the only path.
+  //   remote_content.security.block_private_ips: false
+  //     Lets Antfly's remotePDF and remoteMedia template helpers fetch
+  //     from the loopback-only internal file server. The key is
+  //     remote_content.*, NOT content_security.* — the latter is defined
+  //     in viper defaults but SetDefaultSecurityConfig() is never called
+  //     so it's a documented-but-dead no-op. The working path runs
+  //     through scraping.InitRemoteContentConfig(&config.RemoteContent)
+  //     in cmd/antfly/cmd/utils.go:144. Safe here because Bakin is a
+  //     single-user deployment where Antfly is fully controlled by
+  //     Bakin and no untrusted input reaches template helpers.
+  //
+  //   termite.api_url: http://0.0.0.0:11433
+  //     Providing a config file somehow bypasses viper's SetDefault for
+  //     termite.api_url (set in swarm.go:81), leaving config.Termite.
+  //     ApiUrl empty. utils.go:149 skips libtermite.SetDefaultURL() when
+  //     the URL is empty, and every downstream embedder then fails with
+  //     "termite URL is required". Setting it explicitly in the config
+  //     restores the default. Also set ANTFLY_TERMITE_URL env var as
+  //     belt-and-suspenders — it's read directly via os.Getenv in
+  //     termite.ResolveURL() and bypasses all viper gotchas.
   const configPath = join(process.env.HOME || '~', '.antfly', 'bakin-managed.yaml')
+  const TERMITE_URL = 'http://0.0.0.0:11433'
   try {
     writeFileSync(
       configPath,
-      'content_security:\n  block_private_ips: false\n',
+      [
+        'termite:',
+        `  api_url: ${TERMITE_URL}`,
+        'remote_content:',
+        '  security:',
+        '    block_private_ips: false',
+        '',
+      ].join('\n'),
       'utf-8',
     )
   } catch (err) {
@@ -125,6 +141,7 @@ export async function start(): Promise<boolean> {
       env: {
         ...process.env,
         ANTFLY_DATA_DIR: dataDir,
+        ANTFLY_TERMITE_URL: TERMITE_URL,
       },
     })
 
