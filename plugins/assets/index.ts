@@ -56,6 +56,93 @@ const assetsPlugin: BakinPlugin = {
   contentFiles: [],
 
   activate(ctx: PluginContext) {
+    // ─── Search Content Type Registration ─────────────────────────────
+
+    ctx.search.registerContentType({
+      table: 'assets',
+      schema: {
+        description: { type: 'text' },
+        tags: { type: 'text' },
+        agent: { type: 'keyword' },
+        task_id: { type: 'keyword' },
+        asset_type: { type: 'keyword' },
+        file_name: { type: 'text' },
+        tool: { type: 'keyword' },
+        updated_at: { type: 'datetime' },
+      },
+      searchableFields: ['description', 'tags', 'file_name'],
+      embeddingTemplate: '{{description}} {{tags}} {{file_name}}',
+      facets: ['asset_type', 'agent', 'tool'],
+      reindex: async function* () {
+        const contentDir = getContentDir()
+        const assetsRoot = join(contentDir, 'assets')
+        if (!existsSync(assetsRoot)) return
+
+        for (const typeName of ASSET_TYPES) {
+          const typeDir = join(assetsRoot, typeName)
+          if (!existsSync(typeDir)) continue
+
+          let subdirs: string[]
+          try {
+            subdirs = readdirSync(typeDir).filter(d => {
+              if (d.startsWith('.')) return false
+              try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
+            })
+          } catch { continue }
+
+          for (const subdir of subdirs) {
+            const dirPath = join(typeDir, subdir)
+            let files: string[]
+            try { files = readdirSync(dirPath).filter(f => f.endsWith('.meta.json')) } catch { continue }
+
+            for (const metaFile of files) {
+              const metaPath = join(dirPath, metaFile)
+              try {
+                const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
+                const assetFilename = metaFile.replace('.meta.json', '')
+                const key = `assets/${typeName}/${subdir}/${assetFilename}`
+                yield { key, doc: assetToSearchDoc(raw, assetFilename, typeName) }
+              } catch { /* skip unreadable sidecars */ }
+            }
+          }
+        }
+      },
+      verifyExists: async (key: string) => {
+        const metaPath = join(getContentDir(), key + '.meta.json')
+        return existsSync(metaPath)
+      },
+    })
+
+    /** Convert sidecar metadata to a search document */
+    function assetToSearchDoc(meta: Record<string, unknown>, filename: string, assetType: string): Record<string, unknown> {
+      return {
+        description: (meta.description as string) || '',
+        tags: Array.isArray(meta.tags) ? (meta.tags as string[]).join(', ') : '',
+        agent: (meta.agent as string) || '',
+        task_id: (meta.taskId as string) || '',
+        asset_type: assetType,
+        file_name: filename,
+        tool: (meta.tool as string) || '',
+        updated_at: (meta.created as string) || new Date().toISOString(),
+      }
+    }
+
+    /** Index an asset by reading its sidecar metadata */
+    async function indexAsset(relPath: string): Promise<void> {
+      try {
+        const contentDir = getContentDir()
+        const metaPath = join(contentDir, relPath + '.meta.json')
+        if (!existsSync(metaPath)) return
+        const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
+        const filename = relPath.split('/').pop() || ''
+        const parts = relPath.split('/')
+        const assetType = parts[1] || 'other'
+        await ctx.search.index(relPath, assetToSearchDoc(raw, filename, assetType))
+      } catch (err) {
+        log.warn('Failed to index asset for search', { path: relPath, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
     // ─── Cross-Plugin Hooks ────────────────────────────────────────────
 
     ctx.hooks.register('assets.validateSidecar', (d: Record<string, unknown>) => validateSidecar(d.metaPath as string))
@@ -82,6 +169,7 @@ const assetsPlugin: BakinPlugin = {
         const fullPath = join(contentDir, asset.path)
         if (softDelete(fullPath, assetsRoot)) {
           removeAsset(asset.path)
+          ctx.search.remove(asset.path).catch(() => {})
           purged++
         }
       }
@@ -122,7 +210,20 @@ const assetsPlugin: BakinPlugin = {
       path: '/upload',
       method: 'POST',
       description: 'Upload asset files',
-      handler: async (req: Request) => handleUpload(req, ctx),
+      handler: async (req: Request) => {
+        const res = await handleUpload(req, ctx)
+        if (res.ok) {
+          try {
+            const clone = await res.clone().json()
+            if (clone.saved && Array.isArray(clone.saved)) {
+              for (const saved of clone.saved) {
+                if (saved.path) indexAsset(saved.path).catch(() => {})
+              }
+            }
+          } catch { /* index best-effort */ }
+        }
+        return res
+      },
     })
 
     // GET /file — serve asset file for rendering
@@ -134,10 +235,13 @@ const assetsPlugin: BakinPlugin = {
       method: 'DELETE',
       description: 'Soft-delete an asset',
       handler: async (req: Request) => {
+        const url = new URL(req.url, 'http://localhost')
+        const assetPath = url.searchParams.get('path') || ''
         const res = await handleDelete(req)
         if (res.ok) {
           ctx.activity.audit('deleted', 'system')
           ctx.activity.log('system', 'Asset deleted')
+          if (assetPath) ctx.search.remove(assetPath).catch(() => {})
         }
         return res
       },
@@ -154,6 +258,8 @@ const assetsPlugin: BakinPlugin = {
         if (data.ok) {
           ctx.activity.audit('asset.relinked', 'user', { oldPath: data.oldPath, newPath: data.newPath })
           ctx.activity.log('user', `Relinked asset to ${data.newPath || '_unlinked'}`)
+          if (data.oldPath) ctx.search.remove(data.oldPath).catch(() => {})
+          if (data.newPath) indexAsset(data.newPath).catch(() => {})
         }
         return res
       },
@@ -172,6 +278,10 @@ const assetsPlugin: BakinPlugin = {
         if (res.ok) {
           ctx.activity.audit('restored', 'system')
           ctx.activity.log('system', 'Asset restored from trash')
+          try {
+            const data = await res.clone().json()
+            if (data.restoredPath) indexAsset(data.restoredPath).catch(() => {})
+          } catch { /* index best-effort */ }
         }
         return res
       },
@@ -271,6 +381,7 @@ const assetsPlugin: BakinPlugin = {
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         const result = await saveAsset({ ...params, agent } as Parameters<typeof saveAsset>[0])
+        if (result.ok && result.path) indexAsset(result.path as string).catch(() => {})
         return result
       },
     })
@@ -294,6 +405,7 @@ const assetsPlugin: BakinPlugin = {
         const success = softDelete(fullPath, assetsRoot)
         if (!success) return { ok: false, error: 'Failed to delete asset' }
         removeAsset(assetPath)
+        ctx.search.remove(assetPath).catch(() => {})
         ctx.activity.audit('asset.deleted', agent, { path: assetPath })
         return { ok: true, trashed: [assetPath] }
       },
@@ -315,6 +427,8 @@ const assetsPlugin: BakinPlugin = {
         })
         if (result.ok) {
           ctx.activity.audit('asset.relinked', agent, { oldPath: result.oldPath, newPath: result.newPath })
+          if (result.oldPath) ctx.search.remove(result.oldPath as string).catch(() => {})
+          if (result.newPath) indexAsset(result.newPath as string).catch(() => {})
         }
         return result
       },
@@ -352,6 +466,7 @@ const assetsPlugin: BakinPlugin = {
         const assetsRoot = join(getContentDir(), 'assets')
         const restoredPath = await restoreAsset(filename, assetsRoot)
         if (!restoredPath) return { ok: false, error: 'Failed to restore asset — file may not exist in trash' }
+        indexAsset(restoredPath).catch(() => {})
         return { ok: true, restoredPath }
       },
     })
