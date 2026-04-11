@@ -261,6 +261,11 @@ export function HealthPage() {
   const [usage, setUsage] = useState<AgentUsage[]>([])
   const [loading, setLoading] = useState(true)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  const [searchHealth, setSearchHealth] = useState<{
+    enabled: boolean
+    tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }>
+  } | null>(null)
+  const [reindexing, setReindexing] = useState(false)
 
   // Search state
   const [pluginSearch, setPluginSearch] = useState('')
@@ -273,10 +278,11 @@ export function HealthPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [summaryRes, registryRes, usageRes] = await Promise.all([
+      const [summaryRes, registryRes, usageRes, searchRes] = await Promise.all([
         fetch('/api/plugins/health/summary'),
         fetch('/api/plugins/health/registry'),
         fetch('/api/plugins/health/usage'),
+        fetch('/api/antfly/health'),
       ])
       const json = await summaryRes.json()
       setData(json)
@@ -288,6 +294,10 @@ export function HealthPage() {
         const usageJson = await usageRes.json()
         if (Array.isArray(usageJson)) setUsage(usageJson)
       } catch { /* usage endpoint optional */ }
+      try {
+        const searchJson = await searchRes.json()
+        setSearchHealth(searchJson)
+      } catch { /* search endpoint optional */ }
       setLastRefresh(new Date())
     } catch (err) {
       console.error('Failed to fetch health data:', err)
@@ -451,6 +461,60 @@ export function HealthPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Search / Antfly Section */}
+      {searchHealth && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Search (Antfly)</span>
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
+                  searchHealth.enabled
+                    ? 'bg-emerald-500/10 text-emerald-500'
+                    : 'bg-muted text-muted-foreground'
+                }`}>
+                  {searchHealth.enabled ? 'Connected' : 'Disabled'}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!searchHealth.enabled || reindexing}
+                  onClick={async () => {
+                    setReindexing(true)
+                    try {
+                      await fetch('/api/reindex', { method: 'POST' })
+                      await fetchData()
+                    } finally {
+                      setReindexing(false)
+                    }
+                  }}
+                >
+                  {reindexing ? 'Reindexing...' : 'Reindex All'}
+                </Button>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {searchHealth.tables.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No tables registered</p>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {searchHealth.tables.map(t => {
+                  const docs = (t.stats as any)?.num_docs ?? 0
+                  return (
+                    <div key={t.table} className="rounded-lg border border-border p-3">
+                      <p className="text-xs text-muted-foreground">{t.pluginId}</p>
+                      <p className="text-lg font-semibold tabular-nums">{docs}</p>
+                      <p className="text-[10px] text-muted-foreground">{t.table}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Tool Usage — horizontal bar chart */}
