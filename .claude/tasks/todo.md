@@ -1,0 +1,180 @@
+# AntflyDB Search System — Task List
+
+**Plan:** `.claude/tasks/plan.md`
+**Spec:** `.claude/specs/antfly-search-system.md`
+**Branch:** `feat/antfly-search`
+
+---
+
+## Phase 1: Foundation
+
+- [ ] **T1.1: Extend BakinSettings**
+  - Add `search.{strategy,defaultLimit,reranker}`, `embedder.{provider,model}`, `chunking.{defaultTargetTokens,defaultOverlapTokens}`, `auditTtl`, `cleanupInterval` to `antfly` settings
+  - File: `packages/core/src/settings.ts`
+
+- [ ] **T1.2: Add SearchAPI Types to PluginContext**
+  - `SearchAPI`, `SearchContentTypeDefinition` (with `reindex()` generator, `verifyExists()`, `chunker?`), `SchemaField`, `SearchQueryParams`, `SearchResponse`
+  - Add `search: SearchAPI` and `transform()` to PluginContext
+  - File: `packages/core/src/plugin-types.ts`
+
+- [ ] **T1.3: Rewrite antfly.ts with @antfly/sdk**
+  - Replace raw `fetch()` with `AntflyClient`
+  - Remove `beacon_*` tables/references, add wipe on startup
+  - Add: `indexDocument`, `removeDocument`, `transformDocument`, `multiQuery`, `createTable`, `getTableStats`, `scanTable`, `rebuildIndexes`
+  - Add embedder config change detection
+  - File: `src/core/antfly.ts`
+
+- [ ] **T2: ctx.search Provider and Content Type Registry**
+  - Create `src/core/search-registry.ts` (singleton on globalThis)
+  - Inject `ctx.search` in `buildContext()` in `src/lib/plugin-registry.ts`
+  - Wire table creation into server startup in `server.ts`
+  - Files: `src/core/search-registry.ts` (new), `src/lib/plugin-registry.ts`, `server.ts`
+
+- [ ] **T3: Watcher Unlink Handler + Orphan Cleanup**
+  - Add `unlink` event handler + `syncFileUnlink()` to watcher
+  - Create `src/core/search-cleanup.ts` (periodic orphan cleanup with metrics)
+  - Wire in `server.ts`
+  - Files: `src/core/watcher.ts`, `src/core/antfly.ts`, `src/core/search-cleanup.ts` (new), `server.ts`
+
+- [ ] **T3b: Phase 1 Documentation**
+  - Create `.claude/knowledge/search-system.md` — full architecture overview
+  - Update `.claude/knowledge/storage-model.md` — replace Antfly stub, add deletion sync
+  - Update `.claude/knowledge/plugin-system.md` — add ctx.search to PluginContext docs
+  - Update `CLAUDE.md` — architecture section, key patterns, directory map
+
+### --- CHECKPOINT 1 --- `git tag search-checkpoint-1`
+- [ ] `pnpm tsc --noEmit` passes
+- [ ] `pnpm test` passes
+- [ ] Bakin starts with Antfly, tables created, ctx.search works end-to-end
+- [ ] `search-system.md` knowledge doc written
+
+---
+
+## Phase 2: Plugin Indexing (parallelizable)
+
+Each plugin: register content type with schema + `reindex()` generator + `verifyExists()` + optional `chunker`. Wire `ctx.search.index/remove/transform` on every mutation.
+
+- [ ] **T4: Tasks Plugin Indexing** (SQLite source)
+  - Register content type with `reindex()` that reads all flow_runs from SQLite
+  - Index on: create, move, block, logProgress, delete (in task-service.ts)
+  - Replace `indexCompletedTask()` — index ALL statuses
+  - Use `transform()` for status-only changes (high frequency)
+  - Enable chunker for log_text field
+  - Files: `plugins/tasks/index.ts`, `src/core/task-service.ts`
+
+- [ ] **T5: Assets Plugin Indexing** (filesystem source)
+  - Register with `reindex()` that scans `~/.bakin/assets/**/*.meta.json`
+  - Index on upload/link, remove on delete/trash, re-index on restore
+  - Files: `plugins/assets/index.ts`
+
+- [ ] **T6: Projects Plugin Indexing** (filesystem source)
+  - Register with `reindex()` that scans `~/.bakin/projects/*.md`
+  - Index on create/update, remove on delete
+  - Enable chunker for long markdown bodies
+  - Files: `plugins/projects/index.ts`, `plugins/projects/lib/project-service.ts`
+
+- [ ] **T7: Workflows Plugin Indexing** (filesystem source)
+  - Register with `reindex()` that scans workflow definitions + instances
+  - Index templates on save, instances on start/step/complete
+  - Files: `plugins/workflows/index.ts`, `plugins/workflows/lib/runtime.ts`
+
+- [ ] **T8: Schedule Plugin Indexing** (OpenClaw source)
+  - Register with `reindex()` that fetches all jobs from OpenClaw
+  - Index on CRUD, batch-refresh on list fetch
+  - Files: `plugins/schedule/index.ts`
+
+- [ ] **T9: Team Plugin Indexing** (OpenClaw source)
+  - Register with `reindex()` that fetches all agents from OpenClaw
+  - Batch-index on load, use `transform()` for heartbeat updates
+  - Files: `plugins/team/index.ts`
+
+- [ ] **T10: Audit Indexing with TTL**
+  - Register audit content type in `server.ts` with TTL from settings
+  - Replace `indexAuditEvent()` in `audit.ts`
+  - Register `reindex()` that scans `audit.jsonl`
+  - Files: `server.ts`, `src/core/audit.ts`, `src/core/antfly.ts`
+
+- [ ] **T10b: Phase 2 Documentation**
+  - Create `.claude/knowledge/search-plugin-guide.md` — how to make any plugin searchable
+  - Create `.claude/skills/add-search-to-plugin.md` — step-by-step skill
+  - Update `.claude/knowledge/tasks-plugin.md` — all-status indexing, rich schema
+  - Update `.claude/knowledge/assets-plugin.md` — structured indexing, trash removal
+
+### --- CHECKPOINT 2 --- `git tag search-checkpoint-2`
+- [ ] All 7 content types registered and indexing on mutations
+- [ ] `POST /api/reindex` triggers all `reindex()` generators, returns correct counts
+- [ ] `POST /api/reindex?rebuild=true` drops indexes + re-embeds
+- [ ] `search-plugin-guide.md` and skill written
+- [ ] `pnpm test` passes
+
+---
+
+## Phase 3: Search API + MCP Tools + CLI
+
+- [ ] **T11: Cross-Table Search API + Per-Plugin Routes + Health Endpoint**
+  - Rewrite `/api/search` — use `multiquery()` for cross-table
+  - Rewrite `/api/reindex` — per-table, rebuild support
+  - Add `/api/antfly/health`
+  - Register `/search` route in each plugin
+  - Files: `server.ts`, `plugins/{tasks,assets,projects,workflows,schedule,memory}/index.ts`
+
+- [ ] **T11b: MCP Search Tools + CLI Commands**
+  - 7 MCP exec tools: search_query, search_table, search_lookup, search_facets, search_similar, search_reindex, search_stats
+  - CLI: enhanced `search`, new `search:facets`, `search:similar`, `search:stats`, `search:cleanup`, enhanced `reindex`
+  - Files: `scripts/lib/search-tools.ts` (new), `cli/bakin.ts`
+
+- [ ] **T11c: Phase 3 Documentation**
+  - Create `.claude/knowledge/search-api-reference.md` — REST + MCP + CLI reference with examples
+
+### --- CHECKPOINT 3 --- `git tag search-checkpoint-3`
+- [ ] All API endpoints tested
+- [ ] Cross-table + per-plugin search working with aggregations
+- [ ] All 7 MCP tools registered
+- [ ] CLI commands functional
+- [ ] `search-api-reference.md` written
+- [ ] `pnpm test` passes
+
+---
+
+## Phase 4: UI Integration (parallelizable after T12)
+
+- [ ] **T12: useAntflySearch Hook**
+  - Debounce, fallback, AbortController, aggregations
+  - File: `src/hooks/use-antfly-search.ts` (new)
+
+- [ ] **T13: Tasks UI Search** — `plugins/tasks/components/{kanban-board,task-filters}.tsx`
+- [ ] **T14: Assets UI Search** — `plugins/assets/components/assets-page.tsx`
+- [ ] **T15: Projects UI Search** — `plugins/projects/components/project-grid.tsx`
+- [ ] **T16: Workflows UI Search** — `plugins/workflows/components/workflows-page.tsx`
+- [ ] **T17: Schedule UI Search** — `plugins/schedule/components/schedule-page.tsx`
+- [ ] **T18: Memory UI Search** — `plugins/memory/components/{audit-timeline,memory-log}.tsx`
+
+- [ ] **T19: FacetFilter Aggregation Integration**
+  - Add `counts` prop to `facet-filter.tsx`, wire in Tasks/Assets/Schedule
+  - Files: `src/components/facet-filter.tsx`, plugin components
+
+- [ ] **T19b: Phase 4 Documentation**
+  - Update `.claude/knowledge/url-state-deep-linking.md` — useAntflySearch hook, search URL params
+  - Update `.claude/knowledge/shared-ui-patterns.md` — useAntflySearch pattern, FacetFilter counts
+
+### --- CHECKPOINT 4 --- `git tag search-checkpoint-4`
+- [ ] All search bars Antfly-powered with fallback
+- [ ] FacetFilter counts from aggregations
+- [ ] No visual regressions
+- [ ] UI pattern docs updated
+
+---
+
+## Phase 5: Health & Observability
+
+- [ ] **T20: Health Plugin Search Section + Doctor Checks**
+  - Search section: status, tables, metrics, actions (reindex/cleanup/clear)
+  - Enhanced doctor: table existence, schema verification, stale data warnings
+  - Files: `plugins/health/components/health-page.tsx`, `src/core/doctor.ts`
+
+### --- CHECKPOINT 5 (Final) --- `git tag search-checkpoint-5`
+- [ ] Full E2E: create → search → update → search → delete → verify gone
+- [ ] Health plugin accurate
+- [ ] Embedder change → rebuild → reindex works end-to-end
+- [ ] `pnpm tsc --noEmit` && `pnpm test` pass
+- [ ] Ready to merge `feat/antfly-search` → `main`
