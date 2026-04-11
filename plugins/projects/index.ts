@@ -149,6 +149,24 @@ const projectsPlugin: BakinPlugin = {
     }
     ctx.registerRoute({ path: '/', method: 'GET', description: 'List projects', handler: listHandler })
 
+    // GET /search — search projects via Antfly
+    ctx.registerRoute({
+      path: '/search',
+      method: 'GET',
+      description: 'Search projects',
+      handler: async (req: Request) => {
+        const url = new URL(req.url, 'http://localhost')
+        const q = url.searchParams.get('q')
+        if (!q) return Response.json({ error: 'Missing ?q= parameter' }, { status: 400 })
+        return Response.json(await ctx.search.query({
+          q,
+          limit: Number(url.searchParams.get('limit')) || undefined,
+          offset: Number(url.searchParams.get('offset')) || undefined,
+          facets: url.searchParams.get('facets')?.split(',').filter(Boolean),
+        }))
+      },
+    })
+
     // GET /:projectId — get single project
     const getHandler = async (req: Request) => {
       const url = new URL(req.url, 'http://localhost')

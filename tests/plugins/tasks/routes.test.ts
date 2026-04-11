@@ -117,8 +117,8 @@ beforeEach(() => {
 // ─── Route Registration ────────────────────────────────────────────────────
 
 describe('Tasks Plugin — Route Registration', () => {
-  it('registers 12 routes', () => {
-    expect(activated.routes.length).toBe(12)
+  it('registers 13 routes', () => {
+    expect(activated.routes.length).toBe(13)
   })
 
   it.each([
