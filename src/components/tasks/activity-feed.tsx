@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug, Code } from 'lucide-react'
 import { useActivityContext } from '@/context/activity-context'
 import { useContentStore } from '@/hooks/use-content-store'
 import { AgentAvatar } from '@/components/agent-avatar'
@@ -54,6 +54,17 @@ export function ActivityFeed() {
   const events = useContentStore((s) => s.activityEvents)
   const connected = useContentStore((s) => s.sseConnected)
   const [, setTick] = useState(0)
+  const [verbose, setVerbose] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return localStorage.getItem('bakin-activity-verbose') !== 'false'
+  })
+  const toggleVerbose = useCallback(() => {
+    setVerbose((v) => {
+      const next = !v
+      localStorage.setItem('bakin-activity-verbose', String(next))
+      return next
+    })
+  }, [])
 
   // Force re-render every 30s to keep relative timestamps fresh
   useEffect(() => {
@@ -86,12 +97,21 @@ export function ActivityFeed() {
             <span className={`h-2 w-2 rounded-full ${connected ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
             <span className="text-sm font-medium text-foreground">Live Activity</span>
           </div>
-          <button
-            onClick={toggle}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)]"
-          >
-            <ChevronRight className="size-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleVerbose}
+              title={verbose ? 'Hide command names' : 'Show command names'}
+              className={`transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] ${verbose ? 'text-foreground' : 'text-muted-foreground/50'}`}
+            >
+              <Code className="size-3.5" />
+            </button>
+            <button
+              onClick={toggle}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)]"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
         </div>
 
         {/* Event list */}
@@ -123,6 +143,9 @@ export function ActivityFeed() {
                 <p className={`text-[12px] leading-snug break-words ${
                   evt.type === 'alert' ? 'text-warning' : 'text-foreground/80'
                 }`}>{evt.message}</p>
+                {verbose && evt.eventName && (
+                  <p className="text-[10px] text-muted-foreground/60 mt-0.5 truncate font-mono">{evt.eventName}</p>
+                )}
               </div>
             </div>
           ))}
