@@ -116,22 +116,22 @@ Each plugin: register content type with schema + `reindex()` generator + `verify
 
 ## Phase 4: UI Integration (parallelizable after T12)
 
-- [ ] **T12: useAntflySearch Hook**
+- [x] **T12: useAntflySearch Hook** ✓ `d22af98`
   - Debounce, fallback, AbortController, aggregations
   - File: `src/hooks/use-antfly-search.ts` (new)
 
-- [ ] **T13: Tasks UI Search** — `plugins/tasks/components/{kanban-board,task-filters}.tsx`
-- [ ] **T14: Assets UI Search** — `plugins/assets/components/assets-page.tsx`
-- [ ] **T15: Projects UI Search** — `plugins/projects/components/project-grid.tsx`
-- [ ] **T16: Workflows UI Search** — `plugins/workflows/components/workflows-page.tsx`
-- [ ] **T17: Schedule UI Search** — `plugins/schedule/components/schedule-page.tsx`
-- [ ] **T18: Memory UI Search** — `plugins/memory/components/{audit-timeline,memory-log}.tsx`
+- [x] **T13: Tasks UI Search** ✓ `140d442`
+- [x] **T14: Assets UI Search** ✓ `140d442`
+- [x] **T15: Projects UI Search** ✓ `140d442`
+- [x] **T16: Workflows UI Search** ✓ `140d442`
+- [x] **T17: Schedule UI Search** ✓ `140d442`
+- [x] **T18: Memory UI Search** ✓ `140d442`
 
-- [ ] **T19: FacetFilter Aggregation Integration**
+- [x] **T19: FacetFilter Aggregation Integration** ✓ `124f89e`
   - Add `counts` prop to `facet-filter.tsx`, wire in Tasks/Assets/Schedule
   - Files: `src/components/facet-filter.tsx`, plugin components
 
-- [ ] **T19b: Phase 4 Documentation**
+- [x] **T19b: Phase 4 Documentation**
   - Update `.claude/knowledge/url-state-deep-linking.md` — useAntflySearch hook, search URL params
   - Update `.claude/knowledge/shared-ui-patterns.md` — useAntflySearch pattern, FacetFilter counts
 
