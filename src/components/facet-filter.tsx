@@ -19,9 +19,11 @@ interface FacetFilterProps {
   onChange: (selected: string[]) => void
   /** Show search input when options exceed this count (default: 6) */
   searchThreshold?: number
+  /** Optional aggregation counts from Antfly search (value → count) */
+  counts?: Record<string, number>
 }
 
-export function FacetFilter({ label, options, selected, onChange, searchThreshold = 6 }: FacetFilterProps) {
+export function FacetFilter({ label, options, selected, onChange, searchThreshold = 6, counts }: FacetFilterProps) {
   const [open, setOpen] = useState(false)
   const showSearch = options.length > searchThreshold
 
@@ -75,6 +77,9 @@ export function FacetFilter({ label, options, selected, onChange, searchThreshol
                     >
                       {option.icon && <span className="shrink-0">{option.icon}</span>}
                       <span className="truncate">{option.label}</span>
+                      {counts?.[option.value] !== undefined && (
+                        <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">{counts[option.value]}</span>
+                      )}
                     </CommandItem>
                   )
                 })}

@@ -24,6 +24,8 @@ interface AssetFiltersProps {
   view: string
   onViewChange: (view: string) => void
   onAdd?: () => void
+  /** Aggregation counts from Antfly search (type → count) */
+  typeCounts?: Record<string, number>
 }
 
 const VIEW_OPTIONS = [
@@ -32,7 +34,7 @@ const VIEW_OPTIONS = [
   { key: 'trash', label: 'Trash', icon: Trash2 },
 ] as const
 
-export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange, assetCount, view, onViewChange, onAdd }: AssetFiltersProps) {
+export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange, assetCount, view, onViewChange, onAdd, typeCounts }: AssetFiltersProps) {
   return (
     <div className="flex flex-col gap-3">
       <PluginHeader
@@ -78,6 +80,7 @@ export function AssetFilters({ typeFilter, onTypeChange, search, onSearchChange,
             options={TYPE_OPTIONS}
             selected={typeFilter}
             onChange={onTypeChange}
+            counts={typeCounts}
           />
         </div>
       )}
