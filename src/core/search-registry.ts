@@ -10,6 +10,7 @@ import type {
   SearchIndexDefinition,
   SearchQueryParams,
   SearchResponse,
+  SearchResult,
   SearchTransformOp,
 } from '../../packages/core/src/plugin-types'
 import * as antfly from './antfly'
@@ -292,6 +293,7 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
         filters: params.filters,
         aggregations,
         indexes: getIndexNames(tableName),
+        rerank: params.rerank,
       })
 
       // Map aggregation results to our format
@@ -310,7 +312,7 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
       }
 
       return {
-        results: result.results,
+        results: result.results as SearchResult[],
         aggregations: mappedAggs,
         meta: {
           query: params.q,

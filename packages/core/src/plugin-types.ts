@@ -237,6 +237,13 @@ export interface SearchQueryParams {
   limit?: number
   /** Result offset for pagination */
   offset?: number
+  /**
+   * Whether to run the cross-encoder reranker on results. Defaults to
+   * true when the reranker is enabled in settings. Set false for latency-
+   * sensitive paths (facet-only queries, ID lookups, bulk scans) where
+   * the extra ~100-500ms isn't worth it.
+   */
+  rerank?: boolean
 }
 
 /** A single search result */
@@ -245,6 +252,8 @@ export interface SearchResult {
   table: string
   score: number
   fields: Record<string, unknown>
+  /** Cross-encoder reranker score (present when a reranker was used). */
+  rerankScore?: number
 }
 
 /** Search response from a query */

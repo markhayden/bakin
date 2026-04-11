@@ -57,6 +57,8 @@ export interface SearchResult {
   fields: Record<string, unknown>
   /** Per-index score breakdown (e.g. { search: 0.8, embeddings: 0.6 }) */
   indexScores?: Record<string, number>
+  /** Cross-encoder reranker score (present when a reranker was used). */
+  rerankScore?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -326,11 +328,32 @@ export async function batchRemove(tableName: string, keys: string[]): Promise<nu
 // ---------------------------------------------------------------------------
 
 /**
+ * Build the reranker config for a QueryRequest, honoring the per-call
+ * `rerank` override and the global `settings.antfly.search.reranker.enabled`
+ * switch. Returns undefined when reranking should be skipped.
+ */
+function buildRerankerConfig(
+  settings: ReturnType<typeof getSettings>,
+  rerank: boolean | undefined,
+): Record<string, unknown> | undefined {
+  if (rerank === false) return undefined
+  const cfg = settings.antfly.search.reranker
+  if (!cfg?.enabled) return undefined
+  const out: Record<string, unknown> = { provider: cfg.provider, model: cfg.model }
+  if (typeof cfg.threshold === 'number') out.threshold = cfg.threshold
+  return out
+}
+
+/**
  * Search a single table with hybrid (full-text + semantic) search.
  * `indexes` is the list of vector indexes to query — defaults to a single
  * legacy `['embeddings']` for content types that don't declare multi-index
  * definitions. Multi-index content types (e.g. assets with text + visual)
  * pass the full set here and Antfly merges them via RRF.
+ *
+ * `rerank` controls cross-encoder reranking per call. Defaults to true when
+ * the reranker is enabled in settings; pass false for latency-sensitive
+ * queries (facet-only, ID lookups, bulk scans).
  */
 export async function queryTable(
   tableName: string,
@@ -342,6 +365,7 @@ export async function queryTable(
     aggregations?: Record<string, unknown>
     strategy?: 'rrf' | 'semantic_only' | 'full_text_only'
     indexes?: string[]
+    rerank?: boolean
   } = {},
 ): Promise<{ results: SearchResult[]; aggregations?: Record<string, unknown>; took: number; total: number }> {
   const client = getClient()
@@ -386,6 +410,11 @@ export async function queryTable(
     request.aggregations = options.aggregations as QueryRequest['aggregations']
   }
 
+  const rerankerCfg = buildRerankerConfig(settings, options.rerank)
+  if (rerankerCfg) {
+    request.reranker = rerankerCfg as QueryRequest['reranker']
+  }
+
   try {
     const result = await client.tables.query(tableName, request)
     const response = result?.responses?.[0]
@@ -417,6 +446,7 @@ export async function multiQuery(
     filters?: Record<string, string | boolean | number>
     aggregations?: Record<string, unknown>
     indexesByTable?: Record<string, string[]>
+    rerank?: boolean
   } = {},
 ): Promise<{ results: SearchResult[]; aggregations?: Record<string, unknown>; took: number; total: number }> {
   const client = getClient()
@@ -427,6 +457,7 @@ export async function multiQuery(
   const settings = getSettings()
   const limit = options.limit ?? settings.antfly.search.defaultLimit
   const perTable = Math.ceil(limit / tables.length)
+  const rerankerCfg = buildRerankerConfig(settings, options.rerank)
 
   const requests: QueryRequest[] = tables.map(tableName => {
     const req: QueryRequest = {
@@ -444,6 +475,9 @@ export async function multiQuery(
     }
     if (options.aggregations) {
       req.aggregations = options.aggregations as QueryRequest['aggregations']
+    }
+    if (rerankerCfg) {
+      req.reranker = rerankerCfg as QueryRequest['reranker']
     }
     return req
   })
@@ -480,13 +514,17 @@ export async function multiQuery(
 
 function mapHits(response: QueryResult, tableName: string): SearchResult[] {
   if (!response?.hits?.hits) return []
-  return response.hits.hits.map((hit: QueryHit) => ({
-    id: hit._id || '',
-    table: tableName,
-    score: hit._score || 0,
-    fields: hit._source || {},
-    indexScores: (hit as Record<string, unknown>)._index_scores as Record<string, number> | undefined,
-  }))
+  return response.hits.hits.map((hit: QueryHit) => {
+    const raw = hit as Record<string, unknown>
+    return {
+      id: hit._id || '',
+      table: tableName,
+      score: hit._score || 0,
+      fields: hit._source || {},
+      indexScores: raw._index_scores as Record<string, number> | undefined,
+      rerankScore: raw._rerank_score as number | undefined,
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------

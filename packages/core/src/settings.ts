@@ -48,7 +48,18 @@ export interface BakinSettings {
     search: {
       strategy: 'rrf' | 'semantic_only' | 'full_text_only'
       defaultLimit: number
-      reranker?: { provider: string; model: string; threshold?: number }
+      /**
+       * Cross-encoder reranker configuration. When `enabled` is true and a
+       * query does not pass `rerank: false`, Bakin attaches this config to
+       * every Antfly QueryRequest. Reranking adds ~100-500ms latency but
+       * measurably improves result ordering for ambiguous queries.
+       */
+      reranker: {
+        enabled: boolean
+        provider: string
+        model: string
+        threshold?: number
+      }
     }
     /**
      * @deprecated Use `embedders.default` instead. Still read for backward
@@ -145,6 +156,12 @@ const DEFAULTS: BakinSettings = {
     search: {
       strategy: 'rrf',
       defaultLimit: 20,
+      reranker: {
+        enabled: true,
+        provider: 'termite',
+        model: 'mxbai-rerank-base-v1',
+        threshold: 0.0,
+      },
     },
     embedders: {
       default: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
