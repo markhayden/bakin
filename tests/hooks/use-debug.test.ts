@@ -210,9 +210,7 @@ describe('DebugSeed', () => {
     expect(storage.get('bakin-debug')).toBe('true')
   })
 
-  it('migrates old bakin-activity-show-duplicates key', async () => {
-    storage.set('bakin-activity-show-duplicates', 'true')
-
+  it('does not activate debug when URL param is absent', async () => {
     Object.defineProperty(window, 'location', {
       value: { ...window.location, search: '' },
       configurable: true,
@@ -229,48 +227,6 @@ describe('DebugSeed', () => {
         if (new URLSearchParams(window.location.search).get('debug') === 'true') {
           setDebug(true)
         }
-        try {
-          const old = localStorage.getItem('bakin-activity-show-duplicates')
-          if (old === 'true') {
-            setDebug(true)
-            localStorage.removeItem('bakin-activity-show-duplicates')
-          }
-        } catch {}
-      }, [setDebug])
-      return null
-    }
-
-    rtlRender(React.createElement(DebugSeed))
-
-    expect(useContentStore.getState().debug).toBe(true)
-    expect(storage.has('bakin-activity-show-duplicates')).toBe(false)
-    expect(storage.get('bakin-debug')).toBe('true')
-  })
-
-  it('does not activate debug when URL param is absent and no old key exists', async () => {
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, search: '' },
-      configurable: true,
-      writable: true,
-    })
-
-    const { useContentStore } = await import('@/hooks/use-content-store')
-    const React = await import('react')
-    const { render: rtlRender } = await import('@testing-library/react')
-
-    function DebugSeed() {
-      const setDebug = useContentStore((s: any) => s.setDebug)
-      React.useEffect(() => {
-        if (new URLSearchParams(window.location.search).get('debug') === 'true') {
-          setDebug(true)
-        }
-        try {
-          const old = localStorage.getItem('bakin-activity-show-duplicates')
-          if (old === 'true') {
-            setDebug(true)
-            localStorage.removeItem('bakin-activity-show-duplicates')
-          }
-        } catch {}
       }, [setDebug])
       return null
     }
