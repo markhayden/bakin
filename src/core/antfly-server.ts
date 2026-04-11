@@ -100,6 +100,16 @@ export async function start(): Promise<boolean> {
       env: {
         ...process.env,
         ANTFLY_DATA_DIR: dataDir,
+        // Bakin exposes asset files on a loopback-only HTTP listener
+        // (src/core/antfly-internal-server.ts) so Antfly's remotePDF and
+        // remoteMedia template helpers can fetch them during multimodal
+        // indexing. Antfly's default SSRF-defense policy blocks private-IP
+        // fetches, which would reject 127.0.0.1. Disabling the block is
+        // safe here because Bakin is a single-user deployment where
+        // Antfly is fully controlled by Bakin and no untrusted input ever
+        // reaches its template helpers — templates are hardcoded in plugin
+        // source, not user input.
+        ANTFLY_CONTENT_SECURITY_BLOCK_PRIVATE_IPS: 'false',
       },
     })
 
