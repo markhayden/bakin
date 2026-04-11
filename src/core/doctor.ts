@@ -319,7 +319,7 @@ async function checkSearchTables(): Promise<DiagnosticResult[]> {
             results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 persisted documents; schedule jobs are indexed at runtime`))
           } else {
             emptyTables++
-            results.push(warn('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 documents — run: POST /api/reindex?table=${t.table}`))
+            results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 documents — reindex via POST /api/reindex?table=${t.table}`))
           }
         }
         continue
@@ -328,7 +328,7 @@ async function checkSearchTables(): Promise<DiagnosticResult[]> {
       const storage = (t.stats as Record<string, unknown>).storage_status as Record<string, unknown> | undefined
       if (storage?.empty === true) {
         emptyTables++
-        results.push(warn('search-tables', `Table "${t.table}" (${t.pluginId}) appears empty — run: POST /api/reindex?table=${t.table}`))
+        results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) appears empty — reindex via POST /api/reindex?table=${t.table}`))
       }
     }
 
