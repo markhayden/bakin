@@ -253,6 +253,98 @@ describe('search-registry', () => {
     )
   })
 
+  // ── aggregations passthrough (T5) ───────────────────────────────────
+
+  it('query passes raw aggregations through to antfly.queryTable', async () => {
+    vi.mocked(antfly.queryTable).mockResolvedValueOnce({
+      results: [],
+      aggregations: {
+        byDate: { buckets: [{ key: '2026-04-01', doc_count: 3 }] },
+      },
+      took: 5,
+      total: 0,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const result = await api.query({
+      q: 'any',
+      aggregations: {
+        byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
+      },
+    })
+
+    expect(antfly.queryTable).toHaveBeenCalledWith(
+      'bakin_tasks',
+      'any',
+      expect.objectContaining({
+        aggregations: {
+          byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
+        },
+      }),
+    )
+    expect(result.rawAggregations).toEqual({
+      byDate: { buckets: [{ key: '2026-04-01', doc_count: 3 }] },
+    })
+  })
+
+  it('query merges caller aggregations with facet-derived aggregations', async () => {
+    vi.mocked(antfly.queryTable).mockResolvedValueOnce({
+      results: [], aggregations: {}, took: 1, total: 0,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await api.query({
+      q: 'any',
+      facets: ['status'],
+      aggregations: {
+        byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
+      },
+    })
+
+    expect(antfly.queryTable).toHaveBeenCalledWith(
+      'bakin_tasks',
+      'any',
+      expect.objectContaining({
+        aggregations: {
+          status: { type: 'terms', field: 'status', size: 50 },
+          byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
+        },
+      }),
+    )
+  })
+
+  it('caller aggregations override facet-derived ones on key collision', async () => {
+    vi.mocked(antfly.queryTable).mockResolvedValueOnce({
+      results: [], aggregations: {}, took: 1, total: 0,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await api.query({
+      q: 'any',
+      facets: ['status'],
+      aggregations: {
+        // Same key as the facet, but a different shape — caller wins
+        status: { type: 'terms', field: 'status', size: 500 },
+      },
+    })
+
+    expect(antfly.queryTable).toHaveBeenCalledWith(
+      'bakin_tasks',
+      'any',
+      expect.objectContaining({
+        aggregations: {
+          status: { type: 'terms', field: 'status', size: 500 },
+        },
+      }),
+    )
+  })
+
   it('buildAntflyIndexes throws when an embedderRef is unknown', async () => {
     const api = buildSearchAPI('broken')
     api.registerContentType({
