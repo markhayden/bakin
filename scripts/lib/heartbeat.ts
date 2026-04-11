@@ -10,6 +10,7 @@ import { addExecTool } from './registry'
 
 addExecTool({
   name: 'bakin_exec_heartbeat',
+  label: 'Sent heartbeat',
   description:
     'Write a heartbeat signal. Call periodically (every 5-10 minutes) to indicate you are alive. Also call when starting or finishing a task.',
   source: 'core',

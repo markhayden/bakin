@@ -453,6 +453,7 @@ const schedulePlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_list',
+      label: 'Listed scheduled jobs',
       description: 'List all scheduled jobs (merged OpenClaw + Bakin view)',
       parameters: {
         filter: z.enum(['bakin', 'all']).optional().describe('Filter by job type'),
@@ -479,6 +480,7 @@ const schedulePlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_create',
+      label: 'Created a scheduled job',
       description: 'Create a new scheduled job that creates tasks on the board',
       parameters: {
         name: z.string().describe('Job name (required)'),
@@ -530,6 +532,7 @@ const schedulePlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_update',
+      label: 'Updated a scheduled job',
       description: 'Update an existing scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
@@ -566,6 +569,7 @@ const schedulePlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_pause',
+      label: 'Paused a scheduled job',
       description: 'Pause, resume, or skip runs for a scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
@@ -606,6 +610,7 @@ const schedulePlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_delete',
+      label: 'Deleted a scheduled job',
       description: 'Delete a scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
@@ -620,6 +625,7 @@ const schedulePlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_get',
+      label: 'Read schedule details',
       description: 'Get details for a single scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
@@ -657,6 +663,7 @@ const schedulePlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_run_now',
+      label: 'Triggered scheduled job',
       description: 'Trigger an immediate run of a scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
@@ -674,6 +681,7 @@ const schedulePlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_runs',
+      label: 'Listed schedule runs',
       description: 'Get run history for a scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),
@@ -689,6 +697,7 @@ const schedulePlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_parse',
+      label: 'Parsed cron expression',
       description: 'Parse a natural language or raw cron schedule expression',
       parameters: {
         input: z.string().describe('Schedule expression to parse (required)'),
@@ -703,6 +712,7 @@ const schedulePlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_briefing',
+      label: 'Generated schedule briefing',
       description: "Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing.",
       parameters: {
         date: z.string().optional().describe('ISO date to check (defaults to today)'),

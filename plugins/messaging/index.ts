@@ -805,6 +805,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_list',
+      label: 'Listed messages',
       description: 'List messaging items with optional filters',
       parameters: {
         month: z.string().optional().describe('Filter by month (YYYY-MM)'),
@@ -843,6 +844,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_get',
+      label: 'Read message details',
       description: 'Get details for a single messaging item',
       parameters: {
         itemId: z.string().describe('Item ID (required)'),
@@ -857,6 +859,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_create',
+      label: 'Created a message',
       description: 'Create a new messaging item',
       parameters: {
         title: z.string().describe('Item title (required)'),
@@ -895,6 +898,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_update',
+      label: 'Updated a message',
       description: 'Update a messaging item',
       parameters: {
         itemId: z.string().describe('Item ID (required)'),
@@ -919,6 +923,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_approve',
+      label: 'Approved a message',
       description: 'Approve a messaging item (draft → scheduled, review → published)',
       parameters: {
         itemId: z.string().describe('Item ID (required)'),
@@ -935,6 +940,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_reject',
+      label: 'Rejected a message',
       description: 'Reject a messaging item back to draft status',
       parameters: {
         itemId: z.string().describe('Item ID (required)'),
@@ -957,6 +963,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_delete',
+      label: 'Deleted a message',
       description: 'Delete a messaging item',
       parameters: {
         itemId: z.string().describe('Item ID (required)'),
@@ -976,6 +983,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_session_list',
+      label: 'Listed brainstorm sessions',
       description: 'List planning sessions with optional filters',
       parameters: {
         status: z.string().optional().describe('Filter by status (active, completed)'),
@@ -992,6 +1000,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_session_get',
+      label: 'Read brainstorm session',
       description: 'Get a planning session with full message history and proposals',
       parameters: {
         sessionId: z.string().describe('Session ID (required)'),
@@ -1006,6 +1015,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_session_create',
+      label: 'Created brainstorm session',
       description: 'Create a new planning session for an agent',
       parameters: {
         agentId: z.string().describe('Agent ID (required)'),
@@ -1024,6 +1034,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_session_update',
+      label: 'Updated brainstorm session',
       description: 'Update a planning session title or status',
       parameters: {
         sessionId: z.string().describe('Session ID (required)'),
@@ -1046,6 +1057,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_session_delete',
+      label: 'Deleted brainstorm session',
       description: 'Delete a planning session',
       parameters: {
         sessionId: z.string().describe('Session ID (required)'),
@@ -1064,6 +1076,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_session_message',
+      label: 'Sent brainstorm message',
       description: 'Send a message in a planning session (non-streaming, returns full response)',
       parameters: {
         sessionId: z.string().describe('Session ID (required)'),
@@ -1128,6 +1141,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_proposal_update',
+      label: 'Updated brainstorm proposal',
       description: 'Update a proposal status or fields (approve, reject, edit)',
       parameters: {
         sessionId: z.string().describe('Session ID (required)'),
@@ -1161,6 +1175,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
     ctx.registerExecTool({
       name: 'bakin_exec_messaging_session_confirm',
+      label: 'Confirmed brainstorm proposal',
       description: 'Confirm a planning session — creates messaging items from approved proposals',
       parameters: {
         sessionId: z.string().describe('Session ID (required)'),
