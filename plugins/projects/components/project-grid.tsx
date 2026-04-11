@@ -6,6 +6,7 @@ import { Plus, ListFilter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
 import { useQueryState } from '@/hooks/use-query-state'
+import { useAntflySearch, reorderByAntflyResults } from '@/hooks/use-antfly-search'
 import { ProjectCard } from './project-card'
 import type { ProjectSummary, ProjectStatus } from '../types'
 
@@ -44,11 +45,20 @@ export function ProjectGrid() {
     fetchProjects()
   }, [fetchProjects])
 
+  const antfly = useAntflySearch({ table: 'projects', facets: ['status'], debounce: 300 })
+  useEffect(() => {
+    if (search) antfly.search(search)
+    else antfly.clear()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
   const filtered = useMemo(() => {
     if (!search.trim()) return projects
     const q = search.toLowerCase()
-    return projects.filter(p => p.title.toLowerCase().includes(q))
-  }, [projects, search])
+    let result = projects.filter(p => p.title.toLowerCase().includes(q))
+    if (antfly.results.length) result = reorderByAntflyResults(result, antfly.results)
+    return result
+  }, [projects, search, antfly.results])
 
   const handleNew = () => {
     router.push('/projects/new')

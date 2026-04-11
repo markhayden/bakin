@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useContentStore } from '@/hooks/use-content-store'
 import { useAgentList } from '@bakin/team/hooks/use-agent-store'
+import { useAntflySearch } from '@/hooks/use-antfly-search'
 import { TimelineEntry } from './timeline-entry'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -23,6 +24,12 @@ export function AuditTimeline() {
   const [agentFilter, setAgentFilter] = useState('')
   const [eventFilter, setEventFilter] = useState('')
   const [search, setSearch] = useState('')
+  const antfly = useAntflySearch({ table: 'audit', facets: ['event', 'agent'], debounce: 300 })
+  useEffect(() => {
+    if (search) antfly.search(search)
+    else antfly.clear()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
   const auditEntries = useContentStore((s) => s.auditEntries)
 
   // Fetch full audit log on mount
