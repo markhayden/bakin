@@ -178,6 +178,29 @@ afterAll(() => {
 // Routes
 // ===========================================================================
 
+describe('schedule search indexing', () => {
+  it('indexes existing runtime jobs on activation with searchable schedule text', async () => {
+    mockMergedJobs.push(makeMergedJob({
+      id: 'job-search-1',
+      displayName: 'Weekly planning',
+      humanSchedule: 'Every Monday at 9am',
+      taskPrompt: 'Create the weekly planning task',
+      paused: false,
+      enabled: true,
+    }))
+
+    const activated = await activatePlugin(schedulePlugin, testDir)
+
+    expect(activated.ctx.search.index).toHaveBeenCalledWith('job-search-1', expect.objectContaining({
+      name: 'Weekly planning',
+      schedule: 'Every Monday at 9am',
+      command: 'Create the weekly planning task',
+      agent: 'basil',
+      enabled: 'true',
+    }))
+  })
+})
+
 describe('schedule routes', () => {
   // -----------------------------------------------------------------------
   // GET / — list all jobs
