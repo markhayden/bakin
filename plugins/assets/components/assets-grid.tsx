@@ -7,9 +7,11 @@ interface AssetsGridProps {
   assets: AssetMeta[]
   onSelect: (asset: AssetMeta) => void
   onDelete: (path: string) => void
+  /** When present, show Antfly relevance score on each card (keyed by asset path) */
+  scores?: Map<string, number>
 }
 
-export function AssetsGrid({ assets, onSelect, onDelete }: AssetsGridProps) {
+export function AssetsGrid({ assets, onSelect, onDelete, scores }: AssetsGridProps) {
   if (assets.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -24,7 +26,7 @@ export function AssetsGrid({ assets, onSelect, onDelete }: AssetsGridProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
       {assets.map((asset) => (
-        <AssetCard key={asset.path} asset={asset} onClick={() => onSelect(asset)} onDelete={onDelete} />
+        <AssetCard key={asset.path} asset={asset} onClick={() => onSelect(asset)} onDelete={onDelete} score={scores?.get(asset.path)} />
       ))}
     </div>
   )

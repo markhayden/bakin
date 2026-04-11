@@ -39,9 +39,11 @@ interface AssetCardProps {
   asset: AssetMeta
   onClick: () => void
   onDelete: (path: string) => void
+  /** Antfly relevance score (only shown when search is active) */
+  score?: number
 }
 
-export function AssetCard({ asset, onClick, onDelete }: AssetCardProps) {
+export function AssetCard({ asset, onClick, onDelete, score }: AssetCardProps) {
   const [imgError, setImgError] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const Icon = TYPE_ICONS[asset.type] || Package
@@ -98,6 +100,13 @@ export function AssetCard({ asset, onClick, onDelete }: AssetCardProps) {
         <span className="absolute bottom-1.5 right-1.5 text-[10px] text-zinc-400 bg-black/60 px-1.5 py-0.5 rounded">
           {formatSize(asset.size)}
         </span>
+
+        {/* Antfly relevance score */}
+        {score !== undefined && (
+          <span className="absolute top-1.5 left-1.5 text-[10px] font-mono text-amber-400 bg-black/70 px-1.5 py-0.5 rounded">
+            {score.toFixed(2)}
+          </span>
+        )}
       </div>
 
       {/* Info area */}
