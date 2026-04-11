@@ -147,6 +147,13 @@ async function callBridge(payload: Record<string, unknown>): Promise<{ status: n
     },
     getSettings: vi.fn(() => ({})),
     updateSettings: vi.fn(),
+    search: {
+      registerContentType: vi.fn(),
+      index: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+      transform: vi.fn(async () => {}),
+      query: vi.fn(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+    },
   }
 
   await plugin.activate(ctx as any)

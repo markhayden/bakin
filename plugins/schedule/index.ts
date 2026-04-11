@@ -200,6 +200,46 @@ const schedulePlugin: BakinPlugin = {
   activate(ctx: PluginContext) {
     pluginCtx = ctx
 
+    // ─── Search Content Type Registration ─────────────────────────────
+
+    ctx.search.registerContentType({
+      table: 'schedule',
+      schema: {
+        name: { type: 'text' },
+        schedule: { type: 'keyword' },
+        command: { type: 'text' },
+        agent: { type: 'keyword' },
+        enabled: { type: 'keyword' },
+        updated_at: { type: 'datetime' },
+      },
+      searchableFields: ['name', 'command'],
+      embeddingTemplate: '{{name}} {{command}}',
+      facets: ['agent', 'enabled'],
+      reindex: async function* () {
+        // Jobs are loaded from OpenClaw at runtime — yield nothing during reindex
+      },
+      verifyExists: async () => true, // Jobs are ephemeral, managed by OpenClaw
+    })
+
+    /** Convert a job to a search document */
+    function jobToSearchDoc(meta: BakinJobMeta): Record<string, unknown> {
+      return {
+        name: meta.displayName || meta.jobId,
+        schedule: meta.tz ? `${meta.tz}` : '',
+        command: meta.taskPrompt || meta.taskTitle || '',
+        agent: meta.agentId || '',
+        enabled: meta.paused ? 'false' : 'true',
+        updated_at: meta.updatedAt || new Date().toISOString(),
+      }
+    }
+
+    /** Index a job in the search index */
+    function indexJob(jobId: string, meta: BakinJobMeta): void {
+      ctx.search.index(jobId, jobToSearchDoc(meta)).catch((err) => {
+        log.warn('Failed to index job', { jobId, error: err instanceof Error ? err.message : String(err) })
+      })
+    }
+
     // ── API Routes ─────────────────────────────────────────────────────
 
     // GET / — list all jobs (merged)
@@ -265,6 +305,7 @@ const schedulePlugin: BakinPlugin = {
         updatedAt: new Date().toISOString(),
       }
       upsertJob(meta)
+      indexJob(jobId, meta)
 
       ctx.activity.audit('job.created', body.owner ?? 'system', { jobId, name: body.name })
       ctx.activity.log(body.owner ?? 'system', `Created schedule "${body.name}"`)
@@ -306,6 +347,7 @@ const schedulePlugin: BakinPlugin = {
           }
         }
         upsertJob(meta)
+        indexJob(jobId, meta)
 
         ctx.activity.audit('job.updated', 'system', { jobId })
         ctx.activity.log('system', `Updated schedule "${meta.displayName || jobId}"`)
@@ -360,6 +402,7 @@ const schedulePlugin: BakinPlugin = {
 
       await cronRemove(jobId)
       removeJob(jobId)
+      ctx.search.remove(jobId).catch(() => {})
 
       ctx.activity.audit('job.deleted', 'system', { jobId })
       ctx.activity.log('system', `Deleted schedule "${jobId}"`)
@@ -525,6 +568,7 @@ const schedulePlugin: BakinPlugin = {
           updatedAt: new Date().toISOString(),
         }
         upsertJob(meta)
+        indexJob(jobId, meta)
 
         return { ok: true, jobId, cron: parsed.cron, human: parsed.human, tz }
       },
@@ -562,6 +606,7 @@ const schedulePlugin: BakinPlugin = {
         }
         if (params.name) meta.displayName = params.name as string
         upsertJob(meta)
+        indexJob(params.jobId as string, meta)
 
         return { ok: true }
       },
@@ -619,6 +664,7 @@ const schedulePlugin: BakinPlugin = {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
         await cronRemove(params.jobId as string)
         removeJob(params.jobId as string)
+        ctx.search.remove(params.jobId as string).catch(() => {})
         return { ok: true }
       },
     })
