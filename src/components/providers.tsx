@@ -22,14 +22,6 @@ function DebugSeed() {
     if (new URLSearchParams(window.location.search).get('debug') === 'true') {
       setDebug(true)
     }
-    // Migrate old localStorage key
-    try {
-      const old = localStorage.getItem('bakin-activity-show-duplicates')
-      if (old === 'true') {
-        setDebug(true)
-        localStorage.removeItem('bakin-activity-show-duplicates')
-      }
-    } catch {}
   }, [setDebug])
   return null
 }
