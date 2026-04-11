@@ -1,0 +1,19 @@
+#!/bin/bash
+# Restart OpenClaw container + Bakin dev server
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+docker compose -f dev/docker/docker-compose.yml restart openclaw-gateway
+
+echo "Waiting for gateway..."
+for i in $(seq 1 30); do
+  if curl -sf http://127.0.0.1:18789/healthz >/dev/null 2>&1 || \
+     curl -sf http://127.0.0.1:18789/health >/dev/null 2>&1; then
+    echo "Gateway ready."
+    break
+  fi
+  [ "$i" -eq 30 ] && echo "Warning: gateway not healthy after 30s"
+  sleep 1
+done
+
+OPENCLAW_HOME=./dev/openclaw-home OPENCLAW_PATH=./dev/docker/openclaw-shim.sh BAKIN_URL=http://host.docker.internal:3737 npx tsx server.ts
