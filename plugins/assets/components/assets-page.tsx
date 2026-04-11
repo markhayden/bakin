@@ -83,25 +83,30 @@ export function AssetsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
-  // Client-side multi-type filtering + search, boosted by Antfly ranking
+  // Semantic search via Antfly with keyword fallback
   const filtered = useMemo(() => {
     let result = assets
     if (typeFilter.length > 1) {
       result = result.filter(a => typeFilter.includes(a.type))
     }
     if (search) {
-      const q = search.toLowerCase()
-      result = result.filter(a =>
-        a.filename.toLowerCase().includes(q) ||
-        a.metadata.description?.toLowerCase().includes(q) ||
-        a.metadata.tags?.some(t => t.toLowerCase().includes(q)) ||
-        a.metadata.agent.toLowerCase().includes(q)
-      )
-    }
-    // Reorder by Antfly relevance when available (assets use path as id)
-    if (antfly.results.length && search) {
-      const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
-      result = [...result].sort((a, b) => (scoreMap.get(b.path) ?? -1) - (scoreMap.get(a.path) ?? -1))
+      if (antfly.results.length) {
+        // Antfly returned semantic matches — use those as the filter
+        const matchIds = new Set(antfly.results.map(r => r.id))
+        const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+        result = result
+          .filter(a => matchIds.has(a.path))
+          .sort((a, b) => (scoreMap.get(b.path) ?? 0) - (scoreMap.get(a.path) ?? 0))
+      } else {
+        // Fallback: keyword filter while Antfly is loading or returned empty
+        const q = search.toLowerCase()
+        result = result.filter(a =>
+          a.filename.toLowerCase().includes(q) ||
+          a.metadata.description?.toLowerCase().includes(q) ||
+          a.metadata.tags?.some(t => t.toLowerCase().includes(q)) ||
+          a.metadata.agent.toLowerCase().includes(q)
+        )
+      }
     }
     return result
   }, [assets, typeFilter, search, antfly.results])

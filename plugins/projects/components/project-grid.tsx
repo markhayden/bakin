@@ -54,10 +54,15 @@ export function ProjectGrid() {
 
   const filtered = useMemo(() => {
     if (!search.trim()) return projects
+    if (antfly.results.length) {
+      const matchIds = new Set(antfly.results.map(r => r.id))
+      const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+      return projects
+        .filter(p => matchIds.has(p.id))
+        .sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0))
+    }
     const q = search.toLowerCase()
-    let result = projects.filter(p => p.title.toLowerCase().includes(q))
-    if (antfly.results.length) result = reorderByAntflyResults(result, antfly.results)
-    return result
+    return projects.filter(p => p.title.toLowerCase().includes(q))
   }, [projects, search, antfly.results])
 
   const handleNew = () => {

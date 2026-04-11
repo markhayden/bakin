@@ -39,15 +39,17 @@ export function WorkflowsPage() {
 
   const filtered = useMemo(() => {
     if (!search.trim()) return templates
+    if (antfly.results.length) {
+      const matchIds = new Set(antfly.results.map(r => r.id.replace('def:', '')))
+      const scoreMap = new Map(antfly.results.map(r => [r.id.replace('def:', ''), r.score]))
+      return templates
+        .filter(t => matchIds.has(t.name))
+        .sort((a, b) => (scoreMap.get(b.name) ?? 0) - (scoreMap.get(a.name) ?? 0))
+    }
     const q = search.toLowerCase()
-    let result = templates.filter(t =>
+    return templates.filter(t =>
       t.name.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q)
     )
-    if (antfly.results.length) {
-      const scoreMap = new Map(antfly.results.map(r => [r.id.replace('def:', ''), r.score]))
-      result = [...result].sort((a, b) => (scoreMap.get(b.name) ?? -1) - (scoreMap.get(a.name) ?? -1))
-    }
-    return result
   }, [templates, search, antfly.results])
 
   return (
