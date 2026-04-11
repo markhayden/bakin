@@ -8,6 +8,8 @@ export interface AntflySearchResult {
   score: number
   fields: Record<string, unknown>
   _table?: string
+  /** Per-index score breakdown (e.g. { search: 0.8, embeddings: 0.6 }) */
+  indexScores?: Record<string, number>
 }
 
 export interface AntflySearchResponse {

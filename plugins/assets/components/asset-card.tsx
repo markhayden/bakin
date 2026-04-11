@@ -14,6 +14,7 @@ import {
 import { formatAge, formatSize } from '@/lib/format'
 import { DeleteAssetDialog } from './delete-asset-dialog'
 import type { AssetMeta } from '@/types'
+import type { AssetScoreInfo } from './assets-grid'
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
   text: FileText,
@@ -39,11 +40,11 @@ interface AssetCardProps {
   asset: AssetMeta
   onClick: () => void
   onDelete: (path: string) => void
-  /** Antfly relevance score (only shown when search is active) */
-  score?: number
+  /** Antfly score info (only shown when debug=true) */
+  scoreInfo?: AssetScoreInfo
 }
 
-export function AssetCard({ asset, onClick, onDelete, score }: AssetCardProps) {
+export function AssetCard({ asset, onClick, onDelete, scoreInfo }: AssetCardProps) {
   const [imgError, setImgError] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const Icon = TYPE_ICONS[asset.type] || Package
@@ -101,11 +102,16 @@ export function AssetCard({ asset, onClick, onDelete, score }: AssetCardProps) {
           {formatSize(asset.size)}
         </span>
 
-        {/* Antfly relevance score */}
-        {score !== undefined && (
-          <span className="absolute top-1.5 left-1.5 text-[10px] font-mono text-amber-400 bg-black/70 px-1.5 py-0.5 rounded">
-            {score.toFixed(4)}
-          </span>
+        {/* Antfly relevance score debug overlay */}
+        {scoreInfo && (
+          <div className="absolute top-1.5 left-1.5 flex flex-col gap-0.5 text-[9px] font-mono bg-black/80 px-1.5 py-1 rounded">
+            <span className="text-amber-400">RRF {scoreInfo.score.toFixed(4)}</span>
+            {scoreInfo.indexScores && Object.entries(scoreInfo.indexScores).map(([idx, s]) => (
+              <span key={idx} className={idx === 'embeddings' ? 'text-purple-400' : 'text-cyan-400'}>
+                {idx === 'embeddings' ? 'SEM' : 'BM25'} {(s as number).toFixed(4)}
+              </span>
+            ))}
+          </div>
         )}
       </div>
 
