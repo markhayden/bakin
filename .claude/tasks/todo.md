@@ -32,7 +32,7 @@
 
 Each plugin: register content type with schema + `reindex()` generator + `verifyExists()` + optional `chunker`. Wire `ctx.search.index/remove/transform` on every mutation.
 
-- [ ] **T4: Tasks Plugin Indexing** (SQLite source)
+- [x] **T4: Tasks Plugin Indexing** (SQLite source) ✓ `4a3005c`
   - Register content type with `reindex()` that reads all flow_runs from SQLite
   - Index on: create, move, block, logProgress, delete (in task-service.ts)
   - Replace `indexCompletedTask()` — index ALL statuses
@@ -40,39 +40,39 @@ Each plugin: register content type with schema + `reindex()` generator + `verify
   - Enable chunker for log_text field
   - Files: `plugins/tasks/index.ts`, `src/core/task-service.ts`
 
-- [ ] **T5: Assets Plugin Indexing** (filesystem source)
+- [x] **T5: Assets Plugin Indexing** (filesystem source) ✓ `8815c2f`
   - Register with `reindex()` that scans `~/.bakin/assets/**/*.meta.json`
   - Index on upload/link, remove on delete/trash, re-index on restore
   - Files: `plugins/assets/index.ts`
 
-- [ ] **T6: Projects Plugin Indexing** (filesystem source)
+- [x] **T6: Projects Plugin Indexing** (filesystem source) ✓ `a116d7b`
   - Register with `reindex()` that scans `~/.bakin/projects/*.md`
   - Index on create/update, remove on delete
   - Enable chunker for long markdown bodies
   - Files: `plugins/projects/index.ts`, `plugins/projects/lib/project-service.ts`
 
-- [ ] **T7: Workflows Plugin Indexing** (filesystem source)
+- [x] **T7: Workflows Plugin Indexing** (filesystem source) ✓ `569e8a2`
   - Register with `reindex()` that scans workflow definitions + instances
   - Index templates on save, instances on start/step/complete
   - Files: `plugins/workflows/index.ts`, `plugins/workflows/lib/runtime.ts`
 
-- [ ] **T8: Schedule Plugin Indexing** (OpenClaw source)
+- [x] **T8: Schedule Plugin Indexing** (OpenClaw source) ✓ `f69d6f5`
   - Register with `reindex()` that fetches all jobs from OpenClaw
   - Index on CRUD, batch-refresh on list fetch
   - Files: `plugins/schedule/index.ts`
 
-- [ ] **T9: Team Plugin Indexing** (OpenClaw source)
+- [x] **T9: Team Plugin Indexing** (OpenClaw source) ✓ `4b84cfd`
   - Register with `reindex()` that fetches all agents from OpenClaw
   - Batch-index on load, use `transform()` for heartbeat updates
   - Files: `plugins/team/index.ts`
 
-- [ ] **T10: Audit Indexing with TTL**
+- [x] **T10: Audit Indexing with TTL** ✓ `651a54b`
   - Register audit content type in `server.ts` with TTL from settings
   - Replace `indexAuditEvent()` in `audit.ts`
   - Register `reindex()` that scans `audit.jsonl`
   - Files: `server.ts`, `src/core/audit.ts`, `src/core/antfly.ts`
 
-- [ ] **T10b: Phase 2 Documentation**
+- [x] **T10b: Phase 2 Documentation**
   - Create `.claude/knowledge/search-plugin-guide.md` — how to make any plugin searchable
   - Create `.claude/skills/add-search-to-plugin.md` — step-by-step skill
   - Update `.claude/knowledge/tasks-plugin.md` — all-status indexing, rich schema
