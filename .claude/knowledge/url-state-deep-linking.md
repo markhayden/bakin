@@ -108,7 +108,8 @@ Located at `src/components/facet-filter.tsx`. Shared multi-select filter compone
 |--------|-----------|-------|
 | Tasks | ✅ Done | `view`, `q`, `agent`, `status`, `taskId` (deep link). Edit/create state is component-level (`editing` useState), not URL-driven. |
 | Assets | ✅ Done | `view`, `q`, `type`, `asset`, `page`, `sort`, `dir` |
-| Calendar | ✅ Done | `view`, `q`, `agent`, `status`, `type`, `itemId` (deep link), `mode` (edit) |
+| Messaging (Calendar) | ✅ Done | `view`, `q`, `agent`, `status`, `type`, `itemId` (deep link), `mode` (edit) |
+| Messaging (Brainstorm) | ✅ Done | `session` (deep link to planning session), search via parent PluginHeader |
 | Workflows | ✅ Done | `q` on list; path-based `/workflows/[id]` for canvas detail, step drawer via node click |
 | Schedule | ✅ Done | `view`, `q`, `agent`, `jobId` (deep link), `mode` (create/edit/duplicate) |
 | Health | ❌ Pending | |

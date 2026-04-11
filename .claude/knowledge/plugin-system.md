@@ -150,7 +150,7 @@ const board = await hooks.invoke<TaskBoard>('tasks.readTaskboard', {})
 | workflows | 10 |
 | assets | 9 |
 | schedule | 10 |
-| calendar | 7 |
+| messaging | 15 |
 | projects | 15 |
 | team | 8 |
 | health | 2 |

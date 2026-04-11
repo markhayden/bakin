@@ -30,9 +30,9 @@ vi.mock('../../src/core/watchdog', () => ({
   stop: mockWatchdogStop,
 }))
 
-const mockCalendarStop = vi.fn()
-vi.mock('../../src/core/calendar-cron', () => ({
-  stop: mockCalendarStop,
+const mockMessagingStop = vi.fn()
+vi.mock('../../src/core/messaging-cron', () => ({
+  stop: mockMessagingStop,
 }))
 
 const mockWatcherStop = vi.fn().mockResolvedValue(undefined)
@@ -97,13 +97,13 @@ describe('lifecycle', () => {
     expect(mockShutdownAll).toHaveBeenCalled()
   })
 
-  it('shutdown stops dispatch, watchdog, calendar cron, watcher, and SSE', async () => {
+  it('shutdown stops dispatch, watchdog, messaging cron, watcher, and SSE', async () => {
     registerShutdownHandlers(mockServer(), '/tmp/test')
     await processListeners['SIGTERM']()
 
     expect(mockDispatchStop).toHaveBeenCalled()
     expect(mockWatchdogStop).toHaveBeenCalled()
-    expect(mockCalendarStop).toHaveBeenCalled()
+    expect(mockMessagingStop).toHaveBeenCalled()
     expect(mockWatcherStop).toHaveBeenCalled()
     expect(mockSseStop).toHaveBeenCalled()
   })

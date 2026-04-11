@@ -80,7 +80,7 @@ function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | '
 import tasksPlugin from '@bakin/tasks'
 import memoryPlugin from '@bakin/memory'
 import modelsPlugin from '@bakin/models'
-import calendarPlugin from '@bakin/calendar'
+import messagingPlugin from '@bakin/messaging'
 import workflowsPlugin from '@bakin/workflows'
 import assetsPlugin from '@bakin/assets'
 import healthPlugin from '@bakin/health'
@@ -120,7 +120,7 @@ function ensureInitialized() {
   const storage = new MarkdownStorageAdapter()
   const events = new BakinEventBus(relayBroadcast)
 
-  const plugins = [teamPlugin, tasksPlugin, memoryPlugin, modelsPlugin, calendarPlugin, workflowsPlugin, assetsPlugin, healthPlugin, schedulePlugin, projectsPlugin]
+  const plugins = [teamPlugin, tasksPlugin, memoryPlugin, modelsPlugin, messagingPlugin, workflowsPlugin, assetsPlugin, healthPlugin, schedulePlugin, projectsPlugin]
 
   for (const plugin of plugins) {
     if (!plugin.id || !plugin.activate) continue

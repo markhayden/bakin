@@ -22,7 +22,7 @@ Returns a `BakinPaths` object with absolute paths:
 |-----|------|---------|
 | `home` | `~/.bakin/` | Content root |
 | `memoryLog` | `MEMORY-LOG.md` | Agent memory log |
-| `calendar` | `calendar.json` | Calendar events |
+| `messaging` | `messaging.json` | Messaging / content calendar events |
 | `audit` | `audit.jsonl` | Append-only audit trail |
 | `assets` | `assets/` | Asset root |
 | `assets.text` | `assets/text/` | Text content |
@@ -135,7 +135,7 @@ Append-only, one JSON object per line:
 ### Settings (`settings.json` at content root)
 `BakinSettings` interface defined in `packages/core/src/settings.ts` (re-exported via `src/core/settings.ts`). Deep-merged with hard defaults at load time. Cached with `resetSettingsCache()` for invalidation.
 
-Key sections: `dispatch`, `watchdog`, `calendar`, `sse`, `openclaw`, `models`, `agents`, `antfly`, `doctor`, `service`, `notifications`, `workflow`.
+Key sections: `dispatch`, `watchdog`, `messaging`, `sse`, `openclaw`, `models`, `agents`, `antfly`, `doctor`, `service`, `notifications`, `workflow`.
 
 ## File Watching
 

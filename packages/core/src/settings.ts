@@ -24,7 +24,7 @@ export interface BakinSettings {
     autoRecover: boolean
     maxAutoRecoveries: number
   }
-  calendar: {
+  messaging: {
     intervalMs: number
   }
   sse: {
@@ -81,7 +81,7 @@ const DEFAULTS: BakinSettings = {
     autoRecover: true,
     maxAutoRecoveries: 3,
   },
-  calendar: {
+  messaging: {
     intervalMs: 5 * 60 * 1000,
   },
   sse: {
