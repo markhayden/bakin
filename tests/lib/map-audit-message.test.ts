@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { mapAuditMessage, humanizeExecName } from '../../src/lib/map-audit-message'
+import { mapAuditMessage, humanizeExecName, isNoisyEvent } from '../../src/lib/map-audit-message'
+import type { ActivityEvent } from '../../src/types'
 
 describe('mapAuditMessage', () => {
   // Existing domain events should still work
@@ -67,5 +68,61 @@ describe('humanizeExecName', () => {
 
   it('handles single word after prefix', () => {
     expect(humanizeExecName('bakin_exec_heartbeat')).toBe('Heartbeat')
+  })
+
+  it('returns input unchanged for empty string', () => {
+    expect(humanizeExecName('')).toBe('')
+  })
+})
+
+describe('mapAuditMessage — exec edge cases', () => {
+  it('handles exec event with no suffix (bare exec.tool_name)', () => {
+    // No .ok/.fail/.error suffix — should still use label or humanize
+    expect(mapAuditMessage('exec.bakin_exec_tasks_list', { label: 'Listed tasks' }))
+      .toBe('Listed tasks')
+  })
+
+  it('humanizes bare exec event without label', () => {
+    expect(mapAuditMessage('exec.bakin_exec_tasks_list', {}))
+      .toBe('Tasks list')
+  })
+
+  it('label takes precedence over humanized name for .ok events', () => {
+    expect(mapAuditMessage('exec.bakin_exec_assets_save.ok', { label: 'Saved an asset' }))
+      .toBe('Saved an asset')
+  })
+
+  it('preserves label text exactly (no trimming or transformation)', () => {
+    expect(mapAuditMessage('exec.bakin_exec_health_doctor.ok', { label: 'Ran diagnostics' }))
+      .toBe('Ran diagnostics')
+  })
+})
+
+describe('isNoisyEvent', () => {
+  function makeEvent(overrides: Partial<ActivityEvent>): ActivityEvent {
+    return {
+      id: 'test-1',
+      ts: '2026-04-10T00:00:00Z',
+      type: 'audit',
+      agent: 'system',
+      message: 'test',
+      ...overrides,
+    }
+  }
+
+  it('flags system dispatch errors as noisy', () => {
+    expect(isNoisyEvent(makeEvent({ agent: 'system', message: 'Dispatch failed: timeout' }))).toBe(true)
+  })
+
+  it('does not flag normal system events as noisy', () => {
+    expect(isNoisyEvent(makeEvent({ agent: 'system', message: 'Bakin started' }))).toBe(false)
+  })
+
+  it('does not flag agent events as noisy', () => {
+    expect(isNoisyEvent(makeEvent({ agent: 'pixel', message: 'Dispatch failed: something' }))).toBe(false)
+  })
+
+  it('does not flag duplicate events as noisy (separate concern)', () => {
+    expect(isNoisyEvent(makeEvent({ agent: 'system', message: 'Created a task', duplicate: true }))).toBe(false)
   })
 })
