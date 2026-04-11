@@ -46,8 +46,6 @@ describe('Settings', () => {
     expect(settings.antfly.chunking.defaultOverlapTokens).toBe(25)
     expect(settings.antfly.auditTtl).toBe('90d')
     expect(settings.antfly.cleanupInterval).toBe('24h')
-    expect(settings.antfly.internal.token).toBe('')
-    expect(settings.antfly.internal.port).toBe(3738)
   })
 
   it('merges partial antfly overrides preserving nested defaults', () => {

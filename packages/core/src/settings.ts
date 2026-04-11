@@ -89,17 +89,6 @@ export interface BakinSettings {
     auditTtl: string
     /** Interval for orphan cleanup (Go duration: '24h', '12h'). */
     cleanupInterval: string
-    /**
-     * Loopback-only internal file server config. Antfly fetches asset files
-     * (PDFs, images) from this listener during multimodal indexing. The
-     * listener is bound to 127.0.0.1 — never exposed via Tailscale.
-     * `token` is generated on first boot if empty; `port` is stable across
-     * restarts so URLs baked into indexes don't go stale.
-     */
-    internal: {
-      token: string
-      port: number
-    }
   }
   doctor: {
     intervalMs: number
@@ -177,10 +166,6 @@ const DEFAULTS: BakinSettings = {
     },
     auditTtl: '90d',
     cleanupInterval: '24h',
-    internal: {
-      token: '', // generated on first boot by getOrCreateToken()
-      port: 3738,
-    },
   },
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes

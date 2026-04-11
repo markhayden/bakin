@@ -18,7 +18,6 @@ vi.mock('@/core/settings', () => ({
       chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
       auditTtl: '90d',
       cleanupInterval: '24h',
-      internal: { token: '', port: 3738 },
     },
   })),
 }))
