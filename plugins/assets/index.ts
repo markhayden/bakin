@@ -25,6 +25,8 @@ import { saveAsset } from './lib/save-asset'
 import { registerSyncHook } from '../../src/core/watcher'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
+import { buildAssetUrl } from '../../src/core/antfly-internal-server'
+import { getSettings } from '../../src/core/settings'
 
 const log = createLogger('assets')
 
@@ -69,9 +71,31 @@ const assetsPlugin: BakinPlugin = {
         file_name: { type: 'text' },
         tool: { type: 'keyword' },
         updated_at: { type: 'datetime' },
+        // pdf_url and image_url are computed at index time — they point at
+        // the loopback-only internal file server so Antfly's {{remotePDF}}
+        // and {{remoteMedia}} helpers can fetch the file contents during
+        // embedding. Never populated from disk, never shown to users.
+        pdf_url: { type: 'keyword' },
+        image_url: { type: 'keyword' },
       },
       searchableFields: ['description', 'tags', 'file_name'],
+      // Unused when `indexes` is set, but the type requires it. Kept as the
+      // equivalent template to keep the legacy synthesis path readable.
       embeddingTemplate: '{{description}} {{tags}} {{file_name}}',
+      indexes: [
+        {
+          name: 'assets_text',
+          embedderRef: 'default',
+          embeddingTemplate:
+            '{{description}} {{tags}} {{file_name}}{{#if pdf_url}} {{remotePDF url=pdf_url}}{{/if}}',
+          chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
+        },
+        {
+          name: 'assets_visual',
+          embedderRef: 'visual',
+          embeddingTemplate: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
+        },
+      ],
       facets: ['asset_type', 'agent', 'tool'],
       reindex: async function* () {
         const contentDir = getContentDir()
@@ -101,7 +125,7 @@ const assetsPlugin: BakinPlugin = {
                 const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
                 const assetFilename = metaFile.replace('.meta.json', '')
                 const key = `assets/${typeName}/${subdir}/${assetFilename}`
-                yield { key, doc: assetToSearchDoc(raw, assetFilename, typeName) }
+                yield { key, doc: assetToSearchDoc(raw, assetFilename, typeName, key) }
               } catch { /* skip unreadable sidecars */ }
             }
           }
@@ -113,8 +137,46 @@ const assetsPlugin: BakinPlugin = {
       },
     })
 
+    /**
+     * Compute pdf_url / image_url for multimodal indexing. Only PDFs get a
+     * pdf_url, only files under asset_type='images' get an image_url. When
+     * the internal file server token is missing (should only happen if
+     * server.ts boot ordering is broken), the URLs are left empty so the
+     * Handlebars {{#if}} guards in the embedding templates skip the
+     * remotePDF/remoteMedia helpers cleanly rather than hitting a 401.
+     */
+    function computeMediaUrls(
+      assetRelPath: string,
+      filename: string,
+      assetType: string,
+    ): { pdf_url: string; image_url: string } {
+      const settings = getSettings()
+      const { port, token } = settings.antfly.internal
+      if (!token) return { pdf_url: '', image_url: '' }
+
+      const isPdf = filename.toLowerCase().endsWith('.pdf')
+      const isImage = assetType === 'images'
+
+      return {
+        pdf_url: isPdf ? buildAssetUrl(assetRelPath, port, token) : '',
+        image_url: isImage ? buildAssetUrl(assetRelPath, port, token) : '',
+      }
+    }
+
     /** Convert sidecar metadata to a search document */
-    function assetToSearchDoc(meta: Record<string, unknown>, filename: string, assetType: string): Record<string, unknown> {
+    function assetToSearchDoc(
+      meta: Record<string, unknown>,
+      filename: string,
+      assetType: string,
+      assetRelPath: string,
+    ): Record<string, unknown> {
+      // assetRelPath is everything under the assets root, e.g.
+      // 'images/test/foo.png' — the internal file server resolves paths
+      // relative to getBakinPaths().assets. The registry reindex generator
+      // yields keys as `assets/{type}/{subdir}/{file}`, so we strip the
+      // leading `assets/` to align with the file server's base.
+      const rel = assetRelPath.replace(/^assets\//, '')
+      const urls = computeMediaUrls(rel, filename, assetType)
       return {
         description: (meta.description as string) || '',
         tags: Array.isArray(meta.tags) ? (meta.tags as string[]).join(', ') : '',
@@ -124,6 +186,8 @@ const assetsPlugin: BakinPlugin = {
         file_name: filename,
         tool: (meta.tool as string) || '',
         updated_at: (meta.created as string) || new Date().toISOString(),
+        pdf_url: urls.pdf_url,
+        image_url: urls.image_url,
       }
     }
 
@@ -137,7 +201,7 @@ const assetsPlugin: BakinPlugin = {
         const filename = relPath.split('/').pop() || ''
         const parts = relPath.split('/')
         const assetType = parts[1] || 'other'
-        await ctx.search.index(relPath, assetToSearchDoc(raw, filename, assetType))
+        await ctx.search.index(relPath, assetToSearchDoc(raw, filename, assetType, relPath))
       } catch (err) {
         log.warn('Failed to index asset for search', { path: relPath, error: err instanceof Error ? err.message : String(err) })
       }
