@@ -327,6 +327,10 @@ export async function batchRemove(tableName: string, keys: string[]): Promise<nu
 
 /**
  * Search a single table with hybrid (full-text + semantic) search.
+ * `indexes` is the list of vector indexes to query — defaults to a single
+ * legacy `['embeddings']` for content types that don't declare multi-index
+ * definitions. Multi-index content types (e.g. assets with text + visual)
+ * pass the full set here and Antfly merges them via RRF.
  */
 export async function queryTable(
   tableName: string,
@@ -337,6 +341,7 @@ export async function queryTable(
     filters?: Record<string, string | boolean | number>
     aggregations?: Record<string, unknown>
     strategy?: 'rrf' | 'semantic_only' | 'full_text_only'
+    indexes?: string[]
   } = {},
 ): Promise<{ results: SearchResult[]; aggregations?: Record<string, unknown>; took: number; total: number }> {
   const client = getClient()
@@ -348,9 +353,11 @@ export async function queryTable(
   const strategy = options.strategy ?? settings.antfly.search.strategy
   const limit = options.limit ?? settings.antfly.search.defaultLimit
 
-  // full_text_search implicitly uses the full-text index — only list embedding index
+  // full_text_search implicitly uses the full-text index — only list embedding indexes
   const indexes: string[] = []
-  if (strategy !== 'full_text_only') indexes.push('embeddings')
+  if (strategy !== 'full_text_only') {
+    indexes.push(...(options.indexes ?? ['embeddings']))
+  }
 
   const request: QueryRequest = {
     table: tableName,
@@ -398,6 +405,9 @@ export async function queryTable(
 
 /**
  * Multi-table search in a single request using SDK multiquery.
+ * `indexesByTable` lets callers specify the vector indexes to target per
+ * table (e.g. {bakin_assets: ['assets_text', 'assets_visual']}). Tables
+ * not in the map fall back to a single legacy `['embeddings']` index.
  */
 export async function multiQuery(
   query: string,
@@ -406,6 +416,7 @@ export async function multiQuery(
     limit?: number
     filters?: Record<string, string | boolean | number>
     aggregations?: Record<string, unknown>
+    indexesByTable?: Record<string, string[]>
   } = {},
 ): Promise<{ results: SearchResult[]; aggregations?: Record<string, unknown>; took: number; total: number }> {
   const client = getClient()
@@ -422,7 +433,7 @@ export async function multiQuery(
       table: tableName,
       full_text_search: { query } as QueryRequest['full_text_search'],
       semantic_search: query,
-      indexes: ['embeddings'],
+      indexes: options.indexesByTable?.[tableName] ?? ['embeddings'],
       limit: perTable,
     }
     if (options.filters && Object.keys(options.filters).length > 0) {

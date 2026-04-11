@@ -154,11 +154,120 @@ describe('search-registry', () => {
       'build feature',
       expect.objectContaining({
         aggregations: { status: { type: 'terms', field: 'status', size: 50 } },
+        indexes: ['embeddings'],
       }),
     )
     expect(result.meta.source).toBe('antfly')
     expect(result.results).toHaveLength(1)
     expect(result.aggregations?.status).toEqual([{ value: 'active', count: 5 }])
+  })
+
+  // ── multi-index support (T3) ─────────────────────────────────────────
+
+  it('buildAntflyIndexes synthesizes a single default index when def.indexes is absent', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await createRegisteredTables()
+
+    expect(antfly.createTable).toHaveBeenCalledWith(
+      'bakin_tasks',
+      expect.objectContaining({
+        indexes: expect.objectContaining({
+          search: expect.objectContaining({ type: 'full_text' }),
+          embeddings: expect.objectContaining({
+            type: 'embeddings',
+            template: '{{title}}',
+            embedder: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('buildAntflyIndexes creates one Antfly index per entry when def.indexes is set', async () => {
+    const api = buildSearchAPI('assets')
+    api.registerContentType({
+      ...makeDef('assets'),
+      indexes: [
+        {
+          name: 'assets_text',
+          embedderRef: 'default',
+          embeddingTemplate: '{{description}} {{tags}}',
+          chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
+        },
+        {
+          name: 'assets_visual',
+          embedderRef: 'visual',
+          embeddingTemplate: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
+        },
+      ],
+    })
+
+    await createRegisteredTables()
+
+    expect(antfly.createTable).toHaveBeenCalledWith(
+      'bakin_assets',
+      expect.objectContaining({
+        indexes: expect.objectContaining({
+          search: expect.objectContaining({ type: 'full_text' }),
+          assets_text: expect.objectContaining({
+            type: 'embeddings',
+            template: '{{description}} {{tags}}',
+            embedder: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
+            chunk_size: 200,
+            chunk_overlap: 25,
+          }),
+          assets_visual: expect.objectContaining({
+            type: 'embeddings',
+            template: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
+            embedder: { provider: 'antfly', model: 'clip-vit-base-patch32' },
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('query routes multiple index names through to antfly.queryTable', async () => {
+    const api = buildSearchAPI('assets')
+    api.registerContentType({
+      ...makeDef('assets'),
+      indexes: [
+        { name: 'assets_text', embedderRef: 'default', embeddingTemplate: '{{description}}' },
+        { name: 'assets_visual', embedderRef: 'visual', embeddingTemplate: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}' },
+      ],
+    })
+
+    await api.query({ q: 'kafka diagram' })
+
+    expect(antfly.queryTable).toHaveBeenCalledWith(
+      'bakin_assets',
+      'kafka diagram',
+      expect.objectContaining({
+        indexes: ['assets_text', 'assets_visual'],
+      }),
+    )
+  })
+
+  it('buildAntflyIndexes throws when an embedderRef is unknown', async () => {
+    const api = buildSearchAPI('broken')
+    api.registerContentType({
+      ...makeDef('broken'),
+      indexes: [
+        { name: 'bad', embedderRef: 'does-not-exist', embeddingTemplate: '{{x}}' },
+      ],
+    })
+
+    // createRegisteredTables swallows per-table errors and logs them, so the
+    // call itself resolves — but the resulting createTable mock should NOT
+    // have been called for this table because the error happened before it.
+    vi.mocked(antfly.createTable).mockClear()
+    await createRegisteredTables()
+
+    expect(antfly.createTable).not.toHaveBeenCalledWith(
+      'bakin_broken',
+      expect.anything(),
+    )
   })
 
   it('query returns fallback when no content type registered', async () => {
