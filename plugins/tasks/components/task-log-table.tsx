@@ -53,9 +53,11 @@ interface TaskLogTableProps {
   currentTasks: FlatTask[]
   /** Status filter from parent (empty = all) */
   statusFilter: string[]
+  /** When true, preserve Antfly relevance order instead of manual sort */
+  isSearching?: boolean
 }
 
-export function TaskLogTable({ currentTasks, statusFilter }: TaskLogTableProps) {
+export function TaskLogTable({ currentTasks, statusFilter, isSearching }: TaskLogTableProps) {
   const [auditTasks, setAuditTasks] = useState<HistoricalTask[]>([])
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<SortField>('completedAt')
@@ -119,8 +121,9 @@ export function TaskLogTable({ currentTasks, statusFilter }: TaskLogTableProps) 
     return allTasks.filter(t => statusFilter.includes(t.status))
   }, [allTasks, statusFilter])
 
-  // Sort
+  // Sort — skip when searching to preserve Antfly relevance order
   const sorted = useMemo(() => {
+    if (isSearching) return filtered
     return [...filtered].sort((a, b) => {
       let aVal = '', bVal = ''
       if (sortField === 'title') { aVal = a.title; bVal = b.title }
@@ -131,7 +134,7 @@ export function TaskLogTable({ currentTasks, statusFilter }: TaskLogTableProps) 
       const cmp = aVal.localeCompare(bVal)
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [filtered, sortField, sortDir])
+  }, [filtered, sortField, sortDir, isSearching])
 
   const toggleSort = useCallback((field: SortField) => {
     if (sortField === field) {
