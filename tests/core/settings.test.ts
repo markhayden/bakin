@@ -31,6 +31,34 @@ describe('Settings', () => {
     expect(settings.antfly.enabled).toBe(false)
   })
 
+  it('returns antfly search defaults', () => {
+    const settings = getSettings()
+    expect(settings.antfly.search.strategy).toBe('rrf')
+    expect(settings.antfly.search.defaultLimit).toBe(20)
+    expect(settings.antfly.search.reranker).toBeUndefined()
+    expect(settings.antfly.embedder.provider).toBe('antfly')
+    expect(settings.antfly.embedder.model).toBe('all-MiniLM-L6-v2')
+    expect(settings.antfly.chunking.defaultTargetTokens).toBe(200)
+    expect(settings.antfly.chunking.defaultOverlapTokens).toBe(25)
+    expect(settings.antfly.auditTtl).toBe('90d')
+    expect(settings.antfly.cleanupInterval).toBe('24h')
+  })
+
+  it('merges partial antfly overrides preserving nested defaults', () => {
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+      antfly: { enabled: true, search: { defaultLimit: 50 } },
+    }))
+
+    const settings = getSettings()
+    expect(settings.antfly.enabled).toBe(true)
+    expect(settings.antfly.url).toBe('http://localhost:8080') // default preserved
+    expect(settings.antfly.search.defaultLimit).toBe(50) // overridden
+    expect(settings.antfly.search.strategy).toBe('rrf') // default preserved
+    expect(settings.antfly.embedder.provider).toBe('antfly') // default preserved
+    expect(settings.antfly.auditTtl).toBe('90d') // default preserved
+  })
+
   it('merges partial overrides with defaults', () => {
     fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
