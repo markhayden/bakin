@@ -27,7 +27,7 @@ vi.mock('@/core/settings', () => ({
   getSettings: vi.fn(() => ({
     antfly: {
       enabled: true,
-      url: 'http://localhost:8080',
+      url: 'http://localhost:8080/api/v1',
       search: { strategy: 'rrf', defaultLimit: 20 },
       embedders: {
         default: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
