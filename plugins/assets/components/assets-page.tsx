@@ -159,6 +159,7 @@ export function AssetsPage() {
         view={view}
         onViewChange={setView}
         onAdd={() => setUploadOpen(true)}
+        typeCounts={antfly.aggregations?.asset_type ? Object.fromEntries(antfly.aggregations.asset_type.map(a => [a.value, a.count])) : undefined}
       />
 
       {activeLoading ? (
