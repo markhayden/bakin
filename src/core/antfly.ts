@@ -5,7 +5,7 @@
  *
  * Uses @antfly/sdk AntflyClient for all API interactions.
  */
-import AntflyClient from '@antfly/sdk'
+import { AntflyClient } from '@antfly/sdk'
 import type { BatchRequest, QueryRequest, QueryResult, QueryHit } from '@antfly/sdk'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
