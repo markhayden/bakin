@@ -107,7 +107,6 @@ describe('antfly', () => {
     const antfly = await import('@/core/antfly')
     expect(antfly.TABLES.tasks).toBe('bakin_tasks')
     expect(antfly.TABLES.audit).toBe('bakin_audit')
-    expect(antfly.TABLES.content).toBe('bakin_content')
     expect(antfly.TABLES.assets).toBe('bakin_assets')
     expect(antfly.TABLES.projects).toBe('bakin_projects')
     expect(antfly.TABLES.workflows).toBe('bakin_workflows')

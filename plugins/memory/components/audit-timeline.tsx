@@ -68,7 +68,11 @@ export function AuditTimeline() {
     if (search) {
       if (antfly.results.length) {
         const matchIds = new Set(antfly.results.map(r => r.id))
-        result = result.filter(e => matchIds.has(e.ts))
+        const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+        result = result
+          .filter(e => matchIds.has(e.ts))
+          .sort((a, b) => (scoreMap.get(b.ts) ?? 0) - (scoreMap.get(a.ts) ?? 0))
+        return result
       } else {
         const q = search.toLowerCase()
         result = result.filter(
@@ -79,7 +83,7 @@ export function AuditTimeline() {
       }
     }
 
-    // Already newest-first (API returns reversed, SSE prepended) — sort to be safe
+    // Newest-first when not searching
     return [...result].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
   }, [allEntries, agentFilter, eventFilter, search])
 

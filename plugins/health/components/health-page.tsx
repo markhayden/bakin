@@ -497,6 +497,7 @@ export function HealthPage() {
                 <Button
                   size="sm"
                   variant="outline"
+                  className="cursor-pointer"
                   disabled={!searchHealth.enabled || reindexing}
                   onClick={async () => {
                     setReindexProgress({})

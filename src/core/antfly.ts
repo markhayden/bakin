@@ -31,7 +31,6 @@ function setClient(c: AntflyClient | null) { _g.__bakinAntflyClient = c }
 export const TABLES = {
   tasks: 'bakin_tasks',
   audit: 'bakin_audit',
-  content: 'bakin_content',
   assets: 'bakin_assets',
   projects: 'bakin_projects',
   workflows: 'bakin_workflows',
