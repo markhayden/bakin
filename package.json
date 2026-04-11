@@ -81,6 +81,9 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3"
-    ]
+    ],
+    "patchedDependencies": {
+      "@antfly/sdk@0.0.14": "patches/@antfly__sdk@0.0.14.patch"
+    }
   }
 }
