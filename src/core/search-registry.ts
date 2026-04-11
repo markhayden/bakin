@@ -105,8 +105,8 @@ function buildAntflyIndexes(def: SearchContentTypeDefinition): Record<string, Re
       type: 'embeddings',
       template: def.embeddingTemplate,
       embedder: {
-        provider: settings.antfly.embedder.provider,
-        model: settings.antfly.embedder.model,
+        provider: settings.antfly.embedders.default.provider,
+        model: settings.antfly.embedders.default.model,
       },
     },
   }
