@@ -336,9 +336,8 @@ export async function queryTable(
   const strategy = options.strategy ?? settings.antfly.search.strategy
   const limit = options.limit ?? settings.antfly.search.defaultLimit
 
-  // Include both indexes based on strategy
+  // full_text_search implicitly uses the full-text index — only list embedding index
   const indexes: string[] = []
-  if (strategy !== 'semantic_only') indexes.push('search')
   if (strategy !== 'full_text_only') indexes.push('embeddings')
 
   const request: QueryRequest = {
@@ -411,7 +410,7 @@ export async function multiQuery(
       table: tableName,
       full_text_search: { query } as QueryRequest['full_text_search'],
       semantic_search: query,
-      indexes: ['search', 'embeddings'],
+      indexes: ['embeddings'],
       limit: perTable,
     }
     if (options.filters && Object.keys(options.filters).length > 0) {

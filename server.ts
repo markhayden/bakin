@@ -141,8 +141,8 @@ app.prepare().then(async () => {
   startCleanupTimer()
 
   // Register Antfly sync hook with file watcher
-  watcher.registerSyncHook(antfly.syncFile)
-  watcher.registerUnlinkHook(antfly.syncFileUnlink)
+  // Legacy syncFile/syncFileUnlink removed — plugins now handle their own
+  // indexing via ctx.search.index() / ctx.search.remove() with correct schemas
 
   // Generate API docs
   generateDocs(CONTENT_DIR)
