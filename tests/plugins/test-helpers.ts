@@ -49,6 +49,13 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
       log: vi.fn(),
       audit: vi.fn(),
     },
+    search: {
+      registerContentType: vi.fn(),
+      index: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+      transform: vi.fn(async () => {}),
+      query: vi.fn(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+    },
     hooks: {
       register: vi.fn(() => () => {}),
       has: vi.fn(() => false),

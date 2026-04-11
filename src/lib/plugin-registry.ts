@@ -210,6 +210,13 @@ class PluginRegistryImpl {
           appendAudit(getContentDir(), `${pluginId}.${event}`, agent, data || {})
         },
       },
+      search: {
+        registerContentType: () => {},
+        index: async () => {},
+        remove: async () => {},
+        transform: async () => {},
+        query: async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } }),
+      },
       hooks: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         register: (name: string, handler: (data: any) => any) => {

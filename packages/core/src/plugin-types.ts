@@ -145,6 +145,113 @@ export interface PluginContext {
   activity: ActivityAPI
   /** Cross-plugin hook registration */
   hooks: HookAPI
+  /** Antfly-backed search — register content types, index, query */
+  search: SearchAPI
+}
+
+// ---------------------------------------------------------------------------
+// Search API (Antfly-backed vector + full-text search)
+// ---------------------------------------------------------------------------
+
+/** Field type for search content type schemas */
+export interface SearchSchemaField {
+  type: 'text' | 'keyword' | 'number' | 'boolean' | 'datetime' | 'array'
+}
+
+/** Definition for a searchable content type registered by a plugin */
+export interface SearchContentTypeDefinition {
+  /** Table name — auto-prefixed with `bakin_`. E.g., 'tasks' → 'bakin_tasks' */
+  table: string
+  /** Schema for the document fields */
+  schema: Record<string, SearchSchemaField>
+  /** Fields to include in full-text search */
+  searchableFields: string[]
+  /** Handlebars template for embedding generation */
+  embeddingTemplate: string
+  /** Fields to expose as aggregatable facets */
+  facets?: string[]
+  /** TTL duration (Go format: '24h', '7d', '30d') */
+  ttl?: string
+  /** TTL field (defaults to 'created_at') */
+  ttlField?: string
+  /** Chunking config for long documents */
+  chunker?: {
+    enabled: boolean
+    targetTokens?: number
+    overlapTokens?: number
+  }
+  /**
+   * Backfill function — called during full/per-table reindex.
+   * Must yield ALL documents for this content type from source.
+   */
+  reindex: () => AsyncGenerator<{ key: string; doc: Record<string, unknown> }>
+  /**
+   * Existence check — called during orphan cleanup.
+   * Returns true if the source document for this key still exists.
+   */
+  verifyExists: (key: string) => Promise<boolean>
+}
+
+/** Parameters for a search query */
+export interface SearchQueryParams {
+  /** Search query string */
+  q: string
+  /** Structured keyword filters */
+  filters?: Record<string, string | boolean | number>
+  /** Facets to include in aggregations */
+  facets?: string[]
+  /** Max results */
+  limit?: number
+  /** Result offset for pagination */
+  offset?: number
+}
+
+/** A single search result */
+export interface SearchResult {
+  id: string
+  table: string
+  score: number
+  fields: Record<string, unknown>
+}
+
+/** Search response from a query */
+export interface SearchResponse {
+  results: SearchResult[]
+  aggregations?: Record<string, Array<{ value: string; count: number }>>
+  meta: {
+    query: string
+    total: number
+    took_ms: number
+    source: 'antfly' | 'fallback'
+  }
+}
+
+/** Atomic transform operation (update fields without re-embedding) */
+export interface SearchTransformOp {
+  op: '$set' | '$inc' | '$push'
+  field?: string
+  value: unknown
+}
+
+/** Search API provided to plugins via ctx.search */
+export interface SearchAPI {
+  /**
+   * Register a content type this plugin will index.
+   * Must be called during activate(). Creates the Antfly table if needed.
+   */
+  registerContentType(def: SearchContentTypeDefinition): void
+
+  /** Index or update a document. Fire-and-forget. */
+  index(key: string, doc: Record<string, unknown>): Promise<void>
+
+  /** Remove a document from the index. */
+  remove(key: string): Promise<void>
+
+  /** Atomic field update without re-embedding. For metadata-only changes. */
+  transform(key: string, operations: SearchTransformOp[]): Promise<void>
+
+  /** Search this plugin's content type. */
+  query(params: SearchQueryParams): Promise<SearchResponse>
 }
 
 // ---------------------------------------------------------------------------
