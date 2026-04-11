@@ -1,0 +1,37 @@
+# OpenClaw containerized dev environment for Bakin.
+# Usage:
+#   docker compose up -d openclaw-gateway   # Start gateway
+#   docker compose down                     # Stop everything
+#
+# CLI commands via the shim:
+#   ./dev/docker/openclaw-shim.sh cron list --all --json
+
+services:
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: bakin-openclaw-gateway
+    ports:
+      - "127.0.0.1:18789:18789"
+    volumes:
+      - ../openclaw-home:/home/node/.openclaw
+    env_file: .env
+    environment:
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-dev-token}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18789/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  openclaw-cli:
+    image: ghcr.io/openclaw/openclaw:latest
+    network_mode: "service:openclaw-gateway"
+    volumes:
+      - ../openclaw-home:/home/node/.openclaw
+    env_file: .env
+    entrypoint: ["node", "dist/index.js"]
+    profiles: ["cli"]

@@ -59,8 +59,8 @@ export async function handleGatewayRequest(req: GatewayRequest): Promise<Gateway
 
   console.log(`${timestamp()} ${method} ${url}`)
 
-  // GET /health
-  if (url === '/health' && method === 'GET') {
+  // GET /health or /healthz (compat with Docker OpenClaw)
+  if ((url === '/health' || url === '/healthz') && method === 'GET') {
     return { status: 200, body: { status: 'ok', mock: true } }
   }
 
