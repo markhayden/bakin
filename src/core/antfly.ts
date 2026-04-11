@@ -189,7 +189,23 @@ export async function getTableStats(tableName: string): Promise<Record<string, u
   if (!client) return null
 
   try {
-    return await client.tables.get(tableName) as unknown as Record<string, unknown>
+    // Get doc count via matchAll query with limit 0
+    const { matchAll } = await import('@antfly/sdk')
+    const queryResult = await client.tables.query(tableName, { query: matchAll(), limit: 0 })
+    const total = (queryResult as unknown as { responses: Array<{ hits: { total: number } }> })
+      .responses?.[0]?.hits?.total ?? 0
+
+    // Get table metadata (indexes, schema, storage)
+    let info: Record<string, unknown> = {}
+    try {
+      info = await client.tables.get(tableName) as unknown as Record<string, unknown>
+    } catch {
+      const tables = await client.tables.list()
+      const match = tables.find(t => t.name === tableName)
+      if (match) info = match as unknown as Record<string, unknown>
+    }
+
+    return { ...info, num_docs: total }
   } catch {
     return null
   }
