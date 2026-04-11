@@ -21,7 +21,7 @@ export default defineConfig({
       '@bakin/tasks': path.resolve(__dirname, 'plugins/tasks'),
       '@bakin/memory': path.resolve(__dirname, 'plugins/memory'),
       '@bakin/models': path.resolve(__dirname, 'plugins/models'),
-      '@bakin/calendar': path.resolve(__dirname, 'plugins/calendar'),
+      '@bakin/messaging': path.resolve(__dirname, 'plugins/messaging'),
       '@bakin/workflows': path.resolve(__dirname, 'plugins/workflows'),
       '@bakin/assets': path.resolve(__dirname, 'plugins/assets'),
       '@bakin/schedule': path.resolve(__dirname, 'plugins/schedule'),

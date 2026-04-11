@@ -6,7 +6,7 @@ import { navItems as taskNav } from '../../plugins/tasks/client'
 import { navItems as memoryNav } from '../../plugins/memory/client'
 import { navItems as workflowsNav } from '../../plugins/workflows/client'
 import { navItems as modelsNav } from '../../plugins/models/client'
-import { navItems as calendarNav } from '../../plugins/calendar/client'
+import { navItems as messagingNav } from '../../plugins/messaging/client'
 import { navItems as assetsNav } from '../../plugins/assets/client'
 import { navItems as scheduleNav } from '../../plugins/schedule/client'
 import { navItems as healthNav } from '../../plugins/health/client'
@@ -19,7 +19,7 @@ export const allNavItems: NavItem[] = [
   ...taskNav,
   ...memoryNav,
   ...modelsNav,
-  ...calendarNav,
+  ...messagingNav,
   ...workflowsNav,
   ...assetsNav,
   ...scheduleNav,

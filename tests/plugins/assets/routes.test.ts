@@ -715,17 +715,14 @@ describe('exec tool: bakin_exec_assets_save', () => {
     writeFileSync(sourceFile, 'activity test')
 
     const tool = findTool(plugin.execTools, 'bakin_exec_assets_save')!
-    await callTool(tool, {
+    const result = await callTool(tool, {
       filePath: sourceFile,
       taskId: 'task-activity',
       type: 'text',
     }, 'scribe')
 
-    expect(plugin.ctx.activity.log).toHaveBeenCalledWith(
-      'scribe',
-      expect.stringContaining('Saved asset'),
-      expect.objectContaining({ taskId: 'task-activity' })
-    )
+    // ctx.activity.log removed — auto-audit from mcp-server.ts with label covers this
+    expect(result.ok).toBe(true)
   })
 })
 
@@ -836,12 +833,10 @@ describe('exec tool: bakin_exec_assets_restore', () => {
     })
 
     const tool = findTool(plugin.execTools, 'bakin_exec_assets_restore')!
-    await callTool(tool, { filename: trashFilename }, 'scribe')
+    const result = await callTool(tool, { filename: trashFilename }, 'scribe')
 
-    expect(plugin.ctx.activity.log).toHaveBeenCalledWith(
-      'scribe',
-      expect.stringContaining('Restored asset')
-    )
+    // ctx.activity.log removed — auto-audit from mcp-server.ts with label covers this
+    expect(result.ok).toBe(true)
   })
 
   it('returns error for nonexistent trash item', async () => {

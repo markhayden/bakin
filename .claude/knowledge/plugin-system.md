@@ -150,7 +150,7 @@ const board = await hooks.invoke<TaskBoard>('tasks.readTaskboard', {})
 | workflows | 10 |
 | assets | 9 |
 | schedule | 10 |
-| calendar | 7 |
+| messaging | 15 |
 | projects | 15 |
 | team | 8 |
 | health | 2 |
@@ -187,6 +187,40 @@ handler: (params: Record<string, unknown>, agent: string, ctx?: PluginToolContex
 ```
 
 The `getToolContext()` function in `scripts/lib/registry.ts` uses `eval('require')` to prevent Next.js webpack from tracing runtime-only imports (it's only called from the custom Node server's MCP handler, never from Next.js routes).
+
+### ExecToolDefinition fields
+
+```typescript
+interface ExecToolDefinition {
+  name: string                    // bakin_exec_{pluginId}_{action}
+  description: string             // MCP tool description
+  label?: string                  // Human-readable action phrase for activity feed (e.g., "Created a task")
+  activityDuplicate?: boolean     // true = handler already emits a domain audit event; auto-audit tagged duplicate
+  parameters: Record<string, unknown>
+  handler: (params, agent, ctx?) => Promise<ExecToolResult>
+  source?: string                 // 'plugin:{id}' or 'script'
+}
+```
+
+**`label`**: Short past-tense phrase displayed as primary text in the activity feed. Without it, `humanizeExecName()` derives a label from the tool name (strips `bakin_exec_` prefix, splits on `_`, capitalizes). Every exec tool should have an explicit label.
+
+**`activityDuplicate`**: Set `true` only when the handler (or an effect function it calls) already emits a meaningful domain event (e.g., `task.created`, `asset.deleted`) via `ctx.activity.audit()` or `appendAudit()`. The auto-audit event from `mcp-server.ts` is tagged `duplicate: true` and hidden by default in the activity feed. Do NOT set this flag on tools where the auto-audit is the only activity event.
+
+### Activity event flow for exec tools
+
+```
+Agent calls MCP tool
+  → mcp-server.ts runs handler
+  → Handler may emit domain audit event (e.g., appendAudit('task.created', ...))
+  → mcp-server.ts auto-appends audit: exec.{tool.name}.{ok|fail}
+    with { label: tool.label, duplicate: tool.activityDuplicate }
+  → SSE broadcasts both events
+  → mapAuditMessage() reads data.label for exec.* events (humanizeExecName fallback)
+  → Activity feed shows label as primary text, raw event name as muted mono text
+  → Duplicate events hidden by default (Bug icon toggle to show)
+```
+
+**Important**: Exec tool handlers should NOT call `ctx.activity.log()` — the auto-audit from `mcp-server.ts` with the tool's `label` replaces that pattern. Use `ctx.activity.audit()` for domain events that carry semantic meaning beyond "tool X was called."
 
 ### Naming convention
 `bakin_exec_{pluginId}_{action}` — e.g., `bakin_exec_project_list`, `bakin_exec_schedule_fire`

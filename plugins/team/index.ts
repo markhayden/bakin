@@ -858,6 +858,7 @@ const teamPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_team_list',
+      label: 'Listed team',
       description: 'List all agents with their current status (online/working/available/offline).',
       parameters: {},
       handler: async () => {
@@ -876,6 +877,7 @@ const teamPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_team_profile',
+      label: 'Read agent profile',
       description: 'Get the full profile for an agent including soul, rules, and tools.',
       parameters: {
         agentId: z.string().describe('Agent ID'),
@@ -889,6 +891,7 @@ const teamPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_team_status',
+      label: 'Checked agent status',
       description: 'Get the heartbeat and health status for an agent.',
       parameters: {
         agentId: z.string().describe('Agent ID'),
@@ -903,6 +906,7 @@ const teamPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_team_read_file',
+      label: 'Read agent file',
       description: 'Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md).',
       parameters: {
         agentId: z.string().describe('Agent ID'),
@@ -917,6 +921,7 @@ const teamPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_team_message',
+      label: 'Sent a message',
       description: 'Send a message to an agent via OpenClaw.',
       parameters: {
         agentId: z.string().describe('Agent ID'),
@@ -930,6 +935,7 @@ const teamPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_team_org',
+      label: 'Read organization',
       description: 'Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines.',
       parameters: {},
       handler: async () => {
@@ -939,6 +945,7 @@ const teamPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_team_members',
+      label: 'Listed team members',
       description: 'Get agents that belong to a specific team (e.g. "builders", "creators").',
       parameters: {
         teamId: z.string().describe('Team ID (e.g. "builders", "creators")'),
@@ -957,6 +964,7 @@ const teamPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_team_my_team',
+      label: 'Read own team',
       description: 'Get the team that a specific agent belongs to, including all teammates.',
       parameters: {
         agentId: z.string().describe('Agent ID'),

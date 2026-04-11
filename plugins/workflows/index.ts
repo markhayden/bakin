@@ -516,6 +516,7 @@ const workflowsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_workflows_list',
+      label: 'Listed workflows',
       description: 'List all workflow definitions (templates). Returns name, filename, description, and step count for each.',
       parameters: {},
       handler: async () => {
@@ -534,6 +535,7 @@ const workflowsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_workflows_get_definition',
+      label: 'Read workflow definition',
       description: 'Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows.',
       parameters: {
         name: z.string().describe('Workflow definition filename (e.g. "content-pipeline")'),
@@ -551,6 +553,8 @@ const workflowsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_workflows_start',
+      label: 'Started a workflow',
+      activityDuplicate: true,
       description: 'Start a workflow instance for a task. The task must exist on the board. Returns the created instance.',
       parameters: {
         taskId: z.string().describe('Task ID to start workflow for'),
@@ -579,7 +583,6 @@ const workflowsPlugin: BakinPlugin = {
           } catch { /* non-fatal */ }
 
           ctx.activity.audit('started', agent, { taskId, workflowId })
-          ctx.activity.log(agent, `Started workflow "${workflowId}"`, { taskId })
 
           return { ok: true, instance }
         } catch (err) {
@@ -590,6 +593,7 @@ const workflowsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_workflows_list_instances',
+      label: 'Listed workflow runs',
       description: 'List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled).',
       parameters: {
         status: z.enum(['in_progress', 'pending_approval', 'complete', 'failed', 'cancelled']).optional().describe('Filter by instance status'),
@@ -602,6 +606,7 @@ const workflowsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_workflows_get_instance',
+      label: 'Read workflow instance',
       description: 'Get the full state of a workflow instance for a task, including step states and history.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -615,6 +620,7 @@ const workflowsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_workflows_get_step',
+      label: 'Read workflow step',
       description: 'Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -629,6 +635,8 @@ const workflowsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_workflows_complete_step',
+      label: 'Completed workflow step',
+      activityDuplicate: true,
       description: 'Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -649,7 +657,6 @@ const workflowsPlugin: BakinPlugin = {
         }
 
         ctx.activity.audit('step.completed', agentId, { taskId, stepId, workflowComplete: result.workflowComplete })
-        ctx.activity.log(agentId, `Completed step "${stepId}"${result.workflowComplete ? ' — workflow complete' : ''}`, { taskId })
 
         if (!result.workflowComplete) {
           triggerDispatch()
@@ -664,6 +671,7 @@ const workflowsPlugin: BakinPlugin = {
     // bakin_exec_get_step — human-readable step context formatter
     ctx.registerExecTool({
       name: 'bakin_exec_get_step',
+      label: 'Read workflow step',
       description: 'Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -683,6 +691,8 @@ const workflowsPlugin: BakinPlugin = {
     // bakin_exec_submit_step — local pre-validation before server submission
     ctx.registerExecTool({
       name: 'bakin_exec_submit_step',
+      label: 'Submitted workflow step',
+      activityDuplicate: true,
       description: 'Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -717,7 +727,6 @@ const workflowsPlugin: BakinPlugin = {
           }
 
           ctx.activity.audit('step.completed', agent, { taskId, stepId, workflowComplete: result.workflowComplete })
-          ctx.activity.log(agent, `Completed step "${stepId}"${result.workflowComplete ? ' — workflow complete' : ''}`, { taskId })
 
           if (!result.workflowComplete) {
             triggerDispatch()
@@ -737,6 +746,7 @@ const workflowsPlugin: BakinPlugin = {
     // bakin_exec_check_gates — human-readable gate status overview
     ctx.registerExecTool({
       name: 'bakin_exec_check_gates',
+      label: 'Checked workflow gates',
       description: 'Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending.',
       parameters: {
         taskId: z.string().describe('Task ID (or workflow instance ID)'),

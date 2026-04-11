@@ -100,13 +100,21 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_assets_permanent_delete` | Permanently delete a specific trashed asset. This cannot be undone. |
 | `bakin_exec_models_list` | List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment. |
 | `bakin_exec_models_get_config` | Get model configuration for all agents or a specific agent. Shows effective model (own override or default), subagent model, and system defaults. |
-| `bakin_exec_calendar_list` | List calendar items with optional filters |
-| `bakin_exec_calendar_get` | Get details for a single calendar item |
-| `bakin_exec_calendar_create` | Create a new calendar item |
-| `bakin_exec_calendar_update` | Update a calendar item |
-| `bakin_exec_calendar_approve` | Approve a calendar item (draft → scheduled, review → published) |
-| `bakin_exec_calendar_reject` | Reject a calendar item back to draft status |
-| `bakin_exec_calendar_delete` | Delete a calendar item |
+| `bakin_exec_messaging_list` | List messaging items with optional filters |
+| `bakin_exec_messaging_get` | Get details for a single messaging item |
+| `bakin_exec_messaging_create` | Create a new messaging item |
+| `bakin_exec_messaging_update` | Update a messaging item |
+| `bakin_exec_messaging_approve` | Approve a messaging item (draft → scheduled, review → published) |
+| `bakin_exec_messaging_reject` | Reject a messaging item back to draft status |
+| `bakin_exec_messaging_delete` | Delete a messaging item |
+| `bakin_exec_messaging_session_list` | List planning sessions with optional filters |
+| `bakin_exec_messaging_session_get` | Get a planning session with full message history and proposals |
+| `bakin_exec_messaging_session_create` | Create a new planning session for an agent |
+| `bakin_exec_messaging_session_update` | Update a planning session title or status |
+| `bakin_exec_messaging_session_delete` | Delete a planning session |
+| `bakin_exec_messaging_session_message` | Send a message in a planning session (non-streaming, returns full response) |
+| `bakin_exec_messaging_proposal_update` | Update a proposal status or fields (approve, reject, edit) |
+| `bakin_exec_messaging_session_confirm` | Confirm a planning session — creates messaging items from approved proposals |
 | `bakin_exec_workflows_list` | List all workflow definitions (templates). Returns name, filename, description, and step count for each. |
 | `bakin_exec_workflows_get_definition` | Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows. |
 | `bakin_exec_workflows_start` | Start a workflow instance for a task. The task must exist on the board. Returns the created instance. |

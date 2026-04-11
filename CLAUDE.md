@@ -60,7 +60,9 @@ src/
     workflows/[id]/page.tsx — Workflow canvas detail view
     assets/page.tsx        — Asset browser
     schedule/page.tsx      — Cron job manager
-    calendar/page.tsx      — Calendar view
+    messaging/page.tsx     — Messaging (redirects to /messaging/calendar)
+    messaging/calendar/page.tsx — Content calendar view
+    messaging/brainstorm/page.tsx — Brainstorm planning sessions
     memory/page.tsx        — Audit log viewer
     health/page.tsx        — System health dashboard
     models/page.tsx        — Model configuration
@@ -72,7 +74,7 @@ plugins/                   — Core plugins (each has bakin-plugin.json manifest
   projects/                — Project tracking with checklists
   schedule/                — Cron job scheduling with OpenClaw bridge
   memory/                  — Audit logs and agent workspaces
-  calendar/                — Content calendar
+  messaging/               — Content calendar + brainstorm planning sessions
   models/                  — AI model configuration
   team/                    — Agent team management (OpenClaw adapter layer)
   health/                  — System health dashboard
