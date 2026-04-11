@@ -23,6 +23,10 @@
     "ci:affected": "turbo run test build --affected",
     "ci:full": "turbo run test build",
     "dev:mock": "npx tsx dev/imitation-crab/index.ts --with-bakin",
+    "dev:docker": "OPENCLAW_HOME=./dev/openclaw-home OPENCLAW_PATH=./dev/docker/openclaw-shim.sh BAKIN_URL=http://host.docker.internal:3737 npx tsx server.ts",
+    "docker:setup": "bash dev/docker/setup.sh",
+    "docker:up": "docker compose -f dev/docker/docker-compose.yml up -d openclaw-gateway",
+    "docker:down": "docker compose -f dev/docker/docker-compose.yml down",
     "mock:start": "npx tsx dev/imitation-crab/index.ts",
     "mock:seed": "npx tsx dev/imitation-crab/seed.ts"
   },

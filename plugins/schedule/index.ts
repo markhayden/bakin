@@ -243,7 +243,7 @@ const schedulePlugin: BakinPlugin = {
         name: body.name,
         cron: parsed.cron,
         session: 'isolated',
-        webhookUrl: `http://localhost:${port}/api/plugins/schedule/bridge`,
+        webhookUrl: `${process.env.BAKIN_URL || `http://localhost:${port}`}/api/plugins/schedule/bridge`,
         tz,
       })
 
@@ -502,7 +502,7 @@ const schedulePlugin: BakinPlugin = {
           name: params.name as string,
           cron: parsed.cron,
           session: 'isolated',
-          webhookUrl: `http://localhost:${port}/api/plugins/schedule/bridge`,
+          webhookUrl: `${process.env.BAKIN_URL || `http://localhost:${port}`}/api/plugins/schedule/bridge`,
           tz,
         })
 

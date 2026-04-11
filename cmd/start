@@ -1,0 +1,7 @@
+#!/bin/bash
+# Start OpenClaw container + Bakin dev server
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+docker compose -f dev/docker/docker-compose.yml up -d openclaw-gateway 2>/dev/null
+OPENCLAW_HOME=./dev/openclaw-home OPENCLAW_PATH=./dev/docker/openclaw-shim.sh BAKIN_URL=http://host.docker.internal:3737 npx tsx server.ts
