@@ -145,14 +145,14 @@ Each plugin: register content type with schema + `reindex()` generator + `verify
 
 ## Phase 5: Health & Observability
 
-- [ ] **T20: Health Plugin Search Section + Doctor Checks**
+- [x] **T20: Health Plugin Search Section + Doctor Checks** ✓ `ae52fdd`
   - Search section: status, tables, metrics, actions (reindex/cleanup/clear)
   - Enhanced doctor: table existence, schema verification, stale data warnings
   - Files: `plugins/health/components/health-page.tsx`, `src/core/doctor.ts`
 
 ### --- CHECKPOINT 5 (Final) --- `git tag search-checkpoint-5`
-- [ ] Full E2E: create → search → update → search → delete → verify gone
-- [ ] Health plugin accurate
-- [ ] Embedder change → rebuild → reindex works end-to-end
-- [ ] `pnpm tsc --noEmit` && `pnpm test` pass
-- [ ] Ready to merge `feat/antfly-search` → `main`
+- [x] Full E2E: create → search → update → search → delete → verify gone
+- [x] Health plugin accurate
+- [x] Embedder change → rebuild → reindex works end-to-end
+- [x] `pnpm tsc --noEmit` && `pnpm test` pass
+- [x] Ready to merge `feat/antfly-search` → `main`
