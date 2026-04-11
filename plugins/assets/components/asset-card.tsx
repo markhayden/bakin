@@ -106,11 +106,14 @@ export function AssetCard({ asset, onClick, onDelete, scoreInfo }: AssetCardProp
         {scoreInfo && (
           <div className="absolute top-1.5 left-1.5 flex flex-col gap-0.5 text-[9px] font-mono bg-black/80 px-1.5 py-1 rounded">
             <span className="text-amber-400">RRF {scoreInfo.score.toFixed(4)}</span>
-            {scoreInfo.indexScores && Object.entries(scoreInfo.indexScores).map(([idx, s]) => (
-              <span key={idx} className={idx === 'embeddings' ? 'text-purple-400' : 'text-cyan-400'}>
-                {idx === 'embeddings' ? 'SEM' : 'BM25'} {(s as number).toFixed(4)}
-              </span>
-            ))}
+            {scoreInfo.indexScores && Object.entries(scoreInfo.indexScores).map(([idx, s]) => {
+              const isSemantic = idx === 'embeddings'
+              return (
+                <span key={idx} className={isSemantic ? 'text-purple-400' : 'text-cyan-400'}>
+                  {isSemantic ? 'SEM' : 'BM25'} {(s as number).toFixed(4)}
+                </span>
+              )
+            })}
           </div>
         )}
       </div>
