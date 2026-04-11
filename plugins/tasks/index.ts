@@ -425,6 +425,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_create',
       label: 'Created a task',
+      activityDuplicate: true,
       description: 'Create a new task on the task board. For top-level tasks, you MUST provide either workflowId or skipWorkflowReason. Subtasks (with parentId) are exempt.',
       parameters: {
         title: z.string().describe('Task title'),
@@ -468,6 +469,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_move',
       label: 'Moved a task',
+      activityDuplicate: true,
       description: 'Move a task to a different column on the task board.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -492,6 +494,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_block',
       label: 'Blocked a task',
+      activityDuplicate: true,
       description: 'Mark a task as blocked with a reason. Use when you cannot proceed.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -511,6 +514,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_complete',
       label: 'Completed a task',
+      activityDuplicate: true,
       description: 'Report that your task is complete. Moves the task to Done and notifies the orchestrator.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -530,6 +534,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_log_progress',
       label: 'Logged progress',
+      activityDuplicate: true,
       description: 'Log a human-readable progress update to the live activity feed. Call this at every significant step.',
       parameters: {
         taskId: z.string().describe('Task ID (e.g. "fe84ac51")'),
@@ -548,6 +553,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_set_dependency',
       label: 'Set task dependency',
+      activityDuplicate: true,
       description: 'Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait.',
       parameters: {
         taskId: z.string().describe('Your task ID (the one that depends)'),
@@ -567,6 +573,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_update',
       label: 'Updated a task',
+      activityDuplicate: true,
       description: 'Update a task on the board — change title, description, or assigned agent.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -596,6 +603,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_delete',
       label: 'Deleted a task',
+      activityDuplicate: true,
       description: 'Delete a task from the board.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -616,6 +624,7 @@ const tasksPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_assign',
       label: 'Assigned a task',
+      activityDuplicate: true,
       description: 'Assign a task to an agent.',
       parameters: {
         taskId: z.string().describe('Task ID'),

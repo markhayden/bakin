@@ -664,6 +664,7 @@ const schedulePlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_run_now',
       label: 'Triggered scheduled job',
+      activityDuplicate: true,
       description: 'Trigger an immediate run of a scheduled job',
       parameters: {
         jobId: z.string().describe('Job ID (required)'),

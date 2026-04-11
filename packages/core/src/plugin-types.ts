@@ -80,6 +80,7 @@ export interface ExecToolDefinition {
   name: string
   description: string
   label?: string // Short human-readable action phrase for activity feed (e.g., "Created a task")
+  activityDuplicate?: boolean // true = handler already emits a meaningful activity event; auto-audit can be hidden
   parameters: Record<string, unknown> // Zod schema shape
   handler: (params: Record<string, unknown>, agent: string, ctx?: PluginToolContext) => Promise<ExecToolResult>
   source?: string // 'core' | 'plugin:<id>' — set automatically on registration

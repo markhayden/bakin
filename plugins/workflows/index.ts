@@ -554,6 +554,7 @@ const workflowsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_workflows_start',
       label: 'Started a workflow',
+      activityDuplicate: true,
       description: 'Start a workflow instance for a task. The task must exist on the board. Returns the created instance.',
       parameters: {
         taskId: z.string().describe('Task ID to start workflow for'),
@@ -636,6 +637,7 @@ const workflowsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_workflows_complete_step',
       label: 'Completed workflow step',
+      activityDuplicate: true,
       description: 'Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -692,6 +694,7 @@ const workflowsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_submit_step',
       label: 'Submitted workflow step',
+      activityDuplicate: true,
       description: 'Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip.',
       parameters: {
         taskId: z.string().describe('Task ID'),

@@ -562,6 +562,7 @@ const projectsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_project_toggle_item',
       label: 'Toggled project item',
+      activityDuplicate: true,
       description: 'Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -582,6 +583,7 @@ const projectsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_project_update_item',
       label: 'Updated project item',
+      activityDuplicate: true,
       description: 'Update a checklist item\'s title and/or description.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -609,6 +611,7 @@ const projectsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_project_ask',
       label: 'Asked project question',
+      activityDuplicate: true,
       description: 'Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming.',
       parameters: {
         projectId: z.string().describe('Project ID'),
