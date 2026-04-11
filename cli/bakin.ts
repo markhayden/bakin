@@ -316,13 +316,51 @@ async function cmdSetupAntfly(): Promise<void> {
   console.log('  Reindex:    bakin reindex')
 }
 
-async function cmdSearch(query: string, options: { table?: string; limit?: number; agent?: string } = {}): Promise<void> {
+async function cmdSearch(query: string, options: { table?: string; limit?: number; agent?: string; facets?: string } = {}): Promise<void> {
   let url = `/api/search?q=${encodeURIComponent(query)}`
   if (options.table) url += `&table=${encodeURIComponent(options.table)}`
-  if (options.agent) url += `&agent=${encodeURIComponent(options.agent)}`
   if (options.limit) url += `&limit=${options.limit}`
-  const result = await apiGet(url)
-  print(result)
+  if (options.facets) url += `&facets=${encodeURIComponent(options.facets)}`
+  const result = await apiGet(url) as {
+    results?: Array<{ key: string; score?: number; _table?: string; document?: Record<string, unknown> }>
+    aggregations?: Record<string, Array<{ value: string; count: number }>>
+    meta?: { query: string; total: number; took_ms: number; source: string }
+  }
+
+  if (result.meta) {
+    console.log(`Search: "${result.meta.query}" — ${result.meta.total} results in ${result.meta.took_ms}ms (${result.meta.source})`)
+  }
+
+  if (result.results?.length) {
+    for (const r of result.results) {
+      const table = r._table ? ` [${r._table.replace('bakin_', '')}]` : ''
+      const title = r.document?.title || r.document?.name || r.key
+      console.log(`  ${title}${table} (score: ${r.score?.toFixed(3) ?? '?'})`)
+    }
+  } else {
+    console.log('  No results found.')
+  }
+
+  if (result.aggregations && Object.keys(result.aggregations).length) {
+    console.log('')
+    for (const [facet, values] of Object.entries(result.aggregations)) {
+      console.log(`  ${facet}: ${values.map(v => `${v.value}(${v.count})`).join(', ')}`)
+    }
+  }
+}
+
+async function cmdSearchStats(): Promise<void> {
+  const result = await apiGet('/api/antfly/health') as {
+    enabled: boolean
+    tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }>
+  }
+  console.log(`Antfly: ${result.enabled ? 'enabled' : 'disabled'}`)
+  if (result.tables?.length) {
+    for (const t of result.tables) {
+      const docs = (t.stats as any)?.num_docs ?? '?'
+      console.log(`  ${t.table} (${t.pluginId}): ${docs} docs`)
+    }
+  }
 }
 
 async function cmdDoctor(): Promise<void> {
@@ -777,10 +815,25 @@ async function cmdReboot(): Promise<void> {
   console.log('[WARN] Server not responding after 15s — check logs')
 }
 
-async function cmdReindex(): Promise<void> {
-  console.log('Reindexing all content to Antfly...')
-  const result = await apiPost('/api/reindex') as { ok: boolean; indexed: number }
-  console.log(`Done. ${result.indexed} documents indexed.`)
+async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): Promise<void> {
+  let url = '/api/reindex'
+  const params: string[] = []
+  if (options.table) params.push(`table=${encodeURIComponent(options.table)}`)
+  if (options.rebuild) params.push('rebuild=true')
+  if (params.length) url += `?${params.join('&')}`
+
+  console.log(`Reindexing ${options.table || 'all content'} to Antfly${options.rebuild ? ' (rebuild indexes)' : ''}...`)
+  const result = await apiPost(url) as { ok: boolean; total: number; tables: Array<{ table: string; indexed: number; error?: string }> }
+  if (result.tables?.length) {
+    for (const t of result.tables) {
+      if (t.error) {
+        console.log(`  ${t.table}: ERROR — ${t.error}`)
+      } else {
+        console.log(`  ${t.table}: ${t.indexed} documents`)
+      }
+    }
+  }
+  console.log(`Done. ${result.total} total documents indexed.`)
 }
 
 // ---------------------------------------------------------------------------
@@ -1519,16 +1572,23 @@ async function main(): Promise<void> {
         await cmdReboot()
         break
 
-      case 'reindex':
-        await cmdReindex()
+      case 'reindex': {
+        const reindexOpts: { table?: string; rebuild?: boolean } = {}
+        for (let i = 1; i < args.length; i++) {
+          if (args[i].startsWith('--table=')) reindexOpts.table = args[i].split('=')[1]
+          else if (args[i] === '--table' && args[i + 1]) reindexOpts.table = args[++i]
+          else if (args[i] === '--rebuild') reindexOpts.rebuild = true
+        }
+        await cmdReindex(reindexOpts)
         break
+      }
 
       case 'docs':
         await cmdDocs()
         break
 
       case 'search': {
-        const searchOpts: { table?: string; limit?: number; agent?: string } = {}
+        const searchOpts: { table?: string; limit?: number; agent?: string; facets?: string } = {}
         const queryParts: string[] = []
         for (let i = 1; i < args.length; i++) {
           if (args[i].startsWith('--table=')) searchOpts.table = args[i].split('=')[1]
@@ -1537,12 +1597,18 @@ async function main(): Promise<void> {
           else if (args[i] === '--agent' && args[i + 1]) searchOpts.agent = args[++i]
           else if (args[i].startsWith('--limit=')) searchOpts.limit = Number(args[i].split('=')[1])
           else if (args[i] === '--limit' && args[i + 1]) searchOpts.limit = Number(args[++i])
+          else if (args[i].startsWith('--facets=')) searchOpts.facets = args[i].split('=')[1]
+          else if (args[i] === '--facets' && args[i + 1]) searchOpts.facets = args[++i]
           else queryParts.push(args[i])
         }
-        if (!queryParts.length) { console.error('Usage: bakin search <query> [--table=content] [--agent=patch] [--limit=10]'); process.exit(1) }
+        if (!queryParts.length) { console.error('Usage: bakin search <query> [--table=tasks] [--limit=10] [--facets=status,agent]'); process.exit(1) }
         await cmdSearch(queryParts.join(' '), searchOpts)
         break
       }
+
+      case 'search:stats':
+        await cmdSearchStats()
+        break
 
       case 'trash':
         if (!sub || sub === 'list') {

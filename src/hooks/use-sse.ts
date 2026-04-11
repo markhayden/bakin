@@ -127,6 +127,26 @@ export function useSSE() {
             })
           }
 
+          // Reindex milestones — start and complete only (progress is handled by health page)
+          if (data.type === 'reindex.start') {
+            appendActivityEvent({
+              id: `${Date.now()}-reindex-start-${data.table}`,
+              ts: new Date().toISOString(),
+              type: 'log',
+              agent: 'system',
+              message: `Reindexing ${data.pluginId}...`,
+            })
+          }
+          if (data.type === 'reindex.complete') {
+            appendActivityEvent({
+              id: `${Date.now()}-reindex-done-${data.table}`,
+              ts: new Date().toISOString(),
+              type: 'log',
+              agent: 'system',
+              message: `Reindex complete: ${data.pluginId} — ${data.indexed} documents`,
+            })
+          }
+
           if (data.file && data.content !== undefined) {
             updateFile(data.file, data.content)
 

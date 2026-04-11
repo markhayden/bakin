@@ -252,7 +252,7 @@ function checkAndSyncSkill(projectRoot: string, autoFix: boolean): DiagnosticRes
  */
 async function checkAntfly(): Promise<DiagnosticResult[]> {
   const settings = getSettings()
-  const { installed, running } = await import('./antfly-server')
+  const { installed } = await import('./antfly-server')
 
   if (!settings.antfly.enabled) {
     if (!installed()) {
@@ -265,10 +265,6 @@ async function checkAntfly(): Promise<DiagnosticResult[]> {
     return [error('antfly', 'Antfly enabled but binary not found — install with: brew install --cask antflydb/antfly/antfly')]
   }
 
-  if (!running()) {
-    return [error('antfly', 'Antfly enabled but server not running — it should auto-start on next Bakin restart')]
-  }
-
   try {
     const base = settings.antfly.url.replace(/\/api\/v1\/?$/, '')
     const res = await fetch(`${base}/api/v1/status`, { signal: AbortSignal.timeout(3000) })
@@ -279,6 +275,79 @@ async function checkAntfly(): Promise<DiagnosticResult[]> {
     return [error('antfly', `Antfly returned status ${res.status}`)]
   } catch (err) {
     return [error('antfly', `Antfly connection failed: ${err}`)]
+  }
+}
+
+/**
+ * Search tables: verify registered content types have tables with data.
+ * Runs only when Antfly is enabled and connected.
+ */
+async function checkSearchTables(): Promise<DiagnosticResult[]> {
+  const settings = getSettings()
+  if (!settings.antfly.enabled) return []
+
+  try {
+    const antfly = await import('./antfly')
+    await antfly.initialize()
+
+    const { getSearchHealth } = await import('./search-registry')
+    const health = await getSearchHealth()
+
+    if (!health.enabled) return []
+
+    const results: DiagnosticResult[] = []
+
+    if (health.tables.length === 0) {
+      results.push(warn('search-tables', 'Antfly enabled but no content types registered — plugins may not have activated'))
+      return results
+    }
+
+    let emptyTables = 0
+    let failedTables = 0
+
+    for (const t of health.tables) {
+      if (!t.stats) {
+        failedTables++
+        results.push(error('search-tables', `Table "${t.table}" (${t.pluginId}) — could not read stats`))
+        continue
+      }
+
+      const rawNumDocs = Number((t.stats as Record<string, unknown>).num_docs)
+      if (Number.isFinite(rawNumDocs)) {
+        if (rawNumDocs === 0) {
+          if (t.pluginId === 'schedule') {
+            results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 persisted documents; schedule jobs are indexed at runtime`))
+          } else {
+            emptyTables++
+            results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 documents — reindex via POST /api/reindex?table=${t.table}`))
+          }
+        }
+        continue
+      }
+
+      const storage = (t.stats as Record<string, unknown>).storage_status as Record<string, unknown> | undefined
+      if (storage?.empty === true) {
+        emptyTables++
+        results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) appears empty — reindex via POST /api/reindex?table=${t.table}`))
+      }
+    }
+
+    if (results.length === 0) {
+      const totals = health.tables
+        .map(t => Number((t.stats as Record<string, unknown>)?.num_docs))
+        .filter(n => Number.isFinite(n))
+
+      if (totals.length > 0) {
+        const total = totals.reduce((sum, n) => sum + n, 0)
+        results.push(ok('search-tables', `${health.tables.length} tables, ${total} total documents indexed`))
+      } else {
+        results.push(ok('search-tables', `${health.tables.length} tables registered; table metadata readable (document counts unavailable from current Antfly API)`))
+      }
+    }
+
+    return results
+  } catch (err) {
+    return [error('search-tables', `Failed to check search tables: ${err}`)]
   }
 }
 
@@ -1568,11 +1637,12 @@ export async function runDiagnostics(
   results.push(...checkTaskPositionIntegrity(autoFix))
 
   // Async checks (network, not auto-fixable) — run in parallel
-  const [gatewayResults, antflyResults] = await Promise.all([
+  const [gatewayResults, antflyResults, searchTableResults] = await Promise.all([
     checkGateway(),
     checkAntfly(),
+    checkSearchTables(),
   ])
-  results.push(...gatewayResults, ...antflyResults)
+  results.push(...gatewayResults, ...antflyResults, ...searchTableResults)
 
   // Summarize
   const errors = results.filter(r => r.status === 'error').length

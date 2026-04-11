@@ -11,7 +11,7 @@ import { getContentDir } from '@/core/content-dir'
 import type { PluginContext, BakinPlugin, APIRoute } from '@/lib/plugin-types'
 
 /** Build the settings + activity for a lightweight PluginContext */
-function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | 'updateSettings' | 'activity' | 'hooks'> {
+function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | 'updateSettings' | 'activity' | 'hooks' | 'search'> {
   return {
     getSettings: <T = Record<string, unknown>>(): T => {
       const p = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
@@ -57,6 +57,13 @@ function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | '
           broadcastFn({ type: 'audit', event: `${pluginId}.${event}`, agent, ...data })
         }
       },
+    },
+    search: {
+      registerContentType: () => {},
+      index: async () => {},
+      remove: async () => {},
+      transform: async () => {},
+      query: async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } }),
     },
     hooks: {
       register: (name: string, handler: (data: any) => any) => {

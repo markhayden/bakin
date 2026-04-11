@@ -200,6 +200,62 @@ const schedulePlugin: BakinPlugin = {
   activate(ctx: PluginContext) {
     pluginCtx = ctx
 
+    // ─── Search Content Type Registration ─────────────────────────────
+
+    ctx.search.registerContentType({
+      table: 'schedule',
+      schema: {
+        name: { type: 'text' },
+        schedule: { type: 'keyword' },
+        command: { type: 'text' },
+        agent: { type: 'keyword' },
+        enabled: { type: 'keyword' },
+        updated_at: { type: 'datetime' },
+      },
+      searchableFields: ['name', 'command'],
+      embeddingTemplate: '{{name}} {{command}}',
+      facets: ['agent', 'enabled'],
+      reindex: async function* () {
+        for (const job of readMergedJobs()) {
+          yield { key: job.id, doc: jobToSearchDoc(job) }
+        }
+      },
+      verifyExists: async () => true, // Jobs are ephemeral, managed by OpenClaw
+    })
+
+    /** Convert a merged job to a search document */
+    function jobToSearchDoc(job: ReturnType<typeof readMergedJobs>[number]): Record<string, unknown> {
+      return {
+        name: job.displayName || job.name || job.id,
+        schedule: job.humanSchedule || job.schedule.value || '',
+        command: job.taskPrompt || job.taskTitle || '',
+        agent: job.agentId || '',
+        enabled: job.paused ? 'false' : String(job.enabled !== false),
+        updated_at: job.createdAt || new Date().toISOString(),
+      }
+    }
+
+    /** Index a job in the search index using the merged runtime view */
+    function indexJob(jobId: string): void {
+      const job = readMergedJobs().find(j => j.id === jobId)
+      if (!job) return
+      ctx.search.index(jobId, jobToSearchDoc(job)).catch((err) => {
+        log.warn('Failed to index job', { jobId, error: err instanceof Error ? err.message : String(err) })
+      })
+    }
+
+    /** Runtime jobs live in OpenClaw + sidecar, so sync them into search on plugin activation. */
+    function syncRuntimeJobsToSearch(): void {
+      const jobs = readMergedJobs()
+      for (const job of jobs) {
+        ctx.search.index(job.id, jobToSearchDoc(job)).catch((err) => {
+          log.warn('Failed to index runtime job', { jobId: job.id, error: err instanceof Error ? err.message : String(err) })
+        })
+      }
+    }
+
+    syncRuntimeJobsToSearch()
+
     // ── API Routes ─────────────────────────────────────────────────────
 
     // GET / — list all jobs (merged)
@@ -211,6 +267,24 @@ const schedulePlugin: BakinPlugin = {
       return json({ jobs })
     }
     ctx.registerRoute({ path: '/', method: 'GET', description: 'List all scheduled jobs', handler: listJobsHandler })
+
+    // GET /search — search jobs via Antfly
+    ctx.registerRoute({
+      path: '/search',
+      method: 'GET',
+      description: 'Search scheduled jobs',
+      handler: async (req: Request) => {
+        const url = new URL(req.url, 'http://localhost')
+        const q = url.searchParams.get('q')
+        if (!q) return Response.json({ error: 'Missing ?q= parameter' }, { status: 400 })
+        return Response.json(await ctx.search.query({
+          q,
+          limit: Number(url.searchParams.get('limit')) || undefined,
+          offset: Number(url.searchParams.get('offset')) || undefined,
+          facets: url.searchParams.get('facets')?.split(',').filter(Boolean),
+        }))
+      },
+    })
 
     // POST / — create a job
     const createJobHandler = async (req: Request): Promise<Response> => {
@@ -265,6 +339,7 @@ const schedulePlugin: BakinPlugin = {
         updatedAt: new Date().toISOString(),
       }
       upsertJob(meta)
+      indexJob(jobId)
 
       ctx.activity.audit('job.created', body.owner ?? 'system', { jobId, name: body.name })
       ctx.activity.log(body.owner ?? 'system', `Created schedule "${body.name}"`)
@@ -306,6 +381,7 @@ const schedulePlugin: BakinPlugin = {
           }
         }
         upsertJob(meta)
+        indexJob(jobId)
 
         ctx.activity.audit('job.updated', 'system', { jobId })
         ctx.activity.log('system', `Updated schedule "${meta.displayName || jobId}"`)
@@ -360,6 +436,7 @@ const schedulePlugin: BakinPlugin = {
 
       await cronRemove(jobId)
       removeJob(jobId)
+      ctx.search.remove(jobId).catch(() => {})
 
       ctx.activity.audit('job.deleted', 'system', { jobId })
       ctx.activity.log('system', `Deleted schedule "${jobId}"`)
@@ -403,6 +480,7 @@ const schedulePlugin: BakinPlugin = {
             break
         }
         upsertJob(meta)
+        indexJob(jobId)
 
         ctx.activity.audit(`job.${body.action}`, 'system', { jobId })
         ctx.activity.log('system', `Schedule "${meta.displayName || jobId}" ${body.action}d`)
@@ -525,6 +603,7 @@ const schedulePlugin: BakinPlugin = {
           updatedAt: new Date().toISOString(),
         }
         upsertJob(meta)
+        indexJob(jobId)
 
         return { ok: true, jobId, cron: parsed.cron, human: parsed.human, tz }
       },
@@ -562,6 +641,7 @@ const schedulePlugin: BakinPlugin = {
         }
         if (params.name) meta.displayName = params.name as string
         upsertJob(meta)
+        indexJob(params.jobId as string)
 
         return { ok: true }
       },
@@ -619,6 +699,7 @@ const schedulePlugin: BakinPlugin = {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
         await cronRemove(params.jobId as string)
         removeJob(params.jobId as string)
+        ctx.search.remove(params.jobId as string).catch(() => {})
         return { ok: true }
       },
     })

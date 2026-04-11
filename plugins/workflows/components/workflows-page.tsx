@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { PluginHeader } from '@/components/plugin-header'
 import { useQueryState } from '@/hooks/use-query-state'
+import { useAntflySearch } from '@/hooks/use-antfly-search'
 import { WorkflowCard } from './workflow-card'
 import type { WorkflowTemplate } from '../types'
 
@@ -29,13 +30,27 @@ export function WorkflowsPage() {
     fetchTemplates()
   }, [fetchTemplates])
 
+  const antfly = useAntflySearch({ table: 'workflows', facets: ['type', 'status'], debounce: 300 })
+  useEffect(() => {
+    if (search) antfly.search(search)
+    else antfly.clear()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
   const filtered = useMemo(() => {
     if (!search.trim()) return templates
+    if (antfly.results.length) {
+      const matchIds = new Set(antfly.results.map(r => r.id.replace('def:', '')))
+      const scoreMap = new Map(antfly.results.map(r => [r.id.replace('def:', ''), r.score]))
+      return templates
+        .filter(t => matchIds.has(t.name))
+        .sort((a, b) => (scoreMap.get(b.name) ?? 0) - (scoreMap.get(a.name) ?? 0))
+    }
     const q = search.toLowerCase()
     return templates.filter(t =>
       t.name.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q)
     )
-  }, [templates, search])
+  }, [templates, search, antfly.results])
 
   return (
     <div className="p-6 flex flex-col h-full min-h-0 gap-4">

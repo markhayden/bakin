@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { List, CalendarDays, CalendarRange, Clock, Plus, ListFilter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { PluginHeader } from '@/components/plugin-header'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useQueryState } from '@/hooks/use-query-state'
+import { useAntflySearch } from '@/hooks/use-antfly-search'
 import { useScheduleJobs, type ScheduleJob } from '@/hooks/use-schedule'
 import { JobList } from './job-list'
 import { JobDrawer } from './job-drawer'
@@ -47,17 +48,30 @@ export function SchedulePage() {
     agent: agentFilter === 'all' ? undefined : agentFilter,
   })
 
-  const filtered = search
-    ? jobs.filter(j => {
-        const q = search.toLowerCase()
-        return (
-          (j.displayName || '').toLowerCase().includes(q) ||
-          j.id.toLowerCase().includes(q) ||
-          (j.agentId || '').toLowerCase().includes(q) ||
-          j.humanSchedule.toLowerCase().includes(q)
-        )
-      })
-    : jobs
+  const antfly = useAntflySearch({ table: 'schedule', facets: ['agent', 'enabled'], debounce: 300 })
+  useEffect(() => {
+    if (search) antfly.search(search)
+    else antfly.clear()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
+  const filtered = useMemo(() => {
+    if (!search) return jobs
+    if (antfly.results.length) {
+      const matchIds = new Set(antfly.results.map(r => r.id))
+      const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+      return jobs
+        .filter(j => matchIds.has(j.id))
+        .sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0))
+    }
+    const q = search.toLowerCase()
+    return jobs.filter(j =>
+      (j.displayName || '').toLowerCase().includes(q) ||
+      j.id.toLowerCase().includes(q) ||
+      (j.agentId || '').toLowerCase().includes(q) ||
+      j.humanSchedule.toLowerCase().includes(q)
+    )
+  }, [jobs, search, antfly.results])
 
   // Derive drawer/form visibility from URL state
   const selectedJob = jobIdParam ? jobs.find(j => j.id === jobIdParam) ?? null : null

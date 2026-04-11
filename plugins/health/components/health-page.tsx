@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -261,6 +261,18 @@ export function HealthPage() {
   const [usage, setUsage] = useState<AgentUsage[]>([])
   const [loading, setLoading] = useState(true)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  const [searchHealth, setSearchHealth] = useState<{
+    enabled: boolean
+    tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }>
+  } | null>(null)
+  const [reindexing, setReindexing] = useState(false)
+  const [reindexProgress, setReindexProgress] = useState<Record<string, { indexed: number; done: boolean }>>({})
+  const esRef = useRef<EventSource | null>(null)
+
+  // Clean up reindex EventSource on unmount
+  useEffect(() => {
+    return () => { esRef.current?.close(); esRef.current = null }
+  }, [])
 
   // Search state
   const [pluginSearch, setPluginSearch] = useState('')
@@ -273,10 +285,11 @@ export function HealthPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [summaryRes, registryRes, usageRes] = await Promise.all([
+      const [summaryRes, registryRes, usageRes, searchRes] = await Promise.all([
         fetch('/api/plugins/health/summary'),
         fetch('/api/plugins/health/registry'),
         fetch('/api/plugins/health/usage'),
+        fetch('/api/antfly/health'),
       ])
       const json = await summaryRes.json()
       setData(json)
@@ -288,6 +301,10 @@ export function HealthPage() {
         const usageJson = await usageRes.json()
         if (Array.isArray(usageJson)) setUsage(usageJson)
       } catch { /* usage endpoint optional */ }
+      try {
+        const searchJson = await searchRes.json()
+        setSearchHealth(searchJson)
+      } catch { /* search endpoint optional */ }
       setLastRefresh(new Date())
     } catch (err) {
       console.error('Failed to fetch health data:', err)
@@ -451,6 +468,104 @@ export function HealthPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Search / Antfly Section */}
+      {searchHealth && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                Search
+                <a href="https://antfly.io" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 text-[10px] text-muted-foreground font-normal hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer">
+                  <svg width="12" height="12" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M39.2842 28.0677C39.2842 34.2626 34.2623 39.2845 28.0674 39.2845H6.10853C5.37819 39.2845 5.01243 38.4015 5.52886 37.885L11.0896 32.3243H28.0674C30.4183 32.3243 32.324 30.4186 32.324 28.0677V11.0898L37.8847 5.5291C38.4012 5.01267 39.2842 5.37843 39.2842 6.10877V28.0677Z" fill="currentColor"/>
+                    <path d="M27.2721 24.5018C27.2698 25.2127 26.4103 25.5671 25.9076 25.0645L21.1775 20.3344C20.8653 20.0223 20.8653 19.5162 21.1775 19.2041L25.9377 14.4438C26.4421 13.9395 27.3044 14.2983 27.3022 15.0116L27.2721 24.5018Z" fill="currentColor"/>
+                    <path d="M28.3149 6.96011H11.2167C8.86587 6.96012 6.96011 8.86587 6.9601 11.2167V28.3149L1.39945 33.8755C0.883015 34.392 0 34.0262 0 33.2958V11.2167C4.48304e-06 5.02189 5.02189 9.39218e-06 11.2167 0H33.2958C34.0262 0 34.3919 0.883017 33.8755 1.39945L28.3149 6.96011Z" fill="currentColor"/>
+                    <path d="M11.8783 15.1175C11.8806 14.4067 12.7401 14.0522 13.2428 14.5549L17.8625 19.1746C18.1747 19.4867 18.1747 19.9928 17.8625 20.3049L13.2134 24.9541C12.709 25.4584 11.8467 25.0996 11.8489 24.3863L11.8783 15.1175Z" fill="currentColor"/>
+                  </svg>
+                  Powered by Antfly
+                </a>
+              </span>
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
+                  searchHealth.enabled
+                    ? 'bg-emerald-500/10 text-emerald-500'
+                    : 'bg-muted text-muted-foreground'
+                }`}>
+                  {searchHealth.enabled ? 'Connected' : 'Disabled'}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="cursor-pointer"
+                  disabled={!searchHealth.enabled || reindexing}
+                  onClick={async () => {
+                    setReindexProgress({})
+                    setReindexing(true)
+                    // Open EventSource BEFORE the POST so we don't miss fast tables
+                    if (esRef.current) { esRef.current.close(); esRef.current = null }
+                    const es = new EventSource('/api/events')
+                    esRef.current = es
+                    es.onmessage = (e) => {
+                      try {
+                        const data = JSON.parse(e.data)
+                        if (data.type === 'reindex.progress') {
+                          setReindexProgress(prev => ({
+                            ...prev,
+                            [data.table]: { indexed: data.indexed, done: false },
+                          }))
+                        }
+                        if (data.type === 'reindex.complete') {
+                          setReindexProgress(prev => ({
+                            ...prev,
+                            [data.table]: { indexed: data.indexed, done: true },
+                          }))
+                        }
+                      } catch { /* ignore non-JSON */ }
+                    }
+                    try {
+                      await fetch('/api/reindex', { method: 'POST' })
+                      await fetchData()
+                    } finally {
+                      setReindexing(false)
+                      es.close()
+                      esRef.current = null
+                    }
+                  }}
+                >
+                  {reindexing ? 'Reindexing...' : 'Reindex All'}
+                </Button>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {searchHealth.tables.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No tables registered</p>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {searchHealth.tables.map(t => {
+                  const docs = (t.stats as any)?.num_docs ?? 0
+                  const progress = reindexProgress[t.table]
+                  const isActive = reindexing && progress && !progress.done
+                  return (
+                    <div key={t.table} className={`rounded-lg border p-3 transition-colors ${isActive ? 'border-amber-500/50 bg-amber-500/5' : progress?.done ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-border'}`}>
+                      <p className="text-xs text-muted-foreground">{t.pluginId}</p>
+                      {isActive ? (
+                        <p className="text-lg font-semibold tabular-nums text-amber-400">{progress.indexed}...</p>
+                      ) : progress?.done ? (
+                        <p className="text-lg font-semibold tabular-nums text-emerald-400">{progress.indexed}</p>
+                      ) : (
+                        <p className="text-lg font-semibold tabular-nums">{docs}</p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground">{t.table}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Tool Usage — horizontal bar chart */}

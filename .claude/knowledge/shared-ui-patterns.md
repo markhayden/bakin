@@ -272,6 +272,19 @@ Server tracks `lastConfigChangeAt` and `lastRestartAt` timestamps via `globalThi
 | Team | team-grid | "Save Without Restart" on agent creation |
 | Models | models-page | Any config/defaults change |
 
+## useAntflySearch
+
+Located at `src/hooks/use-antfly-search.ts`. Provides Antfly-powered semantic search alongside client-side filtering in all plugin UIs.
+
+**Usage:** Every plugin with a search bar fires `useAntflySearch` when the user types. Results are used to reorder client-side filtered lists by Antfly relevance scores. Aggregation counts from `antfly.aggregations` feed into FacetFilter's `counts` prop.
+
+**Integration pattern:**
+1. Call `antfly.search(q)` when search text changes
+2. Merge `antfly.results` into client-side filter via `reorderByAntflyResults()`
+3. Pass `antfly.aggregations.{facet}` as `counts` to FacetFilter
+
+**Currently wired in:** Tasks, Assets, Projects, Workflows, Schedule, Memory (audit timeline).
+
 ## Key Files
 
 ```
@@ -279,6 +292,8 @@ src/components/bakin-drawer.tsx      — Resizable drawer shell
 src/components/agent-select.tsx      — Agent picker with avatars
 src/components/model-select.tsx      — Model picker grouped by tier
 src/components/plugin-header.tsx     — Page header with search + actions
+src/components/facet-filter.tsx      — Multi-select filter with optional Antfly counts
+src/hooks/use-antfly-search.ts      — Antfly search hook with debounce + fallback
 src/hooks/use-gateway-status.ts     — Gateway restart sync checker
 src/components/ui/dropdown-menu.tsx  — Base dropdown (focus: bg-secondary)
 src/components/ui/sheet.tsx          — Sheet primitive (used by BakinDrawer)

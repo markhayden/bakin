@@ -140,8 +140,8 @@ afterAll(() => {
 // ===========================================================================
 
 describe('route registration', () => {
-  it('registers all 9 routes', () => {
-    expect(plugin.routes.length).toBe(9)
+  it('registers all 10 routes', () => {
+    expect(plugin.routes.length).toBe(10)
   })
 
   it.each([

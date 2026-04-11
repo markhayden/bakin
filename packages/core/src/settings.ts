@@ -45,6 +45,23 @@ export interface BakinSettings {
     enabled: boolean
     url: string
     auth?: { username: string; password: string }
+    search: {
+      strategy: 'rrf' | 'semantic_only' | 'full_text_only'
+      defaultLimit: number
+      reranker?: { provider: string; model: string; threshold?: number }
+    }
+    embedder: {
+      provider: string
+      model: string
+    }
+    chunking: {
+      defaultTargetTokens: number
+      defaultOverlapTokens: number
+    }
+    /** TTL for audit table entries (Go duration: '90d', '24h'). Empty string to disable. */
+    auditTtl: string
+    /** Interval for orphan cleanup (Go duration: '24h', '12h'). */
+    cleanupInterval: string
   }
   doctor: {
     intervalMs: number
@@ -96,8 +113,22 @@ const DEFAULTS: BakinSettings = {
   models: {},
   agents: [], // populated dynamically from OpenClaw at load time
   antfly: {
-    enabled: false,
+    enabled: true,
     url: 'http://localhost:8080',
+    search: {
+      strategy: 'rrf',
+      defaultLimit: 20,
+    },
+    embedder: {
+      provider: 'antfly',
+      model: 'all-MiniLM-L6-v2',
+    },
+    chunking: {
+      defaultTargetTokens: 200,
+      defaultOverlapTokens: 25,
+    },
+    auditTtl: '90d',
+    cleanupInterval: '24h',
   },
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes

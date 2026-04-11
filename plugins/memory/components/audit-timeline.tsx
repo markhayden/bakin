@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useContentStore } from '@/hooks/use-content-store'
 import { useAgentList } from '@bakin/team/hooks/use-agent-store'
+import { useAntflySearch } from '@/hooks/use-antfly-search'
 import { TimelineEntry } from './timeline-entry'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -23,6 +24,12 @@ export function AuditTimeline() {
   const [agentFilter, setAgentFilter] = useState('')
   const [eventFilter, setEventFilter] = useState('')
   const [search, setSearch] = useState('')
+  const antfly = useAntflySearch({ table: 'audit', facets: ['event', 'agent'], debounce: 300 })
+  useEffect(() => {
+    if (search) antfly.search(search)
+    else antfly.clear()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
   const auditEntries = useContentStore((s) => s.auditEntries)
 
   // Fetch full audit log on mount
@@ -59,15 +66,24 @@ export function AuditTimeline() {
     }
 
     if (search) {
-      const q = search.toLowerCase()
-      result = result.filter(
-        (e) =>
-          e.event.toLowerCase().includes(q) ||
-          JSON.stringify(e.data).toLowerCase().includes(q)
-      )
+      if (antfly.results.length) {
+        const matchIds = new Set(antfly.results.map(r => r.id))
+        const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+        result = result
+          .filter(e => matchIds.has(e.ts))
+          .sort((a, b) => (scoreMap.get(b.ts) ?? 0) - (scoreMap.get(a.ts) ?? 0))
+        return result
+      } else {
+        const q = search.toLowerCase()
+        result = result.filter(
+          (e) =>
+            e.event.toLowerCase().includes(q) ||
+            JSON.stringify(e.data).toLowerCase().includes(q)
+        )
+      }
     }
 
-    // Already newest-first (API returns reversed, SSE prepended) — sort to be safe
+    // Newest-first when not searching
     return [...result].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
   }, [allEntries, agentFilter, eventFilter, search])
 
