@@ -235,6 +235,9 @@ function getOrgStructure() {
   })
 }
 
+/** Module-level hook for batch-indexing agents — set during activate() */
+let batchIndexAgents: () => void = () => {}
+
 // ─── Plugin Definition ───────────────────────────────────────────────────────
 
 const teamPlugin: BakinPlugin = {
@@ -260,6 +263,63 @@ const teamPlugin: BakinPlugin = {
 
   activate(ctx: PluginContext) {
     staleSettingsCtx = ctx
+
+    // ─── Search Content Type Registration ─────────────────────────────
+
+    ctx.search.registerContentType({
+      table: 'team',
+      schema: {
+        name: { type: 'text' },
+        agent_id: { type: 'keyword' },
+        model: { type: 'keyword' },
+        status: { type: 'keyword' },
+        soul: { type: 'text' },
+        updated_at: { type: 'datetime' },
+      },
+      searchableFields: ['name', 'soul'],
+      embeddingTemplate: '{{name}} {{soul}}',
+      facets: ['model', 'status'],
+      reindex: async function* () {
+        // Agents are loaded from OpenClaw at runtime — use batch-index on load
+      },
+      verifyExists: async () => true, // Agents are managed by OpenClaw
+    })
+
+    /** Convert an agent to a search document */
+    function agentToSearchDoc(agent: { id: string; name: string }, model: string, status: string): Record<string, unknown> {
+      const profile = adapter.getAgentProfile(agent.id)
+      return {
+        name: agent.name,
+        agent_id: agent.id,
+        model,
+        status,
+        soul: profile?.soul || '',
+        updated_at: new Date().toISOString(),
+      }
+    }
+
+    /** Index a single agent in the search index */
+    function indexAgent(agentId: string, agent: { id: string; name: string }, model: string, status: string): void {
+      ctx.search.index(agentId, agentToSearchDoc(agent, model, status)).catch((err) => {
+        log.warn('Failed to index agent', { agentId, error: err instanceof Error ? err.message : String(err) })
+      })
+    }
+
+    /** Batch-index all agents from OpenClaw */
+    batchIndexAgents = () => {
+      try {
+        const agents = adapter.listAgents()
+        const heartbeats = readHeartbeats()
+        const lastAuditActivity = getLastAuditActivity()
+        for (const a of agents) {
+          const { status } = resolveAgentStatus(a.id, heartbeats, lastAuditActivity)
+          const model = adapter.getAgentModel(a.id)
+          indexAgent(a.id, a, model, status)
+        }
+      } catch (err) {
+        log.warn('Failed to batch-index agents', { error: err instanceof Error ? err.message : String(err) })
+      }
+    }
 
     // ─── Cross-Plugin Hooks ────────────────────────────────────────────
 
@@ -311,6 +371,15 @@ const teamPlugin: BakinPlugin = {
             }
           })
 
+          // Update search index with latest status (metadata-only, no re-embedding)
+          for (const a of result) {
+            ctx.search.transform(a.id, [
+              { op: '$set', field: 'status', value: a.status },
+              { op: '$set', field: 'model', value: a.model },
+              { op: '$set', field: 'updated_at', value: new Date().toISOString() },
+            ]).catch(() => {})
+          }
+
           const teams = readTeams()
           return Response.json({ agents: result, displaySettings, teams })
         } catch (err) {
@@ -341,6 +410,7 @@ const teamPlugin: BakinPlugin = {
           })
 
           ctx.activity.audit('agent.created', 'system', { agent: id, name: body.name as string })
+          indexAgent(id, { id, name: body.name as string }, body.model as string || '', 'offline')
 
           // Bust settings cache and sync mcporter so new agent gets an MCP entry
           resetSettingsCache()
@@ -399,6 +469,7 @@ const teamPlugin: BakinPlugin = {
           }
 
           ctx.activity.audit('agent.deleted', 'system', { agent: agentId })
+          ctx.search.remove(agentId).catch(() => {})
           resetSettingsCache()
           try { syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
@@ -993,6 +1064,7 @@ const teamPlugin: BakinPlugin = {
 
   async onReady() {
     const agents = adapter.listAgents()
+    batchIndexAgents()
     log.info(`Ready — ${agents.length} agents from OpenClaw`)
   },
 
