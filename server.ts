@@ -34,6 +34,7 @@ import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
 import * as antfly from './src/core/antfly'
 import * as antflyServer from './src/core/antfly-server'
+import * as antflyInternalServer from './src/core/antfly-internal-server'
 import * as agents from './src/core/agents'
 import * as pluginInstaller from './src/core/plugin-installer'
 import * as doctor from './src/core/doctor'
@@ -84,6 +85,11 @@ app.prepare().then(async () => {
 
   // Start Antfly server if enabled (auto-manages the process)
   await antflyServer.start()
+
+  // Start loopback-only file server so Antfly can fetch asset files for
+  // multimodal indexing. Bound to 127.0.0.1 — never exposed via Tailscale.
+  // Failure to bind degrades to "no multimodal indexing" rather than crashing.
+  await antflyInternalServer.start()
 
   // Initialize Antfly client (optional — no-op if disabled in settings)
   await antfly.initialize()
