@@ -88,8 +88,52 @@ app.prepare().then(async () => {
   // Initialize Antfly client (optional — no-op if disabled in settings)
   await antfly.initialize()
 
+  // Register audit content type for search (core module, not a plugin)
+  const { createRegisteredTables, buildSearchAPI } = await import('./src/core/search-registry')
+  const auditSearch = buildSearchAPI('_audit')
+  auditSearch.registerContentType({
+    table: 'audit',
+    schema: {
+      event: { type: 'keyword' },
+      agent: { type: 'keyword' },
+      channel: { type: 'keyword' },
+      content: { type: 'text' },
+      created_at: { type: 'datetime' },
+    },
+    searchableFields: ['content', 'event'],
+    embeddingTemplate: '{{event}} {{agent}} {{content}}',
+    facets: ['event', 'agent', 'channel'],
+    ttl: settings.antfly.auditTtl,
+    ttlField: 'created_at',
+    reindex: async function* () {
+      // Read audit.jsonl and yield each entry
+      const { createReadStream } = await import('fs')
+      const { createInterface } = await import('readline')
+      const auditPath = join(CONTENT_DIR, 'audit.jsonl')
+      if (!existsSync(auditPath)) return
+      const rl = createInterface({ input: createReadStream(auditPath) })
+      for await (const line of rl) {
+        if (!line.trim()) continue
+        try {
+          const entry = JSON.parse(line)
+          const key = `audit-${entry.ts}-${entry.event}`
+          yield {
+            key,
+            doc: {
+              event: entry.event,
+              agent: entry.agent,
+              channel: entry.channel || '',
+              content: `[${entry.ts}] ${entry.event} by ${entry.agent}: ${JSON.stringify(entry.data || {})}`,
+              created_at: entry.ts,
+            },
+          }
+        } catch { /* skip malformed lines */ }
+      }
+    },
+    verifyExists: async () => true, // audit entries are append-only, never deleted
+  })
+
   // Create Antfly tables for all registered search content types
-  const { createRegisteredTables } = await import('./src/core/search-registry')
   await createRegisteredTables()
 
   // Start periodic orphan cleanup for search indexes
