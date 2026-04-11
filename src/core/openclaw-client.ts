@@ -148,15 +148,19 @@ export async function restartGateway(): Promise<void> {
 
 /**
  * Check if the OpenClaw gateway is reachable.
+ * Tries /healthz (Docker OpenClaw) then /health (Imitation Crab / legacy).
  */
 export async function ping(): Promise<boolean> {
-  try {
-    const baseUrl = getBaseUrl()
-    const res = await fetch(`${baseUrl}/health`, {
-      signal: AbortSignal.timeout(3000),
-    })
-    return res.ok
-  } catch {
-    return false
+  const baseUrl = getBaseUrl()
+  for (const path of ['/health', '/healthz']) {
+    try {
+      const res = await fetch(`${baseUrl}${path}`, {
+        signal: AbortSignal.timeout(3000),
+      })
+      if (res.ok) return true
+    } catch {
+      // try next path
+    }
   }
+  return false
 }

@@ -1,0 +1,9 @@
+#!/bin/bash
+# Tail OpenClaw gateway logs
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+LINES="${1:-50}"
+[[ "$LINES" =~ ^[0-9]+$ ]] || { echo "Usage: ./cmd/logs [N]"; exit 1; }
+
+docker logs bakin-openclaw-gateway --tail "$LINES" -f

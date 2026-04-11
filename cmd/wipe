@@ -1,0 +1,17 @@
+#!/bin/bash
+# Full reset — wipe OpenClaw state and re-run setup
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "This will wipe all OpenClaw state (config, agents, sessions)."
+echo "OAuth tokens and pairing will be restored from backup if available."
+read -p "Continue? [y/N] " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  echo "Cancelled."
+  exit 0
+fi
+
+docker compose -f dev/docker/docker-compose.yml down 2>/dev/null
+rm -rf dev/openclaw-home
+bash dev/docker/setup.sh

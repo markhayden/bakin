@@ -4,6 +4,7 @@
  */
 import { execFile } from 'child_process'
 import { createLogger } from '../../../src/core/logger'
+import { getSettings } from '../../../src/core/settings'
 
 const log = createLogger('schedule:openclaw')
 
@@ -13,8 +14,9 @@ interface ExecResult {
 }
 
 function exec(args: string[]): Promise<ExecResult> {
+  const bin = getSettings().openclaw.binaryPath
   return new Promise((resolve, reject) => {
-    execFile('openclaw', ['cron', ...args], { timeout: 15000 }, (err, stdout, stderr) => {
+    execFile(bin, ['cron', ...args], { timeout: 15000 }, (err, stdout, stderr) => {
       if (err) {
         log.error('openclaw cron command failed', { args, error: err.message, stderr })
         reject(new Error(`openclaw cron ${args[0]} failed: ${err.message}`))

@@ -28,6 +28,8 @@ import { buildMessages } from './lib/prompt-builder'
 import { streamChatCompletion, chatCompletion } from './lib/gateway'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
+import { sendChannelMessage } from '../../src/core/openclaw-client'
+import * as vault from '../../src/core/vault'
 
 const log = createLogger('messaging')
 
@@ -77,33 +79,27 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
   } else if (item.status === 'review') {
     newStatus = 'published'
 
-    // Post to Discord
+    // Post to Discord via HTTP (openclaw-client)
     try {
-      const { execFile } = await import('child_process')
-      const { promisify } = await import('util')
       const { join } = await import('path')
-      const execFileAsync = promisify(execFile)
-      const OPENCLAW = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
       const CONTENT_DIR = getContentDir()
 
       const caption = item.draft?.caption || item.title
       const target = item.channelTarget || '1483917792745885768'
-      const args = ['message', 'send', '--channel', 'discord', '--target', `channel:${target}`, '--message', caption]
 
+      let media: string | undefined
       if (item.draft?.imagePath) {
-        const mediaPath = item.draft.imagePath.startsWith('/')
+        media = item.draft.imagePath.startsWith('/')
           ? item.draft.imagePath
           : join(CONTENT_DIR, item.draft.imagePath)
-        args.push('--media', mediaPath)
       }
       if (item.draft?.videoPath) {
-        const mediaPath = item.draft.videoPath.startsWith('/')
+        media = item.draft.videoPath.startsWith('/')
           ? item.draft.videoPath
           : join(CONTENT_DIR, item.draft.videoPath)
-        args.push('--media', mediaPath)
       }
 
-      await execFileAsync(OPENCLAW, args)
+      await sendChannelMessage('discord', `channel:${target}`, caption, media)
     } catch (err) {
       log.error('Discord post failed', err)
     }
@@ -371,20 +367,14 @@ Format: conversational response in your voice, then a JSON block:
 
 ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says: ${body.message}`
 
-          const { getOpenClawPath } = await import('@bakin/core/openclaw-home')
-          const configPath = getOpenClawPath('openclaw.json')
-          let gwToken = ''
-          if (existsSync(configPath)) {
-            try {
-              const cfg = JSON.parse(readFileSync(configPath, 'utf-8'))
-              gwToken = cfg?.gateway?.auth?.token || ''
-            } catch { /* ignore */ }
-          }
-
+          const gwToken = vault.get('gateway-token')
           if (!gwToken) throw new Error('Gateway token not found')
 
+          const { getSettings } = await import('../../src/core/settings')
+          const settings = getSettings()
+          const gatewayBase = `${settings.openclaw.gatewayUrl}:${settings.openclaw.gatewayPort}`
           const sessionKey = `brainstorm-${body.agentId}-${Date.now()}`
-          const gwResponse = await fetch('http://localhost:18789/v1/chat/completions', {
+          const gwResponse = await fetch(`${gatewayBase}/v1/chat/completions`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

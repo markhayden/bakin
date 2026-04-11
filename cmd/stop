@@ -1,0 +1,6 @@
+#!/bin/bash
+# Stop OpenClaw container
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+docker compose -f dev/docker/docker-compose.yml down

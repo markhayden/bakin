@@ -8,7 +8,6 @@
  */
 import { z } from 'zod'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
-import { execFile } from 'child_process'
 import { join } from 'path'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { createLogger } from '../../src/core/logger'
@@ -18,13 +17,12 @@ import { startAgent, stopAgent } from '../../src/lib/agents'
 import { resetSettingsCache } from '../../src/core/settings'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
+import { restartGateway } from '../../src/core/openclaw-client'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import * as adapter from './lib/openclaw-adapter'
 import type { AgentWithStatus, AgentDisplaySettingsMap, HeartbeatData, OrgTeam, TeamPluginSettings } from './types'
 
 const log = createLogger('team')
-
-const OPENCLAW_BIN = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
 const BAKIN_PORT = Number(process.env.PORT || 3737)
 const DEFAULT_STALE_THRESHOLD_MS = 15 * 60 * 1000
 
@@ -350,12 +348,11 @@ const teamPlugin: BakinPlugin = {
           const url = new URL(req.url)
           const skipRestart = url.searchParams.get('skipRestart') === 'true'
           if (!skipRestart) {
-            execFile(OPENCLAW_BIN, ['gateway', 'restart'], (err) => {
-              if (err) log.warn('Failed to restart gateway after agent creation', { error: err instanceof Error ? err.message : String(err) })
-              else {
-                log.info('Gateway restarted after agent creation', { agent: id })
-                try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
-              }
+            restartGateway().then(() => {
+              log.info('Gateway restarted after agent creation', { agent: id })
+              try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
+            }).catch((err) => {
+              log.warn('Failed to restart gateway after agent creation', { error: err instanceof Error ? err.message : String(err) })
             })
           } else {
             try { ctx.hooks.invoke('models.markConfigDirty', {}) } catch { /* ok */ }
@@ -403,12 +400,11 @@ const teamPlugin: BakinPlugin = {
           try { syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
           // Restart OpenClaw gateway
-          execFile(OPENCLAW_BIN, ['gateway', 'restart'], (err) => {
-            if (err) log.warn('Failed to restart gateway after agent deletion', { error: err instanceof Error ? err.message : String(err) })
-            else {
-              log.info('Gateway restarted after agent deletion', { agent: agentId })
-              try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
-            }
+          restartGateway().then(() => {
+            log.info('Gateway restarted after agent deletion', { agent: agentId })
+            try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
+          }).catch((err) => {
+            log.warn('Failed to restart gateway after agent deletion', { error: err instanceof Error ? err.message : String(err) })
           })
 
           return Response.json({ ok: true, id: agentId })
