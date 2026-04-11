@@ -147,14 +147,23 @@ Key sections: `dispatch`, `watchdog`, `messaging`, `sse`, `openclaw`, `models`, 
 
 Plugins can request watch patterns via `ctx.watchFiles(['projects/*.md'])`.
 
-## Antfly Indexing
+## Antfly Search Integration
 
-`src/core/antfly.ts` / `src/core/antfly-server.ts` — full-text search via Antfly SDK.
+Antfly is the search index layer. The filesystem (and SQLite for tasks) remains the source of truth — Antfly is never the primary store.
 
-- Audit entries auto-indexed (fire-and-forget)
-- Assets indexed on creation
-- Search available via `/api/search` endpoint
-- Configured in `BakinSettings.antfly` (enabled, url, auth)
+### Dual-write pattern
+Mutations write to the source (filesystem or SQLite) **and** fire `ctx.search.index(key, doc)` to update the Antfly index. Indexing is fire-and-forget — a failure does not block the mutation. The index may be stale; it is always reconstructable via `def.reindex()`.
+
+### Deletion sync
+When the file watcher detects an unlink event, `ctx.search.remove(key)` is called to remove the document from Antfly. This keeps the index consistent without a scheduled scan.
+
+### Orphan cleanup
+`src/core/search-cleanup.ts` runs a periodic scan (interval from `settings.antfly.cleanupInterval`). For each registered content type it calls `def.verifyExists(key)` per indexed document and removes any whose source no longer exists. This is a safety net for missed unlink events or external deletions.
+
+### Not a replacement
+Antfly is the search index, not a database. Do not read authoritative state from Antfly — always read from the filesystem or SQLite and treat Antfly results as pointers to source documents.
+
+Configured in `BakinSettings.antfly`. See `.claude/knowledge/search-system.md` for the full architecture.
 
 ## Key Files
 
@@ -168,6 +177,8 @@ Plugins can request watch patterns via `ctx.watchFiles(['projects/*.md'])`.
 | `src/core/audit.ts` | Audit JSONL writing + broadcast |
 | `src/core/settings.ts` | Settings loading with defaults |
 | `src/core/watcher.ts` | Chokidar file watcher |
-| `src/core/antfly.ts` | Antfly search client |
+| `src/core/antfly.ts` | AntflyClient SDK wrapper |
+| `src/core/search-registry.ts` | Search content type registry, ctx.search provider |
+| `src/core/search-cleanup.ts` | Periodic orphan cleanup for search indexes |
 | `plugins/projects/lib/parser.ts` | Project file parsing |
 | `plugins/assets/` | Asset management with sidecars |

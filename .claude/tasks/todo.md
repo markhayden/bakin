@@ -8,33 +8,11 @@
 
 ## Phase 1: Foundation
 
-- [ ] **T1.1: Extend BakinSettings**
-  - Add `search.{strategy,defaultLimit,reranker}`, `embedder.{provider,model}`, `chunking.{defaultTargetTokens,defaultOverlapTokens}`, `auditTtl`, `cleanupInterval` to `antfly` settings
-  - File: `packages/core/src/settings.ts`
-
-- [ ] **T1.2: Add SearchAPI Types to PluginContext**
-  - `SearchAPI`, `SearchContentTypeDefinition` (with `reindex()` generator, `verifyExists()`, `chunker?`), `SchemaField`, `SearchQueryParams`, `SearchResponse`
-  - Add `search: SearchAPI` and `transform()` to PluginContext
-  - File: `packages/core/src/plugin-types.ts`
-
-- [ ] **T1.3: Rewrite antfly.ts with @antfly/sdk**
-  - Replace raw `fetch()` with `AntflyClient`
-  - Remove `beacon_*` tables/references, add wipe on startup
-  - Add: `indexDocument`, `removeDocument`, `transformDocument`, `multiQuery`, `createTable`, `getTableStats`, `scanTable`, `rebuildIndexes`
-  - Add embedder config change detection
-  - File: `src/core/antfly.ts`
-
-- [ ] **T2: ctx.search Provider and Content Type Registry**
-  - Create `src/core/search-registry.ts` (singleton on globalThis)
-  - Inject `ctx.search` in `buildContext()` in `src/lib/plugin-registry.ts`
-  - Wire table creation into server startup in `server.ts`
-  - Files: `src/core/search-registry.ts` (new), `src/lib/plugin-registry.ts`, `server.ts`
-
-- [ ] **T3: Watcher Unlink Handler + Orphan Cleanup**
-  - Add `unlink` event handler + `syncFileUnlink()` to watcher
-  - Create `src/core/search-cleanup.ts` (periodic orphan cleanup with metrics)
-  - Wire in `server.ts`
-  - Files: `src/core/watcher.ts`, `src/core/antfly.ts`, `src/core/search-cleanup.ts` (new), `server.ts`
+- [x] **T1.1: Extend BakinSettings** ✓ `b4badd3`
+- [x] **T1.2: Add SearchAPI Types to PluginContext** ✓ `022994a`
+- [x] **T1.3: Rewrite antfly.ts with @antfly/sdk** ✓ `08cffa8`
+- [x] **T2: ctx.search Provider and Content Type Registry** ✓ `abd41bb`
+- [x] **T3: Watcher Unlink Handler + Orphan Cleanup** ✓ `b5679ad`
 
 - [ ] **T3b: Phase 1 Documentation**
   - Create `.claude/knowledge/search-system.md` — full architecture overview
