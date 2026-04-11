@@ -5,7 +5,7 @@
  */
 import { spawn, type ChildProcess } from 'child_process'
 import { join } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 
@@ -90,26 +90,41 @@ export async function start(): Promise<boolean> {
   const dataDir = join(process.env.HOME || '~', '.antfly', 'data')
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
 
-  log.info('Starting Antfly server...', { binary, url })
+  // Write a minimal Antfly config file to disable SSRF-defense private-IP
+  // blocking. Bakin exposes asset files on a loopback-only HTTP listener
+  // (src/core/antfly-internal-server.ts) so Antfly's remotePDF and
+  // remoteMedia template helpers can fetch them during multimodal indexing.
+  // Antfly's default policy blocks private-IP fetches, which would reject
+  // 127.0.0.1. Disabling the block is safe here because Bakin is a single-
+  // user deployment where Antfly is fully controlled by Bakin and no
+  // untrusted input ever reaches its template helpers — templates are
+  // hardcoded in plugin source, not user input.
+  //
+  // Env var ANTFLY_CONTENT_SECURITY_BLOCK_PRIVATE_IPS does not work here
+  // because Antfly reads content_security via viper struct unmarshal and
+  // viper.AutomaticEnv() has a known gotcha where env bindings don't
+  // propagate to nested struct fields. A config file is the only path.
+  const configPath = join(process.env.HOME || '~', '.antfly', 'bakin-managed.yaml')
+  try {
+    writeFileSync(
+      configPath,
+      'content_security:\n  block_private_ips: false\n',
+      'utf-8',
+    )
+  } catch (err) {
+    log.warn('Failed to write Antfly config — multimodal fetches may be blocked', err)
+  }
+
+  log.info('Starting Antfly server...', { binary, url, configPath })
 
   try {
     const baseUrl = url.replace(/\/api\/v1\/?$/, '').replace('localhost', '0.0.0.0')
-    antflyProcess = spawn(binary, ['swarm', '--metadata-api', baseUrl], {
+    antflyProcess = spawn(binary, ['--config', configPath, 'swarm', '--metadata-api', baseUrl], {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
       env: {
         ...process.env,
         ANTFLY_DATA_DIR: dataDir,
-        // Bakin exposes asset files on a loopback-only HTTP listener
-        // (src/core/antfly-internal-server.ts) so Antfly's remotePDF and
-        // remoteMedia template helpers can fetch them during multimodal
-        // indexing. Antfly's default SSRF-defense policy blocks private-IP
-        // fetches, which would reject 127.0.0.1. Disabling the block is
-        // safe here because Bakin is a single-user deployment where
-        // Antfly is fully controlled by Bakin and no untrusted input ever
-        // reaches its template helpers — templates are hardcoded in plugin
-        // source, not user input.
-        ANTFLY_CONTENT_SECURITY_BLOCK_PRIVATE_IPS: 'false',
       },
     })
 
