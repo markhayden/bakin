@@ -184,6 +184,7 @@ export async function postDiscord(params: PostDiscordParams): Promise<ExecToolRe
 
 addExecTool({
   name: 'bakin_exec_post_discord',
+  label: 'Posted to Discord',
   description: 'Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds.',
   source: 'core',
   parameters: {
