@@ -212,6 +212,9 @@ All user-facing filter/view state **must** be backed by URL query parameters so 
 ### Search Indexing
 Plugins register content types via `ctx.search.registerContentType()` during `activate()`. Mutations dual-write to source and index via `ctx.search.index()`. Deletions sync via `ctx.search.remove()` (called from the watcher unlink hook). Orphan cleanup runs on a periodic timer via `src/core/search-cleanup.ts`. All Antfly tables use the `bakin_` prefix. Config in `settings.antfly.*`. Antfly is optional — all calls are no-ops when disabled. See `.claude/knowledge/search-system.md`.
 
+### Debug Mode
+Global client-side debug toggle. State lives in Zustand (`useContentStore`) + localStorage (`bakin-debug`). Access via `useDebug()` from `src/hooks/use-debug.ts` — returns `[debug, toggleDebug]`. Toggle button in the header (Bug icon). URL `?debug=true` on any page activates debug mode as a one-shot seed. Currently controls: activity feed duplicate event visibility, Antfly search score overlays on asset cards. Plugins and components should use `useDebug()` to conditionally render debug info.
+
 ### Shared UI Components
 - **`PluginHeader`** (`src/components/plugin-header.tsx`) — Consistent page title + count badge + search + actions slot. Used by all 10 plugins.
 - **`FacetFilter`** (`src/components/facet-filter.tsx`) — Popover-based multi-select filter with removable chips. Replaces long tab bars for 4+ filter options. Always back with `useQueryArrayState`.
