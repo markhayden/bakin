@@ -244,6 +244,14 @@ export interface SearchQueryParams {
    * the extra ~100-500ms isn't worth it.
    */
   rerank?: boolean
+  /**
+   * Raw Antfly aggregations passed through unchanged to QueryRequest.
+   * Use for date histograms, range buckets, stats aggregations, or any
+   * other shape beyond the term-facet convenience in `facets`. Merged
+   * with facet-derived aggregations (these win on key collision).
+   * See Antfly API docs for the aggregation schema.
+   */
+  aggregations?: Record<string, unknown>
 }
 
 /** A single search result */
@@ -259,7 +267,17 @@ export interface SearchResult {
 /** Search response from a query */
 export interface SearchResponse {
   results: SearchResult[]
+  /**
+   * Mapped term-facet aggregations — keyed by facet field, each a list
+   * of { value, count }. Populated from `params.facets` for convenience.
+   */
   aggregations?: Record<string, Array<{ value: string; count: number }>>
+  /**
+   * Raw aggregation response from Antfly, unmodified. Populated whenever
+   * the underlying query returned aggregations — use this for non-term
+   * shapes like date_histogram, range, stats, etc.
+   */
+  rawAggregations?: Record<string, unknown>
   meta: {
     query: string
     total: number

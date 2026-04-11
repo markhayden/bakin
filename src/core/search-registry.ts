@@ -280,12 +280,16 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
         }
       }
 
-      // Build aggregations from facets
-      const aggregations: Record<string, unknown> | undefined = params.facets?.length
-        ? Object.fromEntries(
-            params.facets.map(f => [f, { type: 'terms', field: f, size: 50 }])
-          )
-        : undefined
+      // Build aggregations from facets (term buckets) and merge with any
+      // raw aggregations the caller passed directly. Caller-provided
+      // aggregations win on key collision.
+      const facetAggs: Record<string, unknown> = {}
+      for (const f of params.facets ?? []) {
+        facetAggs[f] = { type: 'terms', field: f, size: 50 }
+      }
+      const mergedAggs = { ...facetAggs, ...(params.aggregations ?? {}) }
+      const aggregations: Record<string, unknown> | undefined =
+        Object.keys(mergedAggs).length > 0 ? mergedAggs : undefined
 
       const result = await antfly.queryTable(tableName, params.q, {
         limit: params.limit,
@@ -314,6 +318,7 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
       return {
         results: result.results as SearchResult[],
         aggregations: mappedAggs,
+        rawAggregations: result.aggregations as Record<string, unknown> | undefined,
         meta: {
           query: params.q,
           total: result.total,
