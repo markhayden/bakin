@@ -269,13 +269,9 @@ export function HealthPage() {
   const [reindexProgress, setReindexProgress] = useState<Record<string, { indexed: number; done: boolean }>>({})
   const esRef = useRef<EventSource | null>(null)
 
-  // Listen for reindex SSE events while reindexing
+  // Listen for reindex SSE events — open connection on first reindex, keep alive
   useEffect(() => {
-    if (!reindexing) {
-      esRef.current?.close()
-      esRef.current = null
-      return
-    }
+    if (!reindexing || esRef.current) return
     const es = new EventSource('/api/events')
     esRef.current = es
     es.onmessage = (e) => {
@@ -295,7 +291,7 @@ export function HealthPage() {
         }
       } catch { /* ignore non-JSON */ }
     }
-    return () => { es.close() }
+    return () => { es.close(); esRef.current = null }
   }, [reindexing])
 
   // Search state

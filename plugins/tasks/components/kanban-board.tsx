@@ -464,7 +464,7 @@ export function KanbanBoard() {
           </DragDropProvider>
         ) : (
           <div className="flex-1 overflow-auto min-h-0 px-6 pb-[25px]">
-            <TaskLogTable currentTasks={allTasksFlat} statusFilter={statusFilter} />
+            <TaskLogTable currentTasks={allTasksFlat} statusFilter={statusFilter} isSearching={Boolean(search)} />
           </div>
         )}
 

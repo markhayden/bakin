@@ -127,6 +127,27 @@ export function useSSE() {
             })
           }
 
+          // Reindex progress
+          if (data.type === 'reindex.progress') {
+            appendActivityEvent({
+              id: `${Date.now()}-reindex-${data.table}`,
+              ts: new Date().toISOString(),
+              type: 'log',
+              agent: 'system',
+              message: `Reindexing ${data.pluginId}: ${data.indexed} documents indexed...`,
+              duplicate: true,
+            })
+          }
+          if (data.type === 'reindex.complete') {
+            appendActivityEvent({
+              id: `${Date.now()}-reindex-done-${data.table}`,
+              ts: new Date().toISOString(),
+              type: 'log',
+              agent: 'system',
+              message: `Reindex complete: ${data.pluginId} — ${data.indexed} documents`,
+            })
+          }
+
           if (data.file && data.content !== undefined) {
             updateFile(data.file, data.content)
 
