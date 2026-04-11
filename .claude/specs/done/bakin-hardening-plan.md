@@ -1,8 +1,8 @@
-# Beacon Hardening Plan
+# Bakin Hardening Plan
 
 ## Context
 
-Beacon is an open-source, plugin-based mission control for OpenClaw agents. The current codebase works but has critical gaps: `server.ts` is a 660-line monolith, there are zero tests, no auth/credential protection, fragile CLI-exec-based OpenClaw communication (despite OpenClaw having a full HTTP API), hardcoded values everywhere, silent error swallowing, and no plugin distribution story. This plan hardens Beacon into a scalable, reliable foundation.
+Bakin is an open-source, plugin-based mission control for OpenClaw agents. The current codebase works but has critical gaps: `server.ts` is a 660-line monolith, there are zero tests, no auth/credential protection, fragile CLI-exec-based OpenClaw communication (despite OpenClaw having a full HTTP API), hardcoded values everywhere, silent error swallowing, and no plugin distribution story. This plan hardens Bakin into a scalable, reliable foundation.
 
 **Key discoveries:**
 - OpenClaw's gateway (port 18789) exposes `POST /v1/chat/completions` and `POST /tools/invoke` with Bearer token auth — we can replace all `execFile('openclaw', ...)` calls with proper HTTP requests.
@@ -35,7 +35,7 @@ src/core/
 
 ### 1B — Core Settings System
 
-Introduce `content/.beacon/settings.json` as single source for all currently-hardcoded values.
+Introduce `content/.bakin/settings.json` as single source for all currently-hardcoded values.
 
 ```typescript
 interface BakinSettings {
@@ -55,7 +55,7 @@ interface BakinSettings {
   models: { allowlist?: string[], blocklist?: string[] }
   agents: string[]                // replaces KNOWN_AGENTS in 3 places
   antfly: {
-    enabled: boolean              // default false — Beacon works without it
+    enabled: boolean              // default false — Bakin works without it
     url: string                   // default http://localhost:8080
     auth?: { username: string, password: string }
   }
@@ -137,7 +137,7 @@ Lightweight middleware: validate Content-Type on POST/PUT/DELETE, return 400 on 
 
 ### 2D — Antfly Core Module (Vector DB Foundation)
 
-AntflyDB integration as an **optional core module** — Beacon works without it (file-only mode), but dramatically improves with it enabled. Uses `@antfly/sdk` npm package.
+AntflyDB integration as an **optional core module** — Bakin works without it (file-only mode), but dramatically improves with it enabled. Uses `@antfly/sdk` npm package.
 
 **`src/core/antfly.ts`:**
 ```typescript
@@ -238,29 +238,29 @@ Agents can `curl localhost:3737/api/docs` to discover all available endpoints.
 
 ## Phase 4: CLI, Plugin Distribution, Advanced Features
 
-### 4A — Beacon CLI
+### 4A — Bakin CLI
 
-Standalone CLI at `cli/beacon.ts`. All commands are thin wrappers around `fetch()` to `http://localhost:3737/api/*`.
+Standalone CLI at `cli/bakin.ts`. All commands are thin wrappers around `fetch()` to `http://localhost:3737/api/*`.
 
 ```
 bakin status                     — system health, agents, dispatch timer
-beacon dispatch                   — trigger immediate dispatch
-beacon agents list                — list agents and status
-beacon agents send <id> <msg>     — send message to agent
-beacon tasks list [--column=X]    — list tasks
-beacon tasks create <title>       — create task
-beacon tasks move <id> <column>   — move task
-beacon settings get [key]         — read settings
-beacon settings set <key> <val>   — update settings
-beacon plugins list               — installed plugins
-beacon plugins install <path>     — install plugin (local, later git URL)
-beacon docs                       — print API docs
-beacon search <query>             — semantic search across all indexed content
+bakin dispatch                   — trigger immediate dispatch
+bakin agents list                — list agents and status
+bakin agents send <id> <msg>     — send message to agent
+bakin tasks list [--column=X]    — list tasks
+bakin tasks create <title>       — create task
+bakin tasks move <id> <column>   — move task
+bakin settings get [key]         — read settings
+bakin settings set <key> <val>   — update settings
+bakin plugins list               — installed plugins
+bakin plugins install <path>     — install plugin (local, later git URL)
+bakin docs                       — print API docs
+bakin search <query>             — semantic search across all indexed content
 ```
 
 Agents use CLI commands vs hitting APIs directly — simpler, discoverable, documented.
 
-**Files:** New `/cli/beacon.ts`, `/package.json` (add `bin` field)
+**Files:** New `/cli/bakin.ts`, `/package.json` (add `bin` field)
 
 **Depends on:** 1B, 3C
 
@@ -273,7 +273,7 @@ Every plugin gets a `bakin-plugin.json`:
   "id": "tasks",
   "name": "Tasks",
   "version": "1.0.0",
-  "beacon": ">=1.0.0",
+  "bakin": ">=1.0.0",
   "description": "Kanban task management backed by OpenClaw flow_runs",
   "entry": { "server": "index.ts", "client": "client.tsx" },
   "contentFiles": [],
@@ -292,13 +292,13 @@ Plugin registry validates manifest on load, enforces required fields. `tests` fi
 
 ### 4C — SSE Improvements
 
-Add reconnection protocol: events get incrementing IDs, clients send `Last-Event-ID` on reconnect, Beacon replays from audit log. Per-IP connection tracking.
+Add reconnection protocol: events get incrementing IDs, clients send `Last-Event-ID` on reconnect, Bakin replays from audit log. Per-IP connection tracking.
 
 **Files:** `/src/core/sse.ts`, client-side SSE hook
 
 ### 4D — Data Migration Framework
 
-Plugins that change storage format get a `migrations/` directory. On startup, registry checks `content/.beacon/plugin-versions.json` against manifest version, runs migrations in order.
+Plugins that change storage format get a `migrations/` directory. On startup, registry checks `content/.bakin/plugin-versions.json` against manifest version, runs migrations in order.
 
 **Files:** `/src/lib/plugin-registry.ts` (migration runner), `/src/lib/plugin-types.ts` (add migrations to BakinPlugin)
 
@@ -310,12 +310,12 @@ Plugins that change storage format get a `migrations/` directory. On startup, re
 
 ### 5A — ClawHub (Local First)
 
-- `beacon plugins install ./path` — copy plugin, validate manifest, run tests, add to config
-- `beacon plugins install github:user/repo` — clone + same flow
-- `beacon plugins remove <id>` — reverse
+- `bakin plugins install ./path` — copy plugin, validate manifest, run tests, add to config
+- `bakin plugins install github:user/repo` — clone + same flow
+- `bakin plugins remove <id>` — reverse
 - Future: central registry with search/ratings
 
-**Files:** New `/src/core/plugin-installer.ts`, `/cli/beacon.ts` (install/remove commands)
+**Files:** New `/src/core/plugin-installer.ts`, `/cli/bakin.ts` (install/remove commands)
 
 **Depends on:** 4A, 4B
 
@@ -343,7 +343,7 @@ No new code — architecture validation.
                  │                   ├── 2D (antfly core) ── 3B (models core, antfly-enhanced)
                  │                   ├── 3A (tests)
                  │                   ├── 3B (models core)
-                 │                   └── 4A (CLI + beacon search) ── 5A (ClawHub)
+                 │                   └── 4A (CLI + bakin search) ── 5A (ClawHub)
                  ├── 1C (shutdown)
                  ├── 1D (logging)
                  ├── 1E (fix routes) ── 3C (API docs) ── 4A (CLI)
@@ -363,4 +363,4 @@ After each phase:
 - **Phase 2:** No `execFile('openclaw')` calls remain, credentials never appear in API responses, gateway communication works via HTTP, `GET /api/search?q=test` returns results when Antfly enabled (graceful no-op when disabled)
 - **Phase 3:** `npm test` passes, all plugins pass contract tests, `GET /api/docs` returns complete route manifest
 - **Phase 4:** `bakin status` works, plugins have manifests, SSE reconnects after disconnect
-- **Phase 5:** `beacon plugins install ./path` works end-to-end, agents can query each other's status
+- **Phase 5:** `bakin plugins install ./path` works end-to-end, agents can query each other's status
