@@ -88,6 +88,10 @@ app.prepare().then(async () => {
   // Initialize Antfly client (optional — no-op if disabled in settings)
   await antfly.initialize()
 
+  // Create Antfly tables for all registered search content types
+  const { createRegisteredTables } = await import('./src/core/search-registry')
+  await createRegisteredTables()
+
   // Register Antfly sync hook with file watcher
   watcher.registerSyncHook(antfly.syncFile)
 
