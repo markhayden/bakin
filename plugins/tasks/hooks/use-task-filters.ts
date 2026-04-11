@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useAntflySearch, reorderByAntflyResults, type AntflySearchResult } from '@/hooks/use-antfly-search'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
@@ -61,7 +61,7 @@ export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
   })
 
   // Fire Antfly search when search text changes
-  useMemo(() => {
+  useEffect(() => {
     if (search) antfly.search(search)
     else antfly.clear()
     // eslint-disable-next-line react-hooks/exhaustive-deps

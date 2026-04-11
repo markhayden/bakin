@@ -32,8 +32,6 @@ export interface UseAntflySearchOptions {
   facets?: string[]
   /** Debounce delay in ms (default: 250) */
   debounce?: number
-  /** Whether to search on mount if query is non-empty */
-  searchOnMount?: boolean
   /** Fallback filter function when Antfly returns no results or errors */
   fallback?: (query: string) => AntflySearchResult[]
 }
@@ -48,10 +46,6 @@ export interface UseAntflySearchReturn {
   clear: () => void
 }
 
-/**
- * React hook for Antfly-powered search with debouncing, AbortController,
- * and optional client-side fallback.
- */
 /**
  * Given a client-side filtered list and Antfly search results,
  * reorder the list so Antfly-matched items appear first (by score).
@@ -95,7 +89,6 @@ export function useAntflySearch(options: UseAntflySearchOptions = {}): UseAntfly
     limit = 20,
     facets,
     debounce: debounceMs = 250,
-    searchOnMount = false,
     fallback,
   } = options
 
@@ -212,15 +205,6 @@ export function useAntflySearch(options: UseAntflySearchOptions = {}): UseAntfly
     setLoading(false)
     abortRef.current?.abort()
     if (timerRef.current) clearTimeout(timerRef.current)
-  }, [])
-
-  // Search on mount if requested and query is provided
-  useEffect(() => {
-    if (searchOnMount && query) {
-      executeSearch(query)
-    }
-    // Only on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return { results, aggregations, loading, error, meta, search, clear }
