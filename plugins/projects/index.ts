@@ -333,6 +333,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_list',
+      label: 'Listed projects',
       description: 'List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount.',
       parameters: {
         status: z.enum(['draft', 'active', 'completed', 'archived']).optional().describe('Filter by status'),
@@ -348,6 +349,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_get',
+      label: 'Read project details',
       description: 'Get a project by ID including full spec, checklist, progress, and linked board task statuses.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -361,6 +363,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_create',
+      label: 'Created a project',
       description: 'Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs.',
       parameters: {
         title: z.string().describe('Project title'),
@@ -381,6 +384,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_update',
+      label: 'Updated a project',
       description: 'Update a project\'s title, status, body, or owner. Cannot set status to "completed" if unchecked items remain.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -406,6 +410,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_delete',
+      label: 'Deleted a project',
       description: 'Delete a project by ID.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -422,6 +427,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_add_item',
+      label: 'Added project item',
       description: 'Add a new checklist item to a project.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -435,6 +441,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_mark_item',
+      label: 'Marked project item',
       description: 'Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -453,6 +460,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_remove_item',
+      label: 'Removed project item',
       description: 'Remove a checklist item from a project.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -470,6 +478,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_link_item',
+      label: 'Linked project item',
       description: 'Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -492,6 +501,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_promote_item',
+      label: 'Promoted project item',
       description: 'Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -514,6 +524,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_attach_asset',
+      label: 'Attached asset to project',
       description: 'Attach an existing asset to a project. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -532,6 +543,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_detach_asset',
+      label: 'Detached asset from project',
       description: 'Remove an asset reference from a project. Does not delete the asset itself.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -549,6 +561,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_toggle_item',
+      label: 'Toggled project item',
       description: 'Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -568,6 +581,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_update_item',
+      label: 'Updated project item',
       description: 'Update a checklist item\'s title and/or description.',
       parameters: {
         projectId: z.string().describe('Project ID'),
@@ -594,6 +608,7 @@ const projectsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_project_ask',
+      label: 'Asked project question',
       description: 'Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming.',
       parameters: {
         projectId: z.string().describe('Project ID'),

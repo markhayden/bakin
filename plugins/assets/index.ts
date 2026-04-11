@@ -211,6 +211,7 @@ const assetsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_list',
+      label: 'Listed assets',
       description: 'List assets with optional type filter. Returns asset count and paths.',
       parameters: {
         type: z.enum(ASSET_TYPES).optional().describe('Filter by asset type'),
@@ -227,6 +228,7 @@ const assetsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_get',
+      label: 'Read asset details',
       description: 'Retrieve a single asset\'s sidecar metadata by path.',
       parameters: {
         path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
@@ -256,6 +258,7 @@ const assetsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_save',
+      label: 'Saved an asset',
       description: 'Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.',
       parameters: {
         filePath: z.string().describe('Absolute path to the source file to save'),
@@ -277,6 +280,7 @@ const assetsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_delete',
+      label: 'Deleted an asset',
       description: 'Soft-delete an asset (moves to trash with 30-day expiry).',
       parameters: {
         path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
@@ -300,6 +304,7 @@ const assetsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_link',
+      label: 'Linked an asset',
       description: 'Link an asset to a different task, or unlink it (set taskId to null). Physically moves the file between task directories and updates sidecar metadata.',
       parameters: {
         path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
@@ -320,6 +325,7 @@ const assetsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_list_trash',
+      label: 'Listed trashed assets',
       description: 'List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge.',
       parameters: {},
       handler: async () => {
@@ -339,6 +345,7 @@ const assetsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_restore',
+      label: 'Restored an asset',
       description: 'Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename.',
       parameters: {
         filename: z.string().describe('The trash filename (includes __deleted- suffix)'),
@@ -355,6 +362,7 @@ const assetsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_audit',
+      label: 'Audited assets',
       description: 'Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars.',
       parameters: {
         type: z.enum(ASSET_TYPES).optional().describe('Limit audit to a specific asset type'),
@@ -482,6 +490,7 @@ const assetsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_empty_trash',
+      label: 'Emptied asset trash',
       description: 'Permanently delete all items from trash. This cannot be undone.',
       parameters: {},
       handler: async (_params: Record<string, unknown>, agent: string) => {
@@ -495,6 +504,7 @@ const assetsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_permanent_delete',
+      label: 'Permanently deleted an asset',
       description: 'Permanently delete a specific trashed asset. This cannot be undone.',
       parameters: {
         filename: z.string().describe('The trash filename (includes __deleted- suffix)'),

@@ -667,6 +667,7 @@ const modelsPlugin: BakinPlugin = {
     // -------------------------------------------------------------------
     ctx.registerExecTool({
       name: 'bakin_exec_models_list',
+      label: 'Listed models',
       description: 'List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment.',
       parameters: {
         tier: z.enum(['budget', 'standard', 'premium']).optional().describe('Filter by model tier'),
@@ -685,6 +686,7 @@ const modelsPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_models_get_config',
+      label: 'Read model config',
       description: 'Get model configuration for all agents or a specific agent. Shows effective model (own override or default), subagent model, and system defaults.',
       parameters: {
         agentId: z.string().optional().describe('Specific agent ID to query (omit for all agents)'),
