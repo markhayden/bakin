@@ -12,6 +12,7 @@ import type {
   SearchTransformOp,
 } from '../../packages/core/src/plugin-types'
 import * as antfly from './antfly'
+import { broadcast } from './sse'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 
@@ -118,8 +119,12 @@ function buildAntflyIndexes(def: SearchContentTypeDefinition): Record<string, Re
   return indexes
 }
 
-async function ensureTable(def: SearchContentTypeDefinition): Promise<void> {
+async function ensureTable(def: SearchContentTypeDefinition, existingNames?: Set<string>): Promise<void> {
   const tableName = fullTableName(def.table)
+
+  // Skip list call if we already know the table exists
+  if (existingNames?.has(tableName)) return
+
   const created = await antfly.createTable(tableName, {
     description: `Bakin ${def.table} — auto-created by search registry`,
     schema: buildAntflySchema(def),
@@ -147,9 +152,13 @@ export async function createRegisteredTables(): Promise<void> {
     return
   }
 
+  // Fetch existing tables once to avoid N list calls during createTable
+  const existingTables = await antfly.listTables()
+  const existingNames = new Set(existingTables.map(t => t.name))
+
   for (const [, def] of registry.contentTypes) {
     try {
-      await ensureTable(def)
+      await ensureTable(def, existingNames)
     } catch (err) {
       log.error(`Failed to create table for ${def.table}`, err)
     }
@@ -302,15 +311,17 @@ export async function reindexContentTypes(opts?: {
       // Run the reindex generator
       let count = 0
       if (def.reindex) {
+        const BATCH_SIZE = 50
         const batch: Array<{ key: string; doc: Record<string, unknown> }> = []
         for await (const { key, doc } of def.reindex()) {
           batch.push({ key, doc: doc as Record<string, unknown> })
-          if (batch.length >= 50) {
+          if (batch.length >= BATCH_SIZE) {
             const batchMap: Record<string, Record<string, unknown>> = {}
             for (const b of batch) batchMap[b.key] = b.doc
             await antfly.batchIndex(tableName, batchMap)
             count += batch.length
             batch.length = 0
+            broadcast({ type: 'reindex.progress', table: tableName, pluginId: def.pluginId, indexed: count })
           }
         }
         if (batch.length > 0) {
@@ -321,6 +332,7 @@ export async function reindexContentTypes(opts?: {
         }
       }
 
+      broadcast({ type: 'reindex.complete', table: tableName, pluginId: def.pluginId, indexed: count })
       results.push({ table: tableName, pluginId: def.pluginId, indexed: count })
     } catch (err) {
       results.push({ table: tableName, pluginId: def.pluginId, indexed: 0, error: String(err) })

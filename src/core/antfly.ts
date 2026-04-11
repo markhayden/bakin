@@ -6,7 +6,8 @@
  * Uses @antfly/sdk AntflyClient for all API interactions.
  */
 import { AntflyClient } from '@antfly/sdk'
-import type { BatchRequest, QueryRequest, QueryResult, QueryHit } from '@antfly/sdk'
+import { matchAll } from '@antfly/sdk'
+import type { QueryRequest, QueryResult, QueryHit } from '@antfly/sdk'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 
@@ -158,6 +159,19 @@ export interface TableConfig {
 }
 
 /**
+ * List all tables. Returns empty array if client is unavailable.
+ */
+export async function listTables(): Promise<Array<{ name: string }>> {
+  const client = getClient()
+  if (!client) return []
+  try {
+    return await client.tables.list()
+  } catch {
+    return []
+  }
+}
+
+/**
  * Create a table if it doesn't already exist.
  * Returns true if the table was created, false if it already existed.
  */
@@ -192,7 +206,6 @@ export async function getTableStats(tableName: string): Promise<Record<string, u
 
   try {
     // Get doc count via matchAll query with limit 0
-    const { matchAll } = await import('@antfly/sdk')
     const queryResult = await client.tables.query(tableName, { full_text_search: matchAll(), limit: 0 } as unknown as QueryRequest)
     const total = (queryResult as unknown as { responses: Array<{ hits: { total: number } }> })
       .responses?.[0]?.hits?.total ?? 0
@@ -530,168 +543,8 @@ export function hasEmbedderChanged(): boolean {
   return _g.__bakinAntflyEmbedderHash !== current
 }
 
-// ---------------------------------------------------------------------------
-// Backward-compat wrappers (used by existing callers)
-// These will be replaced when each plugin wires ctx.search.
-// ---------------------------------------------------------------------------
-
-/**
- * Legacy index function — resolves table alias and indexes.
- * @deprecated Use indexDocument() directly with full table name.
- */
-export async function index(
-  table: string,
-  doc: { id: string; content: string; metadata?: Record<string, unknown> },
-): Promise<void> {
-  const tableName = resolveTable(table)
-  await indexDocument(tableName, doc.id, {
-    id: doc.id,
-    content: doc.content,
-    created_at: new Date().toISOString(),
-    ...doc.metadata,
-  })
-}
-
-/**
- * Legacy remove function.
- * @deprecated Use removeDocument() directly.
- */
-export async function remove(table: string, id: string): Promise<void> {
-  const tableName = resolveTable(table)
-  await removeDocument(tableName, id)
-}
-
-/**
- * Legacy hybrid search across tables.
- * @deprecated Use queryTable() or multiQuery() directly.
- */
-export async function search(
-  query: string,
-  options: { table?: string; limit?: number; agent?: string } = {},
-): Promise<SearchResult[]> {
-  if (!getClient() || !enabled()) return []
-
-  const limit = options.limit || 10
-
-  if (options.table) {
-    const tableName = resolveTable(options.table)
-    const filters = options.agent ? { agent: options.agent } : undefined
-    const result = await queryTable(tableName, query, { limit, filters })
-    return result.results
-  }
-
-  // Cross-table search
-  const allTables = Object.values(TABLES)
-  const filters = options.agent ? { agent: options.agent } : undefined
-  const result = await multiQuery(query, allTables, { limit, filters })
-  return result.results
-}
-
-// ---------------------------------------------------------------------------
-// Sync hook for watcher.ts (backward compat)
-// ---------------------------------------------------------------------------
-
-/**
- * Sync hook — called by the file watcher on every content write.
- * @deprecated Will be replaced by per-plugin ctx.search.index() calls.
- */
-export async function syncFile(relativePath: string, content: string): Promise<void> {
-  if (!enabled()) return
-
-  if (relativePath.startsWith('projects/') && relativePath.endsWith('.md')) {
-    const id = relativePath.replace(/\//g, '-').replace('.md', '')
-    await indexDocument(TABLES.projects, id, {
-      content,
-      source: relativePath,
-      type: 'project',
-      updated_at: new Date().toISOString(),
-    })
-    return
-  }
-
-  if (relativePath.startsWith('assets/') && relativePath.endsWith('.meta.json')) {
-    try {
-      const meta = JSON.parse(content)
-      const assetPath = relativePath.replace('.meta.json', '')
-      const pathParts = assetPath.split('/')
-      const assetType = pathParts[1] || 'other'
-      await indexDocument(TABLES.assets, assetPath, {
-        content: [meta.description || '', (meta.tags || []).join(' '), pathParts[pathParts.length - 1]].join(' '),
-        source: assetPath,
-        type: assetType,
-        agent: meta.agent || 'unknown',
-        taskId: meta.taskId || null,
-        tool: meta.tool || null,
-        updated_at: new Date().toISOString(),
-      })
-    } catch {
-      // Malformed sidecar — skip indexing
-    }
-    return
-  }
-
-  if (relativePath.startsWith('team/personas/') && relativePath.endsWith('.md')) {
-    const id = `persona-${relativePath.replace('team/personas/', '').replace('.md', '')}`
-    await indexDocument(TABLES.content, id, {
-      content,
-      source: relativePath,
-      type: 'persona',
-      updated_at: new Date().toISOString(),
-    })
-    return
-  }
-}
-
-/**
- * Sync hook for file deletions — removes documents from Antfly.
- * @deprecated Will be replaced by per-plugin ctx.search.remove() calls.
- */
-export async function syncFileUnlink(relativePath: string): Promise<void> {
-  if (!enabled()) return
-
-  if (relativePath.startsWith('projects/') && relativePath.endsWith('.md')) {
-    const id = relativePath.replace(/\//g, '-').replace('.md', '')
-    await removeDocument(TABLES.projects, id)
-    return
-  }
-
-  if (relativePath.startsWith('assets/') && relativePath.endsWith('.meta.json')) {
-    const assetPath = relativePath.replace('.meta.json', '')
-    await removeDocument(TABLES.assets, assetPath)
-    return
-  }
-
-  if (relativePath.startsWith('team/personas/') && relativePath.endsWith('.md')) {
-    const id = `persona-${relativePath.replace('team/personas/', '').replace('.md', '')}`
-    await removeDocument(TABLES.content, id)
-    return
-  }
-}
-
-/**
- * Index a completed task to Antfly for historical search.
- * @deprecated Will be replaced by tasks plugin using ctx.search.index().
- */
-export async function indexCompletedTask(task: {
-  id: string
-  title: string
-  agent?: string
-  description?: string
-  log?: Array<{ timestamp: string; author: string; message: string }>
-}): Promise<void> {
-  const logText = task.log?.map(l => `[${l.timestamp} ${l.author}] ${l.message}`).join('\n') || ''
-  await indexDocument(TABLES.tasks, task.id, {
-    title: task.title,
-    content: `${task.title}\n\n${task.description || ''}\n\n${logText}`,
-    agent: task.agent,
-    source: 'flow_runs',
-    updated_at: new Date().toISOString(),
-  })
-}
-
 /**
  * Index an audit event.
- * @deprecated Will be replaced by audit module using ctx.search.index().
  */
 export async function indexAuditEvent(entry: {
   ts: string
@@ -708,62 +561,3 @@ export async function indexAuditEvent(entry: {
   })
 }
 
-// ---------------------------------------------------------------------------
-// Bulk reindex (backward compat)
-// ---------------------------------------------------------------------------
-
-/**
- * Reindex all content from disk into Antfly.
- * @deprecated Will be replaced by per-plugin reindex() generators.
- */
-export async function reindexAll(contentDir: string): Promise<number> {
-  if (!enabled()) {
-    log.info('Antfly disabled — skipping reindex')
-    return 0
-  }
-
-  const { readdirSync, readFileSync, existsSync } = await import('fs')
-  const { join } = await import('path')
-  let count = 0
-
-  const projectsDir = join(contentDir, 'projects')
-  if (existsSync(projectsDir)) {
-    for (const file of readdirSync(projectsDir).filter(f => f.endsWith('.md'))) {
-      await syncFile(`projects/${file}`, readFileSync(join(projectsDir, file), 'utf-8'))
-      count++
-    }
-  }
-
-  const assetsDir = join(contentDir, 'assets')
-  if (existsSync(assetsDir)) {
-    const assetTypes = readdirSync(assetsDir).filter(d => !d.startsWith('.'))
-    for (const assetType of assetTypes) {
-      const typeDir = join(assetsDir, assetType)
-      try {
-        const taskDirs = readdirSync(typeDir)
-        for (const taskDir of taskDirs) {
-          const fullTaskDir = join(typeDir, taskDir)
-          try {
-            const files = readdirSync(fullTaskDir).filter(f => f.endsWith('.meta.json'))
-            for (const file of files) {
-              const content = readFileSync(join(fullTaskDir, file), 'utf-8')
-              await syncFile(`assets/${assetType}/${taskDir}/${file}`, content)
-              count++
-            }
-          } catch { /* not a directory or unreadable */ }
-        }
-      } catch { /* empty type dir */ }
-    }
-  }
-
-  const personasDir = join(contentDir, 'team', 'personas')
-  if (existsSync(personasDir)) {
-    for (const file of readdirSync(personasDir).filter(f => f.endsWith('.md'))) {
-      await syncFile(`team/personas/${file}`, readFileSync(join(personasDir, file), 'utf-8'))
-      count++
-    }
-  }
-
-  log.info('Reindex complete', { indexed: count })
-  return count
-}
