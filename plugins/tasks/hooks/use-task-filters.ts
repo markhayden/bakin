@@ -32,10 +32,17 @@ interface TaskFilterState {
 
 export function filterBoardColumns(columns: TaskColumns, search: string, agentFilter: string, antflyResults?: AntflySearchResult[]): TaskColumns {
   const result = {} as TaskColumns
+  const matchIds = antflyResults?.length ? new Set(antflyResults.map(r => r.id)) : null
 
   for (const colId of COLUMN_IDS) {
     let tasks = columns[colId]
-    if (search) tasks = tasks.filter(t => matchesSearch(t, search))
+    if (search) {
+      if (matchIds) {
+        tasks = tasks.filter(t => matchIds.has(t.id))
+      } else {
+        tasks = tasks.filter(t => matchesSearch(t, search))
+      }
+    }
     if (agentFilter !== 'all') tasks = tasks.filter(t => t.agent === agentFilter)
     if (antflyResults?.length) tasks = reorderColumn(tasks, antflyResults)
     result[colId] = tasks
@@ -72,7 +79,14 @@ export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
       }
     }
     let filtered = flat
-    if (search) filtered = filtered.filter(t => matchesSearch(t, search))
+    if (search) {
+      if (antfly.results.length) {
+        const matchIds = new Set(antfly.results.map(r => r.id))
+        filtered = filtered.filter(t => matchIds.has(t.id))
+      } else {
+        filtered = filtered.filter(t => matchesSearch(t, search))
+      }
+    }
     if (agentFilter !== 'all') filtered = filtered.filter(t => t.agent === agentFilter)
     if (statusFilter.length > 0) filtered = filtered.filter(t => statusFilter.includes(t.status))
     if (antfly.results.length) filtered = reorderByAntflyResults(filtered, antfly.results)

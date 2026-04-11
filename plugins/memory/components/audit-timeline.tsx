@@ -66,12 +66,17 @@ export function AuditTimeline() {
     }
 
     if (search) {
-      const q = search.toLowerCase()
-      result = result.filter(
-        (e) =>
-          e.event.toLowerCase().includes(q) ||
-          JSON.stringify(e.data).toLowerCase().includes(q)
-      )
+      if (antfly.results.length) {
+        const matchIds = new Set(antfly.results.map(r => r.id))
+        result = result.filter(e => matchIds.has(e.ts))
+      } else {
+        const q = search.toLowerCase()
+        result = result.filter(
+          (e) =>
+            e.event.toLowerCase().includes(q) ||
+            JSON.stringify(e.data).toLowerCase().includes(q)
+        )
+      }
     }
 
     // Already newest-first (API returns reversed, SSE prepended) — sort to be safe

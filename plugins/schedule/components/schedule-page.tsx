@@ -57,18 +57,20 @@ export function SchedulePage() {
 
   const filtered = useMemo(() => {
     if (!search) return jobs
+    if (antfly.results.length) {
+      const matchIds = new Set(antfly.results.map(r => r.id))
+      const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+      return jobs
+        .filter(j => matchIds.has(j.id))
+        .sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0))
+    }
     const q = search.toLowerCase()
-    let result = jobs.filter(j =>
+    return jobs.filter(j =>
       (j.displayName || '').toLowerCase().includes(q) ||
       j.id.toLowerCase().includes(q) ||
       (j.agentId || '').toLowerCase().includes(q) ||
       j.humanSchedule.toLowerCase().includes(q)
     )
-    if (antfly.results.length) {
-      const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
-      result = [...result].sort((a, b) => (scoreMap.get(b.id) ?? -1) - (scoreMap.get(a.id) ?? -1))
-    }
-    return result
   }, [jobs, search, antfly.results])
 
   // Derive drawer/form visibility from URL state
