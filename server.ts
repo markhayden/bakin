@@ -92,8 +92,13 @@ app.prepare().then(async () => {
   const { createRegisteredTables } = await import('./src/core/search-registry')
   await createRegisteredTables()
 
+  // Start periodic orphan cleanup for search indexes
+  const { startCleanupTimer } = await import('./src/core/search-cleanup')
+  startCleanupTimer()
+
   // Register Antfly sync hook with file watcher
   watcher.registerSyncHook(antfly.syncFile)
+  watcher.registerUnlinkHook(antfly.syncFileUnlink)
 
   // Generate API docs
   generateDocs(CONTENT_DIR)
