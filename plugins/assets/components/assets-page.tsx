@@ -111,8 +111,9 @@ export function AssetsPage() {
     return result
   }, [assets, typeFilter, search, antfly.results])
 
-  // Sorting
+  // Sorting — skip when Antfly results are active (preserve relevance order)
   const sorted = useMemo(() => {
+    if (search && antfly.results.length) return filtered
     const s = sort as SortField
     const dir = sortDir === 'asc' ? 1 : -1
     return [...filtered].sort((a, b) => {
@@ -125,7 +126,7 @@ export function AssetsPage() {
           return dir * (new Date(a.metadata.created).getTime() - new Date(b.metadata.created).getTime())
       }
     })
-  }, [filtered, sort, sortDir])
+  }, [filtered, sort, sortDir, search, antfly.results])
 
   const handleSort = (field: SortField) => {
     if (sort === field) {

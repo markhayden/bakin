@@ -104,7 +104,7 @@ export function AssetCard({ asset, onClick, onDelete, score }: AssetCardProps) {
         {/* Antfly relevance score */}
         {score !== undefined && (
           <span className="absolute top-1.5 left-1.5 text-[10px] font-mono text-amber-400 bg-black/70 px-1.5 py-0.5 rounded">
-            {score.toFixed(2)}
+            {score.toFixed(4)}
           </span>
         )}
       </div>
