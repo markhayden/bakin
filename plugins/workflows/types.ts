@@ -131,6 +131,8 @@ export interface StepState {
   rejectionReason?: string
   /** For nested workflow steps — the child instance's task ID (used as instance key) */
   childTaskId?: string
+  /** Discord message ID for gate alert — used to edit the message after approval/rejection */
+  discordMessageId?: string
 }
 
 export interface StepHistoryEntry {

@@ -22,7 +22,7 @@ Bakin is a monorepo with a pnpm workspace. The main application (Next.js + custo
 │           ├── format.ts      ← formatAge(), isStale()
 │           ├── storage/       ← MarkdownStorageAdapter
 │           └── events/        ← BakinEventBus
-├── plugins/                   ← 9 core plugins (NOT workspace packages)
+├── plugins/                   ← 10 core plugins (NOT workspace packages)
 ���   ├── tasks/
 │   ├── workflows/
 │   ├── assets/
@@ -148,7 +148,7 @@ This keeps the existing Node-focused tests fast and stable while allowing target
 
 ## Runtime Data (`~/.bakin/`)
 
-Created by `bakin init` or `initBakinHome()`. Symlinked from `~/.beacon/` for backward compat.
+Created by `bakin init` or `initBakinHome()`.
 
 ```
 ~/.bakin/
@@ -187,5 +187,6 @@ Created by `bakin init` or `initBakinHome()`. Symlinked from `~/.beacon/` for ba
 | CLI | `cli/bakin.ts` | `bakin <command>` (globally linked via npm) |
 | Plugin config | `bakin.config.ts` | Imported by server.ts, lists enabled plugins |
 | Plugin loading | `src/lib/plugin-registry.ts` | Called by server.ts during startup |
-| MCP tools | `src/core/mcp-server.ts` | Imports `scripts/lib/*.ts` + plugin exec tools |
+| MCP tools | `src/core/mcp-server.ts` | Imports `scripts/lib/*.ts` + plugin exec tools. Supports Streamable HTTP and SSE transports. |
+| Discord gateway | `src/core/discord-gateway.ts` | WebSocket client for Discord interaction events (gate approve/reject buttons). Uses Node.js 22 native WebSocket, globalThis-backed state. |
 | Next.js pages | `src/app/*/page.tsx` | Served by server.ts wrapping Next.js |

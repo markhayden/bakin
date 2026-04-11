@@ -25,7 +25,9 @@ import { matchWorkflow } from './lib/matcher'
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../src/core/content-dir'
 import { validateStepOutput } from './lib/schema-validator'
-import { setEventBus } from './lib/notifications'
+import { setEventBus, setDiscordGateSettings, editDiscordGateMessage, type DiscordGateSettings } from './lib/notifications'
+import { startGateway, stopGateway, onGateInteraction, isGatewayConnected } from '../../src/core/discord-gateway'
+import { loadDiscordConfig } from '../../scripts/lib/post-discord'
 import type { WorkflowTemplate, WorkflowDefinition, WorkflowInstance, NestedWorkflowStep } from './types'
 
 const log = createLogger('workflows')
@@ -138,6 +140,9 @@ const workflowsPlugin: BakinPlugin = {
       { key: 'gateTimeout', type: 'number', label: 'Gate timeout (hours)', description: 'Auto-reject gates not approved within this time', default: 24 },
       { key: 'maxConcurrentSteps', type: 'number', label: 'Max concurrent steps', description: 'Maximum steps running in parallel per workflow', default: 3 },
       { key: 'notifyOnGate', type: 'boolean', label: 'Notify on gate', description: 'Send notification when a gate needs approval', default: true },
+      { key: 'discordGateAlerts', type: 'boolean', label: 'Discord gate alerts', description: 'Send Discord messages with approve/reject buttons when gates need approval', default: false },
+      { key: 'discordGateChannel', type: 'string', label: 'Discord gate channel', description: 'Discord channel name for gate approval messages', default: 'general' },
+      { key: 'requireRejectReason', type: 'boolean', label: 'Require reject reason', description: 'Require a reason when rejecting via Discord (opens a modal)', default: true },
     ],
   },
 
@@ -261,6 +266,68 @@ const workflowsPlugin: BakinPlugin = {
 
     // Wire up event bus for notifications
     setEventBus(ctx.events)
+
+    // ─── Discord Gate Alerts ───────────────────────────────────────────
+    const pluginSettings = ctx.getSettings<Record<string, unknown>>()
+    const discordSettings: DiscordGateSettings = {
+      discordGateAlerts: pluginSettings.discordGateAlerts as boolean ?? false,
+      discordGateChannel: pluginSettings.discordGateChannel as string ?? 'general',
+      requireRejectReason: pluginSettings.requireRejectReason as boolean ?? true,
+    }
+    setDiscordGateSettings(discordSettings)
+
+    if (discordSettings.discordGateAlerts) {
+      const discordConfig = loadDiscordConfig()
+      if (discordConfig) {
+        startGateway(discordConfig, discordSettings.requireRejectReason)
+
+        onGateInteraction(async (interaction) => {
+          const { action, taskId, stepId, reason } = interaction
+
+          if (action === 'approve') {
+            const result = approveGate(taskId, stepId)
+            if (!result.success) {
+              await interaction.reply(`Approve failed: ${result.errors?.[0] || 'unknown error'}`)
+              return
+            }
+            await interaction.acknowledge()
+            ctx.activity.audit('gate.approved', 'discord', { taskId, stepId })
+            ctx.activity.log('discord', `Gate "${stepId}" approved via Discord`, { taskId })
+            indexInstance(taskId).catch(() => {})
+            triggerDispatch()
+
+            // Edit the Discord message to show approved
+            const instance = loadInstance(taskId)
+            const msgId = instance?.stepStates[stepId]?.discordMessageId
+            if (msgId) {
+              editDiscordGateMessage(discordSettings.discordGateChannel, msgId, 'approved').catch(() => {})
+            }
+          } else if (action === 'reject') {
+            const rejectReason = reason || 'Rejected via Discord'
+            const result = rejectGate(taskId, stepId, rejectReason)
+            if (!result.success) {
+              await interaction.reply(`Reject failed: ${result.errors?.[0] || 'unknown error'}`)
+              return
+            }
+            await interaction.acknowledge()
+            ctx.activity.audit('gate.rejected', 'discord', { taskId, stepId, reason: rejectReason })
+            ctx.activity.log('discord', `Gate "${stepId}" rejected via Discord: ${rejectReason}`, { taskId })
+            indexInstance(taskId).catch(() => {})
+
+            // Edit the Discord message to show rejected
+            const instance = loadInstance(taskId)
+            const msgId = instance?.stepStates[stepId]?.discordMessageId
+            if (msgId) {
+              editDiscordGateMessage(discordSettings.discordGateChannel, msgId, 'rejected', rejectReason).catch(() => {})
+            }
+          }
+        })
+
+        log.info('Discord gate alerts enabled', { channel: discordSettings.discordGateChannel })
+      } else {
+        log.warn('Discord gate alerts enabled but Discord not configured — skipping gateway')
+      }
+    }
 
     // Register cross-plugin hooks
     ctx.hooks.register('workflows.loadInstance', (d: Record<string, unknown>) => loadInstance(d.taskId as string, d.contentDir as string | undefined))
@@ -433,6 +500,10 @@ const workflowsPlugin: BakinPlugin = {
         return Response.json({ error: 'taskId and stepId are required' }, { status: 400 })
       }
 
+      // Capture Discord message ID before approval changes state
+      const preInstance = loadInstance(taskId)
+      const discordMsgId = preInstance?.stepStates[stepId]?.discordMessageId
+
       const result = approveGate(taskId, stepId)
 
       if (!result.success) {
@@ -445,6 +516,11 @@ const workflowsPlugin: BakinPlugin = {
 
       // Kick dispatch so the next step's agent starts immediately
       triggerDispatch()
+
+      // Sync Discord message if one was sent
+      if (discordMsgId && discordSettings.discordGateAlerts) {
+        editDiscordGateMessage(discordSettings.discordGateChannel, discordMsgId, 'approved').catch(() => {})
+      }
 
       return Response.json(result)
     }
@@ -467,6 +543,10 @@ const workflowsPlugin: BakinPlugin = {
         return Response.json({ error: 'taskId, stepId, and reason are required' }, { status: 400 })
       }
 
+      // Capture Discord message ID before rejection changes state
+      const preInstance = loadInstance(taskId)
+      const discordMsgId = preInstance?.stepStates[stepId]?.discordMessageId
+
       const result = rejectGate(taskId, stepId, reason, rewindTo)
 
       if (!result.success) {
@@ -476,6 +556,11 @@ const workflowsPlugin: BakinPlugin = {
       ctx.activity.audit('gate.rejected', 'system', { taskId, stepId, reason })
       ctx.activity.log('system', `Gate "${stepId}" rejected: ${reason}`, { taskId })
       indexInstance(taskId).catch(() => {})
+
+      // Sync Discord message if one was sent
+      if (discordMsgId && discordSettings.discordGateAlerts) {
+        editDiscordGateMessage(discordSettings.discordGateChannel, discordMsgId, 'rejected', reason).catch(() => {})
+      }
 
       return Response.json(result)
     }
@@ -946,7 +1031,25 @@ const workflowsPlugin: BakinPlugin = {
     log.info(`Ready — ${defs.length} workflow definition(s) loaded`)
   },
 
+  onSettingsChange(newSettings: Record<string, unknown>) {
+    const updated: DiscordGateSettings = {
+      discordGateAlerts: newSettings.discordGateAlerts as boolean ?? false,
+      discordGateChannel: newSettings.discordGateChannel as string ?? 'general',
+      requireRejectReason: newSettings.requireRejectReason as boolean ?? true,
+    }
+    setDiscordGateSettings(updated)
+
+    // Start or stop gateway based on setting change
+    if (updated.discordGateAlerts && !isGatewayConnected()) {
+      const config = loadDiscordConfig()
+      if (config) startGateway(config, updated.requireRejectReason)
+    } else if (!updated.discordGateAlerts && isGatewayConnected()) {
+      stopGateway()
+    }
+  },
+
   onShutdown() {
+    stopGateway()
     const active = listInstances().filter(i => i.status === 'in_progress')
     if (active.length > 0) {
       log.warn(`Shutting down with ${active.length} active workflow instance(s)`)

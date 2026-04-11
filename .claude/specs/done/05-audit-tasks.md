@@ -36,7 +36,7 @@ Dependencies: none (tasks is foundational). Permissions: correct as-is.
 ### Route Surface Parity
 
 **Current state:** Task operations exist in THREE places with inconsistent coverage:
-1. Core MCP tools in `mcp-server.ts` (`beacon_create_task`, `beacon_move_task`, etc.) — used by agents
+1. Core MCP tools in `mcp-server.ts` (`bakin_create_task`, `bakin_move_task`, etc.) — used by agents
 2. Plugin HTTP routes (7 action routes) — used by frontend
 3. `task-service.ts` mutations — used by core modules
 
@@ -56,7 +56,7 @@ Dependencies: none (tasks is foundational). Permissions: correct as-is.
 | Set dep | `POST /{taskId}/depend` | `bakin_exec_tasks_set_dependency` | New |
 | Clear dep | `DELETE /{taskId}/depend` | `bakin_exec_tasks_clear_dependency` | New |
 
-**MCP migration decision:** The core MCP tools (`beacon_create_task`, etc.) in `mcp-server.ts` should be migrated to plugin-registered exec tools. This is the natural completion of Phase 4's decoupling — task operations should be owned by the tasks plugin, not hardcoded in core.
+**MCP migration decision:** The core MCP tools (`bakin_create_task`, etc.) in `mcp-server.ts` should be migrated to plugin-registered exec tools. This is the natural completion of Phase 4's decoupling — task operations should be owned by the tasks plugin, not hardcoded in core.
 
 ### Hook Events (Notification Hooks)
 Emit from mutation routes so other plugins can react:

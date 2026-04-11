@@ -947,12 +947,14 @@ describe('bakin_exec_tasks_create', () => {
     expect(result.id).toBe('sub-1')
   })
 
-  it('rejects top-level task without workflowId or skipWorkflowReason', async () => {
+  it('succeeds without workflowId but includes notice when no workflow matched', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'no-wf-1' })
+
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
     const result = await callTool(tool, { title: 'Bad Task' }, 'basil')
 
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('workflowId or skipWorkflowReason')
+    expect(result.ok).toBe(true)
+    expect(result.notice).toContain('No workflow attached')
   })
 
   it('triggers dispatch when assignee is provided', async () => {

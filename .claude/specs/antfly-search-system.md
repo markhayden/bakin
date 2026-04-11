@@ -31,7 +31,7 @@ Make AntflyDB the single source of truth for all search in Bakin. Every piece of
 ## 2. Current State Analysis
 
 ### What Exists
-- **5 tables** with stale `beacon_` prefix: tasks, decisions, audit, content, assets
+- **5 tables** with stale `bakin_` prefix: tasks, decisions, audit, content, assets
 - **Generic schema** — every table has the same 5 fields (id, content, source, agent, created_at)
 - **Hybrid search** — full-text + semantic via `all-MiniLM-L6-v2` embeddings
 - **Fire-and-forget indexing** — non-blocking, errors silently swallowed
@@ -204,7 +204,7 @@ export default {
 | `bakin_team` | OpenClaw agent configs | `agent:{agentId}` | OpenClaw |
 | `bakin_audit` | audit.jsonl | `audit:{ts}-{event}` | Filesystem |
 
-**No migration from `beacon_`** — wipe existing tables on first startup with new code. Single-user system, full reindex rebuilds everything.
+**No migration from `bakin_`** — wipe existing tables on first startup with new code. Single-user system, full reindex rebuilds everything.
 
 ### 3.3 Schema Design
 
@@ -662,7 +662,7 @@ Everything that appears in the UI is returned in search results. Disabled schedu
 2. **Check for binary** — `ANTFLY_PATH` → homebrew → `/usr/local/bin` → `~/.antfly/bin`.
    - If not found: prompt to install (`brew install --cask antflydb/antfly/antfly`).
 3. **Start server** — `antfly swarm` with `ANTFLY_DATA_DIR=~/.antfly/data`.
-4. **Wipe any old `beacon_*` tables** — clean slate.
+4. **Wipe any old `bakin_*` tables** — clean slate.
 5. **Create `bakin_*` tables** — from registered content type definitions.
 6. **Full reindex** — index all existing content.
 7. **Verify** — run test search, confirm results.
@@ -895,7 +895,7 @@ All tests MUST mock `getContentDir` per CLAUDE.md testing rules. Also mock `getO
 5. Add `unlink` handler to watcher for deletion sync
 6. Add orphan cleanup timer + logic
 7. Add search tuning + TTL settings to `BakinSettings`
-8. Wipe old `beacon_*` tables on startup
+8. Wipe old `bakin_*` tables on startup
 9. Tests for core infrastructure
 
 ### Phase 2: Plugin Indexing (Wire All Content Types)
