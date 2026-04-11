@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug, Code } from 'lucide-react'
+import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug, Terminal } from 'lucide-react'
 import { useActivityContext } from '@/context/activity-context'
 import { useContentStore } from '@/hooks/use-content-store'
 import { AgentAvatar } from '@/components/agent-avatar'
@@ -103,7 +103,7 @@ export function ActivityFeed() {
               title={verbose ? 'Hide command names' : 'Show command names'}
               className={`transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] ${verbose ? 'text-foreground' : 'text-muted-foreground/50'}`}
             >
-              <Code className="size-3.5" />
+              <Terminal className="size-3.5" />
             </button>
             <button
               onClick={toggle}
