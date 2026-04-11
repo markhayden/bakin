@@ -252,7 +252,7 @@ function checkAndSyncSkill(projectRoot: string, autoFix: boolean): DiagnosticRes
  */
 async function checkAntfly(): Promise<DiagnosticResult[]> {
   const settings = getSettings()
-  const { installed, running } = await import('./antfly-server')
+  const { installed } = await import('./antfly-server')
 
   if (!settings.antfly.enabled) {
     if (!installed()) {
@@ -263,10 +263,6 @@ async function checkAntfly(): Promise<DiagnosticResult[]> {
 
   if (!installed()) {
     return [error('antfly', 'Antfly enabled but binary not found — install with: brew install --cask antflydb/antfly/antfly')]
-  }
-
-  if (!running()) {
-    return [error('antfly', 'Antfly enabled but server not running — it should auto-start on next Bakin restart')]
   }
 
   try {
@@ -291,6 +287,9 @@ async function checkSearchTables(): Promise<DiagnosticResult[]> {
   if (!settings.antfly.enabled) return []
 
   try {
+    const antfly = await import('./antfly')
+    await antfly.initialize()
+
     const { getSearchHealth } = await import('./search-registry')
     const health = await getSearchHealth()
 
@@ -313,16 +312,33 @@ async function checkSearchTables(): Promise<DiagnosticResult[]> {
         continue
       }
 
-      const numDocs = (t.stats as Record<string, unknown>).num_docs as number ?? 0
-      if (numDocs === 0) {
+      const rawNumDocs = Number((t.stats as Record<string, unknown>).num_docs)
+      if (Number.isFinite(rawNumDocs)) {
+        if (rawNumDocs === 0) {
+          emptyTables++
+          results.push(warn('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 documents — run: POST /api/reindex?table=${t.table}`))
+        }
+        continue
+      }
+
+      const storage = (t.stats as Record<string, unknown>).storage_status as Record<string, unknown> | undefined
+      if (storage?.empty === true) {
         emptyTables++
-        results.push(warn('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 documents — run: POST /api/reindex?table=${t.table}`))
+        results.push(warn('search-tables', `Table "${t.table}" (${t.pluginId}) appears empty — run: POST /api/reindex?table=${t.table}`))
       }
     }
 
     if (results.length === 0) {
-      const total = health.tables.reduce((sum, t) => sum + ((t.stats as Record<string, unknown>)?.num_docs as number ?? 0), 0)
-      results.push(ok('search-tables', `${health.tables.length} tables, ${total} total documents indexed`))
+      const totals = health.tables
+        .map(t => Number((t.stats as Record<string, unknown>)?.num_docs))
+        .filter(n => Number.isFinite(n))
+
+      if (totals.length > 0) {
+        const total = totals.reduce((sum, n) => sum + n, 0)
+        results.push(ok('search-tables', `${health.tables.length} tables, ${total} total documents indexed`))
+      } else {
+        results.push(ok('search-tables', `${health.tables.length} tables registered; table metadata readable (document counts unavailable from current Antfly API)`))
+      }
     }
 
     return results
