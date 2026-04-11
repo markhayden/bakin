@@ -201,12 +201,3 @@ export function initBakinHome(targetDir?: string): { created: string[]; seeded: 
   return { created, seeded }
 }
 
-// Backward-compat aliases (deprecated — use the Bakin-prefixed versions)
-/** @deprecated Use isUsingBakinHome */
-export const isUsingBeaconHome = isUsingBakinHome
-/** @deprecated Use getBakinPaths */
-export const getBeaconPaths = getBakinPaths
-/** @deprecated Use BakinPaths */
-export type BeaconPaths = BakinPaths
-/** @deprecated Use initBakinHome */
-export const initBeaconHome = initBakinHome

@@ -28,7 +28,7 @@ describe('Settings', () => {
     expect(settings.sse.maxClients).toBe(50)
     // agents is populated dynamically from OpenClaw; in test env it may be empty
     expect(Array.isArray(settings.agents)).toBe(true)
-    expect(settings.antfly.enabled).toBe(false)
+    expect(settings.antfly.enabled).toBe(true)
   })
 
   it('returns antfly search defaults', () => {
