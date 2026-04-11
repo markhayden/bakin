@@ -26,6 +26,7 @@ interface ContentStore extends ContentState {
   setSseConnected: (connected: boolean) => void
   bumpTaskboard: () => void
   setDebug: (debug: boolean) => void
+  toggleDebug: () => void
   initialize: () => Promise<void>
 }
 
@@ -60,6 +61,11 @@ export const useContentStore = create<ContentStore>((set, get) => ({
   setDebug: (debug) => {
     set({ debug })
     try { localStorage.setItem('bakin-debug', String(debug)) } catch {}
+  },
+  toggleDebug: () => {
+    const next = !get().debug
+    set({ debug: next })
+    try { localStorage.setItem('bakin-debug', String(next)) } catch {}
   },
 
   initialize: async () => {
