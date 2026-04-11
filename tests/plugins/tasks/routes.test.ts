@@ -1134,3 +1134,39 @@ describe('bakin_exec_tasks_set_dependency', () => {
     expect(result.error).toContain('dep err')
   })
 })
+
+// ─── Search Dual-Write ──────────────────────────────────────────────────────
+
+describe('Search dual-write', () => {
+  it('removes task from search on delete', async () => {
+    mockDeleteTask.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'DELETE', '/:taskId')!
+    await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-rm' },
+    })
+
+    // search.remove is fire-and-forget, give it a tick
+    await new Promise(r => setTimeout(r, 20))
+
+    expect(activated.ctx.search.remove).toHaveBeenCalledWith('task-rm')
+  })
+
+  it('updates search index on task assign via transform', async () => {
+    mockAssignTask.mockReturnValue(undefined)
+
+    const route = findRoute(activated.routes, 'POST', '/:taskId/assign')!
+    await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-asgn' },
+      body: { agent: 'pixel' },
+    })
+
+    // search.transform is fire-and-forget, give it a tick
+    await new Promise(r => setTimeout(r, 20))
+
+    expect(activated.ctx.search.transform).toHaveBeenCalledWith(
+      'task-asgn',
+      [{ op: '$set', field: 'agent', value: 'pixel' }],
+    )
+  })
+})
