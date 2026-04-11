@@ -277,6 +277,167 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
 }
 
 /**
+ * Reindex all (or one) registered content types by running their reindex() generators.
+ * Returns per-table counts.
+ */
+export async function reindexContentTypes(opts?: {
+  table?: string
+  rebuild?: boolean
+}): Promise<Array<{ table: string; pluginId: string; indexed: number; error?: string }>> {
+  const registry = getRegistry()
+  const results: Array<{ table: string; pluginId: string; indexed: number; error?: string }> = []
+
+  for (const [tableName, def] of registry.contentTypes) {
+    if (opts?.table && tableName !== fullTableName(opts.table) && opts.table !== def.table && opts.table !== def.pluginId) {
+      continue
+    }
+
+    try {
+      // Rebuild indexes if requested
+      if (opts?.rebuild) {
+        await antfly.rebuildIndexes(tableName)
+        log.info(`Rebuilt indexes for ${tableName}`)
+      }
+
+      // Run the reindex generator
+      let count = 0
+      if (def.reindex) {
+        const batch: Array<{ key: string; doc: Record<string, unknown> }> = []
+        for await (const { key, doc } of def.reindex()) {
+          batch.push({ key, doc: doc as Record<string, unknown> })
+          if (batch.length >= 50) {
+            const batchMap: Record<string, Record<string, unknown>> = {}
+            for (const b of batch) batchMap[b.key] = b.doc
+            await antfly.batchIndex(tableName, batchMap)
+            count += batch.length
+            batch.length = 0
+          }
+        }
+        if (batch.length > 0) {
+          const batchMap: Record<string, Record<string, unknown>> = {}
+          for (const b of batch) batchMap[b.key] = b.doc
+          await antfly.batchIndex(tableName, batchMap)
+          count += batch.length
+        }
+      }
+
+      results.push({ table: tableName, pluginId: def.pluginId, indexed: count })
+    } catch (err) {
+      results.push({ table: tableName, pluginId: def.pluginId, indexed: 0, error: String(err) })
+      log.error(`Reindex failed for ${tableName}`, err)
+    }
+  }
+
+  return results
+}
+
+/**
+ * Cross-table search using multiQuery.
+ * Queries all registered content types (or a specific one) and merges results.
+ */
+export async function crossTableSearch(q: string, opts?: {
+  table?: string
+  limit?: number
+  offset?: number
+  filters?: Record<string, string | boolean | number>
+  facets?: string[]
+}): Promise<SearchResponse> {
+  if (!antfly.enabled()) {
+    return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'fallback' } }
+  }
+
+  const registry = getRegistry()
+  const limit = opts?.limit ?? 20
+
+  // Single-table search
+  if (opts?.table) {
+    const tableName = fullTableName(opts.table)
+    const def = registry.contentTypes.get(tableName)
+    if (!def) {
+      // Try matching by pluginId
+      const resolved = registry.pluginTables.get(opts.table)
+      if (!resolved) {
+        return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'antfly' } }
+      }
+      return crossTableSearch(q, { ...opts, table: resolved.replace(TABLE_PREFIX, '') })
+    }
+
+    const aggregations: Record<string, unknown> | undefined = (opts?.facets ?? def.facets)?.length
+      ? Object.fromEntries(
+          (opts?.facets ?? def.facets ?? []).map(f => [f, { type: 'terms', field: f, size: 50 }])
+        )
+      : undefined
+
+    const result = await antfly.queryTable(tableName, q, {
+      limit,
+      offset: opts?.offset,
+      filters: opts?.filters,
+      aggregations,
+    })
+
+    return {
+      results: result.results.map(r => ({ ...r, _table: tableName })),
+      aggregations: mapAggregations(result.aggregations),
+      meta: { query: q, total: result.total, took_ms: result.took, source: 'antfly' },
+    }
+  }
+
+  // Cross-table search via multiQuery
+  const tables = Array.from(registry.contentTypes.keys())
+  if (tables.length === 0) {
+    return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'antfly' } }
+  }
+
+  const result = await antfly.multiQuery(q, tables, { limit })
+  return {
+    results: result.results.slice(0, limit),
+    meta: { query: q, total: result.total, took_ms: result.took, source: 'antfly' },
+  }
+}
+
+/**
+ * Get health/stats for all registered search tables.
+ */
+export async function getSearchHealth(): Promise<{
+  enabled: boolean
+  tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }>
+}> {
+  const registry = getRegistry()
+  const isEnabled = antfly.enabled()
+
+  if (!isEnabled) {
+    return { enabled: false, tables: [] }
+  }
+
+  const tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }> = []
+  for (const [tableName, def] of registry.contentTypes) {
+    try {
+      const stats = await antfly.getTableStats(tableName)
+      tables.push({ table: tableName, pluginId: def.pluginId, stats })
+    } catch {
+      tables.push({ table: tableName, pluginId: def.pluginId, stats: null })
+    }
+  }
+
+  return { enabled: isEnabled, tables }
+}
+
+function mapAggregations(aggs: Record<string, unknown> | undefined): Record<string, Array<{ value: string; count: number }>> | undefined {
+  if (!aggs) return undefined
+  const mapped: Record<string, Array<{ value: string; count: number }>> = {}
+  for (const [key, agg] of Object.entries(aggs)) {
+    const aggObj = agg as { buckets?: Array<{ key: string; doc_count: number }> }
+    if (aggObj?.buckets) {
+      mapped[key] = aggObj.buckets.map(b => ({
+        value: String(b.key),
+        count: b.doc_count,
+      }))
+    }
+  }
+  return mapped
+}
+
+/**
  * Reset the registry (for testing).
  */
 export function resetSearchRegistry(): void {

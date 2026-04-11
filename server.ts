@@ -208,20 +208,22 @@ app.prepare().then(async () => {
       return
     }
 
-    // Search endpoint (Antfly-powered when enabled)
+    // Search endpoint — cross-table or per-table Antfly search
     if (url.pathname === '/api/search' && req.method === 'GET') {
       const query = url.searchParams.get('q')
       if (!query) {
         jsonResponse(res, 400, { error: 'Missing ?q= parameter' })
         return
       }
-      antfly.search(query, {
+      const { crossTableSearch } = require('./src/core/search-registry')
+      crossTableSearch(query, {
         table: url.searchParams.get('table') || undefined,
         limit: Number(url.searchParams.get('limit')) || undefined,
-        agent: url.searchParams.get('agent') || undefined,
-      }).then(results => {
-        jsonResponse(res, 200, { results, enabled: antfly.enabled() })
-      }).catch(err => {
+        offset: Number(url.searchParams.get('offset')) || undefined,
+        facets: url.searchParams.get('facets')?.split(',').filter(Boolean) || undefined,
+      }).then((response: Record<string, unknown>) => {
+        jsonResponse(res, 200, response)
+      }).catch((err: unknown) => {
         jsonResponse(res, 500, { error: String(err) })
       })
       return
@@ -301,11 +303,26 @@ app.prepare().then(async () => {
       return
     }
 
-    // Reindex endpoint (triggers Antfly full reindex)
+    // Reindex endpoint — per-table or all, with optional rebuild
     if (url.pathname === '/api/reindex' && req.method === 'POST') {
-      antfly.reindexAll(CONTENT_DIR).then(count => {
-        jsonResponse(res, 200, { ok: true, indexed: count })
-      }).catch(err => {
+      const { reindexContentTypes } = require('./src/core/search-registry')
+      const table = url.searchParams.get('table') || undefined
+      const rebuild = url.searchParams.get('rebuild') === 'true'
+      reindexContentTypes({ table, rebuild }).then((results: Array<Record<string, unknown>>) => {
+        const total = results.reduce((sum: number, r: Record<string, unknown>) => sum + (r.indexed as number || 0), 0)
+        jsonResponse(res, 200, { ok: true, total, tables: results })
+      }).catch((err: unknown) => {
+        jsonResponse(res, 500, { error: String(err) })
+      })
+      return
+    }
+
+    // Antfly health endpoint
+    if (url.pathname === '/api/antfly/health' && req.method === 'GET') {
+      const { getSearchHealth } = require('./src/core/search-registry')
+      getSearchHealth().then((health: Record<string, unknown>) => {
+        jsonResponse(res, 200, health)
+      }).catch((err: unknown) => {
         jsonResponse(res, 500, { error: String(err) })
       })
       return
