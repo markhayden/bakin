@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -266,6 +266,37 @@ export function HealthPage() {
     tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }>
   } | null>(null)
   const [reindexing, setReindexing] = useState(false)
+  const [reindexProgress, setReindexProgress] = useState<Record<string, { indexed: number; done: boolean }>>({})
+  const esRef = useRef<EventSource | null>(null)
+
+  // Listen for reindex SSE events while reindexing
+  useEffect(() => {
+    if (!reindexing) {
+      esRef.current?.close()
+      esRef.current = null
+      return
+    }
+    const es = new EventSource('/api/events')
+    esRef.current = es
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        if (data.type === 'reindex.progress') {
+          setReindexProgress(prev => ({
+            ...prev,
+            [data.table]: { indexed: data.indexed, done: false },
+          }))
+        }
+        if (data.type === 'reindex.complete') {
+          setReindexProgress(prev => ({
+            ...prev,
+            [data.table]: { indexed: data.indexed, done: true },
+          }))
+        }
+      } catch { /* ignore non-JSON */ }
+    }
+    return () => { es.close() }
+  }, [reindexing])
 
   // Search state
   const [pluginSearch, setPluginSearch] = useState('')
@@ -492,6 +523,7 @@ export function HealthPage() {
                   variant="outline"
                   disabled={!searchHealth.enabled || reindexing}
                   onClick={async () => {
+                    setReindexProgress({})
                     setReindexing(true)
                     try {
                       await fetch('/api/reindex', { method: 'POST' })
@@ -513,10 +545,18 @@ export function HealthPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {searchHealth.tables.map(t => {
                   const docs = (t.stats as any)?.num_docs ?? 0
+                  const progress = reindexProgress[t.table]
+                  const isActive = reindexing && progress && !progress.done
                   return (
-                    <div key={t.table} className="rounded-lg border border-border p-3">
+                    <div key={t.table} className={`rounded-lg border p-3 transition-colors ${isActive ? 'border-amber-500/50 bg-amber-500/5' : progress?.done ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-border'}`}>
                       <p className="text-xs text-muted-foreground">{t.pluginId}</p>
-                      <p className="text-lg font-semibold tabular-nums">{docs}</p>
+                      {isActive ? (
+                        <p className="text-lg font-semibold tabular-nums text-amber-400">{progress.indexed}...</p>
+                      ) : progress?.done ? (
+                        <p className="text-lg font-semibold tabular-nums text-emerald-400">{progress.indexed}</p>
+                      ) : (
+                        <p className="text-lg font-semibold tabular-nums">{docs}</p>
+                      )}
                       <p className="text-[10px] text-muted-foreground">{t.table}</p>
                     </div>
                   )
