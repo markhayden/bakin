@@ -620,6 +620,32 @@ export async function syncFile(relativePath: string, content: string): Promise<v
 }
 
 /**
+ * Sync hook for file deletions — removes documents from Antfly.
+ * @deprecated Will be replaced by per-plugin ctx.search.remove() calls.
+ */
+export async function syncFileUnlink(relativePath: string): Promise<void> {
+  if (!enabled()) return
+
+  if (relativePath.startsWith('projects/') && relativePath.endsWith('.md')) {
+    const id = relativePath.replace(/\//g, '-').replace('.md', '')
+    await removeDocument(TABLES.projects, id)
+    return
+  }
+
+  if (relativePath.startsWith('assets/') && relativePath.endsWith('.meta.json')) {
+    const assetPath = relativePath.replace('.meta.json', '')
+    await removeDocument(TABLES.assets, assetPath)
+    return
+  }
+
+  if (relativePath.startsWith('team/personas/') && relativePath.endsWith('.md')) {
+    const id = `persona-${relativePath.replace('team/personas/', '').replace('.md', '')}`
+    await removeDocument(TABLES.content, id)
+    return
+  }
+}
+
+/**
  * Index a completed task to Antfly for historical search.
  * @deprecated Will be replaced by tasks plugin using ctx.search.index().
  */
