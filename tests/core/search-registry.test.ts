@@ -4,9 +4,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/core/antfly', () => ({
   enabled: vi.fn(() => true),
   createTable: vi.fn(async () => true),
+  listTables: vi.fn(async () => []),
   indexDocument: vi.fn(async () => {}),
   removeDocument: vi.fn(async () => {}),
   transformDocument: vi.fn(async () => {}),
+  rebuildIndexes: vi.fn(async () => {}),
+  batchIndex: vi.fn(async () => {}),
+  multiQuery: vi.fn(async () => ({ results: [], total: 0, took: 0 })),
   queryTable: vi.fn(async () => ({
     results: [
       { id: 'doc-1', table: 'bakin_tasks', score: 0.95, fields: { title: 'Test task' } },
@@ -42,19 +46,28 @@ vi.mock('@/core/logger', () => ({
   }),
 }))
 
+vi.mock('@/core/sse', () => ({
+  broadcast: vi.fn(),
+}))
+
 import {
   buildSearchAPI,
   getContentTypes,
   getPluginTable,
   createRegisteredTables,
   resetSearchRegistry,
+  reindexContentTypes,
+  crossTableSearch,
 } from '@/core/search-registry'
 import * as antfly from '@/core/antfly'
+import { broadcast } from '@/core/sse'
 
 describe('search-registry', () => {
   beforeEach(() => {
     resetSearchRegistry()
     vi.clearAllMocks()
+    // Restore default — clearAllMocks resets mockReturnValue
+    vi.mocked(antfly.enabled).mockReturnValue(true)
   })
 
   function makeDef(table = 'tasks') {
@@ -186,5 +199,151 @@ describe('search-registry', () => {
     const api = buildSearchAPI('unregistered')
     await api.index('key', { data: 'test' })
     expect(antfly.indexDocument).not.toHaveBeenCalled()
+  })
+
+  // ── reindexContentTypes ─────────────────────────────────────────────
+
+  it('reindexContentTypes indexes all docs via batchIndex', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType({
+      ...makeDef('tasks'),
+      reindex: async function* () {
+        yield { key: 'k1', doc: { title: 'one' } }
+        yield { key: 'k2', doc: { title: 'two' } }
+        yield { key: 'k3', doc: { title: 'three' } }
+      },
+    })
+
+    const results = await reindexContentTypes()
+
+    expect(results).toHaveLength(1)
+    expect(results[0]!.table).toBe('bakin_tasks')
+    expect(results[0]!.indexed).toBe(3)
+    expect(antfly.batchIndex).toHaveBeenCalledWith('bakin_tasks', {
+      k1: { title: 'one' },
+      k2: { title: 'two' },
+      k3: { title: 'three' },
+    })
+  })
+
+  it('reindexContentTypes broadcasts start and complete events', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await reindexContentTypes()
+
+    expect(broadcast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'reindex.start', table: 'bakin_tasks' }),
+    )
+    expect(broadcast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'reindex.complete', table: 'bakin_tasks', indexed: 1 }),
+    )
+  })
+
+  it('reindexContentTypes filters by table name', async () => {
+    const api1 = buildSearchAPI('tasks')
+    api1.registerContentType(makeDef('tasks'))
+    const api2 = buildSearchAPI('assets')
+    api2.registerContentType(makeDef('assets'))
+
+    const results = await reindexContentTypes({ table: 'tasks' })
+
+    expect(results).toHaveLength(1)
+    expect(results[0]!.table).toBe('bakin_tasks')
+  })
+
+  it('reindexContentTypes calls rebuildIndexes when rebuild=true', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await reindexContentTypes({ rebuild: true })
+
+    expect(antfly.rebuildIndexes).toHaveBeenCalledWith('bakin_tasks')
+  })
+
+  it('reindexContentTypes handles generator errors gracefully', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType({
+      ...makeDef('tasks'),
+      reindex: async function* () { throw new Error('boom') },
+    })
+
+    const results = await reindexContentTypes()
+
+    expect(results).toHaveLength(1)
+    expect(results[0]!.error).toContain('boom')
+    expect(results[0]!.indexed).toBe(0)
+  })
+
+  // ── crossTableSearch ────────────────────────────────────────────────
+
+  it('crossTableSearch returns fallback when antfly disabled', async () => {
+    vi.mocked(antfly.enabled).mockReturnValueOnce(false)
+
+    const result = await crossTableSearch('hello')
+
+    expect(result.meta.source).toBe('fallback')
+    expect(result.results).toEqual([])
+  })
+
+  it('crossTableSearch queries single table by name', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const result = await crossTableSearch('build', { table: 'tasks' })
+
+    expect(antfly.queryTable).toHaveBeenCalledWith(
+      'bakin_tasks',
+      'build',
+      expect.objectContaining({ limit: 20 }),
+    )
+    expect(result.meta.source).toBe('antfly')
+    expect(result.results).toHaveLength(1)
+  })
+
+  it('crossTableSearch resolves pluginId to table name', async () => {
+    const api = buildSearchAPI('my-plugin')
+    api.registerContentType(makeDef('widgets'))
+
+    await crossTableSearch('test', { table: 'my-plugin' })
+
+    expect(antfly.queryTable).toHaveBeenCalledWith(
+      'bakin_widgets',
+      'test',
+      expect.anything(),
+    )
+  })
+
+  it('crossTableSearch returns empty for unknown table', async () => {
+    const result = await crossTableSearch('test', { table: 'nonexistent' })
+
+    expect(result.results).toEqual([])
+    expect(result.meta.source).toBe('antfly')
+  })
+
+  it('crossTableSearch queries all tables when no table specified', async () => {
+    const api1 = buildSearchAPI('tasks')
+    api1.registerContentType(makeDef('tasks'))
+    const api2 = buildSearchAPI('assets')
+    api2.registerContentType(makeDef('assets'))
+
+    vi.mocked(antfly.multiQuery).mockResolvedValue({
+      results: [
+        { id: 'd1', table: 'bakin_tasks', score: 0.9, fields: {} },
+        { id: 'd2', table: 'bakin_assets', score: 0.8, fields: {} },
+      ],
+      total: 2,
+      took: 5,
+    })
+
+    const result = await crossTableSearch('hello')
+
+    expect(antfly.multiQuery).toHaveBeenCalledWith(
+      'hello',
+      ['bakin_tasks', 'bakin_assets'],
+      expect.objectContaining({ limit: 20 }),
+    )
+    expect(result.results).toHaveLength(2)
+    expect(result.meta.source).toBe('antfly')
   })
 })

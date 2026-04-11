@@ -7,10 +7,17 @@ import type { BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
 const testDir = join(tmpdir(), `bakin-test-bridge-${Date.now()}`)
 const sidecarDir = join(testDir, 'schedule')
 const sidecarPath = join(sidecarDir, 'sidecar.json')
+const openclawDir = join(testDir, 'openclaw')
+const openclawCronDir = join(openclawDir, 'cron')
 
 // Mock external deps
 vi.mock('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+}))
+
+vi.mock('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => openclawDir,
+  getOpenClawPath: (...segments: string[]) => join(openclawDir, ...segments),
 }))
 
 vi.mock('../../../src/core/logger', () => ({
@@ -177,6 +184,12 @@ describe('schedule/bridge', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mkdirSync(sidecarDir, { recursive: true })
+    mkdirSync(openclawCronDir, { recursive: true })
+    // Write a minimal OpenClaw jobs file so readMergedJobs doesn't wipe sidecar entries as stale
+    writeFileSync(join(openclawCronDir, 'jobs.json'), JSON.stringify({
+      version: 1,
+      jobs: [{ id: 'test-job', name: 'Test Job', schedule: { kind: 'cron', expr: '0 9 * * *' }, enabled: true }],
+    }))
     mockCreateTask.mockResolvedValue({ id: 'task-abc', workflowId: undefined })
 
     // Reset taskboard
