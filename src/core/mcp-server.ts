@@ -1,9 +1,13 @@
 /**
  * Bakin MCP Server.
  *
- * Exposes agent-facing operations as MCP tools over Streamable HTTP.
+ * Exposes agent-facing operations as MCP tools over Streamable HTTP and SSE.
  * Agents connect to /mcp?agent=<name> and get tools for task management,
  * progress logging, workflow step submission, etc.
+ *
+ * Supports two transports:
+ * - Streamable HTTP (POST-only, session ID in headers) — modern MCP clients
+ * - SSE (GET to establish stream, POST to send messages) — mcporter and legacy clients
  *
  * All tools are registered dynamically via the exec tool registry:
  * - Plugin tools: registered via ctx.registerExecTool() in plugin activate()
@@ -16,6 +20,7 @@ import { randomUUID } from 'crypto'
 import type { IncomingMessage, ServerResponse } from 'http'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
 import { appendAudit } from './audit'
@@ -44,6 +49,15 @@ interface McpSession {
 }
 
 const sessions = new Map<string, McpSession>()
+
+// SSE sessions are keyed by session ID from the SSE transport
+interface SseSession {
+  server: McpServer
+  transport: SSEServerTransport
+  agentId: string
+  createdAt: number
+}
+const sseSessions = new Map<string, SseSession>()
 
 // ---------------------------------------------------------------------------
 // In-memory stats (reset on server restart)
@@ -81,8 +95,15 @@ setInterval(() => {
       cleaned++
     }
   }
+  for (const [id, session] of sseSessions) {
+    if (now - session.createdAt > SESSION_TTL_MS) {
+      session.transport.close?.()
+      sseSessions.delete(id)
+      cleaned++
+    }
+  }
   if (cleaned > 0) {
-    log.info('Cleaned up stale MCP sessions', { cleaned, remaining: sessions.size })
+    log.info('Cleaned up stale MCP sessions', { cleaned, remaining: sessions.size + sseSessions.size })
   }
 }, 5 * 60 * 1000)
 
@@ -212,28 +233,73 @@ export async function handleMcpRequest(
   }
 
   const agentId = url.searchParams.get('agent')
-  const existingSessionId = req.headers['mcp-session-id'] as string | undefined
 
-  if (existingSessionId) {
-    const session = sessions.get(existingSessionId)
-    if (!session) {
-      res.writeHead(404, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: 'Session not found' }))
+  // ─── SSE Transport (GET) ───────────────────────────────────────────
+  // Legacy clients (mcporter) connect via GET to establish an SSE stream.
+  // The SSE transport sends an `endpoint` event with a POST URL for messages.
+  if (method === 'GET') {
+    if (!agentId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'agent query parameter required (e.g. /mcp?agent=basil)' }))
       return
     }
 
-    if (method === 'DELETE') {
-      await session.transport.handleRequest(req, res)
-      sessions.delete(existingSessionId)
-      log.info('MCP session closed', { sessionId: existingSessionId, agent: session.agentId })
-      return
-    }
+    const server = new McpServer(
+      { name: 'bakin', version: '1.0.0' },
+      { capabilities: { logging: {} } },
+    )
+    registerTools(server, () => agentId)
 
-    await session.transport.handleRequest(req, res)
+    // The endpoint is where the SSE client will POST messages back.
+    // Use /mcp with a sessionId query param so we can route them.
+    const transport = new SSEServerTransport(`/mcp`, res)
+    await server.connect(transport)
+    await transport.start()
+
+    const sid = transport.sessionId
+    sseSessions.set(sid, { server, transport, agentId, createdAt: Date.now() })
+    log.info('SSE MCP session created', { sessionId: sid, agent: agentId })
+
+    // Clean up on disconnect
+    res.on('close', () => {
+      transport.close?.()
+      sseSessions.delete(sid)
+      log.info('SSE MCP session closed', { sessionId: sid, agent: agentId })
+    })
     return
   }
 
+  // ─── POST: route to correct transport ──────────────────────────────
   if (method === 'POST') {
+    const body = await parseBody(req)
+
+    // Check for Streamable HTTP session (header-based)
+    const existingSessionId = req.headers['mcp-session-id'] as string | undefined
+    if (existingSessionId) {
+      const session = sessions.get(existingSessionId)
+      if (!session) {
+        res.writeHead(404, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Session not found' }))
+        return
+      }
+      await session.transport.handleRequest(req, res, body)
+      return
+    }
+
+    // Check for SSE session (query param-based — SSE transport POSTs to /mcp?sessionId=...)
+    const sseSessionId = url.searchParams.get('sessionId')
+    if (sseSessionId) {
+      const sseSession = sseSessions.get(sseSessionId)
+      if (!sseSession) {
+        res.writeHead(404, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'SSE session not found' }))
+        return
+      }
+      await sseSession.transport.handlePostMessage(req, res, body)
+      return
+    }
+
+    // New Streamable HTTP session
     if (!agentId) {
       res.writeHead(400, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'agent query parameter required (e.g. /mcp?agent=basil)' }))
@@ -243,7 +309,6 @@ export async function handleMcpRequest(
     const session = createSession(agentId)
     await session.server.connect(session.transport)
 
-    const body = await parseBody(req)
     await session.transport.handleRequest(req, res, body)
 
     const sid = session.transport.sessionId
@@ -254,8 +319,25 @@ export async function handleMcpRequest(
     return
   }
 
-  res.writeHead(400, { 'Content-Type': 'application/json' })
-  res.end(JSON.stringify({ error: 'POST required for session initialization' }))
+  // ─── DELETE: close Streamable HTTP session ─────────────────────────
+  if (method === 'DELETE') {
+    const existingSessionId = req.headers['mcp-session-id'] as string | undefined
+    if (existingSessionId) {
+      const session = sessions.get(existingSessionId)
+      if (session) {
+        await session.transport.handleRequest(req, res)
+        sessions.delete(existingSessionId)
+        log.info('MCP session closed', { sessionId: existingSessionId, agent: session.agentId })
+        return
+      }
+    }
+    res.writeHead(404, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ error: 'Session not found' }))
+    return
+  }
+
+  res.writeHead(405, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify({ error: 'Method not allowed. Use GET (SSE) or POST (Streamable HTTP).' }))
 }
 
 // ---------------------------------------------------------------------------
