@@ -315,8 +315,12 @@ async function checkSearchTables(): Promise<DiagnosticResult[]> {
       const rawNumDocs = Number((t.stats as Record<string, unknown>).num_docs)
       if (Number.isFinite(rawNumDocs)) {
         if (rawNumDocs === 0) {
-          emptyTables++
-          results.push(warn('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 documents — run: POST /api/reindex?table=${t.table}`))
+          if (t.pluginId === 'schedule') {
+            results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 persisted documents; schedule jobs are indexed at runtime`))
+          } else {
+            emptyTables++
+            results.push(warn('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 documents — run: POST /api/reindex?table=${t.table}`))
+          }
         }
         continue
       }
