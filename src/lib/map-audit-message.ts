@@ -19,8 +19,26 @@ export function mapAuditMessage(event: string, data: Record<string, unknown>): s
     case 'workflow.gate_approved': return `Approved: ${data.label || 'gate'}`
     case 'workflow.gate_rejected': return `Rejected: ${data.label || 'gate'}${data.reason ? ` — ${data.reason}` : ''}`
     case 'workflow.complete': return `Workflow complete${data.workflowId ? ` (${data.workflowId})` : ''}`
-    default: return event
+    default: {
+      // Exec tool events: use label from audit data, fall back to humanized name
+      if (event.startsWith('exec.')) {
+        const suffix = event.endsWith('.fail') ? ' (failed)' : event.endsWith('.error') ? ' (error)' : ''
+        if (data.label) return `${data.label}${suffix}`
+        const toolName = event.replace(/^exec\./, '').replace(/\.(ok|fail|error)$/, '')
+        return humanizeExecName(toolName) + suffix
+      }
+      return event
+    }
   }
+}
+
+/** Convert an exec tool name like "bakin_exec_foo_bar" into "Foo bar" */
+export function humanizeExecName(name: string): string {
+  const stripped = name.replace(/^bakin_exec_/, '')
+  const words = stripped.split('_')
+  if (words.length === 0) return name
+  words[0] = words[0].charAt(0).toUpperCase() + words[0].slice(1)
+  return words.join(' ')
 }
 
 /** Filter out infrastructure noise that isn't useful in the user-facing feed */
