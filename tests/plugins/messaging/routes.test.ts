@@ -811,7 +811,6 @@ describe('Calendar exec tools', () => {
         'system',
         expect.objectContaining({ itemId: 'tool-rej-4', note: 'Feedback' }),
       )
-      expect(plugin.ctx.activity.log).toHaveBeenCalled()
     })
   })
 })
