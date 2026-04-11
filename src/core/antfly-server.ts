@@ -5,7 +5,7 @@
  */
 import { spawn, type ChildProcess } from 'child_process'
 import { join } from 'path'
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 
@@ -90,58 +90,16 @@ export async function start(): Promise<boolean> {
   const dataDir = join(process.env.HOME || '~', '.antfly', 'data')
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
 
-  // Write an Antfly config file with two settings:
-  //
-  //   remote_content.security.block_private_ips: false
-  //     Lets Antfly's remotePDF and remoteMedia template helpers fetch
-  //     from the loopback-only internal file server. The key is
-  //     remote_content.*, NOT content_security.* — the latter is defined
-  //     in viper defaults but SetDefaultSecurityConfig() is never called
-  //     so it's a documented-but-dead no-op. The working path runs
-  //     through scraping.InitRemoteContentConfig(&config.RemoteContent)
-  //     in cmd/antfly/cmd/utils.go:144. Safe here because Bakin is a
-  //     single-user deployment where Antfly is fully controlled by
-  //     Bakin and no untrusted input reaches template helpers.
-  //
-  //   termite.api_url: http://0.0.0.0:11433
-  //     Providing a config file somehow bypasses viper's SetDefault for
-  //     termite.api_url (set in swarm.go:81), leaving config.Termite.
-  //     ApiUrl empty. utils.go:149 skips libtermite.SetDefaultURL() when
-  //     the URL is empty, and every downstream embedder then fails with
-  //     "termite URL is required". Setting it explicitly in the config
-  //     restores the default. Also set ANTFLY_TERMITE_URL env var as
-  //     belt-and-suspenders — it's read directly via os.Getenv in
-  //     termite.ResolveURL() and bypasses all viper gotchas.
-  const configPath = join(process.env.HOME || '~', '.antfly', 'bakin-managed.yaml')
-  const TERMITE_URL = 'http://0.0.0.0:11433'
-  try {
-    writeFileSync(
-      configPath,
-      [
-        'termite:',
-        `  api_url: ${TERMITE_URL}`,
-        'remote_content:',
-        '  security:',
-        '    block_private_ips: false',
-        '',
-      ].join('\n'),
-      'utf-8',
-    )
-  } catch (err) {
-    log.warn('Failed to write Antfly config — multimodal fetches may be blocked', err)
-  }
-
-  log.info('Starting Antfly server...', { binary, url, configPath })
+  log.info('Starting Antfly server...', { binary, url })
 
   try {
     const baseUrl = url.replace(/\/api\/v1\/?$/, '').replace('localhost', '0.0.0.0')
-    antflyProcess = spawn(binary, ['--config', configPath, 'swarm', '--metadata-api', baseUrl], {
+    antflyProcess = spawn(binary, ['swarm', '--metadata-api', baseUrl], {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
       env: {
         ...process.env,
         ANTFLY_DATA_DIR: dataDir,
-        ANTFLY_TERMITE_URL: TERMITE_URL,
       },
     })
 

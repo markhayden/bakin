@@ -25,8 +25,7 @@ import { saveAsset } from './lib/save-asset'
 import { registerSyncHook } from '../../src/core/watcher'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
-import { buildAssetUrl } from '../../src/core/antfly-internal-server'
-import { getSettings } from '../../src/core/settings'
+import { buildAssetFileUrl } from './lib/asset-url'
 
 const log = createLogger('assets')
 
@@ -138,28 +137,25 @@ const assetsPlugin: BakinPlugin = {
     })
 
     /**
-     * Compute pdf_url / image_url for multimodal indexing. Only PDFs get a
-     * pdf_url, only files under asset_type='images' get an image_url. When
-     * the internal file server token is missing (should only happen if
-     * server.ts boot ordering is broken), the URLs are left empty so the
-     * Handlebars {{#if}} guards in the embedding templates skip the
-     * remotePDF/remoteMedia helpers cleanly rather than hitting a 401.
+     * Compute pdf_url / image_url for multimodal indexing. Only PDFs get
+     * a pdf_url, only files under asset_type='images' get an image_url.
+     * URLs are `file://` references — Antfly's scraping layer reads them
+     * directly from disk, bypassing the HTTP path entirely (and its
+     * hardcoded private-IP block). The Handlebars {{#if}} guards in the
+     * embedding templates skip the helper when the URL is empty so non-
+     * PDF, non-image assets still index via their sidecar metadata.
      */
     function computeMediaUrls(
       assetRelPath: string,
       filename: string,
       assetType: string,
     ): { pdf_url: string; image_url: string } {
-      const settings = getSettings()
-      const { port, token } = settings.antfly.internal
-      if (!token) return { pdf_url: '', image_url: '' }
-
       const isPdf = filename.toLowerCase().endsWith('.pdf')
       const isImage = assetType === 'images'
 
       return {
-        pdf_url: isPdf ? buildAssetUrl(assetRelPath, port, token) : '',
-        image_url: isImage ? buildAssetUrl(assetRelPath, port, token) : '',
+        pdf_url: isPdf ? buildAssetFileUrl(assetRelPath) : '',
+        image_url: isImage ? buildAssetFileUrl(assetRelPath) : '',
       }
     }
 
