@@ -310,7 +310,36 @@ When `autoArchiveDays > 0`, the plugin deletes `flow_runs` rows with `status IN 
 - When a dependency completes (moves to done), `checkAndContinueDependents` finds and unblocks/dispatches dependent tasks
 
 ### Antfly Search
-- Completed tasks are indexed in Antfly for full-text search via `indexCompletedTask`
+
+Tasks are indexed in Antfly via `ctx.search` for hybrid (semantic + full-text) search. All task statuses are indexed, not just completed ones.
+
+**Table:** `bakin_tasks`
+
+**Schema:**
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `title` | text | Task title |
+| `description` | text | Task description |
+| `agent` | keyword | Assigned agent |
+| `created_by` | keyword | Who created the task |
+| `status` | keyword | Current column (todo, inProgress, done, etc.) |
+| `project_id` | keyword | Linked project ID |
+| `workflow_id` | keyword | Workflow ID if workflow task |
+| `log_text` | text | Concatenated log entries |
+| `blocked_reason` | text | Block reason (if blocked) |
+| `updated_at` | datetime | Last update timestamp |
+
+**Indexing triggers** (all in `plugins/tasks/index.ts`):
+- `ctx.search.index(id)` after: create, update, move, block, complete (both REST and MCP)
+- `ctx.search.remove(id)` after: delete (both REST and MCP)
+- `ctx.search.transform(id, [{op: '$set', field: 'agent', value}])` after: assign (metadata-only, skips re-embedding)
+
+**Chunker:** enabled (`targetTokens: 200, overlapTokens: 25`) — splits long `log_text` fields.
+
+**Reindex:** `reindex()` generator reads all tasks from all columns via `readTaskboard()`.
+
+**Note:** `indexCompletedTask()` in `src/core/antfly.ts` is deprecated. All search indexing is now handled by the tasks plugin via `ctx.search`.
 
 ## Date Handling
 
