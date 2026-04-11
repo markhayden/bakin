@@ -10,6 +10,7 @@ import { matchAll } from '@antfly/sdk'
 import type { QueryRequest, QueryResult, QueryHit } from '@antfly/sdk'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
+import { embeddersHash } from './embedder-resolver'
 
 const log = createLogger('antfly')
 
@@ -63,8 +64,7 @@ export interface SearchResult {
 // ---------------------------------------------------------------------------
 
 function embedderHash(settings: ReturnType<typeof getSettings>): string {
-  const e = settings.antfly.embedder
-  return `${e.provider}:${e.model}`
+  return embeddersHash(settings)
 }
 
 function resolveTable(table: string): string {

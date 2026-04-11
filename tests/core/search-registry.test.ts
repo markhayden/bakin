@@ -29,10 +29,14 @@ vi.mock('@/core/settings', () => ({
       enabled: true,
       url: 'http://localhost:8080',
       search: { strategy: 'rrf', defaultLimit: 20 },
-      embedder: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
+      embedders: {
+        default: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
+        visual: { provider: 'antfly', model: 'clip-vit-base-patch32' },
+      },
       chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
       auditTtl: '90d',
       cleanupInterval: '24h',
+      internal: { token: '', port: 3738 },
     },
   })),
 }))
