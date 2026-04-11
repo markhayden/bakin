@@ -9,11 +9,11 @@ vi.mock('@/core/settings', () => ({
       search: {
         strategy: 'rrf',
         defaultLimit: 20,
-        reranker: { enabled: true, provider: 'termite', model: 'mxbai-rerank-base-v1', threshold: 0.0 },
+        reranker: { enabled: true, provider: 'termite', model: 'mixedbread-ai/mxbai-rerank-base-v1', threshold: 0.0 },
       },
       embedders: {
         default: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
-        visual: { provider: 'antfly', model: 'clip-vit-base-patch32' },
+        visual: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
       },
       chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
       auditTtl: '90d',
