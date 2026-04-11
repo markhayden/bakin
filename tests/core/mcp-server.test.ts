@@ -71,10 +71,10 @@ describe('MCP Server', () => {
     expect(res._body).toContain('agent query parameter required')
   })
 
-  it('should return 404 for unknown session ID', async () => {
+  it('should return 404 for unknown Streamable HTTP session ID', async () => {
     const { handleMcpRequest } = await import('@/core/mcp-server')
 
-    const req = createMockRequest('GET', '/mcp', null, { 'mcp-session-id': 'nonexistent' })
+    const req = createMockRequest('POST', '/mcp', {}, { 'mcp-session-id': 'nonexistent' })
     const res = createMockResponse()
 
     await handleMcpRequest(req, res)

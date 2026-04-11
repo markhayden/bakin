@@ -1,4 +1,4 @@
-# Beacon
+# Bakin
 
 Multi-agent mission control for [OpenClaw](https://openclaw.dev). A plugin-based dashboard and backend that coordinates AI agents — task management, content calendars, real-time activity feeds, health checks, and search.
 
@@ -19,7 +19,7 @@ npm run dev
 open http://localhost:3737
 ```
 
-The server auto-creates a `content/` directory on first run with default settings and required subdirectories.
+The server auto-creates a `~/.bakin/` directory on first run with default settings and required subdirectories.
 
 ### Mock Dev
 
@@ -56,22 +56,22 @@ Today the required CI lane focuses on `test` and `build`, while `lint` and `type
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3737` | Server port |
-| `BEACON_URL` | `http://localhost:3737` | Used by the CLI to reach the server |
+| `BAKIN_URL` | `http://localhost:3737` | Used by the CLI to reach the server |
 
 ---
 
 ## Architecture
 
 ```
-beacon/
+bakin/
 ├── server.ts              # Custom HTTP server (Next.js + API routes + subsystems)
-├── mc.config.ts            # Plugin configuration
-├── cli/beacon.ts           # CLI tool
+├── bakin.config.ts         # Plugin configuration
+├── cli/bakin.ts            # CLI tool
 ├── skill/SKILL.md          # OpenClaw skill (agent instructions)
 ├── src/
 │   ├── app/                # Next.js pages (dashboard UI)
 │   ├── core/               # Backend subsystems
-│   │   ├── settings.ts     # Centralized settings (content/.beacon/settings.json)
+│   │   ├── settings.ts     # Centralized settings (~/.bakin/settings.json)
 │   │   ├── openclaw-client.ts  # HTTP client for OpenClaw gateway
 │   │   ├── dispatch.ts     # Task dispatch loop
 │   │   ├── watchdog.ts     # Stuck task detection + alerts
@@ -88,6 +88,8 @@ beacon/
 │   │   ├── middleware.ts       # Request validation
 │   │   ├── api-docs.ts         # Self-documenting API
 │   │   ├── agents.ts           # Agent status + communication
+│   │   ├── mcp-server.ts       # MCP tool server (Streamable HTTP + SSE)
+│   │   ├── discord-gateway.ts  # Discord WebSocket gateway (interaction buttons)
 │   │   ├── migrations.ts       # Plugin data migrations
 │   │   └── plugin-installer.ts # Plugin install/remove
 │   ├── lib/                # Shared utilities (plugin system, storage, event bus)
@@ -95,18 +97,16 @@ beacon/
 │   └── context/            # React context providers
 ├── plugins/                # Plugin packages
 │   ├── tasks/              # Kanban task management
-│   ├── calendar/           # Content calendar pipeline
+│   ├── workflows/          # Workflow execution engine
+│   ├── assets/             # Asset management
+│   ├── projects/           # Project tracking
+│   ├── schedule/           # Cron job scheduling
+│   ├── messaging/          # Content calendar + brainstorm
 │   ├── memory/             # Audit logs + agent workspaces
 │   ├── models/             # AI model configuration
-│   └── workflows/          # Workflow template library
-├── content/                # Runtime data (auto-created)
-│   ├── MEMORY-LOG.md       # Decision log
-│   ├── calendar.json       # Calendar items
-│   ├── audit.jsonl         # Audit trail
-│   ├── .beacon/settings.json   # Settings
-│   ├── team/personas/      # Agent personality files
-│   ├── docs/API.md         # Auto-generated API docs
-│   └── assets/             # Generated content (images, video, etc.)
+│   ├── team/               # Agent team management
+│   └── health/             # System health dashboard
+├── scripts/lib/            # MCP exec tools (self-registering)
 └── tests/                  # Vitest test suites
 ```
 
@@ -120,7 +120,7 @@ On startup, the server initializes these subsystems:
 | **Watchdog** | Detects stuck tasks, alerts via Discord | 5 min |
 | **Doctor** | Health checks, auto-repair, skill sync | 30 min |
 | **Calendar Cron** | Executes scheduled content items | 5 min |
-| **File Watcher** | Monitors `content/` for changes, broadcasts SSE events | Real-time |
+| **File Watcher** | Monitors `~/.bakin/` for changes, broadcasts SSE events | Real-time |
 | **SSE** | Real-time event stream to dashboard clients | 30s keepalive |
 
 All subsystems shut down gracefully on SIGTERM/SIGINT.
@@ -129,25 +129,30 @@ All subsystems shut down gracefully on SIGTERM/SIGINT.
 
 ## Plugins
 
-Plugins are configured in `mc.config.ts` and loaded at startup. Each plugin can register API routes, navigation items, and event handlers.
+Plugins are configured in `bakin.config.ts` and loaded at startup. Each plugin can register API routes, navigation items, exec tools, and event handlers.
 
 | Plugin | Description | Key Routes |
 |--------|-------------|------------|
-| **tasks** | Kanban board backed by OpenClaw `flow_runs` SQLite | `/api/plugins/tasks/` (CRUD + move, log, block) |
-| **calendar** | Content pipeline (draft → published) | `/api/plugins/calendar/` |
-| **memory** | Audit log viewer + agent workspace inspector | `/api/plugins/memory/audit`, `/workspace` |
-| **models** | Agent model assignments + available models | `/api/plugins/models/*` |
-| **workflows** | Reusable workflow templates | `/api/plugins/workflows/definitions`, `/steps/:taskId` |
+| **tasks** | Kanban board with drag-and-drop | `/api/plugins/tasks/` (CRUD + move, log, block) |
+| **workflows** | Workflow execution engine with gates | `/api/plugins/workflows/` |
+| **assets** | Asset management with sidecar metadata | `/api/plugins/assets/` |
+| **projects** | Project tracking with checklists | `/api/plugins/projects/` |
+| **schedule** | Cron job scheduling | `/api/plugins/schedule/` |
+| **messaging** | Content calendar + brainstorm sessions | `/api/plugins/messaging/` |
+| **memory** | Audit log viewer + agent workspaces | `/api/plugins/memory/` |
+| **models** | Agent model assignments | `/api/plugins/models/` |
+| **team** | Agent team management (OpenClaw adapter) | `/api/plugins/team/` |
+| **health** | System health dashboard | `/api/plugins/health/` |
 
 ---
 
 ## API
 
-Beacon exposes a REST API on the same port as the dashboard. Full documentation is:
+Bakin exposes a REST API on the same port as the dashboard. Full documentation is:
 
-- **Auto-generated** at startup → written to `content/docs/API.md`
+- **Auto-generated** at startup → written to `~/.bakin/docs/API.md`
 - **Served as JSON** at `GET /api/docs`
-- **Viewable in the CLI** via `beacon docs`
+- **Viewable in the CLI** via `bakin docs`
 
 ### Core Endpoints
 
@@ -166,83 +171,82 @@ Beacon exposes a REST API on the same port as the dashboard. Full documentation 
 | `GET` | `/api/search` | Search indexed content (`?q=<query>&table=&agent=&limit=`) |
 | `GET` | `/api/docs` | API documentation (JSON) |
 | `POST` | `/api/reindex` | Reindex all content to Antfly |
-| `POST` | `/api/plugins/install` | Install a plugin |
-| `POST` | `/api/plugins/remove` | Remove a plugin |
+| `POST` | `/mcp` | MCP tool server (Streamable HTTP + SSE) |
 
-API docs are regenerated automatically every time the server starts. No manual step needed.
+API docs are regenerated automatically every time the server starts.
 
 ---
 
 ## CLI
 
-The `beacon` CLI wraps the HTTP API for terminal use. All commands hit `http://localhost:3737` (or `$BEACON_URL`).
+The `bakin` CLI wraps the HTTP API for terminal use. All commands hit `http://localhost:3737` (or `$BAKIN_URL`).
 
 ```bash
 # System
-beacon status                        # Health overview
-beacon doctor                        # Run health checks
-beacon dispatch                      # Trigger task dispatch
+bakin status                        # Health overview
+bakin doctor                        # Run health checks
+bakin dispatch                      # Trigger task dispatch
 
 # Tasks
-beacon tasks list                    # All tasks
-beacon tasks list --column=todo      # Filter by column
-beacon tasks create "Fix the bug"    # Create task
-beacon tasks move abc123 done        # Move task
+bakin tasks list                    # All tasks
+bakin tasks list --column=todo      # Filter by column
+bakin tasks create "Fix the bug"    # Create task
+bakin tasks move abc123 done        # Move task
 
 # Agents
-beacon agents list                   # All agents + status
-beacon agents status patch           # Detailed status
-beacon agents tasks patch            # Tasks for agent
-beacon agents send patch "Hey"       # Message an agent
+bakin agents list                   # All agents + status
+bakin agents status patch           # Detailed status
+bakin agents tasks patch            # Tasks for agent
+bakin agents send patch "Hey"       # Message an agent
 
 # Settings
-beacon settings get                  # All settings
-beacon settings get dispatch.intervalMs
-beacon settings set watchdog.stuckThresholdMs 3600000
+bakin settings get                  # All settings
+bakin settings get dispatch.intervalMs
+bakin settings set watchdog.stuckThresholdMs 3600000
 
 # Plugins
-beacon plugins list                  # Installed plugins
-beacon plugins install ./my-plugin   # Install from path
-beacon plugins install github:user/repo  # Install from GitHub
-beacon plugins remove my-plugin      # Remove plugin
+bakin plugins list                  # Installed plugins
+bakin plugins install ./my-plugin   # Install from path
+bakin plugins install github:user/repo  # Install from GitHub
+bakin plugins remove my-plugin      # Remove plugin
 
 # Search & Docs
-beacon search "runway video"                    # Search all indexed content
-beacon search "tacos" --table=content           # Filter by table
-beacon search "deploy fix" --agent=patch        # Filter by agent
-beacon search "photos" --table=content --limit=5  # Combine filters
-beacon docs                                     # Print API docs
-beacon reindex                                  # Reindex content to Antfly
+bakin search "runway video"                    # Search all indexed content
+bakin search "tacos" --table=content           # Filter by table
+bakin search "deploy fix" --agent=patch        # Filter by agent
+bakin search "photos" --table=content --limit=5  # Combine filters
+bakin docs                                     # Print API docs
+bakin reindex                                  # Reindex content to Antfly
 ```
 
 ---
 
 ## Doctor
 
-Beacon Doctor runs on startup and every 30 minutes to keep systems healthy. It performs 6 checks:
+Bakin Doctor runs on startup and every 30 minutes to keep systems healthy. It performs 6 checks:
 
 | Check | Auto-Fix? | Description |
 |-------|-----------|-------------|
-| **agent-roster** | No | Verifies Beacon agents match OpenClaw config |
+| **agent-roster** | No | Verifies Bakin agents match OpenClaw config |
 | **personas** | Yes | Creates stub persona files for missing agents |
 | **taskboard** | No | Validates OpenClaw `flow_runs` SQLite is accessible |
-| **skill** | Yes | Installs/updates the Beacon skill in OpenClaw |
+| **skill** | Yes | Installs/updates the Bakin skill in OpenClaw |
 | **gateway** | No | Pings the OpenClaw gateway |
 | **antfly** | No | Verifies Antfly connection when enabled |
 
 **Auto-fix policy:**
-- **Safe** (auto-fix): Creating files/directories, installing the Beacon skill
+- **Safe** (auto-fix): Creating files/directories, installing the Bakin skill
 - **Unsafe** (notify): Roster mismatches, gateway down, task DB issues — issues requiring human judgment are reported to main-operator via OpenClaw
 
-Run manually: `beacon doctor` or `GET /api/plugins/health/doctor?fresh=true`
+Run manually: `bakin doctor` or `GET /api/plugins/health/doctor?fresh=true`
 
 ---
 
 ## OpenClaw Skill
 
-Beacon includes a skill file at `skill/SKILL.md` that teaches OpenClaw agents how to interact with Beacon. The skill covers task lifecycle rules, required API calls, logging requirements, and content locations.
+Bakin includes a skill file at `skill/SKILL.md` that teaches OpenClaw agents how to interact with Bakin. The skill covers task lifecycle rules, required API calls, logging requirements, and content locations.
 
-Doctor automatically installs this skill to `~/.openclaw/workspace/skills/beacon/` and keeps it in sync as you update it. Verify with:
+Doctor automatically installs this skill to `~/.openclaw/workspace/skills/bakin/` and keeps it in sync as you update it. Verify with:
 
 ```bash
 openclaw skills list
@@ -252,12 +256,12 @@ openclaw skills list
 
 ## Antfly (Vector Search)
 
-[AntflyDB](https://antfly.dev) provides hybrid search (full-text BM25 + semantic vector) across all content. Beacon works without it — file-only mode is the default. When enabled, Beacon auto-manages the entire lifecycle: installs the binary, starts the server, creates tables with embeddings, indexes content, and stops it on shutdown.
+[AntflyDB](https://antfly.dev) provides hybrid search (full-text BM25 + semantic vector) across all content. Bakin works without it — file-only mode is the default. When enabled, Bakin auto-manages the entire lifecycle: installs the binary, starts the server, creates tables with embeddings, indexes content, and stops it on shutdown.
 
 ### Quick Setup
 
 ```bash
-beacon setup antfly    # Install binary + enable + reindex (one command)
+bakin setup antfly    # Install binary + enable + reindex (one command)
 ```
 
 This will:
@@ -275,46 +279,48 @@ If you prefer to set it up yourself:
 # Install the binary
 brew install --cask antflydb/antfly/antfly
 
-# Enable in Beacon
-beacon settings set antfly.enabled true
+# Enable in Bakin
+bakin settings set antfly.enabled true
 
-# Restart Beacon (Antfly auto-starts, creates tables, waits for shards)
+# Restart Bakin (Antfly auto-starts, creates tables, waits for shards)
 npm run dev
 
 # Backfill existing content
-beacon reindex
+bakin reindex
 ```
 
 ### How It Works
 
-- **Auto-start:** Beacon spawns `antfly swarm` as a child process on boot (port 8080)
-- **Auto-stop:** Killed gracefully on Beacon shutdown (SIGTERM, force after 5s)
-- **Auto-tables:** 5 tables created on first run with full-text + embeddings indexes
+- **Auto-start:** Bakin spawns `antfly swarm` as a child process on boot (port 8080)
+- **Auto-stop:** Killed gracefully on Bakin shutdown (SIGTERM, force after 5s)
+- **Auto-tables:** Tables created on first run with full-text + embeddings indexes
 - **Embeddings:** Built-in all-MiniLM-L6-v2 model (384-dim, INT8-quantized) — no external model server needed
 - **Dual-write sync:** File watcher indexes content to Antfly on every write
 - **Fire-and-forget:** All indexing is non-blocking — file writes succeed even if Antfly is down
-- **External Antfly:** If Antfly is already running on port 8080 (started externally), Beacon detects it and skips spawning a child process
+- **External Antfly:** If Antfly is already running on port 8080 (started externally), Bakin detects it and skips spawning a child process
 
 ### What Gets Indexed
 
 | Table | Source | Indexed When |
 |-------|--------|-------------|
-| `beacon_tasks` | Completed tasks | On move to Done |
-| `beacon_decisions` | `MEMORY-LOG.md` | On file write |
-| `beacon_audit` | `audit.jsonl` | On every audit event |
-| `beacon_content` | Project docs, personas, calendar | On file write |
-| `beacon_assets` | Generated assets | On create |
+| `bakin_tasks` | Completed tasks | On move to Done |
+| `bakin_audit` | `audit.jsonl` | On every audit event |
+| `bakin_assets` | Generated assets | On create |
+| `bakin_projects` | Project files | On file write |
+| `bakin_workflows` | Workflow instances | On state change |
+| `bakin_schedule` | Scheduled jobs | On create/update |
+| `bakin_team` | Agent profiles | On profile change |
 
 ### Search
 
 ```bash
-beacon search "runway video clips"                   # All tables
-beacon search "landscape shots" --table=content       # Single table
-beacon search "deploy fix" --agent=patch              # By agent
-beacon search "portraits" --table=assets --limit=20   # Combined filters
+bakin search "runway video clips"                   # All tables
+bakin search "landscape shots" --table=assets        # Single table
+bakin search "deploy fix" --agent=patch              # By agent
+bakin search "portraits" --table=assets --limit=20   # Combined filters
 
 # API
-curl "http://localhost:3737/api/search?q=runway+video&table=content&agent=pixel&limit=5"
+curl "http://localhost:3737/api/search?q=runway+video&table=assets&agent=pixel&limit=5"
 ```
 
 ### Antfly Dashboard
@@ -325,11 +331,11 @@ When running, Antfly serves its own dashboard at `http://localhost:11433` for in
 
 ## Settings
 
-All configuration lives in `content/.beacon/settings.json`. Created with defaults on first run. Update via API or CLI.
+All configuration lives in `~/.bakin/settings.json`. Created with defaults on first run. Update via API or CLI.
 
 ```bash
-beacon settings get                  # View all
-beacon settings set dispatch.intervalMs 600000   # 10 min dispatch
+bakin settings get                  # View all
+bakin settings set dispatch.intervalMs 600000   # 10 min dispatch
 ```
 
 Key defaults:
@@ -365,7 +371,7 @@ Component tests live in `tests/components/**/*.test.tsx` and use a per-file `// 
 
 ## OpenClaw Communication
 
-Beacon communicates with the OpenClaw gateway via HTTP (not CLI exec). The gateway runs on port `18789` by default.
+Bakin communicates with the OpenClaw gateway via HTTP (not CLI exec). The gateway runs on port `18789` by default.
 
 - **Send messages to agents:** `POST /v1/chat/completions`
 - **Invoke tools:** `POST /tools/invoke`
@@ -374,8 +380,8 @@ Beacon communicates with the OpenClaw gateway via HTTP (not CLI exec). The gatew
 Configure the gateway connection:
 
 ```bash
-beacon settings set openclaw.gatewayUrl http://127.0.0.1
-beacon settings set openclaw.gatewayPort 18789
+bakin settings set openclaw.gatewayUrl http://127.0.0.1
+bakin settings set openclaw.gatewayPort 18789
 ```
 
 ---
@@ -403,10 +409,10 @@ npm run build     # Production build
 
 ### Project Conventions
 
-- **TypeScript strict mode** with path aliases (`@/` → `src/`, `@mc/*` → `plugins/*`)
+- **TypeScript strict mode** with path aliases (`@/` → `src/`, `@bakin/*` → `plugins/*`)
 - **Hybrid storage** — tasks in OpenClaw SQLite, decisions and content as files in `~/.bakin/`
-- **Plugin architecture** — extend via `plugins/` directory and `mc.config.ts`
-- **Structured audit logging** — all state changes logged to `content/audit.jsonl`
+- **Plugin architecture** — extend via `plugins/` directory and `bakin.config.ts`
+- **Structured audit logging** — all state changes logged to `~/.bakin/audit.jsonl`
 - **OpenClaw HTTP client** — no CLI exec; all agent communication goes through the gateway API
 
 ---

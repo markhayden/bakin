@@ -32,8 +32,11 @@ import type {
 import { loadDefinition } from './parser'
 import { loadSkill } from './skill-loader'
 import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
-import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyStepDispatched, notifyStepComplete } from './notifications'
+import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyStepDispatched, notifyStepComplete, sendDiscordGateAlert, getDiscordGateSettings } from './notifications'
 import { getContentDir } from './content-dir'
+import { createLogger } from '@/core/logger'
+
+const log = createLogger('workflow-runtime')
 
 /**
  * Create a board task for a nested workflow so it's visible in the UI.
@@ -742,6 +745,23 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     const priorStep = def.steps[nextIdx - 1]
     const priorOutput = priorStep ? instance.stepStates[priorStep.id]?.output : undefined
     notifyGateReached(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput)
+
+    // Send Discord gate alert with approve/reject buttons (fire-and-forget)
+    const dSettings = getDiscordGateSettings()
+    if (dSettings?.discordGateAlerts) {
+      sendDiscordGateAlert(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput, dSettings)
+        .then((messageId) => {
+          if (messageId) {
+            // Reload instance from disk to avoid overwriting concurrent changes
+            const fresh = loadInstance(instance.taskId, contentDir)
+            if (fresh) {
+              fresh.stepStates[nextStep.id].discordMessageId = messageId
+              saveInstance(fresh, contentDir)
+            }
+          }
+        })
+        .catch((err) => { log.warn('Discord gate alert failed', err) })
+    }
 
     // Move the task to the review column while awaiting approval
     import('../../tasks/lib/flow-store').then(({ moveTask }) => {
