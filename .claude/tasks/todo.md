@@ -89,19 +89,19 @@ Each plugin: register content type with schema + `reindex()` generator + `verify
 
 ## Phase 3: Search API + MCP Tools + CLI
 
-- [ ] **T11: Cross-Table Search API + Per-Plugin Routes + Health Endpoint**
+- [x] **T11: Cross-Table Search API + Per-Plugin Routes + Health Endpoint** ✓ `5be3808`
   - Rewrite `/api/search` — use `multiquery()` for cross-table
   - Rewrite `/api/reindex` — per-table, rebuild support
   - Add `/api/antfly/health`
   - Register `/search` route in each plugin
   - Files: `server.ts`, `plugins/{tasks,assets,projects,workflows,schedule,memory}/index.ts`
 
-- [ ] **T11b: MCP Search Tools + CLI Commands**
+- [x] **T11b: MCP Search Tools + CLI Commands** ✓ `2030ebe`
   - 7 MCP exec tools: search_query, search_table, search_lookup, search_facets, search_similar, search_reindex, search_stats
   - CLI: enhanced `search`, new `search:facets`, `search:similar`, `search:stats`, `search:cleanup`, enhanced `reindex`
   - Files: `scripts/lib/search-tools.ts` (new), `cli/bakin.ts`
 
-- [ ] **T11c: Phase 3 Documentation**
+- [x] **T11c: Phase 3 Documentation**
   - Create `.claude/knowledge/search-api-reference.md` — REST + MCP + CLI reference with examples
 
 ### --- CHECKPOINT 3 --- `git tag search-checkpoint-3`
