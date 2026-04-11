@@ -251,7 +251,16 @@ const assetsPlugin: BakinPlugin = {
     // Build the index on startup
     buildIndex()
 
-    // Register a sync hook to keep the index up-to-date
+    // Register a sync hook to keep both the local asset tracker and the
+    // Antfly search index up-to-date for any asset that arrives via the
+    // filesystem watcher rather than a REST route (manual drops, rsync,
+    // another agent writing directly, restored backups, etc.).
+    //
+    // indexAsset() early-returns when the sidecar is missing, so if a
+    // media file lands before its sidecar the first call is a no-op and
+    // the second call (triggered by the sidecar write) re-runs with
+    // full metadata. Deletions are not handled here — that requires a
+    // separate watcher unlink hook and is tracked as follow-up work.
     registerSyncHook(async (relativePath: string, _content: string) => {
       if (!relativePath.startsWith('assets/')) return
       if (relativePath.includes('.trash/')) return
@@ -259,8 +268,10 @@ const assetsPlugin: BakinPlugin = {
       if (relativePath.endsWith('.meta.json')) {
         const assetPath = relativePath.replace('.meta.json', '')
         upsertAsset(assetPath)
+        indexAsset(assetPath).catch(() => { /* non-blocking */ })
       } else {
         upsertAsset(relativePath)
+        indexAsset(relativePath).catch(() => { /* non-blocking */ })
       }
     })
 
