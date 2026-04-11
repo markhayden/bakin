@@ -269,30 +269,10 @@ export function HealthPage() {
   const [reindexProgress, setReindexProgress] = useState<Record<string, { indexed: number; done: boolean }>>({})
   const esRef = useRef<EventSource | null>(null)
 
-  // Listen for reindex SSE events — open connection on first reindex, keep alive
+  // Clean up reindex EventSource on unmount
   useEffect(() => {
-    if (!reindexing || esRef.current) return
-    const es = new EventSource('/api/events')
-    esRef.current = es
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data)
-        if (data.type === 'reindex.progress') {
-          setReindexProgress(prev => ({
-            ...prev,
-            [data.table]: { indexed: data.indexed, done: false },
-          }))
-        }
-        if (data.type === 'reindex.complete') {
-          setReindexProgress(prev => ({
-            ...prev,
-            [data.table]: { indexed: data.indexed, done: true },
-          }))
-        }
-      } catch { /* ignore non-JSON */ }
-    }
-    return () => { es.close(); esRef.current = null }
-  }, [reindexing])
+    return () => { esRef.current?.close(); esRef.current = null }
+  }, [])
 
   // Search state
   const [pluginSearch, setPluginSearch] = useState('')
@@ -521,11 +501,34 @@ export function HealthPage() {
                   onClick={async () => {
                     setReindexProgress({})
                     setReindexing(true)
+                    // Open EventSource BEFORE the POST so we don't miss fast tables
+                    if (esRef.current) { esRef.current.close(); esRef.current = null }
+                    const es = new EventSource('/api/events')
+                    esRef.current = es
+                    es.onmessage = (e) => {
+                      try {
+                        const data = JSON.parse(e.data)
+                        if (data.type === 'reindex.progress') {
+                          setReindexProgress(prev => ({
+                            ...prev,
+                            [data.table]: { indexed: data.indexed, done: false },
+                          }))
+                        }
+                        if (data.type === 'reindex.complete') {
+                          setReindexProgress(prev => ({
+                            ...prev,
+                            [data.table]: { indexed: data.indexed, done: true },
+                          }))
+                        }
+                      } catch { /* ignore non-JSON */ }
+                    }
                     try {
                       await fetch('/api/reindex', { method: 'POST' })
                       await fetchData()
                     } finally {
                       setReindexing(false)
+                      es.close()
+                      esRef.current = null
                     }
                   }}
                 >
