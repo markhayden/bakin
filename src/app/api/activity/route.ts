@@ -36,6 +36,7 @@ export async function GET() {
             taskId: data.taskId as string | undefined,
             taskTitle: data.title as string | undefined,
             eventName: entry.event,
+            ...(data.duplicate ? { duplicate: true } : {}),
           })
         } catch { /* skip malformed lines */ }
       }

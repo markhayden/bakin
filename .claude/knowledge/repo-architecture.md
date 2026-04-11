@@ -29,7 +29,7 @@ Bakin is a monorepo with a pnpm workspace. The main application (Next.js + custo
 │   ├── projects/
 │   ├── schedule/
 │   ├── memory/
-│   ├── calendar/
+│   ├── messaging/
 │   ├── models/
 │   └── health/
 ├── src/
@@ -155,7 +155,7 @@ Created by `bakin init` or `initBakinHome()`. Symlinked from `~/.beacon/` for ba
 ├── settings.json          ← runtime config (deep-merged with defaults)
 ├── MEMORY-LOG.md          ← agent memory log
 ├── audit.jsonl            ← append-only audit trail
-├── calendar.json          ← calendar events
+├── messaging.json         ← messaging / content calendar events
 ├── assets/                ← content files by type
 │   ├── text/
 │   ├── images/

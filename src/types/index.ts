@@ -129,6 +129,7 @@ export interface ActivityEvent {
   taskId?: string
   taskTitle?: string
   eventName?: string
+  duplicate?: boolean
 }
 
 export interface ContentState {
