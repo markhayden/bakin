@@ -28,7 +28,11 @@ vi.mock('@/core/settings', () => ({
     antfly: {
       enabled: true,
       url: 'http://localhost:8080/api/v1',
-      search: { strategy: 'rrf', defaultLimit: 20 },
+      search: {
+        strategy: 'rrf',
+        defaultLimit: 20,
+        reranker: { enabled: true, provider: 'termite', model: 'mxbai-rerank-base-v1', threshold: 0.0 },
+      },
       embedders: {
         default: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
         visual: { provider: 'antfly', model: 'clip-vit-base-patch32' },
