@@ -177,7 +177,7 @@ export function KanbanBoard() {
   const [taskIdParam, setTaskIdParam] = useQueryState('taskId', '')
   const hasBoardFilters = Boolean(search) || agentFilter !== 'all'
 
-  const { filteredColumns, allTasksFlat } = useTaskFilters(displayColumns, {
+  const { filteredColumns, allTasksFlat, aggregations } = useTaskFilters(displayColumns, {
     search, agentFilter, statusFilter,
   })
 
@@ -430,6 +430,7 @@ export function KanbanBoard() {
             statusFilter={statusFilter}
             onStatusChange={setStatusFilter}
             showStatusFilter={view === 'table'}
+            statusCounts={aggregations?.status ? Object.fromEntries(aggregations.status.map(a => [a.value, a.count])) : undefined}
           />
         </div>
 
@@ -463,7 +464,7 @@ export function KanbanBoard() {
           </DragDropProvider>
         ) : (
           <div className="flex-1 overflow-auto min-h-0 px-6 pb-[25px]">
-            <TaskLogTable currentTasks={allTasksFlat} statusFilter={statusFilter} />
+            <TaskLogTable currentTasks={allTasksFlat} statusFilter={statusFilter} isSearching={Boolean(search)} />
           </div>
         )}
 

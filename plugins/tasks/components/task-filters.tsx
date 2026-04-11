@@ -35,12 +35,15 @@ interface TaskFiltersProps {
   statusFilter?: string[]
   onStatusChange?: (statuses: string[]) => void
   showStatusFilter?: boolean
+  /** Aggregation counts from Antfly search (status → count) */
+  statusCounts?: Record<string, number>
 }
 
 export function TaskFilters({
   agentFilter, onAgentChange,
   statusFilter, onStatusChange,
   showStatusFilter = false,
+  statusCounts,
 }: TaskFiltersProps) {
   const agentIds = useAgentIds()
 
@@ -76,6 +79,7 @@ export function TaskFilters({
           options={STATUS_OPTIONS}
           selected={statusFilter ?? []}
           onChange={onStatusChange}
+          counts={statusCounts}
         />
       )}
 

@@ -392,7 +392,7 @@ Required log points:
 
 For Patch using Claude Code: log before spawning the agent, and after it completes.
 
-## BEACON TOOLS — via mcporter
+## BAKIN TOOLS — via mcporter
 
 All Bakin interactions use mcporter. Your server is \`${server}\`.
 

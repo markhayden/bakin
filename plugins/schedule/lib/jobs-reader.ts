@@ -4,7 +4,7 @@
 import { readFileSync, existsSync } from 'fs'
 import { createLogger } from '../../../src/core/logger'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
-import { readSidecar, withDefaults } from './sidecar'
+import { readSidecar, writeSidecar, withDefaults } from './sidecar'
 import { cronToHuman } from './cron-parser'
 import type { OpenClawJob, OpenClawJobsFile, MergedJob, BakinJobMeta } from '../types'
 
@@ -117,8 +117,6 @@ export function readMergedJobs(jobsPath?: string): MergedJob[] {
     }
   }
   if (dirty) {
-    // Lazy import to avoid circular — writeSidecar is simple enough
-    const { writeSidecar } = require('./sidecar')
     writeSidecar(sidecar)
   }
 

@@ -30,6 +30,7 @@ import {
   triggerDispatch,
 } from '../../src/core/task-service'
 import { createLogger } from '../../src/core/logger'
+import type { Task, TaskBoard, ColumnId } from './types'
 
 const log = createLogger('tasks')
 
@@ -54,6 +55,76 @@ const tasksPlugin: BakinPlugin = {
   ],
 
   activate(ctx: PluginContext) {
+    // ─── Search Content Type Registration ─────────────────────────────
+
+    ctx.search.registerContentType({
+      table: 'tasks',
+      schema: {
+        title: { type: 'text' },
+        description: { type: 'text' },
+        agent: { type: 'keyword' },
+        created_by: { type: 'keyword' },
+        status: { type: 'keyword' },
+        project_id: { type: 'keyword' },
+        workflow_id: { type: 'keyword' },
+        log_text: { type: 'text' },
+        blocked_reason: { type: 'text' },
+        updated_at: { type: 'datetime' },
+      },
+      searchableFields: ['title', 'description', 'log_text', 'blocked_reason'],
+      embeddingTemplate: '{{title}} {{description}} {{log_text}}',
+      facets: ['status', 'agent', 'created_by', 'project_id'],
+      chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
+      reindex: async function* () {
+        const board = readTaskboard()
+        const columns = board.columns as unknown as Record<string, Task[]>
+        for (const [colName, tasks] of Object.entries(columns)) {
+          for (const task of tasks) {
+            yield { key: task.id, doc: taskToSearchDoc(task, colName as ColumnId) }
+          }
+        }
+      },
+      verifyExists: async (key: string) => {
+        const { getTask } = await import('./lib/flow-store')
+        return getTask(key) !== null
+      },
+    })
+
+    /** Convert a task to a search document */
+    function taskToSearchDoc(task: Task, column: ColumnId): Record<string, unknown> {
+      const logText = task.log?.map(l => `[${l.timestamp} ${l.author}] ${l.message}`).join('\n') || ''
+      return {
+        title: task.title,
+        description: task.description || '',
+        agent: task.agent || '',
+        created_by: task.createdBy || '',
+        status: column,
+        project_id: task.projectId || '',
+        workflow_id: task.workflowId || '',
+        log_text: logText,
+        blocked_reason: task.blockedReason || '',
+        updated_at: new Date().toISOString(),
+      }
+    }
+
+    /** Index a task by looking it up and indexing its current state */
+    async function indexTask(taskId: string): Promise<void> {
+      try {
+        const { getTask } = await import('./lib/flow-store')
+        const board = readTaskboard()
+        const columns = board.columns as unknown as Record<string, Task[]>
+        for (const [colName, tasks] of Object.entries(columns)) {
+          const task = tasks.find(t => t.id === taskId)
+          if (task) {
+            await ctx.search.index(taskId, taskToSearchDoc(task, colName as ColumnId))
+            return
+          }
+        }
+      } catch (err) {
+        log.warn('Failed to index task', { taskId, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
     // ─── Cross-Plugin Hooks ────────────────────────────────────────────
 
     ctx.hooks.register('tasks.readTaskboard', () => readTaskboard())
@@ -71,6 +142,25 @@ const tasksPlugin: BakinPlugin = {
     ctx.hooks.register('tasks.clearDependency', (d: Record<string, unknown>) => clearDependency(d.taskId as string))
 
     // ─── REST API Routes ───────────────────────────────────────────────
+
+    // GET /search — search tasks via Antfly
+    ctx.registerRoute({
+      path: '/search',
+      method: 'GET',
+      description: 'Search tasks',
+      handler: async (req: Request) => {
+        const url = new URL(req.url, 'http://localhost')
+        const q = url.searchParams.get('q')
+        if (!q) return Response.json({ error: 'Missing ?q= parameter' }, { status: 400 })
+        const result = await ctx.search.query({
+          q,
+          limit: Number(url.searchParams.get('limit')) || undefined,
+          offset: Number(url.searchParams.get('offset')) || undefined,
+          facets: url.searchParams.get('facets')?.split(',').filter(Boolean),
+        })
+        return Response.json(result)
+      },
+    })
 
     // GET / — list all tasks
     ctx.registerRoute({
@@ -123,6 +213,7 @@ const tasksPlugin: BakinPlugin = {
             createdBy: createdBy || 'system', parentId, projectId, channel: 'rest',
           })
           ctx.activity.log(createdBy || 'system', `Created task "${title}"`, { taskId: result.id })
+          indexTask(result.id).catch(() => {})
           return Response.json({ ok: true, id: result.id, workflowId: result.workflowId, suggestedWorkflow: result.suggestedWorkflow })
         } catch (err) {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -148,6 +239,7 @@ const tasksPlugin: BakinPlugin = {
           await updateTask(identifier, { title, description, agent, column, workflowId })
           ctx.activity.audit('updated', agent || 'system', { taskId: identifier })
           ctx.activity.log(agent || 'system', `Updated task "${identifier}"`, { taskId: identifier })
+          indexTask(identifier).catch(() => {})
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -172,6 +264,7 @@ const tasksPlugin: BakinPlugin = {
           await deleteTask(identifier as string)
           ctx.activity.audit('deleted', 'system', { taskId: identifier })
           ctx.activity.log('system', `Deleted task "${identifier}"`, { taskId: identifier as string })
+          ctx.search.remove(identifier as string).catch(() => {})
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -203,6 +296,7 @@ const tasksPlugin: BakinPlugin = {
           try {
             await blockTaskWithEffects(identifier, reason, agent, (body.channel === 'human' && agent === 'human') ? 'human' : 'rest')
             ctx.activity.log(agent, `Blocked task: ${reason}`, { taskId: identifier })
+            indexTask(identifier).catch(() => {})
             return Response.json({ ok: true })
           } catch (err) {
             return Response.json({ error: (err as Error).message }, { status: 500 })
@@ -215,6 +309,7 @@ const tasksPlugin: BakinPlugin = {
           const effectiveChannel = (body.channel === 'human' && agent === 'human') ? 'human' as const : 'rest' as const
           await moveTaskWithEffects(identifier, to, agent, { from, channel: effectiveChannel })
           ctx.activity.log(agent, `Moved task to "${to}"`, { taskId: identifier })
+          indexTask(identifier).catch(() => {})
           return Response.json({ ok: true })
         } catch (err) {
           const msg = (err as Error).message
@@ -242,6 +337,7 @@ const tasksPlugin: BakinPlugin = {
           await assignTask(identifier, body.agent || '')
           ctx.activity.audit('assigned', 'system', { taskId: identifier, agent: body.agent || '' })
           ctx.activity.log('system', `Assigned task to "${body.agent || 'unassigned'}"`, { taskId: identifier })
+          ctx.search.transform(identifier, [{ op: '$set', field: 'agent', value: body.agent || '' }]).catch(() => {})
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -286,6 +382,7 @@ const tasksPlugin: BakinPlugin = {
         try {
           await blockTaskWithEffects(identifier, body.reason, body.agent || 'system', 'rest')
           ctx.activity.log(body.agent || 'system', `Blocked task: ${body.reason}`, { taskId: identifier })
+          indexTask(identifier).catch(() => {})
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -354,6 +451,7 @@ const tasksPlugin: BakinPlugin = {
         try {
           await reportComplete(taskId, agent, summary, 'rest')
           ctx.activity.log(agent, `Completed task: ${summary}`, { taskId })
+          indexTask(taskId).catch(() => {})
           return Response.json({ ok: true })
         } catch (err) {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -452,6 +550,7 @@ const tasksPlugin: BakinPlugin = {
             createdBy: agent, parentId, projectId, channel: 'mcp',
           })
           if (parentId || assignee) triggerDispatch()
+          indexTask(result.id).catch(() => {})
 
           return {
             ok: true,
@@ -482,6 +581,7 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           await moveTaskWithEffects(taskId, to, agent, { channel: 'mcp' })
+          indexTask(taskId).catch(() => {})
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -501,6 +601,7 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await blockTaskWithEffects(params.taskId as string, params.reason as string, agent, 'mcp')
+          indexTask(params.taskId as string).catch(() => {})
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -520,6 +621,7 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await reportComplete(params.taskId as string, agent, params.summary as string, 'mcp')
+          indexTask(params.taskId as string).catch(() => {})
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -587,6 +689,7 @@ const tasksPlugin: BakinPlugin = {
           if (assignee !== undefined) updates.agent = assignee
           const result = await ctx.hooks.invoke('tasks.updateTask', { identifier: taskId, updates })
           ctx.activity.audit('updated', agent, { taskId })
+          indexTask(taskId).catch(() => {})
           return { ok: true, result }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -607,6 +710,7 @@ const tasksPlugin: BakinPlugin = {
         try {
           await ctx.hooks.invoke('tasks.deleteTask', { identifier: taskId })
           ctx.activity.audit('deleted', agent, { taskId })
+          ctx.search.remove(taskId).catch(() => {})
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -629,6 +733,7 @@ const tasksPlugin: BakinPlugin = {
         try {
           await assignTask(taskId, targetAgent)
           ctx.activity.audit('assigned', callingAgent, { taskId, agent: targetAgent })
+          ctx.search.transform(taskId, [{ op: '$set', field: 'agent', value: targetAgent }]).catch(() => {})
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }

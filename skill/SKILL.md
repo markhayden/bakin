@@ -69,6 +69,13 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_post_discord` | Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds. |
 | `bakin_exec_get_paths` | Get Bakin content directory paths — where to find assets, team info, docs, etc. |
 | `bakin_exec_heartbeat` | Write a heartbeat signal. Call periodically (every 5-10 minutes) to indicate you are alive. Also call when starting or finishing a task. |
+| `bakin_exec_search_query` | Search across all Bakin content (tasks, assets, projects, workflows, schedules, agents) or a specific table. Returns ranked results with scores. |
+| `bakin_exec_search_table` | Search a specific Bakin table with facet filtering. Returns results plus facet counts for filtering. |
+| `bakin_exec_search_lookup` | Look up a specific indexed document by its key and table. |
+| `bakin_exec_search_facets` | Get facet value counts for a table. Useful for understanding data distribution (e.g., how many tasks per status). |
+| `bakin_exec_search_similar` | Find documents similar to a given text description. Uses semantic (vector) search for meaning-based matching. |
+| `bakin_exec_search_reindex` | Trigger a full reindex of all content types (or a specific table). Use after bulk data changes. |
+| `bakin_exec_search_stats` | Get search system health: enabled status, per-table document counts, and index stats. |
 | `bakin_exec_team_list` | List all agents with their current status (online/working/available/offline). |
 | `bakin_exec_team_profile` | Get the full profile for an agent including soul, rules, and tools. |
 | `bakin_exec_team_status` | Get the heartbeat and health status for an agent. |

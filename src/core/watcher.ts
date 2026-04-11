@@ -19,8 +19,16 @@ let watcher: FSWatcher | null = null
 type SyncHook = (relativePath: string, content: string) => void | Promise<void>
 const syncHooks: SyncHook[] = []
 
+// Unlink hooks — modules can register to be notified of file deletions
+type UnlinkHook = (relativePath: string) => void | Promise<void>
+const unlinkHooks: UnlinkHook[] = []
+
 export function registerSyncHook(hook: SyncHook): void {
   syncHooks.push(hook)
+}
+
+export function registerUnlinkHook(hook: UnlinkHook): void {
+  unlinkHooks.push(hook)
 }
 
 async function runSyncHooks(relativePath: string, content: string): Promise<void> {
@@ -29,6 +37,16 @@ async function runSyncHooks(relativePath: string, content: string): Promise<void
       await hook(relativePath, content)
     } catch (err) {
       log.error('Sync hook failed', err, { file: relativePath })
+    }
+  }
+}
+
+async function runUnlinkHooks(relativePath: string): Promise<void> {
+  for (const hook of unlinkHooks) {
+    try {
+      await hook(relativePath)
+    } catch (err) {
+      log.error('Unlink hook failed', err, { file: relativePath })
     }
   }
 }
@@ -106,6 +124,15 @@ export function start(deps: WatcherDeps): void {
 
   watcher.on('change', (fullPath: string) => handleFileEvent(deps, fullPath, 'change'))
   watcher.on('add', (fullPath: string) => handleFileEvent(deps, fullPath, 'add'))
+  watcher.on('unlink', (fullPath: string) => {
+    const rel = relative(deps.contentDir, fullPath)
+    if (rel === 'audit.jsonl') return
+    log.info('File deleted', { file: rel })
+    broadcast({ file: rel, content: '', event: 'unlink', timestamp: new Date().toISOString() })
+    runUnlinkHooks(rel).catch(err => {
+      log.error('Unlink hooks error', err, { file: rel })
+    })
+  })
 
   log.info('File watcher started', { dir: deps.contentDir })
 }

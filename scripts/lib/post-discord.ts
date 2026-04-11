@@ -97,13 +97,13 @@ export interface PostDiscordParams {
   taskId?: string
 }
 
-// When BEACON_DISCORD_TEST_MODE=1 (or "true"), all posts are routed to
+// When BAKIN_DISCORD_TEST_MODE=1 (or "true"), all posts are routed to
 // the testing-ground channel regardless of what the caller requested.
 // Set this in your environment during development to avoid spamming real channels.
 const TEST_CHANNEL = 'testing-ground'
 
 function isTestMode(): boolean {
-  const val = process.env.BEACON_DISCORD_TEST_MODE
+  const val = process.env.BAKIN_DISCORD_TEST_MODE
   return val === '1' || val === 'true'
 }
 

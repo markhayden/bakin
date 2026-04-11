@@ -2,8 +2,11 @@
  * Projects plugin — server entry point.
  * Registers API routes, exec tools, and the task-link index.
  */
+import { existsSync } from 'fs'
+import { join } from 'path'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import { getBakinPaths } from '../../src/core/content-dir'
 import { readProject, readAllProjects, projectToSummary } from './lib/parser'
 import {
   createProject,
@@ -22,7 +25,7 @@ import {
   autoCheckLinkedItem,
 } from './lib/project-service'
 import { createLogger } from '../../src/core/logger'
-import type { ProjectStatus } from './types'
+import type { Project, ProjectStatus } from './types'
 
 const log = createLogger('projects')
 
@@ -62,6 +65,56 @@ const projectsPlugin: BakinPlugin = {
   ],
 
   async activate(ctx: PluginContext) {
+    // ─── Search Content Type Registration ─────────────────────────────
+
+    ctx.search.registerContentType({
+      table: 'projects',
+      schema: {
+        title: { type: 'text' },
+        body: { type: 'text' },
+        status: { type: 'keyword' },
+        progress: { type: 'number' },
+        updated_at: { type: 'datetime' },
+      },
+      searchableFields: ['title', 'body'],
+      embeddingTemplate: '{{title}} {{body}}',
+      facets: ['status'],
+      chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
+      reindex: async function* () {
+        const projects = readAllProjects()
+        for (const project of projects) {
+          yield { key: project.id, doc: projectToSearchDoc(project) }
+        }
+      },
+      verifyExists: async (key: string) => {
+        const filePath = join(getBakinPaths().projects, `${key}.md`)
+        return existsSync(filePath)
+      },
+    })
+
+    /** Convert a project to a search document */
+    function projectToSearchDoc(project: Project): Record<string, unknown> {
+      return {
+        title: project.title,
+        body: project.body,
+        status: project.status,
+        progress: project.progress,
+        updated_at: project.updated || new Date().toISOString(),
+      }
+    }
+
+    /** Index a project by looking it up and indexing its current state */
+    async function indexProject(projectId: string): Promise<void> {
+      try {
+        const project = readProject(projectId)
+        if (project) {
+          await ctx.search.index(projectId, projectToSearchDoc(project))
+        }
+      } catch (err) {
+        log.warn('Failed to index project', { projectId, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
     // Register cross-plugin hooks
     ctx.hooks.register('projects.readProject', (d: Record<string, unknown>) => readProject(d.id as string))
     ctx.hooks.register('projects.autoCheckLinkedItem', (d: Record<string, unknown>) => autoCheckLinkedItem(d.boardTaskId as string))
@@ -96,6 +149,24 @@ const projectsPlugin: BakinPlugin = {
     }
     ctx.registerRoute({ path: '/', method: 'GET', description: 'List projects', handler: listHandler })
 
+    // GET /search — search projects via Antfly
+    ctx.registerRoute({
+      path: '/search',
+      method: 'GET',
+      description: 'Search projects',
+      handler: async (req: Request) => {
+        const url = new URL(req.url, 'http://localhost')
+        const q = url.searchParams.get('q')
+        if (!q) return Response.json({ error: 'Missing ?q= parameter' }, { status: 400 })
+        return Response.json(await ctx.search.query({
+          q,
+          limit: Number(url.searchParams.get('limit')) || undefined,
+          offset: Number(url.searchParams.get('offset')) || undefined,
+          facets: url.searchParams.get('facets')?.split(',').filter(Boolean),
+        }))
+      },
+    })
+
     // GET /:projectId — get single project
     const getHandler = async (req: Request) => {
       const url = new URL(req.url, 'http://localhost')
@@ -114,6 +185,7 @@ const projectsPlugin: BakinPlugin = {
       const result = await createProject(body)
       ctx.activity.audit('created', body.owner || 'system', { projectId: result.id, title: body.title })
       ctx.activity.log(body.owner || 'system', `Created project "${body.title}"`)
+      indexProject(result.id).catch(() => {})
       return json({ ok: true, ...result })
     }
     ctx.registerRoute({ path: '/', method: 'POST', description: 'Create project', handler: createHandler })
@@ -128,6 +200,7 @@ const projectsPlugin: BakinPlugin = {
         await updateProject(id, body)
         ctx.activity.audit('updated', 'system', { projectId: id })
         ctx.activity.log('system', `Updated project ${id}`)
+        indexProject(id).catch(() => {})
         return json({ ok: true })
       } catch (err: unknown) {
         return json({ error: (err as Error).message }, 400)
@@ -155,6 +228,7 @@ const projectsPlugin: BakinPlugin = {
         await deleteProject(id)
         ctx.activity.audit('deleted', 'system', { projectId: id })
         ctx.activity.log('system', `Deleted project ${id}`)
+        ctx.search.remove(id).catch(() => {})
         return json({ ok: true })
       } catch (err: unknown) {
         return json({ error: (err as Error).message }, 400)
@@ -171,6 +245,7 @@ const projectsPlugin: BakinPlugin = {
       const result = await addChecklistItem(projectId, body.title)
       ctx.activity.audit('checklist.added', 'system', { projectId })
       ctx.activity.log('system', `Added checklist item to project ${projectId}`)
+      indexProject(projectId).catch(() => {})
       return json({ ok: true, ...result })
     }
     ctx.registerRoute({ path: '/:projectId/checklist', method: 'POST', description: 'Add checklist item', handler: addItemHandler })
@@ -185,6 +260,7 @@ const projectsPlugin: BakinPlugin = {
       const result = await markChecklistItem(projectId, taskItemId, body.checked)
       ctx.activity.audit('checklist.toggled', 'system', { projectId, checked: body.checked })
       ctx.activity.log('system', 'Toggled checklist item in project', { taskId: projectId })
+      indexProject(projectId).catch(() => {})
       return json({ ok: true, ...result })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId/toggle', method: 'PUT', description: 'Toggle checklist item', handler: toggleHandler })
@@ -199,6 +275,7 @@ const projectsPlugin: BakinPlugin = {
       await updateChecklistItem(projectId, taskItemId, { title: body.title, description: body.description })
       ctx.activity.audit('checklist.updated', 'system', { projectId })
       ctx.activity.log('system', 'Updated checklist item in project', { taskId: projectId })
+      indexProject(projectId).catch(() => {})
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId', method: 'PUT', description: 'Update checklist item', handler: updateItemHandler })
@@ -213,6 +290,7 @@ const projectsPlugin: BakinPlugin = {
       await removeChecklistItem(projectId, taskItemId)
       ctx.activity.audit('checklist.removed', 'system', { projectId })
       ctx.activity.log('system', 'Removed checklist item from project', { taskId: projectId })
+      indexProject(projectId).catch(() => {})
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId', method: 'DELETE', description: 'Remove checklist item', handler: removeItemHandler })
@@ -227,6 +305,7 @@ const projectsPlugin: BakinPlugin = {
       await linkChecklistItem(projectId, taskItemId, body.taskId)
       ctx.activity.audit('checklist.linked', 'system', { projectId, taskId: body.taskId })
       ctx.activity.log('system', 'Linked checklist item to task', { taskId: projectId })
+      indexProject(projectId).catch(() => {})
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId/link', method: 'POST', description: 'Link checklist item to task', handler: linkHandler })
@@ -241,6 +320,7 @@ const projectsPlugin: BakinPlugin = {
       const result = await promoteItemToTask(projectId, taskItemId, { assignee: body.assignee })
       ctx.activity.audit('checklist.promoted', 'system', { projectId })
       ctx.activity.log('system', `Promoted checklist item to task in project ${projectId}`)
+      indexProject(projectId).catch(() => {})
       return json({ ok: true, ...result })
     }
     ctx.registerRoute({ path: '/:projectId/checklist/:itemId/promote', method: 'POST', description: 'Promote item to task', handler: promoteHandler })
@@ -254,6 +334,7 @@ const projectsPlugin: BakinPlugin = {
       await attachAsset(projectId, body.assetPath, body.label)
       ctx.activity.audit('asset.attached', 'system', { projectId, assetPath: body.assetPath })
       ctx.activity.log('system', 'Attached asset to project', { taskId: projectId })
+      indexProject(projectId).catch(() => {})
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/assets', method: 'POST', description: 'Attach asset', handler: attachHandler })
@@ -268,6 +349,7 @@ const projectsPlugin: BakinPlugin = {
       await detachAsset(projectId, assetPath)
       ctx.activity.audit('asset.detached', 'system', { projectId, assetPath })
       ctx.activity.log('system', 'Detached asset from project', { taskId: projectId })
+      indexProject(projectId).catch(() => {})
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/assets/:assetPath', method: 'DELETE', description: 'Detach asset', handler: detachHandler })
@@ -378,6 +460,7 @@ const projectsPlugin: BakinPlugin = {
           owner: (params.owner as string) || agent,
           tasks: params.tasks as string[] | undefined,
         })
+        indexProject(result.id).catch(() => {})
         return { ok: true, ...result }
       },
     })
@@ -401,6 +484,7 @@ const projectsPlugin: BakinPlugin = {
             body: params.body as string | undefined,
             owner: params.owner as string | undefined,
           }, agent)
+          indexProject(params.projectId as string).catch(() => {})
           return { ok: true }
         } catch (err: unknown) {
           return { ok: false, error: (err as Error).message }
@@ -418,6 +502,7 @@ const projectsPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await deleteProject(params.projectId as string, agent)
+          ctx.search.remove(params.projectId as string).catch(() => {})
           return { ok: true }
         } catch (err: unknown) {
           return { ok: false, error: (err as Error).message }
@@ -435,6 +520,7 @@ const projectsPlugin: BakinPlugin = {
       },
       handler: async (params: Record<string, unknown>) => {
         const result = await addChecklistItem(params.projectId as string, params.title as string)
+        indexProject(params.projectId as string).catch(() => {})
         return { ok: true, ...result }
       },
     })
@@ -454,6 +540,7 @@ const projectsPlugin: BakinPlugin = {
           params.taskItemId as string,
           params.checked as boolean,
         )
+        indexProject(params.projectId as string).catch(() => {})
         return { ok: true, ...result }
       },
     })
@@ -469,6 +556,7 @@ const projectsPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>) => {
         try {
           await removeChecklistItem(params.projectId as string, params.taskItemId as string)
+          indexProject(params.projectId as string).catch(() => {})
           return { ok: true }
         } catch (err: unknown) {
           return { ok: false, error: (err as Error).message }
@@ -492,6 +580,7 @@ const projectsPlugin: BakinPlugin = {
             params.taskItemId as string,
             params.taskId as string,
           )
+          indexProject(params.projectId as string).catch(() => {})
           return { ok: true }
         } catch (err: unknown) {
           return { ok: false, error: (err as Error).message }
@@ -515,6 +604,7 @@ const projectsPlugin: BakinPlugin = {
             params.taskItemId as string,
             { assignee: params.assignee as string | undefined },
           )
+          indexProject(params.projectId as string).catch(() => {})
           return { ok: true, ...result }
         } catch (err: unknown) {
           return { ok: false, error: (err as Error).message }
@@ -534,6 +624,7 @@ const projectsPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>) => {
         try {
           await attachAsset(params.projectId as string, params.assetPath as string, params.label as string | undefined)
+          indexProject(params.projectId as string).catch(() => {})
           return { ok: true }
         } catch (err: unknown) {
           return { ok: false, error: (err as Error).message }
@@ -552,6 +643,7 @@ const projectsPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>) => {
         try {
           await detachAsset(params.projectId as string, params.assetPath as string)
+          indexProject(params.projectId as string).catch(() => {})
           return { ok: true }
         } catch (err: unknown) {
           return { ok: false, error: (err as Error).message }
@@ -575,6 +667,7 @@ const projectsPlugin: BakinPlugin = {
         const checked = params.checked as boolean
         const result = await markChecklistItem(projectId, itemId, checked)
         ctx.activity.audit('checklist.toggled', 'system', { projectId, checked })
+        indexProject(projectId).catch(() => {})
         return { ok: true, ...result }
       },
     })
@@ -599,6 +692,7 @@ const projectsPlugin: BakinPlugin = {
             description: params.description as string | undefined,
           })
           ctx.activity.audit('checklist.updated', 'system', { projectId })
+          indexProject(projectId).catch(() => {})
           return { ok: true }
         } catch (err: unknown) {
           return { ok: false, error: (err as Error).message }

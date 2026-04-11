@@ -14,6 +14,7 @@ import {
 import { formatAge, formatSize } from '@/lib/format'
 import { DeleteAssetDialog } from './delete-asset-dialog'
 import type { AssetMeta } from '@/types'
+import type { AssetScoreInfo } from './assets-grid'
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
   text: FileText,
@@ -39,9 +40,11 @@ interface AssetCardProps {
   asset: AssetMeta
   onClick: () => void
   onDelete: (path: string) => void
+  /** Antfly score info (only shown when debug=true) */
+  scoreInfo?: AssetScoreInfo
 }
 
-export function AssetCard({ asset, onClick, onDelete }: AssetCardProps) {
+export function AssetCard({ asset, onClick, onDelete, scoreInfo }: AssetCardProps) {
   const [imgError, setImgError] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const Icon = TYPE_ICONS[asset.type] || Package
@@ -98,6 +101,24 @@ export function AssetCard({ asset, onClick, onDelete }: AssetCardProps) {
         <span className="absolute bottom-1.5 right-1.5 text-[10px] text-zinc-400 bg-black/60 px-1.5 py-0.5 rounded">
           {formatSize(asset.size)}
         </span>
+
+        {/* Antfly relevance score debug overlay */}
+        {scoreInfo && (
+          <div className="absolute top-1.5 left-1.5 flex flex-col gap-0.5 text-[9px] font-mono bg-black/80 px-1.5 py-1 rounded">
+            <span className="text-amber-400">RRF {scoreInfo.score.toFixed(4)}</span>
+            {(() => {
+              const scores = scoreInfo.indexScores ?? {}
+              const semKey = 'embeddings'
+              const bm25Key = Object.keys(scores).find(k => k !== semKey)
+              return (
+                <>
+                  <span className="text-cyan-400">BM25 {(bm25Key ? scores[bm25Key] as number : 0).toFixed(4)}</span>
+                  <span className="text-purple-400">SEM {((scores[semKey] as number) ?? 0).toFixed(4)}</span>
+                </>
+              )
+            })()}
+          </div>
+        )}
       </div>
 
       {/* Info area */}

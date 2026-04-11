@@ -88,8 +88,61 @@ app.prepare().then(async () => {
   // Initialize Antfly client (optional — no-op if disabled in settings)
   await antfly.initialize()
 
+  // Register audit content type for search (core module, not a plugin)
+  const { createRegisteredTables, buildSearchAPI } = await import('./src/core/search-registry')
+  const auditSearch = buildSearchAPI('_audit')
+  auditSearch.registerContentType({
+    table: 'audit',
+    schema: {
+      event: { type: 'keyword' },
+      agent: { type: 'keyword' },
+      channel: { type: 'keyword' },
+      content: { type: 'text' },
+      created_at: { type: 'datetime' },
+    },
+    searchableFields: ['content', 'event'],
+    embeddingTemplate: '{{event}} {{agent}} {{content}}',
+    facets: ['event', 'agent', 'channel'],
+    ttl: settings.antfly.auditTtl,
+    ttlField: 'created_at',
+    reindex: async function* () {
+      // Read audit.jsonl and yield each entry
+      const { createReadStream } = await import('fs')
+      const { createInterface } = await import('readline')
+      const auditPath = join(CONTENT_DIR, 'audit.jsonl')
+      if (!existsSync(auditPath)) return
+      const rl = createInterface({ input: createReadStream(auditPath) })
+      for await (const line of rl) {
+        if (!line.trim()) continue
+        try {
+          const entry = JSON.parse(line)
+          const key = `audit-${entry.ts}-${entry.event}`
+          yield {
+            key,
+            doc: {
+              event: entry.event,
+              agent: entry.agent,
+              channel: entry.channel || '',
+              content: `[${entry.ts}] ${entry.event} by ${entry.agent}: ${JSON.stringify(entry.data || {})}`,
+              created_at: entry.ts,
+            },
+          }
+        } catch { /* skip malformed lines */ }
+      }
+    },
+    verifyExists: async () => true, // audit entries are append-only, never deleted
+  })
+
+  // Create Antfly tables for all registered search content types
+  await createRegisteredTables()
+
+  // Start periodic orphan cleanup for search indexes
+  const { startCleanupTimer } = await import('./src/core/search-cleanup')
+  startCleanupTimer()
+
   // Register Antfly sync hook with file watcher
-  watcher.registerSyncHook(antfly.syncFile)
+  // Legacy syncFile/syncFileUnlink removed — plugins now handle their own
+  // indexing via ctx.search.index() / ctx.search.remove() with correct schemas
 
   // Generate API docs
   generateDocs(CONTENT_DIR)
@@ -155,20 +208,22 @@ app.prepare().then(async () => {
       return
     }
 
-    // Search endpoint (Antfly-powered when enabled)
+    // Search endpoint — cross-table or per-table Antfly search
     if (url.pathname === '/api/search' && req.method === 'GET') {
       const query = url.searchParams.get('q')
       if (!query) {
         jsonResponse(res, 400, { error: 'Missing ?q= parameter' })
         return
       }
-      antfly.search(query, {
+      const { crossTableSearch } = require('./src/core/search-registry')
+      crossTableSearch(query, {
         table: url.searchParams.get('table') || undefined,
         limit: Number(url.searchParams.get('limit')) || undefined,
-        agent: url.searchParams.get('agent') || undefined,
-      }).then(results => {
-        jsonResponse(res, 200, { results, enabled: antfly.enabled() })
-      }).catch(err => {
+        offset: Number(url.searchParams.get('offset')) || undefined,
+        facets: url.searchParams.get('facets')?.split(',').filter(Boolean) || undefined,
+      }).then((response: Record<string, unknown>) => {
+        jsonResponse(res, 200, response)
+      }).catch((err: unknown) => {
         jsonResponse(res, 500, { error: String(err) })
       })
       return
@@ -248,11 +303,26 @@ app.prepare().then(async () => {
       return
     }
 
-    // Reindex endpoint (triggers Antfly full reindex)
+    // Reindex endpoint — per-table or all, with optional rebuild
     if (url.pathname === '/api/reindex' && req.method === 'POST') {
-      antfly.reindexAll(CONTENT_DIR).then(count => {
-        jsonResponse(res, 200, { ok: true, indexed: count })
-      }).catch(err => {
+      const { reindexContentTypes } = require('./src/core/search-registry')
+      const table = url.searchParams.get('table') || undefined
+      const rebuild = url.searchParams.get('rebuild') === 'true'
+      reindexContentTypes({ table, rebuild }).then((results: Array<Record<string, unknown>>) => {
+        const total = results.reduce((sum: number, r: Record<string, unknown>) => sum + (r.indexed as number || 0), 0)
+        jsonResponse(res, 200, { ok: true, total, tables: results })
+      }).catch((err: unknown) => {
+        jsonResponse(res, 500, { error: String(err) })
+      })
+      return
+    }
+
+    // Antfly health endpoint
+    if (url.pathname === '/api/antfly/health' && req.method === 'GET') {
+      const { getSearchHealth } = require('./src/core/search-registry')
+      getSearchHealth().then((health: Record<string, unknown>) => {
+        jsonResponse(res, 200, health)
+      }).catch((err: unknown) => {
         jsonResponse(res, 500, { error: String(err) })
       })
       return

@@ -1,0 +1,13 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 0c7de38631e04858ee45af9a52b2068632e48925..b4e0a97ac08800204d2cd4037ab0606aca1a8c0a 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -420,7 +420,7 @@ var AntflyClient = class {
+     if (authHeader) {
+       headers.Authorization = authHeader;
+     }
+-    return (0, import_openapi_fetch.default)({
++    return (import_openapi_fetch.default.default || import_openapi_fetch.default)({
+       baseUrl: this.config.baseUrl,
+       headers,
+       bodySerializer: (body) => {

@@ -54,10 +54,11 @@ export function ActivityFeed() {
   const events = useContentStore((s) => s.activityEvents)
   const connected = useContentStore((s) => s.sseConnected)
   const [, setTick] = useState(0)
-  const [showDuplicates, setShowDuplicates] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return localStorage.getItem('bakin-activity-show-duplicates') === 'true'
-  })
+  const [showDuplicates, setShowDuplicates] = useState(false)
+  useEffect(() => {
+    const stored = localStorage.getItem('bakin-activity-show-duplicates')
+    if (stored === 'true') setShowDuplicates(true)
+  }, [])
   const toggleDuplicates = useCallback(() => {
     setShowDuplicates((v) => {
       const next = !v

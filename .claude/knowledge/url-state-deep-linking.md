@@ -93,6 +93,7 @@ Located at `src/components/facet-filter.tsx`. Shared multi-select filter compone
   ]}
   selected={statusFilter}       // string[]
   onChange={setStatusFilter}     // (string[]) => void
+  counts={aggregations?.status ? Object.fromEntries(...) : undefined}  // from Antfly
 />
 ```
 
@@ -101,6 +102,29 @@ Located at `src/components/facet-filter.tsx`. Shared multi-select filter compone
 - Removable chips for each active selection
 - "Clear filters" action inside popover
 - Options support icons (avatars, dots, file type icons)
+- Optional `counts` prop shows Antfly aggregation counts next to each option
+
+## useAntflySearch Hook
+
+Located at `src/hooks/use-antfly-search.ts`. Provides Antfly-powered search alongside existing client-side filtering.
+
+```tsx
+const antfly = useAntflySearch({ table: 'tasks', facets: ['status', 'agent'], debounce: 300 })
+
+useEffect(() => {
+  if (search) antfly.search(search)
+  else antfly.clear()
+}, [search])
+
+// Use antfly.results to reorder client-side filtered list
+// Use antfly.aggregations to populate FacetFilter counts
+```
+
+Returns: `{ results, aggregations, loading, error, meta, search, clear }`
+
+Helper: `reorderByAntflyResults(items, antflyResults)` — reorders a client-side filtered array using Antfly relevance scores.
+
+Pattern: client-side filtering runs immediately (instant feedback), Antfly search fires debounced in background and reorders results when available. If Antfly is disabled or errors, client-side filtering is the fallback.
 
 ## Implementation Status
 

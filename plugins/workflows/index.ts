@@ -3,6 +3,8 @@
  * Enforces step-by-step agent execution with gated delivery,
  * parallel steps, human gates, and output validation.
  */
+import { existsSync, readdirSync, readFileSync } from 'fs'
+import { join } from 'path'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { listDefinitions, loadDefinition } from './lib/parser'
@@ -21,9 +23,10 @@ import {
 } from './lib/runtime'
 import { matchWorkflow } from './lib/matcher'
 import { createLogger } from '../../src/core/logger'
+import { getContentDir } from '../../src/core/content-dir'
 import { validateStepOutput } from './lib/schema-validator'
 import { setEventBus } from './lib/notifications'
-import type { WorkflowTemplate, WorkflowDefinition, NestedWorkflowStep } from './types'
+import type { WorkflowTemplate, WorkflowDefinition, WorkflowInstance, NestedWorkflowStep } from './types'
 
 const log = createLogger('workflows')
 
@@ -145,6 +148,117 @@ const workflowsPlugin: BakinPlugin = {
   contentFiles: [],
 
   activate(ctx: PluginContext) {
+    // ─── Search Content Type Registration ─────────────────────────────
+
+    ctx.search.registerContentType({
+      table: 'workflows',
+      schema: {
+        name: { type: 'text' },
+        description: { type: 'text' },
+        type: { type: 'keyword' },
+        status: { type: 'keyword' },
+        task_id: { type: 'keyword' },
+        steps: { type: 'text' },
+        updated_at: { type: 'datetime' },
+      },
+      searchableFields: ['name', 'description', 'steps'],
+      embeddingTemplate: '{{name}} {{description}} {{steps}}',
+      facets: ['type', 'status'],
+      reindex: async function* () {
+        const contentDir = getContentDir()
+
+        // Yield definitions
+        const defsDir = join(contentDir, 'workflows', 'definitions')
+        if (existsSync(defsDir)) {
+          for (const file of readdirSync(defsDir).filter(f => f.endsWith('.yaml'))) {
+            try {
+              const name = file.replace('.yaml', '')
+              const def = loadDefinition(name)
+              if (def) {
+                yield { key: `def:${name}`, doc: definitionToSearchDoc(name, def) }
+              }
+            } catch { /* skip corrupt definitions */ }
+          }
+        }
+
+        // Yield instances
+        const instancesDir = join(contentDir, 'workflows', 'instances')
+        if (existsSync(instancesDir)) {
+          for (const file of readdirSync(instancesDir).filter(f => f.endsWith('.json'))) {
+            try {
+              const data = JSON.parse(readFileSync(join(instancesDir, file), 'utf-8')) as WorkflowInstance
+              yield { key: `inst:${data.taskId}`, doc: instanceToSearchDoc(data) }
+            } catch { /* skip corrupt instances */ }
+          }
+        }
+      },
+      verifyExists: async (key: string) => {
+        const contentDir = getContentDir()
+        if (key.startsWith('def:')) {
+          const name = key.slice(4)
+          return existsSync(join(contentDir, 'workflows', 'definitions', `${name}.yaml`))
+        }
+        if (key.startsWith('inst:')) {
+          const taskId = key.slice(5)
+          return existsSync(join(contentDir, 'workflows', 'instances', `${taskId}.json`))
+        }
+        return false
+      },
+    })
+
+    /** Convert a workflow definition to a search document */
+    function definitionToSearchDoc(name: string, def: WorkflowDefinition): Record<string, unknown> {
+      const stepsText = def.steps.map(s => `${s.id}: ${s.label || ''}`).join(', ')
+      return {
+        name: def.name,
+        description: def.description || '',
+        type: 'definition',
+        status: 'active',
+        task_id: '',
+        steps: stepsText,
+        updated_at: new Date().toISOString(),
+      }
+    }
+
+    /** Convert a workflow instance to a search document */
+    function instanceToSearchDoc(inst: WorkflowInstance): Record<string, unknown> {
+      const def = loadDefinition(inst.workflowId)
+      const stepsText = def?.steps.map(s => `${s.id}: ${s.label || ''}`).join(', ') || ''
+      return {
+        name: def?.name || inst.workflowId,
+        description: def?.description || '',
+        type: 'instance',
+        status: inst.status,
+        task_id: inst.taskId,
+        steps: stepsText,
+        updated_at: inst.updatedAt || new Date().toISOString(),
+      }
+    }
+
+    /** Index a workflow instance in search */
+    async function indexInstance(taskId: string): Promise<void> {
+      try {
+        const inst = loadInstance(taskId)
+        if (inst) {
+          await ctx.search.index(`inst:${taskId}`, instanceToSearchDoc(inst))
+        }
+      } catch (err) {
+        log.warn('Failed to index workflow instance', { taskId, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
+    /** Index a workflow definition in search */
+    async function indexDefinition(name: string): Promise<void> {
+      try {
+        const def = loadDefinition(name)
+        if (def) {
+          await ctx.search.index(`def:${name}`, definitionToSearchDoc(name, def))
+        }
+      } catch (err) {
+        log.warn('Failed to index workflow definition', { name, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
     // Wire up event bus for notifications
     setEventBus(ctx.events)
 
@@ -197,6 +311,24 @@ const workflowsPlugin: BakinPlugin = {
       })
       return { templates, subWorkflows }
     }
+
+    // GET /search — search workflows via Antfly
+    ctx.registerRoute({
+      path: '/search',
+      method: 'GET',
+      description: 'Search workflows',
+      handler: async (req: Request) => {
+        const url = new URL(req.url, 'http://localhost')
+        const q = url.searchParams.get('q')
+        if (!q) return Response.json({ error: 'Missing ?q= parameter' }, { status: 400 })
+        return Response.json(await ctx.search.query({
+          q,
+          limit: Number(url.searchParams.get('limit')) || undefined,
+          offset: Number(url.searchParams.get('offset')) || undefined,
+          facets: url.searchParams.get('facets')?.split(',').filter(Boolean),
+        }))
+      },
+    })
 
     // GET /definitions — list all workflow templates
     const listHandler = async () => Response.json(buildTemplateList())
@@ -273,6 +405,7 @@ const workflowsPlugin: BakinPlugin = {
 
       ctx.activity.audit('step.completed', agentId, { taskId, stepId, workflowComplete: result.workflowComplete })
       ctx.activity.log(agentId, `Completed step "${stepId}"${result.workflowComplete ? ' — workflow complete' : ''}`, { taskId })
+      indexInstance(taskId).catch(() => {})
 
       // Kick dispatch so the next step's agent starts immediately
       if (!result.workflowComplete) {
@@ -308,6 +441,7 @@ const workflowsPlugin: BakinPlugin = {
 
       ctx.activity.audit('gate.approved', 'system', { taskId, stepId })
       ctx.activity.log('system', `Gate "${stepId}" approved`, { taskId })
+      indexInstance(taskId).catch(() => {})
 
       // Kick dispatch so the next step's agent starts immediately
       triggerDispatch()
@@ -341,6 +475,7 @@ const workflowsPlugin: BakinPlugin = {
 
       ctx.activity.audit('gate.rejected', 'system', { taskId, stepId, reason })
       ctx.activity.log('system', `Gate "${stepId}" rejected: ${reason}`, { taskId })
+      indexInstance(taskId).catch(() => {})
 
       return Response.json(result)
     }
@@ -503,6 +638,7 @@ const workflowsPlugin: BakinPlugin = {
 
         ctx.activity.audit('started', 'system', { taskId, workflowId })
         ctx.activity.log('system', `Started workflow "${workflowId}"`, { taskId })
+        indexInstance(taskId).catch(() => {})
 
         return Response.json({ instance })
       } catch (err) {
@@ -583,6 +719,7 @@ const workflowsPlugin: BakinPlugin = {
           } catch { /* non-fatal */ }
 
           ctx.activity.audit('started', agent, { taskId, workflowId })
+          indexInstance(taskId).catch(() => {})
 
           return { ok: true, instance }
         } catch (err) {
@@ -657,6 +794,7 @@ const workflowsPlugin: BakinPlugin = {
         }
 
         ctx.activity.audit('step.completed', agentId, { taskId, stepId, workflowComplete: result.workflowComplete })
+        indexInstance(taskId).catch(() => {})
 
         if (!result.workflowComplete) {
           triggerDispatch()
@@ -727,6 +865,7 @@ const workflowsPlugin: BakinPlugin = {
           }
 
           ctx.activity.audit('step.completed', agent, { taskId, stepId, workflowComplete: result.workflowComplete })
+          indexInstance(taskId).catch(() => {})
 
           if (!result.workflowComplete) {
             triggerDispatch()

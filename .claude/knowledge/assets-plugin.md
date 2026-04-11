@@ -189,3 +189,31 @@ Asset references use `/api/assets/` URLs, which render natively in `ReactMarkdow
 
 ### Clipboard Purge
 Plugin setting `purgeClipboardOnComplete` (default: false). When enabled, clipboard-source assets are soft-deleted to trash when their linked task moves to Done. Triggered via the `assets.purgeClipboardForTask` hook from `task-service.ts`.
+
+## Antfly Search
+
+Assets are indexed in Antfly via `ctx.search` for hybrid search across all asset types.
+
+**Table:** `bakin_assets`
+
+**Schema:**
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `description` | text | Asset description from sidecar |
+| `tags` | text | Comma-separated tags |
+| `agent` | keyword | Agent that created the asset |
+| `task_id` | keyword | Linked task ID |
+| `asset_type` | keyword | Type directory (images, text, video, etc.) |
+| `file_name` | text | Original filename |
+| `tool` | keyword | Tool used to create the asset |
+| `updated_at` | datetime | Creation timestamp |
+
+**Indexing triggers** (all in `plugins/assets/index.ts`):
+- `indexAsset(relPath)` after: upload (REST), save (MCP), restore from trash
+- `ctx.search.remove(path)` after: delete/trash (REST and MCP), relink (old path)
+- `indexAsset(newPath)` after: relink (new path)
+
+**Reindex:** `reindex()` generator scans `~/.bakin/assets/{type}/{subdir}/*.meta.json` across all `ASSET_TYPES`.
+
+**Verify exists:** Checks if `{key}.meta.json` exists on disk. Orphan cleanup removes entries for trashed/deleted assets.

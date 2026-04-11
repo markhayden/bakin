@@ -4,13 +4,18 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@antfly/sdk@0.0.14':
+    hash: abad10e3cf92ef81d6dee1aae16dcd389f05151e387fc6770ecd38672a2ac169
+    path: patches/@antfly__sdk@0.0.14.patch
+
 importers:
 
   .:
     dependencies:
       '@antfly/sdk':
         specifier: ^0.0.14
-        version: 0.0.14
+        version: 0.0.14(patch_hash=abad10e3cf92ef81d6dee1aae16dcd389f05151e387fc6770ecd38672a2ac169)
       '@bakin/core':
         specifier: workspace:*
         version: link:packages/core
@@ -4539,7 +4544,7 @@ snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
 
-  '@antfly/sdk@0.0.14':
+  '@antfly/sdk@0.0.14(patch_hash=abad10e3cf92ef81d6dee1aae16dcd389f05151e387fc6770ecd38672a2ac169)':
     dependencies:
       openapi-fetch: 0.17.0
 

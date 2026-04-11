@@ -10,7 +10,7 @@
 import { getContentDir } from './content-dir'
 import { appendAudit } from './audit'
 import { createLogger } from './logger'
-import { indexCompletedTask } from './antfly'
+// indexCompletedTask removed — tasks plugin now handles indexing via ctx.search
 import { checkAndContinueDependents } from './continuation'
 import * as openclaw from './openclaw-client'
 import { getHookRegistry } from '../lib/plugin-registry'
@@ -104,7 +104,7 @@ export async function moveTaskWithEffects(
 
   // Side effects when moved to done
   if (to.toLowerCase() === 'done') {
-    indexCompletedTask({ id: taskId, title }).catch(() => {})
+    // Search indexing handled by tasks plugin via ctx.search
     checkAndContinueDependents(taskId, title, getContentDir(), getPort()).catch((err) => {
       log.error('Continuation trigger failed', err)
     })

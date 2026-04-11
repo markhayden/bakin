@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
+import { useAntflySearch, reorderByAntflyResults } from '@/hooks/use-antfly-search'
 import { useAssets, useTrash } from '@/hooks/use-assets'
 import { AssetsGrid } from './assets-grid'
 import { AssetsList, type SortField, type SortDir } from './assets-list'
@@ -74,26 +75,45 @@ export function AssetsPage() {
     return assets.find(a => a.path === assetPath) ?? null
   }, [assetPath, assets, loading])
 
-  // Client-side multi-type filtering + search
+  // Antfly search for semantic ranking
+  const antfly = useAntflySearch({ table: 'assets', facets: ['asset_type', 'agent'], debounce: 300 })
+  useEffect(() => {
+    if (search) antfly.search(search)
+    else antfly.clear()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
+  // Semantic search via Antfly with keyword fallback
   const filtered = useMemo(() => {
     let result = assets
     if (typeFilter.length > 1) {
       result = result.filter(a => typeFilter.includes(a.type))
     }
     if (search) {
-      const q = search.toLowerCase()
-      result = result.filter(a =>
-        a.filename.toLowerCase().includes(q) ||
-        a.metadata.description?.toLowerCase().includes(q) ||
-        a.metadata.tags?.some(t => t.toLowerCase().includes(q)) ||
-        a.metadata.agent.toLowerCase().includes(q)
-      )
+      if (antfly.results.length) {
+        // Antfly returned semantic matches — use those as the filter
+        const matchIds = new Set(antfly.results.map(r => r.id))
+        const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+        result = result
+          .filter(a => matchIds.has(a.path))
+          .sort((a, b) => (scoreMap.get(b.path) ?? 0) - (scoreMap.get(a.path) ?? 0))
+      } else {
+        // Fallback: keyword filter while Antfly is loading or returned empty
+        const q = search.toLowerCase()
+        result = result.filter(a =>
+          a.filename.toLowerCase().includes(q) ||
+          a.metadata.description?.toLowerCase().includes(q) ||
+          a.metadata.tags?.some(t => t.toLowerCase().includes(q)) ||
+          a.metadata.agent.toLowerCase().includes(q)
+        )
+      }
     }
     return result
-  }, [assets, typeFilter, search])
+  }, [assets, typeFilter, search, antfly.results])
 
-  // Sorting
+  // Sorting — skip when Antfly results are active (preserve relevance order)
   const sorted = useMemo(() => {
+    if (search && antfly.results.length) return filtered
     const s = sort as SortField
     const dir = sortDir === 'asc' ? 1 : -1
     return [...filtered].sort((a, b) => {
@@ -106,7 +126,7 @@ export function AssetsPage() {
           return dir * (new Date(a.metadata.created).getTime() - new Date(b.metadata.created).getTime())
       }
     })
-  }, [filtered, sort, sortDir])
+  }, [filtered, sort, sortDir, search, antfly.results])
 
   const handleSort = (field: SortField) => {
     if (sort === field) {
@@ -145,6 +165,7 @@ export function AssetsPage() {
         view={view}
         onViewChange={setView}
         onAdd={() => setUploadOpen(true)}
+        typeCounts={antfly.aggregations?.asset_type ? Object.fromEntries(antfly.aggregations.asset_type.map(a => [a.value, a.count])) : undefined}
       />
 
       {activeLoading ? (
@@ -172,6 +193,7 @@ export function AssetsPage() {
           assets={paged}
           onSelect={(a: AssetMeta) => setAssetPath(a.path)}
           onDelete={deleteAsset}
+          scores={search && antfly.results.length && searchParams.get('debug') === 'true' ? new Map(antfly.results.map(r => [r.id, { score: r.score, indexScores: r.indexScores }])) : undefined}
         />
       )}
 
