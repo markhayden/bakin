@@ -259,7 +259,6 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_assets_save',
       label: 'Saved an asset',
-      activityDuplicate: true,
       description: 'Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.',
       parameters: {
         filePath: z.string().describe('Absolute path to the source file to save'),
@@ -272,9 +271,6 @@ const assetsPlugin: BakinPlugin = {
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         const result = await saveAsset({ ...params, agent } as Parameters<typeof saveAsset>[0])
-        if (result.ok) {
-          ctx.activity.log(agent, `Saved asset "${result.filename}"`, { taskId: params.taskId as string })
-        }
         return result
       },
     })
@@ -298,7 +294,6 @@ const assetsPlugin: BakinPlugin = {
         const success = softDelete(fullPath, assetsRoot)
         if (!success) return { ok: false, error: 'Failed to delete asset' }
         removeAsset(assetPath)
-        ctx.activity.log(agent, `Deleted asset "${assetPath}"`)
         ctx.activity.audit('asset.deleted', agent, { path: assetPath })
         return { ok: true, trashed: [assetPath] }
       },
@@ -319,7 +314,6 @@ const assetsPlugin: BakinPlugin = {
           newTaskId: (params.taskId as string | null) ?? null,
         })
         if (result.ok) {
-          ctx.activity.log(agent, `Relinked asset to ${params.taskId ?? '_unlinked'}`)
           ctx.activity.audit('asset.relinked', agent, { oldPath: result.oldPath, newPath: result.newPath })
         }
         return result
@@ -349,7 +343,6 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_assets_restore',
       label: 'Restored an asset',
-      activityDuplicate: true,
       description: 'Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename.',
       parameters: {
         filename: z.string().describe('The trash filename (includes __deleted- suffix)'),
@@ -359,7 +352,6 @@ const assetsPlugin: BakinPlugin = {
         const assetsRoot = join(getContentDir(), 'assets')
         const restoredPath = await restoreAsset(filename, assetsRoot)
         if (!restoredPath) return { ok: false, error: 'Failed to restore asset — file may not exist in trash' }
-        ctx.activity.log(agent, `Restored asset "${filename}"`)
         return { ok: true, restoredPath }
       },
     })
@@ -501,7 +493,6 @@ const assetsPlugin: BakinPlugin = {
       handler: async (_params: Record<string, unknown>, agent: string) => {
         const assetsRoot = join(getContentDir(), 'assets')
         const deleted = emptyTrash(assetsRoot)
-        ctx.activity.log(agent, `Emptied trash (${deleted} items)`)
         ctx.activity.audit('assets.trash.emptied', agent, { deleted })
         return { ok: true, deleted }
       },
@@ -523,7 +514,6 @@ const assetsPlugin: BakinPlugin = {
         const assetsRoot = join(getContentDir(), 'assets')
         const success = permanentDelete(filename, assetsRoot)
         if (!success) return { ok: false, error: 'Failed to permanently delete — file may not exist in trash' }
-        ctx.activity.log(agent, `Permanently deleted "${filename}"`)
         ctx.activity.audit('assets.trash.permanent_delete', agent, { filename })
         return { ok: true }
       },

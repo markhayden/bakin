@@ -575,7 +575,6 @@ const projectsPlugin: BakinPlugin = {
         const checked = params.checked as boolean
         const result = await markChecklistItem(projectId, itemId, checked)
         ctx.activity.audit('checklist.toggled', 'system', { projectId, checked })
-        ctx.activity.log('system', 'Toggled checklist item in project', { taskId: projectId })
         return { ok: true, ...result }
       },
     })
@@ -600,7 +599,6 @@ const projectsPlugin: BakinPlugin = {
             description: params.description as string | undefined,
           })
           ctx.activity.audit('checklist.updated', 'system', { projectId })
-          ctx.activity.log('system', 'Updated checklist item in project', { taskId: projectId })
           return { ok: true }
         } catch (err: unknown) {
           return { ok: false, error: (err as Error).message }
@@ -650,7 +648,6 @@ const projectsPlugin: BakinPlugin = {
           const agentId = (params.agent as string) || 'main'
           const reply = await sendMessage(agentId, context)
           ctx.activity.audit('project.asked', 'system', { projectId, agent: agentId })
-          ctx.activity.log('system', `Asked agent about project ${projectId}`, { taskId: projectId })
           return { ok: true, reply }
         } catch (err: unknown) {
           log.error('Agent ask failed', err)

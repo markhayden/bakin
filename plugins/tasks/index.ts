@@ -453,7 +453,6 @@ const tasksPlugin: BakinPlugin = {
           })
           if (parentId || assignee) triggerDispatch()
 
-          ctx.activity.log(agent, `Created task "${title}"`, { taskId: result.id })
           return {
             ok: true,
             id: result.id,
@@ -483,7 +482,6 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           await moveTaskWithEffects(taskId, to, agent, { channel: 'mcp' })
-          ctx.activity.log(agent, `Moved task to "${to}"`, { taskId })
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -503,7 +501,6 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await blockTaskWithEffects(params.taskId as string, params.reason as string, agent, 'mcp')
-          ctx.activity.log(agent, `Blocked task: ${params.reason}`, { taskId: params.taskId as string })
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -523,7 +520,6 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await reportComplete(params.taskId as string, agent, params.summary as string, 'mcp')
-          ctx.activity.log(agent, `Completed task: ${params.summary}`, { taskId: params.taskId as string })
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -562,7 +558,6 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await setDependencyWithEffects(params.taskId as string, params.dependsOn as string, 'mcp')
-          ctx.activity.log(agent, `Set dependency on ${params.dependsOn}`, { taskId: params.taskId as string })
           return { ok: true, message: `Dependency registered. You will be re-dispatched when ${params.dependsOn} completes. Stop now.` }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -592,7 +587,6 @@ const tasksPlugin: BakinPlugin = {
           if (assignee !== undefined) updates.agent = assignee
           const result = await ctx.hooks.invoke('tasks.updateTask', { identifier: taskId, updates })
           ctx.activity.audit('updated', agent, { taskId })
-          ctx.activity.log(agent, `Updated task "${taskId}"`, { taskId })
           return { ok: true, result }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -613,7 +607,6 @@ const tasksPlugin: BakinPlugin = {
         try {
           await ctx.hooks.invoke('tasks.deleteTask', { identifier: taskId })
           ctx.activity.audit('deleted', agent, { taskId })
-          ctx.activity.log(agent, `Deleted task "${taskId}"`, { taskId })
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -636,7 +629,6 @@ const tasksPlugin: BakinPlugin = {
         try {
           await assignTask(taskId, targetAgent)
           ctx.activity.audit('assigned', callingAgent, { taskId, agent: targetAgent })
-          ctx.activity.log(callingAgent, `Assigned task to "${targetAgent}"`, { taskId })
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
