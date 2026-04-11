@@ -365,6 +365,7 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_list',
+      label: 'Listed tasks',
       description: 'List all tasks on the board. Optionally filter by column or agent.',
       parameters: {
         column: z.enum(COLUMNS).optional().describe('Filter by column'),
@@ -394,6 +395,7 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_get',
+      label: 'Read task details',
       description: 'Get details about a task — title, description, current column, logs, dependencies, project context.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -422,6 +424,8 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_create',
+      label: 'Created a task',
+      activityDuplicate: true,
       description: 'Create a new task on the task board. For top-level tasks, you MUST provide either workflowId or skipWorkflowReason. Subtasks (with parentId) are exempt.',
       parameters: {
         title: z.string().describe('Task title'),
@@ -449,7 +453,6 @@ const tasksPlugin: BakinPlugin = {
           })
           if (parentId || assignee) triggerDispatch()
 
-          ctx.activity.log(agent, `Created task "${title}"`, { taskId: result.id })
           return {
             ok: true,
             id: result.id,
@@ -464,6 +467,8 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_move',
+      label: 'Moved a task',
+      activityDuplicate: true,
       description: 'Move a task to a different column on the task board.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -477,7 +482,6 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           await moveTaskWithEffects(taskId, to, agent, { channel: 'mcp' })
-          ctx.activity.log(agent, `Moved task to "${to}"`, { taskId })
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -487,6 +491,8 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_block',
+      label: 'Blocked a task',
+      activityDuplicate: true,
       description: 'Mark a task as blocked with a reason. Use when you cannot proceed.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -495,7 +501,6 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await blockTaskWithEffects(params.taskId as string, params.reason as string, agent, 'mcp')
-          ctx.activity.log(agent, `Blocked task: ${params.reason}`, { taskId: params.taskId as string })
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -505,6 +510,8 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_complete',
+      label: 'Completed a task',
+      activityDuplicate: true,
       description: 'Report that your task is complete. Moves the task to Done and notifies the orchestrator.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -513,7 +520,6 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await reportComplete(params.taskId as string, agent, params.summary as string, 'mcp')
-          ctx.activity.log(agent, `Completed task: ${params.summary}`, { taskId: params.taskId as string })
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -523,6 +529,8 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_log_progress',
+      label: 'Logged progress',
+      activityDuplicate: true,
       description: 'Log a human-readable progress update to the live activity feed. Call this at every significant step.',
       parameters: {
         taskId: z.string().describe('Task ID (e.g. "fe84ac51")'),
@@ -540,6 +548,8 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_set_dependency',
+      label: 'Set task dependency',
+      activityDuplicate: true,
       description: 'Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait.',
       parameters: {
         taskId: z.string().describe('Your task ID (the one that depends)'),
@@ -548,7 +558,6 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await setDependencyWithEffects(params.taskId as string, params.dependsOn as string, 'mcp')
-          ctx.activity.log(agent, `Set dependency on ${params.dependsOn}`, { taskId: params.taskId as string })
           return { ok: true, message: `Dependency registered. You will be re-dispatched when ${params.dependsOn} completes. Stop now.` }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -558,6 +567,8 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_update',
+      label: 'Updated a task',
+      activityDuplicate: true,
       description: 'Update a task on the board — change title, description, or assigned agent.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -576,7 +587,6 @@ const tasksPlugin: BakinPlugin = {
           if (assignee !== undefined) updates.agent = assignee
           const result = await ctx.hooks.invoke('tasks.updateTask', { identifier: taskId, updates })
           ctx.activity.audit('updated', agent, { taskId })
-          ctx.activity.log(agent, `Updated task "${taskId}"`, { taskId })
           return { ok: true, result }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -586,6 +596,8 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_delete',
+      label: 'Deleted a task',
+      activityDuplicate: true,
       description: 'Delete a task from the board.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -595,7 +607,6 @@ const tasksPlugin: BakinPlugin = {
         try {
           await ctx.hooks.invoke('tasks.deleteTask', { identifier: taskId })
           ctx.activity.audit('deleted', agent, { taskId })
-          ctx.activity.log(agent, `Deleted task "${taskId}"`, { taskId })
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -605,6 +616,8 @@ const tasksPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_tasks_assign',
+      label: 'Assigned a task',
+      activityDuplicate: true,
       description: 'Assign a task to an agent.',
       parameters: {
         taskId: z.string().describe('Task ID'),
@@ -616,7 +629,6 @@ const tasksPlugin: BakinPlugin = {
         try {
           await assignTask(taskId, targetAgent)
           ctx.activity.audit('assigned', callingAgent, { taskId, agent: targetAgent })
-          ctx.activity.log(callingAgent, `Assigned task to "${targetAgent}"`, { taskId })
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }

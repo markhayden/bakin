@@ -312,6 +312,7 @@ export async function generateImage(params: GenImageParams): Promise<ExecToolRes
 
 addExecTool({
   name: 'bakin_exec_gen_image',
+  label: 'Generated an image',
   description: `Generate an image via Gemini Imagen (Nano Banana), or import an existing image file into the asset pipeline via filePath. Default model: flash (cheaper). Use model=pro for higher quality. Default: 1080x1920 portrait (9:16) for Stories/Reels. Presets: social-portrait, social-square, social-landscape, custom. Auto-generates thumbnail. Max ${MAX_IMAGE_EDGE}px on any edge.`,
   source: 'core',
   parameters: {

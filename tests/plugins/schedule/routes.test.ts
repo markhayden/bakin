@@ -1167,7 +1167,6 @@ describe('schedule exec tools', () => {
       await callTool(tool, { jobId: 'job-rn-audit' })
 
       expect(plugin.ctx.activity.audit).toHaveBeenCalledWith('job.run_now', 'system', expect.objectContaining({ jobId: 'job-rn-audit' }))
-      expect(plugin.ctx.activity.log).toHaveBeenCalled()
     })
 
     it('returns error when jobId is missing', async () => {

@@ -160,6 +160,7 @@ const healthPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_health_status',
+      label: 'Checked system health',
       description: 'Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work.',
       parameters: {},
       handler: async () => {
@@ -196,6 +197,7 @@ const healthPlugin: BakinPlugin = {
 
     ctx.registerExecTool({
       name: 'bakin_exec_health_doctor',
+      label: 'Ran diagnostics',
       description: 'Run system diagnostics (agent roster, skill sync, gateway, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.',
       parameters: {
         fresh: z.boolean().optional().describe('Force fresh diagnostics instead of cached results'),
