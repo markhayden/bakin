@@ -675,7 +675,6 @@ const schedulePlugin: BakinPlugin = {
         if (!meta) return { ok: false, error: 'Job not found' }
         await cronRun(params.jobId as string, true)
         ctx.activity.audit('job.run_now', 'system', { jobId: params.jobId })
-        ctx.activity.log('system', `Triggered immediate run for "${meta.displayName || params.jobId}"`)
         return { ok: true, jobId: params.jobId }
       },
     })

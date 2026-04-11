@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug, Terminal } from 'lucide-react'
+import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug, Bug } from 'lucide-react'
 import { useActivityContext } from '@/context/activity-context'
 import { useContentStore } from '@/hooks/use-content-store'
 import { AgentAvatar } from '@/components/agent-avatar'
@@ -103,7 +103,7 @@ export function ActivityFeed() {
               title={showDuplicates ? 'Hide duplicate events' : 'Show all events'}
               className={`transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] ${showDuplicates ? 'text-foreground' : 'text-muted-foreground/50'}`}
             >
-              <Terminal className="size-3.5" />
+              <Bug className="size-3.5" />
             </button>
             <button
               onClick={toggle}

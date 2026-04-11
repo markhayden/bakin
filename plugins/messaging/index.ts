@@ -892,7 +892,6 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
           status: (params.status as ContentStatus) || 'draft',
         })
         ctx.activity.audit('item.created', params.agent as string, { itemId: item.id, title: params.title })
-        ctx.activity.log(params.agent as string, `Created messaging item "${params.title}"`)
         return { ok: true, item }
       },
     })
@@ -960,7 +959,6 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
           rejectionNote: (params.note as string) || undefined,
         })
         ctx.activity.audit('item.rejected', 'system', { itemId: params.itemId, note: params.note })
-        ctx.activity.log('system', `Messaging item "${item.title}" rejected → draft`)
         return { ok: true, item: updated }
       },
     })
@@ -979,7 +977,6 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         if (!item) return { ok: false, error: 'Item not found' }
         deleteItem(params.itemId as string)
         ctx.activity.audit('item.deleted', 'system', { itemId: params.itemId })
-        ctx.activity.log('system', `Deleted messaging item "${item.title}"`)
         return { ok: true }
       },
     })

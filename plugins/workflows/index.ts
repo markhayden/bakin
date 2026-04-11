@@ -583,7 +583,6 @@ const workflowsPlugin: BakinPlugin = {
           } catch { /* non-fatal */ }
 
           ctx.activity.audit('started', agent, { taskId, workflowId })
-          ctx.activity.log(agent, `Started workflow "${workflowId}"`, { taskId })
 
           return { ok: true, instance }
         } catch (err) {
@@ -658,7 +657,6 @@ const workflowsPlugin: BakinPlugin = {
         }
 
         ctx.activity.audit('step.completed', agentId, { taskId, stepId, workflowComplete: result.workflowComplete })
-        ctx.activity.log(agentId, `Completed step "${stepId}"${result.workflowComplete ? ' — workflow complete' : ''}`, { taskId })
 
         if (!result.workflowComplete) {
           triggerDispatch()
@@ -729,7 +727,6 @@ const workflowsPlugin: BakinPlugin = {
           }
 
           ctx.activity.audit('step.completed', agent, { taskId, stepId, workflowComplete: result.workflowComplete })
-          ctx.activity.log(agent, `Completed step "${stepId}"${result.workflowComplete ? ' — workflow complete' : ''}`, { taskId })
 
           if (!result.workflowComplete) {
             triggerDispatch()
