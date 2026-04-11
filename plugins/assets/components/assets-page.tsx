@@ -192,6 +192,7 @@ export function AssetsPage() {
           assets={paged}
           onSelect={(a: AssetMeta) => setAssetPath(a.path)}
           onDelete={deleteAsset}
+          scores={search && antfly.results.length ? new Map(antfly.results.map(r => [r.id, r.score])) : undefined}
         />
       )}
 
