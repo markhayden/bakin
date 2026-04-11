@@ -191,7 +191,7 @@ export async function getTableStats(tableName: string): Promise<Record<string, u
   try {
     // Get doc count via matchAll query with limit 0
     const { matchAll } = await import('@antfly/sdk')
-    const queryResult = await client.tables.query(tableName, { query: matchAll(), limit: 0 })
+    const queryResult = await client.tables.query(tableName, { full_text_search: matchAll(), limit: 0 } as unknown as QueryRequest)
     const total = (queryResult as unknown as { responses: Array<{ hits: { total: number } }> })
       .responses?.[0]?.hits?.total ?? 0
 
