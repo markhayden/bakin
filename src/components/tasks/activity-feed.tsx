@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug, Bug } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug } from 'lucide-react'
 import { useActivityContext } from '@/context/activity-context'
 import { useContentStore } from '@/hooks/use-content-store'
 import { AgentAvatar } from '@/components/agent-avatar'
@@ -53,19 +53,8 @@ export function ActivityFeed() {
   const { open, toggle } = useActivityContext()
   const events = useContentStore((s) => s.activityEvents)
   const connected = useContentStore((s) => s.sseConnected)
+  const debug = useContentStore((s) => s.debug)
   const [, setTick] = useState(0)
-  const [showDuplicates, setShowDuplicates] = useState(false)
-  useEffect(() => {
-    const stored = localStorage.getItem('bakin-activity-show-duplicates')
-    if (stored === 'true') setShowDuplicates(true)
-  }, [])
-  const toggleDuplicates = useCallback(() => {
-    setShowDuplicates((v) => {
-      const next = !v
-      localStorage.setItem('bakin-activity-show-duplicates', String(next))
-      return next
-    })
-  }, [])
 
   // Force re-render every 30s to keep relative timestamps fresh
   useEffect(() => {
@@ -100,13 +89,6 @@ export function ActivityFeed() {
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={toggleDuplicates}
-              title={showDuplicates ? 'Hide duplicate events' : 'Show all events'}
-              className={`transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] ${showDuplicates ? 'text-foreground' : 'text-muted-foreground/50'}`}
-            >
-              <Bug className="size-3.5" />
-            </button>
-            <button
               onClick={toggle}
               className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)]"
             >
@@ -120,7 +102,7 @@ export function ActivityFeed() {
           {events.length === 0 && (
             <p className="text-xs text-muted-foreground text-center mt-8">No activity yet</p>
           )}
-          {events.filter((evt) => showDuplicates || !evt.duplicate).map((evt, i) => (
+          {events.filter((evt) => debug || !evt.duplicate).map((evt, i) => (
             <div
               key={`${evt.id}-${i}`}
               className={`flex gap-2.5 px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/60 last:border-0 ${
