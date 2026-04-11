@@ -25,6 +25,7 @@ import { getContentDir } from '../core/content-dir'
 import { createLogger } from '../core/logger'
 import { appendAudit } from '../core/audit'
 import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
+import { buildSearchAPI } from '../core/search-registry'
 
 const log = createLogger('plugin-registry')
 
@@ -210,13 +211,7 @@ class PluginRegistryImpl {
           appendAudit(getContentDir(), `${pluginId}.${event}`, agent, data || {})
         },
       },
-      search: {
-        registerContentType: () => {},
-        index: async () => {},
-        remove: async () => {},
-        transform: async () => {},
-        query: async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } }),
-      },
+      search: buildSearchAPI(pluginId),
       hooks: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         register: (name: string, handler: (data: any) => any) => {
