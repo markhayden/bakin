@@ -7,6 +7,7 @@
 import type {
   SearchAPI,
   SearchContentTypeDefinition,
+  SearchIndexDefinition,
   SearchQueryParams,
   SearchResponse,
   SearchTransformOp,
@@ -15,6 +16,7 @@ import * as antfly from './antfly'
 import { broadcast } from './sse'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
+import { resolveEmbedder } from './embedder-resolver'
 
 const log = createLogger('search-registry')
 
@@ -93,6 +95,28 @@ function buildAntflySchema(def: SearchContentTypeDefinition): { default_type: st
   }
 }
 
+/**
+ * Compute the effective list of vector indexes for a content type. When
+ * `def.indexes` is set, returns it as-is. Otherwise synthesizes a single
+ * default index named `embeddings` from the top-level `embeddingTemplate`
+ * — this preserves backward compatibility with every content type
+ * registered before multi-index support existed, and keeps their Antfly
+ * table schemas stable across the upgrade.
+ */
+function getEffectiveIndexes(def: SearchContentTypeDefinition): SearchIndexDefinition[] {
+  if (def.indexes && def.indexes.length > 0) {
+    return def.indexes
+  }
+  return [
+    {
+      name: 'embeddings',
+      embedderRef: 'default',
+      embeddingTemplate: def.embeddingTemplate,
+      chunker: def.chunker,
+    },
+  ]
+}
+
 function buildAntflyIndexes(def: SearchContentTypeDefinition): Record<string, Record<string, unknown>> {
   const settings = getSettings()
   const indexes: Record<string, Record<string, unknown>> = {
@@ -100,20 +124,21 @@ function buildAntflyIndexes(def: SearchContentTypeDefinition): Record<string, Re
       name: 'search',
       type: 'full_text',
     },
-    embeddings: {
-      name: 'embeddings',
-      type: 'embeddings',
-      template: def.embeddingTemplate,
-      embedder: {
-        provider: settings.antfly.embedders.default.provider,
-        model: settings.antfly.embedders.default.model,
-      },
-    },
   }
 
-  if (def.chunker?.enabled) {
-    indexes.embeddings.chunk_size = def.chunker.targetTokens ?? settings.antfly.chunking.defaultTargetTokens
-    indexes.embeddings.chunk_overlap = def.chunker.overlapTokens ?? settings.antfly.chunking.defaultOverlapTokens
+  for (const idx of getEffectiveIndexes(def)) {
+    const embedder = resolveEmbedder(idx.embedderRef, settings)
+    const entry: Record<string, unknown> = {
+      name: idx.name,
+      type: 'embeddings',
+      template: idx.embeddingTemplate,
+      embedder: { provider: embedder.provider, model: embedder.model },
+    }
+    if (idx.chunker?.enabled) {
+      entry.chunk_size = idx.chunker.targetTokens ?? settings.antfly.chunking.defaultTargetTokens
+      entry.chunk_overlap = idx.chunker.overlapTokens ?? settings.antfly.chunking.defaultOverlapTokens
+    }
+    indexes[idx.name] = entry
   }
 
   return indexes
@@ -180,6 +205,18 @@ export function getContentTypes(): Map<string, SearchContentTypeDefinition & { p
  */
 export function getPluginTable(pluginId: string): string | undefined {
   return getRegistry().pluginTables.get(pluginId)
+}
+
+/**
+ * Get the effective vector index names for a table. Used by query callers
+ * to know which indexes to target when running semantic search. Returns
+ * ['embeddings'] for tables with no registration (e.g. unknown or legacy
+ * tables) so queries degrade gracefully rather than targeting nothing.
+ */
+export function getIndexNames(tableName: string): string[] {
+  const def = getRegistry().contentTypes.get(tableName)
+  if (!def) return ['embeddings']
+  return getEffectiveIndexes(def).map(i => i.name)
 }
 
 /**
@@ -254,6 +291,7 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
         offset: params.offset,
         filters: params.filters,
         aggregations,
+        indexes: getIndexNames(tableName),
       })
 
       // Map aggregation results to our format
@@ -389,6 +427,7 @@ export async function crossTableSearch(q: string, opts?: {
       offset: opts?.offset,
       filters: opts?.filters,
       aggregations,
+      indexes: getIndexNames(tableName),
     })
 
     return {
@@ -404,7 +443,10 @@ export async function crossTableSearch(q: string, opts?: {
     return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'antfly' } }
   }
 
-  const result = await antfly.multiQuery(q, tables, { limit })
+  const indexesByTable: Record<string, string[]> = {}
+  for (const t of tables) indexesByTable[t] = getIndexNames(t)
+
+  const result = await antfly.multiQuery(q, tables, { limit, indexesByTable })
   return {
     results: result.results.slice(0, limit),
     meta: { query: q, total: result.total, took_ms: result.took, source: 'antfly' },

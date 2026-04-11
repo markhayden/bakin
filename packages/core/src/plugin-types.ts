@@ -158,6 +158,28 @@ export interface SearchSchemaField {
   type: 'text' | 'keyword' | 'number' | 'boolean' | 'datetime' | 'array'
 }
 
+/**
+ * One vector index on a search table. A content type can declare multiple
+ * indexes to embed the same document into several vector spaces — e.g. a
+ * text index using BGE and a visual index using CLIP on the assets table.
+ * Each index has its own embedder (resolved via embedderRef), template,
+ * and optional chunker config.
+ */
+export interface SearchIndexDefinition {
+  /** Index name as stored in Antfly. Must be stable across restarts. */
+  name: string
+  /** Ref into settings.antfly.embedders — 'default', 'visual', or custom. */
+  embedderRef: string
+  /** Handlebars template for this index's embedding input. */
+  embeddingTemplate: string
+  /** Per-index chunker config, overrides any table-level default. */
+  chunker?: {
+    enabled: boolean
+    targetTokens?: number
+    overlapTokens?: number
+  }
+}
+
 /** Definition for a searchable content type registered by a plugin */
 export interface SearchContentTypeDefinition {
   /** Table name — auto-prefixed with `bakin_`. E.g., 'tasks' → 'bakin_tasks' */
@@ -166,15 +188,26 @@ export interface SearchContentTypeDefinition {
   schema: Record<string, SearchSchemaField>
   /** Fields to include in full-text search */
   searchableFields: string[]
-  /** Handlebars template for embedding generation */
+  /**
+   * Handlebars template for embedding generation. Used when `indexes` is
+   * not provided — the registry synthesizes a single default index named
+   * `embeddings` with this template and the default embedder.
+   */
   embeddingTemplate: string
+  /**
+   * Optional per-index definitions. When provided, overrides
+   * `embeddingTemplate` and creates one embedding index per entry with
+   * its own embedder. Used by content types that want multimodal indexing
+   * (e.g. assets with both a text index and a visual index).
+   */
+  indexes?: SearchIndexDefinition[]
   /** Fields to expose as aggregatable facets */
   facets?: string[]
   /** TTL duration (Go format: '24h', '7d', '30d') */
   ttl?: string
   /** TTL field (defaults to 'created_at') */
   ttlField?: string
-  /** Chunking config for long documents */
+  /** Chunking config for long documents — used by the synthesized default index. */
   chunker?: {
     enabled: boolean
     targetTokens?: number
