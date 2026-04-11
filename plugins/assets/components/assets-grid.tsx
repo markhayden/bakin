@@ -3,12 +3,17 @@
 import { AssetCard } from './asset-card'
 import type { AssetMeta } from '@/types'
 
+export interface AssetScoreInfo {
+  score: number
+  indexScores?: Record<string, number>
+}
+
 interface AssetsGridProps {
   assets: AssetMeta[]
   onSelect: (asset: AssetMeta) => void
   onDelete: (path: string) => void
   /** When present, show Antfly relevance score on each card (keyed by asset path) */
-  scores?: Map<string, number>
+  scores?: Map<string, AssetScoreInfo>
 }
 
 export function AssetsGrid({ assets, onSelect, onDelete, scores }: AssetsGridProps) {
@@ -26,7 +31,7 @@ export function AssetsGrid({ assets, onSelect, onDelete, scores }: AssetsGridPro
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
       {assets.map((asset) => (
-        <AssetCard key={asset.path} asset={asset} onClick={() => onSelect(asset)} onDelete={onDelete} score={scores?.get(asset.path)} />
+        <AssetCard key={asset.path} asset={asset} onClick={() => onSelect(asset)} onDelete={onDelete} scoreInfo={scores?.get(asset.path)} />
       ))}
     </div>
   )

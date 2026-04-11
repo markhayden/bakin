@@ -54,6 +54,8 @@ export interface SearchResult {
   table: string
   score: number
   fields: Record<string, unknown>
+  /** Per-index score breakdown (e.g. { search: 0.8, embeddings: 0.6 }) */
+  indexScores?: Record<string, number>
 }
 
 // ---------------------------------------------------------------------------
@@ -456,6 +458,7 @@ function mapHits(response: QueryResult, tableName: string): SearchResult[] {
     table: tableName,
     score: hit._score || 0,
     fields: hit._source || {},
+    indexScores: (hit as Record<string, unknown>)._index_scores as Record<string, number> | undefined,
   }))
 }
 
