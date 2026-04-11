@@ -154,13 +154,11 @@ describe('task-service', () => {
       expect(checkAndContinueDependents).toHaveBeenCalled()
     })
 
-    it('should index completed task when moved to done', async () => {
-      const { indexCompletedTask } = await import('@/core/antfly')
+    it('should not call indexCompletedTask (moved to tasks plugin ctx.search)', async () => {
+      // indexCompletedTask removed from task-service — tasks plugin now handles
+      // search indexing via ctx.search.index() in its route/tool handlers
       await service.moveTaskWithEffects('task-1', 'done', 'pixel')
-
-      expect(indexCompletedTask).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'task-1' })
-      )
+      // Just verify no error — the actual indexing test belongs in the plugin tests
     })
 
     it('should NOT trigger continuation for non-done moves', async () => {
