@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
+import { useAntflySearch, reorderByAntflyResults } from '@/hooks/use-antfly-search'
 import { useAssets, useTrash } from '@/hooks/use-assets'
 import { AssetsGrid } from './assets-grid'
 import { AssetsList, type SortField, type SortDir } from './assets-list'
@@ -74,7 +75,15 @@ export function AssetsPage() {
     return assets.find(a => a.path === assetPath) ?? null
   }, [assetPath, assets, loading])
 
-  // Client-side multi-type filtering + search
+  // Antfly search for semantic ranking
+  const antfly = useAntflySearch({ table: 'assets', facets: ['asset_type', 'agent'], debounce: 300 })
+  useEffect(() => {
+    if (search) antfly.search(search)
+    else antfly.clear()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
+  // Client-side multi-type filtering + search, boosted by Antfly ranking
   const filtered = useMemo(() => {
     let result = assets
     if (typeFilter.length > 1) {
@@ -89,8 +98,13 @@ export function AssetsPage() {
         a.metadata.agent.toLowerCase().includes(q)
       )
     }
+    // Reorder by Antfly relevance when available (assets use path as id)
+    if (antfly.results.length && search) {
+      const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+      result = [...result].sort((a, b) => (scoreMap.get(b.path) ?? -1) - (scoreMap.get(a.path) ?? -1))
+    }
     return result
-  }, [assets, typeFilter, search])
+  }, [assets, typeFilter, search, antfly.results])
 
   // Sorting
   const sorted = useMemo(() => {
