@@ -311,6 +311,8 @@ export async function reindexContentTypes(opts?: {
       // Run the reindex generator
       let count = 0
       if (def.reindex) {
+        broadcast({ type: 'reindex.start', table: tableName, pluginId: def.pluginId })
+
         const BATCH_SIZE = 50
         const batch: Array<{ key: string; doc: Record<string, unknown> }> = []
         for await (const { key, doc } of def.reindex()) {
@@ -321,6 +323,7 @@ export async function reindexContentTypes(opts?: {
             await antfly.batchIndex(tableName, batchMap)
             count += batch.length
             batch.length = 0
+            // Broadcast milestone progress to health page (every batch for live counts)
             broadcast({ type: 'reindex.progress', table: tableName, pluginId: def.pluginId, indexed: count })
           }
         }
@@ -330,6 +333,7 @@ export async function reindexContentTypes(opts?: {
           await antfly.batchIndex(tableName, batchMap)
           count += batch.length
         }
+
       }
 
       broadcast({ type: 'reindex.complete', table: tableName, pluginId: def.pluginId, indexed: count })

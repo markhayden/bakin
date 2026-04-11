@@ -127,15 +127,14 @@ export function useSSE() {
             })
           }
 
-          // Reindex progress
-          if (data.type === 'reindex.progress') {
+          // Reindex milestones — start and complete only (progress is handled by health page)
+          if (data.type === 'reindex.start') {
             appendActivityEvent({
-              id: `${Date.now()}-reindex-${data.table}`,
+              id: `${Date.now()}-reindex-start-${data.table}`,
               ts: new Date().toISOString(),
               type: 'log',
               agent: 'system',
-              message: `Reindexing ${data.pluginId}: ${data.indexed} documents indexed...`,
-              duplicate: true,
+              message: `Reindexing ${data.pluginId}...`,
             })
           }
           if (data.type === 'reindex.complete') {
