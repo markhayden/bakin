@@ -259,6 +259,7 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_assets_save',
       label: 'Saved an asset',
+      activityDuplicate: true,
       description: 'Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.',
       parameters: {
         filePath: z.string().describe('Absolute path to the source file to save'),
@@ -281,6 +282,7 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_assets_delete',
       label: 'Deleted an asset',
+      activityDuplicate: true,
       description: 'Soft-delete an asset (moves to trash with 30-day expiry).',
       parameters: {
         path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
@@ -305,6 +307,7 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_assets_link',
       label: 'Linked an asset',
+      activityDuplicate: true,
       description: 'Link an asset to a different task, or unlink it (set taskId to null). Physically moves the file between task directories and updates sidecar metadata.',
       parameters: {
         path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
@@ -346,6 +349,7 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_assets_restore',
       label: 'Restored an asset',
+      activityDuplicate: true,
       description: 'Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename.',
       parameters: {
         filename: z.string().describe('The trash filename (includes __deleted- suffix)'),
@@ -491,6 +495,7 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_assets_empty_trash',
       label: 'Emptied asset trash',
+      activityDuplicate: true,
       description: 'Permanently delete all items from trash. This cannot be undone.',
       parameters: {},
       handler: async (_params: Record<string, unknown>, agent: string) => {
@@ -505,6 +510,7 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_assets_permanent_delete',
       label: 'Permanently deleted an asset',
+      activityDuplicate: true,
       description: 'Permanently delete a specific trashed asset. This cannot be undone.',
       parameters: {
         filename: z.string().describe('The trash filename (includes __deleted- suffix)'),
