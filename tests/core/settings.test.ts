@@ -37,11 +37,11 @@ describe('Settings', () => {
     expect(settings.antfly.search.defaultLimit).toBe(20)
     expect(settings.antfly.search.reranker.enabled).toBe(true)
     expect(settings.antfly.search.reranker.provider).toBe('termite')
-    expect(settings.antfly.search.reranker.model).toBe('mxbai-rerank-base-v1')
+    expect(settings.antfly.search.reranker.model).toBe('mixedbread-ai/mxbai-rerank-base-v1')
     expect(settings.antfly.embedders.default.provider).toBe('antfly')
     expect(settings.antfly.embedders.default.model).toBe('all-MiniLM-L6-v2')
-    expect(settings.antfly.embedders.visual.provider).toBe('antfly')
-    expect(settings.antfly.embedders.visual.model).toBe('clip-vit-base-patch32')
+    expect(settings.antfly.embedders.visual.provider).toBe('termite')
+    expect(settings.antfly.embedders.visual.model).toBe('openai/clip-vit-base-patch32')
     expect(settings.antfly.chunking.defaultTargetTokens).toBe(200)
     expect(settings.antfly.chunking.defaultOverlapTokens).toBe(25)
     expect(settings.antfly.auditTtl).toBe('90d')
@@ -75,7 +75,7 @@ describe('Settings', () => {
     expect(settings.antfly.embedders.default.provider).toBe('antfly')
     expect(settings.antfly.embedders.default.model).toBe('custom-legacy-model')
     // visual still comes from defaults
-    expect(settings.antfly.embedders.visual.model).toBe('clip-vit-base-patch32')
+    expect(settings.antfly.embedders.visual.model).toBe('openai/clip-vit-base-patch32')
   })
 
   it('prefers embedders over legacy embedder when both are set', () => {
@@ -85,7 +85,7 @@ describe('Settings', () => {
         embedder: { provider: 'antfly', model: 'legacy-ignored' },
         embedders: {
           default: { provider: 'antfly', model: 'new-canonical' },
-          visual: { provider: 'antfly', model: 'clip-vit-base-patch32' },
+          visual: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
         },
       },
     }))

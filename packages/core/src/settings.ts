@@ -159,13 +159,17 @@ const DEFAULTS: BakinSettings = {
       reranker: {
         enabled: true,
         provider: 'termite',
-        model: 'mxbai-rerank-base-v1',
+        model: 'mixedbread-ai/mxbai-rerank-base-v1',
         threshold: 0.0,
       },
     },
     embedders: {
+      // default stays on Antfly's builtin MiniLM until T7 swaps it to
+      // BAAI/bge-small-en-v1.5. Termite resolves unqualified names for
+      // its own pull command but the embedder config API wants the
+      // HuggingFace-style qualified model ID at query time.
       default: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
-      visual: { provider: 'antfly', model: 'clip-vit-base-patch32' },
+      visual: { provider: 'termite', model: 'openai/clip-vit-base-patch32' },
     },
     chunking: {
       defaultTargetTokens: 200,

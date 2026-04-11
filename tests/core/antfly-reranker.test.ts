@@ -15,7 +15,7 @@ const mockListTables = vi.fn(async () => [])
 const settingsState = {
   rerankerEnabled: true,
   rerankerProvider: 'termite',
-  rerankerModel: 'mxbai-rerank-base-v1',
+  rerankerModel: 'mixedbread-ai/mxbai-rerank-base-v1',
   rerankerThreshold: 0.0 as number | undefined,
 }
 
@@ -86,7 +86,7 @@ describe('antfly reranker wiring', () => {
     mockMultiquery.mockClear()
     settingsState.rerankerEnabled = true
     settingsState.rerankerProvider = 'termite'
-    settingsState.rerankerModel = 'mxbai-rerank-base-v1'
+    settingsState.rerankerModel = 'mixedbread-ai/mxbai-rerank-base-v1'
     settingsState.rerankerThreshold = 0.0
   })
 
@@ -98,7 +98,7 @@ describe('antfly reranker wiring', () => {
     const request = mockQuery.mock.calls[0][1] as { reranker?: Record<string, unknown> }
     expect(request.reranker).toEqual({
       provider: 'termite',
-      model: 'mxbai-rerank-base-v1',
+      model: 'mixedbread-ai/mxbai-rerank-base-v1',
       threshold: 0.0,
     })
   })
@@ -137,7 +137,7 @@ describe('antfly reranker wiring', () => {
     const request = mockQuery.mock.calls[0][1] as { reranker?: Record<string, unknown> }
     expect(request.reranker).toEqual({
       provider: 'termite',
-      model: 'mxbai-rerank-base-v1',
+      model: 'mixedbread-ai/mxbai-rerank-base-v1',
     })
   })
 
@@ -151,7 +151,7 @@ describe('antfly reranker wiring', () => {
     for (const req of requests) {
       expect(req.reranker).toEqual({
         provider: 'termite',
-        model: 'mxbai-rerank-base-v1',
+        model: 'mixedbread-ai/mxbai-rerank-base-v1',
         threshold: 0.0,
       })
     }
