@@ -12,7 +12,7 @@ Runs on a Mac mini, accessed via Tailscale. No database, no SaaS dependencies.
 - **Real-time:** Server-Sent Events (SSE) push updates to all connected browsers
 - **Agents:** Managed via OpenClaw gateway, communicate through MCP tools
 - **Plugins:** 10 core plugins, extensible architecture for addons
-- **Search:** Antfly SDK for full-text indexing
+- **Search:** `@antfly/sdk` for full-text + semantic search, `ctx.search` plugin API, `bakin_` table prefix
 - **OpenClaw Adapter Principle:** Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw. Agent identity, soul, rules, tools, models, and workspace data all live in the OpenClaw home directory (`OPENCLAW_HOME` env var, defaults to `~/.openclaw/`). Bakin owns only UI-specific data (display settings, avatars, heartbeats). Question any pattern that duplicates OpenClaw state into Bakin code or storage. All OpenClaw paths MUST use `getOpenClawPath()` from `packages/core/src/openclaw-home.ts` — never hardcode `~/.openclaw/`.
 
 ## Directory Map
@@ -35,6 +35,8 @@ src/
     logger.ts              — Structured logger (createLogger)
     openclaw-client.ts     — OpenClaw HTTP gateway client
     watcher.ts             — Chokidar file watcher integration
+    search-registry.ts     — Search content type registry, ctx.search provider
+    search-cleanup.ts      — Periodic orphan cleanup for search indexes
   lib/                     — Shared types and utilities (client + server safe)
     core-constants.ts      — APP_NAME, APP_SLUG, branding constants
     plugin-types.ts        — BakinPlugin, PluginContext, StorageAdapter, EventBus interfaces
@@ -116,7 +118,7 @@ Every plugin has:
 - `components/` — plugin-specific UI components
 - `types.ts` — plugin-specific type definitions
 
-Plugin context provides: `storage`, `events`, `registerNav()`, `registerRoute()`, `registerSlot()`, `registerExecTool()`, `registerSkill()`, `watchFiles()`, `getSettings()`, `updateSettings()`, `activity` (log + audit), `hooks` (register + has + invoke)
+Plugin context provides: `storage`, `events`, `registerNav()`, `registerRoute()`, `registerSlot()`, `registerExecTool()`, `registerSkill()`, `watchFiles()`, `getSettings()`, `updateSettings()`, `activity` (log + audit), `hooks` (register + has + invoke), `search` (registerContentType, index, remove, transform, query)
 
 Routes registered as: `/api/plugins/{pluginId}/{path}` via the catch-all route.
 
@@ -206,6 +208,9 @@ Each plugin declares a `settingsSchema` with typed fields (string, number, boole
 
 ### URL State & Deep Linking
 All user-facing filter/view state **must** be backed by URL query parameters so pages are bookmarkable and support browser back/forward. Use `useQueryState(key, default)` for single values and `useQueryArrayState(key)` for arrays (comma-separated). Params are omitted when at their default value. Pages using these hooks must wrap their content component in `<Suspense>`. See `.claude/knowledge/url-state-deep-linking.md` for conventions and implementation status.
+
+### Search Indexing
+Plugins register content types via `ctx.search.registerContentType()` during `activate()`. Mutations dual-write to source and index via `ctx.search.index()`. Deletions sync via `ctx.search.remove()` (called from the watcher unlink hook). Orphan cleanup runs on a periodic timer via `src/core/search-cleanup.ts`. All Antfly tables use the `bakin_` prefix. Config in `settings.antfly.*`. Antfly is optional — all calls are no-ops when disabled. See `.claude/knowledge/search-system.md`.
 
 ### Shared UI Components
 - **`PluginHeader`** (`src/components/plugin-header.tsx`) — Consistent page title + count badge + search + actions slot. Used by all 10 plugins.
