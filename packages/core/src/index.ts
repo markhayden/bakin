@@ -46,12 +46,8 @@ export {
   resetContentDir,
   getBakinPaths,
   initBakinHome,
-  // Backward-compat aliases
-  isUsingBeaconHome,
-  getBeaconPaths,
-  initBeaconHome,
 } from './content-dir'
-export type { BakinPaths, BeaconPaths } from './content-dir'
+export type { BakinPaths } from './content-dir'
 
 // Settings
 export { getSettings, updateSettings, resetSettingsCache } from './settings'
