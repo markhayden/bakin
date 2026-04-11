@@ -56,7 +56,7 @@ describe('Settings', () => {
 
     const settings = getSettings()
     expect(settings.antfly.enabled).toBe(true)
-    expect(settings.antfly.url).toBe('http://localhost:8080') // default preserved
+    expect(settings.antfly.url).toBe('http://localhost:8080/api/v1') // default preserved
     expect(settings.antfly.search.defaultLimit).toBe(50) // overridden
     expect(settings.antfly.search.strategy).toBe('rrf') // default preserved
     expect(settings.antfly.embedders.default.provider).toBe('antfly') // default preserved

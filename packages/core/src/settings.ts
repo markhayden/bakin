@@ -141,7 +141,7 @@ const DEFAULTS: BakinSettings = {
   agents: [], // populated dynamically from OpenClaw at load time
   antfly: {
     enabled: true,
-    url: 'http://localhost:8080',
+    url: 'http://localhost:8080/api/v1',
     search: {
       strategy: 'rrf',
       defaultLimit: 20,
