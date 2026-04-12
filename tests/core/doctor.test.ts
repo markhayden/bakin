@@ -37,6 +37,12 @@ vi.mock('better-sqlite3', () => {
   }
 })
 
+// Mock onboarding state — controls the requireOnboard gate
+let mockIsOnboarded = true
+vi.mock('@/core/onboarding/state', () => ({
+  isOnboarded: () => mockIsOnboarded,
+}))
+
 // Mock mcporter (avoid install/config in tests)
 vi.mock('@/core/mcporter', () => ({
   isMcporterInstalled: vi.fn(() => true),
@@ -62,6 +68,7 @@ describe('doctor', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-doctor-test-'))
     contentDir = join(tempDir, 'content')
     mkdirSync(join(contentDir, 'team', 'personas'), { recursive: true })
+    mockIsOnboarded = true // default: gate passes
   })
 
   afterEach(() => {
@@ -179,6 +186,69 @@ describe('doctor', () => {
 
       // Verify the mismatched sidecar was removed
       expect(existsSync(join(taskDir, 'pop-tart.meta.json'))).toBe(false)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Onboarding gate: requireOnboard + .onboarded marker
+  // ---------------------------------------------------------------------------
+
+  describe('requireOnboard gate', () => {
+    it('returns single error when requireOnboard=true and machine is not onboarded', async () => {
+      mockIsOnboarded = false
+      const { getSettings } = await import('@/core/settings')
+      const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
+      settings.mockReturnValueOnce({
+        agents: [],
+        antfly: { enabled: false },
+        doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
+        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+        service: { enabled: false },
+      })
+      vi.resetModules()
+      const { runDiagnostics } = await import('@/core/doctor')
+      const results = await runDiagnostics(contentDir, tempDir)
+      expect(results).toHaveLength(1)
+      expect(results[0].check).toBe('onboarded')
+      expect(results[0].status).toBe('error')
+      expect(results[0].message).toContain('bakin onboard')
+    })
+
+    it('runs normal checks when requireOnboard=true and machine IS onboarded', async () => {
+      mockIsOnboarded = true
+      const { getSettings } = await import('@/core/settings')
+      const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
+      settings.mockReturnValueOnce({
+        agents: ['roscoe'],
+        antfly: { enabled: false },
+        doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
+        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+        service: { enabled: false },
+      })
+      vi.resetModules()
+      const { runDiagnostics } = await import('@/core/doctor')
+      const results = await runDiagnostics(contentDir, tempDir)
+      // Should have many results from the normal check suite, not just 1
+      expect(results.length).toBeGreaterThan(1)
+      expect(results.find(r => r.check === 'onboarded')).toBeUndefined()
+    })
+
+    it('runs normal checks when requireOnboard=false and machine is NOT onboarded', async () => {
+      mockIsOnboarded = false
+      const { getSettings } = await import('@/core/settings')
+      const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
+      settings.mockReturnValueOnce({
+        agents: ['roscoe'],
+        antfly: { enabled: false },
+        doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },
+        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+        service: { enabled: false },
+      })
+      vi.resetModules()
+      const { runDiagnostics } = await import('@/core/doctor')
+      const results = await runDiagnostics(contentDir, tempDir)
+      expect(results.length).toBeGreaterThan(1)
+      expect(results.find(r => r.check === 'onboarded')).toBeUndefined()
     })
   })
 })
