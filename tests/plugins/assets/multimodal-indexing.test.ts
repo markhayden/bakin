@@ -73,7 +73,7 @@ function setupFixtures() {
     }),
   )
 
-  // Image asset
+  // Raster image asset
   writeFileSync(join(assetsRoot, 'images', 'task-1', 'diagram.png'), 'png-bytes')
   writeFileSync(
     join(assetsRoot, 'images', 'task-1', 'diagram.png.meta.json'),
@@ -83,6 +83,20 @@ function setupFixtures() {
       created: '2026-04-11T00:00:00.000Z',
       description: 'Kafka pipeline diagram',
       tags: ['architecture'],
+    }),
+  )
+
+  // SVG asset — vector, should be excluded from image_url since CLIP
+  // and Antfly's image processor can't decode vector formats
+  writeFileSync(join(assetsRoot, 'images', 'task-1', 'icon.svg'), '<svg/>')
+  writeFileSync(
+    join(assetsRoot, 'images', 'task-1', 'icon.svg.meta.json'),
+    JSON.stringify({
+      agent: 'main-operator',
+      taskId: 'task-1',
+      created: '2026-04-11T00:00:00.000Z',
+      description: 'Vector icon',
+      tags: ['ui'],
     }),
   )
 
@@ -179,6 +193,25 @@ describe('assets multimodal indexing', () => {
     const expectedAbsPath = join(assetsRoot, 'images', 'task-1', 'diagram.png')
     expect(imageDoc.image_url).toBe(`file://${expectedAbsPath}`)
     expect(imageDoc.pdf_url).toBe('')
+  })
+
+  it('excludes SVG from image_url even when asset_type is images', async () => {
+    const def = await getRegisteredDef()
+
+    const docs: Record<string, Record<string, unknown>> = {}
+    for await (const { key, doc } of def.reindex()) {
+      docs[key] = doc as Record<string, unknown>
+    }
+
+    const svgDoc = docs['assets/images/task-1/icon.svg']
+    expect(svgDoc).toBeDefined()
+    // SVG and other vector/indexed formats are excluded because Antfly's
+    // image processor (Go's standard image library) cannot decode them,
+    // and CLIP needs raster pixel data anyway.
+    expect(svgDoc.image_url).toBe('')
+    expect(svgDoc.pdf_url).toBe('')
+    // Sidecar metadata is still indexed via the text index
+    expect(svgDoc.description).toBe('Vector icon')
   })
 
   it('reindex yields a doc with empty media URLs for a plain text asset', async () => {
