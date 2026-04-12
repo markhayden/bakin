@@ -40,6 +40,7 @@ vi.mock('../../src/core/sse', () => ({
 vi.mock('../../src/core/openclaw-client', () => ({
   sendChannelMessage: vi.fn().mockResolvedValue(undefined),
   sendMessage: vi.fn().mockResolvedValue(undefined),
+  getAgentLastReply: vi.fn().mockReturnValue(null),
 }))
 
 vi.mock('../../src/lib/plugin-registry', () => ({
@@ -63,10 +64,14 @@ import { isStale } from '../../src/lib/format'
 describe('watchdog', () => {
   let tempDir: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-watchdog-'))
     vi.useFakeTimers()
     vi.clearAllMocks()
+    // Default: no recorded gateway reply for any agent (forces watchdog
+    // to fall back to the heartbeat-file path). Individual tests override.
+    const openclaw = await import('../../src/core/openclaw-client')
+    vi.mocked(openclaw.getAgentLastReply).mockReturnValue(null)
   })
 
   afterEach(() => {
@@ -196,6 +201,45 @@ describe('watchdog', () => {
         'watchdog',
         expect.objectContaining({ id: 'task-2' }),
       )
+    })
+
+    it('does not auto-recover when the gateway has a recent reply from the agent', async () => {
+      const hookRegistry = getHookRegistry()
+      const invokeMock = vi.mocked(hookRegistry.invoke)
+
+      invokeMock.mockImplementation(async (name: string) => {
+        if (name === 'tasks.readTaskboard') {
+          return {
+            columns: {
+              todo: [],
+              inProgress: [
+                {
+                  id: 'task-alive',
+                  title: 'Slow but alive task',
+                  agent: 'pixel',
+                  log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }],
+                },
+              ],
+              done: [],
+            },
+          }
+        }
+        return undefined
+      })
+
+      // Heartbeat file is stale...
+      vi.mocked(isStale).mockReturnValue(true)
+      // ...but the gateway just replied successfully, so the agent is alive.
+      const openclaw = await import('../../src/core/openclaw-client')
+      vi.mocked(openclaw.getAgentLastReply).mockReturnValue(Date.now())
+
+      start(tempDir, 3737)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      // No recovery should fire — the task is stuck but the agent is online,
+      // so the watchdog should fall through to the alert path instead.
+      expect(invokeMock).not.toHaveBeenCalledWith('tasks.moveTask', expect.anything())
+      expect(invokeMock).not.toHaveBeenCalledWith('tasks.blockTask', expect.anything())
     })
 
     it('escalates to blocked after max auto-recoveries', async () => {

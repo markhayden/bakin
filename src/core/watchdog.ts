@@ -47,6 +47,20 @@ function getLastLogTimestamp(task: { log?: { timestamp: string }[] }): Date | nu
 
 function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): boolean {
   if (!agent) return true
+
+  // Primary signal: did the gateway return a successful reply from this
+  // agent recently? Recorded in openclaw-client.sendMessage() — a returned
+  // reply means the gateway routed our request and got a response back,
+  // which is a stronger liveness indicator than an agent-written heartbeat
+  // file (which nothing currently writes).
+  const lastReplyMs = openclaw.getAgentLastReply(agent)
+  if (lastReplyMs !== null && Date.now() - lastReplyMs < 15 * 60 * 1000) {
+    return false
+  }
+
+  // Fallback: legacy agent-written heartbeat file. Kept so an agent that
+  // explicitly calls bakin_exec_heartbeat still counts as alive even if
+  // the server hasn't pinged them recently.
   const heartbeatPath = join(contentDir, 'heartbeats', `${agent}.json`)
   try {
     if (!existsSync(heartbeatPath)) return true
