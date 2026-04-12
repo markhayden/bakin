@@ -17,10 +17,10 @@ addExecTool({
   description: 'Search across all Bakin content (tasks, assets, projects, workflows, schedules, agents) or a specific table. Returns ranked results with scores.',
   source: 'core',
   parameters: {
-    q: { type: 'string', description: 'Search query text', required: true },
-    table: { type: 'string', description: 'Limit to a specific table (tasks, assets, projects, workflows, schedule, team, audit). Omit for cross-table search.' },
-    limit: { type: 'number', description: 'Maximum results to return (default: 20)' },
-    offset: { type: 'number', description: 'Skip this many results (for pagination)' },
+    q: z.string().describe('Search query text'),
+    table: z.string().optional().describe('Limit to a specific table (tasks, assets, projects, workflows, schedule, team, audit). Omit for cross-table search.'),
+    limit: z.number().optional().describe('Maximum results to return (default: 20)'),
+    offset: z.number().optional().describe('Skip this many results (for pagination)'),
   },
   handler: async (params) => {
     const q = params.q as string
@@ -44,10 +44,10 @@ addExecTool({
   description: 'Search a specific Bakin table with facet filtering. Returns results plus facet counts for filtering.',
   source: 'core',
   parameters: {
-    table: { type: 'string', description: 'Table to search (tasks, assets, projects, workflows, schedule, team, audit)', required: true },
-    q: { type: 'string', description: 'Search query text', required: true },
-    facets: { type: 'string', description: 'Comma-separated facet fields to include counts for (e.g., "status,agent")' },
-    limit: { type: 'number', description: 'Maximum results (default: 20)' },
+    table: z.string().describe('Table to search (tasks, assets, projects, workflows, schedule, team, audit)'),
+    q: z.string().describe('Search query text'),
+    facets: z.string().optional().describe('Comma-separated facet fields to include counts for (e.g., "status,agent")'),
+    limit: z.number().optional().describe('Maximum results (default: 20)'),
   },
   handler: async (params) => {
     const table = params.table as string
@@ -72,8 +72,8 @@ addExecTool({
   description: 'Look up a specific indexed document by its key and table.',
   source: 'core',
   parameters: {
-    table: { type: 'string', description: 'Table name (tasks, assets, projects, etc.)', required: true },
-    key: { type: 'string', description: 'Document key to look up', required: true },
+    table: z.string().describe('Table name (tasks, assets, projects, etc.)'),
+    key: z.string().describe('Document key to look up'),
   },
   handler: async (params) => {
     const table = `bakin_${params.table}`
@@ -98,8 +98,8 @@ addExecTool({
   description: 'Get facet value counts for a table. Useful for understanding data distribution (e.g., how many tasks per status).',
   source: 'core',
   parameters: {
-    table: { type: 'string', description: 'Table name (tasks, assets, projects, etc.)', required: true },
-    facets: { type: 'string', description: 'Comma-separated facet fields (e.g., "status,agent")', required: true },
+    table: z.string().describe('Table name (tasks, assets, projects, etc.)'),
+    facets: z.string().describe('Comma-separated facet fields (e.g., "status,agent")'),
   },
   handler: async (params) => {
     const table = params.table as string
@@ -125,9 +125,9 @@ addExecTool({
   description: 'Find documents similar to a given text description. Uses semantic (vector) search for meaning-based matching.',
   source: 'core',
   parameters: {
-    text: { type: 'string', description: 'Text to find similar documents for', required: true },
-    table: { type: 'string', description: 'Limit to a specific table (optional)' },
-    limit: { type: 'number', description: 'Maximum results (default: 10)' },
+    text: z.string().describe('Text to find similar documents for'),
+    table: z.string().optional().describe('Limit to a specific table (optional)'),
+    limit: z.number().optional().describe('Maximum results (default: 10)'),
   },
   handler: async (params) => {
     const text = params.text as string
@@ -150,8 +150,8 @@ addExecTool({
   description: 'Trigger a full reindex of all content types (or a specific table). Use after bulk data changes.',
   source: 'core',
   parameters: {
-    table: { type: 'string', description: 'Specific table to reindex (optional — omit for all)' },
-    rebuild: { type: 'boolean', description: 'Drop and recreate indexes before reindexing (default: false)' },
+    table: z.string().optional().describe('Specific table to reindex (optional — omit for all)'),
+    rebuild: z.boolean().optional().describe('Drop and recreate indexes before reindexing (default: false)'),
   },
   handler: async (params) => {
     const results = await reindexContentTypes({
