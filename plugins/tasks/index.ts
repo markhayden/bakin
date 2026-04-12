@@ -525,7 +525,7 @@ const tasksPlugin: BakinPlugin = {
       name: 'bakin_exec_tasks_create',
       label: 'Created a task',
       activityDuplicate: true,
-      description: 'Create a new task on the task board. For top-level tasks, you MUST provide either workflowId or skipWorkflowReason. Subtasks (with parentId) are exempt.',
+      description: 'Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip.',
       parameters: {
         title: z.string().describe('Task title'),
         assignee: z.string().optional().describe('Agent to assign (chef, pixel, rolo, patch, trainer, etc.)'),
@@ -541,10 +541,6 @@ const tasksPlugin: BakinPlugin = {
           workflowId?: string; skipWorkflowReason?: string; projectId?: string
         }
 
-        if (!parentId && !workflowId && !skipWorkflowReason) {
-          return { ok: false, error: 'Top-level tasks require either workflowId or skipWorkflowReason. Use bakin_exec_workflows_list to see available workflows.' }
-        }
-
         try {
           const result = await createTaskWithEffects({
             title, assignee, description, workflowId, skipWorkflowReason,
@@ -553,11 +549,17 @@ const tasksPlugin: BakinPlugin = {
           if (parentId || assignee) triggerDispatch()
           indexTask(result.id).catch(() => {})
 
+          // Nudge: if no workflow was matched or provided, let the agent know
+          const notice = (!parentId && !result.workflowId && !skipWorkflowReason)
+            ? 'No workflow attached. Consider providing workflowId next time — use bakin_exec_workflows_list to see options.'
+            : undefined
+
           return {
-            ok: true,
+            ok: true as const,
             id: result.id,
             workflowId: result.workflowId,
             suggestedWorkflow: result.suggestedWorkflow,
+            notice,
           }
         } catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) }

@@ -192,7 +192,7 @@ ctx.registerExecTool({
 - Do NOT set on tools where the auto-audit is the only activity event (e.g., read-only tools, tools with no domain event)
 - When set, the manual `ctx.activity.log()` call in the handler should be removed — the domain event + label cover the same information
 
-**UI:** Bug icon toggle in the feed header. Off by default (hides duplicates). State persisted to `localStorage` key `bakin-activity-show-duplicates`. Raw event names (`evt.eventName`) always shown for all visible events regardless of toggle state.
+**UI:** Duplicate visibility is controlled by the global debug mode (Bug icon in the app header, `useDebug()` hook). Off by default (hides duplicates). State persisted via Zustand + `localStorage` key `bakin-debug`. Raw event names (`evt.eventName`) always shown for all visible events regardless of toggle state.
 
 ## Acceptance Criteria
 

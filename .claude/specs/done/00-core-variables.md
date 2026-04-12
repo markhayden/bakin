@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Create a single source of truth for all identity/branding values so that renaming the project (Beacon → Bakin, or anything else in the future) is a one-file change. Additionally, decouple the main agent identity from the source code so it's fully instance-specific.
+Create a single source of truth for all identity/branding values so that renaming the project (Bakin → Bakin, or anything else in the future) is a one-file change. Additionally, decouple the main agent identity from the source code so it's fully instance-specific.
 
 ## Deliverables
 
@@ -23,7 +23,7 @@ export const DEFAULT_PORT = 3737
 export const ENV_PREFIX = 'BAKIN'   // env vars: BAKIN_HOME, BAKIN_URL, etc.
 ```
 
-Every file that currently hardcodes "beacon", "Beacon", "mission-control", "MC", "BAKIN_HOME", etc. imports from this file instead.
+Every file that currently hardcodes "bakin", "Bakin", "mission-control", "MC", "BAKIN_HOME", etc. imports from this file instead.
 
 ### 2. Runtime main agent ID
 
@@ -38,7 +38,7 @@ export function getMainAgentId(): string {
 
 function detectFromOpenClaw(): string | null {
   // Read ~/.openclaw/openclaw.json → agents.list → find id='main' → identity.name
-  // This is already done in cli/beacon.ts getCliAgent() — extract and share
+  // This is already done in cli/bakin.ts getCliAgent() — extract and share
 }
 ```
 
@@ -52,7 +52,7 @@ Full grep audit for every variant that needs replacement:
 
 | Pattern | Replacement |
 |---------|-------------|
-| `beacon` (lowercase) | `APP_SLUG` or literal `bakin` |
+| `bakin` (lowercase) | `APP_SLUG` or literal `bakin` |
 | `Bakin` (capitalized) | `APP_NAME` or literal `Bakin` |
 | `BAKIN_HOME` | `${ENV_PREFIX}_HOME` |
 | `BAKIN_URL` | `${ENV_PREFIX}_URL` |
@@ -74,10 +74,10 @@ Full grep audit for every variant that needs replacement:
 | `~/.bakin/` | `~/.bakin/` (direct rename, no fallback) |
 | `bakin.config.ts` | `bakin.config.ts` |
 | `bakin-plugin.json` (in each plugin) | `bakin-plugin.json` |
-| `cli/beacon.ts` | `cli/bakin.ts` |
+| `cli/bakin.ts` | `cli/bakin.ts` |
 | `package.json` name: `mission-control` | `bakin` |
-| `package.json` bin: `beacon` | `bakin` |
-| GitHub repo: `beacon` | `bakin` |
+| `package.json` bin: `bakin` | `bakin` |
+| GitHub repo: `bakin` | `bakin` |
 
 ### 5. Content directory update (`src/core/content-dir.ts`)
 
@@ -86,7 +86,7 @@ Full grep audit for every variant that needs replacement:
 - `isUsingBakinHome()` → `isUsingBakinHome()`
 - `getBakinPaths()` → `getBakinPaths()`
 - `initBakinHome()` → `initBakinHome()`
-- `.beacon/settings.json` nested dir → `settings.json` at root of `~/.bakin/`
+- `.bakin/settings.json` nested dir → `settings.json` at root of `~/.bakin/`
 
 ### 6. Update all .claude files
 
@@ -99,7 +99,7 @@ All specs, knowledge files, skills, and CLAUDE.md updated to reference new names
 3. Rename `bakin.config.ts` → `bakin.config.ts`, update import in `server.ts`
 4. Rename `bakin-plugin.json` → `bakin-plugin.json` in all 9 plugins
 5. Update `package.json` (name, bin)
-6. Update `cli/beacon.ts` → `cli/bakin.ts`
+6. Update `cli/bakin.ts` → `cli/bakin.ts`
 7. Global find-replace on remaining string literals (careful, manual review)
 8. Rename types: `BakinPlugin` → `BakinPlugin`, `BakinConfig` → `BakinConfig`, etc.
 9. Update tsconfig paths: `@bakin/*` → `@bakin/*`
@@ -110,7 +110,7 @@ All specs, knowledge files, skills, and CLAUDE.md updated to reference new names
 
 ## Verification
 
-- [ ] `grep -ri 'beacon\|mission.control\|BakinPlugin\|BakinConfig\|@bakin/' src/ plugins/ scripts/ cli/` — zero hits outside constants and migration code
+- [ ] `grep -ri 'bakin\|mission.control\|BakinPlugin\|BakinConfig\|@bakin/' src/ plugins/ scripts/ cli/` — zero hits outside constants and migration code
 - [ ] `npm run dev` starts cleanly
 - [ ] `npm test` passes
 - [ ] CLI works as `bakin status`
