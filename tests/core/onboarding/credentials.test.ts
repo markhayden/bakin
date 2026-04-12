@@ -71,18 +71,18 @@ describe('onboarding credentials component', () => {
       expect(result.remediation).toContain('OpenClaw')
     })
 
-    it('reports warn when the file is not an array', async () => {
-      writeFileSync(authProfilesPath(), JSON.stringify({ notAnArray: true }))
+    it('reports warn when file has no recognizable entries', async () => {
+      writeFileSync(authProfilesPath(), JSON.stringify({ unrelated: true }))
       const result = await llmComponent.check()
       expect(result.status).toBe('warn')
-      expect(result.message).toContain('not an array')
+      expect(result.message).toContain('no provider entries')
     })
 
-    it('reports warn when the array is empty', async () => {
+    it('reports warn when the bare array is empty', async () => {
       writeFileSync(authProfilesPath(), JSON.stringify([]))
       const result = await llmComponent.check()
       expect(result.status).toBe('warn')
-      expect(result.message).toContain('non-empty apiKey')
+      expect(result.message).toContain('no provider entries')
     })
 
     it('reports warn when all entries have empty apiKeys', async () => {
@@ -94,11 +94,35 @@ describe('onboarding credentials component', () => {
       expect(result.status).toBe('warn')
     })
 
-    it('reports ok when at least one provider has a non-empty apiKey', async () => {
+    it('reports ok from bare array shape (imitation crab)', async () => {
       writeFileSync(authProfilesPath(), JSON.stringify([
         { provider: 'anthropic', apiKey: 'sk-ant-fake' },
         { provider: 'openai', apiKey: '' },
       ]))
+      const result = await llmComponent.check()
+      expect(result.status).toBe('ok')
+      expect(result.details?.providers).toEqual(['anthropic'])
+    })
+
+    it('reports ok from { profiles: [...] } shape (real OpenClaw)', async () => {
+      writeFileSync(authProfilesPath(), JSON.stringify({
+        profiles: [
+          { provider: 'anthropic', apiKey: 'sk-ant-real' },
+          { provider: 'openai', apiKey: 'sk-oai-real' },
+        ],
+      }))
+      const result = await llmComponent.check()
+      expect(result.status).toBe('ok')
+      expect(result.details?.providers).toEqual(['anthropic', 'openai'])
+    })
+
+    it('reports ok from { profiles: { key: {...} } } dict shape', async () => {
+      writeFileSync(authProfilesPath(), JSON.stringify({
+        profiles: {
+          'default-anthropic': { provider: 'anthropic', apiKey: 'sk-ant-dict' },
+          'codex-oauth': { provider: 'openai-codex', mode: 'oauth' },
+        },
+      }))
       const result = await llmComponent.check()
       expect(result.status).toBe('ok')
       expect(result.details?.providers).toEqual(['anthropic'])

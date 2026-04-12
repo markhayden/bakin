@@ -63,16 +63,36 @@ async function checkLlm(): Promise<CheckResult> {
   try {
     const raw = readFileSync(profilePath, 'utf-8')
     const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) {
+    // OpenClaw has produced multiple shapes over its versions:
+    //   1. Bare array:   [{ provider, apiKey }]       (imitation crab)
+    //   2. Object+array: { profiles: [{ provider }] } (docker setup)
+    //   3. Object+dict:  { profiles: { k: { provider } } }
+    // Normalize into a flat array of entry objects for scanning.
+    let entries: unknown[]
+    if (Array.isArray(parsed)) {
+      entries = parsed
+    } else if (parsed !== null && typeof parsed === 'object') {
+      const inner = (parsed as Record<string, unknown>).profiles
+      if (Array.isArray(inner)) {
+        entries = inner
+      } else if (inner !== null && typeof inner === 'object') {
+        entries = Object.values(inner as Record<string, unknown>)
+      } else {
+        entries = []
+      }
+    } else {
+      entries = []
+    }
+    if (entries.length === 0) {
       return {
         name: 'llm',
         status: 'warn',
-        message: `auth-profiles.json is not an array — cannot tell if any provider is configured`,
-        remediation: `Check the file's shape or regenerate it via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
+        message: `auth-profiles.json has no provider entries`,
+        remediation: `Configure at least one LLM provider via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
         details: { profilePath },
       }
     }
-    const providers = parsed
+    const providers = entries
       .filter((p): p is { provider?: string; apiKey?: string } => p !== null && typeof p === 'object')
       .filter((p) => typeof p.provider === 'string' && typeof p.apiKey === 'string' && p.apiKey.trim().length > 0)
       .map((p) => p.provider as string)
