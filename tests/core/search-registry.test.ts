@@ -67,6 +67,7 @@ import {
   resetSearchRegistry,
   reindexContentTypes,
   crossTableSearch,
+  getSearchHealth,
 } from '@/core/search-registry'
 import * as antfly from '@/core/antfly'
 import { broadcast } from '@/core/sse'
@@ -626,5 +627,71 @@ describe('search-registry', () => {
     )
     expect(result.results).toHaveLength(2)
     expect(result.meta.source).toBe('antfly')
+  })
+
+  // ── getSearchHealth with index health (#74) ────────────────────────
+
+  it('getSearchHealth includes indexHealth when available', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    vi.mocked(antfly.getTableStats).mockResolvedValue({ num_docs: 42 })
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'search', type: 'full_text', totalIndexed: 42, walBacklog: 0, rebuilding: false },
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 42, walBacklog: 0, rebuilding: false },
+      ],
+      healthy: true,
+    })
+
+    const health = await getSearchHealth()
+
+    expect(health.enabled).toBe(true)
+    expect(health.tables).toHaveLength(1)
+    expect(health.tables[0]!.indexHealth).toBeDefined()
+    expect(health.tables[0]!.indexHealth).toHaveLength(2)
+    expect(health.tables[0]!.healthy).toBe(true)
+  })
+
+  it('getSearchHealth sets healthy false when indexes have errors', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    vi.mocked(antfly.getTableStats).mockResolvedValue({ num_docs: 10 })
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 0, rebuilding: false, error: 'model missing' },
+      ],
+      healthy: false,
+    })
+
+    const health = await getSearchHealth()
+
+    expect(health.tables[0]!.healthy).toBe(false)
+    expect(health.tables[0]!.indexHealth![0]!.error).toBe('model missing')
+  })
+
+  it('getSearchHealth handles getIndexHealth returning null', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    vi.mocked(antfly.getTableStats).mockResolvedValue({ num_docs: 5 })
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+
+    const health = await getSearchHealth()
+
+    expect(health.tables[0]!.stats).toEqual({ num_docs: 5 })
+    expect(health.tables[0]!.indexHealth).toBeUndefined()
+    // When index health unavailable, default to healthy (don't red-flag)
+    expect(health.tables[0]!.healthy).toBe(true)
+  })
+
+  it('getSearchHealth returns enabled false when antfly disabled', async () => {
+    vi.mocked(antfly.enabled).mockReturnValueOnce(false)
+
+    const health = await getSearchHealth()
+
+    expect(health.enabled).toBe(false)
+    expect(health.tables).toEqual([])
   })
 })

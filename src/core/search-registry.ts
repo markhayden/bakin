@@ -631,11 +631,18 @@ export async function crossTableSearch(q: string, opts?: {
 }
 
 /**
- * Get health/stats for all registered search tables.
+ * Get health/stats for all registered search tables, including per-index
+ * enrichment status from getIndexHealth().
  */
 export async function getSearchHealth(): Promise<{
   enabled: boolean
-  tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }>
+  tables: Array<{
+    table: string
+    pluginId: string
+    stats: Record<string, unknown> | null
+    indexHealth?: IndexHealth['indexes']
+    healthy: boolean
+  }>
 }> {
   const registry = getRegistry()
   const isEnabled = antfly.enabled()
@@ -644,14 +651,31 @@ export async function getSearchHealth(): Promise<{
     return { enabled: false, tables: [] }
   }
 
-  const tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }> = []
+  const tables: Array<{
+    table: string
+    pluginId: string
+    stats: Record<string, unknown> | null
+    indexHealth?: IndexHealth['indexes']
+    healthy: boolean
+  }> = []
+
   for (const [tableName, def] of registry.contentTypes) {
+    let stats: Record<string, unknown> | null = null
     try {
-      const stats = await antfly.getTableStats(tableName)
-      tables.push({ table: tableName, pluginId: def.pluginId, stats })
-    } catch {
-      tables.push({ table: tableName, pluginId: def.pluginId, stats: null })
-    }
+      stats = await antfly.getTableStats(tableName)
+    } catch { /* stats unavailable */ }
+
+    let indexHealth: IndexHealth['indexes'] | undefined
+    let healthy = true
+    try {
+      const health = await antfly.getIndexHealth(tableName)
+      if (health) {
+        indexHealth = health.indexes
+        healthy = health.healthy
+      }
+    } catch { /* index health unavailable — default to healthy */ }
+
+    tables.push({ table: tableName, pluginId: def.pluginId, stats, indexHealth, healthy })
   }
 
   return { enabled: isEnabled, tables }
