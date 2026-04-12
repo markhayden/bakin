@@ -152,11 +152,13 @@ addExecTool({
   parameters: {
     table: z.string().optional().describe('Specific table to reindex (optional — omit for all)'),
     rebuild: z.boolean().optional().describe('Drop and recreate indexes before reindexing (default: false)'),
+    verify: z.boolean().optional().describe('Re-query tables after reindex to verify doc counts (default: false)'),
   },
   handler: async (params) => {
     const results = await reindexContentTypes({
       table: params.table as string | undefined,
       rebuild: params.rebuild as boolean | undefined,
+      verify: params.verify as boolean | undefined,
     })
     const total = results.reduce((sum, r) => sum + r.indexed, 0)
     const errors = results.filter(r => r.error).length

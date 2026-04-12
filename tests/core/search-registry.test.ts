@@ -620,6 +620,48 @@ describe('search-registry', () => {
     expect(results[0]!.verified).toBeUndefined()
   })
 
+  it('reindexContentTypes runs enrichment audit even when batchIndex returns 0', async () => {
+    vi.mocked(antfly.batchIndex).mockResolvedValue(0)
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 5, rebuilding: false },
+      ],
+      healthy: false,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes()
+
+    expect(results[0]!.indexed).toBe(0)
+    expect(results[0]!.enrichment).toBeDefined()
+    expect(results[0]!.enrichment!.healthy).toBe(false)
+    // verify skipped when indexed === 0
+    expect(results[0]!.verified).toBeUndefined()
+    expect(antfly.getTableStats).not.toHaveBeenCalled()
+  })
+
+  it('reindexContentTypes populates both enrichment and verify fields together', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 3, rebuilding: false },
+      ],
+      healthy: false,
+    })
+    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 1 })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes({ verify: true })
+
+    expect(results[0]!.enrichment).toBeDefined()
+    expect(results[0]!.enrichment!.healthy).toBe(false)
+    expect(results[0]!.verified).toBe(1)
+    expect(results[0]!.verifyDiscrepancy).toBe(0)
+  })
+
   // ── crossTableSearch ────────────────────────────────────────────────
 
   it('crossTableSearch returns fallback when antfly disabled', async () => {

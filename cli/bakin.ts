@@ -841,7 +841,7 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
     ok: boolean
     total: number
     errors: number
-    enrichmentErrors: number
+    enrichmentErrors?: number
     tables: Array<{
       table: string
       indexed: number
@@ -862,7 +862,7 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
     }
   }
   console.log(`Done. ${result.total} total documents indexed.`)
-  if (result.enrichmentErrors > 0) {
+  if ((result.enrichmentErrors ?? 0) > 0) {
     console.log(`WARNING: ${result.enrichmentErrors} table(s) have enrichment errors — check health page for details.`)
   }
 }

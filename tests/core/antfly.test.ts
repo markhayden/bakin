@@ -262,4 +262,26 @@ describe('antfly', () => {
       backfillProgress: 0.67,
     })
   })
+
+  it('getIndexHealth returns null when indexes.list throws', async () => {
+    installMockClient()
+    mockIndexesList.mockRejectedValue(new Error('network timeout'))
+
+    const antfly = await import('@/core/antfly')
+    const result = await antfly.getIndexHealth('bakin_tasks')
+
+    expect(result).toBeNull()
+  })
+
+  it('getIndexHealth returns healthy with empty indexes when none exist', async () => {
+    installMockClient()
+    mockIndexesList.mockResolvedValue({})
+
+    const antfly = await import('@/core/antfly')
+    const result = await antfly.getIndexHealth('bakin_tasks')
+
+    expect(result).not.toBeNull()
+    expect(result!.healthy).toBe(true)
+    expect(result!.indexes).toHaveLength(0)
+  })
 })
