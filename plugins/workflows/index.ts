@@ -155,63 +155,6 @@ const workflowsPlugin: BakinPlugin = {
   activate(ctx: PluginContext) {
     // ─── Search Content Type Registration ─────────────────────────────
 
-    ctx.search.registerContentType({
-      table: 'workflows',
-      schema: {
-        name: { type: 'text' },
-        description: { type: 'text' },
-        type: { type: 'keyword' },
-        status: { type: 'keyword' },
-        task_id: { type: 'keyword' },
-        steps: { type: 'text' },
-        updated_at: { type: 'datetime' },
-      },
-      searchableFields: ['name', 'description', 'steps'],
-      rerankField: 'description',
-      embeddingTemplate: '{{name}} {{description}} {{steps}}',
-      facets: ['type', 'status'],
-      reindex: async function* () {
-        const contentDir = getContentDir()
-
-        // Yield definitions
-        const defsDir = join(contentDir, 'workflows', 'definitions')
-        if (existsSync(defsDir)) {
-          for (const file of readdirSync(defsDir).filter(f => f.endsWith('.yaml'))) {
-            try {
-              const name = file.replace('.yaml', '')
-              const def = loadDefinition(name)
-              if (def) {
-                yield { key: `def:${name}`, doc: definitionToSearchDoc(name, def) }
-              }
-            } catch { /* skip corrupt definitions */ }
-          }
-        }
-
-        // Yield instances
-        const instancesDir = join(contentDir, 'workflows', 'instances')
-        if (existsSync(instancesDir)) {
-          for (const file of readdirSync(instancesDir).filter(f => f.endsWith('.json'))) {
-            try {
-              const data = JSON.parse(readFileSync(join(instancesDir, file), 'utf-8')) as WorkflowInstance
-              yield { key: `inst:${data.taskId}`, doc: instanceToSearchDoc(data) }
-            } catch { /* skip corrupt instances */ }
-          }
-        }
-      },
-      verifyExists: async (key: string) => {
-        const contentDir = getContentDir()
-        if (key.startsWith('def:')) {
-          const name = key.slice(4)
-          return existsSync(join(contentDir, 'workflows', 'definitions', `${name}.yaml`))
-        }
-        if (key.startsWith('inst:')) {
-          const taskId = key.slice(5)
-          return existsSync(join(contentDir, 'workflows', 'instances', `${taskId}.json`))
-        }
-        return false
-      },
-    })
-
     /** Convert a workflow definition to a search document */
     function definitionToSearchDoc(name: string, def: WorkflowDefinition): Record<string, unknown> {
       const stepsText = def.steps.map(s => `${s.id}: ${s.label || ''}`).join(', ')
@@ -240,6 +183,93 @@ const workflowsPlugin: BakinPlugin = {
         updated_at: inst.updatedAt || new Date().toISOString(),
       }
     }
+
+    ctx.search.registerFileBackedContentType({
+      table: 'workflows',
+      schema: {
+        name: { type: 'text' },
+        description: { type: 'text' },
+        type: { type: 'keyword' },
+        status: { type: 'keyword' },
+        task_id: { type: 'keyword' },
+        steps: { type: 'text' },
+        updated_at: { type: 'datetime' },
+      },
+      searchableFields: ['name', 'description', 'steps'],
+      rerankField: 'description',
+      embeddingTemplate: '{{name}} {{description}} {{steps}}',
+      facets: ['type', 'status'],
+      filePatterns: [
+        {
+          pattern: 'workflows/definitions/*.{yaml,yml}',
+          fileToId: (rel) => {
+            const name = rel.replace(/^workflows\/definitions\//, '').replace(/\.(yaml|yml)$/, '')
+            return `def:${name}`
+          },
+          fileToDoc: async (rel) => {
+            const name = rel.replace(/^workflows\/definitions\//, '').replace(/\.(yaml|yml)$/, '')
+            const def = loadDefinition(name)
+            return def ? definitionToSearchDoc(name, def) : null
+          },
+        },
+        {
+          pattern: 'workflows/instances/*.json',
+          fileToId: (rel) => {
+            const taskId = rel.replace(/^workflows\/instances\//, '').replace(/\.json$/, '')
+            return `inst:${taskId}`
+          },
+          fileToDoc: async (rel, content) => {
+            try {
+              const data = JSON.parse(content) as WorkflowInstance
+              return instanceToSearchDoc(data)
+            } catch {
+              return null
+            }
+          },
+        },
+      ],
+      reindex: async function* () {
+        const contentDir = getContentDir()
+
+        // Yield definitions
+        const defsDir = join(contentDir, 'workflows', 'definitions')
+        if (existsSync(defsDir)) {
+          for (const file of readdirSync(defsDir).filter(f => f.endsWith('.yaml') || f.endsWith('.yml'))) {
+            try {
+              const name = file.replace(/\.(yaml|yml)$/, '')
+              const def = loadDefinition(name)
+              if (def) {
+                yield { key: `def:${name}`, doc: definitionToSearchDoc(name, def) }
+              }
+            } catch { /* skip corrupt definitions */ }
+          }
+        }
+
+        // Yield instances
+        const instancesDir = join(contentDir, 'workflows', 'instances')
+        if (existsSync(instancesDir)) {
+          for (const file of readdirSync(instancesDir).filter(f => f.endsWith('.json'))) {
+            try {
+              const data = JSON.parse(readFileSync(join(instancesDir, file), 'utf-8')) as WorkflowInstance
+              yield { key: `inst:${data.taskId}`, doc: instanceToSearchDoc(data) }
+            } catch { /* skip corrupt instances */ }
+          }
+        }
+      },
+      verifyExists: async (key: string) => {
+        const contentDir = getContentDir()
+        if (key.startsWith('def:')) {
+          const name = key.slice(4)
+          return existsSync(join(contentDir, 'workflows', 'definitions', `${name}.yaml`))
+            || existsSync(join(contentDir, 'workflows', 'definitions', `${name}.yml`))
+        }
+        if (key.startsWith('inst:')) {
+          const taskId = key.slice(5)
+          return existsSync(join(contentDir, 'workflows', 'instances', `${taskId}.json`))
+        }
+        return false
+      },
+    })
 
     /** Index a workflow instance in search */
     async function indexInstance(taskId: string): Promise<void> {

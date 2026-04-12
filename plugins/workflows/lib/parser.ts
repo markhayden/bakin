@@ -87,8 +87,9 @@ export function validateDefinition(def: WorkflowDefinition): string[] {
       } else {
         // Check that referenced workflow exists
         const defsDir = join(getContentDir(), 'workflows', 'definitions')
-        const nestedPath = join(defsDir, `${nested.workflow_id}.yaml`)
-        if (!existsSync(nestedPath)) {
+        const nestedYaml = join(defsDir, `${nested.workflow_id}.yaml`)
+        const nestedYml = join(defsDir, `${nested.workflow_id}.yml`)
+        if (!existsSync(nestedYaml) && !existsSync(nestedYml)) {
           errors.push(`Step "${step.id}": workflow_id "${nested.workflow_id}" not found in definitions`)
         }
       }
@@ -117,8 +118,10 @@ export function validateDefinition(def: WorkflowDefinition): string[] {
  */
 export function loadDefinition(name: string, contentDir?: string): WorkflowDefinition | null {
   const defsDir = getDefinitionsDir(contentDir)
-  const filePath = join(defsDir, `${name}.yaml`)
-  if (!existsSync(filePath)) return null
+  const yamlPath = join(defsDir, `${name}.yaml`)
+  const ymlPath = join(defsDir, `${name}.yml`)
+  const filePath = existsSync(yamlPath) ? yamlPath : existsSync(ymlPath) ? ymlPath : null
+  if (!filePath) return null
 
   const content = readFileSync(filePath, 'utf-8')
   const parsed = parseYAML(content) as unknown as WorkflowDefinition
@@ -133,9 +136,9 @@ export function listDefinitions(contentDir?: string): { name: string; definition
   if (!existsSync(defsDir)) return []
 
   return readdirSync(defsDir)
-    .filter(f => f.endsWith('.yaml'))
+    .filter(f => f.endsWith('.yaml') || f.endsWith('.yml'))
     .map(f => {
-      const name = f.replace('.yaml', '')
+      const name = f.replace(/\.(yaml|yml)$/, '')
       const definition = loadDefinition(name, contentDir)
       return definition ? { name, definition } : null
     })
