@@ -64,9 +64,9 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 
 | Tool | Purpose |
 |------|---------|
-| `bakin_exec_post_discord` | Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds. |
 | `bakin_exec_log` | Log a formatted progress update with category and stage tags. Categories: start, progress, milestone, blocked, complete. More structured than raw bakin_log_progress. |
 | `bakin_exec_gen_image` | Generate an image via Gemini Imagen (Nano Banana), or import an existing image file into the asset pipeline via filePath. Default model: flash (cheaper). Use model=pro for higher quality. Default: 1080x1920 portrait (9:16) for Stories/Reels. Presets: social-portrait, social-square, social-landscape, custom. Auto-generates thumbnail. Max 1200px on any edge. |
+| `bakin_exec_post_discord` | Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds. |
 | `bakin_exec_get_paths` | Get Bakin content directory paths — where to find assets, team info, docs, etc. |
 | `bakin_exec_heartbeat` | Write a heartbeat signal. Call periodically (every 5-10 minutes) to indicate you are alive. Also call when starting or finishing a task. |
 | `bakin_exec_search_query` | Search across all Bakin content (tasks, assets, projects, workflows, schedules, agents) or a specific table. Returns ranked results with scores. |
@@ -86,7 +86,7 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_team_my_team` | Get the team that a specific agent belongs to, including all teammates. |
 | `bakin_exec_tasks_list` | List all tasks on the board. Optionally filter by column or agent. |
 | `bakin_exec_tasks_get` | Get details about a task — title, description, current column, logs, dependencies, project context. |
-| `bakin_exec_tasks_create` | Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip. |
+| `bakin_exec_tasks_create` | Create a new task on the task board. For top-level tasks, you MUST provide either workflowId or skipWorkflowReason. Subtasks (with parentId) are exempt. |
 | `bakin_exec_tasks_move` | Move a task to a different column on the task board. |
 | `bakin_exec_tasks_block` | Mark a task as blocked with a reason. Use when you cannot proceed. |
 | `bakin_exec_tasks_complete` | Report that your task is complete. Moves the task to Done and notifies the orchestrator. |
