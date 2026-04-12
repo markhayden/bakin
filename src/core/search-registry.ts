@@ -145,11 +145,18 @@ function buildAntflyIndexes(def: SearchContentTypeDefinition): Record<string, Re
   return indexes
 }
 
-async function ensureTable(def: SearchContentTypeDefinition, existingNames?: Set<string>): Promise<void> {
+/**
+ * Ensure one table exists. Throws on creation failure so callers can
+ * surface the error rather than silently treating it like "already
+ * existed". `antfly.createTable` itself swallows errors and returns
+ * `false`, so we re-list to disambiguate "skipped, already there" from
+ * "tried and failed". This is critical because the most common failure
+ * mode (missing embedder model) presents as a silent zero-doc reindex.
+ */
+async function ensureTable(def: SearchContentTypeDefinition, existingNames?: Set<string>): Promise<'created' | 'exists'> {
   const tableName = fullTableName(def.table)
 
-  // Skip list call if we already know the table exists
-  if (existingNames?.has(tableName)) return
+  if (existingNames?.has(tableName)) return 'exists'
 
   const created = await antfly.createTable(tableName, {
     description: `Bakin ${def.table} — auto-created by search registry`,
@@ -159,12 +166,61 @@ async function ensureTable(def: SearchContentTypeDefinition, existingNames?: Set
   })
   if (created) {
     log.info(`Search table created: ${tableName}`)
+    return 'created'
   }
+
+  // createTable returned false — either the table already existed or the
+  // create itself failed and got swallowed. Re-list and verify.
+  const after = await antfly.listTables()
+  if (after.some(t => t.name === tableName)) return 'exists'
+  throw new Error(`Antfly rejected create for ${tableName} — see antfly warn logs (likely missing embedder model)`)
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+export interface EnsureTablesResult {
+  created: number
+  failures: Array<{ table: string; pluginId: string; error: string }>
+}
+
+/**
+ * Ensure every registered content type has a corresponding Antfly table.
+ * Idempotent — re-lists Antfly tables on every call so it self-heals when
+ * Antfly is wiped, restarted, or otherwise drifts from Bakin's registry.
+ *
+ * Returns both the count of tables created and any per-table failures so
+ * callers (notably the `/api/reindex` handler) can surface real errors
+ * instead of reporting `indexed: 0` for tables that never got created.
+ */
+export async function ensureRegisteredTables(): Promise<EnsureTablesResult> {
+  const registry = getRegistry()
+  if (!antfly.enabled()) {
+    registry.tablesCreated = true
+    return { created: 0, failures: [] }
+  }
+
+  const existingTables = await antfly.listTables()
+  const existingNames = new Set(existingTables.map(t => t.name))
+
+  let created = 0
+  const failures: Array<{ table: string; pluginId: string; error: string }> = []
+  for (const [tableName, def] of registry.contentTypes) {
+    if (existingNames.has(tableName)) continue
+    try {
+      const status = await ensureTable(def, existingNames)
+      if (status === 'created') created++
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error(`Failed to create table for ${def.table}`, err)
+      failures.push({ table: tableName, pluginId: def.pluginId, error: msg })
+    }
+  }
+
+  registry.tablesCreated = true
+  return { created, failures }
+}
 
 /**
  * Create tables for all registered content types.
@@ -173,25 +229,11 @@ async function ensureTable(def: SearchContentTypeDefinition, existingNames?: Set
 export async function createRegisteredTables(): Promise<void> {
   const registry = getRegistry()
   if (registry.tablesCreated) return
-  if (!antfly.enabled()) {
-    registry.tablesCreated = true
-    return
+  const { created, failures } = await ensureRegisteredTables()
+  log.info(`Search tables ready: ${registry.contentTypes.size} content types (${created} created)`)
+  if (failures.length > 0) {
+    log.error(`Search table creation failures: ${failures.length}`, { failures })
   }
-
-  // Fetch existing tables once to avoid N list calls during createTable
-  const existingTables = await antfly.listTables()
-  const existingNames = new Set(existingTables.map(t => t.name))
-
-  for (const [, def] of registry.contentTypes) {
-    try {
-      await ensureTable(def, existingNames)
-    } catch (err) {
-      log.error(`Failed to create table for ${def.table}`, err)
-    }
-  }
-
-  registry.tablesCreated = true
-  log.info(`Search tables ready: ${registry.contentTypes.size} content types`)
 }
 
 /**
@@ -343,6 +385,17 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
 /**
  * Reindex all (or one) registered content types by running their reindex() generators.
  * Returns per-table counts.
+ *
+ * Self-heals: ensures every registered table actually exists on Antfly
+ * before iterating. If Antfly was wiped or restarted since Bakin last
+ * ran createRegisteredTables, this transparently recreates the missing
+ * tables instead of silently writing to nothing.
+ *
+ * Broadcasts two channels of events:
+ *   - Per-table: reindex.start / reindex.progress / reindex.complete
+ *     (drives the Health page tiles)
+ *   - Aggregate: reindex.batch_start / reindex.batch_pulse / reindex.batch_complete
+ *     (drives a single Live Activity entry instead of one per table)
  */
 export async function reindexContentTypes(opts?: {
   table?: string
@@ -351,55 +404,117 @@ export async function reindexContentTypes(opts?: {
   const registry = getRegistry()
   const results: Array<{ table: string; pluginId: string; indexed: number; error?: string }> = []
 
+  // Self-heal: make sure tables exist on Antfly before we try to write to
+  // them. Cheap when nothing's missing (one list call); critical when
+  // Antfly was wiped externally. Per-table failures are surfaced as
+  // reindex results below so the API caller sees the real reason instead
+  // of a misleading `indexed: 0`.
+  const failedTables = new Map<string, string>()
+  try {
+    const ensured = await ensureRegisteredTables()
+    if (ensured.created > 0) log.info(`Reindex auto-created ${ensured.created} missing table(s)`)
+    for (const f of ensured.failures) failedTables.set(f.table, f.error)
+  } catch (err) {
+    log.warn('ensureRegisteredTables failed before reindex', err)
+  }
+
+  // Build the list of tables we'll actually process so the aggregate
+  // events can include accurate totals.
+  const tablesToProcess: Array<[string, SearchContentTypeDefinition & { pluginId: string }]> = []
   for (const [tableName, def] of registry.contentTypes) {
     if (opts?.table && tableName !== fullTableName(opts.table) && opts.table !== def.table && opts.table !== def.pluginId) {
       continue
     }
+    tablesToProcess.push([tableName, def])
+  }
 
-    try {
-      // Rebuild indexes if requested
-      if (opts?.rebuild) {
-        await antfly.rebuildIndexes(tableName)
-        log.info(`Rebuilt indexes for ${tableName}`)
+  const startedAt = Date.now()
+  let totalIndexed = 0
+  let tablesDone = 0
+
+  broadcast({
+    type: 'reindex.batch_start',
+    tables: tablesToProcess.length,
+    scope: opts?.table ?? 'all',
+  })
+
+  // Periodic pulse so long-running reindexes show life in the activity
+  // feed without spamming once per table. 60s cadence — short reindexes
+  // finish before the first pulse and only emit start + complete.
+  const PULSE_MS = 60_000
+  const pulseTimer = setInterval(() => {
+    broadcast({
+      type: 'reindex.batch_pulse',
+      tables_done: tablesDone,
+      tables_total: tablesToProcess.length,
+      indexed: totalIndexed,
+      elapsed_ms: Date.now() - startedAt,
+    })
+  }, PULSE_MS)
+
+  try {
+    for (const [tableName, def] of tablesToProcess) {
+      // If ensureRegisteredTables couldn't create this table, skip the
+      // reindex generator entirely and surface the actual reason instead
+      // of writing 0 docs to a non-existent table.
+      const ensureError = failedTables.get(tableName)
+      if (ensureError) {
+        results.push({ table: tableName, pluginId: def.pluginId, indexed: 0, error: ensureError })
+        broadcast({ type: 'reindex.complete', table: tableName, pluginId: def.pluginId, indexed: 0, error: ensureError })
+        tablesDone++
+        continue
       }
+      try {
+        // Rebuild indexes if requested
+        if (opts?.rebuild) {
+          await antfly.rebuildIndexes(tableName)
+          log.info(`Rebuilt indexes for ${tableName}`)
+        }
 
-      // Run the reindex generator
-      let count = 0
-      if (def.reindex) {
-        broadcast({ type: 'reindex.start', table: tableName, pluginId: def.pluginId })
+        // Run the reindex generator
+        let count = 0
+        if (def.reindex) {
+          broadcast({ type: 'reindex.start', table: tableName, pluginId: def.pluginId })
 
-        const BATCH_SIZE = 50
-        const batch: Array<{ key: string; doc: Record<string, unknown> }> = []
-        for await (const { key, doc } of def.reindex()) {
-          batch.push({ key, doc: doc as Record<string, unknown> })
-          if (batch.length >= BATCH_SIZE) {
+          const BATCH_SIZE = 50
+          const batch: Array<{ key: string; doc: Record<string, unknown> }> = []
+          for await (const { key, doc } of def.reindex()) {
+            batch.push({ key, doc: doc as Record<string, unknown> })
+            if (batch.length >= BATCH_SIZE) {
+              const batchMap: Record<string, Record<string, unknown>> = {}
+              for (const b of batch) batchMap[b.key] = b.doc
+              count += await antfly.batchIndex(tableName, batchMap)
+              batch.length = 0
+              broadcast({ type: 'reindex.progress', table: tableName, pluginId: def.pluginId, indexed: count })
+            }
+          }
+          if (batch.length > 0) {
             const batchMap: Record<string, Record<string, unknown>> = {}
             for (const b of batch) batchMap[b.key] = b.doc
-            // Use the actual inserted count from antfly.batchIndex. The
-            // function returns 0 on batch failure (e.g. if Antfly drops
-            // the batch after exhausting retries). Blindly adding
-            // `batch.length` would over-report success in those cases.
             count += await antfly.batchIndex(tableName, batchMap)
-            batch.length = 0
-            // Broadcast milestone progress to health page (every batch for live counts)
             broadcast({ type: 'reindex.progress', table: tableName, pluginId: def.pluginId, indexed: count })
           }
         }
-        if (batch.length > 0) {
-          const batchMap: Record<string, Record<string, unknown>> = {}
-          for (const b of batch) batchMap[b.key] = b.doc
-          count += await antfly.batchIndex(tableName, batchMap)
-        }
 
+        broadcast({ type: 'reindex.complete', table: tableName, pluginId: def.pluginId, indexed: count })
+        results.push({ table: tableName, pluginId: def.pluginId, indexed: count })
+        totalIndexed += count
+      } catch (err) {
+        results.push({ table: tableName, pluginId: def.pluginId, indexed: 0, error: String(err) })
+        log.error(`Reindex failed for ${tableName}`, err)
       }
-
-      broadcast({ type: 'reindex.complete', table: tableName, pluginId: def.pluginId, indexed: count })
-      results.push({ table: tableName, pluginId: def.pluginId, indexed: count })
-    } catch (err) {
-      results.push({ table: tableName, pluginId: def.pluginId, indexed: 0, error: String(err) })
-      log.error(`Reindex failed for ${tableName}`, err)
+      tablesDone++
     }
+  } finally {
+    clearInterval(pulseTimer)
   }
+
+  broadcast({
+    type: 'reindex.batch_complete',
+    tables: tablesToProcess.length,
+    indexed: totalIndexed,
+    elapsed_ms: Date.now() - startedAt,
+  })
 
   return results
 }

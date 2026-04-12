@@ -336,7 +336,8 @@ app.prepare().then(async () => {
       const rebuild = url.searchParams.get('rebuild') === 'true'
       reindexContentTypes({ table, rebuild }).then((results: Array<Record<string, unknown>>) => {
         const total = results.reduce((sum: number, r: Record<string, unknown>) => sum + (r.indexed as number || 0), 0)
-        jsonResponse(res, 200, { ok: true, total, tables: results })
+        const errors = results.filter((r) => r.error).length
+        jsonResponse(res, 200, { ok: errors === 0, total, errors, tables: results })
       }).catch((err: unknown) => {
         jsonResponse(res, 500, { error: String(err) })
       })

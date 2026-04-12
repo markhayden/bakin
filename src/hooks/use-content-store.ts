@@ -9,6 +9,11 @@ interface AuditEntry {
   data: Record<string, unknown>
 }
 
+interface ReindexProgressEntry {
+  indexed: number
+  done: boolean
+}
+
 interface ContentStore extends ContentState {
   loading: boolean
   auditEntries: AuditEntry[]
@@ -16,6 +21,7 @@ interface ContentStore extends ContentState {
   sseConnected: boolean
   taskboardVersion: number
   debug: boolean
+  reindexProgress: Record<string, ReindexProgressEntry>
   setFiles: (files: Record<string, string>) => void
   updateFile: (key: string, content: string) => void
   setHeartbeats: (heartbeats: Record<string, Heartbeat>) => void
@@ -27,6 +33,8 @@ interface ContentStore extends ContentState {
   bumpTaskboard: () => void
   setDebug: (debug: boolean) => void
   toggleDebug: () => void
+  setReindexProgress: (table: string, indexed: number, done: boolean) => void
+  clearReindexProgress: () => void
   initialize: () => Promise<void>
 }
 
@@ -40,6 +48,7 @@ export const useContentStore = create<ContentStore>((set, get) => ({
   sseConnected: false,
   taskboardVersion: 0,
   debug: false,
+  reindexProgress: {},
 
   setFiles: (files) => set({ files }),
   updateFile: (key, content) =>
@@ -67,6 +76,11 @@ export const useContentStore = create<ContentStore>((set, get) => ({
     set({ debug: next })
     try { localStorage.setItem('bakin-debug', String(next)) } catch {}
   },
+  setReindexProgress: (table, indexed, done) =>
+    set((state) => ({
+      reindexProgress: { ...state.reindexProgress, [table]: { indexed, done } },
+    })),
+  clearReindexProgress: () => set({ reindexProgress: {} }),
 
   initialize: async () => {
     try { if (localStorage.getItem('bakin-debug') === 'true') set({ debug: true }) } catch {}
