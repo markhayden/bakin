@@ -86,7 +86,14 @@ const assetsPlugin: BakinPlugin = {
         image_url: { type: 'keyword' },
       },
       searchableFields: ['description', 'tags', 'file_name', 'content'],
-      rerankField: 'description',
+      // Intentionally no `rerankField`. bakin_assets is a multimodal table
+      // (PDF body text in `content`, image pixels in the visual index,
+      // metadata in description/tags/file_name) and the cross-encoder
+      // reranker only scores against ONE field at a time. Every choice
+      // creates inversions on some content category. Raw RRF fusion of
+      // Bleve + text embeddings + visual embeddings gives the right order
+      // without the reranker. See .claude/knowledge/search-system.md for
+      // the full rationale and the queries that surfaced the problem.
       // Unused when `indexes` is set, but the type requires it. Kept as the
       // equivalent template to keep the legacy synthesis path readable.
       embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{content}}',

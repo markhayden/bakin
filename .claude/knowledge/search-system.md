@@ -107,7 +107,39 @@ The BM25 index key in `_index_scores` is a full filesystem path (e.g. `/path/to/
 
 ### Reranker
 
-Optional cross-encoder reranking after initial retrieval. Configured via `settings.antfly.search.reranker`.
+Optional cross-encoder reranking after initial retrieval. Configured globally via `settings.antfly.search.reranker` (provider, model, threshold, enabled flag), and **opted into per content type** via `SearchContentTypeDefinition.rerankField`.
+
+**How rerank attachment works:**
+- The registry looks up `rerankField` for the queried table via `getRerankField(tableName)`
+- `buildRerankerConfig()` in `src/core/antfly.ts` only attaches a reranker to the `QueryRequest` when **all three** are true: global `enabled: true`, per-query `rerank !== false`, and `rerankField` is set on the content type
+- Tables that don't set `rerankField` get pure RRF hybrid fusion (Bleve full-text + semantic embeddings), no cross-encoder pass
+- Antfly rejects reranker configs that don't include `field` or `template` with a 400, so a missing `rerankField` MUST translate to "no reranker" — not "reranker without field"
+
+**Structural limitation of `rerankField`:** the cross-encoder reranker scores a query against the value of a **single document field**. It never sees the embedding, the full-text index, or any other field. This is fine for single-modality text tables (the reranker's description/body field contains the text that would match the query) but creates inversions on multi-modality tables where different modalities live in different fields.
+
+**Per-plugin choices (current):**
+
+| Table | rerankField | Reason |
+|---|---|---|
+| `bakin_tasks` | `description` | Richest text field in the schema |
+| `bakin_projects` | `body` | Main document content |
+| `bakin_workflows` | `description` | Workflow purpose text |
+| `bakin_schedule` | `command` | The thing you actually search for |
+| `bakin_team` | `soul` | Agent persona text |
+| `bakin_audit` | `content` | Audit log entry body |
+| **`bakin_assets`** | **(unset)** | **Intentionally skipped — see below** |
+
+**Why `bakin_assets` skips the reranker**
+
+The assets table mixes modalities: PDF body text goes into `content` (extracted server-side), image data goes through the `assets_visual` index (CLIP embeddings of pixel data), and metadata lives in `description`/`tags`/`file_name`. No single field captures a doc's full semantic signal. During T6 manual smoke testing we observed consistent inversions:
+
+- A query for `"tzatziki"` (a term in a PDF body) was correctly found by Bleve full-text on the `content` field, giving the PDF a strong raw hit. But the reranker, scoring `"tzatziki"` against each doc's `description` field only, rated an unrelated image's description ("Outdoor scene test image for CLIP visual search smoke test") higher than the PDF's description ("Recipe PDF — manual smoke test for multimodal search") because the cross-encoder happens to score the image description well against arbitrary queries. The PDF fell from rank 1 (pre-rerank) to rank 2-3.
+- Similar inversions on `"autolyse"` (markdown body term) — the markdown doc fell to rank 4 despite a 0.5 Bleve hit.
+- CLIP visual queries like `"pumpkin"` worked correctly (image at rank 1) because the reranker happened to score that query well against the image's description too, but this is coincidence, not signal.
+
+The fix was a one-line deletion: remove `rerankField` from the assets plugin registration. Multimodal tables get **raw RRF fusion** of Bleve + text embeddings + visual embeddings, and the cross-encoder pass is skipped entirely. Single-modality tables keep their reranker because it materially improves their ranking.
+
+The underlying issue is the single-field limitation of Antfly's reranker API. A future fix could pass a `template` instead of a `field` (e.g. `{{description}} {{content}}` so the cross-encoder sees both metadata and extracted body), or wait for Antfly to support multi-field reranking. Revisit when either path becomes viable.
 
 ## Embedder
 
