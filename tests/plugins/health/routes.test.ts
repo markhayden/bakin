@@ -47,6 +47,7 @@ const mockRequestStats = {
 
 vi.mock('../../../src/core/request-log', () => ({
   getRequestStats: () => mockRequestStats,
+  getRecentStatsForPathPrefix: () => ({ total: 0, errors: 0 }),
 }))
 
 const mockDoctorResults = [

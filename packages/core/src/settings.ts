@@ -23,6 +23,14 @@ export interface BakinSettings {
     alertChannelId: string
     autoRecover: boolean
     maxAutoRecoveries: number
+    /** Window for the rolling MCP 5xx error-rate check. */
+    mcpWindowMs: number
+    /** Error rate (errors/total) over the window above which an alert fires. */
+    mcpErrorThreshold: number
+    /** Minimum sample size before the error rate is even evaluated. */
+    mcpMinSamples: number
+    /** Suppress duplicate MCP alerts within this window. */
+    mcpAlertCooldownMs: number
   }
   messaging: {
     intervalMs: number
@@ -132,6 +140,10 @@ const DEFAULTS: BakinSettings = {
     alertChannelId: '1483917792745885768',
     autoRecover: true,
     maxAutoRecoveries: 3,
+    mcpWindowMs: 60 * 1000,
+    mcpErrorThreshold: 0.5,
+    mcpMinSamples: 3,
+    mcpAlertCooldownMs: 5 * 60 * 1000,
   },
   messaging: {
     intervalMs: 5 * 60 * 1000,

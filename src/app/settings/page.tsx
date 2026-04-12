@@ -3,6 +3,12 @@
 import { useEffect, useState } from 'react'
 import { PageLayout } from '@/components/page-layout'
 import { PluginSettingsRenderer, type PluginSettingsSchema } from '@/components/plugin-settings-renderer'
+import {
+  SYSTEM_SETTINGS_TAB_ID,
+  SYSTEM_SETTINGS_SCHEMA,
+  flattenSystemSettings,
+  unflattenSystemSettings,
+} from '@/components/system-settings'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/empty-state'
 import { Settings } from 'lucide-react'
@@ -20,22 +26,35 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [schemasLoading, setSchemasLoading] = useState(true)
 
-  // Fetch available schemas on mount
+  // Fetch available schemas on mount. The "System & Alerts" tab is injected
+  // first so it's the default landing tab.
   useEffect(() => {
     fetch('/api/plugin-settings/schemas')
       .then(r => r.json())
       .then((data: PluginSchema[]) => {
-        setPlugins(data)
-        if (data.length > 0) setActivePlugin(data[0].id)
+        const withSystem: PluginSchema[] = [
+          { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema: SYSTEM_SETTINGS_SCHEMA },
+          ...data,
+        ]
+        setPlugins(withSystem)
+        setActivePlugin(SYSTEM_SETTINGS_TAB_ID)
         setSchemasLoading(false)
       })
       .catch(() => setSchemasLoading(false))
   }, [])
 
-  // Fetch values when active plugin changes
+  // Fetch values when active plugin changes. The system tab reads from
+  // /api/settings (core settings.json) instead of /api/plugin-settings/*.
   useEffect(() => {
     if (!activePlugin) return
     setLoading(true)
+    if (activePlugin === SYSTEM_SETTINGS_TAB_ID) {
+      fetch('/api/settings')
+        .then(r => r.json())
+        .then(data => { setValues(flattenSystemSettings(data)); setLoading(false) })
+        .catch(() => setLoading(false))
+      return
+    }
     fetch(`/api/plugin-settings/${activePlugin}`)
       .then(r => r.json())
       .then(data => { setValues(data); setLoading(false) })
@@ -43,6 +62,16 @@ export default function SettingsPage() {
   }, [activePlugin])
 
   const handleSave = async (newValues: Record<string, unknown>) => {
+    if (activePlugin === SYSTEM_SETTINGS_TAB_ID) {
+      const nested = unflattenSystemSettings(newValues)
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nested),
+      })
+      if (res.ok) setValues(newValues)
+      return
+    }
     const res = await fetch(`/api/plugin-settings/${activePlugin}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
