@@ -101,6 +101,7 @@ app.prepare().then(async () => {
       created_at: { type: 'datetime' },
     },
     searchableFields: ['content', 'event'],
+    rerankField: 'content',
     embeddingTemplate: '{{event}} {{agent}} {{content}}',
     facets: ['event', 'agent', 'channel'],
     ttl: settings.antfly.auditTtl,

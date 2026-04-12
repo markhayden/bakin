@@ -203,6 +203,16 @@ export interface SearchContentTypeDefinition {
   indexes?: SearchIndexDefinition[]
   /** Fields to expose as aggregatable facets */
   facets?: string[]
+  /**
+   * Document field to use as input for the cross-encoder reranker. When
+   * set, queries against this content type attach Antfly's reranker
+   * (configured in settings.antfly.search.reranker) and score the
+   * query-document pair using the value at this field. When unset,
+   * queries skip reranking for this content type — Antfly requires a
+   * `field` or `template` in the reranker config, and passing an
+   * unconfigured reranker produces a 400 from the server.
+   */
+  rerankField?: string
   /** TTL duration (Go format: '24h', '7d', '30d') */
   ttl?: string
   /** TTL field (defaults to 'created_at') */

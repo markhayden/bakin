@@ -221,6 +221,15 @@ export function getIndexNames(tableName: string): string[] {
 }
 
 /**
+ * Get the rerank field for a table, or undefined if the content type did
+ * not declare one. Callers that pass this to queryTable will have the
+ * cross-encoder reranker attached only when a field is set.
+ */
+export function getRerankField(tableName: string): string | undefined {
+  return getRegistry().contentTypes.get(tableName)?.rerankField
+}
+
+/**
  * Build a SearchAPI instance scoped to a specific plugin.
  * This is what gets injected as ctx.search in PluginContext.
  */
@@ -298,6 +307,7 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
         aggregations,
         indexes: getIndexNames(tableName),
         rerank: params.rerank,
+        rerankField: getRerankField(tableName),
       })
 
       // Map aggregation results to our format
@@ -435,6 +445,7 @@ export async function crossTableSearch(q: string, opts?: {
       filters: opts?.filters,
       aggregations,
       indexes: getIndexNames(tableName),
+      rerankField: getRerankField(tableName),
     })
 
     return {
@@ -451,9 +462,14 @@ export async function crossTableSearch(q: string, opts?: {
   }
 
   const indexesByTable: Record<string, string[]> = {}
-  for (const t of tables) indexesByTable[t] = getIndexNames(t)
+  const rerankFieldByTable: Record<string, string> = {}
+  for (const t of tables) {
+    indexesByTable[t] = getIndexNames(t)
+    const field = getRerankField(t)
+    if (field) rerankFieldByTable[t] = field
+  }
 
-  const result = await antfly.multiQuery(q, tables, { limit, indexesByTable })
+  const result = await antfly.multiQuery(q, tables, { limit, indexesByTable, rerankFieldByTable })
   return {
     results: result.results.slice(0, limit),
     meta: { query: q, total: result.total, took_ms: result.took, source: 'antfly' },

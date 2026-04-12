@@ -275,6 +275,7 @@ const teamPlugin: BakinPlugin = {
         updated_at: { type: 'datetime' },
       },
       searchableFields: ['name', 'soul'],
+      rerankField: 'soul',
       embeddingTemplate: '{{name}} {{soul}}',
       facets: ['model', 'status'],
       reindex: async function* () {

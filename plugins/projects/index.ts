@@ -77,6 +77,7 @@ const projectsPlugin: BakinPlugin = {
         updated_at: { type: 'datetime' },
       },
       searchableFields: ['title', 'body'],
+      rerankField: 'body',
       embeddingTemplate: '{{title}} {{body}}',
       facets: ['status'],
       chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
