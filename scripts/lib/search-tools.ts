@@ -159,7 +159,9 @@ addExecTool({
       rebuild: params.rebuild as boolean | undefined,
     })
     const total = results.reduce((sum, r) => sum + r.indexed, 0)
-    return { ok: true, total, tables: results }
+    const errors = results.filter(r => r.error).length
+    const enrichmentErrors = results.filter(r => r.enrichment && !r.enrichment.healthy).length
+    return { ok: errors === 0 && enrichmentErrors === 0, total, errors, enrichmentErrors, tables: results }
   },
 })
 
