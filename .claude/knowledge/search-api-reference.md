@@ -48,6 +48,7 @@ Response:
 Query params:
 - `table` — reindex a specific table only (optional)
 - `rebuild=true` — drop and recreate indexes before reindexing
+- `verify=true` — re-query tables after reindex to verify doc counts (opt-in, adds latency)
 
 Response:
 ```json
@@ -55,14 +56,25 @@ Response:
   "ok": true,
   "total": 142,
   "errors": 0,
+  "enrichmentErrors": 0,
   "tables": [
-    { "table": "bakin_tasks", "pluginId": "tasks", "indexed": 45 },
-    { "table": "bakin_assets", "pluginId": "assets", "indexed": 67 }
+    {
+      "table": "bakin_tasks",
+      "pluginId": "tasks",
+      "indexed": 45,
+      "enrichment": {
+        "indexes": [
+          { "name": "search", "type": "full_text", "totalIndexed": 45, "walBacklog": 0, "rebuilding": false },
+          { "name": "embeddings", "type": "embeddings", "totalIndexed": 45, "walBacklog": 0, "rebuilding": false }
+        ],
+        "healthy": true
+      }
+    }
   ]
 }
 ```
 
-`ok` is `true` only when `errors === 0`. Per-table failures appear as an `error` string on the corresponding `tables[]` entry.
+`ok` is `true` only when both `errors === 0` and `enrichmentErrors === 0`. Per-table failures appear as an `error` string on the corresponding `tables[]` entry. `enrichment` surfaces Antfly's async enrichment status per index — `healthy: false` when any index has an `error` or non-zero `walBacklog`. When `verify=true`, each table entry also includes `verified` (actual doc count) and `verifyDiscrepancy` (difference from indexed count).
 
 ### GET /api/antfly/health — Search system health
 
@@ -71,7 +83,16 @@ Response:
 {
   "enabled": true,
   "tables": [
-    { "table": "bakin_tasks", "pluginId": "tasks", "stats": { "num_docs": 45, "num_shards": 1 } }
+    {
+      "table": "bakin_tasks",
+      "pluginId": "tasks",
+      "stats": { "num_docs": 45, "num_shards": 1 },
+      "indexHealth": [
+        { "name": "search", "type": "full_text", "totalIndexed": 45, "walBacklog": 0, "rebuilding": false },
+        { "name": "embeddings", "type": "embeddings", "totalIndexed": 45, "walBacklog": 0, "rebuilding": false }
+      ],
+      "healthy": true
+    }
   ]
 }
 ```

@@ -352,13 +352,27 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
 async function cmdSearchStats(): Promise<void> {
   const result = await apiGet('/api/antfly/health') as {
     enabled: boolean
-    tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }>
+    tables: Array<{
+      table: string
+      pluginId: string
+      stats: Record<string, unknown> | null
+      indexHealth?: Array<{ name: string; error?: string; walBacklog: number; rebuilding: boolean }>
+      healthy?: boolean
+    }>
   }
   console.log(`Antfly: ${result.enabled ? 'enabled' : 'disabled'}`)
   if (result.tables?.length) {
     for (const t of result.tables) {
       const docs = (t.stats as any)?.num_docs ?? '?'
-      console.log(`  ${t.table} (${t.pluginId}): ${docs} docs`)
+      const healthTag = t.healthy === false ? ' [unhealthy]'
+        : t.indexHealth?.some(i => i.walBacklog > 0) ? ' [enriching]'
+        : ''
+      console.log(`  ${t.table} (${t.pluginId}): ${docs} docs${healthTag}`)
+      if (t.healthy === false && t.indexHealth) {
+        for (const idx of t.indexHealth) {
+          if (idx.error) console.log(`    ${idx.name}: ERROR — ${idx.error}`)
+        }
+      }
     }
   }
 }
@@ -823,17 +837,34 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
   if (params.length) url += `?${params.join('&')}`
 
   console.log(`Reindexing ${options.table || 'all content'} to Antfly${options.rebuild ? ' (rebuild indexes)' : ''}...`)
-  const result = await apiPost(url) as { ok: boolean; total: number; tables: Array<{ table: string; indexed: number; error?: string }> }
+  const result = await apiPost(url) as {
+    ok: boolean
+    total: number
+    errors: number
+    enrichmentErrors?: number
+    tables: Array<{
+      table: string
+      indexed: number
+      error?: string
+      enrichment?: { healthy: boolean; indexes: Array<{ name: string; error?: string; walBacklog: number }> }
+    }>
+  }
   if (result.tables?.length) {
     for (const t of result.tables) {
       if (t.error) {
         console.log(`  ${t.table}: ERROR — ${t.error}`)
       } else {
-        console.log(`  ${t.table}: ${t.indexed} documents`)
+        const enrichTag = t.enrichment
+          ? t.enrichment.healthy ? '' : ' [enrichment unhealthy]'
+          : ''
+        console.log(`  ${t.table}: ${t.indexed} documents${enrichTag}`)
       }
     }
   }
   console.log(`Done. ${result.total} total documents indexed.`)
+  if ((result.enrichmentErrors ?? 0) > 0) {
+    console.log(`WARNING: ${result.enrichmentErrors} table(s) have enrichment errors — check health page for details.`)
+  }
 }
 
 // ---------------------------------------------------------------------------

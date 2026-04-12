@@ -380,6 +380,75 @@ The health page consumes these via the global SSE connection (`useSSE` → `useC
 
 **Counter accuracy:** `count += await antfly.batchIndex(...)` — the actual inserted count from Antfly's response, not the batch size. If a batch fails after retries, `batchIndex` returns 0 and the counter doesn't advance for that batch, so the reported `indexed: N` matches what's actually in the table.
 
+## Enrichment Observability (#74)
+
+Antfly's enrichment (chunking, embedding, indexing) is **async** — documents land in the WAL before enrichment completes. The reindex pipeline previously only reported whether Antfly accepted the batch, not whether enrichment succeeded. Four layers close this gap:
+
+### Post-batch enrichment audit (Layer 1)
+
+After all batches complete for each table, `reindexContentTypes()` calls `antfly.getIndexHealth(tableName)` which wraps the SDK's `client.indexes.list()`. This returns per-index stats including:
+
+- `error` — enrichment error (e.g. "embedder model not found") → logged as ERROR
+- `wal_backlog` — docs pending enrichment → logged as WARN
+- `rebuilding` / `backfill_progress` — active rebuild status → logged as INFO
+
+The audit is best-effort: it never fails the reindex pipeline. If `getIndexHealth()` throws, the error is caught and logged.
+
+### Enriched reindex response (Layer 2)
+
+`reindexContentTypes()` returns `ReindexTableResult[]` which includes an optional `enrichment` field:
+
+```typescript
+interface ReindexTableResult {
+  table: string
+  pluginId: string
+  indexed: number           // docs Antfly accepted
+  error?: string            // batch-level error
+  enrichment?: IndexHealth  // per-index enrichment status
+  verified?: number         // docs actually findable (verify mode only)
+  verifyDiscrepancy?: number // indexed - verified (verify mode only)
+}
+```
+
+The `/api/reindex` HTTP response includes `enrichmentErrors` (count of tables where enrichment is unhealthy) alongside the existing `errors` count. The `ok` flag is `false` when either count is non-zero.
+
+### Verify mode (Layer 3)
+
+`POST /api/reindex?verify=true` adds a post-reindex verification pass. After all batches for a table complete, it calls `getTableStats()` to get the actual doc count in the table and compares against the `indexed` count. If they diverge, it logs the discrepancy as an error and includes `verified` and `verifyDiscrepancy` in the result.
+
+This is opt-in because it adds one query per table. Intended for smoke tests and CI, not routine reindexes.
+
+### Health endpoint enrichment status (Layer 4)
+
+`GET /api/antfly/health` includes `indexHealth` (array of per-index status) and `healthy` (aggregate boolean) for each table. The health page shows visual indicators:
+
+- Green `CircleCheck` — all indexes healthy
+- Amber `Clock` — WAL backlog (enrichment in progress)
+- Red `AlertCircle` — enrichment error, tooltip shows the message
+
+### Key types
+
+The foundation type is `IndexHealth` from `src/core/antfly.ts`:
+
+```typescript
+interface IndexHealthEntry {
+  name: string           // e.g. 'embeddings', 'assets_text'
+  type: string           // 'full_text' | 'embeddings'
+  totalIndexed: number   // docs in the index
+  walBacklog: number     // docs pending enrichment
+  error?: string         // enrichment error message
+  rebuilding: boolean    // active rebuild
+  backfillProgress?: number // 0.0 to 1.0
+}
+
+interface IndexHealth {
+  indexes: IndexHealthEntry[]
+  healthy: boolean       // true when no errors and no WAL backlog
+}
+```
+
+These map directly from the Antfly SDK's `IndexStatus.status` fields (`EmbeddingsIndexStats` and `FullTextIndexStats`).
+
 ## Client-side Search Pattern
 
 All plugin pages follow the same pattern for search:

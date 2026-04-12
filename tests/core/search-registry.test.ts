@@ -21,6 +21,8 @@ vi.mock('@/core/antfly', () => ({
     took: 12,
     total: 1,
   })),
+  getIndexHealth: vi.fn(async () => null),
+  getTableStats: vi.fn(async () => null),
 }))
 
 vi.mock('@/core/settings', () => ({
@@ -65,6 +67,7 @@ import {
   resetSearchRegistry,
   reindexContentTypes,
   crossTableSearch,
+  getSearchHealth,
 } from '@/core/search-registry'
 import * as antfly from '@/core/antfly'
 import { broadcast } from '@/core/sse'
@@ -73,8 +76,14 @@ describe('search-registry', () => {
   beforeEach(() => {
     resetSearchRegistry()
     vi.clearAllMocks()
-    // Restore default — clearAllMocks resets mockReturnValue
+    // Restore defaults — clearAllMocks resets call history but not implementations.
+    // resetAllMocks on specific mocks clears the once-queue too, preventing leaks.
     vi.mocked(antfly.enabled).mockReturnValue(true)
+    vi.mocked(antfly.getIndexHealth).mockReset().mockResolvedValue(null)
+    vi.mocked(antfly.getTableStats).mockReset().mockResolvedValue(null)
+    vi.mocked(antfly.batchIndex).mockReset().mockImplementation(
+      async (_table: string, docs: Record<string, unknown>) => Object.keys(docs).length,
+    )
   })
 
   function makeDef(table = 'tasks') {
@@ -483,6 +492,176 @@ describe('search-registry', () => {
     expect(results[0]!.indexed).toBe(0)
   })
 
+  // ── enrichment audit (#74) ──────────────────────────────────────────
+
+  it('reindexContentTypes includes enrichment status when healthy', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'search', type: 'full_text', totalIndexed: 1, walBacklog: 0, rebuilding: false },
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 0, rebuilding: false },
+      ],
+      healthy: true,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes()
+
+    expect(results[0]!.enrichment).toBeDefined()
+    expect(results[0]!.enrichment!.healthy).toBe(true)
+    expect(results[0]!.enrichment!.indexes).toHaveLength(2)
+    expect(antfly.getIndexHealth).toHaveBeenCalledWith('bakin_tasks')
+  })
+
+  it('reindexContentTypes includes enrichment errors when unhealthy', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 0, rebuilding: false, error: 'model not found' },
+      ],
+      healthy: false,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes()
+
+    expect(results[0]!.enrichment).toBeDefined()
+    expect(results[0]!.enrichment!.healthy).toBe(false)
+    expect(results[0]!.enrichment!.indexes[0]!.error).toBe('model not found')
+  })
+
+  it('reindexContentTypes omits enrichment when getIndexHealth returns null', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes()
+
+    expect(results[0]!.enrichment).toBeUndefined()
+    // Should not crash — enrichment is best-effort
+    expect(results[0]!.indexed).toBe(1)
+  })
+
+  it('reindexContentTypes broadcasts reindex.complete before enrichment audit', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [{ name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 0, rebuilding: false }],
+      healthy: true,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await reindexContentTypes()
+
+    // reindex.complete should fire before the enrichment audit runs —
+    // verify it was called (existing behavior preserved)
+    expect(broadcast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'reindex.complete', table: 'bakin_tasks' }),
+    )
+  })
+
+  // ── verify mode (#74) ───────────────────────────────────────────────
+
+  it('reindexContentTypes with verify=true checks table doc count', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+    // Mock getTableStats to return doc count matching indexed
+    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 1 })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes({ verify: true })
+
+    expect(results[0]!.verified).toBe(1)
+    expect(results[0]!.verifyDiscrepancy).toBe(0)
+    expect(antfly.getTableStats).toHaveBeenCalledWith('bakin_tasks')
+  })
+
+  it('reindexContentTypes with verify=true reports discrepancy', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+    // Mock getTableStats to return fewer docs than indexed
+    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 0 })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes({ verify: true })
+
+    expect(results[0]!.verified).toBe(0)
+    expect(results[0]!.verifyDiscrepancy).toBe(1)
+  })
+
+  it('reindexContentTypes without verify does not check doc count', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes()
+
+    expect(results[0]!.verified).toBeUndefined()
+    expect(antfly.getTableStats).not.toHaveBeenCalled()
+  })
+
+  it('reindexContentTypes verify handles getTableStats errors gracefully', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+    vi.mocked(antfly.getTableStats).mockRejectedValueOnce(new Error('stats failed'))
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes({ verify: true })
+
+    // Should not crash — verify is best-effort
+    expect(results[0]!.indexed).toBe(1)
+    expect(results[0]!.verified).toBeUndefined()
+  })
+
+  it('reindexContentTypes runs enrichment audit even when batchIndex returns 0', async () => {
+    vi.mocked(antfly.batchIndex).mockResolvedValue(0)
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 5, rebuilding: false },
+      ],
+      healthy: false,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes()
+
+    expect(results[0]!.indexed).toBe(0)
+    expect(results[0]!.enrichment).toBeDefined()
+    expect(results[0]!.enrichment!.healthy).toBe(false)
+    // verify skipped when indexed === 0
+    expect(results[0]!.verified).toBeUndefined()
+    expect(antfly.getTableStats).not.toHaveBeenCalled()
+  })
+
+  it('reindexContentTypes populates both enrichment and verify fields together', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 3, rebuilding: false },
+      ],
+      healthy: false,
+    })
+    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 1 })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes({ verify: true })
+
+    expect(results[0]!.enrichment).toBeDefined()
+    expect(results[0]!.enrichment!.healthy).toBe(false)
+    expect(results[0]!.verified).toBe(1)
+    expect(results[0]!.verifyDiscrepancy).toBe(0)
+  })
+
   // ── crossTableSearch ────────────────────────────────────────────────
 
   it('crossTableSearch returns fallback when antfly disabled', async () => {
@@ -553,5 +732,71 @@ describe('search-registry', () => {
     )
     expect(result.results).toHaveLength(2)
     expect(result.meta.source).toBe('antfly')
+  })
+
+  // ── getSearchHealth with index health (#74) ────────────────────────
+
+  it('getSearchHealth includes indexHealth when available', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    vi.mocked(antfly.getTableStats).mockResolvedValue({ num_docs: 42 })
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'search', type: 'full_text', totalIndexed: 42, walBacklog: 0, rebuilding: false },
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 42, walBacklog: 0, rebuilding: false },
+      ],
+      healthy: true,
+    })
+
+    const health = await getSearchHealth()
+
+    expect(health.enabled).toBe(true)
+    expect(health.tables).toHaveLength(1)
+    expect(health.tables[0]!.indexHealth).toBeDefined()
+    expect(health.tables[0]!.indexHealth).toHaveLength(2)
+    expect(health.tables[0]!.healthy).toBe(true)
+  })
+
+  it('getSearchHealth sets healthy false when indexes have errors', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    vi.mocked(antfly.getTableStats).mockResolvedValue({ num_docs: 10 })
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 0, rebuilding: false, error: 'model missing' },
+      ],
+      healthy: false,
+    })
+
+    const health = await getSearchHealth()
+
+    expect(health.tables[0]!.healthy).toBe(false)
+    expect(health.tables[0]!.indexHealth![0]!.error).toBe('model missing')
+  })
+
+  it('getSearchHealth handles getIndexHealth returning null', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 5 })
+    vi.mocked(antfly.getIndexHealth).mockResolvedValueOnce(null)
+
+    const health = await getSearchHealth()
+
+    expect(health.tables[0]!.stats).toEqual({ num_docs: 5 })
+    expect(health.tables[0]!.indexHealth).toBeUndefined()
+    // When index health unavailable, default to healthy (don't red-flag)
+    expect(health.tables[0]!.healthy).toBe(true)
+  })
+
+  it('getSearchHealth returns enabled false when antfly disabled', async () => {
+    vi.mocked(antfly.enabled).mockReturnValueOnce(false)
+
+    const health = await getSearchHealth()
+
+    expect(health.enabled).toBe(false)
+    expect(health.tables).toEqual([])
   })
 })

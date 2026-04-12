@@ -14,6 +14,7 @@ import type {
   SearchTransformOp,
 } from '../../packages/core/src/plugin-types'
 import * as antfly from './antfly'
+import type { IndexHealth } from './antfly'
 import { broadcast } from './sse'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
@@ -402,12 +403,23 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
  *   - Aggregate: reindex.batch_start / reindex.batch_pulse / reindex.batch_complete
  *     (drives a single Live Activity entry instead of one per table)
  */
+export interface ReindexTableResult {
+  table: string
+  pluginId: string
+  indexed: number
+  error?: string
+  enrichment?: IndexHealth
+  verified?: number
+  verifyDiscrepancy?: number
+}
+
 export async function reindexContentTypes(opts?: {
   table?: string
   rebuild?: boolean
-}): Promise<Array<{ table: string; pluginId: string; indexed: number; error?: string }>> {
+  verify?: boolean
+}): Promise<ReindexTableResult[]> {
   const registry = getRegistry()
-  const results: Array<{ table: string; pluginId: string; indexed: number; error?: string }> = []
+  const results: ReindexTableResult[] = []
 
   // Self-heal: make sure tables exist on Antfly before we try to write to
   // them. Cheap when nothing's missing (one list call); critical when
@@ -502,7 +514,45 @@ export async function reindexContentTypes(opts?: {
         }
 
         broadcast({ type: 'reindex.complete', table: tableName, pluginId: def.pluginId, indexed: count })
-        results.push({ table: tableName, pluginId: def.pluginId, indexed: count })
+
+        // Enrichment audit — poll index health after all batches complete.
+        // Best-effort: never fails the reindex, just surfaces what Antfly reports.
+        const result: ReindexTableResult = { table: tableName, pluginId: def.pluginId, indexed: count }
+        try {
+          const health = await antfly.getIndexHealth(tableName)
+          if (health) {
+            result.enrichment = health
+            if (!health.healthy) {
+              for (const idx of health.indexes) {
+                if (idx.error) {
+                  log.error(`Enrichment error in ${tableName}/${idx.name}: ${idx.error}`)
+                }
+                if (idx.walBacklog > 0) {
+                  log.warn(`Enrichment pending in ${tableName}/${idx.name}: ${idx.walBacklog} docs in WAL`)
+                }
+              }
+            }
+          }
+        } catch (err) {
+          log.warn(`Enrichment audit failed for ${tableName}`, err)
+        }
+
+        // Verify pass — opt-in re-query to check how many docs are actually findable.
+        if (opts?.verify && count > 0) {
+          try {
+            const stats = await antfly.getTableStats(tableName)
+            const docCount = (stats as Record<string, unknown> | null)?.num_docs as number ?? 0
+            result.verified = docCount
+            result.verifyDiscrepancy = count - docCount
+            if (result.verifyDiscrepancy !== 0) {
+              log.error(`Verify discrepancy in ${tableName}: indexed ${count} but ${docCount} findable (delta: ${result.verifyDiscrepancy})`)
+            }
+          } catch (err) {
+            log.warn(`Verify pass failed for ${tableName}`, err)
+          }
+        }
+
+        results.push(result)
         totalIndexed += count
       } catch (err) {
         results.push({ table: tableName, pluginId: def.pluginId, indexed: 0, error: String(err) })
@@ -599,11 +649,18 @@ export async function crossTableSearch(q: string, opts?: {
 }
 
 /**
- * Get health/stats for all registered search tables.
+ * Get health/stats for all registered search tables, including per-index
+ * enrichment status from getIndexHealth().
  */
 export async function getSearchHealth(): Promise<{
   enabled: boolean
-  tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }>
+  tables: Array<{
+    table: string
+    pluginId: string
+    stats: Record<string, unknown> | null
+    indexHealth?: IndexHealth['indexes']
+    healthy: boolean
+  }>
 }> {
   const registry = getRegistry()
   const isEnabled = antfly.enabled()
@@ -612,14 +669,31 @@ export async function getSearchHealth(): Promise<{
     return { enabled: false, tables: [] }
   }
 
-  const tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }> = []
+  const tables: Array<{
+    table: string
+    pluginId: string
+    stats: Record<string, unknown> | null
+    indexHealth?: IndexHealth['indexes']
+    healthy: boolean
+  }> = []
+
   for (const [tableName, def] of registry.contentTypes) {
+    let stats: Record<string, unknown> | null = null
     try {
-      const stats = await antfly.getTableStats(tableName)
-      tables.push({ table: tableName, pluginId: def.pluginId, stats })
-    } catch {
-      tables.push({ table: tableName, pluginId: def.pluginId, stats: null })
-    }
+      stats = await antfly.getTableStats(tableName)
+    } catch { /* stats unavailable */ }
+
+    let indexHealth: IndexHealth['indexes'] | undefined
+    let healthy = true
+    try {
+      const health = await antfly.getIndexHealth(tableName)
+      if (health) {
+        indexHealth = health.indexes
+        healthy = health.healthy
+      }
+    } catch { /* index health unavailable — default to healthy */ }
+
+    tables.push({ table: tableName, pluginId: def.pluginId, stats, indexHealth, healthy })
   }
 
   return { enabled: isEnabled, tables }
