@@ -167,6 +167,7 @@ const workflowsPlugin: BakinPlugin = {
         updated_at: { type: 'datetime' },
       },
       searchableFields: ['name', 'description', 'steps'],
+      rerankField: 'description',
       embeddingTemplate: '{{name}} {{description}} {{steps}}',
       facets: ['type', 'status'],
       reindex: async function* () {

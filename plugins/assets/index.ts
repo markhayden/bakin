@@ -25,6 +25,8 @@ import { saveAsset } from './lib/save-asset'
 import { registerSyncHook } from '../../src/core/watcher'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
+import { buildAssetFileUrl } from './lib/asset-url'
+import { extractAssetContent } from './lib/content-extractor'
 
 const log = createLogger('assets')
 
@@ -69,9 +71,45 @@ const assetsPlugin: BakinPlugin = {
         file_name: { type: 'text' },
         tool: { type: 'keyword' },
         updated_at: { type: 'datetime' },
+        // `content` is populated server-side by extractAssetContent —
+        // plain text for .md/.txt/.json/.csv/.yaml, pdf-parse output for
+        // .pdf, empty for everything else. We extract in Bakin rather
+        // than letting Antfly's {{remotePDF}}/{{remoteText}} helpers run
+        // because Antfly's Go PDF library silently fails on any PDF with
+        // complex font encoding (see Bakin issue #72).
+        content: { type: 'text' },
+        // `image_url` is a file:// URL for raster images that CLIP can
+        // actually decode. Populated at index time by computeMediaUrls.
+        // The visual index template dereferences it via {{remoteMedia}}
+        // — that path works because `file://` skips Antfly's scraping
+        // layer's hardcoded private-IP block.
+        image_url: { type: 'keyword' },
       },
-      searchableFields: ['description', 'tags', 'file_name'],
-      embeddingTemplate: '{{description}} {{tags}} {{file_name}}',
+      searchableFields: ['description', 'tags', 'file_name', 'content'],
+      // Intentionally no `rerankField`. bakin_assets is a multimodal table
+      // (PDF body text in `content`, image pixels in the visual index,
+      // metadata in description/tags/file_name) and the cross-encoder
+      // reranker only scores against ONE field at a time. Every choice
+      // creates inversions on some content category. Raw RRF fusion of
+      // Bleve + text embeddings + visual embeddings gives the right order
+      // without the reranker. See .claude/knowledge/search-system.md for
+      // the full rationale and the queries that surfaced the problem.
+      // Unused when `indexes` is set, but the type requires it. Kept as the
+      // equivalent template to keep the legacy synthesis path readable.
+      embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{content}}',
+      indexes: [
+        {
+          name: 'assets_text',
+          embedderRef: 'default',
+          embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{content}}',
+          chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
+        },
+        {
+          name: 'assets_visual',
+          embedderRef: 'visual',
+          embeddingTemplate: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
+        },
+      ],
       facets: ['asset_type', 'agent', 'tool'],
       reindex: async function* () {
         const contentDir = getContentDir()
@@ -101,7 +139,8 @@ const assetsPlugin: BakinPlugin = {
                 const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
                 const assetFilename = metaFile.replace('.meta.json', '')
                 const key = `assets/${typeName}/${subdir}/${assetFilename}`
-                yield { key, doc: assetToSearchDoc(raw, assetFilename, typeName) }
+                const doc = await assetToSearchDoc(raw, assetFilename, typeName, key)
+                yield { key, doc }
               } catch { /* skip unreadable sidecars */ }
             }
           }
@@ -113,8 +152,45 @@ const assetsPlugin: BakinPlugin = {
       },
     })
 
+    /**
+     * Compute image_url for the visual index. Only raster image formats
+     * that CLIP can actually decode get a URL — SVG and ICO are excluded
+     * because Antfly's image processor (Go's standard image library)
+     * cannot handle vector or indexed-palette formats, and CLIP needs
+     * raster pixel data anyway. The {{#if image_url}} guard in the
+     * visual index template skips the helper when the URL is empty.
+     */
+    function computeImageUrl(
+      assetRelPath: string,
+      filename: string,
+      assetType: string,
+    ): string {
+      const lower = filename.toLowerCase()
+      const isRasterImage =
+        assetType === 'images' &&
+        (lower.endsWith('.png') ||
+          lower.endsWith('.jpg') ||
+          lower.endsWith('.jpeg') ||
+          lower.endsWith('.gif') ||
+          lower.endsWith('.webp') ||
+          lower.endsWith('.bmp'))
+      return isRasterImage ? buildAssetFileUrl(assetRelPath) : ''
+    }
+
     /** Convert sidecar metadata to a search document */
-    function assetToSearchDoc(meta: Record<string, unknown>, filename: string, assetType: string): Record<string, unknown> {
+    async function assetToSearchDoc(
+      meta: Record<string, unknown>,
+      filename: string,
+      assetType: string,
+      assetRelPath: string,
+    ): Promise<Record<string, unknown>> {
+      // assetRelPath is `assets/{type}/{subdir}/{file}` (the registry key).
+      // Strip the leading `assets/` to get the path relative to the assets
+      // root, which is what buildAssetFileUrl expects.
+      const rel = assetRelPath.replace(/^assets\//, '')
+      const image_url = computeImageUrl(rel, filename, assetType)
+      const absPath = join(getContentDir(), assetRelPath)
+      const content = await extractAssetContent(absPath, filename)
       return {
         description: (meta.description as string) || '',
         tags: Array.isArray(meta.tags) ? (meta.tags as string[]).join(', ') : '',
@@ -124,6 +200,8 @@ const assetsPlugin: BakinPlugin = {
         file_name: filename,
         tool: (meta.tool as string) || '',
         updated_at: (meta.created as string) || new Date().toISOString(),
+        content,
+        image_url,
       }
     }
 
@@ -137,7 +215,8 @@ const assetsPlugin: BakinPlugin = {
         const filename = relPath.split('/').pop() || ''
         const parts = relPath.split('/')
         const assetType = parts[1] || 'other'
-        await ctx.search.index(relPath, assetToSearchDoc(raw, filename, assetType))
+        const doc = await assetToSearchDoc(raw, filename, assetType, relPath)
+        await ctx.search.index(relPath, doc)
       } catch (err) {
         log.warn('Failed to index asset for search', { path: relPath, error: err instanceof Error ? err.message : String(err) })
       }
@@ -187,7 +266,16 @@ const assetsPlugin: BakinPlugin = {
     // Build the index on startup
     buildIndex()
 
-    // Register a sync hook to keep the index up-to-date
+    // Register a sync hook to keep both the local asset tracker and the
+    // Antfly search index up-to-date for any asset that arrives via the
+    // filesystem watcher rather than a REST route (manual drops, rsync,
+    // another agent writing directly, restored backups, etc.).
+    //
+    // indexAsset() early-returns when the sidecar is missing, so if a
+    // media file lands before its sidecar the first call is a no-op and
+    // the second call (triggered by the sidecar write) re-runs with
+    // full metadata. Deletions are not handled here — that requires a
+    // separate watcher unlink hook and is tracked as follow-up work.
     registerSyncHook(async (relativePath: string, _content: string) => {
       if (!relativePath.startsWith('assets/')) return
       if (relativePath.includes('.trash/')) return
@@ -195,8 +283,10 @@ const assetsPlugin: BakinPlugin = {
       if (relativePath.endsWith('.meta.json')) {
         const assetPath = relativePath.replace('.meta.json', '')
         upsertAsset(assetPath)
+        indexAsset(assetPath).catch(() => { /* non-blocking */ })
       } else {
         upsertAsset(relativePath)
+        indexAsset(relativePath).catch(() => { /* non-blocking */ })
       }
     })
 

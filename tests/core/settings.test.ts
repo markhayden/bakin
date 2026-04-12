@@ -35,9 +35,13 @@ describe('Settings', () => {
     const settings = getSettings()
     expect(settings.antfly.search.strategy).toBe('rrf')
     expect(settings.antfly.search.defaultLimit).toBe(20)
-    expect(settings.antfly.search.reranker).toBeUndefined()
-    expect(settings.antfly.embedder.provider).toBe('antfly')
-    expect(settings.antfly.embedder.model).toBe('all-MiniLM-L6-v2')
+    expect(settings.antfly.search.reranker.enabled).toBe(true)
+    expect(settings.antfly.search.reranker.provider).toBe('termite')
+    expect(settings.antfly.search.reranker.model).toBe('mixedbread-ai/mxbai-rerank-base-v1')
+    expect(settings.antfly.embedders.default.provider).toBe('termite')
+    expect(settings.antfly.embedders.default.model).toBe('BAAI/bge-small-en-v1.5')
+    expect(settings.antfly.embedders.visual.provider).toBe('termite')
+    expect(settings.antfly.embedders.visual.model).toBe('openai/clip-vit-base-patch32')
     expect(settings.antfly.chunking.defaultTargetTokens).toBe(200)
     expect(settings.antfly.chunking.defaultOverlapTokens).toBe(25)
     expect(settings.antfly.auditTtl).toBe('90d')
@@ -52,11 +56,41 @@ describe('Settings', () => {
 
     const settings = getSettings()
     expect(settings.antfly.enabled).toBe(true)
-    expect(settings.antfly.url).toBe('http://localhost:8080') // default preserved
+    expect(settings.antfly.url).toBe('http://localhost:8080/api/v1') // default preserved
     expect(settings.antfly.search.defaultLimit).toBe(50) // overridden
     expect(settings.antfly.search.strategy).toBe('rrf') // default preserved
-    expect(settings.antfly.embedder.provider).toBe('antfly') // default preserved
+    expect(settings.antfly.embedders.default.provider).toBe('termite') // default preserved
     expect(settings.antfly.auditTtl).toBe('90d') // default preserved
+  })
+
+  it('migrates legacy antfly.embedder into embedders.default with a warning', () => {
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+      antfly: { embedder: { provider: 'antfly', model: 'custom-legacy-model' } },
+    }))
+
+    const settings = getSettings()
+    // Legacy field migrated into embedders.default, overriding the new BGE default
+    expect(settings.antfly.embedders.default.provider).toBe('antfly')
+    expect(settings.antfly.embedders.default.model).toBe('custom-legacy-model')
+    // visual still comes from defaults
+    expect(settings.antfly.embedders.visual.model).toBe('openai/clip-vit-base-patch32')
+  })
+
+  it('prefers embedders over legacy embedder when both are set', () => {
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+      antfly: {
+        embedder: { provider: 'antfly', model: 'legacy-ignored' },
+        embedders: {
+          default: { provider: 'antfly', model: 'new-canonical' },
+          visual: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
+        },
+      },
+    }))
+
+    const settings = getSettings()
+    expect(settings.antfly.embedders.default.model).toBe('new-canonical')
   })
 
   it('merges partial overrides with defaults', () => {

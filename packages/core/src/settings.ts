@@ -48,11 +48,38 @@ export interface BakinSettings {
     search: {
       strategy: 'rrf' | 'semantic_only' | 'full_text_only'
       defaultLimit: number
-      reranker?: { provider: string; model: string; threshold?: number }
+      /**
+       * Cross-encoder reranker configuration. When `enabled` is true and a
+       * query does not pass `rerank: false`, Bakin attaches this config to
+       * every Antfly QueryRequest. Reranking adds ~100-500ms latency but
+       * measurably improves result ordering for ambiguous queries.
+       */
+      reranker: {
+        enabled: boolean
+        provider: string
+        model: string
+        threshold?: number
+      }
     }
-    embedder: {
+    /**
+     * @deprecated Use `embedders.default` instead. Still read for backward
+     * compat — if present, its value is copied into `embedders.default` on
+     * load and a deprecation warning is logged.
+     */
+    embedder?: {
       provider: string
       model: string
+    }
+    /**
+     * Per-index embedder configs. `default` is the text embedder used by
+     * every content type that doesn't declare an override. `visual` is the
+     * multimodal (CLIP) embedder used by the assets plugin's visual index.
+     * Plugins reference an entry by name via SearchIndexDefinition.embedderRef.
+     */
+    embedders: {
+      default: { provider: string; model: string }
+      visual: { provider: string; model: string }
+      [key: string]: { provider: string; model: string }
     }
     chunking: {
       defaultTargetTokens: number
@@ -114,14 +141,30 @@ const DEFAULTS: BakinSettings = {
   agents: [], // populated dynamically from OpenClaw at load time
   antfly: {
     enabled: true,
-    url: 'http://localhost:8080',
+    url: 'http://localhost:8080/api/v1',
     search: {
       strategy: 'rrf',
       defaultLimit: 20,
+      reranker: {
+        enabled: true,
+        provider: 'termite',
+        model: 'mixedbread-ai/mxbai-rerank-base-v1',
+        threshold: 0.0,
+      },
     },
-    embedder: {
-      provider: 'antfly',
-      model: 'all-MiniLM-L6-v2',
+    embedders: {
+      // Default text embedder swapped to BAAI/bge-small-en-v1.5 (Termite)
+      // as of search schema version 2. BGE is a stronger retrieval model
+      // than Antfly's builtin MiniLM, especially for longer documents
+      // with diverse vocabulary (which is most of what Bakin indexes —
+      // task descriptions, markdown notes, PDF bodies, audit trails).
+      // Runs locally via Termite; no cloud dependency. A boot-time
+      // migration in src/core/search-migration.ts drops stale tables
+      // whenever SCHEMA_VERSION advances beyond the persisted version
+      // in `~/.bakin/.search-state.json`, forcing a clean reindex onto
+      // the new embedder.
+      default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+      visual: { provider: 'termite', model: 'openai/clip-vit-base-patch32' },
     },
     chunking: {
       defaultTargetTokens: 200,
@@ -234,6 +277,20 @@ export function getSettings(): BakinSettings {
       DEFAULTS as unknown as Record<string, unknown>,
       overrides
     ) as unknown as BakinSettings
+
+    // Legacy embedder field — migrate to embedders.default if the user
+    // set it directly without also setting embedders.default. This is
+    // detected by inspecting the raw overrides, not the merged settings,
+    // since defaults alone never populate the legacy field.
+    const overrideAntfly = (overrides as { antfly?: Record<string, unknown> }).antfly
+    const legacyEmbedder = overrideAntfly && (overrideAntfly as { embedder?: { provider: string; model: string } }).embedder
+    const hasEmbedders = overrideAntfly && 'embedders' in overrideAntfly
+    if (legacyEmbedder && !hasEmbedders) {
+      settings.antfly.embedders.default = { provider: legacyEmbedder.provider, model: legacyEmbedder.model }
+      log.warn('settings.antfly.embedder is deprecated — migrate to settings.antfly.embedders.default')
+    } else if (legacyEmbedder && hasEmbedders) {
+      log.warn('settings.antfly.embedder is deprecated and ignored — using settings.antfly.embedders instead')
+    }
 
     setCachedSettings(settings)
   }

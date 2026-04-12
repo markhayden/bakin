@@ -34,6 +34,7 @@ import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
 import * as antfly from './src/core/antfly'
 import * as antflyServer from './src/core/antfly-server'
+import { migrateIfNeeded } from './src/core/search-migration'
 import * as agents from './src/core/agents'
 import * as pluginInstaller from './src/core/plugin-installer'
 import * as doctor from './src/core/doctor'
@@ -88,6 +89,12 @@ app.prepare().then(async () => {
   // Initialize Antfly client (optional — no-op if disabled in settings)
   await antfly.initialize()
 
+  // Check the search schema version and drop stale bakin_* tables when
+  // the in-code version has advanced beyond the last-migrated version.
+  // The registry recreates the tables below via createRegisteredTables,
+  // and we trigger a full reindex after plugins are ready.
+  const migration = await migrateIfNeeded()
+
   // Register audit content type for search (core module, not a plugin)
   const { createRegisteredTables, buildSearchAPI } = await import('./src/core/search-registry')
   const auditSearch = buildSearchAPI('_audit')
@@ -101,6 +108,7 @@ app.prepare().then(async () => {
       created_at: { type: 'datetime' },
     },
     searchableFields: ['content', 'event'],
+    rerankField: 'content',
     embeddingTemplate: '{{event}} {{agent}} {{content}}',
     facets: ['event', 'agent', 'channel'],
     ttl: settings.antfly.auditTtl,
@@ -135,6 +143,24 @@ app.prepare().then(async () => {
 
   // Create Antfly tables for all registered search content types
   await createRegisteredTables()
+
+  // If the schema migration dropped tables, kick off a full background
+  // reindex so the freshly-recreated tables get populated with content.
+  // Fire-and-forget — Bakin is usable immediately with empty tables;
+  // indexing completes in the background and streams progress over SSE.
+  if (migration.migrated) {
+    log.info('Running full reindex after schema migration', {
+      from: migration.from,
+      to: migration.to,
+    })
+    const { reindexContentTypes } = await import('./src/core/search-registry')
+    reindexContentTypes().then((results) => {
+      const total = results.reduce((sum: number, r) => sum + (r.indexed || 0), 0)
+      log.info('Schema migration reindex complete', { tables: results.length, total })
+    }).catch((err) => {
+      log.error('Schema migration reindex failed', err)
+    })
+  }
 
   // Start periodic orphan cleanup for search indexes
   const { startCleanupTimer } = await import('./src/core/search-cleanup')

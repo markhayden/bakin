@@ -9,7 +9,7 @@ vi.mock('@/core/antfly', () => ({
   removeDocument: vi.fn(async () => {}),
   transformDocument: vi.fn(async () => {}),
   rebuildIndexes: vi.fn(async () => {}),
-  batchIndex: vi.fn(async () => {}),
+  batchIndex: vi.fn(async (_table: string, docs: Record<string, unknown>) => Object.keys(docs).length),
   multiQuery: vi.fn(async () => ({ results: [], total: 0, took: 0 })),
   queryTable: vi.fn(async () => ({
     results: [
@@ -27,9 +27,16 @@ vi.mock('@/core/settings', () => ({
   getSettings: vi.fn(() => ({
     antfly: {
       enabled: true,
-      url: 'http://localhost:8080',
-      search: { strategy: 'rrf', defaultLimit: 20 },
-      embedder: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
+      url: 'http://localhost:8080/api/v1',
+      search: {
+        strategy: 'rrf',
+        defaultLimit: 20,
+        reranker: { enabled: true, provider: 'termite', model: 'mixedbread-ai/mxbai-rerank-base-v1', threshold: 0.0 },
+      },
+      embedders: {
+        default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+        visual: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
+      },
       chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
       auditTtl: '90d',
       cleanupInterval: '24h',
@@ -150,11 +157,212 @@ describe('search-registry', () => {
       'build feature',
       expect.objectContaining({
         aggregations: { status: { type: 'terms', field: 'status', size: 50 } },
+        indexes: ['embeddings'],
       }),
     )
     expect(result.meta.source).toBe('antfly')
     expect(result.results).toHaveLength(1)
     expect(result.aggregations?.status).toEqual([{ value: 'active', count: 5 }])
+  })
+
+  // ── multi-index support (T3) ─────────────────────────────────────────
+
+  it('buildAntflyIndexes synthesizes a single default index when def.indexes is absent', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await createRegisteredTables()
+
+    expect(antfly.createTable).toHaveBeenCalledWith(
+      'bakin_tasks',
+      expect.objectContaining({
+        indexes: expect.objectContaining({
+          search: expect.objectContaining({ type: 'full_text' }),
+          embeddings: expect.objectContaining({
+            type: 'embeddings',
+            template: '{{title}}',
+            embedder: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('buildAntflyIndexes creates one Antfly index per entry when def.indexes is set', async () => {
+    const api = buildSearchAPI('assets')
+    api.registerContentType({
+      ...makeDef('assets'),
+      indexes: [
+        {
+          name: 'assets_text',
+          embedderRef: 'default',
+          embeddingTemplate: '{{description}} {{tags}}',
+          chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
+        },
+        {
+          name: 'assets_visual',
+          embedderRef: 'visual',
+          embeddingTemplate: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
+        },
+      ],
+    })
+
+    await createRegisteredTables()
+
+    expect(antfly.createTable).toHaveBeenCalledWith(
+      'bakin_assets',
+      expect.objectContaining({
+        indexes: expect.objectContaining({
+          search: expect.objectContaining({ type: 'full_text' }),
+          assets_text: expect.objectContaining({
+            type: 'embeddings',
+            template: '{{description}} {{tags}}',
+            embedder: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+            chunk_size: 200,
+            chunk_overlap: 25,
+          }),
+          assets_visual: expect.objectContaining({
+            type: 'embeddings',
+            template: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
+            embedder: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('query routes multiple index names through to antfly.queryTable', async () => {
+    const api = buildSearchAPI('assets')
+    api.registerContentType({
+      ...makeDef('assets'),
+      indexes: [
+        { name: 'assets_text', embedderRef: 'default', embeddingTemplate: '{{description}}' },
+        { name: 'assets_visual', embedderRef: 'visual', embeddingTemplate: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}' },
+      ],
+    })
+
+    await api.query({ q: 'kafka diagram' })
+
+    expect(antfly.queryTable).toHaveBeenCalledWith(
+      'bakin_assets',
+      'kafka diagram',
+      expect.objectContaining({
+        indexes: ['assets_text', 'assets_visual'],
+      }),
+    )
+  })
+
+  // ── aggregations passthrough (T5) ───────────────────────────────────
+
+  it('query passes raw aggregations through to antfly.queryTable', async () => {
+    vi.mocked(antfly.queryTable).mockResolvedValueOnce({
+      results: [],
+      aggregations: {
+        byDate: { buckets: [{ key: '2026-04-01', doc_count: 3 }] },
+      },
+      took: 5,
+      total: 0,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const result = await api.query({
+      q: 'any',
+      aggregations: {
+        byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
+      },
+    })
+
+    expect(antfly.queryTable).toHaveBeenCalledWith(
+      'bakin_tasks',
+      'any',
+      expect.objectContaining({
+        aggregations: {
+          byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
+        },
+      }),
+    )
+    expect(result.rawAggregations).toEqual({
+      byDate: { buckets: [{ key: '2026-04-01', doc_count: 3 }] },
+    })
+  })
+
+  it('query merges caller aggregations with facet-derived aggregations', async () => {
+    vi.mocked(antfly.queryTable).mockResolvedValueOnce({
+      results: [], aggregations: {}, took: 1, total: 0,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await api.query({
+      q: 'any',
+      facets: ['status'],
+      aggregations: {
+        byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
+      },
+    })
+
+    expect(antfly.queryTable).toHaveBeenCalledWith(
+      'bakin_tasks',
+      'any',
+      expect.objectContaining({
+        aggregations: {
+          status: { type: 'terms', field: 'status', size: 50 },
+          byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
+        },
+      }),
+    )
+  })
+
+  it('caller aggregations override facet-derived ones on key collision', async () => {
+    vi.mocked(antfly.queryTable).mockResolvedValueOnce({
+      results: [], aggregations: {}, took: 1, total: 0,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await api.query({
+      q: 'any',
+      facets: ['status'],
+      aggregations: {
+        // Same key as the facet, but a different shape — caller wins
+        status: { type: 'terms', field: 'status', size: 500 },
+      },
+    })
+
+    expect(antfly.queryTable).toHaveBeenCalledWith(
+      'bakin_tasks',
+      'any',
+      expect.objectContaining({
+        aggregations: {
+          status: { type: 'terms', field: 'status', size: 500 },
+        },
+      }),
+    )
+  })
+
+  it('buildAntflyIndexes throws when an embedderRef is unknown', async () => {
+    const api = buildSearchAPI('broken')
+    api.registerContentType({
+      ...makeDef('broken'),
+      indexes: [
+        { name: 'bad', embedderRef: 'does-not-exist', embeddingTemplate: '{{x}}' },
+      ],
+    })
+
+    // createRegisteredTables swallows per-table errors and logs them, so the
+    // call itself resolves — but the resulting createTable mock should NOT
+    // have been called for this table because the error happened before it.
+    vi.mocked(antfly.createTable).mockClear()
+    await createRegisteredTables()
+
+    expect(antfly.createTable).not.toHaveBeenCalledWith(
+      'bakin_broken',
+      expect.anything(),
+    )
   })
 
   it('query returns fallback when no content type registered', async () => {

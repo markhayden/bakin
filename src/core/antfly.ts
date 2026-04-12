@@ -10,6 +10,7 @@ import { matchAll } from '@antfly/sdk'
 import type { QueryRequest, QueryResult, QueryHit } from '@antfly/sdk'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
+import { embeddersHash } from './embedder-resolver'
 
 const log = createLogger('antfly')
 
@@ -56,6 +57,8 @@ export interface SearchResult {
   fields: Record<string, unknown>
   /** Per-index score breakdown (e.g. { search: 0.8, embeddings: 0.6 }) */
   indexScores?: Record<string, number>
+  /** Cross-encoder reranker score (present when a reranker was used). */
+  rerankScore?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -63,8 +66,7 @@ export interface SearchResult {
 // ---------------------------------------------------------------------------
 
 function embedderHash(settings: ReturnType<typeof getSettings>): string {
-  const e = settings.antfly.embedder
-  return `${e.provider}:${e.model}`
+  return embeddersHash(settings)
 }
 
 function resolveTable(table: string): string {
@@ -197,6 +199,22 @@ export async function createTable(tableName: string, config: TableConfig): Promi
 }
 
 /**
+ * Drop a table unconditionally. Used by the schema-version migration
+ * path to clear stale tables before the registry recreates them with
+ * the current schema. Swallows "not found" errors silently so the
+ * caller can drop a list without checking existence first.
+ */
+export async function dropTable(tableName: string): Promise<void> {
+  const client = getClient()
+  if (!client) return
+  try {
+    await client.tables.drop(tableName)
+  } catch (err) {
+    log.warn(`dropTable failed for ${tableName}`, err)
+  }
+}
+
+/**
  * Get stats for a table (document count, index status, disk usage).
  */
 export async function getTableStats(tableName: string): Promise<Record<string, unknown> | null> {
@@ -230,6 +248,52 @@ export async function getTableStats(tableName: string): Promise<Record<string, u
 // ---------------------------------------------------------------------------
 
 /**
+ * Transient errors from Antfly's shard lifecycle. These show up during the
+ * first few hundred milliseconds after table creation, while Antfly's
+ * reconciler is starting up the shards asynchronously. Batches land before
+ * the shards are serving reads/writes and fail with one of these messages.
+ * The batch operation is otherwise sound — just needs a retry once the
+ * shard settles.
+ */
+const TRANSIENT_BATCH_ERROR_PATTERNS = [
+  'still initializing',
+  'not found on store',
+  'shard is still initializing',
+]
+
+function isTransientBatchError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return TRANSIENT_BATCH_ERROR_PATTERNS.some(p => msg.includes(p))
+}
+
+/**
+ * Run an Antfly batch operation with exponential backoff retries on
+ * transient shard-startup errors. Non-transient errors bubble through on
+ * the first attempt. Returns whatever `fn` returned on success, or
+ * rethrows the last error after exhausting retries.
+ *
+ * Backoff sequence: 100ms, 200ms, 400ms, 800ms, 1600ms — total ≈3.1s,
+ * which covers typical shard startup after schema migration.
+ */
+async function retryTransientBatch<T>(fn: () => Promise<T>): Promise<T> {
+  const MAX_RETRIES = 5
+  let lastErr: unknown
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      if (!isTransientBatchError(err) || attempt === MAX_RETRIES - 1) {
+        throw err
+      }
+      const delayMs = 100 * Math.pow(2, attempt)
+      await new Promise(resolve => setTimeout(resolve, delayMs))
+    }
+  }
+  throw lastErr
+}
+
+/**
  * Index a document to Antfly. Fire-and-forget — never blocks the caller.
  */
 export async function indexDocument(
@@ -241,9 +305,9 @@ export async function indexDocument(
   if (!client || !enabled()) return
 
   try {
-    await client.tables.batch(tableName, {
-      inserts: { [key]: doc },
-    })
+    await retryTransientBatch(() =>
+      client.tables.batch(tableName, { inserts: { [key]: doc } }),
+    )
   } catch (err) {
     log.warn('Antfly index failed (non-blocking)', err, { table: tableName, key })
   }
@@ -257,9 +321,9 @@ export async function removeDocument(tableName: string, key: string): Promise<vo
   if (!client || !enabled()) return
 
   try {
-    await client.tables.batch(tableName, {
-      deletes: [key],
-    })
+    await retryTransientBatch(() =>
+      client.tables.batch(tableName, { deletes: [key] }),
+    )
   } catch (err) {
     log.warn('Antfly delete failed', err, { table: tableName, key })
   }
@@ -278,16 +342,18 @@ export async function transformDocument(
   if (!client || !enabled()) return
 
   try {
-    await client.tables.batch(tableName, {
-      inserts: { [key]: fields },
-    })
+    await retryTransientBatch(() =>
+      client.tables.batch(tableName, { inserts: { [key]: fields } }),
+    )
   } catch (err) {
     log.warn('Antfly transform failed', err, { table: tableName, key })
   }
 }
 
 /**
- * Batch index multiple documents at once.
+ * Batch index multiple documents at once. Returns the number of docs
+ * Antfly reported as inserted (0 on error). Callers should use this
+ * return value as the truthful count — never assume all inputs landed.
  */
 export async function batchIndex(
   tableName: string,
@@ -297,7 +363,9 @@ export async function batchIndex(
   if (!client || !enabled()) return 0
 
   try {
-    const result = await client.tables.batch(tableName, { inserts: docs })
+    const result = await retryTransientBatch(() =>
+      client.tables.batch(tableName, { inserts: docs }),
+    )
     return result?.inserted ?? Object.keys(docs).length
   } catch (err) {
     log.warn('Antfly batch index failed', err, { table: tableName, count: Object.keys(docs).length })
@@ -313,7 +381,9 @@ export async function batchRemove(tableName: string, keys: string[]): Promise<nu
   if (!client || !enabled()) return 0
 
   try {
-    const result = await client.tables.batch(tableName, { deletes: keys })
+    const result = await retryTransientBatch(() =>
+      client.tables.batch(tableName, { deletes: keys }),
+    )
     return result?.deleted ?? keys.length
   } catch (err) {
     log.warn('Antfly batch delete failed', err, { table: tableName, count: keys.length })
@@ -326,7 +396,40 @@ export async function batchRemove(tableName: string, keys: string[]): Promise<nu
 // ---------------------------------------------------------------------------
 
 /**
+ * Build the reranker config for a QueryRequest, honoring the per-call
+ * `rerank` override and the global `settings.antfly.search.reranker.enabled`
+ * switch. Returns undefined when reranking should be skipped.
+ *
+ * Antfly requires the reranker config to specify either `field` or
+ * `template` — otherwise it returns a 400 ("reranker config must specify
+ * either field or template"). Bakin passes `field` from the caller
+ * (sourced from each content type's `rerankField`). When no field is
+ * supplied, reranking is skipped for that query rather than erroring.
+ */
+function buildRerankerConfig(
+  settings: ReturnType<typeof getSettings>,
+  rerank: boolean | undefined,
+  field: string | undefined,
+): Record<string, unknown> | undefined {
+  if (rerank === false) return undefined
+  if (!field) return undefined
+  const cfg = settings.antfly.search.reranker
+  if (!cfg?.enabled) return undefined
+  const out: Record<string, unknown> = { provider: cfg.provider, model: cfg.model, field }
+  if (typeof cfg.threshold === 'number') out.threshold = cfg.threshold
+  return out
+}
+
+/**
  * Search a single table with hybrid (full-text + semantic) search.
+ * `indexes` is the list of vector indexes to query — defaults to a single
+ * legacy `['embeddings']` for content types that don't declare multi-index
+ * definitions. Multi-index content types (e.g. assets with text + visual)
+ * pass the full set here and Antfly merges them via RRF.
+ *
+ * `rerank` controls cross-encoder reranking per call. Defaults to true when
+ * the reranker is enabled in settings; pass false for latency-sensitive
+ * queries (facet-only, ID lookups, bulk scans).
  */
 export async function queryTable(
   tableName: string,
@@ -337,6 +440,9 @@ export async function queryTable(
     filters?: Record<string, string | boolean | number>
     aggregations?: Record<string, unknown>
     strategy?: 'rrf' | 'semantic_only' | 'full_text_only'
+    indexes?: string[]
+    rerank?: boolean
+    rerankField?: string
   } = {},
 ): Promise<{ results: SearchResult[]; aggregations?: Record<string, unknown>; took: number; total: number }> {
   const client = getClient()
@@ -348,9 +454,11 @@ export async function queryTable(
   const strategy = options.strategy ?? settings.antfly.search.strategy
   const limit = options.limit ?? settings.antfly.search.defaultLimit
 
-  // full_text_search implicitly uses the full-text index — only list embedding index
+  // full_text_search implicitly uses the full-text index — only list embedding indexes
   const indexes: string[] = []
-  if (strategy !== 'full_text_only') indexes.push('embeddings')
+  if (strategy !== 'full_text_only') {
+    indexes.push(...(options.indexes ?? ['embeddings']))
+  }
 
   const request: QueryRequest = {
     table: tableName,
@@ -379,6 +487,11 @@ export async function queryTable(
     request.aggregations = options.aggregations as QueryRequest['aggregations']
   }
 
+  const rerankerCfg = buildRerankerConfig(settings, options.rerank, options.rerankField)
+  if (rerankerCfg) {
+    request.reranker = rerankerCfg as QueryRequest['reranker']
+  }
+
   try {
     const result = await client.tables.query(tableName, request)
     const response = result?.responses?.[0]
@@ -398,6 +511,9 @@ export async function queryTable(
 
 /**
  * Multi-table search in a single request using SDK multiquery.
+ * `indexesByTable` lets callers specify the vector indexes to target per
+ * table (e.g. {bakin_assets: ['assets_text', 'assets_visual']}). Tables
+ * not in the map fall back to a single legacy `['embeddings']` index.
  */
 export async function multiQuery(
   query: string,
@@ -406,6 +522,9 @@ export async function multiQuery(
     limit?: number
     filters?: Record<string, string | boolean | number>
     aggregations?: Record<string, unknown>
+    indexesByTable?: Record<string, string[]>
+    rerank?: boolean
+    rerankFieldByTable?: Record<string, string>
   } = {},
 ): Promise<{ results: SearchResult[]; aggregations?: Record<string, unknown>; took: number; total: number }> {
   const client = getClient()
@@ -422,7 +541,7 @@ export async function multiQuery(
       table: tableName,
       full_text_search: { query } as QueryRequest['full_text_search'],
       semantic_search: query,
-      indexes: ['embeddings'],
+      indexes: options.indexesByTable?.[tableName] ?? ['embeddings'],
       limit: perTable,
     }
     if (options.filters && Object.keys(options.filters).length > 0) {
@@ -433,6 +552,14 @@ export async function multiQuery(
     }
     if (options.aggregations) {
       req.aggregations = options.aggregations as QueryRequest['aggregations']
+    }
+    const rerankerCfg = buildRerankerConfig(
+      settings,
+      options.rerank,
+      options.rerankFieldByTable?.[tableName],
+    )
+    if (rerankerCfg) {
+      req.reranker = rerankerCfg as QueryRequest['reranker']
     }
     return req
   })
@@ -469,13 +596,17 @@ export async function multiQuery(
 
 function mapHits(response: QueryResult, tableName: string): SearchResult[] {
   if (!response?.hits?.hits) return []
-  return response.hits.hits.map((hit: QueryHit) => ({
-    id: hit._id || '',
-    table: tableName,
-    score: hit._score || 0,
-    fields: hit._source || {},
-    indexScores: (hit as Record<string, unknown>)._index_scores as Record<string, number> | undefined,
-  }))
+  return response.hits.hits.map((hit: QueryHit) => {
+    const raw = hit as Record<string, unknown>
+    return {
+      id: hit._id || '',
+      table: tableName,
+      score: hit._score || 0,
+      fields: hit._source || {},
+      indexScores: raw._index_scores as Record<string, number> | undefined,
+      rerankScore: raw._rerank_score as number | undefined,
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------
