@@ -1,6 +1,51 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Mock settings with antfly disabled
+// Use vi.hoisted so mock variables survive vi.mock hoisting
+const {
+  mockGetStatus, mockTablesList, mockTablesCreate, mockTablesDrop,
+  mockTablesGet, mockTablesQuery, mockTablesBatch, mockTablesScan,
+  mockIndexesList, mockIndexesCreate, mockIndexesDrop, mockMultiquery,
+  mockClientInstance,
+} = vi.hoisted(() => {
+  const mockGetStatus = vi.fn()
+  const mockTablesList = vi.fn(async () => [])
+  const mockTablesCreate = vi.fn()
+  const mockTablesDrop = vi.fn()
+  const mockTablesGet = vi.fn()
+  const mockTablesQuery = vi.fn()
+  const mockTablesBatch = vi.fn()
+  const mockTablesScan = vi.fn(async function* () {})
+  const mockIndexesList = vi.fn(async () => ({}))
+  const mockIndexesCreate = vi.fn()
+  const mockIndexesDrop = vi.fn()
+  const mockMultiquery = vi.fn()
+  const mockClientInstance = {
+    getStatus: mockGetStatus,
+    tables: {
+      list: mockTablesList,
+      create: mockTablesCreate,
+      drop: mockTablesDrop,
+      get: mockTablesGet,
+      query: mockTablesQuery,
+      multiquery: vi.fn(),
+      batch: mockTablesBatch,
+      scan: mockTablesScan,
+    },
+    indexes: {
+      list: mockIndexesList,
+      create: mockIndexesCreate,
+      drop: mockIndexesDrop,
+    },
+    multiquery: mockMultiquery,
+  }
+  return {
+    mockGetStatus, mockTablesList, mockTablesCreate, mockTablesDrop,
+    mockTablesGet, mockTablesQuery, mockTablesBatch, mockTablesScan,
+    mockIndexesList, mockIndexesCreate, mockIndexesDrop, mockMultiquery,
+    mockClientInstance,
+  }
+})
+
 vi.mock('@/core/settings', () => ({
   getSettings: vi.fn(() => ({
     antfly: {
@@ -22,52 +67,41 @@ vi.mock('@/core/settings', () => ({
   })),
 }))
 
-// Mock @antfly/sdk — prevent real HTTP calls
-vi.mock('@antfly/sdk', () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      getStatus: vi.fn(),
-      tables: {
-        list: vi.fn(async () => []),
-        create: vi.fn(),
-        drop: vi.fn(),
-        get: vi.fn(),
-        query: vi.fn(),
-        multiquery: vi.fn(),
-        batch: vi.fn(),
-        scan: vi.fn(async function* () {}),
-      },
-      indexes: {
-        list: vi.fn(async () => ({})),
-        create: vi.fn(),
-        drop: vi.fn(),
-      },
-      multiquery: vi.fn(),
-    })),
-    AntflyClient: vi.fn().mockImplementation(() => ({
-      getStatus: vi.fn(),
-      tables: {
-        list: vi.fn(async () => []),
-        create: vi.fn(),
-        drop: vi.fn(),
-        get: vi.fn(),
-        query: vi.fn(),
-        multiquery: vi.fn(),
-        batch: vi.fn(),
-        scan: vi.fn(async function* () {}),
-      },
-      indexes: {
-        list: vi.fn(async () => ({})),
-        create: vi.fn(),
-        drop: vi.fn(),
-      },
-      multiquery: vi.fn(),
-    })),
-    matchAll: vi.fn(() => ({ match_all: {} })),
-  }
-})
+vi.mock('@antfly/sdk', () => ({
+  default: vi.fn().mockImplementation(() => mockClientInstance),
+  AntflyClient: vi.fn().mockImplementation(() => mockClientInstance),
+  matchAll: vi.fn(() => ({ match_all: {} })),
+}))
+
+vi.mock('@/core/logger', () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
+}))
+
+/** Install the mock client on the globalThis singleton that antfly.ts uses. */
+function installMockClient() {
+  const g = globalThis as any
+  g.__bakinAntflyClient = mockClientInstance
+  g.__bakinAntflyReady = true
+}
+
+function resetAntflyGlobals() {
+  const g = globalThis as any
+  delete g.__bakinAntflyClient
+  delete g.__bakinAntflyReady
+  delete g.__bakinAntflyEmbedderHash
+}
 
 describe('antfly', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetAntflyGlobals()
+  })
+
   it('should export core functions', async () => {
     const antfly = await import('@/core/antfly')
     expect(typeof antfly.enabled).toBe('function')
@@ -126,5 +160,106 @@ describe('antfly', () => {
     const tableValues = Object.values(antfly.TABLES)
     expect(tableValues.every(t => t.startsWith('bakin_'))).toBe(true)
     expect(tableValues.some(t => t.startsWith('beacon_'))).toBe(false)
+  })
+
+  // ── getIndexHealth ─────────────────────────────────────────────────
+
+  it('should export getIndexHealth as a function', async () => {
+    const antfly = await import('@/core/antfly')
+    expect(typeof antfly.getIndexHealth).toBe('function')
+  })
+
+  it('getIndexHealth returns null when Antfly disabled', async () => {
+    // No client installed — simulates disabled state
+    const antfly = await import('@/core/antfly')
+    const result = await antfly.getIndexHealth('bakin_tasks')
+    expect(result).toBeNull()
+  })
+
+  it('getIndexHealth returns structured health for clean indexes', async () => {
+    installMockClient()
+    mockIndexesList.mockResolvedValue({
+      search: {
+        config: { name: 'search', type: 'full_text' },
+        status: { total_indexed: 50, rebuilding: false },
+        shard_status: {},
+      },
+      embeddings: {
+        config: { name: 'embeddings', type: 'embeddings' },
+        status: { total_indexed: 50, wal_backlog: 0, rebuilding: false, backfill_progress: 1.0 },
+        shard_status: {},
+      },
+    })
+
+    const antfly = await import('@/core/antfly')
+    const result = await antfly.getIndexHealth('bakin_tasks')
+
+    expect(result).not.toBeNull()
+    expect(result!.healthy).toBe(true)
+    expect(result!.indexes).toHaveLength(2)
+    expect(result!.indexes[0]).toMatchObject({
+      name: 'search',
+      type: 'full_text',
+      rebuilding: false,
+    })
+    expect(result!.indexes[1]).toMatchObject({
+      name: 'embeddings',
+      type: 'embeddings',
+      totalIndexed: 50,
+      walBacklog: 0,
+      rebuilding: false,
+    })
+  })
+
+  it('getIndexHealth surfaces index errors', async () => {
+    installMockClient()
+    mockIndexesList.mockResolvedValue({
+      embeddings: {
+        config: { name: 'embeddings', type: 'embeddings' },
+        status: {
+          total_indexed: 10,
+          wal_backlog: 0,
+          rebuilding: false,
+          error: 'embedder model not found: BAAI/bge-small-en-v1.5',
+        },
+        shard_status: {},
+      },
+    })
+
+    const antfly = await import('@/core/antfly')
+    const result = await antfly.getIndexHealth('bakin_tasks')
+
+    expect(result).not.toBeNull()
+    expect(result!.healthy).toBe(false)
+    expect(result!.indexes[0]!.error).toBe('embedder model not found: BAAI/bge-small-en-v1.5')
+  })
+
+  it('getIndexHealth reports WAL backlog', async () => {
+    installMockClient()
+    mockIndexesList.mockResolvedValue({
+      embeddings: {
+        config: { name: 'embeddings', type: 'embeddings' },
+        status: {
+          total_indexed: 30,
+          wal_backlog: 15,
+          rebuilding: true,
+          backfill_progress: 0.67,
+        },
+        shard_status: {},
+      },
+    })
+
+    const antfly = await import('@/core/antfly')
+    const result = await antfly.getIndexHealth('bakin_tasks')
+
+    expect(result).not.toBeNull()
+    expect(result!.healthy).toBe(false)
+    expect(result!.indexes[0]).toMatchObject({
+      name: 'embeddings',
+      totalIndexed: 30,
+      walBacklog: 15,
+      rebuilding: true,
+      backfillProgress: 0.67,
+    })
   })
 })
