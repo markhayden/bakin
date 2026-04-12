@@ -124,6 +124,7 @@ describe('MCP server tool registration', () => {
         activity: { log: () => {}, audit: () => {} },
         search: {
           registerContentType: () => {},
+          registerFileBackedContentType: () => {},
           index: async () => {},
           remove: async () => {},
           transform: async () => {},
