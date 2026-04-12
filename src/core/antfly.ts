@@ -629,6 +629,73 @@ export async function* scanTable(
 }
 
 // ---------------------------------------------------------------------------
+// Index health — enrichment observability (#74)
+// ---------------------------------------------------------------------------
+
+export interface IndexHealthEntry {
+  name: string
+  type: string
+  totalIndexed: number
+  walBacklog: number
+  error?: string
+  rebuilding: boolean
+  backfillProgress?: number
+}
+
+export interface IndexHealth {
+  indexes: IndexHealthEntry[]
+  healthy: boolean
+}
+
+/**
+ * Get per-index enrichment health for a table. Wraps `indexes.list()` and
+ * returns a structured summary. Returns null when the client is unavailable.
+ * Never throws — logs warnings and returns null on error.
+ */
+export async function getIndexHealth(tableName: string): Promise<IndexHealth | null> {
+  const client = getClient()
+  if (!client) return null
+
+  try {
+    const indexStatuses = await client.indexes.list(tableName)
+    const indexes: IndexHealthEntry[] = []
+    let healthy = true
+
+    for (const [indexName, indexInfo] of Object.entries(indexStatuses)) {
+      const config = 'config' in indexInfo ? indexInfo.config : null
+      const status = 'status' in indexInfo ? indexInfo.status : null
+      const s = (status ?? {}) as Record<string, unknown>
+
+      const entry: IndexHealthEntry = {
+        name: indexName,
+        type: (config as Record<string, unknown>)?.type as string ?? 'unknown',
+        totalIndexed: (s.total_indexed as number) ?? 0,
+        walBacklog: (s.wal_backlog as number) ?? 0,
+        rebuilding: (s.rebuilding as boolean) ?? false,
+      }
+
+      if (s.error) {
+        entry.error = s.error as string
+        healthy = false
+      }
+      if (entry.walBacklog > 0) {
+        healthy = false
+      }
+      if (typeof s.backfill_progress === 'number') {
+        entry.backfillProgress = s.backfill_progress
+      }
+
+      indexes.push(entry)
+    }
+
+    return { indexes, healthy }
+  } catch (err) {
+    log.warn(`Failed to get index health for ${tableName}`, err)
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Index management
 // ---------------------------------------------------------------------------
 
