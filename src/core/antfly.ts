@@ -658,6 +658,9 @@ export async function getIndexHealth(tableName: string): Promise<IndexHealth | n
 
   try {
     const indexStatuses = await client.indexes.list(tableName)
+    if (!indexStatuses || typeof indexStatuses !== 'object') {
+      return { indexes: [], healthy: true }
+    }
     const indexes: IndexHealthEntry[] = []
     let healthy = true
 

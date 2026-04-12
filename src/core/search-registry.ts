@@ -544,8 +544,8 @@ export async function reindexContentTypes(opts?: {
             const docCount = (stats as Record<string, unknown> | null)?.num_docs as number ?? 0
             result.verified = docCount
             result.verifyDiscrepancy = count - docCount
-            if (result.verifyDiscrepancy > 0) {
-              log.error(`Verify discrepancy in ${tableName}: indexed ${count} but only ${docCount} findable`)
+            if (result.verifyDiscrepancy !== 0) {
+              log.error(`Verify discrepancy in ${tableName}: indexed ${count} but ${docCount} findable (delta: ${result.verifyDiscrepancy})`)
             }
           } catch (err) {
             log.warn(`Verify pass failed for ${tableName}`, err)

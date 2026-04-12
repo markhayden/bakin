@@ -2,13 +2,13 @@
 
 ## Tasks
 
-- [ ] **T1:** Add `getIndexHealth()` to `src/core/antfly.ts` + tests in `tests/core/antfly.test.ts`
+- [x] **T1:** Add `getIndexHealth()` to `src/core/antfly.ts` + tests in `tests/core/antfly.test.ts`
   - AC: New function exported, wraps `indexes.list()`, returns `IndexHealth | null`
   - AC: 5 new test cases pass (export, disabled, healthy, errors, wal_backlog)
   - Verify: `npx vitest run tests/core/antfly.test.ts`
   - Commit: `feat(search): add getIndexHealth() for enrichment status (#74)`
 
-- [ ] **T2:** Enrichment audit in `reindexContentTypes()` + tests
+- [x] **T2:** Enrichment audit in `reindexContentTypes()` + tests
   - Depends: T1
   - AC: After each table reindex, `getIndexHealth()` called and anomalies logged
   - AC: Per-table result includes `enrichment` field with index health
@@ -16,7 +16,7 @@
   - Verify: `npx vitest run tests/core/search-registry.test.ts`
   - Commit: `feat(search): enrichment audit after reindex with enriched response (#74)`
 
-- [ ] **T3:** Update `server.ts` reindex handler for enriched response
+- [x] **T3:** Update `server.ts` reindex handler for enriched response
   - Depends: T2
   - AC: `/api/reindex` response includes `enrichmentErrors` count
   - AC: `ok` reflects both batch and enrichment errors
@@ -26,14 +26,14 @@
 
   **--- Checkpoint: Layers 1+2 complete. Reindex now surfaces enrichment failures in logs and API. ---**
 
-- [ ] **T4:** Extend `getSearchHealth()` with per-index health + tests
+- [x] **T4:** Extend `getSearchHealth()` with per-index health + tests
   - Depends: T1
   - AC: Health response includes `indexHealth` array and `healthy` boolean per table
   - AC: 4 new test cases pass (with health, healthy true, healthy false, null handling)
   - Verify: `npx vitest run tests/core/search-registry.test.ts`
   - Commit: `feat(search): add enrichment status to health endpoint (#74)`
 
-- [ ] **T5:** Health page UI enrichment indicators
+- [x] **T5:** Health page UI enrichment indicators
   - Depends: T4
   - AC: Table cards show green/amber/red indicator based on enrichment health
   - AC: Error tooltip shows the actual error message
@@ -43,7 +43,7 @@
 
   **--- Checkpoint: Layer 4 complete. Health page shows enrichment status at a glance. ---**
 
-- [ ] **T6:** Verify mode (`?verify=true`) in `reindexContentTypes()` + server.ts + tests
+- [x] **T6:** Verify mode (`?verify=true`) in `reindexContentTypes()` + server.ts + tests
   - Depends: T1
   - AC: `reindexContentTypes({ verify: true })` re-queries table after reindex
   - AC: Result includes `verified` and `verifyDiscrepancy` when verify=true
@@ -54,7 +54,7 @@
 
   **--- Checkpoint: Layer 3 complete. Full pipeline honest about what landed. ---**
 
-- [ ] **T7:** Update `.claude/knowledge/search-system.md` with enrichment observability docs
+- [x] **T7:** Update `.claude/knowledge/search-system.md` with enrichment observability docs
   - Depends: T1-T6
   - AC: New "Enrichment Observability" section documents all four layers
   - AC: Response shapes documented with examples
