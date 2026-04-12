@@ -187,6 +187,15 @@ describe('assets multimodal indexing', () => {
     expect(def.schema.pdf_url).toBeUndefined()
   })
 
+  it('does not set rerankField — multimodal table skips the cross-encoder', async () => {
+    const def = await getRegisteredDef()
+    // The cross-encoder reranker scores against a single document field.
+    // For multimodal content (PDF body in `content`, images in the visual
+    // index, metadata in `description`), no single field works. Raw RRF
+    // ranking is correct; the reranker creates inversions.
+    expect(def.rerankField).toBeUndefined()
+  })
+
   it('reindex populates content from markdown body', async () => {
     const def = await getRegisteredDef()
 
