@@ -18,6 +18,7 @@ import { appendAudit } from './audit'
 import { isUsingBakinHome, getContentDir } from './content-dir'
 import * as openclaw from './openclaw-client'
 import * as mcporter from './mcporter'
+import { isOnboarded } from './onboarding/state'
 import { getAllExecTools } from '../../scripts/lib/registry'
 import { getHookRegistry } from '../lib/plugin-registry'
 
@@ -1613,6 +1614,21 @@ export async function runDiagnostics(
   projectRoot: string
 ): Promise<DiagnosticResult[]> {
   const settings = getSettings()
+
+  // Gate: if the machine has never been through first-run onboarding and
+  // the config says to enforce it, return a single actionable error and
+  // skip all the normal checks. Keeps doctor quiet on a fresh machine
+  // and points the user at `bakin onboard` instead of drowning them in
+  // unrelated errors about missing personas, gateway down, etc.
+  if (settings.doctor.requireOnboard && !isOnboarded()) {
+    return [{
+      check: 'onboarded',
+      status: 'error',
+      message: 'Bakin is not onboarded on this machine. Run `bakin onboard` to complete first-run setup.',
+      autoFixable: false,
+    }]
+  }
+
   const autoFix = settings.doctor.autoFixSkill // reuse as general autoFix flag
 
   const results: DiagnosticResult[] = []
