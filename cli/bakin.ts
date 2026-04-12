@@ -1353,6 +1353,20 @@ Commands:
   setup mcporter                   Install mcporter + sync per-agent MCP config
   paths [key]                      Show content directory paths (keys: home, assets, projects, etc.)
   init                             Initialize ~/.bakin/ directory with defaults
+  mkdir                            Create/verify ~/.bakin/ directory tree (replaces init)
+  settings init                    Seed ~/.bakin/settings.json with defaults if missing
+  check openclaw                   Detect OpenClaw binary + config
+  check llm                        Verify at least one LLM provider configured
+  check channels                   Verify at least one messaging channel configured
+  check all                        Run all onboarding checks, report each
+  install antfly                   Install AntflyDB via Homebrew
+  install models                   Download Termite ML models (BGE, CLIP, mxbai-rerank)
+  install mcporter                 Install mcporter + sync per-agent MCP config
+  onboard                          Run full first-run onboarding (all checks + installs)
+    --check                          Check-only mode (no installs, exit 0/1/2)
+    --yes                            Auto-approve all prompts (for CI/scripts)
+    --json                           Emit one JSON line per component to stdout
+    --force                          Delete .onboarded marker and replay from scratch
   agent-rules [--apply|--check]    Manage orchestrator rules block in AGENTS.md
   agent-rules --apply-all          Apply all managed blocks to all agent AGENTS.md files
   agent-rules --check-all          Check all managed blocks across all agents
@@ -1393,6 +1407,154 @@ Commands:
 Environment:
   BAKIN_URL    Base URL (default: http://localhost:3737)
 `
+
+// ---------------------------------------------------------------------------
+// Onboarding CLI handlers
+// ---------------------------------------------------------------------------
+
+function statusIcon(status: string): string {
+  switch (status) {
+    case 'ok': return '[OK]'
+    case 'warn': return '[WARN]'
+    case 'error': return '[FAIL]'
+    case 'missing': return '[MISS]'
+    case 'broken': return '[FAIL]'
+    case 'skipped': return '[SKIP]'
+    default: return `[${status.toUpperCase()}]`
+  }
+}
+
+async function cmdOnboardingMkdir(): Promise<void> {
+  const { mkdirComponent } = await import('../src/core/onboarding/mkdir')
+  const opts = {
+    interactive: Boolean(process.stdout.isTTY),
+    autoApprove: true,
+    json: false,
+    checkOnly: false,
+    force: false,
+  }
+  const result = await mkdirComponent.install(opts)
+  console.log(`${statusIcon(result.status)} ${result.message}`)
+  if (result.status === 'failed') process.exit(1)
+}
+
+async function cmdOnboardingSettingsInit(): Promise<void> {
+  const { settingsComponent } = await import('../src/core/onboarding/settings')
+  const opts = {
+    interactive: Boolean(process.stdout.isTTY),
+    autoApprove: true,
+    json: false,
+    checkOnly: false,
+    force: false,
+  }
+  const result = await settingsComponent.install(opts)
+  console.log(`${statusIcon(result.status)} ${result.message}`)
+  if (result.status === 'failed') process.exit(1)
+}
+
+async function cmdOnboardingCheckSingle(target: 'openclaw' | 'llm' | 'channels'): Promise<void> {
+  const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
+    openclaw: async () => (await import('../src/core/onboarding/openclaw')).openclawComponent,
+    llm: async () => (await import('../src/core/onboarding/credentials')).llmComponent,
+    channels: async () => (await import('../src/core/onboarding/credentials')).channelsComponent,
+  }
+  const component = await componentMap[target]()
+  const result = await component.check()
+  console.log(`${statusIcon(result.status)} ${result.message}`)
+  if (result.remediation) console.log(`  → ${result.remediation}`)
+  if (result.status === 'missing' || result.status === 'error' || result.status === 'broken') process.exit(1)
+  if (result.status === 'warn') process.exit(2)
+}
+
+async function cmdOnboardingCheckAll(): Promise<void> {
+  const { checkAll } = await import('../src/core/onboarding/index')
+  const results = await checkAll()
+  for (const r of results) {
+    console.log(`${statusIcon(r.status)} ${r.name.padEnd(10)} ${r.message}`)
+    if (r.remediation) console.log(`  → ${r.remediation}`)
+  }
+  const hasError = results.some(r => r.status === 'error' || r.status === 'missing' || r.status === 'broken')
+  const hasWarn = results.some(r => r.status === 'warn')
+  process.exit(hasError ? 1 : hasWarn ? 2 : 0)
+}
+
+async function cmdOnboardingInstallSingle(target: string, args: string[]): Promise<void> {
+  const componentMap: Record<string, () => Promise<import('../src/core/onboarding/types').OnboardingComponent>> = {
+    antfly: async () => (await import('../src/core/onboarding/antfly')).antflyComponent,
+    models: async () => (await import('../src/core/onboarding/models')).modelsComponent,
+    mcporter: async () => (await import('../src/core/onboarding/mcporter')).mcporterComponent,
+  }
+  const component = await componentMap[target]()
+  const isTTY = Boolean(process.stdout.isTTY)
+  const autoApprove = args.includes('--yes')
+  const json = args.includes('--json')
+  const opts = {
+    interactive: isTTY && !json,
+    autoApprove: autoApprove || (!isTTY && !json),
+    json,
+    checkOnly: false,
+    force: false,
+  }
+  const result = await component.install(opts)
+  if (json) {
+    console.log(JSON.stringify({ component: component.name, status: result.status, message: result.message, durationMs: result.durationMs }))
+  } else {
+    console.log(`${statusIcon(result.status)} ${result.message}`)
+  }
+  if (result.status === 'failed') process.exit(1)
+}
+
+async function cmdOnboard(args: string[]): Promise<void> {
+  const { runOnboard, isOnboarded, loadState } = await import('../src/core/onboarding/index')
+  const checkOnly = args.includes('--check')
+  const yes = args.includes('--yes')
+  const json = args.includes('--json')
+  const force = args.includes('--force')
+  const isTTY = Boolean(process.stdout.isTTY)
+
+  // Early exit for already-onboarded machines unless --force or --check
+  if (!force && !checkOnly && isOnboarded()) {
+    const state = loadState()
+    if (!json) {
+      console.log(`[OK] Already onboarded on ${state?.completedAt?.slice(0, 10) ?? 'unknown date'}.`)
+      console.log('     Re-run with --force to replay the full flow.')
+    } else {
+      console.log(JSON.stringify({ status: 'already_onboarded', completedAt: state?.completedAt }))
+    }
+    process.exit(0)
+  }
+
+  const opts = {
+    interactive: isTTY && !json && !checkOnly,
+    autoApprove: yes || (!isTTY && !json),
+    json,
+    checkOnly,
+    force,
+  }
+
+  const result = await runOnboard(opts)
+
+  if (!json) {
+    console.log('')
+    for (const o of result.outcomes) {
+      console.log(`${statusIcon(o.finalStatus)} ${o.name.padEnd(10)} ${o.message}`)
+      if (o.remediation && o.finalStatus !== 'ok') {
+        console.log(`  → ${o.remediation}`)
+      }
+    }
+    console.log('')
+    if (result.exitCode === 0) {
+      console.log('Onboarding complete. Run `pnpm dev` to start Bakin.')
+    } else if (result.exitCode === 2) {
+      console.log('Onboarding finished with warnings. Bakin will start but some features may be limited.')
+      console.log('Run `pnpm dev` to start Bakin.')
+    } else {
+      console.log('Onboarding failed. Fix the errors above and rerun `bakin onboard`.')
+    }
+  }
+
+  process.exit(result.exitCode)
+}
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
@@ -1498,6 +1660,8 @@ async function main(): Promise<void> {
         } else if (sub === 'set') {
           if (!args[2] || !args[3]) { console.error('Usage: bakin settings set <key> <value>'); process.exit(1) }
           await cmdSettingsSet(args[2], args[3])
+        } else if (sub === 'init') {
+          await cmdOnboardingSettingsInit()
         } else {
           console.error(`Unknown settings subcommand: ${sub}`)
           process.exit(1)
@@ -1558,6 +1722,36 @@ async function main(): Promise<void> {
         await cmdAgentRules({ apply, check, applyAll, checkAll })
         break
       }
+
+      case 'mkdir':
+        await cmdOnboardingMkdir()
+        break
+
+      case 'check':
+        if (sub === 'openclaw' || sub === 'llm' || sub === 'channels') {
+          await cmdOnboardingCheckSingle(sub)
+        } else if (sub === 'all') {
+          await cmdOnboardingCheckAll()
+        } else {
+          console.error(`Unknown check target: ${sub}`)
+          console.error('Available: bakin check openclaw | llm | channels | all')
+          process.exit(1)
+        }
+        break
+
+      case 'install':
+        if (sub === 'antfly' || sub === 'models' || sub === 'mcporter') {
+          await cmdOnboardingInstallSingle(sub, args)
+        } else {
+          console.error(`Unknown install target: ${sub}`)
+          console.error('Available: bakin install antfly | models | mcporter')
+          process.exit(1)
+        }
+        break
+
+      case 'onboard':
+        await cmdOnboard(args)
+        break
 
       case 'init':
         await cmdInit()
