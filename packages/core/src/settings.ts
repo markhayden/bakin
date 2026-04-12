@@ -95,7 +95,13 @@ export interface BakinSettings {
     }
     /** TTL for audit table entries (Go duration: '90d', '24h'). Empty string to disable. */
     auditTtl: string
-    /** Interval for orphan cleanup (Go duration: '24h', '12h'). */
+    /**
+     * Interval for the orphan cleanup BACKSTOP scan (Go duration: '7d', '24h').
+     * The watcher unlink hook is the primary path for keeping search indexes
+     * in sync with filesystem deletes — this scan only catches the rare
+     * cases where the watcher missed an event (process down during the
+     * delete, fs event lost, etc.). 7d is the right cadence for that role.
+     */
     cleanupInterval: string
   }
   doctor: {
@@ -191,7 +197,7 @@ const DEFAULTS: BakinSettings = {
       defaultOverlapTokens: 25,
     },
     auditTtl: '90d',
-    cleanupInterval: '24h',
+    cleanupInterval: '7d',
   },
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes
