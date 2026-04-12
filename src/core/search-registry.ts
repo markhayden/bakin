@@ -375,8 +375,11 @@ export async function reindexContentTypes(opts?: {
           if (batch.length >= BATCH_SIZE) {
             const batchMap: Record<string, Record<string, unknown>> = {}
             for (const b of batch) batchMap[b.key] = b.doc
-            await antfly.batchIndex(tableName, batchMap)
-            count += batch.length
+            // Use the actual inserted count from antfly.batchIndex. The
+            // function returns 0 on batch failure (e.g. if Antfly drops
+            // the batch after exhausting retries). Blindly adding
+            // `batch.length` would over-report success in those cases.
+            count += await antfly.batchIndex(tableName, batchMap)
             batch.length = 0
             // Broadcast milestone progress to health page (every batch for live counts)
             broadcast({ type: 'reindex.progress', table: tableName, pluginId: def.pluginId, indexed: count })
@@ -385,8 +388,7 @@ export async function reindexContentTypes(opts?: {
         if (batch.length > 0) {
           const batchMap: Record<string, Record<string, unknown>> = {}
           for (const b of batch) batchMap[b.key] = b.doc
-          await antfly.batchIndex(tableName, batchMap)
-          count += batch.length
+          count += await antfly.batchIndex(tableName, batchMap)
         }
 
       }

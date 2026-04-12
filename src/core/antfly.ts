@@ -248,6 +248,52 @@ export async function getTableStats(tableName: string): Promise<Record<string, u
 // ---------------------------------------------------------------------------
 
 /**
+ * Transient errors from Antfly's shard lifecycle. These show up during the
+ * first few hundred milliseconds after table creation, while Antfly's
+ * reconciler is starting up the shards asynchronously. Batches land before
+ * the shards are serving reads/writes and fail with one of these messages.
+ * The batch operation is otherwise sound — just needs a retry once the
+ * shard settles.
+ */
+const TRANSIENT_BATCH_ERROR_PATTERNS = [
+  'still initializing',
+  'not found on store',
+  'shard is still initializing',
+]
+
+function isTransientBatchError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return TRANSIENT_BATCH_ERROR_PATTERNS.some(p => msg.includes(p))
+}
+
+/**
+ * Run an Antfly batch operation with exponential backoff retries on
+ * transient shard-startup errors. Non-transient errors bubble through on
+ * the first attempt. Returns whatever `fn` returned on success, or
+ * rethrows the last error after exhausting retries.
+ *
+ * Backoff sequence: 100ms, 200ms, 400ms, 800ms, 1600ms — total ≈3.1s,
+ * which covers typical shard startup after schema migration.
+ */
+async function retryTransientBatch<T>(fn: () => Promise<T>): Promise<T> {
+  const MAX_RETRIES = 5
+  let lastErr: unknown
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      if (!isTransientBatchError(err) || attempt === MAX_RETRIES - 1) {
+        throw err
+      }
+      const delayMs = 100 * Math.pow(2, attempt)
+      await new Promise(resolve => setTimeout(resolve, delayMs))
+    }
+  }
+  throw lastErr
+}
+
+/**
  * Index a document to Antfly. Fire-and-forget — never blocks the caller.
  */
 export async function indexDocument(
@@ -259,9 +305,9 @@ export async function indexDocument(
   if (!client || !enabled()) return
 
   try {
-    await client.tables.batch(tableName, {
-      inserts: { [key]: doc },
-    })
+    await retryTransientBatch(() =>
+      client.tables.batch(tableName, { inserts: { [key]: doc } }),
+    )
   } catch (err) {
     log.warn('Antfly index failed (non-blocking)', err, { table: tableName, key })
   }
@@ -275,9 +321,9 @@ export async function removeDocument(tableName: string, key: string): Promise<vo
   if (!client || !enabled()) return
 
   try {
-    await client.tables.batch(tableName, {
-      deletes: [key],
-    })
+    await retryTransientBatch(() =>
+      client.tables.batch(tableName, { deletes: [key] }),
+    )
   } catch (err) {
     log.warn('Antfly delete failed', err, { table: tableName, key })
   }
@@ -296,16 +342,18 @@ export async function transformDocument(
   if (!client || !enabled()) return
 
   try {
-    await client.tables.batch(tableName, {
-      inserts: { [key]: fields },
-    })
+    await retryTransientBatch(() =>
+      client.tables.batch(tableName, { inserts: { [key]: fields } }),
+    )
   } catch (err) {
     log.warn('Antfly transform failed', err, { table: tableName, key })
   }
 }
 
 /**
- * Batch index multiple documents at once.
+ * Batch index multiple documents at once. Returns the number of docs
+ * Antfly reported as inserted (0 on error). Callers should use this
+ * return value as the truthful count — never assume all inputs landed.
  */
 export async function batchIndex(
   tableName: string,
@@ -315,7 +363,9 @@ export async function batchIndex(
   if (!client || !enabled()) return 0
 
   try {
-    const result = await client.tables.batch(tableName, { inserts: docs })
+    const result = await retryTransientBatch(() =>
+      client.tables.batch(tableName, { inserts: docs }),
+    )
     return result?.inserted ?? Object.keys(docs).length
   } catch (err) {
     log.warn('Antfly batch index failed', err, { table: tableName, count: Object.keys(docs).length })
@@ -331,7 +381,9 @@ export async function batchRemove(tableName: string, keys: string[]): Promise<nu
   if (!client || !enabled()) return 0
 
   try {
-    const result = await client.tables.batch(tableName, { deletes: keys })
+    const result = await retryTransientBatch(() =>
+      client.tables.batch(tableName, { deletes: keys }),
+    )
     return result?.deleted ?? keys.length
   } catch (err) {
     log.warn('Antfly batch delete failed', err, { table: tableName, count: keys.length })

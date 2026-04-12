@@ -9,7 +9,7 @@ vi.mock('@/core/antfly', () => ({
   removeDocument: vi.fn(async () => {}),
   transformDocument: vi.fn(async () => {}),
   rebuildIndexes: vi.fn(async () => {}),
-  batchIndex: vi.fn(async () => {}),
+  batchIndex: vi.fn(async (_table: string, docs: Record<string, unknown>) => Object.keys(docs).length),
   multiQuery: vi.fn(async () => ({ results: [], total: 0, took: 0 })),
   queryTable: vi.fn(async () => ({
     results: [
