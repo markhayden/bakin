@@ -10,7 +10,8 @@ Bakin's search pipeline supports multimodal content: text embeddings via BGE, im
 
 ```
 Plugin activate()
-  → ctx.search.registerContentType(def)
+  → ctx.search.registerContentType(def)             — bare registration, plugin owns sync
+  → ctx.search.registerFileBackedContentType(def)   — helper: also wires watcher hooks + reconcile
   → SearchRegistry stores definition (globalThis-backed)
 
 Mutation (create/update)
@@ -24,10 +25,10 @@ Deletion
   → plugin calls ctx.search.remove(key)
   → AntflyClient deletes document
 
-Periodic cleanup timer
+Periodic backstop scan (default 7d)
   → SearchCleanup scans all registered content types
   → Calls def.verifyExists() per document
-  → Removes orphans from Antfly
+  → Removes orphans that the watcher unlink hook missed
 
 Query
   → ctx.search.query(params)
@@ -44,13 +45,42 @@ Boot-time migration (every start)
   → Write new version to the state file
 ```
 
+### Three consistency paths
+
+The search index stays in sync with source data through three layered paths.
+Higher-numbered paths exist as backstops for the lower ones.
+
+1. **REST/MCP mutation path (authoritative, immediate).** When a route or
+   exec tool mutates data, it calls `ctx.search.index()` /
+   `ctx.search.remove()` directly. This is the only path that's truly
+   synchronous with the user's request. Awaiting the watcher's ~300ms
+   `awaitWriteFinish` lag would race the response — every plugin that
+   writes via REST/MCP must call the search mutators inline.
+2. **Watcher hook path (filesystem-driven, eventually consistent).** For
+   writes that bypass the REST path — manual `cp`, `rsync`, restored
+   backups, another agent writing to disk, an MCP server in another
+   process — the chokidar watcher fires sync/unlink hooks ~300ms after
+   the write settles. Plugins opt into this by using
+   `registerFileBackedContentType()`, which auto-wires the hooks and
+   classifies events into the plugin's index/remove calls.
+3. **Startup reconcile + 7d backstop scan (recovery).** On every boot
+   `performStartupReconcile()` walks the filesystem, compares mtimes
+   against the indexed `_mtime_ms` field, and re-indexes drift or
+   removes orphans. Then a periodic backstop scan runs every 7d
+   (`settings.antfly.cleanupInterval`) calling `verifyExists()` for
+   every indexed key — this catches the rare cases where the process
+   was down during a delete or the fs event was lost. The 7d cadence
+   is intentional: the backstop is a safety net, not the primary path.
+
 ### Key files
 
 | File | Purpose |
 |---|---|
 | `src/core/antfly.ts` | `AntflyClient` wrapper — write path, query builder, retry on transient shard errors |
-| `src/core/search-registry.ts` | `SearchRegistry` singleton, ctx.search provider, multi-index registration, query routing |
-| `src/core/search-cleanup.ts` | Periodic orphan scan, configurable interval |
+| `src/core/search-registry.ts` | `SearchRegistry` singleton, ctx.search provider, multi-index registration, query routing, file-backed helper |
+| `src/core/search-reconcile.ts` | Startup mtime-aware reconcile, glob matcher, file walker |
+| `src/core/search-cleanup.ts` | Periodic orphan backstop scan (default 7d), configurable interval |
+| `src/core/watcher.ts` | Chokidar wrapper, `registerSyncHook` / `registerUnlinkHook` contract |
 | `src/core/search-migration.ts` | `SCHEMA_VERSION` constant, state file I/O, migrate-or-noop on boot |
 | `src/core/embedder-resolver.ts` | Pure function: resolve `embedderRef: 'default' \| 'visual' \| ...` → concrete provider+model config |
 | `packages/core/src/plugin-types.ts` | `SearchAPI`, `SearchContentTypeDefinition`, `SearchIndexDefinition` interfaces |
@@ -354,15 +384,22 @@ settings.antfly.chunking.defaultOverlapTokens  — overlap between chunks (defau
 
 If a content type has no `chunker` (or `chunker.enabled` is false), the `embeddingTemplate` output is embedded whole. For tables with `indexes[]`, each index's chunker config is applied independently — `assets_text` chunks at 200/25, `assets_visual` does not chunk (image embeddings are whole-doc).
 
-## Orphan Cleanup
+## Orphan Cleanup (Backstop Scan)
 
-`src/core/search-cleanup.ts` runs a periodic scan:
+`src/core/search-cleanup.ts` runs a periodic backstop scan. Since the
+watcher unlink hook (path 2 in "Three consistency paths" above) handles
+the vast majority of deletes within ~300ms, this scan is no longer the
+primary mechanism — it's a safety net for the rare cases where the
+process was down during a delete or the fs event was lost.
 
 1. For each registered content type, list all indexed document keys from Antfly
 2. Call `def.verifyExists(key)` for each key (checks source: filesystem, SQLite, etc.)
 3. Remove any document whose source no longer exists
 
-Interval controlled by `settings.antfly.cleanupInterval` (Go duration string, e.g. `'24h'`). Cleanup does not run if Antfly is disabled.
+Interval controlled by `settings.antfly.cleanupInterval` (Go duration string,
+default `'7d'`). Backstop scan does not run if Antfly is disabled. The
+default was demoted from 24h → 7d in the issue #73 PR because the watcher
+unlink hook now does the immediate work.
 
 ## Reindexing
 
@@ -484,7 +521,7 @@ All under `settings.antfly`:
 | `chunking.defaultTargetTokens` | `number` | Default chunk target size |
 | `chunking.defaultOverlapTokens` | `number` | Default chunk overlap |
 | `auditTtl` | `string` | TTL for audit entries (Go duration: `'90d'`) |
-| `cleanupInterval` | `string` | Orphan cleanup interval (Go duration: `'24h'`) |
+| `cleanupInterval` | `string` | Orphan backstop scan interval (Go duration: `'7d'`) |
 
 ## Related docs
 
