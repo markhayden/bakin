@@ -1,0 +1,159 @@
+/**
+ * "System & Alerts" — virtual settings tab for the core ~/.bakin/settings.json.
+ *
+ * The plugin settings UI is per-plugin and works on flat key/value JSON. Core
+ * settings are nested (watchdog.alertChannelId, notifications.channel, etc).
+ * We expose them through the same renderer by flattening to dotted keys on
+ * read and unflattening back to nested objects on save. The renderer never
+ * needs to know.
+ */
+import type { PluginSettingsSchema } from '@/lib/plugin-types'
+
+export const SYSTEM_SETTINGS_TAB_ID = '__system'
+
+export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
+  fields: [
+    // ── Alert delivery ────────────────────────────────────────────────
+    {
+      key: 'notifications.channel',
+      type: 'select',
+      label: 'Alert channel',
+      description: 'Where watchdog alerts (stuck tasks, MCP 5xx outages, gate approvals) are delivered. "None" disables external alerts entirely — they still appear in the in-app SSE feed.',
+      options: [
+        { value: 'none', label: 'None (in-app only)' },
+        { value: 'discord', label: 'Discord' },
+        { value: 'slack', label: 'Slack' },
+      ],
+      default: 'none',
+    },
+    {
+      key: 'notifications.target',
+      type: 'string',
+      label: 'Alert target',
+      description: 'Channel or user ID for the selected alert channel. For Discord, use "channel:1234567890". For Slack, use the channel name. Leave blank to fall back to the legacy watchdog.alertChannelId.',
+      default: '',
+    },
+    {
+      key: 'notifications.gateAlerts',
+      type: 'boolean',
+      label: 'Gate approval alerts',
+      description: 'Send a notification when a workflow step pauses for human approval.',
+      default: true,
+    },
+    {
+      key: 'watchdog.alertChannelId',
+      type: 'string',
+      label: 'Discord fallback channel ID',
+      description: 'Used as the Discord channel when "Alert target" is blank. Legacy field — prefer setting "Alert target" above.',
+      default: '',
+    },
+
+    // ── Watchdog tunables ─────────────────────────────────────────────
+    {
+      key: 'watchdog.intervalMs',
+      type: 'number',
+      label: 'Watchdog interval (ms)',
+      description: 'How often the watchdog scans for stuck tasks and unhealthy MCP. Default 300000 (5 min).',
+      default: 300000,
+    },
+    {
+      key: 'watchdog.stuckThresholdMs',
+      type: 'number',
+      label: 'Stuck task threshold (ms)',
+      description: 'A task is considered stuck if its last log entry is older than this. Default 1800000 (30 min).',
+      default: 1800000,
+    },
+    {
+      key: 'watchdog.autoRecover',
+      type: 'boolean',
+      label: 'Auto-recover stuck tasks',
+      description: 'When both task and agent are stale, move the task back to Todo for re-dispatch (up to the recovery limit below).',
+      default: true,
+    },
+    {
+      key: 'watchdog.maxAutoRecoveries',
+      type: 'number',
+      label: 'Max auto-recoveries per task',
+      description: 'After this many recoveries, the task is escalated to Blocked instead of redispatched. Default 3.',
+      default: 3,
+    },
+
+    // ── MCP 5xx alerting (issue #81 item 5) ───────────────────────────
+    {
+      key: 'watchdog.mcpWindowMs',
+      type: 'number',
+      label: 'MCP error window (ms)',
+      description: 'Rolling window for the MCP 5xx error rate check. Default 60000 (60s).',
+      default: 60000,
+    },
+    {
+      key: 'watchdog.mcpErrorThreshold',
+      type: 'number',
+      label: 'MCP error rate threshold',
+      description: 'Fraction of /mcp requests in the window that must be 5xx to fire an alert. 0.5 = 50%. Default 0.5.',
+      default: 0.5,
+    },
+    {
+      key: 'watchdog.mcpMinSamples',
+      type: 'number',
+      label: 'MCP minimum samples',
+      description: 'Skip the rate check until at least this many MCP requests have been made in the window. Prevents false alarms on idle servers. Default 3.',
+      default: 3,
+    },
+    {
+      key: 'watchdog.mcpAlertCooldownMs',
+      type: 'number',
+      label: 'MCP alert cooldown (ms)',
+      description: 'Suppress duplicate MCP alerts within this window. Default 300000 (5 min).',
+      default: 300000,
+    },
+  ],
+}
+
+/** Pluck a dotted-path value from a nested object. */
+function getPath(obj: Record<string, unknown>, path: string): unknown {
+  return path.split('.').reduce<unknown>((acc, key) => {
+    if (acc && typeof acc === 'object') return (acc as Record<string, unknown>)[key]
+    return undefined
+  }, obj)
+}
+
+/** Set a dotted-path value on a nested object, creating sub-objects as needed. */
+function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
+  const parts = path.split('.')
+  let cur: Record<string, unknown> = obj
+  for (let i = 0; i < parts.length - 1; i++) {
+    const k = parts[i]
+    if (!cur[k] || typeof cur[k] !== 'object') cur[k] = {}
+    cur = cur[k] as Record<string, unknown>
+  }
+  cur[parts[parts.length - 1]] = value
+}
+
+/**
+ * Flatten the relevant slice of a BakinSettings object into the dotted-key
+ * shape the renderer expects. Only fields declared in SYSTEM_SETTINGS_SCHEMA
+ * are pulled — every other key in settings.json is left untouched.
+ */
+export function flattenSystemSettings(settings: Record<string, unknown>): Record<string, unknown> {
+  const flat: Record<string, unknown> = {}
+  for (const field of SYSTEM_SETTINGS_SCHEMA.fields) {
+    const v = getPath(settings, field.key)
+    flat[field.key] = v ?? field.default
+  }
+  return flat
+}
+
+/**
+ * Build the partial nested object the /api/settings POST endpoint expects.
+ * Only the fields declared in the schema are written; deepMerge on the
+ * server side preserves everything else in settings.json.
+ */
+export function unflattenSystemSettings(flat: Record<string, unknown>): Record<string, unknown> {
+  const nested: Record<string, unknown> = {}
+  for (const field of SYSTEM_SETTINGS_SCHEMA.fields) {
+    if (!(field.key in flat)) continue
+    setPath(nested, field.key, flat[field.key])
+  }
+  return nested
+}

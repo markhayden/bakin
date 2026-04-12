@@ -5,7 +5,7 @@
 import { totalmem } from 'os'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
-import { getRequestStats } from '../../src/core/request-log'
+import { getRequestStats, getRecentStatsForPathPrefix } from '../../src/core/request-log'
 import { getLastResults, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
@@ -83,8 +83,24 @@ const healthPlugin: BakinPlugin = {
 
         const settings = getSettings()
 
+        // Two windows: a tight one (60s) for "is it on fire right now?"
+        // and a wider one (1h) for the rolling success-rate tile.
+        const mcpHot = getRecentStatsForPathPrefix('/mcp', 60 * 1000)
+        const mcpHour = getRecentStatsForPathPrefix('/mcp', 60 * 60 * 1000)
+        const successRate = mcpHour.total > 0
+          ? (mcpHour.total - mcpHour.errors) / mcpHour.total
+          : 1
+        const mcpHealth = {
+          windowSec: 3600,
+          total: mcpHour.total,
+          errors: mcpHour.errors,
+          successRate,
+          recent: { windowSec: 60, total: mcpHot.total, errors: mcpHot.errors },
+        }
+
         return Response.json({
           mcp,
+          mcpHealth,
           doctor,
           requests,
           openclawPort: settings.openclaw.gatewayPort,

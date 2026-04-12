@@ -171,11 +171,13 @@ Reconnecting clients get missed events via `Last-Event-ID` header.
 
 ## Watchdog (`src/core/watchdog.ts`)
 
-Monitors agent health:
+Monitors agent and MCP server health:
 - Checks heartbeat freshness on interval
 - Detects stuck agents (working but no progress > threshold)
 - Auto-recovery: restart agent or move task back to todo
-- Alert via notifications channel (Discord)
+- Detects MCP 5xx outages via a rolling error-rate check on `/mcp` (configurable window/threshold/min-samples/cooldown in `settings.watchdog.mcp*`) — fires SSE alert + audit + Discord on the configured channel
+- Alert delivery via `settings.notifications.channel/target` (Discord, Slack, or none) — configurable in the **System & Alerts** settings tab
+- Re-reads settings every cycle, so channel/threshold changes apply without a restart
 
 ## Key Files
 
