@@ -199,6 +199,22 @@ export async function createTable(tableName: string, config: TableConfig): Promi
 }
 
 /**
+ * Drop a table unconditionally. Used by the schema-version migration
+ * path to clear stale tables before the registry recreates them with
+ * the current schema. Swallows "not found" errors silently so the
+ * caller can drop a list without checking existence first.
+ */
+export async function dropTable(tableName: string): Promise<void> {
+  const client = getClient()
+  if (!client) return
+  try {
+    await client.tables.drop(tableName)
+  } catch (err) {
+    log.warn(`dropTable failed for ${tableName}`, err)
+  }
+}
+
+/**
  * Get stats for a table (document count, index status, disk usage).
  */
 export async function getTableStats(tableName: string): Promise<Record<string, unknown> | null> {

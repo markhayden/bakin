@@ -38,8 +38,8 @@ describe('Settings', () => {
     expect(settings.antfly.search.reranker.enabled).toBe(true)
     expect(settings.antfly.search.reranker.provider).toBe('termite')
     expect(settings.antfly.search.reranker.model).toBe('mixedbread-ai/mxbai-rerank-base-v1')
-    expect(settings.antfly.embedders.default.provider).toBe('antfly')
-    expect(settings.antfly.embedders.default.model).toBe('all-MiniLM-L6-v2')
+    expect(settings.antfly.embedders.default.provider).toBe('termite')
+    expect(settings.antfly.embedders.default.model).toBe('BAAI/bge-small-en-v1.5')
     expect(settings.antfly.embedders.visual.provider).toBe('termite')
     expect(settings.antfly.embedders.visual.model).toBe('openai/clip-vit-base-patch32')
     expect(settings.antfly.chunking.defaultTargetTokens).toBe(200)
@@ -59,7 +59,7 @@ describe('Settings', () => {
     expect(settings.antfly.url).toBe('http://localhost:8080/api/v1') // default preserved
     expect(settings.antfly.search.defaultLimit).toBe(50) // overridden
     expect(settings.antfly.search.strategy).toBe('rrf') // default preserved
-    expect(settings.antfly.embedders.default.provider).toBe('antfly') // default preserved
+    expect(settings.antfly.embedders.default.provider).toBe('termite') // default preserved
     expect(settings.antfly.auditTtl).toBe('90d') // default preserved
   })
 
@@ -70,6 +70,7 @@ describe('Settings', () => {
     }))
 
     const settings = getSettings()
+    // Legacy field migrated into embedders.default, overriding the new BGE default
     expect(settings.antfly.embedders.default.provider).toBe('antfly')
     expect(settings.antfly.embedders.default.model).toBe('custom-legacy-model')
     // visual still comes from defaults

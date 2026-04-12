@@ -34,7 +34,7 @@ vi.mock('@/core/settings', () => ({
         reranker: { enabled: true, provider: 'termite', model: 'mixedbread-ai/mxbai-rerank-base-v1', threshold: 0.0 },
       },
       embedders: {
-        default: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
+        default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
         visual: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
       },
       chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
@@ -181,7 +181,7 @@ describe('search-registry', () => {
           embeddings: expect.objectContaining({
             type: 'embeddings',
             template: '{{title}}',
-            embedder: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
+            embedder: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
           }),
         }),
       }),
@@ -217,7 +217,7 @@ describe('search-registry', () => {
           assets_text: expect.objectContaining({
             type: 'embeddings',
             template: '{{description}} {{tags}}',
-            embedder: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
+            embedder: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
             chunk_size: 200,
             chunk_overlap: 25,
           }),

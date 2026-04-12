@@ -35,7 +35,7 @@ vi.mock('@/core/settings', () => ({
         },
       },
       embedders: {
-        default: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
+        default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
         visual: { provider: 'antfly', model: 'clip-vit-base-patch32' },
       },
       chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },

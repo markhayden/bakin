@@ -153,11 +153,17 @@ const DEFAULTS: BakinSettings = {
       },
     },
     embedders: {
-      // default stays on Antfly's builtin MiniLM until T7 swaps it to
-      // BAAI/bge-small-en-v1.5. Termite resolves unqualified names for
-      // its own pull command but the embedder config API wants the
-      // HuggingFace-style qualified model ID at query time.
-      default: { provider: 'antfly', model: 'all-MiniLM-L6-v2' },
+      // Default text embedder swapped to BAAI/bge-small-en-v1.5 (Termite)
+      // as of search schema version 2. BGE is a stronger retrieval model
+      // than Antfly's builtin MiniLM, especially for longer documents
+      // with diverse vocabulary (which is most of what Bakin indexes —
+      // task descriptions, markdown notes, PDF bodies, audit trails).
+      // Runs locally via Termite; no cloud dependency. A boot-time
+      // migration in src/core/search-migration.ts drops stale tables
+      // whenever SCHEMA_VERSION advances beyond the persisted version
+      // in `~/.bakin/.search-state.json`, forcing a clean reindex onto
+      // the new embedder.
+      default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
       visual: { provider: 'termite', model: 'openai/clip-vit-base-patch32' },
     },
     chunking: {
