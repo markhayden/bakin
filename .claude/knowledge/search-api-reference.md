@@ -54,12 +54,15 @@ Response:
 {
   "ok": true,
   "total": 142,
+  "errors": 0,
   "tables": [
     { "table": "bakin_tasks", "pluginId": "tasks", "indexed": 45 },
     { "table": "bakin_assets", "pluginId": "assets", "indexed": 67 }
   ]
 }
 ```
+
+`ok` is `true` only when `errors === 0`. Per-table failures appear as an `error` string on the corresponding `tables[]` entry.
 
 ### GET /api/antfly/health — Search system health
 

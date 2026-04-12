@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useContentStore } from '@/hooks/use-content-store'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -266,13 +267,8 @@ export function HealthPage() {
     tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }>
   } | null>(null)
   const [reindexing, setReindexing] = useState(false)
-  const [reindexProgress, setReindexProgress] = useState<Record<string, { indexed: number; done: boolean }>>({})
-  const esRef = useRef<EventSource | null>(null)
-
-  // Clean up reindex EventSource on unmount
-  useEffect(() => {
-    return () => { esRef.current?.close(); esRef.current = null }
-  }, [])
+  const reindexProgress = useContentStore((s) => s.reindexProgress)
+  const clearReindexProgress = useContentStore((s) => s.clearReindexProgress)
 
   // Search state
   const [pluginSearch, setPluginSearch] = useState('')
@@ -500,36 +496,13 @@ export function HealthPage() {
                   className="cursor-pointer"
                   disabled={!searchHealth.enabled || reindexing}
                   onClick={async () => {
-                    setReindexProgress({})
+                    clearReindexProgress()
                     setReindexing(true)
-                    // Open EventSource BEFORE the POST so we don't miss fast tables
-                    if (esRef.current) { esRef.current.close(); esRef.current = null }
-                    const es = new EventSource('/api/events')
-                    esRef.current = es
-                    es.onmessage = (e) => {
-                      try {
-                        const data = JSON.parse(e.data)
-                        if (data.type === 'reindex.progress') {
-                          setReindexProgress(prev => ({
-                            ...prev,
-                            [data.table]: { indexed: data.indexed, done: false },
-                          }))
-                        }
-                        if (data.type === 'reindex.complete') {
-                          setReindexProgress(prev => ({
-                            ...prev,
-                            [data.table]: { indexed: data.indexed, done: true },
-                          }))
-                        }
-                      } catch { /* ignore non-JSON */ }
-                    }
                     try {
                       await fetch('/api/reindex', { method: 'POST' })
                       await fetchData()
                     } finally {
                       setReindexing(false)
-                      es.close()
-                      esRef.current = null
                     }
                   }}
                 >

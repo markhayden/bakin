@@ -369,11 +369,14 @@ Interval controlled by `settings.antfly.cleanupInterval` (Go duration string, e.
 `reindexContentTypes()` in `search-registry.ts` iterates all registered content types and runs their `reindex()` generators. Documents are batch-indexed (50 per batch) via `antfly.batchIndex()`, which applies the retry-on-transient-error wrapper.
 
 SSE events broadcast during reindex:
+- `reindex.batch_start` — once at the start of the whole run, with the table list
 - `reindex.start` — emitted when each table begins
-- `reindex.progress` — emitted after each 50-doc batch (for health page live counts)
-- `reindex.complete` — emitted when each table finishes
+- `reindex.progress` — emitted after each 50-doc batch *and* after the trailing partial batch (so tables with `< BATCH_SIZE` documents always emit at least one progress tick)
+- `reindex.complete` — emitted when each table finishes (carries `indexed` count and any `error`)
+- `reindex.batch_pulse` — coarse heartbeat for the whole run, useful for keeping a UI spinner alive
+- `reindex.batch_complete` — once at the end of the whole run
 
-The health page opens an EventSource before the POST to `/api/reindex` to avoid missing events from fast tables.
+The health page consumes these via the global SSE connection (`useSSE` → `useContentStore.reindexProgress`), so per-card live counts work without opening a second `EventSource`.
 
 **Counter accuracy:** `count += await antfly.batchIndex(...)` — the actual inserted count from Antfly's response, not the batch size. If a batch fails after retries, `batchIndex` returns 0 and the counter doesn't advance for that batch, so the reported `indexed: N` matches what's actually in the table.
 

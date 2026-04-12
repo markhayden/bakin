@@ -170,6 +170,7 @@ function flowToTask(flow: FlowRunRow): Task {
     scheduleJobId: state.scheduleJobId,
     projectId: state.projectId,
     order: state.order,
+    updatedAt: flow.updated_at,
   }
 }
 

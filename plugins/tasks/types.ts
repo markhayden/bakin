@@ -20,6 +20,8 @@ export interface Task {
   scheduleJobId?: string
   projectId?: string
   order?: number
+  /** Wall-clock ms of the last DB row update — used by the watchdog as a fallback "last activity" when a task has no log entries yet. */
+  updatedAt?: number
 }
 
 export interface TaskColumns {
