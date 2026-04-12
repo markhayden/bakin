@@ -14,6 +14,7 @@ import type {
   SearchTransformOp,
 } from '../../packages/core/src/plugin-types'
 import * as antfly from './antfly'
+import type { IndexHealth } from './antfly'
 import { broadcast } from './sse'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
@@ -402,12 +403,20 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
  *   - Aggregate: reindex.batch_start / reindex.batch_pulse / reindex.batch_complete
  *     (drives a single Live Activity entry instead of one per table)
  */
+export interface ReindexTableResult {
+  table: string
+  pluginId: string
+  indexed: number
+  error?: string
+  enrichment?: IndexHealth
+}
+
 export async function reindexContentTypes(opts?: {
   table?: string
   rebuild?: boolean
-}): Promise<Array<{ table: string; pluginId: string; indexed: number; error?: string }>> {
+}): Promise<ReindexTableResult[]> {
   const registry = getRegistry()
-  const results: Array<{ table: string; pluginId: string; indexed: number; error?: string }> = []
+  const results: ReindexTableResult[] = []
 
   // Self-heal: make sure tables exist on Antfly before we try to write to
   // them. Cheap when nothing's missing (one list call); critical when
@@ -502,7 +511,30 @@ export async function reindexContentTypes(opts?: {
         }
 
         broadcast({ type: 'reindex.complete', table: tableName, pluginId: def.pluginId, indexed: count })
-        results.push({ table: tableName, pluginId: def.pluginId, indexed: count })
+
+        // Enrichment audit — poll index health after all batches complete.
+        // Best-effort: never fails the reindex, just surfaces what Antfly reports.
+        const result: ReindexTableResult = { table: tableName, pluginId: def.pluginId, indexed: count }
+        try {
+          const health = await antfly.getIndexHealth(tableName)
+          if (health) {
+            result.enrichment = health
+            if (!health.healthy) {
+              for (const idx of health.indexes) {
+                if (idx.error) {
+                  log.error(`Enrichment error in ${tableName}/${idx.name}: ${idx.error}`)
+                }
+                if (idx.walBacklog > 0) {
+                  log.warn(`Enrichment pending in ${tableName}/${idx.name}: ${idx.walBacklog} docs in WAL`)
+                }
+              }
+            }
+          }
+        } catch (err) {
+          log.warn(`Enrichment audit failed for ${tableName}`, err)
+        }
+
+        results.push(result)
         totalIndexed += count
       } catch (err) {
         results.push({ table: tableName, pluginId: def.pluginId, indexed: 0, error: String(err) })

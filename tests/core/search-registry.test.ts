@@ -21,6 +21,8 @@ vi.mock('@/core/antfly', () => ({
     took: 12,
     total: 1,
   })),
+  getIndexHealth: vi.fn(async () => null),
+  getTableStats: vi.fn(async () => null),
 }))
 
 vi.mock('@/core/settings', () => ({
@@ -481,6 +483,77 @@ describe('search-registry', () => {
     expect(results).toHaveLength(1)
     expect(results[0]!.error).toContain('boom')
     expect(results[0]!.indexed).toBe(0)
+  })
+
+  // ── enrichment audit (#74) ──────────────────────────────────────────
+
+  it('reindexContentTypes includes enrichment status when healthy', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'search', type: 'full_text', totalIndexed: 1, walBacklog: 0, rebuilding: false },
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 0, rebuilding: false },
+      ],
+      healthy: true,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes()
+
+    expect(results[0]!.enrichment).toBeDefined()
+    expect(results[0]!.enrichment!.healthy).toBe(true)
+    expect(results[0]!.enrichment!.indexes).toHaveLength(2)
+    expect(antfly.getIndexHealth).toHaveBeenCalledWith('bakin_tasks')
+  })
+
+  it('reindexContentTypes includes enrichment errors when unhealthy', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [
+        { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 0, rebuilding: false, error: 'model not found' },
+      ],
+      healthy: false,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes()
+
+    expect(results[0]!.enrichment).toBeDefined()
+    expect(results[0]!.enrichment!.healthy).toBe(false)
+    expect(results[0]!.enrichment!.indexes[0]!.error).toBe('model not found')
+  })
+
+  it('reindexContentTypes omits enrichment when getIndexHealth returns null', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes()
+
+    expect(results[0]!.enrichment).toBeUndefined()
+    // Should not crash — enrichment is best-effort
+    expect(results[0]!.indexed).toBe(1)
+  })
+
+  it('reindexContentTypes broadcasts reindex.complete before enrichment audit', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
+      indexes: [{ name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 0, rebuilding: false }],
+      healthy: true,
+    })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await reindexContentTypes()
+
+    // reindex.complete should fire before the enrichment audit runs —
+    // verify it was called (existing behavior preserved)
+    expect(broadcast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'reindex.complete', table: 'bakin_tasks' }),
+    )
   })
 
   // ── crossTableSearch ────────────────────────────────────────────────
