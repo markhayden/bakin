@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PluginHeader } from '@/components/plugin-header'
-import { ExternalLink, Search } from 'lucide-react'
+import { ExternalLink, Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
 
 interface McpSession {
   agent: string
@@ -275,7 +275,21 @@ export function HealthPage() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
   const [searchHealth, setSearchHealth] = useState<{
     enabled: boolean
-    tables: Array<{ table: string; pluginId: string; stats: Record<string, unknown> | null }>
+    tables: Array<{
+      table: string
+      pluginId: string
+      stats: Record<string, unknown> | null
+      indexHealth?: Array<{
+        name: string
+        type: string
+        totalIndexed: number
+        walBacklog: number
+        error?: string
+        rebuilding: boolean
+        backfillProgress?: number
+      }>
+      healthy?: boolean
+    }>
   } | null>(null)
   const [reindexing, setReindexing] = useState(false)
   const reindexProgress = useContentStore((s) => s.reindexProgress)
@@ -558,9 +572,27 @@ export function HealthPage() {
                   const docs = (t.stats as any)?.num_docs ?? 0
                   const progress = reindexProgress[t.table]
                   const isActive = reindexing && progress && !progress.done
+                  const hasEnrichmentError = t.indexHealth?.some(i => i.error)
+                  const hasWalBacklog = t.indexHealth?.some(i => i.walBacklog > 0)
+                  const enrichmentError = t.indexHealth?.find(i => i.error)?.error
                   return (
                     <div key={t.table} className={`rounded-lg border p-3 transition-colors ${isActive ? 'border-amber-500/50 bg-amber-500/5' : progress?.done ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-border'}`}>
-                      <p className="text-xs text-muted-foreground">{t.pluginId}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">{t.pluginId}</p>
+                        {t.indexHealth && (
+                          hasEnrichmentError ? (
+                            <span title={enrichmentError ?? 'Enrichment error'}>
+                              <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+                            </span>
+                          ) : hasWalBacklog ? (
+                            <span title="Enrichment in progress">
+                              <Clock className="h-3.5 w-3.5 text-amber-400" />
+                            </span>
+                          ) : (
+                            <CircleCheck className="h-3.5 w-3.5 text-emerald-400" />
+                          )
+                        )}
+                      </div>
                       {isActive ? (
                         <p className="text-lg font-semibold tabular-nums text-amber-400">{progress.indexed}...</p>
                       ) : progress?.done ? (
