@@ -85,7 +85,13 @@ export async function sendMessage(agentId: string, message: string): Promise<str
 
   const data = await res.json()
   const reply = data?.choices?.[0]?.message?.content || ''
-  recordAgentReply(agentId)
+  // Only record liveness on a non-empty reply. The gateway has been
+  // observed returning 200 with empty content during upstream rate-limit
+  // or stub conditions — those are exactly the failures the watchdog
+  // needs to *catch*, so we must not mark the agent as alive on them.
+  if (reply.trim().length > 0) {
+    recordAgentReply(agentId)
+  }
   log.debug('Message sent', { agentId, messageLength: message.length })
   return reply
 }
