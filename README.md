@@ -14,7 +14,7 @@ New to Bakin? Run the onboarding flow to set everything up:
 
 ```bash
 pnpm install
-pnpm cli onboard
+pnpm run cli onboard
 pnpm dev
 ```
 
@@ -23,7 +23,7 @@ pnpm dev
 For CI or scripted installs, use `--yes` (auto-approve) and `--json` (structured output):
 
 ```bash
-pnpm cli onboard --yes --json
+pnpm run cli onboard --yes --json
 ```
 
 Individual commands are available for piecemeal use:
