@@ -11,11 +11,13 @@ import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
 import * as openclaw from './openclaw-client'
 import { getHookRegistry } from '../lib/plugin-registry'
+import { getRecentStatsForPathPrefix } from './request-log'
 
 const log = createLogger('watchdog')
 const hooks = () => getHookRegistry()
 
 let watchdogTimer: NodeJS.Timeout | null = null
+let lastMcpAlertAt = 0
 
 // Bypass detection patterns — agents trying to work around errors instead of blocking
 const BYPASS_PATTERNS = [
@@ -79,9 +81,13 @@ function countAutoRecoveries(task: { log?: { message: string }[] }): number {
 }
 
 export function start(contentDir: string, port: number): void {
-  const settings = getSettings()
+  const initialSettings = getSettings()
 
   watchdogTimer = setInterval(async () => {
+    // Re-read settings every cycle so UI changes (alert channel, thresholds)
+    // take effect without a server restart. updateSettings() busts the cache,
+    // so this is just one JSON read per interval.
+    const settings = getSettings()
     try {
       type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; log?: Array<{ message: string; timestamp: string }> }
       const board = await hooks().invoke<{ columns: Record<string, WdTask[]> }>('tasks.readTaskboard', {})
@@ -178,6 +184,51 @@ export function start(contentDir: string, port: number): void {
           log.warn('Stuck task detected', { title: task.title, agent: task.agent, minutesStuck, agentStale })
         }
       }
+      // ─── MCP 5xx error-rate alert ────────────────────────────────────
+      // Wrapped in its own try/catch so a failure here can never take out
+      // the stuck-task loop or the workflow checks below.
+      try {
+        const wd = settings.watchdog
+        const mcpStats = getRecentStatsForPathPrefix('/mcp', wd.mcpWindowMs)
+        if (mcpStats.total >= wd.mcpMinSamples) {
+          const errorRate = mcpStats.errors / mcpStats.total
+          if (errorRate >= wd.mcpErrorThreshold) {
+            const sinceLast = now - lastMcpAlertAt
+            if (sinceLast >= wd.mcpAlertCooldownMs) {
+              lastMcpAlertAt = now
+              const pct = Math.round(errorRate * 100)
+              const windowSec = Math.round(wd.mcpWindowMs / 1000)
+              const alertMsg = `MCP server returning ${pct}% 5xx (${mcpStats.errors}/${mcpStats.total} requests in last ${windowSec}s) — agents can't call tools`
+
+              broadcast({ type: 'alert', title: 'MCP unhealthy', message: alertMsg })
+              appendAudit(contentDir, 'mcp.5xx_alert', 'watchdog', {
+                errors: mcpStats.errors,
+                total: mcpStats.total,
+                errorRate,
+                windowMs: wd.mcpWindowMs,
+              })
+              log.error('MCP 5xx alert', undefined, {
+                errors: mcpStats.errors,
+                total: mcpStats.total,
+                errorRate,
+              })
+
+              if (settings.notifications.channel !== 'none') {
+                openclaw.sendChannelMessage(
+                  settings.notifications.channel,
+                  settings.notifications.target || `channel:${wd.alertChannelId}`,
+                  `⚠️ **MCP unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
+                ).catch(err => {
+                  log.error('MCP 5xx Discord alert failed', err)
+                })
+              }
+            }
+          }
+        }
+      } catch (err) {
+        log.error('MCP 5xx alert check failed', err)
+      }
+
       // ─── Workflow step timeout detection ─────────────────────────────
       try {
         const wfSettings = settings.workflow
@@ -293,9 +344,9 @@ export function start(contentDir: string, port: number): void {
     } catch (err) {
       log.error('Watchdog error', err)
     }
-  }, settings.watchdog.intervalMs)
+  }, initialSettings.watchdog.intervalMs)
 
-  log.info('Watchdog started', { intervalMs: settings.watchdog.intervalMs, thresholdMs: settings.watchdog.stuckThresholdMs })
+  log.info('Watchdog started', { intervalMs: initialSettings.watchdog.intervalMs, thresholdMs: initialSettings.watchdog.stuckThresholdMs })
 }
 
 /** Scan recent task log entries for bypass pattern language */

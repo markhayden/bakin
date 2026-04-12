@@ -8,7 +8,10 @@ import { join } from 'path'
 import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
 import { BakinEventBus } from '@/lib/events/event-bus'
 import { getContentDir } from '@/core/content-dir'
+import { createLogger } from '@/core/logger'
 import type { PluginContext, BakinPlugin, APIRoute } from '@/lib/plugin-types'
+
+const log = createLogger('plugin-route')
 
 /** Build the settings + activity for a lightweight PluginContext */
 function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | 'updateSettings' | 'activity' | 'hooks' | 'search'> {
@@ -250,7 +253,7 @@ async function handleRequest(
     const ctx = buildContext(pluginId)
     return await match.route.handler(handlerReq, ctx)
   } catch (err) {
-    console.error(`Plugin route error [${pluginId}${routePath}]:`, err)
+    log.error('Plugin route error', err, { pluginId, routePath, method })
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }

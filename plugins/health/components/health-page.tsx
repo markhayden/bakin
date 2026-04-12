@@ -79,7 +79,9 @@ interface ExecToolStat {
   name: string
   source: string
   calls: number
+  errors: number
   lastUsed: string | null
+  lastError: string | null
 }
 
 interface RegistryData {
@@ -109,8 +111,17 @@ interface AgentUsage {
   }
 }
 
+interface McpHealth {
+  windowSec: number
+  total: number
+  errors: number
+  successRate: number
+  recent: { windowSec: number; total: number; errors: number }
+}
+
 interface HealthSummary {
   mcp: McpData | null
+  mcpHealth: McpHealth | null
   doctor: DoctorData | null
   requests: RequestsData | null
   server: ServerData | null
@@ -426,10 +437,37 @@ export function HealthPage() {
 
         <Card size="sm">
           <CardContent className="pt-3">
-            <p className="text-xs text-muted-foreground">MCP Requests</p>
-            <p className="text-xl font-mono font-semibold">
-              {mcp?.totalRequests ?? 0}
-            </p>
+            <p className="text-xs text-muted-foreground">MCP Health</p>
+            {(() => {
+              const mh = data?.mcpHealth
+              if (!mh || mh.total === 0) {
+                return (
+                  <>
+                    <p className="text-xl font-mono font-semibold text-muted-foreground">—</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">no calls last hour</p>
+                  </>
+                )
+              }
+              const pct = Math.round(mh.successRate * 100)
+              const tone = pct >= 99
+                ? 'text-emerald-400'
+                : pct >= 95
+                ? 'text-amber-400'
+                : 'text-red-400'
+              return (
+                <>
+                  <p className={`text-xl font-mono font-semibold ${tone}`}>{pct}%</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {mh.errors} err / {mh.total} req · 1h
+                    {mh.recent.errors > 0 && (
+                      <span className="ml-1 text-red-400">
+                        · {mh.recent.errors} in last {mh.recent.windowSec}s
+                      </span>
+                    )}
+                  </p>
+                </>
+              )
+            })()}
           </CardContent>
         </Card>
 
@@ -794,10 +832,11 @@ export function HealthPage() {
                       <span className="flex-1">Tool</span>
                       <span className="w-24 text-right">Source</span>
                       <span className="w-14 text-right">Calls</span>
+                      <span className="w-14 text-right">Errors</span>
                       <span className="w-20 text-right">Last Used</span>
                     </div>
                     {filteredTools.slice(toolPage * PAGE_SIZE, (toolPage + 1) * PAGE_SIZE).map((t) => (
-                      <div key={t.name} className="flex items-center text-sm">
+                      <div key={t.name} className="flex items-center text-sm" title={t.lastError || undefined}>
                         <span className="flex-1 font-mono text-muted-foreground truncate">{t.name.replace('bakin_exec_', '')}</span>
                         <span className="w-24 text-right">
                           <Badge variant="secondary" className="text-[10px] px-1.5">
@@ -805,6 +844,7 @@ export function HealthPage() {
                           </Badge>
                         </span>
                         <span className="w-14 text-right font-mono">{t.calls}</span>
+                        <span className={`w-14 text-right font-mono ${t.errors > 0 ? 'text-red-400' : 'text-muted-foreground'}`}>{t.errors}</span>
                         <span className="w-20 text-right text-xs text-muted-foreground">
                           {t.lastUsed ? formatAge(t.lastUsed) : '—'}
                         </span>

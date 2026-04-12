@@ -14,7 +14,7 @@ import type { ExecToolDefinition, ExecToolResult, PluginToolContext, StorageAdap
 const execTools = new Map<string, ExecToolDefinition>()
 
 /** Per-tool call stats for health dashboard */
-const toolStats = new Map<string, { calls: number; lastUsed: string | null }>()
+const toolStats = new Map<string, { calls: number; errors: number; lastUsed: string | null; lastError: string | null }>()
 
 // ---------------------------------------------------------------------------
 // Registration
@@ -26,7 +26,7 @@ export function addExecTool(tool: ExecToolDefinition): void {
   }
   execTools.set(tool.name, tool)
   if (!toolStats.has(tool.name)) {
-    toolStats.set(tool.name, { calls: 0, lastUsed: null })
+    toolStats.set(tool.name, { calls: 0, errors: 0, lastUsed: null, lastError: null })
   }
 }
 
@@ -54,21 +54,33 @@ export function recordExecToolCall(name: string): void {
   }
 }
 
+export function recordExecToolError(name: string, error: string): void {
+  const stat = toolStats.get(name)
+  if (stat) {
+    stat.errors++
+    stat.lastError = error
+  }
+}
+
 export interface ExecToolStat {
   name: string
   source: string
   calls: number
+  errors: number
   lastUsed: string | null
+  lastError: string | null
 }
 
 export function getExecToolStats(): ExecToolStat[] {
   return [...execTools.entries()].map(([name, tool]) => {
-    const stat = toolStats.get(name) || { calls: 0, lastUsed: null }
+    const stat = toolStats.get(name) || { calls: 0, errors: 0, lastUsed: null, lastError: null }
     return {
       name,
       source: tool.source || 'core',
       calls: stat.calls,
+      errors: stat.errors,
       lastUsed: stat.lastUsed,
+      lastError: stat.lastError,
     }
   })
 }

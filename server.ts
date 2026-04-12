@@ -252,7 +252,8 @@ app.prepare().then(async () => {
       }).then((response: Record<string, unknown>) => {
         jsonResponse(res, 200, response)
       }).catch((err: unknown) => {
-        jsonResponse(res, 500, { error: String(err) })
+        log.error('Search request failed', err)
+        jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
       })
       return
     }
@@ -266,8 +267,9 @@ app.prepare().then(async () => {
             res.end(JSON.stringify({ ok: true, ts: new Date().toISOString() }))
           })
           .catch((err) => {
+            log.error('Dispatch failed', err)
             res.writeHead(500, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ ok: false, error: String(err) }))
+            res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }))
           })
         return
       }
@@ -341,7 +343,8 @@ app.prepare().then(async () => {
         const errors = results.filter((r) => r.error).length
         jsonResponse(res, 200, { ok: errors === 0, total, errors, tables: results })
       }).catch((err: unknown) => {
-        jsonResponse(res, 500, { error: String(err) })
+        log.error('Reindex failed', err, { table, rebuild })
+        jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
       })
       return
     }
@@ -352,7 +355,8 @@ app.prepare().then(async () => {
       getSearchHealth().then((health: Record<string, unknown>) => {
         jsonResponse(res, 200, health)
       }).catch((err: unknown) => {
-        jsonResponse(res, 500, { error: String(err) })
+        log.error('Antfly health check failed', err)
+        jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
       })
       return
     }
@@ -405,7 +409,8 @@ app.prepare().then(async () => {
       agents.listAgents(CONTENT_DIR).then(list => {
         jsonResponse(res, 200, { agents: list })
       }).catch(err => {
-        jsonResponse(res, 500, { error: String(err) })
+        log.error('List agents failed', err)
+        jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
       })
       return
     }
@@ -419,7 +424,8 @@ app.prepare().then(async () => {
         agents.getAgentStatus(agentId, CONTENT_DIR).then(status => {
           jsonResponse(res, 200, status)
         }).catch(err => {
-          jsonResponse(res, 500, { error: String(err) })
+          log.error('Agent status fetch failed', err, { agentId })
+          jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
         })
         return
       }
@@ -444,7 +450,8 @@ app.prepare().then(async () => {
         agents.getAgentStatus(agentId, CONTENT_DIR).then(status => {
           jsonResponse(res, 200, status)
         }).catch(err => {
-          jsonResponse(res, 500, { error: String(err) })
+          log.error('Agent status fetch failed', err, { agentId })
+          jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
         })
         return
       }

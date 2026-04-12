@@ -19,7 +19,7 @@ interface EndpointStats {
   lastCalled: string
 }
 
-const MAX_RECENT = 200
+const MAX_RECENT = 1000
 const recent: RequestEntry[] = []
 const endpoints = new Map<string, EndpointStats>()
 let totalRequests = 0
@@ -51,6 +51,29 @@ export function recordRequest(entry: RequestEntry): void {
       lastCalled: entry.ts,
     })
   }
+}
+
+/**
+ * Window-scoped stats for any path prefix. Used by the watchdog (MCP 5xx
+ * alerting) and the Health page (success-rate tile). Walks the in-memory
+ * ring buffer — no new storage. Returns counts only; the caller decides
+ * what threshold counts as "unhealthy".
+ */
+export function getRecentStatsForPathPrefix(
+  prefix: string,
+  windowMs: number,
+): { total: number; errors: number } {
+  const cutoff = Date.now() - windowMs
+  let total = 0
+  let errors = 0
+  for (const entry of recent) {
+    if (!entry.path.startsWith(prefix)) continue
+    const ts = Date.parse(entry.ts)
+    if (isNaN(ts) || ts < cutoff) continue
+    total++
+    if (entry.status >= 500) errors++
+  }
+  return { total, errors }
 }
 
 /**
