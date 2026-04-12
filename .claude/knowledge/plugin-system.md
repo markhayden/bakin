@@ -201,7 +201,7 @@ interface ExecToolDefinition {
   description: string             // MCP tool description
   label?: string                  // Human-readable action phrase for activity feed (e.g., "Created a task")
   activityDuplicate?: boolean     // true = handler already emits a domain audit event; auto-audit tagged duplicate
-  parameters: Record<string, unknown>
+  parameters: ZodRawShape           // strict — every value must be a z.* schema, enforced at compile time
   handler: (params, agent, ctx?) => Promise<ExecToolResult>
   source?: string                 // 'plugin:{id}' or 'script'
 }
