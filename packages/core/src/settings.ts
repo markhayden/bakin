@@ -93,6 +93,14 @@ export interface BakinSettings {
   doctor: {
     intervalMs: number
     autoFixSkill: boolean
+    /**
+     * When true, `runDiagnostics()` refuses to run its normal checks and
+     * returns a single `onboarded: error` result until `~/.bakin/.onboarded`
+     * exists with a version matching `ONBOARDING_VERSION`. Keeps doctor
+     * quiet on a fresh machine and points new users at `bakin onboard`
+     * instead of drowning them in unrelated errors.
+     */
+    requireOnboard: boolean
   }
   service: {
     enabled: boolean
@@ -176,6 +184,7 @@ const DEFAULTS: BakinSettings = {
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes
     autoFixSkill: true,
+    requireOnboard: true,
   },
   service: {
     enabled: false,

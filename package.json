@@ -28,7 +28,8 @@
     "docker:up": "docker compose -f dev/docker/docker-compose.yml up -d openclaw-gateway",
     "docker:down": "docker compose -f dev/docker/docker-compose.yml down",
     "mock:start": "npx tsx dev/imitation-crab/index.ts",
-    "mock:seed": "npx tsx dev/imitation-crab/seed.ts"
+    "mock:seed": "npx tsx dev/imitation-crab/seed.ts",
+    "cli": "npx tsx cli/bakin.ts"
   },
   "dependencies": {
     "@antfly/sdk": "^0.0.14",

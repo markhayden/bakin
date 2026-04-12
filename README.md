@@ -8,14 +8,45 @@ Built with Next.js, TypeScript, and Tailwind CSS. Runs alongside the OpenClaw ga
 
 ## Quick Start
 
+### First-run onboarding
+
+New to Bakin? Run the onboarding flow to set everything up:
+
 ```bash
-# Install dependencies
+pnpm install
+pnpm run cli onboard
+pnpm dev
+```
+
+`bakin onboard` walks you through: creating `~/.bakin/`, seeding settings, checking for OpenClaw, installing AntflyDB + Termite ML models, syncing mcporter, and verifying LLM + channel config. At the end it writes a `~/.bakin/.onboarded` marker so `bakin doctor` knows the machine is ready.
+
+For CI or scripted installs, use `--yes` (auto-approve) and `--json` (structured output):
+
+```bash
+pnpm run cli onboard --yes --json
+```
+
+Individual commands are available for piecemeal use:
+
+| Command | Purpose |
+|---|---|
+| `bakin mkdir` | Create/verify `~/.bakin/` directory tree |
+| `bakin settings init` | Seed default `settings.json` |
+| `bakin check openclaw` | Detect OpenClaw binary + config |
+| `bakin check llm` | Verify at least one LLM provider |
+| `bakin check channels` | Verify at least one messaging channel |
+| `bakin check all` | Run all checks, report each |
+| `bakin install antfly` | Install AntflyDB via Homebrew |
+| `bakin install models` | Download Termite ML models (~1.5GB) |
+| `bakin install mcporter` | Install mcporter + sync per-agent config |
+
+### Existing install
+
+If you're already set up:
+
+```bash
 npm install
-
-# Start the dev server (Next.js + custom backend on port 3737)
 npm run dev
-
-# Open the dashboard
 open http://localhost:3737
 ```
 

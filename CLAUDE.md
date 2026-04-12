@@ -212,6 +212,9 @@ All user-facing filter/view state **must** be backed by URL query parameters so 
 ### Search Indexing
 Plugins register content types via `ctx.search.registerContentType()` during `activate()`. Mutations dual-write to source and index via `ctx.search.index()`. Deletions sync via `ctx.search.remove()` (called from the watcher unlink hook). Orphan cleanup runs on a periodic timer via `src/core/search-cleanup.ts`. All Antfly tables use the `bakin_` prefix. Config in `settings.antfly.*`. Antfly is optional — all calls are no-ops when disabled. See `.claude/knowledge/search-system.md`.
 
+### Onboarding
+`src/core/onboarding/` — eight component modules (mkdir, settings, openclaw, antfly, models, mcporter, llm, channels) with a shared `check()` + `install()` contract. The orchestrator in `index.ts` runs them in a fixed dependency order, writes `~/.bakin/.onboarded` on completion, and the doctor gates on the marker via `settings.doctor.requireOnboard`. CLI surface: `bakin onboard` (aggregated), `bakin mkdir`, `bakin install {antfly,models,mcporter}`, `bakin check {openclaw,llm,channels,all}`, `bakin settings init`. On a fresh machine, use `bakin onboard --yes` to set everything up non-interactively.
+
 ### Debug Mode
 Global client-side debug toggle. State lives in Zustand (`useContentStore`) + localStorage (`bakin-debug`). Access via `useDebug()` from `src/hooks/use-debug.ts` — returns `[debug, toggleDebug]`. Toggle button in the header (Bug icon). URL `?debug=true` on any page activates debug mode as a one-shot seed. Currently controls: activity feed duplicate event visibility, Antfly search score overlays on asset cards. Plugins and components should use `useDebug()` to conditionally render debug info.
 
