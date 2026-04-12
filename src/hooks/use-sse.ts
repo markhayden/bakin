@@ -19,6 +19,7 @@ export function useSSE() {
   const appendActivityEvent = useContentStore((s) => s.appendActivityEvent)
   const setSseConnected = useContentStore((s) => s.setSseConnected)
   const bumpTaskboard = useContentStore((s) => s.bumpTaskboard)
+  const setReindexProgress = useContentStore((s) => s.setReindexProgress)
   const esRef = useRef<EventSource | null>(null)
   const retryRef = useRef(0)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -127,23 +128,53 @@ export function useSSE() {
             })
           }
 
-          // Reindex milestones — start and complete only (progress is handled by health page)
+          // Per-table reindex events drive the Health page tiles only —
+          // they don't write to the activity feed (which would be one
+          // entry per table per reindex). The aggregate batch_* events
+          // below give the activity feed a single start/pulse/complete
+          // pair instead.
           if (data.type === 'reindex.start') {
-            appendActivityEvent({
-              id: `${Date.now()}-reindex-start-${data.table}`,
-              ts: new Date().toISOString(),
-              type: 'log',
-              agent: 'system',
-              message: `Reindexing ${data.pluginId}...`,
-            })
+            setReindexProgress(data.table, 0, false)
+          }
+          if (data.type === 'reindex.progress') {
+            setReindexProgress(data.table, data.indexed ?? 0, false)
           }
           if (data.type === 'reindex.complete') {
+            setReindexProgress(data.table, data.indexed ?? 0, true)
+          }
+
+          // Aggregate reindex events for the activity feed — one entry
+          // for the whole batch instead of one per table. batch_pulse
+          // fires at most every 60s while a long reindex is in flight.
+          if (data.type === 'reindex.batch_start') {
             appendActivityEvent({
-              id: `${Date.now()}-reindex-done-${data.table}`,
+              id: `${Date.now()}-reindex-batch-start`,
               ts: new Date().toISOString(),
               type: 'log',
               agent: 'system',
-              message: `Reindex complete: ${data.pluginId} — ${data.indexed} documents`,
+              message: `Starting full re-index (${data.tables} table${data.tables === 1 ? '' : 's'})`,
+            })
+          }
+          if (data.type === 'reindex.batch_pulse') {
+            const pct = data.tables_total
+              ? Math.floor((data.tables_done / data.tables_total) * 100)
+              : 0
+            appendActivityEvent({
+              id: `${Date.now()}-reindex-batch-pulse`,
+              ts: new Date().toISOString(),
+              type: 'log',
+              agent: 'system',
+              message: `Re-indexing… ${data.tables_done}/${data.tables_total} tables (${pct}%), ${data.indexed} documents so far`,
+            })
+          }
+          if (data.type === 'reindex.batch_complete') {
+            const seconds = Math.max(1, Math.round((data.elapsed_ms ?? 0) / 1000))
+            appendActivityEvent({
+              id: `${Date.now()}-reindex-batch-complete`,
+              ts: new Date().toISOString(),
+              type: 'log',
+              agent: 'system',
+              message: `Completed full re-index — ${data.indexed} documents across ${data.tables} table${data.tables === 1 ? '' : 's'} in ${seconds}s`,
             })
           }
 
@@ -188,5 +219,5 @@ export function useSSE() {
       esRef.current?.close()
       esRef.current = null
     }
-  }, [updateFile, setConnected, setHeartbeats, initialize, appendAuditEntry, appendActivityEvent, setSseConnected, bumpTaskboard])
+  }, [updateFile, setConnected, setHeartbeats, initialize, appendAuditEntry, appendActivityEvent, setSseConnected, bumpTaskboard, setReindexProgress])
 }

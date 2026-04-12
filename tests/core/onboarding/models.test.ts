@@ -18,6 +18,13 @@ import { join } from 'path'
 
 let antflyBinary: string | null
 let existingPaths: Set<string>
+/**
+ * Virtual file contents for paths the component reads via readFileSync.
+ * Currently only `model_manifest.json` for each "present" model.
+ */
+let virtualFiles: Map<string, string>
+/** Virtual file sizes for statSync, keyed by absolute path. */
+let virtualSizes: Map<string, number>
 let spawnExitCode: number | null
 let spawnError: Error | null
 let spawnCalls: Array<{ cmd: string; args: string[] }>
@@ -30,6 +37,27 @@ let askYesNoReturn: boolean
  * still missing" guard in the component.
  */
 let spawnCreatesFiles: boolean
+
+/**
+ * Fully "install" a model in the virtual fs: directory present, a
+ * `model_manifest.json` listing one weights file, and a stat-able stub
+ * for the weights file with the matching size. This is the shape that
+ * `modelComplete()` requires to declare the model healthy.
+ */
+function virtualInstall(modelDir: string) {
+  existingPaths.add(modelDir)
+  const manifestPath = join(modelDir, 'model_manifest.json')
+  const weightsPath = join(modelDir, 'model.onnx')
+  const manifest = {
+    schemaVersion: 2,
+    name: 'stub',
+    files: [{ name: 'model.onnx', digest: 'sha256:stub', size: 42 }],
+  }
+  virtualFiles.set(manifestPath, JSON.stringify(manifest))
+  existingPaths.add(manifestPath)
+  existingPaths.add(weightsPath)
+  virtualSizes.set(weightsPath, 42)
+}
 
 vi.mock('../../../src/core/antfly-server', () => ({
   findBinary: () => antflyBinary,
@@ -49,6 +77,16 @@ vi.mock('fs', async () => {
   return {
     ...actual,
     existsSync: (p: unknown) => existingPaths.has(String(p)),
+    readFileSync: (p: unknown, ...rest: unknown[]) => {
+      const key = String(p)
+      if (virtualFiles.has(key)) return virtualFiles.get(key)!
+      return (actual.readFileSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
+    },
+    statSync: (p: unknown, ...rest: unknown[]) => {
+      const key = String(p)
+      if (virtualSizes.has(key)) return { size: virtualSizes.get(key)! }
+      return (actual.statSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
+    },
   }
 })
 
@@ -69,11 +107,13 @@ vi.mock('child_process', () => ({
       if (spawnExitCode === 0 && spawnCreatesFiles && args[0] === 'termite' && args[1] === 'pull') {
         const modelId = args[2]
         // Termite stores embedders under embedders/<model>, rerankers
-        // under rerankers/<model>. Pick both so the existsSync lookup
-        // inside the component will find whatever path it queries.
+        // under rerankers/<model>. Populate both branches with a
+        // complete virtual install (manifest + weights) so the
+        // post-pull verification step in the component finds the right
+        // shape regardless of which kind we mocked.
         const root = join(homedir(), '.termite', 'models')
-        existingPaths.add(join(root, 'embedders', modelId))
-        existingPaths.add(join(root, 'rerankers', modelId))
+        virtualInstall(join(root, 'embedders', modelId))
+        virtualInstall(join(root, 'rerankers', modelId))
       }
       child.stderr?.emit('data', Buffer.from(''))
       child.emit('close', spawnExitCode)
@@ -95,6 +135,8 @@ describe('onboarding models component', () => {
   beforeEach(async () => {
     antflyBinary = '/opt/homebrew/bin/antfly'
     existingPaths = new Set()
+    virtualFiles = new Map()
+    virtualSizes = new Map()
     spawnExitCode = 0
     spawnError = null
     spawnCalls = []
@@ -133,12 +175,12 @@ describe('onboarding models component', () => {
     force: false,
   }
 
-  /** Seed existingPaths with every required model so the fs mock says they exist. */
+  /** Seed every required model as a complete virtual install. */
   function seedAllModelsPresent() {
     const root = termiteModelsRoot()
     for (const m of REQUIRED_MODELS) {
       const bucket = m.kind === 'embedder' ? 'embedders' : 'rerankers'
-      existingPaths.add(join(root, bucket, m.model))
+      virtualInstall(join(root, bucket, m.model))
     }
   }
 
@@ -169,14 +211,38 @@ describe('onboarding models component', () => {
     })
 
     it('reports missing with partial list when only some are absent', async () => {
-      // Seed just the BGE embedder as present
-      existingPaths.add(join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5'))
+      // Seed just the BGE embedder as fully installed
+      virtualInstall(join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5'))
       const result = await modelsComponent.check()
       expect(result.status).toBe('missing')
       expect(result.message).toContain('2 of 3')
       const missing = result.details?.missing as Array<{ model: string }>
       expect(missing).toHaveLength(2)
       expect(missing.map((m) => m.model)).not.toContain('BAAI/bge-small-en-v1.5')
+    })
+
+    it('reports missing when a model directory exists but model_manifest.json is absent', async () => {
+      // Half-pulled state — directory there, no manifest. This is the
+      // exact failure mode that bit us in production with BGE.
+      existingPaths.add(join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5'))
+      const result = await modelsComponent.check()
+      expect(result.status).toBe('missing')
+      const missing = result.details?.missing as Array<{ model: string; reason: string }>
+      const bge = missing.find((m) => m.model === 'BAAI/bge-small-en-v1.5')
+      expect(bge?.reason).toContain('model_manifest.json missing')
+    })
+
+    it('reports missing when a manifested file is the wrong size', async () => {
+      // Manifest claims 42 bytes, file is on disk but stat says 7 — the
+      // pull was interrupted mid-write.
+      const dir = join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5')
+      virtualInstall(dir)
+      virtualSizes.set(join(dir, 'model.onnx'), 7)
+      const result = await modelsComponent.check()
+      expect(result.status).toBe('missing')
+      const missing = result.details?.missing as Array<{ model: string; reason: string }>
+      const bge = missing.find((m) => m.model === 'BAAI/bge-small-en-v1.5')
+      expect(bge?.reason).toContain('size mismatch')
     })
   })
 
@@ -212,7 +278,7 @@ describe('onboarding models component', () => {
     })
 
     it('pulls only the missing subset when some models already exist', async () => {
-      existingPaths.add(join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5'))
+      virtualInstall(join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5'))
       const result = await modelsComponent.install(optsAutoYes)
       expect(result.status).toBe('installed')
       expect(spawnCalls).toHaveLength(2)
@@ -229,12 +295,14 @@ describe('onboarding models component', () => {
       expect(spawnCalls).toHaveLength(1)
     })
 
-    it('reports failed when spawn succeeds but model directory is still missing', async () => {
+    it('reports failed when spawn succeeds but the model directory is still empty', async () => {
       spawnExitCode = 0
       spawnCreatesFiles = false
       const result = await modelsComponent.install(optsAutoYes)
       expect(result.status).toBe('failed')
-      expect(result.message).toContain('still missing')
+      // modelComplete reports the specific reason — directory missing,
+      // manifest missing, file missing, or size mismatch.
+      expect(result.message).toMatch(/directory missing|manifest|missing|size mismatch/)
     })
 
     it('skips install when user declines the interactive prompt', async () => {
