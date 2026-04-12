@@ -218,7 +218,12 @@ export async function ensureRegisteredTables(): Promise<EnsureTablesResult> {
     }
   }
 
-  registry.tablesCreated = true
+  // Only mark the registry as fully provisioned when every table created
+  // cleanly. If any failed, leave the flag false so the next call retries
+  // them rather than short-circuiting on the cached "done" signal.
+  if (failures.length === 0) {
+    registry.tablesCreated = true
+  }
   return { created, failures }
 }
 
