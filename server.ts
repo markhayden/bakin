@@ -333,15 +333,26 @@ app.prepare().then(async () => {
       return
     }
 
-    // Reindex endpoint — per-table or all, with optional rebuild
+    // Reindex endpoint — per-table or all, with optional rebuild and verify
     if (url.pathname === '/api/reindex' && req.method === 'POST') {
       const { reindexContentTypes } = require('./src/core/search-registry')
       const table = url.searchParams.get('table') || undefined
       const rebuild = url.searchParams.get('rebuild') === 'true'
-      reindexContentTypes({ table, rebuild }).then((results: Array<Record<string, unknown>>) => {
+      const verify = url.searchParams.get('verify') === 'true'
+      reindexContentTypes({ table, rebuild, verify }).then((results: Array<Record<string, unknown>>) => {
         const total = results.reduce((sum: number, r: Record<string, unknown>) => sum + (r.indexed as number || 0), 0)
         const errors = results.filter((r) => r.error).length
-        jsonResponse(res, 200, { ok: errors === 0, total, errors, tables: results })
+        const enrichmentErrors = results.filter((r) => {
+          const enrichment = r.enrichment as { healthy?: boolean } | undefined
+          return enrichment && !enrichment.healthy
+        }).length
+        jsonResponse(res, 200, {
+          ok: errors === 0 && enrichmentErrors === 0,
+          total,
+          errors,
+          enrichmentErrors,
+          tables: results,
+        })
       }).catch((err: unknown) => {
         log.error('Reindex failed', err, { table, rebuild })
         jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
