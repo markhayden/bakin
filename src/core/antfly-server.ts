@@ -15,9 +15,12 @@ let antflyProcess: ChildProcess | null = null
 let isRunning = false
 
 /**
- * Find the antfly binary on the system.
+ * Find the antfly binary on the system. Exported for reuse by the
+ * first-run onboarding antfly component — its `check()` needs the
+ * exact same binary discovery logic that the server boot path uses,
+ * and duplicating the candidate list would invite drift.
  */
-function findBinary(): string | null {
+export function findBinary(): string | null {
   const candidates = [
     process.env.ANTFLY_PATH,
     '/opt/homebrew/bin/antfly',
