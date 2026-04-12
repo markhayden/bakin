@@ -199,13 +199,14 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         const prev = getFailureRecord(state.failedDispatches[task.id])
         state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1 }
 
+        const errMsg = err instanceof Error ? err.message : String(err)
         try {
-          await addTaskLog(task.id, 'system', `Dispatch failed (attempt ${(prev?.count || 0) + 1}): agent "${targetAgent}" not found or unavailable`)
+          await addTaskLog(task.id, 'system', `Dispatch failed (attempt ${(prev?.count || 0) + 1}) → ${targetAgent}: ${errMsg}`)
         } catch {
           // best effort
         }
 
-        appendAudit(contentDir, 'task.dispatch_failed', targetAgent, { id: task.id, title: task.title, error: err instanceof Error ? err.message : String(err), attempt: (prev?.count || 0) + 1 })
+        appendAudit(contentDir, 'task.dispatch_failed', targetAgent, { id: task.id, title: task.title, error: errMsg, attempt: (prev?.count || 0) + 1 })
       }
     }
 
@@ -313,7 +314,8 @@ export async function dispatchSingleTask(
       saveDispatchState(contentDir, state)
 
       try {
-        await addTaskLog(task.id, 'system', `Immediate dispatch failed (attempt ${(prev?.count || 0) + 1}): agent "${targetAgent}" not found or unavailable`)
+        const errMsg = err instanceof Error ? err.message : String(err)
+        await addTaskLog(task.id, 'system', `Immediate dispatch failed (attempt ${(prev?.count || 0) + 1}) → ${targetAgent}: ${errMsg}`)
       } catch {
         // best effort
       }
@@ -552,7 +554,8 @@ async function dispatchWorkflowTask(
       state.failedDispatches[task.id] = Date.now()
 
       try {
-        await addTaskLog(task.id, 'system', `Workflow dispatch failed for step "${stepId}": agent "${targetAgent}" unavailable`)
+        const errMsg = err instanceof Error ? err.message : String(err)
+        await addTaskLog(task.id, 'system', `Workflow dispatch failed for step "${stepId}" → ${targetAgent}: ${errMsg}`)
       } catch {
         // best effort
       }
