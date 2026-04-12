@@ -487,8 +487,8 @@ app.prepare().then(async () => {
   dispatchState.serverStart = Date.now()
 
   server.listen(port, '0.0.0.0', () => {
-    log.info(`Bakin ready on http://0.0.0.0:${port}`)
-    log.info(`Tailscale: http://100.91.112.69:${port}`)
+    log.info(`Bakin ready on http://localhost:${port}`)
+    log.info(`Listening on 0.0.0.0:${port} (Tailscale: http://100.91.112.69:${port})`)
   })
 
   // Audit system init
