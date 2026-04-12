@@ -4,6 +4,8 @@
 
 Antfly is the vector database backing all search in Bakin — UI search and agent queries. It is **optional**: Bakin runs fully without it. When `settings.antfly.enabled` is `false` (or Antfly is unreachable), search silently degrades — indexing calls are no-ops, queries return empty results.
 
+Bakin's search pipeline supports multimodal content: text embeddings via BGE, image embeddings via CLIP (running through Antfly's Termite ML subsystem), hybrid BM25 + semantic fusion via RRF, and optional cross-encoder reranking on single-modality tables. File content for PDFs and text formats is extracted **server-side in Bakin** (via pdf-parse and `fs.readFileSync`) and passed to Antfly as a pre-resolved `content` field rather than dereferenced via Antfly's `{{remotePDF}}` / `{{remoteText}}` template helpers. See **Multimodal Architecture** below and `.claude/knowledge/multimodal-search.md` for the full rationale.
+
 ## Architecture
 
 ```
@@ -13,7 +15,10 @@ Plugin activate()
 
 Mutation (create/update)
   → ctx.search.index(key, doc)
+  → Bakin extracts file content (if applicable) into doc.content
+  → Bakin computes image_url (file://) for raster images
   → AntflyClient upserts into bakin_{contentType} table
+  → Antfly's embedding enricher chunks, embeds via BGE/CLIP, writes to indexes
 
 Deletion
   → plugin calls ctx.search.remove(key)
@@ -26,18 +31,31 @@ Periodic cleanup timer
 
 Query
   → ctx.search.query(params)
-  → AntflyClient hybrid search (BM25 + embeddings via RRF)
-  → Returns ranked results
+  → Registry looks up per-table index names and rerankField
+  → AntflyClient hybrid query: full-text (Bleve) + semantic (embeddings) via RRF
+  → Cross-encoder reranker scores top-K if the content type opted in
+  → Returns ranked results with per-index score breakdown
+
+Boot-time migration (every start)
+  → search-migration.ts reads ~/.bakin/.search-state.json
+  → If stored < SCHEMA_VERSION, drop all bakin_* tables
+  → Registry recreates tables via createRegisteredTables()
+  → Fire-and-forget full reindex populates the new tables
+  → Write new version to the state file
 ```
 
 ### Key files
 
 | File | Purpose |
-|------|---------|
-| `src/core/antfly.ts` | `AntflyClient` from `@antfly/sdk` — SDK wrapper, connection, settings |
-| `src/core/search-registry.ts` | `SearchRegistry` singleton, ctx.search provider, globalThis-backed |
+|---|---|
+| `src/core/antfly.ts` | `AntflyClient` wrapper — write path, query builder, retry on transient shard errors |
+| `src/core/search-registry.ts` | `SearchRegistry` singleton, ctx.search provider, multi-index registration, query routing |
 | `src/core/search-cleanup.ts` | Periodic orphan scan, configurable interval |
-| `packages/core/src/plugin-types.ts` | `SearchAPI`, `SearchContentTypeDefinition` interfaces |
+| `src/core/search-migration.ts` | `SCHEMA_VERSION` constant, state file I/O, migrate-or-noop on boot |
+| `src/core/embedder-resolver.ts` | Pure function: resolve `embedderRef: 'default' \| 'visual' \| ...` → concrete provider+model config |
+| `packages/core/src/plugin-types.ts` | `SearchAPI`, `SearchContentTypeDefinition`, `SearchIndexDefinition` interfaces |
+| `plugins/assets/lib/content-extractor.ts` | Server-side text extraction for PDFs (pdf-parse) and plain text formats |
+| `plugins/assets/lib/asset-url.ts` | `buildAssetFileUrl()` — produces `file://` URLs for CLIP's visual index |
 | `src/hooks/use-antfly-search.ts` | Client-side hook for search queries + `reorderByAntflyResults` utility |
 
 ## Table Naming
@@ -46,32 +64,55 @@ All Antfly tables use the `bakin_` prefix: `bakin_tasks`, `bakin_assets`, `bakin
 
 **Registered tables:** tasks, audit, assets, projects, workflows, schedule, team (7 total). Audit is registered in `server.ts` (not a plugin); the other 6 are registered by their respective plugins.
 
-**Legacy cleanup:** On startup, any `beacon_*` tables are wiped automatically. The `beacon_` prefix is from a prior naming scheme — it is retired.
+**Multi-index tables:** `bakin_assets` is currently the only table with more than one embedding index — it has `assets_text` (BGE over sidecar metadata + extracted PDF/text content) and `assets_visual` (CLIP over raster image pixels). All other tables use a single default embedding index named `embeddings`.
+
+**Legacy cleanup:** On startup, any `beacon_*` tables are wiped automatically. The `beacon_` prefix is from a prior naming scheme.
 
 ## SearchContentTypeDefinition
 
 ```typescript
 interface SearchContentTypeDefinition {
-  table: string                                    // e.g. 'tasks' — auto-prefixed to 'bakin_tasks'
-  schema: Record<string, SearchSchemaField>        // { type: 'text' | 'keyword' | 'number' | 'boolean' | 'datetime' | 'array' }
-  searchableFields: string[]                       // fields included in full-text index (x-antfly-include-in-all)
-  embeddingTemplate: string                        // Handlebars template for vector embedding, e.g. '{{title}} {{description}}'
-  facets?: string[]                                // fields available for facet/aggregation filtering
-  ttl?: string                                     // Go duration format: '90d', '24h'. Empty to disable.
-  ttlField?: string                                // field holding the TTL timestamp (default: 'created_at')
-  chunker?: {                                      // chunking config for long documents
+  table: string                              // e.g. 'tasks' — auto-prefixed to 'bakin_tasks'
+  schema: Record<string, SearchSchemaField>  // { type: 'text' | 'keyword' | 'number' | 'boolean' | 'datetime' | 'array' }
+  searchableFields: string[]                 // fields included in full-text index (x-antfly-include-in-all)
+
+  /** Used when `indexes` is NOT set — legacy single-index path. */
+  embeddingTemplate: string
+
+  /** Optional: declare multiple vector indexes for this table. Each
+   *  entry produces one embedding index in Antfly with its own
+   *  embedder (via embedderRef) and its own Handlebars template. */
+  indexes?: SearchIndexDefinition[]
+
+  /** Optional: field name the cross-encoder reranker scores against.
+   *  Unset → reranker skipped for this content type. Required for
+   *  reranker to run — Antfly rejects reranker configs that lack a
+   *  field or template. See "Reranker" below. */
+  rerankField?: string
+
+  facets?: string[]                          // fields available for facet/aggregation filtering
+  ttl?: string                               // Go duration format: '90d', '24h'. Empty to disable.
+  ttlField?: string                          // field holding the TTL timestamp (default: 'created_at')
+  chunker?: {                                // chunker applied to the synthesized default index
     enabled: boolean
-    targetTokens?: number                          // default from settings.antfly.chunking.defaultTargetTokens
-    overlapTokens?: number                         // default from settings.antfly.chunking.defaultOverlapTokens
+    targetTokens?: number
+    overlapTokens?: number
   }
-  reindex(): AsyncGenerator<{ key: string; doc: Record<string, unknown> }>  // full reindex source
-  verifyExists(key: string): Promise<boolean>      // orphan check — does source still exist?
+  reindex(): AsyncGenerator<{ key: string; doc: Record<string, unknown> }>
+  verifyExists(key: string): Promise<boolean>
+}
+
+interface SearchIndexDefinition {
+  name: string            // e.g. 'assets_text', 'assets_visual'
+  embedderRef: string     // key into settings.antfly.embedders
+  embeddingTemplate: string
+  chunker?: { enabled: boolean; targetTokens?: number; overlapTokens?: number }
 }
 ```
 
-**Note:** All non-text field types (`number`, `boolean`, `datetime`, `array`) map to `keyword` in Antfly. They support exact-match filtering and faceting but not range queries or date math.
+**Note:** Non-text field types (`number`, `boolean`, `datetime`, `array`) map to `keyword` in Antfly. They support exact-match filtering and faceting but not range queries or date math.
 
-Registered by plugins during `activate()` via `ctx.search.registerContentType(def)`.
+**Backward compatibility:** Content types that don't set `indexes` get a synthesized single default index named `embeddings` using the top-level `embeddingTemplate` + the default embedder. Every content type registered before multi-index support works unchanged.
 
 ## SearchAPI (per plugin)
 
@@ -80,10 +121,33 @@ Exposed on `PluginContext` as `ctx.search`:
 ```typescript
 interface SearchAPI {
   registerContentType(def: SearchContentTypeDefinition): void
-  index(key: string, doc: Record<string, unknown>): Promise<void>   // upsert; fire-and-forget safe
-  remove(key: string): Promise<void>                                // delete document
-  transform(key: string, ops: SearchTransformOp[]): Promise<void>   // atomic field update, skips re-embed
+  index(key: string, doc: Record<string, unknown>): Promise<void>     // upsert; fire-and-forget safe
+  remove(key: string): Promise<void>                                  // delete document
+  transform(key: string, ops: SearchTransformOp[]): Promise<void>     // atomic field update, skips re-embed
   query(params: SearchQueryParams): Promise<SearchResponse>
+}
+
+interface SearchQueryParams {
+  q: string
+  filters?: Record<string, string | boolean | number>
+  facets?: string[]
+  limit?: number
+  offset?: number
+  /** Per-query reranker disable. Defaults to true (rerank applies)
+   *  when the content type has a rerankField set. Pass false to
+   *  skip the cross-encoder pass for latency-sensitive calls. */
+  rerank?: boolean
+  /** Raw Antfly aggregations object. Use for date histograms, range
+   *  buckets, stats. Merged with facet-derived aggregations — caller
+   *  wins on key collision. Antfly schema docs apply. */
+  aggregations?: Record<string, unknown>
+}
+
+interface SearchResponse {
+  results: SearchResult[]
+  aggregations?: Record<string, Array<{ value: string; count: number }>>  // facet term buckets
+  rawAggregations?: Record<string, unknown>                                // Antfly's raw response (date_histogram etc.)
+  meta: { query: string; total: number; took_ms: number; source: 'antfly' | 'fallback' }
 }
 ```
 
@@ -94,16 +158,18 @@ interface SearchAPI {
 Queries combine full-text (BM25) and semantic (vector) results via Reciprocal Rank Fusion (RRF). Strategy is configurable per query and globally:
 
 | Strategy | Behavior |
-|----------|----------|
+|---|---|
 | `rrf` (default) | Merge BM25 + semantic results via RRF |
 | `semantic_only` | Vector similarity only |
 | `full_text_only` | BM25 only, no embeddings required |
 
 Global default: `settings.antfly.search.strategy`.
 
-**Important implementation detail:** In Antfly query requests, `full_text_search` implicitly uses the full-text index. The `indexes` array should only list embedding indexes (e.g., `['embeddings']`). Including the full-text index name in `indexes` alongside `full_text_search` causes errors.
+**Per-table index routing:** when a table has multiple embedding indexes declared via `def.indexes`, the registry's `getIndexNames(tableName)` resolves the effective index list (e.g. `['assets_text', 'assets_visual']`) and passes it to `antfly.queryTable()`. The client sends the array in `QueryRequest.indexes`, and Antfly runs semantic search across all of them — results from each index are merged into the final RRF ranking with a per-index score breakdown in `_index_scores`.
 
-The BM25 index key in `_index_scores` is a full filesystem path (e.g. `/path/to/full_text_index_v0`), not the short name `'search'`. The semantic key is `'embeddings'`.
+**Implementation detail:** In Antfly query requests, `full_text_search` implicitly uses the full-text index. The `indexes` array should only list embedding indexes. Including the full-text index name alongside `full_text_search` causes errors.
+
+The BM25 index key in `_index_scores` is a full filesystem path (e.g. `/path/to/full_text_index_v0`) — the short name isn't used. Semantic keys are the ones declared in the content type's `indexes[]` (or `embeddings` for the legacy single-index path).
 
 ### Reranker
 
@@ -115,7 +181,7 @@ Optional cross-encoder reranking after initial retrieval. Configured globally vi
 - Tables that don't set `rerankField` get pure RRF hybrid fusion (Bleve full-text + semantic embeddings), no cross-encoder pass
 - Antfly rejects reranker configs that don't include `field` or `template` with a 400, so a missing `rerankField` MUST translate to "no reranker" — not "reranker without field"
 
-**Structural limitation of `rerankField`:** the cross-encoder reranker scores a query against the value of a **single document field**. It never sees the embedding, the full-text index, or any other field. This is fine for single-modality text tables (the reranker's description/body field contains the text that would match the query) but creates inversions on multi-modality tables where different modalities live in different fields.
+**Structural limitation of `rerankField`:** the cross-encoder reranker scores a query against the value of a **single document field**. It never sees the embedding, the full-text index, or any other field. This is fine for single-modality text tables but creates inversions on multi-modality tables where different modalities live in different fields.
 
 **Per-plugin choices (current):**
 
@@ -131,35 +197,162 @@ Optional cross-encoder reranking after initial retrieval. Configured globally vi
 
 **Why `bakin_assets` skips the reranker**
 
-The assets table mixes modalities: PDF body text goes into `content` (extracted server-side), image data goes through the `assets_visual` index (CLIP embeddings of pixel data), and metadata lives in `description`/`tags`/`file_name`. No single field captures a doc's full semantic signal. During T6 manual smoke testing we observed consistent inversions:
-
-- A query for `"tzatziki"` (a term in a PDF body) was correctly found by Bleve full-text on the `content` field, giving the PDF a strong raw hit. But the reranker, scoring `"tzatziki"` against each doc's `description` field only, rated an unrelated image's description ("Outdoor scene test image for CLIP visual search smoke test") higher than the PDF's description ("Recipe PDF — manual smoke test for multimodal search") because the cross-encoder happens to score the image description well against arbitrary queries. The PDF fell from rank 1 (pre-rerank) to rank 2-3.
-- Similar inversions on `"autolyse"` (markdown body term) — the markdown doc fell to rank 4 despite a 0.5 Bleve hit.
-- CLIP visual queries like `"pumpkin"` worked correctly (image at rank 1) because the reranker happened to score that query well against the image's description too, but this is coincidence, not signal.
+The assets table mixes modalities: PDF body text goes into `content` (extracted server-side), image data goes through the `assets_visual` index (CLIP embeddings of pixel data), and metadata lives in `description`/`tags`/`file_name`. No single field captures a doc's full semantic signal. During T6 manual smoke testing we observed consistent inversions — a query for `"tzatziki"` (a term in a PDF body) found the PDF via full-text on `content`, but the reranker scoring `"tzatziki"` against `description` rated an unrelated image higher because the cross-encoder happened to score the image description well against arbitrary queries.
 
 The fix was a one-line deletion: remove `rerankField` from the assets plugin registration. Multimodal tables get **raw RRF fusion** of Bleve + text embeddings + visual embeddings, and the cross-encoder pass is skipped entirely. Single-modality tables keep their reranker because it materially improves their ranking.
 
 The underlying issue is the single-field limitation of Antfly's reranker API. A future fix could pass a `template` instead of a `field` (e.g. `{{description}} {{content}}` so the cross-encoder sees both metadata and extracted body), or wait for Antfly to support multi-field reranking. Revisit when either path becomes viable.
 
-## Embedder
+## Embedders
 
-Antfly's built-in embedder runs locally: `all-MiniLM-L6-v2` by default. Configurable via:
+Bakin's text and visual embeddings use different models. Both run locally via Antfly's Termite ML subsystem — no cloud dependency by default.
 
+### Current models
+
+| Purpose | ref name | Provider | Model | Stored path |
+|---|---|---|---|---|
+| Default text | `default` | termite | `BAAI/bge-small-en-v1.5` | `~/.termite/models/embedders/BAAI/bge-small-en-v1.5` |
+| Visual / multimodal | `visual` | termite | `openai/clip-vit-base-patch32` | `~/.termite/models/embedders/openai/clip-vit-base-patch32` |
+
+**BGE over MiniLM:** The default text embedder was upgraded from Antfly's builtin `all-MiniLM-L6-v2` to BGE in T7. BGE is measurably stronger on retrieval tasks, especially for longer documents with diverse vocabulary — task descriptions, markdown notes, PDF bodies, audit trails. Runs locally, no cost beyond disk (~130MB).
+
+**Model names MUST be the qualified HuggingFace-style names** (e.g. `BAAI/bge-small-en-v1.5`, not just `bge-small-en-v1.5`). Termite's `antfly termite pull` command accepts unqualified names via a resolver, but the embedder config API at query time requires the exact path Termite stored the model under.
+
+### Per-index embedder selection
+
+Each `SearchIndexDefinition` declares an `embedderRef` string. The registry's table-creation path passes the ref to `resolveEmbedder()` which looks it up in `settings.antfly.embedders` and returns the concrete `{ provider, model }` config. Add a new provider by:
+
+1. Adding a named entry to `settings.antfly.embedders` (e.g. `highres: { provider: 'vertex', model: 'multimodalembedding@001' }`)
+2. Adding a case in `src/core/antfly.ts` for the provider (or rely on Antfly's built-in provider support)
+3. Referencing the new name from a content type's `indexes[].embedderRef`
+
+No plugin code changes needed. The `visual` ref is only consumed by `bakin_assets.assets_visual` today; every other table uses `default`.
+
+### Backward compatibility
+
+`settings.antfly.embedder` (singular, legacy pre-T2) is still read on load. If present and `settings.antfly.embedders` is absent, the settings loader synthesizes `embedders.default = { ...legacy.provider, ...legacy.model }` and logs a deprecation warning. Both-set logs a warning that the legacy field is ignored. Remove the legacy field in a future cleanup once all known configs are migrated.
+
+## Content Extraction (Server-Side)
+
+For PDFs and plain-text file formats (`.md`, `.txt`, `.json`, `.csv`, `.yaml`, `.rtf`, `.xml`, `.tsv`), Bakin extracts the body text **before** sending the document to Antfly for indexing. The extracted text lives in a `content` field on the search doc, and the `assets_text` embedding template references `{{content}}` directly.
+
+### Why server-side instead of Antfly helpers
+
+Antfly ships `{{remotePDF url=...}}` and `{{remoteText url=...}}` template helpers that fetch and extract content at enrichment time. On paper those would be cleaner than wiring fs I/O into Bakin. In practice:
+
+1. **PDF extraction is broken upstream.** Antfly's Go PDF library (`ajroetker/pdf`, a fork of `rsc.io/pdf`) silently fails on any PDF with complex font subsetting, CID fonts, or matrix-positioned text — which is every design-tool PDF. See Bakin issue #72 for the full trace.
+2. **Loopback fetch is blocked.** Antfly's scraping layer hardcodes a private-IP block (#72 again), so `file://` URLs are the only local path that works — and `{{remoteText}}` via `file://` still routes through the broken fetch resolver.
+3. **Node has better tools.** `pdf-parse` uses the same `pdfjs-dist` engine Firefox ships. It handles the font edge cases Antfly's Go library can't.
+
+The server-side approach also means extracted content is stored as a first-class document field that shows up in Bleve full-text hits. Antfly's `{{remotePDF}}` output goes into the embedding but not the full-text index, so you can't keyword-search for terms inside a PDF via Antfly's helpers even when they work.
+
+### Supported formats
+
+`plugins/assets/lib/content-extractor.ts` `extractAssetContent(absPath, filename)` routes on extension:
+
+| Extension | Path | Notes |
+|---|---|---|
+| `.md`, `.txt`, `.rtf` | `fs.readFileSync` | Zero deps, plain text |
+| `.json`, `.csv`, `.tsv`, `.xml` | `fs.readFileSync` | Read as UTF-8, not parsed |
+| `.yaml`, `.yml` | `fs.readFileSync` | Same |
+| `.pdf` | `pdf-parse` (lazy-imported) | pdfjs engine, handles complex PDFs |
+| (anything else) | `''` | Returns empty string |
+
+Extraction is capped at **50K chars** with a word-boundary-safe truncate. Large PDFs are capped at **100 pages** via `pdf-parse`'s `last` option. Errors return an empty string and log a warning — never throw — so a malformed file doesn't block indexing.
+
+### How it reaches the embedding
+
+The assets plugin's `assetToSearchDoc()` reads the asset file (via the content dir + relative path), calls `extractAssetContent()`, and populates the resulting string on a `content` schema field:
+
+```typescript
+schema: {
+  description: { type: 'text' },
+  tags:        { type: 'text' },
+  file_name:   { type: 'text' },
+  content:     { type: 'text' },  // ← extracted body
+  image_url:   { type: 'keyword' }, // ← file:// for raster images only
+  // ...
+}
+
+indexes: [
+  {
+    name: 'assets_text',
+    embedderRef: 'default',
+    embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{content}}',
+    chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
+  },
+  {
+    name: 'assets_visual',
+    embedderRef: 'visual',
+    embeddingTemplate: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
+  },
+]
 ```
-settings.antfly.embedder.provider   — 'built-in' | 'openai' | 'custom'
-settings.antfly.embedder.model      — model identifier
-```
+
+The text index embeds `description + tags + filename + content` — sidecar metadata concatenated with the extracted body. The visual index only runs when `image_url` is populated (raster formats that CLIP can decode). SVG and ICO are excluded — Antfly's image processor uses Go's stdlib image library which can't handle vector or indexed-palette formats.
+
+## Visual Indexing (CLIP via Termite)
+
+For raster images, the `assets_visual` index uses CLIP via Termite. The path is Antfly's `{{remoteMedia url=image_url}}` helper pointing at a `file://` URL.
+
+**Why `file://` and not `http://`:** Antfly's `DownloadContent` dispatches on URL scheme. For `http://`, it runs `validateURLSecurity` which hardcodes a private-IP block (see #72). For `file://`, it calls `validatePathSecurity` which is a no-op unless `AllowedPaths` is configured. So `file://` bypasses the broken SSRF defense entirely. Since Antfly runs as the same user as Bakin on the same host, local filesystem access is already permitted — the security layer is the OS user boundary, not the URL scheme.
+
+`plugins/assets/lib/asset-url.ts` `buildAssetFileUrl(relPath)` builds the URL — takes a relative path under the assets root, resolves to an absolute path, percent-encodes path segments, returns `file://<abs>`. The encoding step is important: filenames with spaces or special characters round-trip correctly through Antfly's URL parser.
+
+**Format filtering:** only `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp` get `image_url`. Vector and indexed-palette formats (`.svg`, `.ico`) are excluded because CLIP needs raster pixel data and Antfly's image processor can't decode them anyway.
+
+## Schema Migration
+
+`src/core/search-migration.ts` owns a `SCHEMA_VERSION` constant (currently `2`) and a state file at `~/.bakin/.search-state.json` with `{ version: N }`. On every boot, after `antfly.initialize()` connects:
+
+1. Read the stored version (or `0` if the file doesn't exist — fresh install)
+2. If stored < `SCHEMA_VERSION`, drop every `bakin_*` table via `antfly.dropTable()` and write the new version
+3. Plugins have already called `registerContentType()` earlier in the boot sequence, so when `createRegisteredTables()` runs next, it recreates all tables with the current schema
+4. If migration ran, the server triggers a background reindex via `reindexContentTypes()` to populate the fresh tables from source — fire-and-forget, Bakin is usable immediately with empty tables, indexing completes in the background
+
+### When to bump `SCHEMA_VERSION`
+
+Bump when a change requires an existing table to be dropped and recreated with new schema, indexes, or embedder config. Examples:
+
+- Added or removed a schema field (rename counts as remove + add)
+- Changed the default embedder's provider or model
+- Added or removed an entry in a content type's `indexes[]`
+- Changed a content type's `embeddingTemplate` in a way that affects chunking
+- Changed chunker config
+
+Pure data additions (no schema change, no embedder change) do **not** need a bump — those flow through the existing `/api/reindex` endpoint without dropping tables.
+
+### Version history
+
+- **1** — initial schema. Single `embeddings` index per table. Global `all-MiniLM-L6-v2` embedder via Antfly's builtin provider.
+- **2** — multi-index support. `bakin_assets` gains `assets_text` + `assets_visual`. `content` field populated server-side. Default embedder swapped to `BAAI/bge-small-en-v1.5` via Termite.
+
+## Retry on Transient Shard Errors
+
+Antfly's `createTable` returns as soon as table metadata is written, but the shards backing the table spin up **asynchronously** via Antfly's reconciler (typically 300–1500ms later). Writes that land before the shards are ready fail with one of:
+
+- `shard {hex} not found on store 1`
+- `shard is still initializing`
+- `Failed to forward batches: ... shard is still initializing`
+
+`retryTransientBatch()` in `src/core/antfly.ts` wraps every batch write (`indexDocument`, `removeDocument`, `transformDocument`, `batchIndex`, `batchRemove`) with exponential backoff on those specific error messages:
+
+- **5 retries max** — ~3.1 seconds total (100ms → 200ms → 400ms → 800ms → 1600ms)
+- **Transient only** — non-matching errors bubble through on the first attempt
+- **After the last retry** — the original error is rethrown and the caller's `try` logs it as "Antfly batch index failed"
+
+The migration path is the common trigger — 7 tables recreated, reindex fires immediately, first batches hit the race, retries absorb it, subsequent attempts succeed. The reindex counter uses the actual return value from `batchIndex` (0 on failure, real insertion count on success) so the reported `total` reflects reality.
 
 ## Chunking
 
 Long documents are split before embedding. Configured per content type via `chunker: { enabled, targetTokens, overlapTokens }`. Defaults from settings:
 
 ```
-settings.antfly.chunking.defaultTargetTokens   — target tokens per chunk
-settings.antfly.chunking.defaultOverlapTokens  — overlap between chunks
+settings.antfly.chunking.defaultTargetTokens   — target tokens per chunk (default 200)
+settings.antfly.chunking.defaultOverlapTokens  — overlap between chunks (default 25)
 ```
 
-If a content type has no `chunker` (or `chunker.enabled` is false), the `embeddingTemplate` output is embedded whole.
+If a content type has no `chunker` (or `chunker.enabled` is false), the `embeddingTemplate` output is embedded whole. For tables with `indexes[]`, each index's chunker config is applied independently — `assets_text` chunks at 200/25, `assets_visual` does not chunk (image embeddings are whole-doc).
 
 ## Orphan Cleanup
 
@@ -173,7 +366,7 @@ Interval controlled by `settings.antfly.cleanupInterval` (Go duration string, e.
 
 ## Reindexing
 
-`reindexContentTypes()` in `search-registry.ts` iterates all registered content types and runs their `reindex()` generators. Documents are batch-indexed (50 per batch).
+`reindexContentTypes()` in `search-registry.ts` iterates all registered content types and runs their `reindex()` generators. Documents are batch-indexed (50 per batch) via `antfly.batchIndex()`, which applies the retry-on-transient-error wrapper.
 
 SSE events broadcast during reindex:
 - `reindex.start` — emitted when each table begins
@@ -181,6 +374,8 @@ SSE events broadcast during reindex:
 - `reindex.complete` — emitted when each table finishes
 
 The health page opens an EventSource before the POST to `/api/reindex` to avoid missing events from fast tables.
+
+**Counter accuracy:** `count += await antfly.batchIndex(...)` — the actual inserted count from Antfly's response, not the batch size. If a batch fails after retries, `batchIndex` returns 0 and the counter doesn't advance for that batch, so the reported `indexed: N` matches what's actually in the table.
 
 ## Client-side Search Pattern
 
@@ -198,16 +393,31 @@ All plugin pages follow the same pattern for search:
 All under `settings.antfly`:
 
 | Key | Type | Purpose |
-|-----|------|---------|
+|---|---|---|
 | `enabled` | `boolean` | Enable/disable Antfly integration |
-| `url` | `string` | Antfly server URL |
-| `auth` | `string` | Auth token / credentials |
+| `url` | `string` | Antfly server URL (must include `/api/v1` suffix) |
+| `auth` | `object?` | Optional basic auth `{ username, password }` |
 | `search.strategy` | `string` | Default search strategy (`rrf` \| `semantic_only` \| `full_text_only`) |
 | `search.defaultLimit` | `number` | Default result count |
-| `search.reranker` | `object?` | Optional reranker config |
-| `embedder.provider` | `string` | Embedding provider |
-| `embedder.model` | `string` | Embedding model |
+| `search.reranker.enabled` | `boolean` | Master switch for cross-encoder reranking |
+| `search.reranker.provider` | `string` | Reranker provider (e.g. `termite`) |
+| `search.reranker.model` | `string` | Qualified model name (e.g. `mixedbread-ai/mxbai-rerank-base-v1`) |
+| `search.reranker.threshold` | `number?` | Optional score threshold |
+| `embedders.default.provider` | `string` | Text embedder provider (`termite`) |
+| `embedders.default.model` | `string` | Text embedder model (`BAAI/bge-small-en-v1.5`) |
+| `embedders.visual.provider` | `string` | Visual embedder provider (`termite`) |
+| `embedders.visual.model` | `string` | Visual embedder model (`openai/clip-vit-base-patch32`) |
+| `embedders.<custom>` | `object?` | Additional named embedders referenced by `embedderRef` |
+| `embedder` | `object?` | **Deprecated.** Legacy single-embedder shape. Migrated to `embedders.default` on load. |
 | `chunking.defaultTargetTokens` | `number` | Default chunk target size |
 | `chunking.defaultOverlapTokens` | `number` | Default chunk overlap |
 | `auditTtl` | `string` | TTL for audit entries (Go duration: `'90d'`) |
 | `cleanupInterval` | `string` | Orphan cleanup interval (Go duration: `'24h'`) |
+
+## Related docs
+
+- `.claude/knowledge/multimodal-search.md` — multimodal architecture, PDF/text extraction, CLIP visual path, how to add a new modality
+- `.claude/knowledge/search-api-reference.md` — REST/MCP surface for agent-facing search
+- `.claude/specs/multimodal-search.md` — the spec that drove the multimodal upgrade
+- `.claude/specs/antfly-graph-indexes.md` — deferred graph-index work
+- [Bakin issue #72](https://github.com/markhayden/bakin/issues/72) — Antfly upstream bugs documented during T6 (dead `content_security` config, broken PDF library, no loopback HTTP path)
