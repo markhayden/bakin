@@ -31,6 +31,28 @@ describe('Settings', () => {
     expect(settings.antfly.enabled).toBe(true)
   })
 
+  it('returns doctor defaults including requireOnboard', () => {
+    const settings = getSettings()
+    expect(settings.doctor.intervalMs).toBe(30 * 60 * 1000)
+    expect(settings.doctor.autoFixSkill).toBe(true)
+    // First-run onboarding gate — default true so new users get walked
+    // through `bakin onboard` before doctor runs its full check suite.
+    expect(settings.doctor.requireOnboard).toBe(true)
+  })
+
+  it('allows disabling doctor.requireOnboard via override', () => {
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+      doctor: { requireOnboard: false },
+    }))
+
+    const settings = getSettings()
+    expect(settings.doctor.requireOnboard).toBe(false)
+    // Other doctor defaults preserved
+    expect(settings.doctor.intervalMs).toBe(30 * 60 * 1000)
+    expect(settings.doctor.autoFixSkill).toBe(true)
+  })
+
   it('returns antfly search defaults', () => {
     const settings = getSettings()
     expect(settings.antfly.search.strategy).toBe('rrf')
