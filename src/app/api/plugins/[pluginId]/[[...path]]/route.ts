@@ -63,6 +63,7 @@ function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | '
     },
     search: {
       registerContentType: () => {},
+      registerFileBackedContentType: () => {},
       index: async () => {},
       remove: async () => {},
       transform: async () => {},

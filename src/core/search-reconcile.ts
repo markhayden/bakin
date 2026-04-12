@@ -1,0 +1,324 @@
+/**
+ * Startup reconcile for file-backed search content types.
+ *
+ * The watcher hooks (registerSyncHook / registerUnlinkHook) keep the
+ * search index consistent with the filesystem WHILE the server is
+ * running. This module catches drift that accumulated WHILE the server
+ * was offline:
+ *
+ *   - Files added on disk that never went through the watcher
+ *   - Files deleted on disk that left orphan index entries
+ *   - Files edited in place (mtime > indexed mtime)
+ *
+ * The strategy is mtime-aware so steady-state startup is cheap: we
+ * compare each file's filesystem mtime against an `_mtime_ms` field
+ * that the helper writes alongside the doc. Files whose mtime matches
+ * the index are skipped entirely — no read, no embed, no index call.
+ *
+ * Plugins using `onSync` / `onUnlink` escape hatches lose the cheap
+ * mtime path because the plugin owns doc construction; for those, the
+ * reconcile re-invokes the escape hatch for every matched file. The
+ * tradeoff is documented at the helper API level.
+ */
+import { readdirSync, readFileSync, statSync } from 'fs'
+import { join, relative, sep } from 'path'
+import type {
+  FileBackedContentTypeDefinition,
+  FilePatternMapper,
+} from '../../packages/core/src/plugin-types'
+import * as antfly from './antfly'
+import { createLogger } from './logger'
+
+const log = createLogger('search-reconcile')
+
+/** Field name used to store filesystem mtime alongside indexed docs. */
+export const MTIME_FIELD = '_mtime_ms'
+
+// ---------------------------------------------------------------------------
+// Glob matching — minimal subset sufficient for filePatterns
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a glob pattern to a regex. Supports:
+ *   `**`     → match any path segments (including none)
+ *   `*`      → match any non-slash run
+ *   `{a,b}`  → alternation
+ *   literal segments and dots
+ */
+export function globToRegex(pattern: string): RegExp {
+  let re = ''
+  let i = 0
+  while (i < pattern.length) {
+    const ch = pattern[i]
+    if (ch === '*') {
+      if (pattern[i + 1] === '*') {
+        // `**/` consumes any number of segments (including zero)
+        if (pattern[i + 2] === '/') {
+          re += '(?:.*/)?'
+          i += 3
+          continue
+        }
+        re += '.*'
+        i += 2
+        continue
+      }
+      re += '[^/]*'
+      i += 1
+      continue
+    }
+    if (ch === '{') {
+      const close = pattern.indexOf('}', i)
+      if (close === -1) {
+        re += '\\{'
+        i += 1
+        continue
+      }
+      const alts = pattern.slice(i + 1, close).split(',').map(a => a.replace(/[.+^$()|[\]\\]/g, '\\$&'))
+      re += `(?:${alts.join('|')})`
+      i = close + 1
+      continue
+    }
+    if (ch === '.' || ch === '+' || ch === '^' || ch === '$' || ch === '(' || ch === ')' || ch === '|' || ch === '[' || ch === ']' || ch === '\\') {
+      re += '\\' + ch
+      i += 1
+      continue
+    }
+    re += ch
+    i += 1
+  }
+  return new RegExp('^' + re + '$')
+}
+
+export function matchesAnyPattern(rel: string, patterns: string[]): boolean {
+  const normalized = rel.split(sep).join('/')
+  for (const p of patterns) {
+    if (globToRegex(p).test(normalized)) return true
+  }
+  return false
+}
+
+export function findMatchingMapper(
+  rel: string,
+  mappers: FilePatternMapper[],
+): FilePatternMapper | undefined {
+  const normalized = rel.split(sep).join('/')
+  for (const m of mappers) {
+    if (globToRegex(m.pattern).test(normalized)) return m
+  }
+  return undefined
+}
+
+// ---------------------------------------------------------------------------
+// Filesystem walker
+// ---------------------------------------------------------------------------
+
+interface FsEntry {
+  rel: string
+  fullPath: string
+  mtimeMs: number
+}
+
+/**
+ * Walk `contentDir` and yield every file whose relative path matches
+ * one of the include patterns and none of the excludes. Skips dotfiles
+ * and dotdirs except when explicitly named in a pattern (matches the
+ * watcher's behavior).
+ */
+export function walkFiles(
+  contentDir: string,
+  includePatterns: string[],
+  excludePatterns: string[] = [],
+): FsEntry[] {
+  const out: FsEntry[] = []
+  const includeRegexes = includePatterns.map(globToRegex)
+  const excludeRegexes = excludePatterns.map(globToRegex)
+
+  function recurse(dir: string): void {
+    let entries: import('fs').Dirent[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true }) as unknown as import('fs').Dirent[]
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const name = String(entry.name)
+      const full = join(dir, name)
+      const rel = relative(contentDir, full).split(sep).join('/')
+
+      if (name.startsWith('.')) continue
+      if (excludeRegexes.some(r => r.test(rel))) continue
+
+      if (entry.isDirectory()) {
+        recurse(full)
+        continue
+      }
+      if (entry.isFile() && includeRegexes.some(r => r.test(rel))) {
+        try {
+          const st = statSync(full)
+          out.push({ rel, fullPath: full, mtimeMs: st.mtimeMs })
+        } catch {
+          // racing delete; skip
+        }
+      }
+    }
+  }
+
+  recurse(contentDir)
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Reconcile
+// ---------------------------------------------------------------------------
+
+export interface ReconcileResult {
+  table: string
+  scanned: number
+  indexed: number
+  removed: number
+  skipped: number
+  errors: number
+}
+
+export interface ReconcileDeps {
+  /** Index a doc into the underlying search adapter. */
+  index: (key: string, doc: Record<string, unknown>) => Promise<void>
+  /** Remove a doc from the underlying search adapter. */
+  remove: (key: string) => Promise<void>
+  /**
+   * Scan the underlying table for existing keys + their indexed mtime.
+   * Defaults to `antfly.scanTable` in production. Test seam.
+   */
+  scanIndex?: (tableName: string) => AsyncGenerator<{ key: string; mtimeMs: number }>
+}
+
+async function* defaultScanIndex(
+  tableName: string,
+): AsyncGenerator<{ key: string; mtimeMs: number }> {
+  for await (const { key, doc } of antfly.scanTable(tableName)) {
+    const mtime = typeof doc[MTIME_FIELD] === 'number'
+      ? (doc[MTIME_FIELD] as number)
+      : Number(doc[MTIME_FIELD] ?? 0)
+    yield { key, mtimeMs: Number.isFinite(mtime) ? mtime : 0 }
+  }
+}
+
+/**
+ * Reconcile the search index for one file-backed content type against
+ * the current state of `contentDir`. Idempotent.
+ *
+ * Default flow (no escape hatch):
+ *   1. Walk fs, build map of rel→{key, mtime}
+ *   2. Scan index, build map of key→indexedMtime
+ *   3. For each fs entry whose key is missing or whose mtime > indexedMtime,
+ *      read the file, build the doc via mapper.fileToDoc, attach _mtime_ms,
+ *      call deps.index.
+ *   4. For each indexed key absent from the fs map, call deps.remove.
+ *
+ * Escape-hatch flow (def.onSync set):
+ *   1. Walk fs, call def.onSync(rel, content) for every match.
+ *   2. (Orphan removal still runs, using mapper.fileToId to translate
+ *      fs rel → key for set membership.)
+ */
+export async function performStartupReconcile(
+  def: FileBackedContentTypeDefinition,
+  contentDir: string,
+  deps: ReconcileDeps,
+): Promise<ReconcileResult> {
+  const tableName = def.table.startsWith('bakin_') ? def.table : `bakin_${def.table}`
+  const result: ReconcileResult = {
+    table: tableName,
+    scanned: 0,
+    indexed: 0,
+    removed: 0,
+    skipped: 0,
+    errors: 0,
+  }
+
+  const includePatterns = def.filePatterns.map(p => p.pattern)
+  const fsEntries = walkFiles(contentDir, includePatterns, def.excludePatterns ?? [])
+  result.scanned = fsEntries.length
+
+  // Build fs key→entry map (mapper.fileToId can return null to skip).
+  const fsByKey = new Map<string, { entry: FsEntry; mapper: FilePatternMapper }>()
+  for (const entry of fsEntries) {
+    const mapper = findMatchingMapper(entry.rel, def.filePatterns)
+    if (!mapper) continue
+    const key = mapper.fileToId(entry.rel)
+    if (key === null) continue
+    fsByKey.set(key, { entry, mapper })
+  }
+
+  // Build index key→mtime map.
+  const indexedMtimes = new Map<string, number>()
+  const scanFn = deps.scanIndex ?? defaultScanIndex
+  try {
+    for await (const { key, mtimeMs } of scanFn(tableName)) {
+      indexedMtimes.set(key, mtimeMs)
+    }
+  } catch (err) {
+    log.warn('Index scan failed during reconcile', err, { table: tableName })
+  }
+
+  const useEscapeHatch = typeof def.onSync === 'function'
+
+  for (const [key, { entry, mapper }] of fsByKey) {
+    const indexedMtime = indexedMtimes.get(key) ?? 0
+    const drift = !indexedMtimes.has(key) || entry.mtimeMs > indexedMtime
+    if (!drift) {
+      result.skipped++
+      continue
+    }
+    try {
+      let content = ''
+      if (!entry.rel.startsWith('assets/') || entry.rel.endsWith('.meta.json')) {
+        content = readFileSync(entry.fullPath, 'utf-8')
+      }
+      if (useEscapeHatch) {
+        await def.onSync!(entry.rel, content)
+        result.indexed++
+        continue
+      }
+      const doc = await mapper.fileToDoc(entry.rel, content)
+      if (doc === null) {
+        result.skipped++
+        continue
+      }
+      await deps.index(key, { ...doc, [MTIME_FIELD]: entry.mtimeMs })
+      result.indexed++
+    } catch (err) {
+      log.warn('Reconcile index failed', err, { table: tableName, key })
+      result.errors++
+    }
+  }
+
+  // Orphans: indexed keys that no longer exist on disk
+  for (const indexedKey of indexedMtimes.keys()) {
+    if (fsByKey.has(indexedKey)) continue
+    try {
+      if (def.onUnlink) {
+        // Escape-hatch unlink can't reverse-derive a file path from a key,
+        // so we delegate via the helper's standard remove path. The plugin
+        // can still observe the removal through its own bookkeeping.
+        await deps.remove(indexedKey)
+      } else {
+        await deps.remove(indexedKey)
+      }
+      result.removed++
+    } catch (err) {
+      log.warn('Reconcile remove failed', err, { table: tableName, key: indexedKey })
+      result.errors++
+    }
+  }
+
+  log.info('Startup reconcile complete', {
+    table: tableName,
+    scanned: result.scanned,
+    indexed: result.indexed,
+    removed: result.removed,
+    skipped: result.skipped,
+    errors: result.errors,
+  })
+
+  return result
+}
