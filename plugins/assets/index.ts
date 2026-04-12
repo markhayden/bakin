@@ -138,24 +138,37 @@ const assetsPlugin: BakinPlugin = {
 
     /**
      * Compute pdf_url / image_url for multimodal indexing. Only PDFs get
-     * a pdf_url, only files under asset_type='images' get an image_url.
-     * URLs are `file://` references — Antfly's scraping layer reads them
-     * directly from disk, bypassing the HTTP path entirely (and its
-     * hardcoded private-IP block). The Handlebars {{#if}} guards in the
-     * embedding templates skip the helper when the URL is empty so non-
-     * PDF, non-image assets still index via their sidecar metadata.
+     * a pdf_url, only raster images that CLIP can actually process get
+     * an image_url. URLs are `file://` references — Antfly's scraping
+     * layer reads them directly from disk, bypassing the HTTP path
+     * entirely (and its hardcoded private-IP block).
+     *
+     * SVG and ICO are excluded from image_url because Antfly's image
+     * processor uses Go's standard image library, which cannot decode
+     * vector or indexed-palette formats. CLIP also fundamentally needs
+     * raster pixel data. The Handlebars {{#if}} guards in the embedding
+     * templates skip the helper when the URL is empty so non-PDF,
+     * non-raster-image assets still index via their sidecar metadata.
      */
     function computeMediaUrls(
       assetRelPath: string,
       filename: string,
       assetType: string,
     ): { pdf_url: string; image_url: string } {
-      const isPdf = filename.toLowerCase().endsWith('.pdf')
-      const isImage = assetType === 'images'
+      const lower = filename.toLowerCase()
+      const isPdf = lower.endsWith('.pdf')
+      const isRasterImage =
+        assetType === 'images' &&
+        (lower.endsWith('.png') ||
+          lower.endsWith('.jpg') ||
+          lower.endsWith('.jpeg') ||
+          lower.endsWith('.gif') ||
+          lower.endsWith('.webp') ||
+          lower.endsWith('.bmp'))
 
       return {
         pdf_url: isPdf ? buildAssetFileUrl(assetRelPath) : '',
-        image_url: isImage ? buildAssetFileUrl(assetRelPath) : '',
+        image_url: isRasterImage ? buildAssetFileUrl(assetRelPath) : '',
       }
     }
 
