@@ -331,15 +331,23 @@ export async function batchRemove(tableName: string, keys: string[]): Promise<nu
  * Build the reranker config for a QueryRequest, honoring the per-call
  * `rerank` override and the global `settings.antfly.search.reranker.enabled`
  * switch. Returns undefined when reranking should be skipped.
+ *
+ * Antfly requires the reranker config to specify either `field` or
+ * `template` — otherwise it returns a 400 ("reranker config must specify
+ * either field or template"). Bakin passes `field` from the caller
+ * (sourced from each content type's `rerankField`). When no field is
+ * supplied, reranking is skipped for that query rather than erroring.
  */
 function buildRerankerConfig(
   settings: ReturnType<typeof getSettings>,
   rerank: boolean | undefined,
+  field: string | undefined,
 ): Record<string, unknown> | undefined {
   if (rerank === false) return undefined
+  if (!field) return undefined
   const cfg = settings.antfly.search.reranker
   if (!cfg?.enabled) return undefined
-  const out: Record<string, unknown> = { provider: cfg.provider, model: cfg.model }
+  const out: Record<string, unknown> = { provider: cfg.provider, model: cfg.model, field }
   if (typeof cfg.threshold === 'number') out.threshold = cfg.threshold
   return out
 }
@@ -366,6 +374,7 @@ export async function queryTable(
     strategy?: 'rrf' | 'semantic_only' | 'full_text_only'
     indexes?: string[]
     rerank?: boolean
+    rerankField?: string
   } = {},
 ): Promise<{ results: SearchResult[]; aggregations?: Record<string, unknown>; took: number; total: number }> {
   const client = getClient()
@@ -410,7 +419,7 @@ export async function queryTable(
     request.aggregations = options.aggregations as QueryRequest['aggregations']
   }
 
-  const rerankerCfg = buildRerankerConfig(settings, options.rerank)
+  const rerankerCfg = buildRerankerConfig(settings, options.rerank, options.rerankField)
   if (rerankerCfg) {
     request.reranker = rerankerCfg as QueryRequest['reranker']
   }
@@ -447,6 +456,7 @@ export async function multiQuery(
     aggregations?: Record<string, unknown>
     indexesByTable?: Record<string, string[]>
     rerank?: boolean
+    rerankFieldByTable?: Record<string, string>
   } = {},
 ): Promise<{ results: SearchResult[]; aggregations?: Record<string, unknown>; took: number; total: number }> {
   const client = getClient()
@@ -457,7 +467,6 @@ export async function multiQuery(
   const settings = getSettings()
   const limit = options.limit ?? settings.antfly.search.defaultLimit
   const perTable = Math.ceil(limit / tables.length)
-  const rerankerCfg = buildRerankerConfig(settings, options.rerank)
 
   const requests: QueryRequest[] = tables.map(tableName => {
     const req: QueryRequest = {
@@ -476,6 +485,11 @@ export async function multiQuery(
     if (options.aggregations) {
       req.aggregations = options.aggregations as QueryRequest['aggregations']
     }
+    const rerankerCfg = buildRerankerConfig(
+      settings,
+      options.rerank,
+      options.rerankFieldByTable?.[tableName],
+    )
     if (rerankerCfg) {
       req.reranker = rerankerCfg as QueryRequest['reranker']
     }

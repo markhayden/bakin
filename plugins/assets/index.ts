@@ -78,6 +78,7 @@ const assetsPlugin: BakinPlugin = {
         image_url: { type: 'keyword' },
       },
       searchableFields: ['description', 'tags', 'file_name'],
+      rerankField: 'description',
       // Unused when `indexes` is set, but the type requires it. Kept as the
       // equivalent template to keep the legacy synthesis path readable.
       embeddingTemplate: '{{description}} {{tags}} {{file_name}}',

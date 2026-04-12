@@ -213,6 +213,7 @@ const schedulePlugin: BakinPlugin = {
         updated_at: { type: 'datetime' },
       },
       searchableFields: ['name', 'command'],
+      rerankField: 'command',
       embeddingTemplate: '{{name}} {{command}}',
       facets: ['agent', 'enabled'],
       reindex: async function* () {

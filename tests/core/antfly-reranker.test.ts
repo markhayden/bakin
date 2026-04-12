@@ -89,22 +89,37 @@ describe('antfly reranker wiring', () => {
     settingsState.rerankerThreshold = 0.0
   })
 
-  it('attaches reranker config when enabled in settings (default)', async () => {
+  it('attaches reranker config when enabled in settings + rerankField supplied', async () => {
     const antfly = await resetAndInitAntfly()
-    await antfly.queryTable('bakin_tasks', 'build feature')
+    await antfly.queryTable('bakin_tasks', 'build feature', { rerankField: 'description' })
 
     expect(mockQuery).toHaveBeenCalledTimes(1)
     const request = mockQuery.mock.calls[0][1] as { reranker?: Record<string, unknown> }
     expect(request.reranker).toEqual({
       provider: 'termite',
       model: 'mixedbread-ai/mxbai-rerank-base-v1',
+      field: 'description',
       threshold: 0.0,
     })
   })
 
+  it('omits reranker when rerankField is not supplied', async () => {
+    const antfly = await resetAndInitAntfly()
+    // Antfly rejects reranker configs without a field or template, so Bakin
+    // skips reranking entirely for content types that did not opt in via
+    // SearchContentTypeDefinition.rerankField.
+    await antfly.queryTable('bakin_tasks', 'build feature')
+
+    const request = mockQuery.mock.calls[0][1] as { reranker?: Record<string, unknown> }
+    expect(request.reranker).toBeUndefined()
+  })
+
   it('omits reranker when rerank: false is passed per-query', async () => {
     const antfly = await resetAndInitAntfly()
-    await antfly.queryTable('bakin_tasks', 'build feature', { rerank: false })
+    await antfly.queryTable('bakin_tasks', 'build feature', {
+      rerank: false,
+      rerankField: 'description',
+    })
 
     const request = mockQuery.mock.calls[0][1] as { reranker?: Record<string, unknown> }
     expect(request.reranker).toBeUndefined()
@@ -113,7 +128,7 @@ describe('antfly reranker wiring', () => {
   it('omits reranker when globally disabled in settings', async () => {
     settingsState.rerankerEnabled = false
     const antfly = await resetAndInitAntfly()
-    await antfly.queryTable('bakin_tasks', 'build feature')
+    await antfly.queryTable('bakin_tasks', 'build feature', { rerankField: 'description' })
 
     const request = mockQuery.mock.calls[0][1] as { reranker?: Record<string, unknown> }
     expect(request.reranker).toBeUndefined()
@@ -122,7 +137,10 @@ describe('antfly reranker wiring', () => {
   it('per-query rerank: false still wins when settings enable reranker', async () => {
     settingsState.rerankerEnabled = true
     const antfly = await resetAndInitAntfly()
-    await antfly.queryTable('bakin_tasks', 'build feature', { rerank: false })
+    await antfly.queryTable('bakin_tasks', 'build feature', {
+      rerank: false,
+      rerankField: 'description',
+    })
 
     const request = mockQuery.mock.calls[0][1] as { reranker?: Record<string, unknown> }
     expect(request.reranker).toBeUndefined()
@@ -131,18 +149,21 @@ describe('antfly reranker wiring', () => {
   it('omits threshold from reranker config when not set', async () => {
     settingsState.rerankerThreshold = undefined
     const antfly = await resetAndInitAntfly()
-    await antfly.queryTable('bakin_tasks', 'build feature')
+    await antfly.queryTable('bakin_tasks', 'build feature', { rerankField: 'description' })
 
     const request = mockQuery.mock.calls[0][1] as { reranker?: Record<string, unknown> }
     expect(request.reranker).toEqual({
       provider: 'termite',
       model: 'mixedbread-ai/mxbai-rerank-base-v1',
+      field: 'description',
     })
   })
 
-  it('multiQuery attaches reranker to every per-table request', async () => {
+  it('multiQuery attaches reranker per-table using rerankFieldByTable map', async () => {
     const antfly = await resetAndInitAntfly()
-    await antfly.multiQuery('build feature', ['bakin_tasks', 'bakin_assets'])
+    await antfly.multiQuery('build feature', ['bakin_tasks', 'bakin_assets'], {
+      rerankFieldByTable: { bakin_tasks: 'description', bakin_assets: 'description' },
+    })
 
     expect(mockMultiquery).toHaveBeenCalledTimes(1)
     const requests = mockMultiquery.mock.calls[0][0] as Array<{ reranker?: Record<string, unknown> }>
@@ -151,9 +172,23 @@ describe('antfly reranker wiring', () => {
       expect(req.reranker).toEqual({
         provider: 'termite',
         model: 'mixedbread-ai/mxbai-rerank-base-v1',
+        field: 'description',
         threshold: 0.0,
       })
     }
+  })
+
+  it('multiQuery omits reranker for tables missing from the rerankFieldByTable map', async () => {
+    const antfly = await resetAndInitAntfly()
+    await antfly.multiQuery('build feature', ['bakin_tasks', 'bakin_assets'], {
+      rerankFieldByTable: { bakin_tasks: 'description' },
+    })
+
+    const requests = mockMultiquery.mock.calls[0][0] as Array<{ reranker?: Record<string, unknown>; table: string }>
+    const tasksReq = requests.find(r => r.table === 'bakin_tasks')!
+    const assetsReq = requests.find(r => r.table === 'bakin_assets')!
+    expect(tasksReq.reranker).toBeDefined()
+    expect(assetsReq.reranker).toBeUndefined()
   })
 
   it('mapHits exposes rerankScore when Antfly returns one', async () => {
@@ -173,7 +208,7 @@ describe('antfly reranker wiring', () => {
     }))
 
     const antfly = await resetAndInitAntfly()
-    const result = await antfly.queryTable('bakin_tasks', 'build feature')
+    const result = await antfly.queryTable('bakin_tasks', 'build feature', { rerankField: 'description' })
 
     expect(result.results).toHaveLength(1)
     expect(result.results[0].rerankScore).toBe(0.94)
