@@ -113,7 +113,7 @@ bakin/
 │   │   ├── vault.ts        # Credential management
 │   │   ├── audit.ts        # Structured audit logging
 │   │   ├── logger.ts       # Structured logging
-│   │   ├── calendar-cron.ts    # Scheduled content execution
+│   │   ├── messaging-cron.ts    # Scheduled content execution
 │   │   ├── continuation.ts     # Task dependency resolution
 │   │   ├── lifecycle.ts        # Graceful shutdown
 │   │   ├── middleware.ts       # Request validation
@@ -150,7 +150,6 @@ On startup, the server initializes these subsystems:
 | **Dispatch** | Assigns TODO tasks to agents via OpenClaw | 5 min |
 | **Watchdog** | Detects stuck tasks, alerts via Discord | 5 min |
 | **Doctor** | Health checks, auto-repair, skill sync | 30 min |
-| **Calendar Cron** | Executes scheduled content items | 5 min |
 | **File Watcher** | Monitors `~/.bakin/` for changes, broadcasts SSE events | Real-time |
 | **SSE** | Real-time event stream to dashboard clients | 30s keepalive |
 
@@ -190,18 +189,23 @@ Bakin exposes a REST API on the same port as the dashboard. Full documentation i
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/events` | SSE event stream (file changes, task events, alerts) |
+| `GET` | `/api/version` | Server version |
 | `GET` | `/api/dispatch` | Dispatch timer state |
 | `POST` | `/api/dispatch` | Trigger immediate dispatch |
 | `GET` | `/api/settings` | Current settings |
 | `POST` | `/api/settings` | Update settings (partial merge) |
+| `GET` | `/api/paths` | Content directory paths (`?key=<k>` for a single path) |
 | `GET` | `/api/agents` | List all agents with status |
 | `GET` | `/api/agents/:id/status` | Detailed agent status |
 | `POST` | `/api/agents/:id/message` | Send message to agent |
 | `GET` | `/api/agents/:id/tasks` | Tasks assigned to agent |
+| `GET` | `/api/agents/avatar` | Agent avatar image (`?id=<agentId>`) |
 | `GET` | `/api/plugins/health/doctor` | Run health checks (`?fresh=true` to force re-run) |
-| `GET` | `/api/search` | Search indexed content (`?q=<query>&table=&agent=&limit=`) |
+| `GET` | `/api/search` | Search indexed content (`?q=<query>&table=&agent=&limit=&facets=`) |
+| `GET` | `/api/antfly/health` | Search table stats and document counts |
+| `POST` | `/api/reindex` | Reindex content to Antfly (`?table=&rebuild=true`) |
 | `GET` | `/api/docs` | API documentation (JSON) |
-| `POST` | `/api/reindex` | Reindex all content to Antfly |
+| `POST` | `/api/activity/emit` | Emit activity event |
 | `POST` | `/mcp` | MCP tool server (Streamable HTTP + SSE) |
 
 API docs are regenerated automatically every time the server starts.
@@ -217,18 +221,58 @@ The `bakin` CLI wraps the HTTP API for terminal use. All commands hit `http://lo
 bakin status                        # Health overview
 bakin doctor                        # Run health checks
 bakin dispatch                      # Trigger task dispatch
+bakin start                         # Start Bakin (setup mcporter + launch server)
+bakin stop                          # Stop Bakin server
+bakin reboot                        # Restart Bakin server
+bakin logs                          # Tail audit log
+bakin logs mcp                      # Filter logs by type
+bakin paths                         # Show content directory paths
 
 # Tasks
 bakin tasks list                    # All tasks
 bakin tasks list --column=todo      # Filter by column
 bakin tasks create "Fix the bug"    # Create task
 bakin tasks move abc123 done        # Move task
+bakin tasks log abc123 "progress"   # Log progress on task
+bakin tasks block abc123 "reason"   # Block a task
+bakin tasks complete abc123 "done"  # Mark task done
+
+# Workflows
+bakin workflows list                # List workflow definitions
+bakin workflows start <taskId> <wfId>  # Start workflow
+bakin workflows step <taskId>       # Get current step
+bakin workflows submit <taskId> <stepId> '{}'  # Submit step output
 
 # Agents
 bakin agents list                   # All agents + status
 bakin agents status patch           # Detailed status
 bakin agents tasks patch            # Tasks for agent
 bakin agents send patch "Hey"       # Message an agent
+bakin agent-rules --check           # Check orchestrator rules
+bakin agent-rules --apply           # Apply orchestrator rules
+
+# Schedule
+bakin schedule                      # List scheduled jobs
+bakin schedule add "name" "0 9 * * *"  # Create job
+bakin schedule pause <jobId>        # Pause job
+bakin schedule resume <jobId>       # Resume job
+bakin schedule run <jobId>          # Trigger immediate run
+bakin schedule runs <jobId>         # View run history
+bakin schedule remove <jobId>       # Delete job
+
+# Messaging
+bakin messaging                     # List messaging items
+bakin messaging create "Post title" agent --channels=discord
+bakin messaging approve <id>        # Approve item
+bakin messaging sessions            # List brainstorm sessions
+bakin messaging session-create <agentId> "Topic"
+bakin messaging message <sessionId> "Let's plan this"
+bakin messaging confirm <sessionId> # Confirm plan → create items
+
+# Assets
+bakin trash                         # List trashed assets
+bakin trash restore <filename>      # Restore trashed asset
+bakin trash empty                   # Permanently delete all trash
 
 # Settings
 bakin settings get                  # All settings
@@ -243,31 +287,35 @@ bakin plugins remove my-plugin      # Remove plugin
 
 # Search & Docs
 bakin search "runway video"                    # Search all indexed content
-bakin search "tacos" --table=content           # Filter by table
+bakin search "shots" --table=assets            # Filter by table
 bakin search "deploy fix" --agent=patch        # Filter by agent
-bakin search "photos" --table=content --limit=5  # Combine filters
+bakin search:stats                             # Antfly health + doc counts
 bakin docs                                     # Print API docs
 bakin reindex                                  # Reindex content to Antfly
+bakin reindex --table=assets --rebuild         # Rebuild single table
+
+# Service
+bakin setup service                 # Install macOS LaunchAgent
+bakin setup service --uninstall     # Remove LaunchAgent
 ```
 
 ---
 
 ## Doctor
 
-Bakin Doctor runs on startup and every 30 minutes to keep systems healthy. It performs 6 checks:
+Bakin Doctor runs on startup and every 30 minutes to keep systems healthy. It runs checks across several categories:
 
-| Check | Auto-Fix? | Description |
-|-------|-----------|-------------|
-| **agent-roster** | No | Verifies Bakin agents match OpenClaw config |
-| **personas** | Yes | Creates stub persona files for missing agents |
-| **taskboard** | No | Validates OpenClaw `flow_runs` SQLite is accessible |
-| **skill** | Yes | Installs/updates the Bakin skill in OpenClaw |
-| **gateway** | No | Pings the OpenClaw gateway |
-| **antfly** | No | Verifies Antfly connection when enabled |
+| Category | Checks | Auto-Fix? |
+|----------|--------|-----------|
+| **Infrastructure** | content-dir, gateway, antfly, search-tables, service | Mixed |
+| **Agents** | agent-roster, personas, orchestrator-rules, mcporter, agent-* managed blocks | Mixed |
+| **Tasks** | taskboard, task-consistency, tasks.order_integrity, skill-exec-tools | Mixed |
+| **Workflows** | skill-sync, workflow-skills, workflow-definitions, workflow-instances | Yes |
+| **Content** | assets, schedule-sync | No |
 
 **Auto-fix policy:**
-- **Safe** (auto-fix): Creating files/directories, installing the Bakin skill
-- **Unsafe** (notify): Roster mismatches, gateway down, task DB issues — issues requiring human judgment are reported to main-operator via OpenClaw
+- **Safe** (auto-fix): Creating files/directories, syncing skills and rules, cleaning stale workflow instances
+- **Unsafe** (notify): Roster mismatches, gateway down, task DB issues — issues requiring human judgment are reported via OpenClaw
 
 Run manually: `bakin doctor` or `GET /api/plugins/health/doctor?fresh=true`
 
@@ -287,36 +335,26 @@ openclaw skills list
 
 ## Antfly (Vector Search)
 
-[AntflyDB](https://antfly.dev) provides hybrid search (full-text BM25 + semantic vector) across all content. Bakin works without it — file-only mode is the default. When enabled, Bakin auto-manages the entire lifecycle: installs the binary, starts the server, creates tables with embeddings, indexes content, and stops it on shutdown.
+[AntflyDB](https://antfly.dev) provides hybrid search (full-text BM25 + semantic vector) across all content. Enabled by default — Bakin auto-manages the entire lifecycle: starts the server, creates tables with embeddings, indexes content, and stops it on shutdown. Bakin still works without it (set `antfly.enabled` to `false` for file-only mode).
 
-### Quick Setup
+### Setup
+
+Antfly is enabled by default. The onboarding flow handles installation:
 
 ```bash
-bakin setup antfly    # Install binary + enable + reindex (one command)
+bakin install antfly    # Install AntflyDB via Homebrew
+bakin install models    # Download Termite ML models (~1.5GB)
 ```
 
-This will:
-1. Install AntflyDB via Homebrew (`brew install --cask antflydb/antfly/antfly`)
-2. Enable Antfly in settings
-3. Start the Antfly server
-4. Create all tables with full-text + embeddings indexes
-5. Reindex existing content
-
-### Manual Setup
-
-If you prefer to set it up yourself:
+Or install manually:
 
 ```bash
-# Install the binary
 brew install --cask antflydb/antfly/antfly
+```
 
-# Enable in Bakin
-bakin settings set antfly.enabled true
+On next server start, Bakin auto-starts Antfly, creates tables, and indexes existing content. To backfill manually:
 
-# Restart Bakin (Antfly auto-starts, creates tables, waits for shards)
-npm run dev
-
-# Backfill existing content
+```bash
 bakin reindex
 ```
 
@@ -350,13 +388,14 @@ For the full architecture see `.claude/knowledge/search-system.md`. For the mult
 ### Search
 
 ```bash
-bakin search "runway video clips"                   # All tables
+bakin search "runway video clips"                    # All tables
 bakin search "landscape shots" --table=assets        # Single table
 bakin search "deploy fix" --agent=patch              # By agent
 bakin search "portraits" --table=assets --limit=20   # Combined filters
+bakin search:stats                                   # Table health + doc counts
 
 # API
-curl "http://localhost:3737/api/search?q=runway+video&table=assets&agent=pixel&limit=5"
+curl "http://localhost:3737/api/search?q=runway+video&table=assets&limit=5"
 ```
 
 ### Antfly Dashboard
@@ -383,7 +422,7 @@ Key defaults:
 | `watchdog.stuckThresholdMs` | `1800000` (30m) | Alert if task has no progress |
 | `doctor.intervalMs` | `1800000` (30m) | Health check interval |
 | `doctor.autoFixSkill` | `true` | Auto-fix safe issues |
-| `antfly.enabled` | `false` | Enable Antfly search |
+| `antfly.enabled` | `true` | Enable Antfly search |
 | `sse.maxClients` | `50` | Max SSE connections |
 
 ---
@@ -446,7 +485,7 @@ npm run build     # Production build
 ### Project Conventions
 
 - **TypeScript strict mode** with path aliases (`@/` → `src/`, `@bakin/*` → `plugins/*`)
-- **Hybrid storage** — tasks in OpenClaw SQLite, decisions and content as files in `~/.bakin/`
+- **Hybrid storage** — tasks in OpenClaw SQLite, projects and assets as files in `~/.bakin/`
 - **Plugin architecture** — extend via `plugins/` directory and `bakin.config.ts`
 - **Structured audit logging** — all state changes logged to `~/.bakin/audit.jsonl`
 - **OpenClaw HTTP client** — no CLI exec; all agent communication goes through the gateway API
