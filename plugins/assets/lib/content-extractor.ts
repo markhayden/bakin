@@ -78,14 +78,25 @@ function truncate(text: string): string {
  * Extract text from a PDF via pdf-parse. Lazy-imported so the 2MB
  * pdfjs-dist dependency only loads when actually needed — Bakin's
  * startup cost stays zero for workspaces that never index a PDF.
+ *
+ * pdf-parse v2.x exports a `PDFParse` class (completely different from
+ * v1's default-export function). Construct, call getText(), destroy.
+ * The concatenated document text comes back as TextResult.text.
  */
 async function extractPdfText(absPath: string): Promise<string> {
-  const mod = await import('pdf-parse')
-  const pdfParse = (mod.default ?? mod) as (
-    buffer: Buffer,
-    options?: { max?: number },
-  ) => Promise<{ text: string }>
+  const mod = await import('pdf-parse') as unknown as {
+    PDFParse: new (options: { data: Uint8Array }) => {
+      getText(params?: { last?: number }): Promise<{ text: string }>
+      destroy(): Promise<void>
+    }
+  }
+  const { PDFParse } = mod
   const buf = readFileSync(absPath)
-  const parsed = await pdfParse(buf, { max: MAX_PDF_PAGES })
-  return parsed.text
+  const parser = new PDFParse({ data: new Uint8Array(buf) })
+  try {
+    const result = await parser.getText({ last: MAX_PDF_PAGES })
+    return result.text ?? ''
+  } finally {
+    await parser.destroy()
+  }
 }

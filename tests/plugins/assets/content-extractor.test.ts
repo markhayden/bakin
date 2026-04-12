@@ -10,12 +10,24 @@ import { tmpdir } from 'os'
 
 // Mock pdf-parse — the real one needs a valid PDF. For unit tests we
 // just need to prove extractAssetContent ROUTES to the PDF branch and
-// surfaces whatever text the library returns.
-vi.mock('pdf-parse', () => ({
-  default: vi.fn(async (buf: Buffer) => ({
-    text: `pdf-parse returned ${buf.length} bytes of fake text: tzatziki Worcestershire`,
-  })),
-}))
+// surfaces whatever text the library returns. pdf-parse v2 exports a
+// PDFParse class with getText() and destroy() methods, so the mock
+// stands up a matching class.
+vi.mock('pdf-parse', () => {
+  class MockPDFParse {
+    private byteLen: number
+    constructor(options: { data: Uint8Array }) {
+      this.byteLen = options.data.length
+    }
+    async getText() {
+      return {
+        text: `pdf-parse returned ${this.byteLen} bytes of fake text: tzatziki Worcestershire`,
+      }
+    }
+    async destroy() {}
+  }
+  return { PDFParse: MockPDFParse }
+})
 
 // Logger mock — silences warnings during tests and avoids the real
 // logger's globalThis side effects.

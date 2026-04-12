@@ -48,12 +48,21 @@ vi.mock('../../../src/core/watcher', () => ({
 }))
 
 // Mock pdf-parse so PDF tests don't require a real PDF — the extractor
-// lazy-imports the module, and this mock replaces it.
-vi.mock('pdf-parse', () => ({
-  default: vi.fn(async (buf: Buffer) => ({
-    text: `MOCK PDF CONTENT: ${buf.length} bytes extracted`,
-  })),
-}))
+// lazy-imports the module, and this mock replaces it. pdf-parse v2
+// exports a PDFParse class, not a default function.
+vi.mock('pdf-parse', () => {
+  class MockPDFParse {
+    private byteLen: number
+    constructor(options: { data: Uint8Array }) {
+      this.byteLen = options.data.length
+    }
+    async getText() {
+      return { text: `MOCK PDF CONTENT: ${this.byteLen} bytes extracted` }
+    }
+    async destroy() {}
+  }
+  return { PDFParse: MockPDFParse }
+})
 
 import assetsPlugin from '@bakin/assets'
 
