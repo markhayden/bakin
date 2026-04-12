@@ -158,6 +158,28 @@ export interface SearchSchemaField {
   type: 'text' | 'keyword' | 'number' | 'boolean' | 'datetime' | 'array'
 }
 
+/**
+ * One vector index on a search table. A content type can declare multiple
+ * indexes to embed the same document into several vector spaces — e.g. a
+ * text index using BGE and a visual index using CLIP on the assets table.
+ * Each index has its own embedder (resolved via embedderRef), template,
+ * and optional chunker config.
+ */
+export interface SearchIndexDefinition {
+  /** Index name as stored in Antfly. Must be stable across restarts. */
+  name: string
+  /** Ref into settings.antfly.embedders — 'default', 'visual', or custom. */
+  embedderRef: string
+  /** Handlebars template for this index's embedding input. */
+  embeddingTemplate: string
+  /** Per-index chunker config, overrides any table-level default. */
+  chunker?: {
+    enabled: boolean
+    targetTokens?: number
+    overlapTokens?: number
+  }
+}
+
 /** Definition for a searchable content type registered by a plugin */
 export interface SearchContentTypeDefinition {
   /** Table name — auto-prefixed with `bakin_`. E.g., 'tasks' → 'bakin_tasks' */
@@ -166,15 +188,36 @@ export interface SearchContentTypeDefinition {
   schema: Record<string, SearchSchemaField>
   /** Fields to include in full-text search */
   searchableFields: string[]
-  /** Handlebars template for embedding generation */
+  /**
+   * Handlebars template for embedding generation. Used when `indexes` is
+   * not provided — the registry synthesizes a single default index named
+   * `embeddings` with this template and the default embedder.
+   */
   embeddingTemplate: string
+  /**
+   * Optional per-index definitions. When provided, overrides
+   * `embeddingTemplate` and creates one embedding index per entry with
+   * its own embedder. Used by content types that want multimodal indexing
+   * (e.g. assets with both a text index and a visual index).
+   */
+  indexes?: SearchIndexDefinition[]
   /** Fields to expose as aggregatable facets */
   facets?: string[]
+  /**
+   * Document field to use as input for the cross-encoder reranker. When
+   * set, queries against this content type attach Antfly's reranker
+   * (configured in settings.antfly.search.reranker) and score the
+   * query-document pair using the value at this field. When unset,
+   * queries skip reranking for this content type — Antfly requires a
+   * `field` or `template` in the reranker config, and passing an
+   * unconfigured reranker produces a 400 from the server.
+   */
+  rerankField?: string
   /** TTL duration (Go format: '24h', '7d', '30d') */
   ttl?: string
   /** TTL field (defaults to 'created_at') */
   ttlField?: string
-  /** Chunking config for long documents */
+  /** Chunking config for long documents — used by the synthesized default index. */
   chunker?: {
     enabled: boolean
     targetTokens?: number
@@ -204,6 +247,21 @@ export interface SearchQueryParams {
   limit?: number
   /** Result offset for pagination */
   offset?: number
+  /**
+   * Whether to run the cross-encoder reranker on results. Defaults to
+   * true when the reranker is enabled in settings. Set false for latency-
+   * sensitive paths (facet-only queries, ID lookups, bulk scans) where
+   * the extra ~100-500ms isn't worth it.
+   */
+  rerank?: boolean
+  /**
+   * Raw Antfly aggregations passed through unchanged to QueryRequest.
+   * Use for date histograms, range buckets, stats aggregations, or any
+   * other shape beyond the term-facet convenience in `facets`. Merged
+   * with facet-derived aggregations (these win on key collision).
+   * See Antfly API docs for the aggregation schema.
+   */
+  aggregations?: Record<string, unknown>
 }
 
 /** A single search result */
@@ -212,12 +270,24 @@ export interface SearchResult {
   table: string
   score: number
   fields: Record<string, unknown>
+  /** Cross-encoder reranker score (present when a reranker was used). */
+  rerankScore?: number
 }
 
 /** Search response from a query */
 export interface SearchResponse {
   results: SearchResult[]
+  /**
+   * Mapped term-facet aggregations — keyed by facet field, each a list
+   * of { value, count }. Populated from `params.facets` for convenience.
+   */
   aggregations?: Record<string, Array<{ value: string; count: number }>>
+  /**
+   * Raw aggregation response from Antfly, unmodified. Populated whenever
+   * the underlying query returned aggregations — use this for non-term
+   * shapes like date_histogram, range, stats, etc.
+   */
+  rawAggregations?: Record<string, unknown>
   meta: {
     query: string
     total: number

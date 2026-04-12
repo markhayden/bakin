@@ -7,14 +7,17 @@
 import type {
   SearchAPI,
   SearchContentTypeDefinition,
+  SearchIndexDefinition,
   SearchQueryParams,
   SearchResponse,
+  SearchResult,
   SearchTransformOp,
 } from '../../packages/core/src/plugin-types'
 import * as antfly from './antfly'
 import { broadcast } from './sse'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
+import { resolveEmbedder } from './embedder-resolver'
 
 const log = createLogger('search-registry')
 
@@ -93,6 +96,28 @@ function buildAntflySchema(def: SearchContentTypeDefinition): { default_type: st
   }
 }
 
+/**
+ * Compute the effective list of vector indexes for a content type. When
+ * `def.indexes` is set, returns it as-is. Otherwise synthesizes a single
+ * default index named `embeddings` from the top-level `embeddingTemplate`
+ * — this preserves backward compatibility with every content type
+ * registered before multi-index support existed, and keeps their Antfly
+ * table schemas stable across the upgrade.
+ */
+function getEffectiveIndexes(def: SearchContentTypeDefinition): SearchIndexDefinition[] {
+  if (def.indexes && def.indexes.length > 0) {
+    return def.indexes
+  }
+  return [
+    {
+      name: 'embeddings',
+      embedderRef: 'default',
+      embeddingTemplate: def.embeddingTemplate,
+      chunker: def.chunker,
+    },
+  ]
+}
+
 function buildAntflyIndexes(def: SearchContentTypeDefinition): Record<string, Record<string, unknown>> {
   const settings = getSettings()
   const indexes: Record<string, Record<string, unknown>> = {
@@ -100,20 +125,21 @@ function buildAntflyIndexes(def: SearchContentTypeDefinition): Record<string, Re
       name: 'search',
       type: 'full_text',
     },
-    embeddings: {
-      name: 'embeddings',
-      type: 'embeddings',
-      template: def.embeddingTemplate,
-      embedder: {
-        provider: settings.antfly.embedder.provider,
-        model: settings.antfly.embedder.model,
-      },
-    },
   }
 
-  if (def.chunker?.enabled) {
-    indexes.embeddings.chunk_size = def.chunker.targetTokens ?? settings.antfly.chunking.defaultTargetTokens
-    indexes.embeddings.chunk_overlap = def.chunker.overlapTokens ?? settings.antfly.chunking.defaultOverlapTokens
+  for (const idx of getEffectiveIndexes(def)) {
+    const embedder = resolveEmbedder(idx.embedderRef, settings)
+    const entry: Record<string, unknown> = {
+      name: idx.name,
+      type: 'embeddings',
+      template: idx.embeddingTemplate,
+      embedder: { provider: embedder.provider, model: embedder.model },
+    }
+    if (idx.chunker?.enabled) {
+      entry.chunk_size = idx.chunker.targetTokens ?? settings.antfly.chunking.defaultTargetTokens
+      entry.chunk_overlap = idx.chunker.overlapTokens ?? settings.antfly.chunking.defaultOverlapTokens
+    }
+    indexes[idx.name] = entry
   }
 
   return indexes
@@ -183,6 +209,27 @@ export function getPluginTable(pluginId: string): string | undefined {
 }
 
 /**
+ * Get the effective vector index names for a table. Used by query callers
+ * to know which indexes to target when running semantic search. Returns
+ * ['embeddings'] for tables with no registration (e.g. unknown or legacy
+ * tables) so queries degrade gracefully rather than targeting nothing.
+ */
+export function getIndexNames(tableName: string): string[] {
+  const def = getRegistry().contentTypes.get(tableName)
+  if (!def) return ['embeddings']
+  return getEffectiveIndexes(def).map(i => i.name)
+}
+
+/**
+ * Get the rerank field for a table, or undefined if the content type did
+ * not declare one. Callers that pass this to queryTable will have the
+ * cross-encoder reranker attached only when a field is set.
+ */
+export function getRerankField(tableName: string): string | undefined {
+  return getRegistry().contentTypes.get(tableName)?.rerankField
+}
+
+/**
  * Build a SearchAPI instance scoped to a specific plugin.
  * This is what gets injected as ctx.search in PluginContext.
  */
@@ -242,18 +289,25 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
         }
       }
 
-      // Build aggregations from facets
-      const aggregations: Record<string, unknown> | undefined = params.facets?.length
-        ? Object.fromEntries(
-            params.facets.map(f => [f, { type: 'terms', field: f, size: 50 }])
-          )
-        : undefined
+      // Build aggregations from facets (term buckets) and merge with any
+      // raw aggregations the caller passed directly. Caller-provided
+      // aggregations win on key collision.
+      const facetAggs: Record<string, unknown> = {}
+      for (const f of params.facets ?? []) {
+        facetAggs[f] = { type: 'terms', field: f, size: 50 }
+      }
+      const mergedAggs = { ...facetAggs, ...(params.aggregations ?? {}) }
+      const aggregations: Record<string, unknown> | undefined =
+        Object.keys(mergedAggs).length > 0 ? mergedAggs : undefined
 
       const result = await antfly.queryTable(tableName, params.q, {
         limit: params.limit,
         offset: params.offset,
         filters: params.filters,
         aggregations,
+        indexes: getIndexNames(tableName),
+        rerank: params.rerank,
+        rerankField: getRerankField(tableName),
       })
 
       // Map aggregation results to our format
@@ -272,8 +326,9 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
       }
 
       return {
-        results: result.results,
+        results: result.results as SearchResult[],
         aggregations: mappedAggs,
+        rawAggregations: result.aggregations as Record<string, unknown> | undefined,
         meta: {
           query: params.q,
           total: result.total,
@@ -320,8 +375,11 @@ export async function reindexContentTypes(opts?: {
           if (batch.length >= BATCH_SIZE) {
             const batchMap: Record<string, Record<string, unknown>> = {}
             for (const b of batch) batchMap[b.key] = b.doc
-            await antfly.batchIndex(tableName, batchMap)
-            count += batch.length
+            // Use the actual inserted count from antfly.batchIndex. The
+            // function returns 0 on batch failure (e.g. if Antfly drops
+            // the batch after exhausting retries). Blindly adding
+            // `batch.length` would over-report success in those cases.
+            count += await antfly.batchIndex(tableName, batchMap)
             batch.length = 0
             // Broadcast milestone progress to health page (every batch for live counts)
             broadcast({ type: 'reindex.progress', table: tableName, pluginId: def.pluginId, indexed: count })
@@ -330,8 +388,7 @@ export async function reindexContentTypes(opts?: {
         if (batch.length > 0) {
           const batchMap: Record<string, Record<string, unknown>> = {}
           for (const b of batch) batchMap[b.key] = b.doc
-          await antfly.batchIndex(tableName, batchMap)
-          count += batch.length
+          count += await antfly.batchIndex(tableName, batchMap)
         }
 
       }
@@ -389,6 +446,8 @@ export async function crossTableSearch(q: string, opts?: {
       offset: opts?.offset,
       filters: opts?.filters,
       aggregations,
+      indexes: getIndexNames(tableName),
+      rerankField: getRerankField(tableName),
     })
 
     return {
@@ -404,7 +463,15 @@ export async function crossTableSearch(q: string, opts?: {
     return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'antfly' } }
   }
 
-  const result = await antfly.multiQuery(q, tables, { limit })
+  const indexesByTable: Record<string, string[]> = {}
+  const rerankFieldByTable: Record<string, string> = {}
+  for (const t of tables) {
+    indexesByTable[t] = getIndexNames(t)
+    const field = getRerankField(t)
+    if (field) rerankFieldByTable[t] = field
+  }
+
+  const result = await antfly.multiQuery(q, tables, { limit, indexesByTable, rerankFieldByTable })
   return {
     results: result.results.slice(0, limit),
     meta: { query: q, total: result.total, took_ms: result.took, source: 'antfly' },

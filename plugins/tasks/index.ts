@@ -72,6 +72,7 @@ const tasksPlugin: BakinPlugin = {
         updated_at: { type: 'datetime' },
       },
       searchableFields: ['title', 'description', 'log_text', 'blocked_reason'],
+      rerankField: 'description',
       embeddingTemplate: '{{title}} {{description}} {{log_text}}',
       facets: ['status', 'agent', 'created_by', 'project_id'],
       chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
