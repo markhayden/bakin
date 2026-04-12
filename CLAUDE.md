@@ -36,7 +36,8 @@ src/
     openclaw-client.ts     — OpenClaw HTTP gateway client
     watcher.ts             — Chokidar file watcher integration
     search-registry.ts     — Search content type registry, ctx.search provider
-    search-cleanup.ts      — Periodic orphan cleanup for search indexes
+    search-cleanup.ts      — Periodic orphan backstop scan (default 7d)
+    search-reconcile.ts    — Startup mtime-aware reconcile + glob matcher
   lib/                     — Shared types and utilities (client + server safe)
     core-constants.ts      — APP_NAME, APP_SLUG, branding constants
     plugin-types.ts        — BakinPlugin, PluginContext, StorageAdapter, EventBus interfaces
@@ -118,7 +119,7 @@ Every plugin has:
 - `components/` — plugin-specific UI components
 - `types.ts` — plugin-specific type definitions
 
-Plugin context provides: `storage`, `events`, `registerNav()`, `registerRoute()`, `registerSlot()`, `registerExecTool()`, `registerSkill()`, `watchFiles()`, `getSettings()`, `updateSettings()`, `activity` (log + audit), `hooks` (register + has + invoke), `search` (registerContentType, index, remove, transform, query)
+Plugin context provides: `storage`, `events`, `registerNav()`, `registerRoute()`, `registerSlot()`, `registerExecTool()`, `registerSkill()`, `watchFiles()`, `getSettings()`, `updateSettings()`, `activity` (log + audit), `hooks` (register + has + invoke), `search` (registerContentType, registerFileBackedContentType, index, remove, transform, query)
 
 Routes registered as: `/api/plugins/{pluginId}/{path}` via the catch-all route.
 
@@ -213,7 +214,7 @@ Each plugin declares a `settingsSchema` with typed fields (string, number, boole
 All user-facing filter/view state **must** be backed by URL query parameters so pages are bookmarkable and support browser back/forward. Use `useQueryState(key, default)` for single values and `useQueryArrayState(key)` for arrays (comma-separated). Params are omitted when at their default value. Pages using these hooks must wrap their content component in `<Suspense>`. See `.claude/knowledge/url-state-deep-linking.md` for conventions and implementation status.
 
 ### Search Indexing
-Plugins register content types via `ctx.search.registerContentType()` during `activate()`. Mutations dual-write to source and index via `ctx.search.index()`. Deletions sync via `ctx.search.remove()` (called from the watcher unlink hook). Orphan cleanup runs on a periodic timer via `src/core/search-cleanup.ts`. All Antfly tables use the `bakin_` prefix. Config in `settings.antfly.*`. Antfly is optional — all calls are no-ops when disabled. See `.claude/knowledge/search-system.md`.
+File-backed plugins (projects, workflows, assets) register via `ctx.search.registerFileBackedContentType()` during `activate()` — the helper auto-wires the watcher sync/unlink hooks AND schedules a startup mtime reconcile, so filesystem deletes propagate to the search index within ~300ms without each plugin owning the wiring. Non-filesystem-backed plugins (tasks, schedule, team, audit) use the bare `ctx.search.registerContentType()` and call `ctx.search.index()` / `remove()` themselves. REST/MCP routes still call the search mutators inline for synchronous consistency — the watcher path is the safety net for writes that bypass REST. The orphan backstop scan runs every 7d via `src/core/search-cleanup.ts` to catch the rare events the watcher missed. All Antfly tables use the `bakin_` prefix. Config in `settings.antfly.*`. Antfly is optional — all calls are no-ops when disabled. See `.claude/knowledge/search-system.md` for the "Three consistency paths" architecture and `.claude/knowledge/search-plugin-guide.md` for the helper API walkthrough.
 
 ### Onboarding
 `src/core/onboarding/` — eight component modules (mkdir, settings, openclaw, antfly, models, mcporter, llm, channels) with a shared `check()` + `install()` contract. The orchestrator in `index.ts` runs them in a fixed dependency order, writes `~/.bakin/.onboarded` on completion, and the doctor gates on the marker via `settings.doctor.requireOnboard`. CLI surface: `bakin onboard` (aggregated), `bakin mkdir`, `bakin install {antfly,models,mcporter}`, `bakin check {openclaw,llm,channels,all}`, `bakin settings init`. On a fresh machine, use `bakin onboard --yes` to set everything up non-interactively.
