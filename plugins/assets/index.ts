@@ -26,6 +26,7 @@ import { registerSyncHook } from '../../src/core/watcher'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { buildAssetFileUrl } from './lib/asset-url'
+import { extractAssetContent } from './lib/content-extractor'
 
 const log = createLogger('assets')
 
@@ -70,24 +71,30 @@ const assetsPlugin: BakinPlugin = {
         file_name: { type: 'text' },
         tool: { type: 'keyword' },
         updated_at: { type: 'datetime' },
-        // pdf_url and image_url are computed at index time — they point at
-        // the loopback-only internal file server so Antfly's {{remotePDF}}
-        // and {{remoteMedia}} helpers can fetch the file contents during
-        // embedding. Never populated from disk, never shown to users.
-        pdf_url: { type: 'keyword' },
+        // `content` is populated server-side by extractAssetContent —
+        // plain text for .md/.txt/.json/.csv/.yaml, pdf-parse output for
+        // .pdf, empty for everything else. We extract in Bakin rather
+        // than letting Antfly's {{remotePDF}}/{{remoteText}} helpers run
+        // because Antfly's Go PDF library silently fails on any PDF with
+        // complex font encoding (see Bakin issue #72).
+        content: { type: 'text' },
+        // `image_url` is a file:// URL for raster images that CLIP can
+        // actually decode. Populated at index time by computeMediaUrls.
+        // The visual index template dereferences it via {{remoteMedia}}
+        // — that path works because `file://` skips Antfly's scraping
+        // layer's hardcoded private-IP block.
         image_url: { type: 'keyword' },
       },
-      searchableFields: ['description', 'tags', 'file_name'],
+      searchableFields: ['description', 'tags', 'file_name', 'content'],
       rerankField: 'description',
       // Unused when `indexes` is set, but the type requires it. Kept as the
       // equivalent template to keep the legacy synthesis path readable.
-      embeddingTemplate: '{{description}} {{tags}} {{file_name}}',
+      embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{content}}',
       indexes: [
         {
           name: 'assets_text',
           embedderRef: 'default',
-          embeddingTemplate:
-            '{{description}} {{tags}} {{file_name}}{{#if pdf_url}} {{remotePDF url=pdf_url}}{{/if}}',
+          embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{content}}',
           chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
         },
         {
@@ -125,7 +132,8 @@ const assetsPlugin: BakinPlugin = {
                 const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
                 const assetFilename = metaFile.replace('.meta.json', '')
                 const key = `assets/${typeName}/${subdir}/${assetFilename}`
-                yield { key, doc: assetToSearchDoc(raw, assetFilename, typeName, key) }
+                const doc = await assetToSearchDoc(raw, assetFilename, typeName, key)
+                yield { key, doc }
               } catch { /* skip unreadable sidecars */ }
             }
           }
@@ -138,26 +146,19 @@ const assetsPlugin: BakinPlugin = {
     })
 
     /**
-     * Compute pdf_url / image_url for multimodal indexing. Only PDFs get
-     * a pdf_url, only raster images that CLIP can actually process get
-     * an image_url. URLs are `file://` references — Antfly's scraping
-     * layer reads them directly from disk, bypassing the HTTP path
-     * entirely (and its hardcoded private-IP block).
-     *
-     * SVG and ICO are excluded from image_url because Antfly's image
-     * processor uses Go's standard image library, which cannot decode
-     * vector or indexed-palette formats. CLIP also fundamentally needs
-     * raster pixel data. The Handlebars {{#if}} guards in the embedding
-     * templates skip the helper when the URL is empty so non-PDF,
-     * non-raster-image assets still index via their sidecar metadata.
+     * Compute image_url for the visual index. Only raster image formats
+     * that CLIP can actually decode get a URL — SVG and ICO are excluded
+     * because Antfly's image processor (Go's standard image library)
+     * cannot handle vector or indexed-palette formats, and CLIP needs
+     * raster pixel data anyway. The {{#if image_url}} guard in the
+     * visual index template skips the helper when the URL is empty.
      */
-    function computeMediaUrls(
+    function computeImageUrl(
       assetRelPath: string,
       filename: string,
       assetType: string,
-    ): { pdf_url: string; image_url: string } {
+    ): string {
       const lower = filename.toLowerCase()
-      const isPdf = lower.endsWith('.pdf')
       const isRasterImage =
         assetType === 'images' &&
         (lower.endsWith('.png') ||
@@ -166,27 +167,23 @@ const assetsPlugin: BakinPlugin = {
           lower.endsWith('.gif') ||
           lower.endsWith('.webp') ||
           lower.endsWith('.bmp'))
-
-      return {
-        pdf_url: isPdf ? buildAssetFileUrl(assetRelPath) : '',
-        image_url: isRasterImage ? buildAssetFileUrl(assetRelPath) : '',
-      }
+      return isRasterImage ? buildAssetFileUrl(assetRelPath) : ''
     }
 
     /** Convert sidecar metadata to a search document */
-    function assetToSearchDoc(
+    async function assetToSearchDoc(
       meta: Record<string, unknown>,
       filename: string,
       assetType: string,
       assetRelPath: string,
-    ): Record<string, unknown> {
-      // assetRelPath is everything under the assets root, e.g.
-      // 'images/test/foo.png' — the internal file server resolves paths
-      // relative to getBakinPaths().assets. The registry reindex generator
-      // yields keys as `assets/{type}/{subdir}/{file}`, so we strip the
-      // leading `assets/` to align with the file server's base.
+    ): Promise<Record<string, unknown>> {
+      // assetRelPath is `assets/{type}/{subdir}/{file}` (the registry key).
+      // Strip the leading `assets/` to get the path relative to the assets
+      // root, which is what buildAssetFileUrl expects.
       const rel = assetRelPath.replace(/^assets\//, '')
-      const urls = computeMediaUrls(rel, filename, assetType)
+      const image_url = computeImageUrl(rel, filename, assetType)
+      const absPath = join(getContentDir(), assetRelPath)
+      const content = await extractAssetContent(absPath, filename)
       return {
         description: (meta.description as string) || '',
         tags: Array.isArray(meta.tags) ? (meta.tags as string[]).join(', ') : '',
@@ -196,8 +193,8 @@ const assetsPlugin: BakinPlugin = {
         file_name: filename,
         tool: (meta.tool as string) || '',
         updated_at: (meta.created as string) || new Date().toISOString(),
-        pdf_url: urls.pdf_url,
-        image_url: urls.image_url,
+        content,
+        image_url,
       }
     }
 
@@ -211,7 +208,8 @@ const assetsPlugin: BakinPlugin = {
         const filename = relPath.split('/').pop() || ''
         const parts = relPath.split('/')
         const assetType = parts[1] || 'other'
-        await ctx.search.index(relPath, assetToSearchDoc(raw, filename, assetType, relPath))
+        const doc = await assetToSearchDoc(raw, filename, assetType, relPath)
+        await ctx.search.index(relPath, doc)
       } catch (err) {
         log.warn('Failed to index asset for search', { path: relPath, error: err instanceof Error ? err.message : String(err) })
       }

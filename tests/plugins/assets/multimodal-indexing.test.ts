@@ -2,11 +2,10 @@
  * Unit coverage for the multimodal indexing path in the assets plugin.
  * Verifies that:
  *   - bakin_assets is registered with two indexes (assets_text, assets_visual)
- *     pointing at the right embedders and templates
- *   - pdf_url is computed for .pdf files only, image_url for asset_type='images'
- *   - non-PDF, non-image files get empty pdf_url and image_url
- *   - URLs are file:// references under the assets root (Antfly reads the
- *     file directly from disk — no internal HTTP file server involved)
+ *   - image_url is computed for raster images (CLIP-compatible) only
+ *   - SVG and non-image assets get no image_url
+ *   - content is populated server-side for text and (mocked) PDF assets
+ *     via extractAssetContent, NOT via {{remotePDF}}/{{remoteText}} helpers
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
@@ -48,10 +47,18 @@ vi.mock('../../../src/core/watcher', () => ({
   registerSyncHook: vi.fn(),
 }))
 
+// Mock pdf-parse so PDF tests don't require a real PDF — the extractor
+// lazy-imports the module, and this mock replaces it.
+vi.mock('pdf-parse', () => ({
+  default: vi.fn(async (buf: Buffer) => ({
+    text: `MOCK PDF CONTENT: ${buf.length} bytes extracted`,
+  })),
+}))
+
 import assetsPlugin from '@bakin/assets'
 
 // ---------------------------------------------------------------------------
-// Fixture setup: create sidecars for a PDF, an image, and a text file
+// Fixture setup
 // ---------------------------------------------------------------------------
 
 function setupFixtures() {
@@ -60,8 +67,8 @@ function setupFixtures() {
   mkdirSync(join(assetsRoot, 'images', 'task-1'), { recursive: true })
   mkdirSync(join(assetsRoot, 'text', 'task-1'), { recursive: true })
 
-  // PDF asset
-  writeFileSync(join(assetsRoot, 'other', 'task-1', 'wyoming.pdf'), 'pdf-bytes')
+  // PDF asset (mocked pdf-parse returns synthetic content)
+  writeFileSync(join(assetsRoot, 'other', 'task-1', 'wyoming.pdf'), 'fake-pdf-bytes')
   writeFileSync(
     join(assetsRoot, 'other', 'task-1', 'wyoming.pdf.meta.json'),
     JSON.stringify({
@@ -86,8 +93,7 @@ function setupFixtures() {
     }),
   )
 
-  // SVG asset — vector, should be excluded from image_url since CLIP
-  // and Antfly's image processor can't decode vector formats
+  // SVG asset — vector, should be excluded from image_url
   writeFileSync(join(assetsRoot, 'images', 'task-1', 'icon.svg'), '<svg/>')
   writeFileSync(
     join(assetsRoot, 'images', 'task-1', 'icon.svg.meta.json'),
@@ -100,10 +106,13 @@ function setupFixtures() {
     }),
   )
 
-  // Plain text asset — should get no media URLs
-  writeFileSync(join(assetsRoot, 'text', 'task-1', 'notes.txt'), 'plain text')
+  // Markdown asset with body content that should be extracted into `content`
   writeFileSync(
-    join(assetsRoot, 'text', 'task-1', 'notes.txt.meta.json'),
+    join(assetsRoot, 'text', 'task-1', 'notes.md'),
+    '# Meeting Notes\n\nautolyse banneton sourdough bulk fermentation',
+  )
+  writeFileSync(
+    join(assetsRoot, 'text', 'task-1', 'notes.md.meta.json'),
     JSON.stringify({
       agent: 'roscoe',
       taskId: 'task-1',
@@ -141,13 +150,16 @@ describe('assets multimodal indexing', () => {
     expect(byName.assets_visual).toBeDefined()
   })
 
-  it('text index uses default embedder with PDF extraction helper', async () => {
+  it('text index template references the content field directly (no remotePDF)', async () => {
     const def = await getRegisteredDef()
     const textIndex = (def.indexes as SearchIndexDefinition[]).find(i => i.name === 'assets_text')!
 
     expect(textIndex.embedderRef).toBe('default')
     expect(textIndex.embeddingTemplate).toContain('{{description}}')
-    expect(textIndex.embeddingTemplate).toContain('{{remotePDF url=pdf_url}}')
+    expect(textIndex.embeddingTemplate).toContain('{{content}}')
+    // The old {{remotePDF}} path is dead — Antfly's Go PDF library fails
+    // silently on real-world PDFs (see Bakin issue #72).
+    expect(textIndex.embeddingTemplate).not.toContain('{{remotePDF')
     expect(textIndex.chunker?.enabled).toBe(true)
   })
 
@@ -159,13 +171,29 @@ describe('assets multimodal indexing', () => {
     expect(visualIndex.embeddingTemplate).toContain('{{remoteMedia url=image_url}}')
   })
 
-  it('schema includes pdf_url and image_url keyword fields', async () => {
+  it('schema includes content and image_url; no pdf_url', async () => {
     const def = await getRegisteredDef()
-    expect(def.schema.pdf_url).toEqual({ type: 'keyword' })
+    expect(def.schema.content).toEqual({ type: 'text' })
     expect(def.schema.image_url).toEqual({ type: 'keyword' })
+    expect(def.schema.pdf_url).toBeUndefined()
   })
 
-  it('reindex yields a doc with pdf_url set for a PDF asset', async () => {
+  it('reindex populates content from markdown body', async () => {
+    const def = await getRegisteredDef()
+
+    const docs: Record<string, Record<string, unknown>> = {}
+    for await (const { key, doc } of def.reindex()) {
+      docs[key] = doc as Record<string, unknown>
+    }
+
+    const mdDoc = docs['assets/text/task-1/notes.md']
+    expect(mdDoc).toBeDefined()
+    expect(mdDoc.content).toContain('autolyse')
+    expect(mdDoc.content).toContain('banneton')
+    expect(mdDoc.image_url).toBe('')
+  })
+
+  it('reindex populates content from PDF body via pdf-parse', async () => {
     const def = await getRegisteredDef()
 
     const docs: Record<string, Record<string, unknown>> = {}
@@ -175,12 +203,13 @@ describe('assets multimodal indexing', () => {
 
     const pdfDoc = docs['assets/other/task-1/wyoming.pdf']
     expect(pdfDoc).toBeDefined()
-    const expectedAbsPath = join(assetsRoot, 'other', 'task-1', 'wyoming.pdf')
-    expect(pdfDoc.pdf_url).toBe(`file://${expectedAbsPath}`)
+    // The mocked pdf-parse returns synthetic content — presence proves the
+    // extractor was called, not just that metadata was copied.
+    expect(pdfDoc.content).toContain('MOCK PDF CONTENT')
     expect(pdfDoc.image_url).toBe('')
   })
 
-  it('reindex yields a doc with image_url set for an image asset', async () => {
+  it('reindex populates image_url for raster images and empty content', async () => {
     const def = await getRegisteredDef()
 
     const docs: Record<string, Record<string, unknown>> = {}
@@ -192,10 +221,12 @@ describe('assets multimodal indexing', () => {
     expect(imageDoc).toBeDefined()
     const expectedAbsPath = join(assetsRoot, 'images', 'task-1', 'diagram.png')
     expect(imageDoc.image_url).toBe(`file://${expectedAbsPath}`)
-    expect(imageDoc.pdf_url).toBe('')
+    // Images are not text-extractable — content stays empty, CLIP handles
+    // the pixel data through the visual index template.
+    expect(imageDoc.content).toBe('')
   })
 
-  it('excludes SVG from image_url even when asset_type is images', async () => {
+  it('excludes SVG from image_url and leaves content empty', async () => {
     const def = await getRegisteredDef()
 
     const docs: Record<string, Record<string, unknown>> = {}
@@ -205,30 +236,13 @@ describe('assets multimodal indexing', () => {
 
     const svgDoc = docs['assets/images/task-1/icon.svg']
     expect(svgDoc).toBeDefined()
-    // SVG and other vector/indexed formats are excluded because Antfly's
-    // image processor (Go's standard image library) cannot decode them,
-    // and CLIP needs raster pixel data anyway.
     expect(svgDoc.image_url).toBe('')
-    expect(svgDoc.pdf_url).toBe('')
-    // Sidecar metadata is still indexed via the text index
+    expect(svgDoc.content).toBe('')
+    // Sidecar metadata is still indexed via description/tags/filename
     expect(svgDoc.description).toBe('Vector icon')
   })
 
-  it('reindex yields a doc with empty media URLs for a plain text asset', async () => {
-    const def = await getRegisteredDef()
-
-    const docs: Record<string, Record<string, unknown>> = {}
-    for await (const { key, doc } of def.reindex()) {
-      docs[key] = doc as Record<string, unknown>
-    }
-
-    const textDoc = docs['assets/text/task-1/notes.txt']
-    expect(textDoc).toBeDefined()
-    expect(textDoc.pdf_url).toBe('')
-    expect(textDoc.image_url).toBe('')
-  })
-
-  it('preserves existing sidecar metadata fields alongside media URLs', async () => {
+  it('preserves existing sidecar metadata fields alongside extracted content', async () => {
     const def = await getRegisteredDef()
 
     const docs: Record<string, Record<string, unknown>> = {}
