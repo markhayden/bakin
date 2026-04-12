@@ -287,13 +287,18 @@ beacon reindex
 
 ### How It Works
 
-- **Auto-start:** Beacon spawns `antfly swarm` as a child process on boot (port 8080)
-- **Auto-stop:** Killed gracefully on Beacon shutdown (SIGTERM, force after 5s)
-- **Auto-tables:** 5 tables created on first run with full-text + embeddings indexes
-- **Embeddings:** Built-in all-MiniLM-L6-v2 model (384-dim, INT8-quantized) — no external model server needed
+- **Auto-start:** Bakin spawns `antfly swarm` as a child process on boot (port 8080)
+- **Auto-stop:** Killed gracefully on Bakin shutdown (SIGTERM, force after 5s)
+- **Auto-tables:** 7 tables created on first run — tasks, assets, projects, workflows, schedule, team, audit
+- **Multimodal indexing:** Text content indexed via BAAI/bge-small-en-v1.5, image content via OpenAI CLIP (clip-vit-base-patch32), both running locally through Antfly's Termite ML subsystem. The assets table uses two embedding indexes side by side (`assets_text` + `assets_visual`) so text and visual queries hit the right modality automatically.
+- **Server-side content extraction:** PDFs and text formats (.md, .txt, .json, .csv, .yaml) are extracted to a `content` field in Bakin before indexing — pdf-parse handles PDFs, fs.readFileSync handles plain text. See `.claude/knowledge/multimodal-search.md` for the pipeline.
+- **Cross-encoder reranker:** Single-modality tables get a post-retrieval rerank pass via mxbai-rerank-base-v1 for sharper relevance. Multimodal tables (assets) skip reranking — see `search-system.md` for why.
+- **Schema migration:** Bumping `SCHEMA_VERSION` in `src/core/search-migration.ts` drops and recreates all bakin_* tables on next boot, with background reindex. Embedder and schema changes happen transparently.
 - **Dual-write sync:** File watcher indexes content to Antfly on every write
-- **Fire-and-forget:** All indexing is non-blocking — file writes succeed even if Antfly is down
-- **External Antfly:** If Antfly is already running on port 8080 (started externally), Beacon detects it and skips spawning a child process
+- **Fire-and-forget:** All indexing is non-blocking with exponential-backoff retries on transient shard-startup errors — file writes succeed even if Antfly is down
+- **External Antfly:** If Antfly is already running on port 8080 (started externally), Bakin detects it and skips spawning a child process
+
+For the full architecture see `.claude/knowledge/search-system.md`. For the multimodal pipeline specifically see `.claude/knowledge/multimodal-search.md`.
 
 ### What Gets Indexed
 

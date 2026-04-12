@@ -15,14 +15,33 @@ Response:
 ```json
 {
   "results": [
-    { "id": "task-abc", "table": "bakin_tasks", "score": 0.87, "fields": { "title": "...", "status": "done" }, "_table": "bakin_tasks" }
+    {
+      "id": "task-abc",
+      "table": "bakin_tasks",
+      "score": 0.87,
+      "fields": { "title": "...", "status": "done" },
+      "indexScores": {
+        "/path/to/full_text_index_v0": 0.35,
+        "embeddings": 0.91
+      },
+      "rerankScore": 0.94,
+      "_table": "bakin_tasks"
+    }
   ],
   "aggregations": {
     "status": [{ "value": "done", "count": 5 }, { "value": "inProgress", "count": 3 }]
   },
+  "rawAggregations": null,
   "meta": { "query": "hero image", "total": 8, "took_ms": 12, "source": "antfly" }
 }
 ```
+
+**Result fields:**
+- `score` — final merged RRF score (or reranker score when reranker is attached). Lower is *better* for distance-based embeddings, higher is better for RRF. Don't rely on the absolute magnitude — use rank order.
+- `indexScores` — per-index score breakdown. The Bleve full-text key is an absolute filesystem path (legacy Antfly quirk). Embedding indexes use their declared names (`embeddings`, `assets_text`, `assets_visual`, …). A result with a `bleve`/full-text key in `indexScores` means the query matched by keyword; a result with only embedding-index keys means only semantic similarity matched.
+- `rerankScore` — cross-encoder score, present only when the queried content type had `rerankField` set and the reranker ran. Skipped for multi-modality tables like `bakin_assets`.
+- `aggregations` — term-bucket facets (from `facets` query param). Convenience shape.
+- `rawAggregations` — Antfly's raw aggregation response when the query used the advanced `aggregations` API (date histograms, range buckets, sub-aggregations). Not populated by `GET /api/search` since it doesn't expose the raw aggregations input — use `ctx.search.query()` from a plugin route when you need non-term aggregations.
 
 ### POST /api/reindex — Reindex content types
 
@@ -149,12 +168,14 @@ bakin search:stats   # show Antfly status and per-table doc counts
 
 ## Tables
 
-| Table | Plugin | Facets | Chunker |
-|-------|--------|--------|---------|
-| `bakin_tasks` | tasks | status, agent, created_by, project_id | Yes (log_text) |
-| `bakin_assets` | assets | asset_type, agent, tool | No |
-| `bakin_projects` | projects | status | Yes (body) |
-| `bakin_workflows` | workflows | type, status | No |
-| `bakin_schedule` | schedule | agent, enabled | No |
-| `bakin_team` | team | model, status | No |
-| `bakin_audit` | _audit (core) | event, agent, channel | No (TTL) |
+| Table | Plugin | Facets | Chunker | Indexes | Reranker field |
+|---|---|---|---|---|---|
+| `bakin_tasks` | tasks | status, agent, created_by, project_id | Yes (200/25) | `embeddings` (BGE) | `description` |
+| `bakin_assets` | assets | asset_type, agent, tool | Yes (200/25 on text) | `assets_text` (BGE), `assets_visual` (CLIP) | — (skipped, multimodal) |
+| `bakin_projects` | projects | status | Yes (200/25) | `embeddings` (BGE) | `body` |
+| `bakin_workflows` | workflows | type, status | No | `embeddings` (BGE) | `description` |
+| `bakin_schedule` | schedule | agent, enabled | No | `embeddings` (BGE) | `command` |
+| `bakin_team` | team | model, status | No | `embeddings` (BGE) | `soul` |
+| `bakin_audit` | _audit (core) | event, agent, channel | No (TTL) | `embeddings` (BGE) | `content` |
+
+**`bakin_assets` is the only multi-index table.** See `.claude/knowledge/multimodal-search.md` for why it has separate `assets_text` and `assets_visual` indexes, how server-side content extraction feeds the text index, and the format support matrix for which file types land in which index.
