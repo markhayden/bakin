@@ -17,6 +17,16 @@ const hooks = () => getHookRegistry()
 const AGENT_ID_MAP: Record<string, string> = { main-operator: 'main' }
 const resolveId = (name: string) => AGENT_ID_MAP[name] || name
 
+// Upstream openclaw error bodies land in task logs and audit JSONL via
+// the dispatch catch handlers. Bound the blast radius — a runaway gateway
+// response (HTML error page, stack trace, accidental secret echo) should
+// not balloon the audit file or the task drawer.
+const MAX_ERR_LEN = 500
+function formatDispatchError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  return raw.length > MAX_ERR_LEN ? `${raw.slice(0, MAX_ERR_LEN)}… (truncated)` : raw
+}
+
 interface FailureRecord {
   lastAttempt: number
   count: number
@@ -199,13 +209,14 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         const prev = getFailureRecord(state.failedDispatches[task.id])
         state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1 }
 
+        const errMsg = formatDispatchError(err)
         try {
-          await addTaskLog(task.id, 'system', `Dispatch failed (attempt ${(prev?.count || 0) + 1}): agent "${targetAgent}" not found or unavailable`)
+          await addTaskLog(task.id, 'system', `Dispatch failed (attempt ${(prev?.count || 0) + 1}) → ${targetAgent}: ${errMsg}`)
         } catch {
           // best effort
         }
 
-        appendAudit(contentDir, 'task.dispatch_failed', targetAgent, { id: task.id, title: task.title, error: err instanceof Error ? err.message : String(err), attempt: (prev?.count || 0) + 1 })
+        appendAudit(contentDir, 'task.dispatch_failed', targetAgent, { id: task.id, title: task.title, error: errMsg, attempt: (prev?.count || 0) + 1 })
       }
     }
 
@@ -313,7 +324,8 @@ export async function dispatchSingleTask(
       saveDispatchState(contentDir, state)
 
       try {
-        await addTaskLog(task.id, 'system', `Immediate dispatch failed (attempt ${(prev?.count || 0) + 1}): agent "${targetAgent}" not found or unavailable`)
+        const errMsg = formatDispatchError(err)
+        await addTaskLog(task.id, 'system', `Immediate dispatch failed (attempt ${(prev?.count || 0) + 1}) → ${targetAgent}: ${errMsg}`)
       } catch {
         // best effort
       }
@@ -552,7 +564,8 @@ async function dispatchWorkflowTask(
       state.failedDispatches[task.id] = Date.now()
 
       try {
-        await addTaskLog(task.id, 'system', `Workflow dispatch failed for step "${stepId}": agent "${targetAgent}" unavailable`)
+        const errMsg = formatDispatchError(err)
+        await addTaskLog(task.id, 'system', `Workflow dispatch failed for step "${stepId}" → ${targetAgent}: ${errMsg}`)
       } catch {
         // best effort
       }

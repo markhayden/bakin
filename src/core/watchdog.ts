@@ -47,6 +47,20 @@ function getLastLogTimestamp(task: { log?: { timestamp: string }[] }): Date | nu
 
 function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): boolean {
   if (!agent) return true
+
+  // Primary signal: did the gateway return a successful reply from this
+  // agent recently? Recorded in openclaw-client.sendMessage() — a returned
+  // reply means the gateway routed our request and got a response back,
+  // which is a stronger liveness indicator than an agent-written heartbeat
+  // file (which nothing currently writes).
+  const lastReplyMs = openclaw.getAgentLastReply(agent)
+  if (lastReplyMs !== null && Date.now() - lastReplyMs < 15 * 60 * 1000) {
+    return false
+  }
+
+  // Fallback: legacy agent-written heartbeat file. Kept so an agent that
+  // explicitly calls bakin_exec_heartbeat still counts as alive even if
+  // the server hasn't pinged them recently.
   const heartbeatPath = join(contentDir, 'heartbeats', `${agent}.json`)
   try {
     if (!existsSync(heartbeatPath)) return true
@@ -69,7 +83,7 @@ export function start(contentDir: string, port: number): void {
 
   watchdogTimer = setInterval(async () => {
     try {
-      type WdTask = { id: string; title: string; agent?: string; workflowId?: string; log?: Array<{ message: string; timestamp: string }> }
+      type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; log?: Array<{ message: string; timestamp: string }> }
       const board = await hooks().invoke<{ columns: Record<string, WdTask[]> }>('tasks.readTaskboard', {})
       if (!board) return
       const { columns } = board
@@ -84,8 +98,16 @@ export function start(contentDir: string, port: number): void {
           if (wfInstance && (wfInstance.status === 'pending_approval' || wfInstance.status === 'complete')) continue
         }
 
+        // Fallback chain for "last activity":
+        //   1. Most recent task log entry (agent or system)
+        //   2. The flow row's updated_at — i.e. when the task was last
+        //      mutated (created, moved, dispatched). Grants a fresh task
+        //      a full stuckThresholdMs grace window before it's eligible
+        //      for auto-recovery, so a just-dispatched task doesn't get
+        //      declared "30 min stuck" on the very first watchdog tick.
+        //   3. now() — guarantees we never synthesize an ancient timestamp.
         const lastLogTs = getLastLogTimestamp(task)
-        const lastActivity = lastLogTs ? lastLogTs.getTime() : (now - settings.watchdog.stuckThresholdMs - 1)
+        const lastActivity = lastLogTs?.getTime() ?? task.updatedAt ?? now
         const stuckMs = now - lastActivity
 
         if (stuckMs <= settings.watchdog.stuckThresholdMs) {

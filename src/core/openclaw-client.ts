@@ -9,6 +9,40 @@ import * as vault from './vault'
 
 const log = createLogger('openclaw')
 
+// ---------------------------------------------------------------------------
+// Agent liveness tracker
+//
+// Records the wall-clock time of the last successful gateway reply per
+// agent. The watchdog reads this as the primary "is the agent alive"
+// signal — a returned reply means the gateway routed the message to the
+// agent and got a response back, which is a much more reliable liveness
+// indicator than agent-written heartbeat files (no agent currently
+// writes those).
+//
+// globalThis-backed so the map survives Next.js webpack re-evaluation
+// of this module (same pattern as src/core/sse.ts).
+// ---------------------------------------------------------------------------
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __bakinAgentLastReply: Map<string, number> | undefined
+}
+
+const lastReply: Map<string, number> = (globalThis.__bakinAgentLastReply ??= new Map())
+
+function recordAgentReply(agentId: string): void {
+  lastReply.set(agentId, Date.now())
+}
+
+/**
+ * Wall-clock ms of the last successful gateway reply from this agent
+ * since the server started, or null if we have never heard back from
+ * them. Used by the watchdog as the primary liveness signal.
+ */
+export function getAgentLastReply(agentId: string): number | null {
+  return lastReply.get(agentId) ?? null
+}
+
 function getBaseUrl(): string {
   const settings = getSettings()
   return `${settings.openclaw.gatewayUrl}:${settings.openclaw.gatewayPort}`
@@ -51,6 +85,13 @@ export async function sendMessage(agentId: string, message: string): Promise<str
 
   const data = await res.json()
   const reply = data?.choices?.[0]?.message?.content || ''
+  // Only record liveness on a non-empty reply. The gateway has been
+  // observed returning 200 with empty content during upstream rate-limit
+  // or stub conditions — those are exactly the failures the watchdog
+  // needs to *catch*, so we must not mark the agent as alive on them.
+  if (reply.trim().length > 0) {
+    recordAgentReply(agentId)
+  }
   log.debug('Message sent', { agentId, messageLength: message.length })
   return reply
 }

@@ -207,10 +207,12 @@ app.prepare().then(async () => {
     // MCP endpoint — agent-facing tool server
     if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
       handleMcpRequest(req, res).catch((err) => {
-        log.error('MCP request error', err)
+        const errMsg = err instanceof Error ? err.message : String(err)
+        const errStack = err instanceof Error ? err.stack : undefined
+        log.error('MCP request error', err, { message: errMsg, stack: errStack })
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: 'Internal MCP error' }))
+          res.end(JSON.stringify({ error: 'Internal MCP error', message: errMsg }))
         }
       })
       return
@@ -336,7 +338,8 @@ app.prepare().then(async () => {
       const rebuild = url.searchParams.get('rebuild') === 'true'
       reindexContentTypes({ table, rebuild }).then((results: Array<Record<string, unknown>>) => {
         const total = results.reduce((sum: number, r: Record<string, unknown>) => sum + (r.indexed as number || 0), 0)
-        jsonResponse(res, 200, { ok: true, total, tables: results })
+        const errors = results.filter((r) => r.error).length
+        jsonResponse(res, 200, { ok: errors === 0, total, errors, tables: results })
       }).catch((err: unknown) => {
         jsonResponse(res, 500, { error: String(err) })
       })

@@ -20,7 +20,7 @@
  * returns 'failed' with a remediation pointing at `bakin install antfly`.
  */
 import { spawn } from 'child_process'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { createLogger } from '../logger'
@@ -58,12 +58,81 @@ function modelPath(m: TermiteModel): string {
   return join(termiteModelsRoot(), bucket, m.model)
 }
 
+interface ManifestFile {
+  name: string
+  size: number
+}
+
+/**
+ * A model directory is "complete" only when `model_manifest.json` exists
+ * AND every file it lists is on disk at the expected size. A bare directory
+ * containing only tokenizer/config (no weights) — which is the state a
+ * half-finished `antfly termite pull` leaves behind — fails this check.
+ *
+ * Existence-only checks let broken pulls masquerade as healthy installs;
+ * we ran into exactly that with `BAAI/bge-small-en-v1.5` (config files but
+ * no `model.onnx`), so the table-create call later failed at runtime with
+ * `model not found` instead of being caught by the doctor.
+ */
+function modelComplete(m: TermiteModel): { ok: true } | { ok: false; reason: string } {
+  const root = modelPath(m)
+  if (!existsSync(root)) return { ok: false, reason: 'directory missing' }
+
+  const manifestPath = join(root, 'model_manifest.json')
+  if (!existsSync(manifestPath)) {
+    return { ok: false, reason: 'model_manifest.json missing — pull likely incomplete' }
+  }
+
+  let manifest: { files?: ManifestFile[] }
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+  } catch (err) {
+    return { ok: false, reason: `model_manifest.json unreadable: ${err instanceof Error ? err.message : String(err)}` }
+  }
+
+  const files = Array.isArray(manifest.files) ? manifest.files : []
+  if (files.length === 0) {
+    return { ok: false, reason: 'model_manifest.json lists no files' }
+  }
+
+  for (const f of files) {
+    const fpath = join(root, f.name)
+    if (!existsSync(fpath)) {
+      return { ok: false, reason: `${f.name} missing` }
+    }
+    try {
+      const size = statSync(fpath).size
+      if (typeof f.size === 'number' && size !== f.size) {
+        return { ok: false, reason: `${f.name} size mismatch (expected ${f.size}, got ${size})` }
+      }
+    } catch (err) {
+      return { ok: false, reason: `stat ${f.name} failed: ${err instanceof Error ? err.message : String(err)}` }
+    }
+  }
+
+  return { ok: true }
+}
+
+interface MissingEntry {
+  model: TermiteModel
+  reason: string
+}
+
 function missingModels(): TermiteModel[] {
-  return REQUIRED_MODELS.filter((m) => !existsSync(modelPath(m)))
+  return missingModelEntries().map((e) => e.model)
+}
+
+function missingModelEntries(): MissingEntry[] {
+  const out: MissingEntry[] = []
+  for (const m of REQUIRED_MODELS) {
+    const result = modelComplete(m)
+    if (!result.ok) out.push({ model: m, reason: result.reason })
+  }
+  return out
 }
 
 async function check(): Promise<CheckResult> {
-  const missing = missingModels()
+  const missing = missingModelEntries()
   if (missing.length === 0) {
     return {
       name: 'models',
@@ -75,11 +144,16 @@ async function check(): Promise<CheckResult> {
   return {
     name: 'models',
     status: 'missing',
-    message: `${missing.length} of ${REQUIRED_MODELS.length} Termite model${missing.length === 1 ? '' : 's'} missing`,
-    remediation: 'Run `bakin install models` to download the missing Termite models.',
+    message: `${missing.length} of ${REQUIRED_MODELS.length} Termite model${missing.length === 1 ? '' : 's'} missing or incomplete`,
+    remediation: 'Run `bakin install models` to (re-)download the missing Termite models.',
     details: {
       root: termiteModelsRoot(),
-      missing: missing.map((m) => ({ label: m.label, model: m.model, path: modelPath(m) })),
+      missing: missing.map((e) => ({
+        label: e.model.label,
+        model: e.model.model,
+        path: modelPath(e.model),
+        reason: e.reason,
+      })),
     },
   }
 }
@@ -165,13 +239,15 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
           durationMs: Date.now() - start,
         }
       }
-      // Verify the directory now exists — catches brew-like "success but
-      // no file" failure modes.
-      if (!existsSync(modelPath(m))) {
+      // Verify the manifest + every listed file is present — catches
+      // brew-like "success but no weights" failure modes where the dir
+      // exists but model.onnx never landed.
+      const verified = modelComplete(m)
+      if (!verified.ok) {
         return {
           name: 'models',
           status: 'failed',
-          message: `antfly termite pull ${m.model} reported success but ${modelPath(m)} is still missing`,
+          message: `antfly termite pull ${m.model} reported success but ${verified.reason}`,
           durationMs: Date.now() - start,
         }
       }
@@ -205,4 +281,4 @@ export const modelsComponent: OnboardingComponent = {
 }
 
 // Exported for tests.
-export const _internals = { missingModels, modelPath, runPull }
+export const _internals = { missingModels, missingModelEntries, modelPath, modelComplete, runPull }
