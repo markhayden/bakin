@@ -409,11 +409,14 @@ export interface ReindexTableResult {
   indexed: number
   error?: string
   enrichment?: IndexHealth
+  verified?: number
+  verifyDiscrepancy?: number
 }
 
 export async function reindexContentTypes(opts?: {
   table?: string
   rebuild?: boolean
+  verify?: boolean
 }): Promise<ReindexTableResult[]> {
   const registry = getRegistry()
   const results: ReindexTableResult[] = []
@@ -532,6 +535,21 @@ export async function reindexContentTypes(opts?: {
           }
         } catch (err) {
           log.warn(`Enrichment audit failed for ${tableName}`, err)
+        }
+
+        // Verify pass — opt-in re-query to check how many docs are actually findable.
+        if (opts?.verify && count > 0) {
+          try {
+            const stats = await antfly.getTableStats(tableName)
+            const docCount = (stats as Record<string, unknown> | null)?.num_docs as number ?? 0
+            result.verified = docCount
+            result.verifyDiscrepancy = count - docCount
+            if (result.verifyDiscrepancy > 0) {
+              log.error(`Verify discrepancy in ${tableName}: indexed ${count} but only ${docCount} findable`)
+            }
+          } catch (err) {
+            log.warn(`Verify pass failed for ${tableName}`, err)
+          }
         }
 
         results.push(result)

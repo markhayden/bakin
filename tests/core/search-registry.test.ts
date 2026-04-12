@@ -76,8 +76,14 @@ describe('search-registry', () => {
   beforeEach(() => {
     resetSearchRegistry()
     vi.clearAllMocks()
-    // Restore default — clearAllMocks resets mockReturnValue
+    // Restore defaults — clearAllMocks resets call history but not implementations.
+    // resetAllMocks on specific mocks clears the once-queue too, preventing leaks.
     vi.mocked(antfly.enabled).mockReturnValue(true)
+    vi.mocked(antfly.getIndexHealth).mockReset().mockResolvedValue(null)
+    vi.mocked(antfly.getTableStats).mockReset().mockResolvedValue(null)
+    vi.mocked(antfly.batchIndex).mockReset().mockImplementation(
+      async (_table: string, docs: Record<string, unknown>) => Object.keys(docs).length,
+    )
   })
 
   function makeDef(table = 'tasks') {
@@ -557,6 +563,63 @@ describe('search-registry', () => {
     )
   })
 
+  // ── verify mode (#74) ───────────────────────────────────────────────
+
+  it('reindexContentTypes with verify=true checks table doc count', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+    // Mock getTableStats to return doc count matching indexed
+    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 1 })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes({ verify: true })
+
+    expect(results[0]!.verified).toBe(1)
+    expect(results[0]!.verifyDiscrepancy).toBe(0)
+    expect(antfly.getTableStats).toHaveBeenCalledWith('bakin_tasks')
+  })
+
+  it('reindexContentTypes with verify=true reports discrepancy', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+    // Mock getTableStats to return fewer docs than indexed
+    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 0 })
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes({ verify: true })
+
+    expect(results[0]!.verified).toBe(0)
+    expect(results[0]!.verifyDiscrepancy).toBe(1)
+  })
+
+  it('reindexContentTypes without verify does not check doc count', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes()
+
+    expect(results[0]!.verified).toBeUndefined()
+    expect(antfly.getTableStats).not.toHaveBeenCalled()
+  })
+
+  it('reindexContentTypes verify handles getTableStats errors gracefully', async () => {
+    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+    vi.mocked(antfly.getTableStats).mockRejectedValueOnce(new Error('stats failed'))
+
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const results = await reindexContentTypes({ verify: true })
+
+    // Should not crash — verify is best-effort
+    expect(results[0]!.indexed).toBe(1)
+    expect(results[0]!.verified).toBeUndefined()
+  })
+
   // ── crossTableSearch ────────────────────────────────────────────────
 
   it('crossTableSearch returns fallback when antfly disabled', async () => {
@@ -675,8 +738,8 @@ describe('search-registry', () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
-    vi.mocked(antfly.getTableStats).mockResolvedValue({ num_docs: 5 })
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
+    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 5 })
+    vi.mocked(antfly.getIndexHealth).mockResolvedValueOnce(null)
 
     const health = await getSearchHealth()
 
