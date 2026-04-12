@@ -1700,9 +1700,11 @@ async function main(): Promise<void> {
           const uninstall = args.includes('--uninstall')
           await cmdSetupService({ uninstall })
         } else if (sub === 'antfly') {
-          await cmdSetupAntfly()
+          console.error('[deprecated] `bakin setup antfly` is now `bakin install antfly`. Delegating...')
+          await cmdOnboardingInstallSingle('antfly', args)
         } else if (sub === 'mcporter') {
-          await cmdSetupMcporter()
+          console.error('[deprecated] `bakin setup mcporter` is now `bakin install mcporter`. Delegating...')
+          await cmdOnboardingInstallSingle('mcporter', args)
         } else {
           console.error(`Unknown setup target: ${sub}`)
           console.error('Available: bakin setup service | bakin setup antfly | bakin setup mcporter')
@@ -1754,7 +1756,8 @@ async function main(): Promise<void> {
         break
 
       case 'init':
-        await cmdInit()
+        console.error('[deprecated] `bakin init` is now `bakin mkdir`. Delegating...')
+        await cmdOnboardingMkdir()
         break
 
       case 'doctor':
