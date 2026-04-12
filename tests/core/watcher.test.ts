@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import type { FSWatcher } from 'chokidar'
 
 vi.mock('../../src/core/logger', () => ({
   createLogger: () => ({
@@ -144,6 +145,70 @@ describe('watcher', () => {
   describe('registerSyncHook', () => {
     it('registers a hook without throwing', () => {
       expect(() => registerSyncHook(() => {})).not.toThrow()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // file extension filter
+  // -------------------------------------------------------------------------
+
+  describe('file extension filter', () => {
+    async function getChangeHandler(): Promise<(path: string) => void> {
+      const chokidar = await import('chokidar')
+      const mockWatcher = vi.mocked(chokidar.watch).mock.results[0].value as FSWatcher
+      const onCalls = vi.mocked(mockWatcher.on).mock.calls
+      const changeCall = onCalls.find((call: unknown[]) => call[0] === 'change')
+      if (!changeCall) throw new Error('no change handler registered')
+      return changeCall[1] as (path: string) => void
+    }
+
+    it('processes .yaml files and broadcasts content', async () => {
+      const eventBus = new BakinEventBus(() => {})
+      start({ contentDir: tempDir, eventBus, onInboxFile: vi.fn() })
+
+      mkdirSync(join(tempDir, 'workflows', 'definitions'), { recursive: true })
+      const yamlPath = join(tempDir, 'workflows', 'definitions', 'sample.yaml')
+      writeFileSync(yamlPath, 'name: sample\nsteps: []\n')
+
+      const onChange = await getChangeHandler()
+      onChange(yamlPath)
+
+      expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({
+        file: 'workflows/definitions/sample.yaml',
+        event: 'change',
+        content: 'name: sample\nsteps: []\n',
+      }))
+    })
+
+    it('processes .yml files (short extension)', async () => {
+      const eventBus = new BakinEventBus(() => {})
+      start({ contentDir: tempDir, eventBus, onInboxFile: vi.fn() })
+
+      mkdirSync(join(tempDir, 'workflows', 'definitions'), { recursive: true })
+      const ymlPath = join(tempDir, 'workflows', 'definitions', 'short.yml')
+      writeFileSync(ymlPath, 'name: short\n')
+
+      const onChange = await getChangeHandler()
+      onChange(ymlPath)
+
+      expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({
+        file: 'workflows/definitions/short.yml',
+        event: 'change',
+        content: 'name: short\n',
+      }))
+    })
+
+    it('ignores unsupported extensions', async () => {
+      const eventBus = new BakinEventBus(() => {})
+      start({ contentDir: tempDir, eventBus, onInboxFile: vi.fn() })
+
+      const exePath = join(tempDir, 'random.exe')
+      writeFileSync(exePath, 'binary content')
+
+      const onChange = await getChangeHandler()
+      onChange(exePath)
+
+      expect(broadcast).not.toHaveBeenCalled()
     })
   })
 })

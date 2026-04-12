@@ -305,13 +305,102 @@ export interface SearchTransformOp {
   value: unknown
 }
 
+/**
+ * One file-pattern → mapper pair used by `FileBackedContentTypeDefinition`.
+ * A registration may carry multiple of these when a single content type
+ * draws from several distinct file shapes (e.g. workflows store
+ * definitions as `.yaml` and instances as `.json`, both indexed into the
+ * same `bakin_workflows` table with different key prefixes).
+ */
+export interface FilePatternMapper {
+  /** Glob pattern relative to contentDir. First-match-wins across the patterns array. */
+  pattern: string
+  /**
+   * Derive the search key for a file matching this pattern. Return null
+   * to skip the file (e.g. it matches the glob but is missing required
+   * companion data).
+   */
+  fileToId: (relPath: string) => string | null
+  /**
+   * Build the search document for a file matching this pattern.
+   * `content` is the raw file bytes as a UTF-8 string (empty for binary
+   * assets, which the watcher recognizes by their `assets/` prefix).
+   * Return null to skip indexing (e.g. derived state isn't ready yet).
+   */
+  fileToDoc: (relPath: string, content: string) => Promise<Record<string, unknown> | null>
+}
+
+/**
+ * A content type whose source of truth is one or more files under
+ * `~/.bakin/`. Registering via `registerFileBackedContentType` wires up:
+ *
+ *   1. Standard `registerContentType` (table creation, schema, reindex).
+ *   2. A watcher sync hook that re-indexes on add/change.
+ *   3. A watcher unlink hook that removes on delete.
+ *   4. A startup reconcile that detects mtime drift and corrects it.
+ *
+ * Plugins should reach for this helper first. Use raw `registerContentType`
+ * only when the source of truth is NOT the filesystem (e.g. SQLite,
+ * external API, OpenClaw adapter).
+ */
+export interface FileBackedContentTypeDefinition extends SearchContentTypeDefinition {
+  /**
+   * One or more file-pattern mappers. Patterns should not overlap;
+   * first match wins. A file that matches no pattern is ignored.
+   */
+  filePatterns: FilePatternMapper[]
+  /**
+   * Optional exclude patterns applied BEFORE any mapper matches. Useful
+   * for skipping subdirectories like `assets/**\/.trash/**` or sidecar
+   * files like `**\/*.meta.json`.
+   */
+  excludePatterns?: string[]
+  /**
+   * Escape hatch for sync events. When provided, the helper invokes
+   * this instead of the default `fileToDoc → ctx.search.index` flow for
+   * any file matching this content type's patterns. The plugin takes
+   * full responsibility for indexing.
+   *
+   * Use when pairing logic (e.g. assets' binary↔sidecar coupling) can't
+   * be expressed as a single mapper. The matched `FilePatternMapper` is
+   * still consulted for `fileToId` if the plugin needs the canonical key.
+   */
+  onSync?: (relPath: string, content: string) => Promise<void>
+  /**
+   * Escape hatch for unlink events. Same story as `onSync`. If unset,
+   * the helper calls the matched mapper's `fileToId(relPath)` and then
+   * `ctx.search.remove(id)`.
+   */
+  onUnlink?: (relPath: string) => Promise<void>
+  /**
+   * Whether to run the startup reconcile loop on plugin activation.
+   * Defaults to true. Set false only when the plugin wants to drive its
+   * own initial population (rare).
+   */
+  buildOnStartup?: boolean
+}
+
 /** Search API provided to plugins via ctx.search */
 export interface SearchAPI {
   /**
    * Register a content type this plugin will index.
    * Must be called during activate(). Creates the Antfly table if needed.
+   *
+   * Prefer `registerFileBackedContentType` when the source of truth is
+   * a file under `~/.bakin/` — it wires up watcher hooks and startup
+   * reconcile automatically. Use this raw form only for non-filesystem
+   * sources (SQLite, external APIs, OpenClaw adapters).
    */
   registerContentType(def: SearchContentTypeDefinition): void
+
+  /**
+   * Register a file-backed content type. Wraps `registerContentType` and
+   * additionally wires watcher sync + unlink hooks scoped to the declared
+   * file patterns, plus a startup reconcile that detects mtime drift on
+   * boot. This is the blessed API for any plugin whose data lives in the
+   * filesystem under `~/.bakin/`.
+   */
+  registerFileBackedContentType(def: FileBackedContentTypeDefinition): void
 
   /** Index or update a document. Fire-and-forget. */
   index(key: string, doc: Record<string, unknown>): Promise<void>

@@ -5,6 +5,8 @@
  * Uses globalThis to survive Next.js webpack re-evaluation.
  */
 import type {
+  FileBackedContentTypeDefinition,
+  FilePatternMapper,
   SearchAPI,
   SearchContentTypeDefinition,
   SearchIndexDefinition,
@@ -19,6 +21,16 @@ import { broadcast } from './sse'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { resolveEmbedder } from './embedder-resolver'
+import { registerSyncHook, registerUnlinkHook } from './watcher'
+import { getContentDir } from './content-dir'
+import {
+  findMatchingMapper,
+  matchesAnyPattern,
+  performStartupReconcile,
+  MTIME_FIELD,
+} from './search-reconcile'
+import { statSync } from 'fs'
+import { join } from 'path'
 
 const log = createLogger('search-registry')
 
@@ -32,6 +44,16 @@ interface RegistryState {
   pluginTables: Map<string, string>
   /** Whether tables have been created during this startup */
   tablesCreated: boolean
+  /**
+   * File-backed registrations awaiting their first startup reconcile.
+   * Reconciles are deferred until after `createRegisteredTables()` so
+   * the underlying Antfly tables exist before we try to scan them.
+   * Drained by `runPendingReconciles()`.
+   */
+  pendingReconciles: Array<{
+    pluginId: string
+    def: FileBackedContentTypeDefinition
+  }>
 }
 
 const _g = globalThis as typeof globalThis & {
@@ -44,6 +66,7 @@ function getRegistry(): RegistryState {
       contentTypes: new Map(),
       pluginTables: new Map(),
       tablesCreated: false,
+      pendingReconciles: [],
     }
   }
   return _g.__bakinSearchRegistry
@@ -284,12 +307,78 @@ export function getRerankField(tableName: string): string | undefined {
 export function buildSearchAPI(pluginId: string): SearchAPI {
   const registry = getRegistry()
 
-  return {
+  const api: SearchAPI = {
     registerContentType(def: SearchContentTypeDefinition): void {
       const tableName = fullTableName(def.table)
       registry.contentTypes.set(tableName, { ...def, pluginId })
       registry.pluginTables.set(pluginId, tableName)
       log.info(`Content type registered: ${tableName} (plugin: ${pluginId})`)
+    },
+
+    registerFileBackedContentType(def: FileBackedContentTypeDefinition): void {
+      // Standard registration first — gives us the table, schema, and reindex
+      // generator. Everything below layers watcher hooks + reconcile on top.
+      api.registerContentType(def)
+      const tableName = fullTableName(def.table)
+
+      const includePatterns = def.filePatterns.map(p => p.pattern)
+      const excludePatterns = def.excludePatterns ?? []
+
+      const matchesScope = (rel: string): boolean => {
+        if (excludePatterns.length > 0 && matchesAnyPattern(rel, excludePatterns)) return false
+        return matchesAnyPattern(rel, includePatterns)
+      }
+
+      registerSyncHook(async (rel, content) => {
+        if (!matchesScope(rel)) return
+        try {
+          if (def.onSync) {
+            await def.onSync(rel, content)
+            return
+          }
+          const mapper = findMatchingMapper(rel, def.filePatterns)
+          if (!mapper) return
+          const key = mapper.fileToId(rel)
+          if (key === null) return
+          const doc = await mapper.fileToDoc(rel, content)
+          if (doc === null) return
+          let mtimeMs = Date.now()
+          try {
+            mtimeMs = statSync(join(getContentDir(), rel)).mtimeMs
+          } catch {
+            // file may have been removed between watcher emit and our stat;
+            // fall back to "now" so the index entry is at least monotonic.
+          }
+          await api.index(key, { ...doc, [MTIME_FIELD]: mtimeMs })
+        } catch (err) {
+          log.warn('File-backed sync hook failed', err, { table: tableName, rel })
+        }
+      })
+
+      registerUnlinkHook(async (rel) => {
+        if (!matchesScope(rel)) return
+        try {
+          if (def.onUnlink) {
+            await def.onUnlink(rel)
+            return
+          }
+          const mapper = findMatchingMapper(rel, def.filePatterns)
+          if (!mapper) return
+          const key = mapper.fileToId(rel)
+          if (key === null) return
+          await api.remove(key)
+        } catch (err) {
+          log.warn('File-backed unlink hook failed', err, { table: tableName, rel })
+        }
+      })
+
+      // Schedule startup reconcile. We can't run it inline because the
+      // Antfly table doesn't exist yet — `createRegisteredTables` runs
+      // after all plugins activate. The reconcile is enqueued and drained
+      // by `runPendingReconciles()` in server.ts after table creation.
+      if (def.buildOnStartup !== false) {
+        getRegistry().pendingReconciles.push({ pluginId, def })
+      }
     },
 
     async index(key: string, doc: Record<string, unknown>): Promise<void> {
@@ -385,6 +474,36 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
         },
       }
     },
+  }
+
+  return api
+}
+
+/**
+ * Drain pending startup reconciles. Called from server.ts after
+ * `createRegisteredTables()` so the underlying Antfly tables exist
+ * before the reconcile tries to scan them. Failures are logged and
+ * swallowed so one bad reconcile doesn't block the rest.
+ */
+export async function runPendingReconciles(): Promise<void> {
+  const registry = getRegistry()
+  if (registry.pendingReconciles.length === 0) return
+  if (!antfly.enabled()) {
+    registry.pendingReconciles.length = 0
+    return
+  }
+  const contentDir = getContentDir()
+  const items = registry.pendingReconciles.splice(0)
+  for (const { pluginId, def } of items) {
+    try {
+      const api = buildSearchAPI(pluginId)
+      await performStartupReconcile(def, contentDir, {
+        index: (key, doc) => api.index(key, doc),
+        remove: (key) => api.remove(key),
+      })
+    } catch (err) {
+      log.error('Startup reconcile failed', err, { pluginId, table: def.table })
+    }
   }
 }
 
