@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
+import { useDebug } from '@/hooks/use-debug'
 import { useAntflySearch, reorderByAntflyResults } from '@/hooks/use-antfly-search'
 import { useAssets, useTrash } from '@/hooks/use-assets'
 import { AssetsGrid } from './assets-grid'
@@ -24,6 +25,7 @@ function getStoredPageSize(): number {
 }
 
 export function AssetsPage() {
+  const [debug] = useDebug()
   const [view, setView] = useQueryState('view', 'grid')
   const [search, setSearch] = useQueryState('q', '')
   const [typeFilter, setTypeFilter] = useQueryArrayState('type')
@@ -193,7 +195,7 @@ export function AssetsPage() {
           assets={paged}
           onSelect={(a: AssetMeta) => setAssetPath(a.path)}
           onDelete={deleteAsset}
-          scores={search && antfly.results.length && searchParams.get('debug') === 'true' ? new Map(antfly.results.map(r => [r.id, { score: r.score, indexScores: r.indexScores }])) : undefined}
+          scores={search && antfly.results.length && debug ? new Map(antfly.results.map(r => [r.id, { score: r.score, indexScores: r.indexScores }])) : undefined}
         />
       )}
 

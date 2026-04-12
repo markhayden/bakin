@@ -8,7 +8,7 @@
 | Surface | Count | Details |
 |---------|-------|---------|
 | HTTP routes | 11 | `/list`, `/definition`, `/step`, `/step/complete`, `/approve`, `/reject`, `/instances`, `/instance`, `/pending-gates`, `/gate-status`, `/start` |
-| MCP exec tools | 0 | Step tools are core MCP tools in `mcp-server.ts` (beacon_get_current_step, beacon_complete_step) |
+| MCP exec tools | 0 | Step tools are core MCP tools in `mcp-server.ts` (bakin_get_current_step, bakin_complete_step) |
 | Hooks registered | 15 | loadInstance, saveInstance, createInstance, listInstances, getCurrentStep, completeStep, approveGate, rejectGate, matchWorkflow, listDefinitions, loadDefinition, getActiveAgents, isGateNotified, markGateNotified, validateStepOutput |
 | Components | 9 | xyflow canvas, step nodes, gate approval UI, etc. |
 | Settings schema | none | |
@@ -56,7 +56,7 @@ Fix dependencies: currently `["ajv"]` which is an npm dep. Change to `["tasks"]`
 | Pending gates | `GET /gates/pending` | — | UI query only |
 | Gate status | `GET /gates/status?taskIds=...` | — | UI query only |
 
-**MCP migration:** Core MCP tools `beacon_get_current_step` and `beacon_complete_step` in `mcp-server.ts` should migrate to plugin-registered exec tools. Additionally, agents currently have no way to:
+**MCP migration:** Core MCP tools `bakin_get_current_step` and `bakin_complete_step` in `mcp-server.ts` should migrate to plugin-registered exec tools. Additionally, agents currently have no way to:
 - Discover what workflows exist (`list`)
 - Start a workflow (`start`)
 - Check workflow status (`get_instance`)

@@ -16,12 +16,12 @@ import type { ExecToolResult } from '../../src/lib/plugin-types'
 // Discord config resolution
 // ---------------------------------------------------------------------------
 
-interface DiscordConfig {
+export interface DiscordConfig {
   botToken: string
   guildId: string
 }
 
-function loadDiscordConfig(): DiscordConfig | null {
+export function loadDiscordConfig(): DiscordConfig | null {
   // 1. Check env vars first
   if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID) {
     return { botToken: process.env.DISCORD_BOT_TOKEN, guildId: process.env.DISCORD_GUILD_ID }
@@ -78,7 +78,7 @@ async function discoverChannels(config: DiscordConfig): Promise<Record<string, s
   }
 }
 
-async function resolveChannelId(channel: string): Promise<{ id: string | null; available: string[] }> {
+export async function resolveChannelId(channel: string): Promise<{ id: string | null; available: string[] }> {
   const config = loadDiscordConfig()
   if (!config) return { id: null, available: [] }
 

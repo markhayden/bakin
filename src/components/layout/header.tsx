@@ -1,12 +1,26 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Menu, X, PanelLeftClose, PanelLeft } from 'lucide-react'
+import { Menu, X, PanelLeftClose, PanelLeft, Bug } from 'lucide-react'
 import { ConnectionDot } from './connection-dot'
 import { DispatchTimer } from './dispatch-timer'
 import { NotificationToggle } from './notification-toggle'
 import { AppSidebar } from './app-sidebar'
 import { useSidebarContext } from '@/context/sidebar-context'
+import { useDebug } from '@/hooks/use-debug'
+
+function DebugToggle() {
+  const [debug, toggleDebug] = useDebug()
+  return (
+    <button
+      onClick={toggleDebug}
+      title="Debug mode"
+      className={`transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] ${debug ? 'text-foreground' : 'text-muted-foreground'}`}
+    >
+      <Bug className="size-4" />
+    </button>
+  )
+}
 
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -43,6 +57,7 @@ export function Header() {
         </div>
         <div className="ml-auto flex items-center gap-4">
           <DispatchTimer />
+          <DebugToggle />
           <NotificationToggle />
           <ConnectionDot />
         </div>
