@@ -64,9 +64,9 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 
 | Tool | Purpose |
 |------|---------|
+| `bakin_exec_post_discord` | Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds. |
 | `bakin_exec_log` | Log a formatted progress update with category and stage tags. Categories: start, progress, milestone, blocked, complete. More structured than raw bakin_log_progress. |
 | `bakin_exec_gen_image` | Generate an image via Gemini Imagen (Nano Banana), or import an existing image file into the asset pipeline via filePath. Default model: flash (cheaper). Use model=pro for higher quality. Default: 1080x1920 portrait (9:16) for Stories/Reels. Presets: social-portrait, social-square, social-landscape, custom. Auto-generates thumbnail. Max 1200px on any edge. |
-| `bakin_exec_post_discord` | Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds. |
 | `bakin_exec_get_paths` | Get Bakin content directory paths — where to find assets, team info, docs, etc. |
 | `bakin_exec_heartbeat` | Write a heartbeat signal. Call periodically (every 5-10 minutes) to indicate you are alive. Also call when starting or finishing a task. |
 | `bakin_exec_search_query` | Search across all Bakin content (tasks, assets, projects, workflows, schedules, agents) or a specific table. Returns ranked results with scores. |
@@ -86,7 +86,7 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | `bakin_exec_team_my_team` | Get the team that a specific agent belongs to, including all teammates. |
 | `bakin_exec_tasks_list` | List all tasks on the board. Optionally filter by column or agent. |
 | `bakin_exec_tasks_get` | Get details about a task — title, description, current column, logs, dependencies, project context. |
-| `bakin_exec_tasks_create` | Create a new task on the task board. For top-level tasks, you MUST provide either workflowId or skipWorkflowReason. Subtasks (with parentId) are exempt. |
+| `bakin_exec_tasks_create` | Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip. |
 | `bakin_exec_tasks_move` | Move a task to a different column on the task board. |
 | `bakin_exec_tasks_block` | Mark a task as blocked with a reason. Use when you cannot proceed. |
 | `bakin_exec_tasks_complete` | Report that your task is complete. Moves the task to Done and notifies the orchestrator. |
@@ -198,6 +198,19 @@ Use `bakin_report_complete` — it moves the task to Done, logs the summary, and
 ## Creating Subtasks
 
 If your task requires work from another agent, create a subtask with `bakin_create_task`. Include `parentId` for immediate dispatch.
+
+### Workflow preflight — run this sequence every time before `bakin_create_task`
+
+Workflows are the default. Skipping one is the exception, and skipping silently is never allowed.
+
+1. **Check the catalog.** Call `bakin_exec_workflows_list` and read what's available.
+2. **Match against the subtask.** Does any workflow fit by title keywords, target agent, or intent? (e.g., a subtask for Pixel to produce an image matches `image-generation`.)
+3. **If a match exists, STOP. Do not create the task yet.** Message your parent task's requester (via `bakin_log_progress` on your own task, or by messaging main-operator if you need a decision back) and ask whether they want the full workflow or a one-off. Example: *"I need Pixel to produce a hero image — there's an `image-generation` workflow with a prompt-approval gate. Use the workflow, or one-off?"* Silence is not permission to skip.
+4. **Only after the decision**, call `bakin_create_task` with either `workflowId` set to the chosen workflow, or `skipWorkflowReason` citing the confirmation (e.g., `"main-operator confirmed one-off — no approval gate needed for quick reference image"`).
+
+**Chat requests that sound simple are still workflow candidates if a matching workflow exists.** "Quick image," "just a draft," and "one-off" are NOT reasons to bypass a workflow on your own. The user's phrasing doesn't change the rule — the catalog does.
+
+**Your judgment alone is not enough to skip.** The only valid reasons to skip without asking: (a) no workflow in the catalog matches, or (b) the requester has already said in this conversation they want a one-off.
 
 ## Dependencies
 

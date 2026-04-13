@@ -119,9 +119,28 @@ interface McpHealth {
   recent: { windowSec: number; total: number; errors: number }
 }
 
+interface RestPluginBucket {
+  pluginId: string
+  total: number
+  errors: number
+  successRate: number
+  perMethod: Record<string, number>
+  lastCalled: string | null
+}
+
+interface RestHealth {
+  windowSec: number
+  total: number
+  errors: number
+  successRate: number
+  byPlugin: RestPluginBucket[]
+  recent: { windowSec: number; total: number; errors: number; byPlugin: RestPluginBucket[] }
+}
+
 interface HealthSummary {
   mcp: McpData | null
   mcpHealth: McpHealth | null
+  restHealth: RestHealth | null
   doctor: DoctorData | null
   requests: RequestsData | null
   server: ServerData | null
@@ -487,6 +506,42 @@ export function HealthPage() {
 
         <Card size="sm">
           <CardContent className="pt-3">
+            <p className="text-xs text-muted-foreground">REST Health</p>
+            {(() => {
+              const rh = data?.restHealth
+              if (!rh || rh.total === 0) {
+                return (
+                  <>
+                    <p className="text-xl font-mono font-semibold text-muted-foreground">—</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">no calls last hour</p>
+                  </>
+                )
+              }
+              const pct = Math.round(rh.successRate * 100)
+              const tone = pct >= 99
+                ? 'text-emerald-400'
+                : pct >= 95
+                ? 'text-amber-400'
+                : 'text-red-400'
+              return (
+                <>
+                  <p className={`text-xl font-mono font-semibold ${tone}`}>{pct}%</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {rh.errors} err / {rh.total} req · 1h
+                    {rh.recent.errors > 0 && (
+                      <span className="ml-1 text-red-400">
+                        · {rh.recent.errors} in last {rh.recent.windowSec}s
+                      </span>
+                    )}
+                  </p>
+                </>
+              )
+            })()}
+          </CardContent>
+        </Card>
+
+        <Card size="sm">
+          <CardContent className="pt-3">
             <p className="text-xs text-muted-foreground">Active Sessions</p>
             <p className="text-xl font-mono font-semibold">
               {mcp?.activeSessions.length ?? 0}
@@ -516,6 +571,51 @@ export function HealthPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* REST traffic by plugin — agents should be using MCP exec tools,
+          not REST. Non-trivial REST traffic here flags bad habits. */}
+      {data?.restHealth && data.restHealth.byPlugin.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>REST traffic by plugin (last hour)</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                Agents should prefer MCP exec tools over REST
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2.5">
+              {data.restHealth.byPlugin.map((bucket, i) => {
+                const pct = Math.round(bucket.successRate * 100)
+                const tone = pct >= 99 ? 'text-emerald-400' : pct >= 95 ? 'text-amber-400' : 'text-red-400'
+                const methods = Object.entries(bucket.perMethod)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([m, n]) => `${m} ${n}`)
+                  .join(' · ')
+                return (
+                  <div key={bucket.pluginId}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-mono truncate mr-2">{bucket.pluginId}</span>
+                      <span className="text-xs font-mono font-medium shrink-0">
+                        {bucket.total}
+                        <span className={`ml-2 ${tone}`}>{pct}%</span>
+                        <span className="text-muted-foreground font-normal ml-2">{methods}</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${BAR_COLORS[i % BAR_COLORS.length]} transition-all duration-500`}
+                        style={{ width: `${(bucket.total / Math.max(...data.restHealth!.byPlugin.map(b => b.total), 1)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Search / Antfly Section */}
       {searchHealth && (

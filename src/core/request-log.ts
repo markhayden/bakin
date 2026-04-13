@@ -77,6 +77,86 @@ export function getRecentStatsForPathPrefix(
 }
 
 /**
+ * Bucketed REST stats by plugin id, derived from the ring buffer. Used by
+ * the Health page to surface per-plugin REST traffic alongside the MCP
+ * tile, so we can see which plugins agents are hitting via REST instead
+ * of MCP tools.
+ *
+ * Only counts paths under `/api/plugins/{pluginId}/...`. Anything else
+ * (top-level /api routes, /mcp, static assets) is ignored.
+ */
+export interface RestPluginStats {
+  pluginId: string
+  total: number
+  errors: number
+  successRate: number
+  perMethod: Record<string, number>
+  lastCalled: string | null
+}
+
+export function getRestStatsByPlugin(windowMs: number): {
+  windowSec: number
+  total: number
+  errors: number
+  successRate: number
+  byPlugin: RestPluginStats[]
+} {
+  const cutoff = Date.now() - windowMs
+  const buckets = new Map<string, RestPluginStats>()
+  let total = 0
+  let errors = 0
+
+  for (const entry of recent) {
+    const ts = Date.parse(entry.ts)
+    if (isNaN(ts) || ts < cutoff) continue
+    if (!entry.path.startsWith('/api/plugins/')) continue
+
+    // Extract plugin id: /api/plugins/{pluginId}/...
+    const rest = entry.path.slice('/api/plugins/'.length)
+    const slash = rest.indexOf('/')
+    const pluginId = slash === -1 ? rest : rest.slice(0, slash)
+    if (!pluginId) continue
+
+    total++
+    const isError = entry.status >= 500
+    if (isError) errors++
+
+    let bucket = buckets.get(pluginId)
+    if (!bucket) {
+      bucket = {
+        pluginId,
+        total: 0,
+        errors: 0,
+        successRate: 1,
+        perMethod: {},
+        lastCalled: null,
+      }
+      buckets.set(pluginId, bucket)
+    }
+    bucket.total++
+    if (isError) bucket.errors++
+    bucket.perMethod[entry.method] = (bucket.perMethod[entry.method] ?? 0) + 1
+    if (!bucket.lastCalled || entry.ts > bucket.lastCalled) {
+      bucket.lastCalled = entry.ts
+    }
+  }
+
+  for (const bucket of buckets.values()) {
+    bucket.successRate = bucket.total > 0
+      ? (bucket.total - bucket.errors) / bucket.total
+      : 1
+  }
+
+  return {
+    windowSec: Math.round(windowMs / 1000),
+    total,
+    errors,
+    successRate: total > 0 ? (total - errors) / total : 1,
+    byPlugin: Array.from(buckets.values()).sort((a, b) => b.total - a.total),
+  }
+}
+
+/**
  * Get current stats snapshot.
  */
 export function getRequestStats() {
