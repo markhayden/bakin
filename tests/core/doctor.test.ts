@@ -6,7 +6,7 @@ import { tmpdir } from 'os'
 // Mock settings
 vi.mock('@/core/settings', () => ({
   getSettings: vi.fn(() => ({
-    agents: ['roscoe', 'patch', 'pixel'],
+    agents: ['main', 'patch', 'pixel'],
     antfly: { enabled: false },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
     openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -51,7 +51,7 @@ vi.mock('@/core/mcporter', () => ({
     installed: true,
     configExists: true,
     agentEntries: [
-      { agent: 'roscoe', name: 'bakin-roscoe', url: 'http://localhost:3737/mcp?agent=roscoe', correct: true },
+      { agent: 'main', name: 'bakin-main', url: 'http://localhost:3737/mcp?agent=main', correct: true },
       { agent: 'patch', name: 'bakin-patch', url: 'http://localhost:3737/mcp?agent=patch', correct: true },
       { agent: 'pixel', name: 'bakin-pixel', url: 'http://localhost:3737/mcp?agent=pixel', correct: true },
     ],
@@ -82,8 +82,8 @@ describe('doctor', () => {
 
   it('should detect missing persona files', async () => {
     const doctor = await import('@/core/doctor')
-    // Only create persona for roscoe, not patch or pixel
-    writeFileSync(join(contentDir, 'team', 'personas', 'roscoe.md'), '# Roscoe')
+    // Only create persona for main, not patch or pixel
+    writeFileSync(join(contentDir, 'team', 'personas', 'main.md'), '# Main')
 
     const results = await doctor.runDiagnostics(contentDir, tempDir)
     const personaResults = results.filter(r => r.check === 'personas')
@@ -139,7 +139,7 @@ describe('doctor', () => {
       // Override settings to enable autoFix
       const { getSettings } = await import('@/core/settings')
       vi.mocked(getSettings).mockReturnValue({
-        agents: ['roscoe', 'patch', 'pixel'],
+        agents: ['main', 'patch', 'pixel'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: true },
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -219,7 +219,7 @@ describe('doctor', () => {
       const { getSettings } = await import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
       settings.mockReturnValueOnce({
-        agents: ['roscoe'],
+        agents: ['main'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -238,7 +238,7 @@ describe('doctor', () => {
       const { getSettings } = await import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
       settings.mockReturnValueOnce({
-        agents: ['roscoe'],
+        agents: ['main'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },

@@ -4,7 +4,7 @@
 
 The activity feed currently displays raw event/command names like `exec.bakin_exec_workflows_get_definition.ok` as the primary text. These are cryptic and meaningless to a human operator. This spec defines the work to give **every** activity event a human-readable label as the primary display text, with the raw command name shown as secondary muted text underneath.
 
-**Target user:** Single operator (roscoe) monitoring agent activity from the dashboard.
+**Target user:** Single operator monitoring agent activity from the dashboard.
 
 **Desired outcome:** Glance at the activity feed and immediately understand what each agent is doing without mentally parsing `exec.bakin_exec_*` strings.
 

@@ -214,12 +214,12 @@ describe('createTask', () => {
 
   it('stores assignee, description, and metadata', async () => {
     const task = await createTask(
-      'Full task', 'todo', 'pixel', 'A description', 'wf-123', 'roscoe', undefined, 'parent-1', 'proj-abc'
+      'Full task', 'todo', 'pixel', 'A description', 'wf-123', 'main', undefined, 'parent-1', 'proj-abc'
     )
     expect(task.agent).toBe('pixel')
     expect(task.description).toBe('A description')
     expect(task.workflowId).toBe('wf-123')
-    expect(task.createdBy).toBe('roscoe')
+    expect(task.createdBy).toBe('main')
     expect(task.parentId).toBe('parent-1')
     expect(task.projectId).toBe('proj-abc')
   })

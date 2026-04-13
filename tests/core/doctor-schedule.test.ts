@@ -6,7 +6,7 @@ import { tmpdir } from 'os'
 // Mock settings
 vi.mock('@/core/settings', () => ({
   getSettings: vi.fn(() => ({
-    agents: ['roscoe', 'patch', 'pixel'],
+    agents: ['main', 'patch', 'pixel'],
     antfly: { enabled: false },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
     openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -173,7 +173,7 @@ describe('doctor: schedule sync', () => {
 
     vi.doMock('@/core/settings', () => ({
       getSettings: vi.fn(() => ({
-        agents: ['roscoe', 'patch', 'pixel'],
+        agents: ['main', 'patch', 'pixel'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: true }, // autoFix enabled
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },

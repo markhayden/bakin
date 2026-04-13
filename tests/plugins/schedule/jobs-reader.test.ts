@@ -97,14 +97,14 @@ describe('schedule/jobs-reader', () => {
         isBakinJob: true,
         displayName: 'Morning Report',
         agentId: 'basil',
-        owner: 'roscoe',
+        owner: 'main',
       })
       const merged = mergeJob(job, sidecar)
 
       expect(merged.isBakinJob).toBe(true)
       expect(merged.displayName).toBe('Morning Report')
       expect(merged.agentId).toBe('basil')
-      expect(merged.owner).toBe('roscoe')
+      expect(merged.owner).toBe('main')
     })
 
     it('uses sidecar defaults for missing fields', () => {

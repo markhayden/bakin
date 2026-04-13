@@ -317,8 +317,8 @@ MCP exec tools continue to use `channel: 'mcp'` (set automatically server-side).
 The two-step move+reorder becomes a single `/move` call with position data:
 
 ```typescript
-// Before (two calls, race condition, hardcoded roscoe):
-await apiFetch('/move', { from, to, agent: 'roscoe' })
+// Before (two calls, race condition, hardcoded main):
+await apiFetch('/move', { from, to, agent: 'main' })
 await apiFetch('/reorder', { columnId, orderedIds })
 
 // After (single call, atomic):
@@ -334,7 +334,7 @@ await apiFetch('/move', {
 
 ### 6.2 Agent Field Fix
 
-All UI-initiated moves use `agent: 'human'` and `channel: 'human'`. The hardcoded `'roscoe'` on line 335 of kanban-board.tsx is removed.
+All UI-initiated moves use `agent: 'human'` and `channel: 'human'`. The hardcoded `'main'` on line 335 of kanban-board.tsx is removed.
 
 ### 6.3 Blocked Reason Dialog
 
@@ -471,7 +471,7 @@ No special handling needed for fresh installs — position is assigned on task c
 |------|-------------|
 | Cross-column drop sends single /move call | No follow-up /reorder call |
 | Move call includes afterTaskId/beforeTaskId | Position data derived from drop target |
-| Move call uses agent='human', channel='human' | Not hardcoded 'roscoe' |
+| Move call uses agent='human', channel='human' | Not hardcoded 'main' |
 | Drop on blocked column opens reason dialog | Dialog renders after optimistic update |
 | Blocked dialog confirm fires move with reason | API call includes reason field |
 | Blocked dialog cancel reverts optimistic state | Card returns to source, no API call |
@@ -501,7 +501,7 @@ No special handling needed for fresh installs — position is assigned on task c
 - [ ] Cards land exactly where dropped — no jumping to top
 - [ ] Single atomic move API call (no two-step move+reorder)
 - [ ] `channel: 'human'` bypasses all transition guards
-- [ ] UI sends `agent: 'human'` and `channel: 'human'` (not hardcoded 'roscoe')
+- [ ] UI sends `agent: 'human'` and `channel: 'human'` (not hardcoded 'main')
 - [ ] Drop on blocked prompts for reason via dialog
 - [ ] Archived column: drop zone visible, card hidden from board, count incremented
 - [ ] Plugin migration assigns positions to existing tasks on upgrade

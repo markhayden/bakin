@@ -110,7 +110,7 @@ steps:
   - id: publish
     type: agent
     label: Publish
-    agent: roscoe
+    agent: main
     description: Publish it all
 `
 
@@ -137,7 +137,7 @@ steps:
   - id: publish
     type: agent
     label: Publish
-    agent: roscoe
+    agent: main
     description: Publish
 `
 
@@ -534,7 +534,7 @@ Write a great caption.
 
     it('rejects orchestrator completing a subagent step', () => {
       createInstance('task-scope-orch', 'linear', testDir)
-      const result = completeStep('task-scope-orch', 'step-one', { data: 'done' }, 'roscoe', testDir)
+      const result = completeStep('task-scope-orch', 'step-one', { data: 'done' }, 'main', testDir)
       expect(result.success).toBe(false)
       expect(result.errors![0]).toContain('assigned to "basil"')
     })
@@ -589,7 +589,7 @@ steps:
   - id: review
     type: agent
     label: Review
-    agent: roscoe
+    agent: main
     description: Review it
 `
 

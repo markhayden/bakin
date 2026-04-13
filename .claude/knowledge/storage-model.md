@@ -129,7 +129,7 @@ Sidecar contains:
 ### Audit log (`audit.jsonl`)
 Append-only, one JSON object per line:
 ```json
-{"ts":"2026-03-28T10:30:00Z","event":"task.moved","agent":"roscoe","data":{"taskId":"task-abc","from":"todo","to":"inProgress"},"channel":"mcp"}
+{"ts":"2026-03-28T10:30:00Z","event":"task.moved","agent":"main","data":{"taskId":"task-abc","from":"todo","to":"inProgress"},"channel":"mcp"}
 ```
 
 ### Settings (`settings.json` at content root)

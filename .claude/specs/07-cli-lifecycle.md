@@ -137,7 +137,7 @@ $ bakin sync
 Scanning managed blocks...
 
 Agent workspaces:
-  ~/.openclaw/workspaces/roscoe/AGENTS.md
+  ~/.openclaw/workspaces/main/AGENTS.md
     [updated] agent-tools — 2 tools added
     [unchanged] agent-context
   ~/.openclaw/workspaces/pixel/AGENTS.md
@@ -146,7 +146,7 @@ Agent workspaces:
   ... (all agents)
 
 MCP configuration:
-  ~/.openclaw/workspaces/roscoe/mcp.json
+  ~/.openclaw/workspaces/main/mcp.json
     [updated] bakin-server — new exec tools registered
   ... (all agents)
 
@@ -216,7 +216,7 @@ Deep audit comparing current state against expected state:
 $ bakin audit
 Deep audit of agent files, skills, and configuration...
 
-Agent: roscoe
+Agent: main
   AGENTS.md:
     [OK] Bakin context block present and current
     [OK] Tool list matches registered exec tools
@@ -237,8 +237,8 @@ MCP Configuration:
 
 Recommendations:
   1. Run `bakin sync` to fix 1 outdated tool list
-  2. Remove orphaned skill: ~/.openclaw/workspaces/roscoe/skills/analytics-report.md
-  3. Review deprecated tool reference in roscoe's user section
+  2. Remove orphaned skill: ~/.openclaw/workspaces/main/skills/analytics-report.md
+  3. Review deprecated tool reference in the main agent's user section
 
 Run `bakin audit --fix` to apply safe fixes automatically.
 ```
