@@ -15,6 +15,7 @@ import { readHeartbeats } from '../../src/lib/content'
 import { getContentDir, getBakinPaths } from '../../packages/core/src/content-dir'
 import { startAgent, stopAgent } from '../../src/lib/agents'
 import { resetSettingsCache } from '../../src/core/settings'
+import { getMainAgentId } from '../../src/core/main-agent'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
 import { restartGateway } from '../../src/core/openclaw-client'
@@ -398,7 +399,7 @@ const teamPlugin: BakinPlugin = {
           }
 
           const teams = readTeams()
-          return Response.json({ agents: result, displaySettings, teams })
+          return Response.json({ agents: result, displaySettings, teams, mainAgentId: getMainAgentId() })
         } catch (err) {
           log.error('Failed to list agents', err)
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

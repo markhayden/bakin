@@ -16,7 +16,7 @@ export const AGENT_STYLES: Record<string, {
   dot: string        // status dot color
   gradient: string   // CSS gradient for the top accent bar
 }> = {
-  roscoe:  { border: 'border-blue-500/30',    bg: 'bg-blue-500/[0.06]',    glow: 'rgba(96,165,250,0.10)',  accent: 'text-blue-400',    dot: 'bg-blue-400',    gradient: 'linear-gradient(135deg, rgba(96,165,250,0.4), rgba(96,165,250,0.08))' },
+  main:    { border: 'border-blue-500/30',    bg: 'bg-blue-500/[0.06]',    glow: 'rgba(96,165,250,0.10)',  accent: 'text-blue-400',    dot: 'bg-blue-400',    gradient: 'linear-gradient(135deg, rgba(96,165,250,0.4), rgba(96,165,250,0.08))' },
   basil:   { border: 'border-green-500/30',   bg: 'bg-green-500/[0.06]',   glow: 'rgba(74,222,128,0.10)',  accent: 'text-green-400',   dot: 'bg-green-400',   gradient: 'linear-gradient(135deg, rgba(74,222,128,0.4), rgba(74,222,128,0.08))' },
   pixel:   { border: 'border-violet-500/30',  bg: 'bg-violet-500/[0.06]',  glow: 'rgba(167,139,250,0.10)', accent: 'text-violet-400',  dot: 'bg-violet-400',  gradient: 'linear-gradient(135deg, rgba(167,139,250,0.4), rgba(167,139,250,0.08))' },
   rolo:    { border: 'border-orange-500/30',  bg: 'bg-orange-500/[0.06]',  glow: 'rgba(251,146,60,0.10)',  accent: 'text-orange-400',  dot: 'bg-orange-400',  gradient: 'linear-gradient(135deg, rgba(251,146,60,0.4), rgba(251,146,60,0.08))' },

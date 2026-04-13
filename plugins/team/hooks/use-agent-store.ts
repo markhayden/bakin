@@ -22,6 +22,8 @@ interface AgentStore {
   displaySettings: AgentDisplaySettingsMap
   /** Organizational teams */
   teams: OrgTeam[]
+  /** Canonical main/orchestrator agent id (resolved server-side from settings → OpenClaw) */
+  mainAgentId: string | null
   /** Whether initial load has completed */
   loaded: boolean
 
@@ -38,6 +40,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   agentsWithStatus: [],
   displaySettings: {},
   teams: [],
+  mainAgentId: null,
   loaded: false,
 
   load: async () => {
@@ -51,6 +54,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         agents: AgentWithStatus[]
         displaySettings: AgentDisplaySettingsMap
         teams: OrgTeam[]
+        mainAgentId?: string
       }
       const agents: AgentMeta[] = data.agents.map(({ status, heartbeat, heartbeatAge, model, ...meta }) => meta)
       const agentMap: Record<string, AgentMeta> = {}
@@ -64,6 +68,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         agentsWithStatus: data.agents,
         displaySettings: data.displaySettings,
         teams: data.teams ?? [],
+        mainAgentId: data.mainAgentId ?? null,
         loaded: true,
       })
     } catch {
@@ -114,6 +119,11 @@ export function useAgentDisplayName(agentId: string): string | undefined {
 /** Get all agent IDs (stable reference) */
 export function useAgentIds(): string[] {
   return useAgentStore((s) => s.agentIds)
+}
+
+/** Get the canonical main/orchestrator agent id. Null until the store has loaded. */
+export function useMainAgentId(): string | null {
+  return useAgentStore((s) => s.mainAgentId)
 }
 
 /** Utility: convert hex to rgba with opacity */
