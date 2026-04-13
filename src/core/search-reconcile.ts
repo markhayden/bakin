@@ -294,16 +294,22 @@ export async function performStartupReconcile(
 
   // Orphans: indexed keys that no longer exist on disk
   for (const indexedKey of indexedMtimes.keys()) {
+    // Zombie row guard: an empty/nullish key came out of the index. This
+    // shouldn't happen in normal writes, but a pre-existing bad row in the
+    // underlying store (e.g. a legacy doc with a blank _key) would cause
+    // `deps.remove('')` to throw "nonempty key required" on every startup.
+    // Skip with a warning so operators know a zombie exists without failing
+    // the reconcile.
+    if (!indexedKey) {
+      log.warn('Reconcile skipped zombie index row with empty key', { table: tableName })
+      continue
+    }
     if (fsByKey.has(indexedKey)) continue
     try {
-      if (def.onUnlink) {
-        // Escape-hatch unlink can't reverse-derive a file path from a key,
-        // so we delegate via the helper's standard remove path. The plugin
-        // can still observe the removal through its own bookkeeping.
-        await deps.remove(indexedKey)
-      } else {
-        await deps.remove(indexedKey)
-      }
+      // Escape-hatch and default paths both delegate to deps.remove. The
+      // plugin can observe the removal through its own bookkeeping if it
+      // registered an onUnlink hook.
+      await deps.remove(indexedKey)
       result.removed++
     } catch (err) {
       log.warn('Reconcile remove failed', err, { table: tableName, key: indexedKey })

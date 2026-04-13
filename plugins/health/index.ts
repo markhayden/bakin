@@ -5,7 +5,7 @@
 import { totalmem } from 'os'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
-import { getRequestStats, getRecentStatsForPathPrefix } from '../../src/core/request-log'
+import { getRequestStats, getRecentStatsForPathPrefix, getRestStatsByPlugin } from '../../src/core/request-log'
 import { getLastResults, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
@@ -98,9 +98,25 @@ const healthPlugin: BakinPlugin = {
           recent: { windowSec: 60, total: mcpHot.total, errors: mcpHot.errors },
         }
 
+        // REST traffic bucketed by plugin id — surfaces which plugins
+        // agents are hitting via REST instead of MCP exec tools. Agents
+        // SHOULD be using MCP exclusively; any non-trivial REST traffic
+        // from an agent channel is a signal of a bad habit.
+        const restHour = getRestStatsByPlugin(60 * 60 * 1000)
+        const restHot = getRestStatsByPlugin(60 * 1000)
+        const restHealth = {
+          windowSec: 3600,
+          total: restHour.total,
+          errors: restHour.errors,
+          successRate: restHour.successRate,
+          byPlugin: restHour.byPlugin,
+          recent: { windowSec: 60, total: restHot.total, errors: restHot.errors, byPlugin: restHot.byPlugin },
+        }
+
         return Response.json({
           mcp,
           mcpHealth,
+          restHealth,
           doctor,
           requests,
           openclawPort: settings.openclaw.gatewayPort,

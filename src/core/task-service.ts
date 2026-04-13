@@ -200,6 +200,21 @@ export async function createTaskWithEffects(opts: {
   const suggested = !opts.workflowId ? (await hooks().invoke<string | null>('workflows.matchWorkflow', { title: opts.title, description: opts.description }) || undefined) : undefined
   const effectiveWorkflowId = opts.workflowId || undefined
 
+  // Validate that the workflow actually exists BEFORE writing any task row.
+  // Without this, agents (or buggy callers) can create tasks pointing at
+  // bogus workflowIds, which then poison the dispatch loop forever.
+  if (effectiveWorkflowId) {
+    const def = await hooks().invoke<Record<string, unknown> | null>('workflows.loadDefinition', { name: effectiveWorkflowId })
+    if (!def) {
+      const available = await hooks().invoke<Array<{ name: string }>>('workflows.listDefinitions', {}) ?? []
+      const names = available.map(d => d.name).sort().join(', ') || '(none)'
+      throw new Error(
+        `Unknown workflow: "${effectiveWorkflowId}". Available workflows: ${names}. ` +
+        `Use bakin_exec_workflows_list to see all options.`
+      )
+    }
+  }
+
   const task = await hooks().invoke<{ id: string }>('tasks.createTask', {
     id: opts.id,
     title: opts.title,

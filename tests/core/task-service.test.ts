@@ -65,6 +65,12 @@ vi.mock('@bakin/workflows/lib/matcher', () => ({
   matchWorkflow: vi.fn(() => null),
 }))
 
+const mockLoadDefinition = vi.fn((_data: any): Record<string, unknown> | null => ({ name: 'image-social-post', steps: [] }))
+const mockListDefinitions = vi.fn((): Array<{ name: string }> => [
+  { name: 'image-social-post' },
+  { name: 'video-storyboard' },
+])
+
 // Mock the hook registry so that hooks().invoke() routes to the right mock functions
 const hookHandlers: Record<string, (...args: unknown[]) => unknown> = {
   'tasks.readTaskboard': () => mockReadTaskboard(),
@@ -77,6 +83,8 @@ const hookHandlers: Record<string, (...args: unknown[]) => unknown> = {
   'workflows.loadInstance': (data: any) => mockLoadInstance(data),
   'workflows.createInstance': (data: any) => mockCreateInstance(data),
   'workflows.matchWorkflow': () => null,
+  'workflows.loadDefinition': (data: any) => mockLoadDefinition(data),
+  'workflows.listDefinitions': () => mockListDefinitions(),
   'projects.autoCheckLinkedItem': () => Promise.resolve(),
 }
 
@@ -241,6 +249,51 @@ describe('task-service', () => {
         expect.objectContaining({ title: 'Test' }),
         undefined,
       )
+    })
+
+    it('rejects a workflowId that does not match a known workflow', async () => {
+      mockLoadDefinition.mockReturnValueOnce(null)
+
+      await expect(
+        service.createTaskWithEffects({
+          title: 'Bogus',
+          workflowId: 'instagram-post',
+          createdBy: 'roscoe',
+        })
+      ).rejects.toThrow(/Unknown workflow: "instagram-post"/)
+
+      // The task row must NOT be written when the workflow is invalid.
+      expect(mockCreateTask).not.toHaveBeenCalled()
+    })
+
+    it('lists available workflows in the rejection message', async () => {
+      mockLoadDefinition.mockReturnValueOnce(null)
+
+      await expect(
+        service.createTaskWithEffects({
+          title: 'Bogus',
+          workflowId: 'made-up',
+          createdBy: 'roscoe',
+        })
+      ).rejects.toThrow(/image-social-post/)
+    })
+
+    it('accepts a workflowId that matches a known workflow', async () => {
+      mockLoadDefinition.mockReturnValueOnce({ name: 'image-social-post', steps: [] })
+
+      const result = await service.createTaskWithEffects({
+        title: 'Real one',
+        workflowId: 'image-social-post',
+        createdBy: 'roscoe',
+      })
+
+      expect(result.workflowId).toBe('image-social-post')
+      expect(mockCreateTask).toHaveBeenCalled()
+    })
+
+    it('does not call workflows.loadDefinition when no workflowId provided', async () => {
+      await service.createTaskWithEffects({ title: 'Plain task', createdBy: 'cli' })
+      expect(mockLoadDefinition).not.toHaveBeenCalled()
     })
   })
 
