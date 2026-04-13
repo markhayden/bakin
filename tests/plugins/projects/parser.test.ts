@@ -34,7 +34,7 @@ title: "Test Project"
 status: active
 created: "2026-03-28T10:00:00.000Z"
 updated: "2026-03-28T12:00:00.000Z"
-owner: main-operator
+owner: main
 tasks:
   - id: t001
     title: "First task"
@@ -65,7 +65,7 @@ title: "Minimal"
 status: draft
 created: "2026-03-28T10:00:00.000Z"
 updated: "2026-03-28T10:00:00.000Z"
-owner: main-operator
+owner: main
 tasks: []
 ---
 
@@ -139,7 +139,7 @@ describe('parseProject', () => {
     expect(project.id).toBe('abc12345')
     expect(project.title).toBe('Test Project')
     expect(project.status).toBe('active')
-    expect(project.owner).toBe('main-operator')
+    expect(project.owner).toBe('main')
     expect(project.body).toContain('# Test Project')
     expect(project.body).toContain('Build something great.')
   })
@@ -289,7 +289,7 @@ describe('projectToSummary', () => {
     expect(summary.id).toBe('abc12345')
     expect(summary.title).toBe('Test Project')
     expect(summary.status).toBe('active')
-    expect(summary.owner).toBe('main-operator')
+    expect(summary.owner).toBe('main')
     expect(summary.progress).toBe(33)
     expect(summary.taskCount).toBe(3)
     expect(summary.assetCount).toBe(2)

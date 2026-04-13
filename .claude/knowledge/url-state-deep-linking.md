@@ -64,7 +64,7 @@ export default function TasksPage() {
 |-------|------|---------|-----|
 | `view` | string | `kanban`, `table`, `grid`, `list`, `trash` | View mode toggle |
 | `q` | string | any text | Search query |
-| `agent` | string | `main-operator`, `all` | Agent filter (single-select) |
+| `agent` | string | `main`, `all` | Agent filter (single-select) |
 | `status` | string[] | `todo,blocked` | Status filter (multi-select via FacetFilter) |
 | `type` | string[] | `images,video` | Type filter (multi-select via FacetFilter) |
 | `asset` | string | asset path | Deep-link to open asset detail |

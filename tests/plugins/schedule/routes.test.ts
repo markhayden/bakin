@@ -118,7 +118,7 @@ function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
     isBakinJob: true,
     displayName: 'Daily Report',
     agentId: 'chef',
-    owner: 'main-operator',
+    owner: 'main',
     taskPrompt: 'Generate daily report',
     taskTitle: 'Report: {date}',
     allowOverlap: false,
@@ -139,7 +139,7 @@ function makeMergedJob(overrides: Partial<MergedJob> = {}): MergedJob {
     isBakinJob: true,
     displayName: 'Daily Report',
     agentId: 'chef',
-    owner: 'main-operator',
+    owner: 'main',
     requireTriage: false,
     paused: false,
     allowOverlap: false,
@@ -1126,7 +1126,7 @@ describe('schedule exec tools', () => {
       expect(job.id).toBe('job-get')
       expect(job.name).toBe('Get Test')
       expect(job.agent).toBe('chef')
-      expect(job.owner).toBe('main-operator')
+      expect(job.owner).toBe('main')
       expect(job.paused).toBe(false)
       expect(job.workflowId).toBe('wf-1')
       expect(job.taskPrompt).toBe('Do stuff')

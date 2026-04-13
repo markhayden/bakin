@@ -36,19 +36,19 @@ describe('agents', () => {
 
   describe('getAgentTasks', () => {
     it('should return empty array when no tasks exist', () => {
-      expect(getAgentTasks('main-operator', contentDir)).toEqual([])
+      expect(getAgentTasks('main', contentDir)).toEqual([])
     })
 
     it('should return tasks assigned to a specific agent', () => {
       mockColumns.inProgress = [
-        { id: 'fix-bug', title: 'Fix the bug', agent: 'main-operator' },
+        { id: 'fix-bug', title: 'Fix the bug', agent: 'main' },
         { id: 'design-logo', title: 'Design logo', agent: 'pixel' },
       ]
       mockColumns.todo = [
-        { id: 'write-docs', title: 'Write docs', agent: 'main-operator' },
+        { id: 'write-docs', title: 'Write docs', agent: 'main' },
       ]
 
-      const tasks = getAgentTasks('main-operator', contentDir)
+      const tasks = getAgentTasks('main', contentDir)
       expect(tasks).toHaveLength(2)
       expect(tasks[0].id).toBe('fix-bug')
       expect(tasks[0].column).toBe('in-progress')
@@ -61,7 +61,7 @@ describe('agents', () => {
         { id: 'design-logo', title: 'Design logo', agent: 'pixel' },
       ]
 
-      const tasks = getAgentTasks('main-operator', contentDir)
+      const tasks = getAgentTasks('main', contentDir)
       expect(tasks).toHaveLength(0)
     })
   })

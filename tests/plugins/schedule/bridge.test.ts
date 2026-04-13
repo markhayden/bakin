@@ -94,7 +94,7 @@ function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
     isBakinJob: true,
     displayName: 'Test Job',
     agentId: 'chef',
-    owner: 'main-operator',
+    owner: 'main',
     taskPrompt: 'Do the thing',
     taskTitle: 'Scheduled: {jobName} on {date}',
     allowOverlap: false,

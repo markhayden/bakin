@@ -65,98 +65,6 @@ Use these tools to accomplish actual work — saving files, posting content, gen
 | Tool | Purpose |
 |------|---------|
 | `bakin_exec_post_discord` | Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds. |
-| `bakin_exec_log` | Log a formatted progress update with category and stage tags. Categories: start, progress, milestone, blocked, complete. More structured than raw bakin_log_progress. |
-| `bakin_exec_gen_image` | Generate an image via Gemini Imagen (Nano Banana), or import an existing image file into the asset pipeline via filePath. Default model: flash (cheaper). Use model=pro for higher quality. Default: 1080x1920 portrait (9:16) for Stories/Reels. Presets: social-portrait, social-square, social-landscape, custom. Auto-generates thumbnail. Max 1200px on any edge. |
-| `bakin_exec_get_paths` | Get Bakin content directory paths — where to find assets, team info, docs, etc. |
-| `bakin_exec_heartbeat` | Write a heartbeat signal. Call periodically (every 5-10 minutes) to indicate you are alive. Also call when starting or finishing a task. |
-| `bakin_exec_search_query` | Search across all Bakin content (tasks, assets, projects, workflows, schedules, agents) or a specific table. Returns ranked results with scores. |
-| `bakin_exec_search_table` | Search a specific Bakin table with facet filtering. Returns results plus facet counts for filtering. |
-| `bakin_exec_search_lookup` | Look up a specific indexed document by its key and table. |
-| `bakin_exec_search_facets` | Get facet value counts for a table. Useful for understanding data distribution (e.g., how many tasks per status). |
-| `bakin_exec_search_similar` | Find documents similar to a given text description. Uses semantic (vector) search for meaning-based matching. |
-| `bakin_exec_search_reindex` | Trigger a full reindex of all content types (or a specific table). Use after bulk data changes. |
-| `bakin_exec_search_stats` | Get search system health: enabled status, per-table document counts, and index stats. |
-| `bakin_exec_team_list` | List all agents with their current status (online/working/available/offline). |
-| `bakin_exec_team_profile` | Get the full profile for an agent including soul, rules, and tools. |
-| `bakin_exec_team_status` | Get the heartbeat and health status for an agent. |
-| `bakin_exec_team_read_file` | Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md). |
-| `bakin_exec_team_message` | Send a message to an agent via OpenClaw. |
-| `bakin_exec_team_org` | Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines. |
-| `bakin_exec_team_members` | Get agents that belong to a specific team (e.g. "builders", "creators"). |
-| `bakin_exec_team_my_team` | Get the team that a specific agent belongs to, including all teammates. |
-| `bakin_exec_tasks_list` | List all tasks on the board. Optionally filter by column or agent. |
-| `bakin_exec_tasks_get` | Get details about a task — title, description, current column, logs, dependencies, project context. |
-| `bakin_exec_tasks_create` | Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip. |
-| `bakin_exec_tasks_move` | Move a task to a different column on the task board. |
-| `bakin_exec_tasks_block` | Mark a task as blocked with a reason. Use when you cannot proceed. |
-| `bakin_exec_tasks_complete` | Report that your task is complete. Moves the task to Done and notifies the orchestrator. |
-| `bakin_exec_tasks_log_progress` | Log a human-readable progress update to the live activity feed. Call this at every significant step. |
-| `bakin_exec_tasks_set_dependency` | Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait. |
-| `bakin_exec_tasks_update` | Update a task on the board — change title, description, or assigned agent. |
-| `bakin_exec_tasks_delete` | Delete a task from the board. |
-| `bakin_exec_tasks_assign` | Assign a task to an agent. |
-| `bakin_exec_assets_list` | List assets with optional type filter. Returns asset count and paths. |
-| `bakin_exec_assets_get` | Retrieve a single asset's sidecar metadata by path. |
-| `bakin_exec_assets_save` | Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically. |
-| `bakin_exec_assets_delete` | Soft-delete an asset (moves to trash with 30-day expiry). |
-| `bakin_exec_assets_link` | Link an asset to a different task, or unlink it (set taskId to null). Physically moves the file between task directories and updates sidecar metadata. |
-| `bakin_exec_assets_list_trash` | List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge. |
-| `bakin_exec_assets_restore` | Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename. |
-| `bakin_exec_assets_audit` | Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars. |
-| `bakin_exec_assets_empty_trash` | Permanently delete all items from trash. This cannot be undone. |
-| `bakin_exec_assets_permanent_delete` | Permanently delete a specific trashed asset. This cannot be undone. |
-| `bakin_exec_models_list` | List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment. |
-| `bakin_exec_models_get_config` | Get model configuration for all agents or a specific agent. Shows effective model (own override or default), subagent model, and system defaults. |
-| `bakin_exec_messaging_list` | List messaging items with optional filters |
-| `bakin_exec_messaging_get` | Get details for a single messaging item |
-| `bakin_exec_messaging_create` | Create a new messaging item |
-| `bakin_exec_messaging_update` | Update a messaging item |
-| `bakin_exec_messaging_approve` | Approve a messaging item (draft → scheduled, review → published) |
-| `bakin_exec_messaging_reject` | Reject a messaging item back to draft status |
-| `bakin_exec_messaging_delete` | Delete a messaging item |
-| `bakin_exec_messaging_session_list` | List planning sessions with optional filters |
-| `bakin_exec_messaging_session_get` | Get a planning session with full message history and proposals |
-| `bakin_exec_messaging_session_create` | Create a new planning session for an agent |
-| `bakin_exec_messaging_session_update` | Update a planning session title or status |
-| `bakin_exec_messaging_session_delete` | Delete a planning session |
-| `bakin_exec_messaging_session_message` | Send a message in a planning session (non-streaming, returns full response) |
-| `bakin_exec_messaging_proposal_update` | Update a proposal status or fields (approve, reject, edit) |
-| `bakin_exec_messaging_session_confirm` | Confirm a planning session — creates messaging items from approved proposals |
-| `bakin_exec_workflows_list` | List all workflow definitions (templates). Returns name, filename, description, and step count for each. |
-| `bakin_exec_workflows_get_definition` | Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows. |
-| `bakin_exec_workflows_start` | Start a workflow instance for a task. The task must exist on the board. Returns the created instance. |
-| `bakin_exec_workflows_list_instances` | List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled). |
-| `bakin_exec_workflows_get_instance` | Get the full state of a workflow instance for a task, including step states and history. |
-| `bakin_exec_workflows_get_step` | Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next. |
-| `bakin_exec_workflows_complete_step` | Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete. |
-| `bakin_exec_get_step` | Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure. |
-| `bakin_exec_submit_step` | Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip. |
-| `bakin_exec_check_gates` | Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending. |
-| `bakin_exec_schedule_list` | List all scheduled jobs (merged OpenClaw + Bakin view) |
-| `bakin_exec_schedule_create` | Create a new scheduled job that creates tasks on the board |
-| `bakin_exec_schedule_update` | Update an existing scheduled job |
-| `bakin_exec_schedule_pause` | Pause, resume, or skip runs for a scheduled job |
-| `bakin_exec_schedule_delete` | Delete a scheduled job |
-| `bakin_exec_schedule_get` | Get details for a single scheduled job |
-| `bakin_exec_schedule_run_now` | Trigger an immediate run of a scheduled job |
-| `bakin_exec_schedule_runs` | Get run history for a scheduled job |
-| `bakin_exec_schedule_parse` | Parse a natural language or raw cron schedule expression |
-| `bakin_exec_schedule_briefing` | Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing. |
-| `bakin_exec_project_list` | List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount. |
-| `bakin_exec_project_get` | Get a project by ID including full spec, checklist, progress, and linked board task statuses. |
-| `bakin_exec_project_create` | Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs. |
-| `bakin_exec_project_update` | Update a project's title, status, body, or owner. Cannot set status to "completed" if unchecked items remain. |
-| `bakin_exec_project_delete` | Delete a project by ID. |
-| `bakin_exec_project_add_item` | Add a new checklist item to a project. |
-| `bakin_exec_project_mark_item` | Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage. |
-| `bakin_exec_project_remove_item` | Remove a checklist item from a project. |
-| `bakin_exec_project_link_item` | Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project. |
-| `bakin_exec_project_promote_item` | Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set. |
-| `bakin_exec_project_attach_asset` | Attach an existing asset to a project. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed. |
-| `bakin_exec_project_detach_asset` | Remove an asset reference from a project. Does not delete the asset itself. |
-| `bakin_exec_project_toggle_item` | Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage. |
-| `bakin_exec_project_update_item` | Update a checklist item's title and/or description. |
-| `bakin_exec_project_ask` | Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming. |
 
 ### Quick Reference
 
@@ -205,8 +113,8 @@ Workflows are the default. Skipping one is the exception, and skipping silently 
 
 1. **Check the catalog.** Call `bakin_exec_workflows_list` and read what's available.
 2. **Match against the subtask.** Does any workflow fit by title keywords, target agent, or intent? (e.g., a subtask for Pixel to produce an image matches `image-generation`.)
-3. **If a match exists, STOP. Do not create the task yet.** Message your parent task's requester (via `bakin_log_progress` on your own task, or by messaging main-operator if you need a decision back) and ask whether they want the full workflow or a one-off. Example: *"I need Pixel to produce a hero image — there's an `image-generation` workflow with a prompt-approval gate. Use the workflow, or one-off?"* Silence is not permission to skip.
-4. **Only after the decision**, call `bakin_create_task` with either `workflowId` set to the chosen workflow, or `skipWorkflowReason` citing the confirmation (e.g., `"main-operator confirmed one-off — no approval gate needed for quick reference image"`).
+3. **If a match exists, STOP. Do not create the task yet.** Message your parent task's requester (via `bakin_log_progress` on your own task, or by messaging the main agent if you need a decision back) and ask whether they want the full workflow or a one-off. Example: *"I need Pixel to produce a hero image — there's an `image-generation` workflow with a prompt-approval gate. Use the workflow, or one-off?"* Silence is not permission to skip.
+4. **Only after the decision**, call `bakin_create_task` with either `workflowId` set to the chosen workflow, or `skipWorkflowReason` citing the confirmation (e.g., `"main agent confirmed one-off — no approval gate needed for quick reference image"`).
 
 **Chat requests that sound simple are still workflow candidates if a matching workflow exists.** "Quick image," "just a draft," and "one-off" are NOT reasons to bypass a workflow on your own. The user's phrasing doesn't change the rule — the catalog does.
 
@@ -320,7 +228,7 @@ Always use `bakin_report_complete` when done — it handles notification automat
 - **Move without agent** → Tool returns error
 - **Done without logs** → Tool returns error
 - **Direct database edit** → Bypasses all validation, breaks locking
-- **Bypass patterns detected** (workaround language in logs) → Alert sent to main-operator, audit logged
+- **Bypass patterns detected** (workaround language in logs) → Alert sent to the main agent, audit logged
 - **Stuck task + stale heartbeat** → Auto-recovered to Todo, then Blocked after 3 recoveries
 
 ## Subagent Rules
@@ -335,9 +243,9 @@ These rules apply to ALL subagents (Chef, Pixel, Rolo, Patch, etc.). Violating t
 
 4. **Only spawn agents when you have a concrete brief.** Don't speculatively create subtasks.
 
-5. **Use your own agent name.** Log as `chef`, `pixel`, `patch`, etc. — never as `system`, `main-operator`, or another agent.
+5. **Use your own agent name.** Log as `chef`, `pixel`, `patch`, etc. — never as `system`, `main`, or another agent.
 
-6. **Never send messages directly to Mark.** Report to `main` — Main Operator decides what to surface.
+6. **Never send messages directly to Mark.** Report to `main` — the main agent decides what to surface.
 
 7. **Never mark a task done prematurely.** Only move to Done after output is delivered and confirmed.
 
@@ -368,7 +276,7 @@ When you receive a message that starts with "# WORKFLOW STEP ASSIGNMENT", you ar
 
 - Generate deliverables outside your step's scope (e.g., do not generate images if your step is "write copy")
 - Move the task to Done or any other column — the workflow engine handles task state
-- Message main-operator with "TASK COMPLETE" — workflow tasks complete through `bakin_submit_step`, not messages
+- Message the main agent with "TASK COMPLETE" — workflow tasks complete through `bakin_submit_step`, not messages
 - Create subtasks for other agents — the workflow defines who does what
 - Attempt to read or infer what future steps contain
 - Resubmit the same output after a rejection without addressing the feedback — the server detects near-duplicates and rejects them
