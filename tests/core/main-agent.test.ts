@@ -40,26 +40,26 @@ describe('main-agent', () => {
     expect(getMainAgentId()).toBe('roscoe') // lowercased
   })
 
-  it('returns "main" as final fallback', () => {
+  it('falls back to "roscoe" via OPENCLAW_ID_TO_BAKIN_NAME when no other source resolves', () => {
     vi.mocked(getSettings).mockReturnValue({} as any)
     vi.mocked(readFileSync).mockImplementation(() => { throw new Error('ENOENT') })
-    expect(getMainAgentId()).toBe('main')
+    expect(getMainAgentId()).toBe('roscoe')
   })
 
-  it('returns "main" when OpenClaw has no main agent entry', () => {
+  it('falls back to "roscoe" when OpenClaw has no main agent entry', () => {
     vi.mocked(getSettings).mockReturnValue({} as any)
     vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
       agents: { list: [{ id: 'pixel' }] },
     }))
-    expect(getMainAgentId()).toBe('main')
+    expect(getMainAgentId()).toBe('roscoe')
   })
 
-  it('returns "main" when OpenClaw main agent has no identity.name', () => {
+  it('falls back to "roscoe" when OpenClaw main agent has no identity.name', () => {
     vi.mocked(getSettings).mockReturnValue({} as any)
     vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
       agents: { list: [{ id: 'main' }] },
     }))
-    expect(getMainAgentId()).toBe('main')
+    expect(getMainAgentId()).toBe('roscoe')
   })
 
   it('prefers settings over OpenClaw', () => {
