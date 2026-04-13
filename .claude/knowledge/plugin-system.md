@@ -66,7 +66,8 @@ Provided to `activate()`. This is the plugin's only interface to the system:
 | `hooks.register(name, handler)` | Register a hook handler (returns unsubscribe fn) |
 | `hooks.has(name)` | Check if any handlers registered for a hook |
 | `hooks.invoke<R>(name, data)` | Invoke a hook and get its result (RPC-style) |
-| `search.registerContentType(def)` | Register a searchable content type (call during `activate()`) |
+| `search.registerContentType(def)` | Register a searchable content type (call during `activate()`). Use this for non-filesystem-backed plugins (SQLite, OpenClaw, etc.) — the plugin owns its own sync calls. |
+| `search.registerFileBackedContentType(def)` | File-backed variant that auto-wires watcher sync/unlink hooks AND schedules a startup mtime reconcile. Default for plugins whose source of truth is files under `~/.bakin/`. See `search-plugin-guide.md`. |
 | `search.index(key, doc)` | Upsert a document into the Antfly index (fire-and-forget safe) |
 | `search.remove(key)` | Remove a document from the index |
 | `search.transform(key, ops)` | Atomic metadata update without re-embedding |
