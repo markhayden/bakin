@@ -81,6 +81,10 @@ export function enabled(): boolean {
   return getSettings().antfly.enabled
 }
 
+export function available(): boolean {
+  return enabled() && getClient() !== null
+}
+
 export async function initialize(): Promise<void> {
   if (_g.__bakinAntflyReady) return
 

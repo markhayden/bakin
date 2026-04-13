@@ -299,6 +299,11 @@ async function checkSearchTables(): Promise<DiagnosticResult[]> {
     const antfly = await import('./antfly')
     await antfly.initialize()
 
+    // If Antfly is configured but unavailable, the antfly diagnostic is the
+    // root cause. Skip downstream search-table noise until the connection is
+    // healthy again.
+    if (!antfly.available()) return []
+
     const { getSearchHealth } = await import('./search-registry')
     const health = await getSearchHealth()
 
