@@ -18,6 +18,7 @@ const hooks = () => getHookRegistry()
 
 let watchdogTimer: NodeJS.Timeout | null = null
 let lastMcpAlertAt = 0
+let lastRestAlertAt = 0
 
 // Bypass detection patterns — agents trying to work around errors instead of blocking
 const BYPASS_PATTERNS = [
@@ -227,6 +228,52 @@ export function start(contentDir: string, port: number): void {
         }
       } catch (err) {
         log.error('MCP 5xx alert check failed', err)
+      }
+
+      // ─── REST 5xx error-rate alert ───────────────────────────────────
+      // Parallel to the MCP block above. Agents SHOULD be using MCP exec
+      // tools, but the UI, CLI, and any misbehaving agent still route
+      // through /api/plugins/*. Alert when that surface starts flapping.
+      try {
+        const wd = settings.watchdog
+        const restStats = getRecentStatsForPathPrefix('/api/plugins', wd.restWindowMs)
+        if (restStats.total >= wd.restMinSamples) {
+          const errorRate = restStats.errors / restStats.total
+          if (errorRate >= wd.restErrorThreshold) {
+            const sinceLast = now - lastRestAlertAt
+            if (sinceLast >= wd.restAlertCooldownMs) {
+              lastRestAlertAt = now
+              const pct = Math.round(errorRate * 100)
+              const windowSec = Math.round(wd.restWindowMs / 1000)
+              const alertMsg = `REST API returning ${pct}% 5xx (${restStats.errors}/${restStats.total} requests in last ${windowSec}s)`
+
+              broadcast({ type: 'alert', title: 'REST API unhealthy', message: alertMsg })
+              appendAudit(contentDir, 'rest.5xx_alert', 'watchdog', {
+                errors: restStats.errors,
+                total: restStats.total,
+                errorRate,
+                windowMs: wd.restWindowMs,
+              })
+              log.error('REST 5xx alert', undefined, {
+                errors: restStats.errors,
+                total: restStats.total,
+                errorRate,
+              })
+
+              if (settings.notifications.channel !== 'none') {
+                openclaw.sendChannelMessage(
+                  settings.notifications.channel,
+                  settings.notifications.target || `channel:${wd.alertChannelId}`,
+                  `⚠️ **REST API unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
+                ).catch(err => {
+                  log.error('REST 5xx Discord alert failed', err)
+                })
+              }
+            }
+          }
+        }
+      } catch (err) {
+        log.error('REST 5xx alert check failed', err)
       }
 
       // ─── Workflow step timeout detection ─────────────────────────────

@@ -12,12 +12,20 @@ import { getOpenClawPath } from './openclaw-home'
 const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
 
 /**
+ * Fallback mapping from OpenClaw canonical agent ids to Bakin display names.
+ * Kept in sync with OPENCLAW_TO_BAKIN in packages/core/src/settings.ts — both
+ * exist because settings.ts can't import from here without a cycle.
+ */
+const OPENCLAW_ID_TO_BAKIN_NAME: Record<string, string> = { main: 'main-operator' }
+
+/**
  * Resolve the main/orchestrator agent ID.
  *
  * Resolution order:
  * 1. settings.json → mainAgentId
  * 2. OpenClaw config → agents.list → find id='main' → identity.name
- * 3. Fallback: 'main'
+ * 3. Hardcoded mapping (OpenClaw 'main' → Bakin 'main-operator')
+ * 4. Fallback: 'main'
  */
 export function getMainAgentId(): string {
   const settings = getSettings()
@@ -27,7 +35,7 @@ export function getMainAgentId(): string {
   const fromOpenClaw = detectFromOpenClaw()
   if (fromOpenClaw) return fromOpenClaw
 
-  return 'main'
+  return OPENCLAW_ID_TO_BAKIN_NAME.main ?? 'main'
 }
 
 function detectFromOpenClaw(): string | null {

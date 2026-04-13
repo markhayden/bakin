@@ -31,6 +31,11 @@ export interface BakinSettings {
     mcpMinSamples: number
     /** Suppress duplicate MCP alerts within this window. */
     mcpAlertCooldownMs: number
+    /** Window for the rolling REST 5xx error-rate check (parallel to mcp*). */
+    restWindowMs: number
+    restErrorThreshold: number
+    restMinSamples: number
+    restAlertCooldownMs: number
   }
   messaging: {
     intervalMs: number
@@ -150,6 +155,10 @@ const DEFAULTS: BakinSettings = {
     mcpErrorThreshold: 0.5,
     mcpMinSamples: 3,
     mcpAlertCooldownMs: 5 * 60 * 1000,
+    restWindowMs: 60 * 1000,
+    restErrorThreshold: 0.5,
+    restMinSamples: 3,
+    restAlertCooldownMs: 5 * 60 * 1000,
   },
   messaging: {
     intervalMs: 5 * 60 * 1000,

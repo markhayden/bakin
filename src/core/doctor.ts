@@ -411,13 +411,26 @@ These rules govern Main Operator as orchestrator of the Bakin multi-agent system
 
 9. **Workflow tasks are hands-off.** If a task has a \`workflowId\`, the workflow engine manages step progression. Do not manually move workflow tasks between columns, do not produce step output yourself, and do not interfere with gates outside the Bakin UI.
 
-10. **Every task requires a workflow decision.** When calling \`bakin_exec_tasks_create\`, you MUST either specify a \`workflowId\` or explain why none applies via \`skipWorkflowReason\`:
+10. **Every task requires a workflow decision. Workflows are the default — skipping is the exception.** When calling \`bakin_exec_tasks_create\`, you MUST either specify a \`workflowId\` or explain why none applies via \`skipWorkflowReason\`:
     - With workflow: \`{ title, assignee, workflowId: "<id>" }\`
     - Without workflow: \`{ title, assignee, skipWorkflowReason: "<reason>" }\`
-    If you forget, Bakin will warn you and suggest a matching workflow if one exists. Call \`bakin_exec_workflows_list\` to see available workflows. The available workflows are:
+
+    **Preflight sequence — follow these steps in order, every time:**
+    1. Call \`bakin_exec_workflows_list\` and read the catalog.
+    2. Check if any workflow matches the request (by title keywords, agent, or intent).
+    3. **If a matching workflow exists, DO NOT create the task yet.** Reply to the requester with the workflow's tradeoffs and ask them to choose. Example: *"There's an \`image-generation\` workflow with a prompt-approval gate — want the full workflow, or should I do a quick one-off?"* **Silence is not permission to skip.** Wait for an explicit choice.
+    4. Only after the requester's decision, call \`bakin_exec_tasks_create\` — either with \`workflowId\` set to what they picked, or with \`skipWorkflowReason\` citing the confirmation (e.g., \`"Mark approved skipping image-generation in chat — one-off horse image, no approval gate needed"\`).
+
+    **Chat requests that sound simple are still workflow candidates if a matching workflow exists.** "Have Pixel make an image of a horse" is NOT a reason to bypass \`image-generation\`. The user's phrasing doesn't change the rule — the catalog does.
+
+    **Your judgment is not enough to skip.** "This feels heavier than needed," "this is a one-off," and "this is quick" are NOT valid reasons on their own. The only valid reasons to skip without asking first: (a) no workflow in the catalog matches the request, or (b) the requester has already said in this conversation that they want a one-off.
+
+    The catalog snapshot below is a hint, not the source of truth. **Always trust the live output of \`bakin_exec_workflows_list\` over any text in this file.** The snapshot is frozen at the last doctor run and may be stale, empty, or out of date; the tool is authoritative.
+
+    Workflow catalog snapshot (last rendered by \`bakin agent-rules --apply\`):
 WORKFLOW_CATALOG_PLACEHOLDER
 
-The skip reason is logged to the audit trail for debugging. Always check workflows first — most content tasks have one.
+The skip reason is logged to the audit trail for debugging. Always verify against \`bakin_exec_workflows_list\` before deciding a workflow doesn't exist.
 
 11. **Gate approvals go through the UI.** When a workflow gate is reached, a notification is sent and the task card shows "Awaiting Approval" in the Bakin UI. Tell Mark a gate is waiting — do NOT approve or reject gates yourself. Mark handles gates in the task drawer.
 

@@ -329,6 +329,28 @@ describe('search-reconcile', () => {
     expect(indexed).toEqual([])
   })
 
+  it('skips zombie index rows with empty keys instead of calling remove', async () => {
+    // A legacy / corrupted row with an empty _key in the underlying store
+    // must not cause the reconcile to blow up with "nonempty key required".
+    mkdirSync(join(tempDir, 'projects'), { recursive: true })
+    writeFileSync(join(tempDir, 'projects', 'alpha.md'), 'alpha body')
+
+    const removed: string[] = []
+    const result = await performStartupReconcile(makeDef(), tempDir, {
+      index: async () => {},
+      remove: async (key) => { removed.push(key) },
+      scanIndex: async function* () {
+        yield { key: '', mtimeMs: 0 }
+        yield { key: 'real-orphan', mtimeMs: 1000 }
+      },
+    })
+
+    // Real orphan still removed; empty key is skipped cleanly.
+    expect(removed).toEqual(['real-orphan'])
+    expect(result.removed).toBe(1)
+    expect(result.errors).toBe(0)
+  })
+
   it('handles mixed drift in a single pass', async () => {
     mkdirSync(join(tempDir, 'projects'), { recursive: true })
     writeFileSync(join(tempDir, 'projects', 'fresh.md'), 'new content')

@@ -455,6 +455,20 @@ describe('updateTask', () => {
     const found = getTask(task.id)
     expect(found!.description).toBeUndefined()
   })
+
+  it('clears workflowId when caller passes explicit undefined', async () => {
+    // Regression: createTaskWithEffects' workflow-failure cleanup path passes
+    // `{ workflowId: undefined }` to roll back the workflow attachment. The
+    // old `!== undefined` guard silently no-op'd this, leaving bogus
+    // workflowIds attached forever.
+    const task = await createTask('With workflow', 'todo', undefined, undefined, 'wf-original')
+    expect(task.workflowId).toBe('wf-original')
+
+    await updateTask(task.id, { workflowId: undefined })
+
+    const found = getTask(task.id)
+    expect(found!.workflowId).toBeUndefined()
+  })
 })
 
 // ---------------------------------------------------------------------------
