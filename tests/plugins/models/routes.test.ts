@@ -191,8 +191,8 @@ describe('GET /config', () => {
     const agents = body.agents as Array<Record<string, unknown>>
     expect(agents.length).toBe(3)
 
-    // Roscoe (main) should be first
-    expect(agents[0].agentId).toBe('roscoe')
+    // Main agent should be first
+    expect(agents[0].agentId).toBe('main')
     expect(agents[0].effectiveModel).toBe('anthropic/claude-opus-4-6')
     expect(agents[0].ownModel).toBe('anthropic/claude-opus-4-6')
 
@@ -511,10 +511,10 @@ describe('Exec Tools', () => {
 
     it('returns single agent config', async () => {
       const tool = findTool(activated.execTools, 'bakin_exec_models_get_config')!
-      const result = await callTool(tool, { agentId: 'roscoe' })
+      const result = await callTool(tool, { agentId: 'main' })
       expect(result.ok).toBe(true)
       const agent = result.agent as Record<string, unknown>
-      expect(agent.agentId).toBe('roscoe')
+      expect(agent.agentId).toBe('main')
       expect(agent.effectiveModel).toBe('anthropic/claude-opus-4-6')
     })
 

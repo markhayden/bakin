@@ -10,8 +10,6 @@ import { readFileSync } from 'fs'
 import { getSettings } from './settings'
 import { getOpenClawPath } from './openclaw-home'
 
-const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
-
 interface OpenClawAgentEntry {
   id: string
   identity?: { name?: string; emoji?: string }
@@ -51,7 +49,7 @@ export function getMainAgentName(): string {
 
 function findOpenClawMainAgent(preferredId: string): OpenClawAgentEntry | null {
   try {
-    const config = JSON.parse(readFileSync(OPENCLAW_JSON, 'utf-8'))
+    const config = JSON.parse(readFileSync(getOpenClawPath('openclaw.json'), 'utf-8'))
     const list = config?.agents?.list as OpenClawAgentEntry[] | undefined
     if (!Array.isArray(list)) return null
     return list.find((a) => a.id === preferredId) ?? null

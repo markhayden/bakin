@@ -12,6 +12,7 @@ import { cronAdd, cronEdit, cronRemove, cronRun } from './lib/openclaw-cron'
 import { createTaskWithEffects } from '../../src/core/task-service'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
+import { getMainAgentId } from '../../src/core/main-agent'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import type { BakinJobMeta, BridgePayload, BridgeResult } from './types'
 
@@ -327,7 +328,7 @@ const schedulePlugin: BakinPlugin = {
         isBakinJob: true,
         displayName: body.name,
         agentId: body.agentId,
-        owner: body.owner ?? 'roscoe',
+        owner: body.owner ?? getMainAgentId(),
         requireTriage: body.requireTriage ?? false,
         workflowId: body.workflowId,
         taskPrompt: body.taskPrompt,
@@ -592,7 +593,7 @@ const schedulePlugin: BakinPlugin = {
           isBakinJob: true,
           displayName: params.name as string,
           agentId: params.agentId as string | undefined,
-          owner: 'roscoe',
+          owner: getMainAgentId(),
           workflowId: params.workflowId as string | undefined,
           taskPrompt: params.taskPrompt as string | undefined,
           taskTitle: params.taskTitle as string | undefined,

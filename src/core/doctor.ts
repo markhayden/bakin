@@ -7,7 +7,7 @@
  *   UNSAFE (notify):   Agent roster mismatches, gateway down, task DB issues,
  *                      anything requiring human judgment
  *
- * Unsafe issues are reported to roscoe via OpenClaw so they show up in conversation.
+ * Unsafe issues are reported to the main agent via OpenClaw so they show up in conversation.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
 import { join, dirname } from 'path'
@@ -29,7 +29,7 @@ let doctorTimer: NodeJS.Timeout | null = null
 let lastDiagnosticResults: DiagnosticResult[] | null = null
 let lastDiagnosticTime: number = 0
 
-// Track what we've already notified about to avoid spamming roscoe
+// Track what we've already notified about to avoid spamming the main agent
 const notifiedIssues = new Set<string>()
 
 export interface DiagnosticResult {
@@ -79,15 +79,13 @@ function checkAgentRoster(contentDir: string): DiagnosticResult[] {
     const bakinAgents = settings.agents
 
     for (const agent of bakinAgents) {
-      const resolved = agent === 'roscoe' ? 'main' : agent
-      if (!openclawAgents.includes(resolved)) {
+      if (!openclawAgents.includes(agent)) {
         results.push(warn('agent-roster', `Agent "${agent}" is in Bakin but not in OpenClaw`))
       }
     }
 
     for (const ocAgent of openclawAgents) {
-      const bakinName = ocAgent === 'main' ? 'roscoe' : ocAgent
-      if (!bakinAgents.includes(bakinName)) {
+      if (!bakinAgents.includes(ocAgent)) {
         results.push(warn('agent-roster', `Agent "${ocAgent}" is in OpenClaw but not in Bakin settings`))
       }
     }
@@ -662,7 +660,7 @@ async function checkTaskConsistency(contentDir: string, autoFix: boolean): Promi
       }
 
       // In-progress task assigned to unknown agent
-      if (task.agent && !knownAgents.has(task.agent) && task.agent !== 'roscoe') {
+      if (task.agent && !knownAgents.has(task.agent) && task.agent !== getMainAgentId()) {
         results.push(warn('task-consistency', `In-progress task "${task.title}" assigned to unknown agent "${task.agent}"`))
       }
 
@@ -713,7 +711,7 @@ async function checkTaskConsistency(contentDir: string, autoFix: boolean): Promi
 }
 
 // ---------------------------------------------------------------------------
-// Notification — escalate unfixable issues to roscoe
+// Notification — escalate unfixable issues to the main agent
 // ---------------------------------------------------------------------------
 
 async function notifyUnfixableIssues(results: DiagnosticResult[]): Promise<void> {
@@ -736,11 +734,11 @@ async function notifyUnfixableIssues(results: DiagnosticResult[]): Promise<void>
   const message = `Bakin Doctor found ${issues.length} issue(s) that need your attention:\n\n${lines.join('\n')}\n\nRun \`bakin doctor\` for full details.`
 
   try {
-    await openclaw.sendMessage('main', message)
-    log.info('Notified roscoe of unfixable issues', { count: issues.length })
+    await openclaw.sendMessage(getMainAgentId(), message)
+    log.info('Notified main agent of unfixable issues', { count: issues.length })
   } catch (err) {
     // Gateway might be the issue — can't notify about that
-    log.warn('Could not notify roscoe of doctor issues (gateway may be down)', err)
+    log.warn('Could not notify main agent of doctor issues (gateway may be down)', err)
   }
 }
 
@@ -751,7 +749,7 @@ async function notifyUnfixableIssues(results: DiagnosticResult[]): Promise<void>
 interface ManagedBlockDef {
   blockId: string
   contentFn: (agentId: string) => string
-  agentFilter?: (agentId: string) => boolean // defaults to all non-roscoe
+  agentFilter?: (agentId: string) => boolean // defaults to all non-main-agent
 }
 
 /**
@@ -769,8 +767,9 @@ function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): DiagnosticRe
   const endMarker = `<!-- bakin:${def.blockId}:end -->`
   const checkName = `agent-${def.blockId}`
 
+  const mainId = getMainAgentId()
   for (const agentId of settings.agents) {
-    if (agentId === 'roscoe') continue
+    if (agentId === mainId) continue
     if (def.agentFilter && !def.agentFilter(agentId)) continue
 
     const agentsPath = join(openclawBase, 'workspaces', agentId, 'AGENTS.md')
@@ -1446,7 +1445,7 @@ function checkScheduleSync(autoFix: boolean): DiagnosticResult[] {
         isBakinJob: false,
         displayName: orphan.name,
         agentId: undefined, // Don't guess — flag for triage
-        owner: 'roscoe',
+        owner: getMainAgentId(),
         requireTriage: true,
         createdAt: now,
         updatedAt: now,
@@ -1566,7 +1565,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_list
 
 /**
  * Run all health checks with auto-fix for safe issues.
- * Notifies roscoe via OpenClaw about issues that need human judgment.
+ * Notifies the main agent via OpenClaw about issues that need human judgment.
  */
 // ---------------------------------------------------------------------------
 // Task order integrity
@@ -1723,7 +1722,7 @@ export async function runDiagnostics(
     fixes,
   })
 
-  // Notify roscoe about things we can't auto-fix
+  // Notify the main agent about things we can't auto-fix
   await notifyUnfixableIssues(results)
 
   // Cache results for lightweight reads (e.g. health plugin polling)

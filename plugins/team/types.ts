@@ -46,7 +46,7 @@ export type AgentDisplaySettingsMap = Record<string, AgentDisplaySettings>
 export interface OrgTeam {
   id: string
   label: string
-  reportsTo: string   // agent ID this team reports to (e.g. "roscoe")
+  reportsTo: string   // agent ID this team reports to (e.g. "main")
   color?: string
   order?: number
 }

@@ -29,7 +29,7 @@ const DEFAULT_STALE_THRESHOLD_MS = 15 * 60 * 1000
 // ─── Display Settings (Bakin-owned) ──────────────────────────────────────────
 
 const DEFAULT_COLORS: Record<string, string> = {
-  roscoe: '#60a5fa',
+  main: '#60a5fa',
   basil: '#4ade80',
   pixel: '#a78bfa',
   rolo: '#fb923c',
@@ -468,7 +468,7 @@ const teamPlugin: BakinPlugin = {
           if (!agentId) return Response.json({ error: 'agentId is required' }, { status: 400 })
 
           // Prevent deleting the main agent
-          if (agentId === 'roscoe') {
+          if (agentId === 'main') {
             return Response.json({ error: 'Cannot delete the main orchestrator agent' }, { status: 403 })
           }
 
@@ -697,8 +697,7 @@ const teamPlugin: BakinPlugin = {
         if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
 
         const allUsage = getAllAgentUsage()
-        const openclawId = adapter.toOpenClawId(agentId)
-        const usage = allUsage.find((u) => u.agent === openclawId)
+        const usage = allUsage.find((u) => u.agent === agentId)
 
         return Response.json({ usage: usage ?? null })
       },

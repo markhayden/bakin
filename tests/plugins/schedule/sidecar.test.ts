@@ -135,7 +135,7 @@ describe('schedule/sidecar', () => {
     it('applies default owner, maxFailures, allowOverlap, requireTriage', () => {
       const meta = makeMeta()
       const d = withDefaults(meta)
-      expect(d.owner).toBe('roscoe')
+      expect(d.owner).toBe('main')
       expect(d.maxFailures).toBe(3)
       expect(d.allowOverlap).toBe(false)
       expect(d.requireTriage).toBe(false)

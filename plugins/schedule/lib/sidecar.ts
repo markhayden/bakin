@@ -6,12 +6,12 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
+import { getMainAgentId } from '../../../src/core/main-agent'
 import type { ScheduleSidecar, BakinJobMeta } from '../types'
 
 const log = createLogger('schedule:sidecar')
 
 const DEFAULTS = {
-  owner: 'roscoe',
   maxFailures: 3,
   allowOverlap: false,
   requireTriage: false,
@@ -72,7 +72,7 @@ export function removeJob(jobId: string): boolean {
 export function withDefaults(meta: BakinJobMeta): Required<Pick<BakinJobMeta, 'owner' | 'maxFailures' | 'allowOverlap' | 'requireTriage'>> & BakinJobMeta {
   return {
     ...meta,
-    owner: meta.owner ?? DEFAULTS.owner,
+    owner: meta.owner ?? getMainAgentId(),
     maxFailures: meta.maxFailures ?? DEFAULTS.maxFailures,
     allowOverlap: meta.allowOverlap ?? DEFAULTS.allowOverlap,
     requireTriage: meta.requireTriage ?? DEFAULTS.requireTriage,

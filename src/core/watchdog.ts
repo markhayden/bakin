@@ -10,6 +10,7 @@ import { broadcast } from './sse'
 import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
 import * as openclaw from './openclaw-client'
+import { getMainAgentId } from './main-agent'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { getRecentStatsForPathPrefix } from './request-log'
 
@@ -414,8 +415,8 @@ function checkBypassPatterns(task: { id: string; title: string; agent?: string; 
         broadcast({ type: 'alert', title: task.title, agent: task.agent, message: alertMsg })
         appendAudit(contentDir, 'task.bypass_detected', 'watchdog', { id: task.id, title: task.title, agent: task.agent, pattern: match[0] })
 
-        // Notify roscoe
-        openclaw.sendMessage('main', alertMsg).catch(() => {})
+        // Notify the main agent
+        openclaw.sendMessage(getMainAgentId(), alertMsg).catch(() => {})
 
         log.warn('Bypass pattern detected', { id: task.id, title: task.title, pattern: match[0] })
         return // Only alert once per watchdog cycle per task

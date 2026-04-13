@@ -5,10 +5,10 @@
 import { createLogger } from './logger'
 import { appendAudit } from './audit'
 import * as openclaw from './openclaw-client'
+import { getMainAgentId } from '@bakin/core/main-agent'
 
 const log = createLogger('continuation')
 
-const AGENT_ID_MAP: Record<string, string> = { roscoe: 'main' }
 const MAX_RETRIES = 3
 const RETRY_DELAY_MS = 5000
 
@@ -35,7 +35,7 @@ export async function checkAndContinueDependents(
 
         await clearDependency(task.id)
 
-        const agentId = task.agent ? (AGENT_ID_MAP[task.agent] || task.agent) : 'main'
+        const agentId = task.agent ?? getMainAgentId()
         const mcServer = `bakin-${agentId}`
         const resumeMsg = `Your dependency task "${completedTitle}" is now Done. Resume your task: "${task.title}". Continue from where you left off.
 

@@ -211,7 +211,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
             )}
           </div>
         </div>
-        {agentId !== 'roscoe' && (
+        {agentId !== 'main' && (
           <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive shrink-0" onClick={() => setDeleteOpen(true)}>
             <Trash2 className="size-4" />
           </Button>
