@@ -783,8 +783,9 @@ export async function getSearchHealth(): Promise<{
 }> {
   const registry = getRegistry()
   const isEnabled = antfly.enabled()
+  const isAvailable = antfly.available()
 
-  if (!isEnabled) {
+  if (!isEnabled || !isAvailable) {
     return { enabled: false, tables: [] }
   }
 
