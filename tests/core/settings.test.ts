@@ -119,13 +119,13 @@ describe('Settings', () => {
     fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
       dispatch: { intervalMs: 60000 },
-      agents: ['roscoe', 'patch'],
+      agents: ['main', 'patch'],
     }))
 
     const settings = getSettings()
     expect(settings.dispatch.intervalMs).toBe(60000)
     expect(settings.dispatch.failureCooldownMs).toBe(1800000) // default preserved
-    expect(settings.agents).toEqual(['roscoe', 'patch'])
+    expect(settings.agents).toEqual(['main', 'patch'])
   })
 
   it('caches settings on subsequent calls', () => {

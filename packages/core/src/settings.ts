@@ -54,6 +54,12 @@ export interface BakinSettings {
     blocklist?: string[]
   }
   agents: string[]
+  /**
+   * Canonical id of the main/orchestrator agent. Overrides the OpenClaw
+   * config lookup performed by `getMainAgentId()`. Usually unset — the
+   * OpenClaw config is the source of truth.
+   */
+  mainAgentId?: string
   antfly: {
     enabled: boolean
     url: string
@@ -246,10 +252,10 @@ const OPENCLAW_JSON_PATH = getOpenClawPath('openclaw.json')
 /**
  * Read agent IDs from ~/.openclaw/openclaw.json with mtime-based caching.
  * Re-reads when the file changes on disk — picks up agents added via OpenClaw
- * without needing a Bakin restart or explicit cache bust.
+ * without needing a Bakin restart or explicit cache bust. Ids flow through
+ * unchanged; display names are resolved separately at render time.
  */
 function readAgentIdsFromOpenClaw(): string[] {
-  const OPENCLAW_TO_BAKIN: Record<string, string> = { main: 'roscoe' }
   try {
     const stat = fs.statSync(OPENCLAW_JSON_PATH)
     if (_g.__bakinOpenClawMtime === stat.mtimeMs && _g.__bakinOpenClawAgents) {
@@ -258,7 +264,7 @@ function readAgentIdsFromOpenClaw(): string[] {
     const config = JSON.parse(fs.readFileSync(OPENCLAW_JSON_PATH, 'utf-8'))
     const list = config?.agents?.list as Array<{ id: string }> | undefined
     if (!Array.isArray(list)) return []
-    const agents = list.map((a) => OPENCLAW_TO_BAKIN[a.id] ?? a.id)
+    const agents = list.map((a) => a.id)
     _g.__bakinOpenClawMtime = stat.mtimeMs
     _g.__bakinOpenClawAgents = agents
     return agents

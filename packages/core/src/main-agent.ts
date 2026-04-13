@@ -1,8 +1,9 @@
 /**
  * Main agent resolution for Bakin.
  *
- * The orchestrator agent name is NOT hardcoded in source.
- * It's resolved at runtime from settings or OpenClaw config.
+ * The orchestrator agent id is NOT hardcoded in source. It is resolved at
+ * runtime from settings or OpenClaw config. Display names are resolved
+ * separately via `getMainAgentName()` from OpenClaw `identity.name`.
  */
 import { readFileSync } from 'fs'
 
@@ -11,40 +12,49 @@ import { getOpenClawPath } from './openclaw-home'
 
 const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
 
-/**
- * Fallback mapping from OpenClaw canonical agent ids to Bakin display names.
- * Kept in sync with OPENCLAW_TO_BAKIN in packages/core/src/settings.ts — both
- * exist because settings.ts can't import from here without a cycle.
- */
-const OPENCLAW_ID_TO_BAKIN_NAME: Record<string, string> = { main: 'roscoe' }
+interface OpenClawAgentEntry {
+  id: string
+  identity?: { name?: string; emoji?: string }
+}
 
 /**
  * Resolve the main/orchestrator agent ID.
  *
  * Resolution order:
  * 1. settings.json → mainAgentId
- * 2. OpenClaw config → agents.list → find id='main' → identity.name
- * 3. Hardcoded mapping (OpenClaw 'main' → Bakin 'roscoe')
- * 4. Fallback: 'main'
+ * 2. OpenClaw config → agents.list → entry with id='main' → its id
+ * 3. Literal 'main'
  */
 export function getMainAgentId(): string {
   const settings = getSettings()
-  const fromSettings = (settings as unknown as Record<string, unknown>).mainAgentId
+  const fromSettings = settings.mainAgentId
   if (typeof fromSettings === 'string' && fromSettings) return fromSettings
 
-  const fromOpenClaw = detectFromOpenClaw()
-  if (fromOpenClaw) return fromOpenClaw
+  const entry = findOpenClawMainAgent('main')
+  if (entry) return entry.id
 
-  return OPENCLAW_ID_TO_BAKIN_NAME.main ?? 'main'
+  return 'main'
 }
 
-function detectFromOpenClaw(): string | null {
+/**
+ * Resolve the main agent's display name, used in rendered UI and agent-rules
+ * text substitution. Reads `identity.name` from `~/.openclaw/openclaw.json`.
+ * Falls back to a title-cased version of the canonical id when unset.
+ */
+export function getMainAgentName(): string {
+  const id = getMainAgentId()
+  const entry = findOpenClawMainAgent(id)
+  const name = entry?.identity?.name
+  if (typeof name === 'string' && name.trim().length > 0) return name
+  return id.charAt(0).toUpperCase() + id.slice(1)
+}
+
+function findOpenClawMainAgent(preferredId: string): OpenClawAgentEntry | null {
   try {
     const config = JSON.parse(readFileSync(OPENCLAW_JSON, 'utf-8'))
-    const mainAgent = (config.agents?.list as Array<{ id: string; identity?: { name?: string } }>)
-      ?.find((a: { id: string }) => a.id === 'main')
-    if (mainAgent?.identity?.name) return mainAgent.identity.name.toLowerCase()
-    return null
+    const list = config?.agents?.list as OpenClawAgentEntry[] | undefined
+    if (!Array.isArray(list)) return null
+    return list.find((a) => a.id === preferredId) ?? null
   } catch {
     return null
   }
