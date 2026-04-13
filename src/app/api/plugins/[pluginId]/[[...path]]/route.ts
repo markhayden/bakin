@@ -9,7 +9,8 @@ import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
 import { BakinEventBus } from '@/lib/events/event-bus'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
-import type { PluginContext, BakinPlugin, APIRoute } from '@/lib/plugin-types'
+import { buildSearchAPI } from '@/core/search-registry'
+import type { PluginContext, BakinPlugin, APIRoute, SearchAPI } from '@/lib/plugin-types'
 
 const log = createLogger('plugin-route')
 
@@ -61,14 +62,24 @@ function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | '
         }
       },
     },
-    search: {
-      registerContentType: () => {},
-      registerFileBackedContentType: () => {},
-      index: async () => {},
-      remove: async () => {},
-      transform: async () => {},
-      query: async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } }),
-    },
+    // Delegate read/write methods to the real, globalThis-backed registry so
+    // plugin REST handlers can actually query and mutate Antfly. Registration
+    // methods are stubbed: the custom server in server.ts has already
+    // activated every plugin with the real API, populating the shared
+    // registry and wiring the watcher hooks. Re-registering here would
+    // double-fire watcher sync/unlink hooks.
+    search: (() => {
+      const real = buildSearchAPI(pluginId)
+      const api: SearchAPI = {
+        registerContentType: () => {},
+        registerFileBackedContentType: () => {},
+        index: real.index,
+        remove: real.remove,
+        transform: real.transform,
+        query: real.query,
+      }
+      return api
+    })(),
     hooks: {
       register: (name: string, handler: (data: any) => any) => {
         const registry = (globalThis as any).__bakinHookRegistry
