@@ -629,19 +629,23 @@ export function updateTask(
       const state = parseStateJson(flow.state_json)
       const currentCol = getColumn(flow)
 
-      if (updates.title !== undefined) {
-        state.title = updates.title
+      // Use `'key' in updates` instead of `!== undefined` so callers can
+      // explicitly clear a field by passing `{ workflowId: undefined }`. The
+      // old guard silently no-op'd on explicit clears, which let bogus
+      // workflowIds survive the createTaskWithEffects cleanup path.
+      if ('title' in updates) {
+        if (updates.title !== undefined) state.title = updates.title
       }
-      if (updates.description !== undefined) {
+      if ('description' in updates) {
         state.description = updates.description || undefined
       }
-      if (updates.agent !== undefined) {
+      if ('agent' in updates) {
         state.agent = updates.agent || undefined
       }
-      if (updates.workflowId !== undefined) {
+      if ('workflowId' in updates) {
         state.workflowId = updates.workflowId || undefined
       }
-      if (updates.projectId !== undefined) {
+      if ('projectId' in updates) {
         state.projectId = updates.projectId || undefined
       }
 

@@ -405,62 +405,16 @@ async function cmdDoctor(): Promise<void> {
 // Agent Rules
 // ---------------------------------------------------------------------------
 
-const AGENT_RULES_BLOCK_START = '<!-- bakin:orchestrator-rules:start -->'
-const AGENT_RULES_BLOCK_END = '<!-- bakin:orchestrator-rules:end -->'
-
-const ORCHESTRATOR_RULES_CONTENT = `## Bakin Orchestrator Rules
-
-> Auto-managed by \`bakin agent-rules --apply\`. Do not edit this block manually.
-
-These rules govern Roscoe as orchestrator of the Bakin multi-agent system.
-
-1. **Every task gets logged before work begins.** Use \`bakin tasks create "<title>" <agent>\` before producing any deliverable. No exceptions.
-
-2. **Never do subagent work inline.** Roscoe delegates — Roscoe does not generate images, write long-form copy, or produce video. That's what the team is for.
-
-3. **Let Bakin dispatch — NEVER spawn subagents directly.** After \`bakin tasks create\`, Bakin's dispatch system sends the task to the agent automatically. Do NOT use \`openclaw agent\`, \`sessions_spawn\`, or agent-to-agent messages to assign work. That bypasses the entire pipeline (task tracking, audit, MCP tools, continuation).
-
-4. **High-level tasks only on the board.** Don't break tasks into subtasks yourself. Create one task, assign it, let the subagent decompose it.
-
-5. **Subagents own their handoffs.** If Basil needs Pixel, Basil creates that task via mcporter — not Roscoe. Let the pipeline flow naturally.
-
-6. **Approval gates are non-negotiable.** Before publishing, sending, or any external action: pause and confirm with Mark unless pre-approved.
-
-7. **Monitor the pipeline, don't micromanage.** Use \`bakin tasks list\`, \`bakin logs\`, or the dashboard. Don't shadow-execute tasks that are in flight.
-
-8. **One task per agent per piece of content.** Don't assign the same content to multiple agents in parallel. Let the assigned agent drive.
-
-9. **AGENTS.md is your rulebook, not the subagents'.** The Bakin skill (SKILL.md) governs subagents. AGENTS.md governs you.
-
-10. **Workflow tasks are hands-off.** If a task has a \`workflowId\`, the workflow engine manages step progression. Do not manually move workflow tasks between columns, do not produce step output yourself, and do not interfere with gates outside the Bakin UI.
-
-11. **Every task requires a workflow decision.** When creating a task, you MUST either specify a workflow or explain why none applies:
-    - With workflow: \`bakin tasks create "<title>" <agent> --workflow=<id>\`
-    - Without workflow: \`bakin tasks create "<title>" <agent> --no-workflow="<reason>"\`
-    Use \`bakin workflows list\` to see available workflows. The skip reason is logged to the audit trail.
-
-12. **Gate approvals go through the UI.** When a workflow gate is reached, tell Mark a gate is waiting — do NOT approve or reject gates yourself. Mark handles gates in the task drawer.
-
-### Bakin CLI Quick Reference
-
-\`\`\`bash
-bakin tasks create "<title>" <agent> [--workflow=<id>|--no-workflow="<reason>"]
-bakin tasks list                       # See all tasks
-bakin tasks get <id>                   # Task details
-bakin tasks log <id> "<message>"       # Log progress
-bakin tasks complete <id> "<summary>"  # Mark done
-bakin tasks block <id> "<reason>"      # Block task
-bakin workflows list                   # List available workflow definitions
-bakin workflows start <taskId> <wfId>  # Manually start a workflow for a task
-bakin workflows step <taskId>          # Get workflow step
-bakin workflows submit <t> <s> <json>  # Submit step output
-bakin status                           # System health
-bakin logs [filter]                    # Tail audit log
-\`\`\``
+// Orchestrator rules block constants and template are owned by src/core/doctor.ts.
+// Imported lazily inside cmdAgentRules so the CLI stays a pure entry point.
 
 async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
   const { readFileSync, writeFileSync, existsSync } = await import('fs')
-  const { join } = await import('path')
+  const {
+    AGENT_RULES_BLOCK_START,
+    AGENT_RULES_BLOCK_END,
+    resolveOrchestratorRules,
+  } = await import('../src/core/doctor')
 
   const agentsPath = getOpenClawPath('workspace', 'AGENTS.md')
 
@@ -471,6 +425,7 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
 
   const current = readFileSync(agentsPath, 'utf-8')
   const hasBlock = current.includes(AGENT_RULES_BLOCK_START)
+  const resolvedContent = await resolveOrchestratorRules()
 
   if (options.check) {
     if (hasBlock) {
@@ -482,7 +437,7 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
         process.exit(1)
       }
       const blockContent = current.slice(startIdx + AGENT_RULES_BLOCK_START.length, endIdx).trim()
-      const expected = ORCHESTRATOR_RULES_CONTENT.trim()
+      const expected = resolvedContent.trim()
       if (blockContent === expected) {
         console.log('[OK] Orchestrator rules block is present and up to date')
       } else {
@@ -523,7 +478,7 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
     return
   }
 
-  const block = `${AGENT_RULES_BLOCK_START}\n${ORCHESTRATOR_RULES_CONTENT}\n${AGENT_RULES_BLOCK_END}`
+  const block = `${AGENT_RULES_BLOCK_START}\n${resolvedContent}\n${AGENT_RULES_BLOCK_END}`
 
   let updated: string
   if (hasBlock) {

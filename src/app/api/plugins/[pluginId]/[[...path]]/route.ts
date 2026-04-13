@@ -10,6 +10,7 @@ import { BakinEventBus } from '@/lib/events/event-bus'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { buildSearchAPI } from '@/core/search-registry'
+import { appendAudit } from '@/core/audit'
 import type { PluginContext, BakinPlugin, APIRoute, SearchAPI } from '@/lib/plugin-types'
 
 const log = createLogger('plugin-route')
@@ -242,6 +243,12 @@ async function handleRequest(
     )
   }
 
+  const startedAt = Date.now()
+  // Best-effort actor attribution: agents sending direct REST calls can
+  // identify themselves via X-Bakin-Agent. UI/human traffic won't set it
+  // and will land in the "unknown" bucket — which is the point.
+  const actor = req.headers.get('x-bakin-agent') || 'unknown'
+
   try {
     // Inject extracted path params into the request URL's searchParams
     // so handlers can read them the same way as query params
@@ -263,9 +270,35 @@ async function handleRequest(
     }
 
     const ctx = buildContext(pluginId)
-    return await match.route.handler(handlerReq, ctx)
+    const res = await match.route.handler(handlerReq, ctx)
+
+    // Audit write methods (and any failure) so we can see REST usage in
+    // memory/audit and trace agents who bypass MCP. Successful GETs are
+    // skipped to avoid drowning audit.jsonl under dashboard polling.
+    const durationMs = Date.now() - startedAt
+    const isWrite = method !== 'GET' && method !== 'HEAD'
+    const isError = res.status >= 400
+    if (isWrite || isError) {
+      const tag = isError ? 'fail' : 'ok'
+      appendAudit(
+        getContentDir(),
+        `rest.${pluginId}.${method.toLowerCase()}.${tag}`,
+        actor,
+        { path: routePath, status: res.status, durationMs, duplicate: true },
+        'rest',
+      )
+    }
+    return res
   } catch (err) {
+    const durationMs = Date.now() - startedAt
     log.error('Plugin route error', err, { pluginId, routePath, method })
+    appendAudit(
+      getContentDir(),
+      `rest.${pluginId}.${method.toLowerCase()}.error`,
+      actor,
+      { path: routePath, status: 500, durationMs, error: err instanceof Error ? err.message : String(err) },
+      'rest',
+    )
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }
