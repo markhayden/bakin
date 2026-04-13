@@ -54,6 +54,7 @@ function createMockContext(pluginId: string): {
     },
     search: {
       registerContentType: () => {},
+      registerFileBackedContentType: () => {},
       index: async () => {},
       remove: async () => {},
       transform: async () => {},

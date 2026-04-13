@@ -2,6 +2,43 @@
  * File watcher for Bakin content directory.
  * Uses chokidar to watch for changes and broadcasts via SSE.
  * Handles inbox completion reports inline.
+ *
+ * ─── Hook contract ────────────────────────────────────────────────────
+ *
+ * Modules can subscribe to filesystem events through two hook arrays:
+ *
+ *   registerSyncHook(cb)   — fired on `add` and `change` events
+ *   registerUnlinkHook(cb) — fired on `unlink` events
+ *
+ * Both fire fire-and-forget: hooks are awaited in order but errors are
+ * caught, logged, and swallowed so a single misbehaving hook never blocks
+ * the rest of the chain or the event loop.
+ *
+ * ─── awaitWriteFinish lag ────────────────────────────────────────────
+ *
+ * Chokidar is configured with `awaitWriteFinish: { stabilityThreshold: 300ms }`.
+ * That means hooks fire ~300ms AFTER a file write settles, not the moment
+ * the write happens. Code paths that need immediate consistency (REST
+ * routes responding to a client write, for example) MUST call their
+ * search/index mutators directly. The hooks are a safety net for
+ * filesystem writes that bypass the authoritative path — manual `cp`,
+ * rsync, external agents writing to disk, restored backups — not a
+ * replacement for synchronous mutation calls.
+ *
+ * ─── Path semantics ──────────────────────────────────────────────────
+ *
+ * Hook callbacks receive the file path RELATIVE to `contentDir`. This
+ * matches the format used by `ctx.search.index(key, ...)` so the same
+ * value flows from event → hook → index without translation. Sync hooks
+ * also receive the file content as a UTF-8 string (empty for binary
+ * assets, which the watcher recognizes by their `assets/` prefix).
+ *
+ * ─── Filter ──────────────────────────────────────────────────────────
+ *
+ * The non-asset path filter accepts `.md`, `.json`, `.jsonl`, `.yaml`,
+ * `.yml`. Anything else under `~/.bakin/` is ignored. Asset binaries are
+ * matched separately via the `assets/` prefix and broadcast WITHOUT a
+ * file read (no content payload) since they may be very large.
  */
 import { watch, type FSWatcher } from 'chokidar'
 import { readFileSync } from 'fs'
@@ -23,10 +60,30 @@ const syncHooks: SyncHook[] = []
 type UnlinkHook = (relativePath: string) => void | Promise<void>
 const unlinkHooks: UnlinkHook[] = []
 
+/**
+ * Subscribe to file `add` and `change` events.
+ *
+ * Hooks receive the file path relative to `contentDir` and the UTF-8
+ * file content (empty string for binary asset files). Hooks are awaited
+ * in registration order; errors are logged and swallowed. Returns void —
+ * unregistration is not supported because hooks are wired during plugin
+ * activation and live for the process lifetime.
+ *
+ * NOTE: hooks fire ~300ms after the write due to `awaitWriteFinish`.
+ * Authoritative consistency paths should call mutators directly rather
+ * than relying on this hook. See file header for the full contract.
+ */
 export function registerSyncHook(hook: SyncHook): void {
   syncHooks.push(hook)
 }
 
+/**
+ * Subscribe to file `unlink` events.
+ *
+ * Hooks receive the file path relative to `contentDir`. Same fire-and-
+ * forget semantics as `registerSyncHook`. Use for symmetric cleanup of
+ * derived state (search indexes, in-memory trackers, caches).
+ */
 export function registerUnlinkHook(hook: UnlinkHook): void {
   unlinkHooks.push(hook)
 }
@@ -87,7 +144,7 @@ function handleFileEvent(deps: WatcherDeps, fullPath: string, event: string): vo
   }
 
   // Non-asset files: only handle text formats
-  if (!/\.(md|json|jsonl)$/.test(fullPath)) return
+  if (!/\.(md|json|jsonl|ya?ml)$/.test(fullPath)) return
 
   try {
     const content = readFileSync(fullPath, 'utf-8')

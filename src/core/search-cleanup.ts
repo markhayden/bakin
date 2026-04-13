@@ -1,5 +1,15 @@
 /**
- * Search cleanup — periodic orphan detection and removal.
+ * Search cleanup — periodic orphan BACKSTOP scan.
+ *
+ * The primary path for keeping search indexes in sync with the
+ * filesystem is the watcher unlink hook (see search-registry.ts —
+ * registerFileBackedContentType wires this automatically). This
+ * scan only catches the rare cases where the watcher missed an event:
+ * the process was down during a delete, the fs event was lost, etc.
+ *
+ * Default cadence is 7d (settings.antfly.cleanupInterval) — long
+ * because it's a backstop, not the main consistency mechanism.
+ *
  * Scans Antfly tables and checks each document against its plugin's
  * verifyExists() callback. Removes orphans that no longer exist at source.
  */
@@ -72,7 +82,7 @@ export async function runCleanup(): Promise<CleanupStats[]> {
         }
 
         if (stats.orphans > 0) {
-          log.info(`Cleanup: ${tableName} — removed ${stats.orphans} orphans of ${stats.scanned} scanned`)
+          log.info(`Backstop scan: ${tableName} — removed ${stats.orphans} orphans of ${stats.scanned} scanned`)
         }
       } catch (err) {
         log.error(`Cleanup failed for ${tableName}`, err)
@@ -125,7 +135,7 @@ export function startCleanupTimer(): void {
     })
   }, intervalMs)
 
-  log.info(`Orphan cleanup timer started (interval: ${settings.antfly.cleanupInterval})`)
+  log.info(`Orphan backstop scan scheduled (interval: ${settings.antfly.cleanupInterval}) — primary path is the watcher unlink hook`)
 }
 
 /**
@@ -135,6 +145,6 @@ export function stopCleanupTimer(): void {
   if (_g.__bakinSearchCleanupTimer) {
     clearInterval(_g.__bakinSearchCleanupTimer)
     _g.__bakinSearchCleanupTimer = null
-    log.info('Orphan cleanup timer stopped')
+    log.info('Orphan backstop scan stopped')
   }
 }

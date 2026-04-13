@@ -96,7 +96,7 @@ app.prepare().then(async () => {
   const migration = await migrateIfNeeded()
 
   // Register audit content type for search (core module, not a plugin)
-  const { createRegisteredTables, buildSearchAPI } = await import('./src/core/search-registry')
+  const { createRegisteredTables, buildSearchAPI, runPendingReconciles } = await import('./src/core/search-registry')
   const auditSearch = buildSearchAPI('_audit')
   auditSearch.registerContentType({
     table: 'audit',
@@ -143,6 +143,11 @@ app.prepare().then(async () => {
 
   // Create Antfly tables for all registered search content types
   await createRegisteredTables()
+
+  // Drain any startup reconciles enqueued by registerFileBackedContentType.
+  // Tables exist by this point so reconcile scans hit real data. Failures
+  // are logged inside the helper — never block startup.
+  await runPendingReconciles()
 
   // If the schema migration dropped tables, kick off a full background
   // reindex so the freshly-recreated tables get populated with content.

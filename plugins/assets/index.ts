@@ -22,7 +22,6 @@ import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { ASSET_TYPES } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
 import { saveAsset } from './lib/save-asset'
-import { registerSyncHook } from '../../src/core/watcher'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { buildAssetFileUrl } from './lib/asset-url'
@@ -60,7 +59,7 @@ const assetsPlugin: BakinPlugin = {
   activate(ctx: PluginContext) {
     // ─── Search Content Type Registration ─────────────────────────────
 
-    ctx.search.registerContentType({
+    ctx.search.registerFileBackedContentType({
       table: 'assets',
       schema: {
         description: { type: 'text' },
@@ -111,6 +110,40 @@ const assetsPlugin: BakinPlugin = {
         },
       ],
       facets: ['asset_type', 'agent', 'tool'],
+      // Sidecar/binary pairing means the default file→doc flow doesn't fit
+      // cleanly: a sync may be triggered by either the binary or its
+      // .meta.json sibling, and we need to keep an in-memory tracker
+      // (asset-index) in lockstep with the search index. Escape hatches
+      // (onSync / onUnlink) take full ownership of the watcher events.
+      filePatterns: [
+        {
+          pattern: 'assets/**/*',
+          fileToId: (rel) => rel.endsWith('.meta.json') ? rel.replace(/\.meta\.json$/, '') : rel,
+          fileToDoc: async () => null, // unused — onSync handles indexing
+        },
+      ],
+      excludePatterns: ['assets/**/.trash/**'],
+      onSync: async (relativePath: string) => {
+        if (!relativePath.startsWith('assets/')) return
+        if (relativePath.includes('.trash/')) return
+
+        const assetPath = relativePath.endsWith('.meta.json')
+          ? relativePath.replace(/\.meta\.json$/, '')
+          : relativePath
+        upsertAsset(assetPath)
+        await indexAsset(assetPath).catch(() => { /* non-blocking */ })
+      },
+      onUnlink: async (relativePath: string) => {
+        if (!relativePath.startsWith('assets/')) return
+        if (relativePath.includes('.trash/')) return
+        // Sidecar deletion alone doesn't remove the asset — the binary
+        // may still exist on disk and remain searchable with stub
+        // metadata. Only treat binary deletion as removal.
+        if (relativePath.endsWith('.meta.json')) return
+
+        removeAsset(relativePath)
+        await ctx.search.remove(relativePath).catch(() => { /* non-blocking */ })
+      },
       reindex: async function* () {
         const contentDir = getContentDir()
         const assetsRoot = join(contentDir, 'assets')
@@ -263,32 +296,9 @@ const assetsPlugin: BakinPlugin = {
     ctx.hooks.register('assets.restoreAsset', (d: Record<string, unknown>) => restoreAsset(d.trashFilename as string, d.assetsRoot as string))
     ctx.hooks.register('assets.emptyTrash', (d: Record<string, unknown>) => emptyTrash(d.assetsRoot as string))
 
-    // Build the index on startup
+    // Build the in-memory tracker on startup. (Search index reconcile is
+    // owned by registerFileBackedContentType above and runs separately.)
     buildIndex()
-
-    // Register a sync hook to keep both the local asset tracker and the
-    // Antfly search index up-to-date for any asset that arrives via the
-    // filesystem watcher rather than a REST route (manual drops, rsync,
-    // another agent writing directly, restored backups, etc.).
-    //
-    // indexAsset() early-returns when the sidecar is missing, so if a
-    // media file lands before its sidecar the first call is a no-op and
-    // the second call (triggered by the sidecar write) re-runs with
-    // full metadata. Deletions are not handled here — that requires a
-    // separate watcher unlink hook and is tracked as follow-up work.
-    registerSyncHook(async (relativePath: string, _content: string) => {
-      if (!relativePath.startsWith('assets/')) return
-      if (relativePath.includes('.trash/')) return
-
-      if (relativePath.endsWith('.meta.json')) {
-        const assetPath = relativePath.replace('.meta.json', '')
-        upsertAsset(assetPath)
-        indexAsset(assetPath).catch(() => { /* non-blocking */ })
-      } else {
-        upsertAsset(relativePath)
-        indexAsset(relativePath).catch(() => { /* non-blocking */ })
-      }
-    })
 
     // ─── REST API Routes ───────────────────────────────────────────────
 
