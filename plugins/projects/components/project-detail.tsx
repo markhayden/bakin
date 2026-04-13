@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Send, Loader2, Paperclip, X, FileText, Image, Film, Music, File, Sparkles, ChevronDown, Search, Pencil, Trash2 } from 'lucide-react'
-import { useAgent } from '@bakin/team/hooks/use-agent-store'
+import { useAgent, useMainAgentId } from '@bakin/team/hooks/use-agent-store'
 import { AgentSelect } from '@/components/agent-select'
 import { AssetDetailModal } from '@bakin/assets/components/asset-detail'
 import { ProjectChecklist } from './project-checklist'
@@ -110,6 +110,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   const router = useRouter()
   const isNew = !projectId
   const currentId = projectId || ''
+  const mainAgentId = useMainAgentId() ?? 'main'
   const [project, setProject] = useState<ProjectData | null>(null)
   const [loading, setLoading] = useState(!isNew)
 
@@ -122,7 +123,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
 
   // Brainstorm
   const [brainstormOpen, setBrainstormOpen] = useState(true)
-  const [brainstormAgent, setBrainstormAgent] = useState('main-operator')
+  const [brainstormAgent, setBrainstormAgent] = useState(mainAgentId)
   const [agentPrompt, setAgentPrompt] = useState('')
   const [agentLoading, setAgentLoading] = useState(false)
   const [brainstormMessages, setBrainstormMessages] = useState<Array<{ role: 'user' | 'agent'; agent?: string; content: string }>>([])
@@ -171,11 +172,11 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
     if (isNew) {
       // New project — start in edit mode with empty state
       setProject({
-        id: '', title: '', status: 'draft', owner: 'main-operator', progress: 0,
+        id: '', title: '', status: 'draft', owner: mainAgentId, progress: 0,
         tasks: [], assets: [], body: '', updated: new Date().toISOString(),
         resolvedTasks: {}, resolvedAssets: [],
       })
-      setEditOwner('main-operator')
+      setEditOwner(mainAgentId)
       setEditStatus('draft')
       setEditing(true)
       onEditChange?.(true)

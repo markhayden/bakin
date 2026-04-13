@@ -344,7 +344,7 @@ export function getSettings(): BakinSettings {
   } else {
     // Check if openclaw.json changed — mtime comparison is a single stat() call
     try {
-      const stat = fs.statSync(OPENCLAW_JSON_PATH)
+      const stat = fs.statSync(getOpenClawPath('openclaw.json'))
       if (stat.mtimeMs !== _g.__bakinOpenClawMtime) {
         settings.agents = readAgentIdsFromOpenClaw()
       }

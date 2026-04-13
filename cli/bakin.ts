@@ -4,6 +4,7 @@
  * All commands are thin wrappers around the Bakin HTTP API.
  */
 import { getMainAgentId } from '@bakin/core/main-agent'
+import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
