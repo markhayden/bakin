@@ -51,6 +51,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     },
     search: {
       registerContentType: vi.fn(),
+      registerFileBackedContentType: vi.fn(),
       index: vi.fn(async () => {}),
       remove: vi.fn(async () => {}),
       transform: vi.fn(async () => {}),

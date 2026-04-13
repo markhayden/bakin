@@ -140,7 +140,7 @@ describe('assets multimodal indexing', () => {
 
   async function getRegisteredDef(): Promise<SearchContentTypeDefinition> {
     const { ctx } = await activatePlugin(assetsPlugin, testDir)
-    const mockRegister = ctx.search.registerContentType as unknown as { mock: { calls: unknown[][] } }
+    const mockRegister = ctx.search.registerFileBackedContentType as unknown as { mock: { calls: unknown[][] } }
     const def = mockRegister.mock.calls[0][0] as SearchContentTypeDefinition
     return def
   }

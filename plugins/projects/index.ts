@@ -67,7 +67,18 @@ const projectsPlugin: BakinPlugin = {
   async activate(ctx: PluginContext) {
     // ─── Search Content Type Registration ─────────────────────────────
 
-    ctx.search.registerContentType({
+    /** Convert a project to a search document */
+    function projectToSearchDoc(project: Project): Record<string, unknown> {
+      return {
+        title: project.title,
+        body: project.body,
+        status: project.status,
+        progress: project.progress,
+        updated_at: project.updated || new Date().toISOString(),
+      }
+    }
+
+    ctx.search.registerFileBackedContentType({
       table: 'projects',
       schema: {
         title: { type: 'text' },
@@ -81,6 +92,17 @@ const projectsPlugin: BakinPlugin = {
       embeddingTemplate: '{{title}} {{body}}',
       facets: ['status'],
       chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
+      filePatterns: [
+        {
+          pattern: 'projects/*.md',
+          fileToId: (rel) => rel.replace(/^projects\//, '').replace(/\.md$/, ''),
+          fileToDoc: async (rel) => {
+            const id = rel.replace(/^projects\//, '').replace(/\.md$/, '')
+            const project = readProject(id)
+            return project ? projectToSearchDoc(project) : null
+          },
+        },
+      ],
       reindex: async function* () {
         const projects = readAllProjects()
         for (const project of projects) {
@@ -92,17 +114,6 @@ const projectsPlugin: BakinPlugin = {
         return existsSync(filePath)
       },
     })
-
-    /** Convert a project to a search document */
-    function projectToSearchDoc(project: Project): Record<string, unknown> {
-      return {
-        title: project.title,
-        body: project.body,
-        status: project.status,
-        progress: project.progress,
-        updated_at: project.updated || new Date().toISOString(),
-      }
-    }
 
     /** Index a project by looking it up and indexing its current state */
     async function indexProject(projectId: string): Promise<void> {
