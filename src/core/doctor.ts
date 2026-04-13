@@ -19,7 +19,7 @@ import { isUsingBakinHome, getContentDir } from './content-dir'
 import * as openclaw from './openclaw-client'
 import * as mcporter from './mcporter'
 import { isOnboarded } from './onboarding/state'
-import { getMainAgentId } from './main-agent'
+import { getMainAgentId, getMainAgentName } from './main-agent'
 import { getAllExecTools } from '../../scripts/lib/registry'
 import { getHookRegistry } from '../lib/plugin-registry'
 
@@ -387,17 +387,17 @@ const ORCHESTRATOR_RULES_CONTENT = `## Bakin Orchestrator Rules
 
 > Auto-managed by \`bakin agent-rules --apply\`. Do not edit this block manually.
 
-These rules govern Roscoe as orchestrator of the Bakin multi-agent system.
+These rules govern AGENT_NAME_PLACEHOLDER as orchestrator of the Bakin multi-agent system.
 
 1. **Every task gets logged before work begins.** Call \`bakin_exec_tasks_create\` via MCP before spawning any subagent or producing any deliverable. No exceptions.
 
     A task is anything that spawns a subagent, produces a deliverable (image, code, document, post), requires research, or gets handed off. NOT a task: quick questions, reactions, casual banter, acknowledgements. If it involves a verb (generate, build, research, write, fix, create), it's a task — log it first, then do it.
 
-2. **Never do subagent work inline.** Roscoe delegates — Roscoe does not generate images, write long-form copy, or produce video. That's what the team is for.
+2. **Never do subagent work inline.** AGENT_NAME_PLACEHOLDER delegates — AGENT_NAME_PLACEHOLDER does not generate images, write long-form copy, or produce video. That's what the team is for.
 
 3. **High-level tasks only on the board.** Don't break tasks into subtasks yourself. Create one task, assign it, let the subagent decompose it.
 
-4. **Subagents own their handoffs.** If Basil needs Pixel, Basil creates that task — not Roscoe. Let the pipeline flow naturally.
+4. **Subagents own their handoffs.** If Basil needs Pixel, Basil creates that task — not AGENT_NAME_PLACEHOLDER. Let the pipeline flow naturally.
 
 5. **Approval gates are non-negotiable.** Before publishing, sending, or any external action: pause and confirm with Mark unless pre-approved.
 
@@ -459,7 +459,7 @@ The skip reason is logged to the audit trail for debugging. Always verify agains
     mcporter call bakin-AGENT_ID_PLACEHOLDER.bakin_exec_tasks_create --args '{"title":"Create a stylized image of a horse","assignee":"pixel","skipWorkflowReason":"one-off request, no workflow matches"}'
     \`\`\`
 
-13. **Never impersonate other agents.** You are Roscoe. You do not speak as Basil, Pixel, Flint, Nori, or any other team member. You do not write their task updates, fabricate their progress logs, or mark their tasks done on their behalf. If an agent is silent or stuck, create a follow-up task or tell Mark — do not ventriloquize.
+13. **Never impersonate other agents.** You are AGENT_NAME_PLACEHOLDER. You do not speak as Basil, Pixel, Flint, Nori, or any other team member. You do not write their task updates, fabricate their progress logs, or mark their tasks done on their behalf. If an agent is silent or stuck, create a follow-up task or tell Mark — do not ventriloquize.
 
 14. **The channel doesn't change the rules.** These rules apply whether Mark is talking to you in the Bakin UI, a group chat, the terminal, or any other surface. There is no "informal mode" where CLI, REST, or inline subagent work becomes acceptable.`
 
@@ -482,9 +482,11 @@ async function buildWorkflowCatalog(): Promise<string> {
 /** Resolve the orchestrator rules template with the current workflow catalog and main agent id */
 export async function resolveOrchestratorRules(): Promise<string> {
   const agentId = getMainAgentId()
+  const agentName = getMainAgentName()
   return ORCHESTRATOR_RULES_CONTENT
     .replace('WORKFLOW_CATALOG_PLACEHOLDER', await buildWorkflowCatalog())
     .replaceAll('AGENT_ID_PLACEHOLDER', agentId)
+    .replaceAll('AGENT_NAME_PLACEHOLDER', agentName)
 }
 
 async function checkOrchestratorRules(autoFix: boolean): Promise<DiagnosticResult[]> {
@@ -922,7 +924,7 @@ When Bakin dispatches a workflow step to you, the dispatch message contains ever
 
 2. **Submit output ONLY via mcporter:** \`mcporter call bakin-${agentId}.bakin_submit_step taskId=<id> stepId=<step> --args '<json>'\`. Conversational output does NOT complete the step.
 
-3. **Do NOT move the task, create subtasks, or message roscoe** for workflow tasks — the workflow engine handles all coordination.
+3. **Do NOT move the task, create subtasks, or message ${getMainAgentName()}** for workflow tasks — the workflow engine handles all coordination.
 
 4. **Address rejection feedback specifically.** If re-dispatched with "REVISION REQUIRED", read the feedback and produce genuinely revised output. The server rejects near-duplicate resubmissions.
 
