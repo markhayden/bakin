@@ -251,7 +251,7 @@ function buildGraph({ agents, teams, displaySettings }: GraphInput) {
   y += 80 + Y_GAP
 
   // Row 1: Top-level agents (those with teams reporting to them)
-  // Typically just main-operator, but could be multiple
+  // Typically just the main agent, but could be multiple
   const topAgents = agents.filter((a) => topAgentIds.has(a.id))
   if (topAgents.length > 0) {
     placeRow(topAgents, y, nodes)

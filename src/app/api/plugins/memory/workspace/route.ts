@@ -4,7 +4,7 @@ import { join } from 'path'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 
 function getAgentWorkspacePath(agentId: string): string {
-  if (agentId === 'main-operator') return getOpenClawPath('workspace')
+  if (agentId === 'main') return getOpenClawPath('workspace')
   return getOpenClawPath('workspaces', agentId)
 }
 

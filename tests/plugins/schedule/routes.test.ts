@@ -301,13 +301,13 @@ describe('schedule routes', () => {
       expect(body.error).toContain('Could not parse')
     })
 
-    it('defaults owner to main-operator', async () => {
+    it('defaults owner to the main agent', async () => {
       const route = findRoute(plugin.routes, 'POST', '/')!
       await callRoute(route, plugin.ctx, {
         body: { name: 'No Owner', schedule: '0 9 * * *' },
       })
       const meta = getJob('new-job-id')
-      expect(meta!.owner).toBe('main-operator')
+      expect(meta!.owner).toBe('main')
     })
 
     it('respects provided optional fields', async () => {
@@ -890,7 +890,7 @@ describe('schedule exec tools', () => {
       expect(meta!.displayName).toBe('Nightly Digest')
       expect(meta!.agentId).toBe('pixel')
       expect(meta!.isBakinJob).toBe(true)
-      expect(meta!.owner).toBe('main-operator')
+      expect(meta!.owner).toBe('main')
       expect(meta!.allowOverlap).toBe(false)
       expect(meta!.maxFailures).toBe(3)
       expect(meta!.consecutiveFailures).toBe(0)

@@ -5,7 +5,7 @@ import { useAgentStore, hexToMuted } from '@bakin/team/hooks/use-agent-store'
 
 /**
  * Fetches agent data on mount and injects per-agent CSS custom properties
- * onto :root. Components can reference e.g. var(--agent-main-operator) for the accent color.
+ * onto :root. Components can reference e.g. var(--agent-main) for the accent color.
  */
 export function AgentThemeProvider({ children }: { children: React.ReactNode }) {
   const displaySettings = useAgentStore((s) => s.displaySettings)

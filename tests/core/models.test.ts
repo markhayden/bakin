@@ -73,25 +73,25 @@ describe('models', () => {
       const agents = resolveAgents(SAMPLE_CONFIG as any)
       expect(agents.length).toBe(3)
 
-      const main-operator = agents.find(a => a.agentId === 'main-operator')!
-      expect(main-operator.effectiveModel).toBe('claude-sonnet-4-6') // uses default
-      expect(main-operator.ownModel).toBeNull()
+      const main = agents.find(a => a.agentId === 'main')!
+      expect(main.effectiveModel).toBe('claude-sonnet-4-6') // uses default
+      expect(main.ownModel).toBeNull()
 
       const pixel = agents.find(a => a.agentId === 'pixel')!
       expect(pixel.effectiveModel).toBe('claude-opus-4-6') // own model
       expect(pixel.ownModel).toBe('claude-opus-4-6')
     })
 
-    it('maps "main" agent id to "main-operator"', () => {
+    it('passes "main" agent id through unchanged', () => {
       const agents = resolveAgents(SAMPLE_CONFIG as any)
       const ids = agents.map(a => a.agentId)
-      expect(ids).toContain('main-operator')
-      expect(ids).not.toContain('main')
+      expect(ids).toContain('main')
+      expect(ids).not.toContain('main-operator')
     })
 
-    it('sorts main-operator first, then alphabetically', () => {
+    it('sorts main agent first, then alphabetically', () => {
       const agents = resolveAgents(SAMPLE_CONFIG as any)
-      expect(agents[0].agentId).toBe('main-operator')
+      expect(agents[0].agentId).toBe('main')
       // Remaining should be alphabetical by name
       const rest = agents.slice(1).map(a => a.name)
       expect(rest).toEqual([...rest].sort())
@@ -100,19 +100,23 @@ describe('models', () => {
     it('includes default and per-agent subagent models', () => {
       const agents = resolveAgents(SAMPLE_CONFIG as any)
 
-      const main-operator = agents.find(a => a.agentId === 'main-operator')!
-      expect(main-operator.defaultSubagentModel).toBe('claude-haiku-4-5')
-      expect(main-operator.subagentModel).toBeNull()
+      const main = agents.find(a => a.agentId === 'main')!
+      expect(main.defaultSubagentModel).toBe('claude-haiku-4-5')
+      expect(main.subagentModel).toBeNull()
 
       const trainer = agents.find(a => a.agentId === 'trainer')!
       expect(trainer.subagentModel).toBe('claude-sonnet-4-5')
     })
 
-    it('uses agent metadata from AGENT_META for known agents', () => {
+    it('reads identity.name and emoji directly from OpenClaw config', () => {
       const agents = resolveAgents(SAMPLE_CONFIG as any)
       const pixel = agents.find(a => a.agentId === 'pixel')!
       expect(pixel.name).toBe('Pixel')
       expect(pixel.emoji).toBe('🖼️')
+
+      const main = agents.find(a => a.agentId === 'main')!
+      expect(main.name).toBe('Main Operator')
+      expect(main.emoji).toBe('🐾')
     })
 
     it('falls back to identity/name for unknown agents', () => {

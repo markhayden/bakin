@@ -3,9 +3,7 @@
  * Bakin CLI — command-line interface for Bakin orchestration platform.
  * All commands are thin wrappers around the Bakin HTTP API.
  */
-import { readFileSync } from 'fs'
-import { join } from 'path'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
+import { getMainAgentId } from '@bakin/core/main-agent'
 import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
@@ -13,26 +11,7 @@ import {
 
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
-// Resolve the orchestrator agent name from openclaw config.
-// Convention: 'main' in openclaw.json maps to the orchestrator display name.
-// Matches the resolution logic in src/core/models.ts — checks identity.name
-// first, falls back to the AGENT_META mapping ('main' → 'main-operator').
-function getCliAgent(): string {
-  try {
-    const configPath = getOpenClawPath('openclaw.json')
-    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
-    const mainAgent = (config.agents?.list as Array<{ id: string; identity?: { name?: string } }>)
-      ?.find(a => a.id === 'main')
-    // identity.name takes precedence; otherwise use the standard main→main-operator mapping
-    if (mainAgent?.identity?.name) return mainAgent.identity.name.toLowerCase()
-    // Same default as models.ts AGENT_META for 'main'
-    return 'main-operator'
-  } catch {
-    return 'main-operator'
-  }
-}
-
-const CLI_AGENT = getCliAgent()
+const CLI_AGENT = getMainAgentId()
 
 // ---------------------------------------------------------------------------
 // HTTP helpers

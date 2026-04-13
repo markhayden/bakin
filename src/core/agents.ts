@@ -93,11 +93,8 @@ export async function sendMessageToAgent(
   agentId: string,
   message: string
 ): Promise<{ ok: boolean; reply?: string; error?: string }> {
-  const AGENT_ID_MAP: Record<string, string> = { main-operator: 'main' }
-  const resolvedId = AGENT_ID_MAP[agentId] || agentId
-
   try {
-    const reply = await openclaw.sendMessage(resolvedId, message)
+    const reply = await openclaw.sendMessage(agentId, message)
     return { ok: true, reply }
   } catch (err) {
     log.error(`Failed to send message to agent ${agentId}`, err)

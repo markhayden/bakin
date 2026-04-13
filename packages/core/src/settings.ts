@@ -247,8 +247,6 @@ const _g = globalThis as typeof globalThis & {
 function getCachedSettings(): BakinSettings | null { return _g.__bakinSettingsCache ?? null }
 function setCachedSettings(v: BakinSettings | null) { _g.__bakinSettingsCache = v }
 
-const OPENCLAW_JSON_PATH = getOpenClawPath('openclaw.json')
-
 /**
  * Read agent IDs from ~/.openclaw/openclaw.json with mtime-based caching.
  * Re-reads when the file changes on disk — picks up agents added via OpenClaw
@@ -257,11 +255,12 @@ const OPENCLAW_JSON_PATH = getOpenClawPath('openclaw.json')
  */
 function readAgentIdsFromOpenClaw(): string[] {
   try {
-    const stat = fs.statSync(OPENCLAW_JSON_PATH)
+    const openclawJsonPath = getOpenClawPath('openclaw.json')
+    const stat = fs.statSync(openclawJsonPath)
     if (_g.__bakinOpenClawMtime === stat.mtimeMs && _g.__bakinOpenClawAgents) {
       return _g.__bakinOpenClawAgents
     }
-    const config = JSON.parse(fs.readFileSync(OPENCLAW_JSON_PATH, 'utf-8'))
+    const config = JSON.parse(fs.readFileSync(openclawJsonPath, 'utf-8'))
     const list = config?.agents?.list as Array<{ id: string }> | undefined
     if (!Array.isArray(list)) return []
     const agents = list.map((a) => a.id)

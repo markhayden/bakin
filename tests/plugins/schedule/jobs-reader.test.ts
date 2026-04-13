@@ -85,7 +85,7 @@ describe('schedule/jobs-reader', () => {
       expect(merged.name).toBe('Raw Job')
       expect(merged.isBakinJob).toBe(false)
       expect(merged.displayName).toBe('Raw Job')
-      expect(merged.owner).toBe('main-operator')
+      expect(merged.owner).toBe('main')
       expect(merged.paused).toBe(false)
       expect(merged.humanSchedule).toBe('Daily at 9am')
     })

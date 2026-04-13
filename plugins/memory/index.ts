@@ -20,7 +20,7 @@ const WORKSPACE_FILES = [
 ]
 
 function getWorkspacePath(agentId: string): string {
-  if (agentId === 'main-operator') {
+  if (agentId === 'main') {
     return getOpenClawPath('workspace')
   }
   return getOpenClawPath('workspaces', agentId)

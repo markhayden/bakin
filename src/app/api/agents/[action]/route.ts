@@ -31,9 +31,9 @@ export async function POST(
 
   // Only audit successful actions
   if (result.ok) {
-    appendAudit(`agent.${action}`, 'main-operator', { agent })
+    appendAudit(`agent.${action}`, 'system', { agent })
   } else {
-    appendAudit(`agent.${action}.failed`, 'main-operator', { agent, error: 'error' in result ? result.error : 'note' in result ? result.note : 'unknown' })
+    appendAudit(`agent.${action}.failed`, 'system', { agent, error: 'error' in result ? result.error : 'note' in result ? result.note : 'unknown' })
   }
 
   return NextResponse.json(result)
