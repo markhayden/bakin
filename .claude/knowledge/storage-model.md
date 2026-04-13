@@ -155,10 +155,10 @@ Antfly is the search index layer. The filesystem (and SQLite for tasks) remains 
 Mutations write to the source (filesystem or SQLite) **and** fire `ctx.search.index(key, doc)` to update the Antfly index. Indexing is fire-and-forget — a failure does not block the mutation. The index may be stale; it is always reconstructable via `def.reindex()`.
 
 ### Deletion sync
-When the file watcher detects an unlink event, `ctx.search.remove(key)` is called to remove the document from Antfly. This keeps the index consistent without a scheduled scan.
+When the file watcher detects an unlink event, the watcher unlink hook (auto-wired by `ctx.search.registerFileBackedContentType()`) calls `ctx.search.remove(key)` to remove the document from Antfly within ~300ms. This is the primary consistency path for file-backed plugins — no scheduled scan required for the common case.
 
-### Orphan cleanup
-`src/core/search-cleanup.ts` runs a periodic scan (interval from `settings.antfly.cleanupInterval`). For each registered content type it calls `def.verifyExists(key)` per indexed document and removes any whose source no longer exists. This is a safety net for missed unlink events or external deletions.
+### Orphan backstop scan
+`src/core/search-cleanup.ts` runs a periodic scan (default 7d, `settings.antfly.cleanupInterval`). For each registered content type it calls `def.verifyExists(key)` per indexed document and removes any whose source no longer exists. This is a **backstop**, not the primary path — it only catches the rare events the watcher missed (process down during the delete, fs event lost, etc.).
 
 ### Not a replacement
 Antfly is the search index, not a database. Do not read authoritative state from Antfly — always read from the filesystem or SQLite and treat Antfly results as pointers to source documents.
