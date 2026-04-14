@@ -78,9 +78,13 @@ export function ProjectGrid() {
         .filter(p => scoreMap.has(p.id))
         .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
     }
+    // While the search hook is in flight, keep the full list visible
+    // instead of flashing "no matching projects" during the 300ms
+    // debounce window before Antfly returns.
+    if (searchHook.loading) return projects
     const q = search.toLowerCase()
     return projects.filter(p => p.title.toLowerCase().includes(q))
-  }, [projects, search, searchHook.results, scoreMap])
+  }, [projects, search, searchHook.results, searchHook.loading, scoreMap])
 
   const handleNew = () => {
     router.push('/projects/new')
