@@ -13,6 +13,7 @@ import {
   findTool,
   callRoute,
   callTool,
+  callSearchRoute,
 } from '../test-helpers'
 import type { ActivatedPlugin } from '../test-helpers'
 
@@ -996,6 +997,64 @@ describe('Exec Tools', () => {
 })
 
 // ===========================================================================
+// Search route (auto-registered via ctx.search.registerFileBackedContentType)
+// ===========================================================================
+
+describe('GET /search — auto-registered search route', () => {
+  it('returns 200 with seeded results on a happy-path query', async () => {
+    plugin.seedResults([
+      {
+        id: 'p1',
+        table: 'bakin_projects',
+        score: 0.9,
+        fields: { title: 'Project One' },
+      },
+    ])
+
+    const { status, body } = await callSearchRoute(plugin, 'project')
+    expect(status).toBe(200)
+    const results = body.results as Array<Record<string, unknown>>
+    expect(results).toHaveLength(1)
+    expect(results[0].id).toBe('p1')
+    expect(results[0].table).toBe('bakin_projects')
+    expect(results[0].score).toBe(0.9)
+    expect((results[0].fields as Record<string, unknown>).title).toBe('Project One')
+  })
+
+  it('returns 400 when q is missing', async () => {
+    const route = findRoute(plugin.routes, 'GET', '/search')!
+    expect(route).toBeDefined()
+    const { status, body } = await callRoute(route, plugin.ctx)
+    expect(status).toBe(400)
+    expect(body.error).toMatch(/[Mm]issing/)
+  })
+
+  it('returns 200 with empty results for a zero-result query', async () => {
+    plugin.seedResults([])
+
+    const { status, body } = await callSearchRoute(plugin, 'no-such-thing')
+    expect(status).toBe(200)
+    const results = body.results as unknown[]
+    expect(results).toEqual([])
+    const meta = body.meta as Record<string, unknown> | undefined
+    expect(meta?.total).toBe(0)
+  })
+
+  it('passes facets through to ctx.search.query', async () => {
+    plugin.seedResults([])
+
+    await callSearchRoute(plugin, 'anything', { facets: 'status' })
+
+    expect(plugin.ctx.search.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: 'anything',
+        facets: ['status'],
+      }),
+    )
+  })
+})
+
+// ===========================================================================
 // Registration completeness
 // ===========================================================================
 
@@ -1016,6 +1075,7 @@ describe('Registration', () => {
       { method: 'POST', path: '/:projectId/assets' },
       { method: 'DELETE', path: '/:projectId/assets/:assetPath' },
       { method: 'POST', path: '/:projectId/ask' },
+      { method: 'GET', path: '/search' },
     ]
 
     for (const { method, path } of expectedRoutes) {

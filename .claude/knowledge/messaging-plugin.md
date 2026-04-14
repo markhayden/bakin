@@ -60,6 +60,16 @@ When user clicks "Confirm Plan":
 2. Toast shows "X items added to calendar"
 3. Auto-navigates back to session list after brief delay
 
+### Brainstorm Search
+
+The plugin registers a file-backed Antfly content type for brainstorm sessions (spec §5.1d, issue #67):
+
+- **Glob:** `messaging/sessions/*.json` (relative to `getContentDir()`)
+- **Key prefix:** `brainstorm-{sessionId}` — the client strips the prefix before looking up scores
+- **Fields indexed:** `session_id`, `title`, `status`, `agent_id`, `message_body` (all messages concatenated), `proposal_summaries` (titles + briefs), plus `created_at` / `updated_at` (omitted when missing — Antfly rejects `''` for `datetime` types)
+- **Helper:** `plugins/messaging/lib/brainstorm-search.ts` exposes `buildDoc(session)`, `parseSessionFile(absPath)`, and `sessionKey(id)`. `parseSessionFile` returns `null` on any failure so a single bad file can't break the reindex.
+- **Consumer:** `BrainstormView` calls `useSearch({ plugin: 'messaging', facets: ['status', 'agent_id'], debounce: 300 })` and forwards `results` + `loading` into `SessionList`. Calendar items are out of scope and use a local substring filter instead.
+
 ## Data Migration
 
 Plugin `activate()` auto-migrates legacy paths:
@@ -70,8 +80,8 @@ Plugin `activate()` auto-migrates legacy paths:
 
 | Component | Purpose |
 |-----------|---------|
-| `BrainstormView` | Session list + PluginHeader with agent picker dropdown |
-| `SessionList` | Grouped session entries with delete via triple-dot menu |
+| `BrainstormView` | Session list + PluginHeader with agent picker dropdown and URL-backed `AgentFilter` pill strip (`?agent=`) |
+| `SessionList` | Sortable `<Table>` of sessions (Title / Agent / Threads / Status / Updated). Manual sort is disabled while a search is active so Antfly relevance order wins. Filters by `agentFilter` prop and by `searchResults` from the parent's `useSearch` hook. Preserves the full list during the search debounce via `searchLoading` to avoid a "no matches" flash. Delete via triple-dot menu. |
 | `PlanningLayout` | Split layout: chat left, review panel right |
 | `SessionChat` | Streaming chat with JSON-stripped bubbles |
 | `ReviewPanel` | Proposal cards grouped by date, edit drawer, confirm button |

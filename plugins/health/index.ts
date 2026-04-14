@@ -11,6 +11,7 @@ import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getSettings } from '../../src/core/settings'
 import { getContentDir } from '../../src/core/content-dir'
+import { getSearchHealth } from '../../src/core/search-registry'
 // Registry accessors live on globalThis because Next.js API routes get
 // separate webpack-compiled module instances with empty Maps. The custom
 // server (server.ts) registers the real accessors after plugin init.
@@ -128,6 +129,15 @@ const healthPlugin: BakinPlugin = {
             totalMemoryMB: Math.round(totalmem() / 1024 / 1024),
           },
         })
+      },
+    })
+
+    // Antfly search engine health + index stats
+    ctx.registerRoute({
+      path: '/antfly-status',
+      method: 'GET',
+      handler: async () => {
+        return Response.json(await getSearchHealth())
       },
     })
 

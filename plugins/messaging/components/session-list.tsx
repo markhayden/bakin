@@ -1,8 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import {
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
+import { SortableHead, type SortDir } from '@/components/sortable-head'
 import { MessageSquare, CheckCircle, MoreHorizontal, Trash2 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -10,11 +14,16 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
+import type { SearchResult } from '@/hooks/use-search'
+import { useDebug } from '@/hooks/use-debug'
 import { DeleteSessionDialog } from './delete-session-dialog'
-import type { ContentAgent } from '../types'
 import { AGENT_INFO } from '../types'
+import { CONTENT_AGENTS } from '../constants'
 
-const CONTENT_AGENTS = Object.keys(AGENT_INFO) as ContentAgent[]
+interface ScoreInfo {
+  score: number
+  indexScores?: Record<string, number>
+}
 
 interface SessionSummary {
   id: string
@@ -27,18 +36,26 @@ interface SessionSummary {
   approvedCount: number
 }
 
+type SortField = 'title' | 'agent' | 'threads' | 'status' | 'updatedAt'
+
 interface Props {
   onSelectSession: (sessionId: string) => void
   search?: string
+  searchResults?: SearchResult[]
+  searchLoading?: boolean
+  agentFilter?: string
   onCountChange?: (count: number) => void
   onCreateSession?: (agentId: string) => void
   creating?: boolean
 }
 
-export function SessionList({ onSelectSession, search, onCountChange, onCreateSession, creating }: Props) {
+export function SessionList({ onSelectSession, search, searchResults, searchLoading, agentFilter, onCountChange, onCreateSession, creating }: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<SessionSummary | null>(null)
+  const [sortField, setSortField] = useState<SortField>('updatedAt')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [debug] = useDebug()
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -58,7 +75,6 @@ export function SessionList({ onSelectSession, search, onCountChange, onCreateSe
     fetchSessions()
   }, [fetchSessions])
 
-  // Report count to parent
   useEffect(() => {
     onCountChange?.(sessions.length)
   }, [sessions.length, onCountChange])
@@ -74,35 +90,69 @@ export function SessionList({ onSelectSession, search, onCountChange, onCreateSe
     setDeleteTarget(null)
   }
 
-  // Filter by search
+  // Score map keyed by session id (strip the `brainstorm-` Antfly prefix).
+  // Used for both the relevance reorder AND the debug-mode RRF/BM25/SEM overlay.
+  const scoreMap = useMemo(() => {
+    const map = new Map<string, ScoreInfo>()
+    if (!searchResults) return map
+    for (const r of searchResults) {
+      const id = r.id.startsWith('brainstorm-') ? r.id.slice('brainstorm-'.length) : r.id
+      map.set(id, { score: r.score, indexScores: r.indexScores })
+    }
+    return map
+  }, [searchResults])
+
   const filtered = useMemo(() => {
-    if (!search) return sessions
+    const agentFiltered = agentFilter && agentFilter !== 'all'
+      ? sessions.filter(s => s.agentId === agentFilter)
+      : sessions
+
+    if (!search?.trim()) return agentFiltered
+
+    if (scoreMap.size > 0) {
+      return agentFiltered
+        .filter(s => scoreMap.has(s.id))
+        .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
+    }
+    // While the search hook is in-flight we don't yet know the Antfly
+    // hits — keep the full (agent-filtered) list visible instead of
+    // flashing "no matches" during the 300ms debounce window.
+    if (searchLoading) return agentFiltered
+
     const q = search.toLowerCase()
-    return sessions.filter(s =>
+    return agentFiltered.filter(s =>
       s.title.toLowerCase().includes(q) ||
       s.agentId.toLowerCase().includes(q)
     )
-  }, [sessions, search])
+    // `scoreMap` is derived from `searchResults`; listing both in deps would
+    // double-trigger. Keep `scoreMap` since it's what we actually read.
+  }, [sessions, search, searchLoading, scoreMap, agentFilter])
 
-  // Group by agent, active before completed, sorted by updatedAt desc
-  const grouped = useMemo(() => {
-    const active = filtered
-      .filter(s => s.status === 'active')
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    const completed = filtered
-      .filter(s => s.status === 'completed')
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    return [...active, ...completed]
-  }, [filtered])
+  // When searching, Antfly relevance order wins — skip manual sort.
+  const isSearching = !!search?.trim()
+  const sorted = useMemo(() => {
+    if (isSearching) return filtered
+    return [...filtered].sort((a, b) => {
+      let cmp = 0
+      if (sortField === 'title') cmp = a.title.localeCompare(b.title)
+      else if (sortField === 'agent') cmp = a.agentId.localeCompare(b.agentId)
+      else if (sortField === 'threads') cmp = a.proposalCount - b.proposalCount
+      else if (sortField === 'status') cmp = a.status.localeCompare(b.status)
+      else if (sortField === 'updatedAt') {
+        cmp = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()
+      }
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [filtered, sortField, sortDir, isSearching])
 
-  const sessionsByAgent = useMemo(() => {
-    const groups: Record<string, SessionSummary[]> = {}
-    for (const s of grouped) {
-      if (!groups[s.agentId]) groups[s.agentId] = []
-      groups[s.agentId].push(s)
+  const toggleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDir('desc')
     }
-    return groups
-  }, [grouped])
+  }, [sortField])
 
   if (loading) {
     return (
@@ -112,7 +162,6 @@ export function SessionList({ onSelectSession, search, onCountChange, onCreateSe
     )
   }
 
-  // Empty state
   if (sessions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-16 px-4 gap-6" data-testid="empty-state">
@@ -148,8 +197,7 @@ export function SessionList({ onSelectSession, search, onCountChange, onCreateSe
     )
   }
 
-  // No results for search
-  if (filtered.length === 0 && search) {
+  if (filtered.length === 0 && search && !searchLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
         <span className="text-sm">No sessions matching &ldquo;{search}&rdquo;</span>
@@ -159,81 +207,105 @@ export function SessionList({ onSelectSession, search, onCountChange, onCreateSe
 
   return (
     <>
-      <div className="space-y-6">
-        {Object.entries(sessionsByAgent).map(([agentId, agentSessions]) => {
-          const info = AGENT_INFO[agentId as ContentAgent]
-          return (
-            <div key={agentId} data-testid={`agent-group-${agentId}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <AgentAvatar agentId={agentId} size="xs" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {info?.name || agentId}
-                </span>
-                <Badge variant="outline" className="text-[10px]">
-                  {agentSessions.length}
-                </Badge>
-              </div>
-
-              <div className="space-y-1.5">
-                {agentSessions.map(session => (
-                  <div
-                    key={session.id}
-                    className="group flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-muted/50 transition-colors cursor-pointer"
-                    data-testid={`session-entry-${session.id}`}
-                    onClick={() => onSelectSession(session.id)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-foreground truncate">
-                        {session.title}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
-                        <span>{new Date(session.updatedAt).toLocaleDateString()}</span>
-                        <span className="flex items-center gap-0.5">
-                          <MessageSquare className="size-3" />
-                          {session.proposalCount} proposals
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <SortableHead field="title" current={sortField} dir={sortDir} onSort={toggleSort} disabled={isSearching}>Title</SortableHead>
+            <SortableHead field="agent" current={sortField} dir={sortDir} onSort={toggleSort} disabled={isSearching}>Agent</SortableHead>
+            <SortableHead field="threads" current={sortField} dir={sortDir} onSort={toggleSort} disabled={isSearching}>Threads</SortableHead>
+            <SortableHead field="status" current={sortField} dir={sortDir} onSort={toggleSort} disabled={isSearching}>Status</SortableHead>
+            <SortableHead field="updatedAt" current={sortField} dir={sortDir} onSort={toggleSort} disabled={isSearching}>Updated</SortableHead>
+            <TableHead className="w-8"></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {sorted.map(session => {
+            const scoreInfo = scoreMap.get(session.id)
+            const showScores = debug && scoreInfo && isSearching
+            const semKey = 'embeddings'
+            const bm25Key = scoreInfo?.indexScores
+              ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
+              : undefined
+            return (
+              <TableRow
+                key={session.id}
+                className="group cursor-pointer"
+                data-testid={`session-entry-${session.id}`}
+                onClick={() => onSelectSession(session.id)}
+              >
+                <TableCell className="max-w-[400px]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground truncate">{session.title}</span>
+                    {showScores && scoreInfo && (
+                      <span className="flex items-center gap-1.5 font-mono text-[10px] shrink-0">
+                        <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
+                        <span className="text-cyan-400">
+                          BM25 {bm25Key && scoreInfo.indexScores?.[bm25Key] !== undefined
+                            ? scoreInfo.indexScores[bm25Key].toFixed(3)
+                            : '—'}
                         </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      {session.proposalCount > 0 && (
-                        <Badge variant="outline" className="text-[10px]">
-                          {session.approvedCount}/{session.proposalCount}
-                        </Badge>
-                      )}
-                      {session.status === 'completed' ? (
-                        <CheckCircle className="size-3.5 text-emerald-400" />
-                      ) : (
-                        <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-400/30">
-                          Active
-                        </Badge>
-                      )}
-
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                          className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.06)] transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <MoreHorizontal className="size-3.5" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-36">
-                          <DropdownMenuItem
-                            onClick={(e: React.MouseEvent) => { e.stopPropagation(); setDeleteTarget(session) }}
-                            className="text-red-400 focus:text-red-400"
-                          >
-                            <Trash2 className="size-3.5 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                        <span className="text-purple-400">
+                          SEM {scoreInfo.indexScores?.[semKey] !== undefined
+                            ? scoreInfo.indexScores[semKey].toFixed(3)
+                            : '—'}
+                        </span>
+                      </span>
+                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+                </TableCell>
+                <TableCell>
+                  <span className="flex items-center gap-1.5">
+                    <AgentAvatar agentId={session.agentId} size="xs" />
+                    <span className="text-xs text-muted-foreground uppercase">{session.agentId}</span>
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <MessageSquare className="size-3" />
+                    {session.proposalCount > 0
+                      ? `${session.approvedCount}/${session.proposalCount}`
+                      : '—'}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  {session.status === 'completed' ? (
+                    <span className="flex items-center gap-1 text-xs text-emerald-400">
+                      <CheckCircle className="size-3.5" />
+                      Done
+                    </span>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-400/30">
+                      Active
+                    </Badge>
+                  )}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {new Date(session.updatedAt).toLocaleDateString()}
+                </TableCell>
+                <TableCell>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                      className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.06)] transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <MoreHorizontal className="size-3.5" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-36">
+                      <DropdownMenuItem
+                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); setDeleteTarget(session) }}
+                        className="text-red-400 focus:text-red-400"
+                      >
+                        <Trash2 className="size-3.5 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
 
       <DeleteSessionDialog
         open={!!deleteTarget}
@@ -244,3 +316,4 @@ export function SessionList({ onSelectSession, search, onCountChange, onCreateSe
     </>
   )
 }
+

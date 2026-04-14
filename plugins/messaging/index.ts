@@ -26,10 +26,19 @@ import {
 } from './lib/sessions'
 import { buildMessages } from './lib/prompt-builder'
 import { streamChatCompletion, chatCompletion } from './lib/gateway'
+import {
+  buildDoc as buildBrainstormDoc,
+  parseSessionFile,
+  sessionKey,
+  SESSION_FILE_PATTERN,
+} from './lib/brainstorm-search'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { sendChannelMessage } from '../../src/core/openclaw-client'
 import * as vault from '../../src/core/vault'
+import { existsSync, readdirSync } from 'fs'
+import { join } from 'path'
+import type { PlanningSession } from './types'
 
 const log = createLogger('messaging')
 
@@ -164,6 +173,63 @@ const messagingPlugin: BakinPlugin = {
     } catch (err) {
       log.warn('Data migration failed (non-fatal)', err)
     }
+
+    // ── Search Content Type Registration ─────────────────────────────
+    // Per spec §5.1d, ONLY brainstorm sessions get Antfly search; calendar
+    // items get a local substring filter in a later commit. No TTL — spec
+    // does not mandate one and this is a dev machine with tens of sessions.
+    ctx.search.registerFileBackedContentType({
+      table: 'messaging_brainstorm',
+      schema: {
+        session_id: { type: 'keyword' },
+        title: { type: 'text' },
+        status: { type: 'keyword' },
+        agent_id: { type: 'keyword' },
+        message_body: { type: 'text' },
+        proposal_summaries: { type: 'text' },
+        created_at: { type: 'datetime' },
+        updated_at: { type: 'datetime' },
+      },
+      searchableFields: ['title', 'message_body', 'proposal_summaries'],
+      rerankField: 'message_body',
+      embeddingTemplate: '{{title}} — {{message_body}} — {{proposal_summaries}}',
+      facets: ['status', 'agent_id'],
+      filePatterns: [
+        {
+          pattern: SESSION_FILE_PATTERN,
+          fileToId: (rel) => {
+            const id = rel.replace(/^messaging\/sessions\//, '').replace(/\.json$/, '')
+            return id ? sessionKey(id) : null
+          },
+          fileToDoc: async (_rel, content) => {
+            try {
+              const parsed = JSON.parse(content) as PlanningSession
+              if (!parsed || typeof parsed.id !== 'string') return null
+              if (!Array.isArray(parsed.messages)) parsed.messages = []
+              if (!Array.isArray(parsed.proposals)) parsed.proposals = []
+              return buildBrainstormDoc(parsed)
+            } catch {
+              return null
+            }
+          },
+        },
+      ],
+      reindex: async function* () {
+        const sessionsDir = join(getContentDir(), 'messaging', 'sessions')
+        if (!existsSync(sessionsDir)) return
+        for (const file of readdirSync(sessionsDir).filter(f => f.endsWith('.json'))) {
+          const session = parseSessionFile(join(sessionsDir, file))
+          if (session) {
+            yield { key: sessionKey(session.id), doc: buildBrainstormDoc(session) }
+          }
+        }
+      },
+      verifyExists: async (key: string) => {
+        if (!key.startsWith('brainstorm-')) return false
+        const id = key.slice('brainstorm-'.length)
+        return existsSync(join(getContentDir(), 'messaging', 'sessions', `${id}.json`))
+      },
+    })
 
     // ── API Routes ─────────────────────────────────────────────────────
 

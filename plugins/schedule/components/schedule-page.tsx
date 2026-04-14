@@ -2,14 +2,15 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import { List, CalendarDays, CalendarRange, Clock, Plus, ListFilter } from 'lucide-react'
+import { List, CalendarDays, CalendarRange, Clock, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BakinDrawer } from '@/components/bakin-drawer'
 import { PluginHeader } from '@/components/plugin-header'
-import { AgentAvatar } from '@/components/agent-avatar'
+import { AgentFilter } from '@/components/agent-filter'
 import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useQueryState } from '@/hooks/use-query-state'
-import { useAntflySearch } from '@/hooks/use-antfly-search'
+import { useSearch } from '@/hooks/use-search'
+import { useDebug } from '@/hooks/use-debug'
 import { useScheduleJobs, type ScheduleJob } from '@/hooks/use-schedule'
 import { JobList } from './job-list'
 import { JobDrawer } from './job-drawer'
@@ -40,6 +41,7 @@ export function SchedulePage() {
   const [mode, setMode, pushMode] = useQueryState('mode', '')
 
   const [submitting, setSubmitting] = useState(false)
+  const [debug] = useDebug()
 
   const {
     jobs, loading, refresh,
@@ -48,21 +50,31 @@ export function SchedulePage() {
     agent: agentFilter === 'all' ? undefined : agentFilter,
   })
 
-  const antfly = useAntflySearch({ table: 'schedule', facets: ['agent', 'enabled'], debounce: 300 })
+  const searchHook = useSearch({ plugin: 'schedule', facets: ['agent', 'enabled'], debounce: 300 })
   useEffect(() => {
-    if (search) antfly.search(search)
-    else antfly.clear()
+    if (search) searchHook.search(search)
+    else searchHook.clear()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
+  // Build a score map keyed by job id. Schedule indexes by the raw jobId
+  // (see plugins/schedule/index.ts → ctx.search.index(jobId, ...)), so no
+  // prefix-strip is needed. Used for both the relevance reorder AND the
+  // debug-mode RRF/BM25/SEM overlay rendered in JobRow.
+  const scoreMap = useMemo(() => {
+    const map = new Map<string, { score: number; indexScores?: Record<string, number> }>()
+    for (const r of searchHook.results) {
+      map.set(r.id, { score: r.score, indexScores: r.indexScores })
+    }
+    return map
+  }, [searchHook.results])
+
   const filtered = useMemo(() => {
     if (!search) return jobs
-    if (antfly.results.length) {
-      const matchIds = new Set(antfly.results.map(r => r.id))
-      const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+    if (searchHook.results.length) {
       return jobs
-        .filter(j => matchIds.has(j.id))
-        .sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0))
+        .filter(j => scoreMap.has(j.id))
+        .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
     }
     const q = search.toLowerCase()
     return jobs.filter(j =>
@@ -71,7 +83,7 @@ export function SchedulePage() {
       (j.agentId || '').toLowerCase().includes(q) ||
       j.humanSchedule.toLowerCase().includes(q)
     )
-  }, [jobs, search, antfly.results])
+  }, [jobs, search, searchHook.results, scoreMap])
 
   // Derive drawer/form visibility from URL state
   const selectedJob = jobIdParam ? jobs.find(j => j.id === jobIdParam) ?? null : null
@@ -204,34 +216,7 @@ export function SchedulePage() {
       />
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
-        <ListFilter className="size-3.5 text-muted-foreground shrink-0" />
-        <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
-          <button
-            onClick={() => setAgentFilter('all')}
-            className={`px-2 py-0.5 rounded-md text-xs font-medium transition-all ${
-              agentFilter === 'all'
-                ? 'bg-accent text-accent-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            All
-          </button>
-          {agentIds.map(id => (
-            <button
-              key={id}
-              onClick={() => setAgentFilter(id)}
-              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium transition-all ${
-                agentFilter === id
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100'
-              }`}
-            >
-              <AgentAvatar agentId={id} size="xs" />
-            </button>
-          ))}
-        </div>
-      </div>
+      <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">
@@ -250,6 +235,8 @@ export function SchedulePage() {
             onEdit={openEditFor}
             onDuplicate={openDuplicateFor}
             onSkipNext={(id) => skipNext(id)}
+            scoreMap={scoreMap}
+            showScores={debug && !!search.trim()}
           />
         ) : view === 'today' ? (
           <CalendarToday jobs={filtered} onSelectJob={openJob} />
