@@ -92,5 +92,10 @@ export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
     return filtered
   }, [columns, search, agentFilter, statusFilter, searchHook.results])
 
-  return { filteredColumns, allTasksFlat, aggregations: searchHook.aggregations }
+  return {
+    filteredColumns,
+    allTasksFlat,
+    aggregations: searchHook.aggregations,
+    searchResults: searchHook.results,
+  }
 }
