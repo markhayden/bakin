@@ -29,8 +29,11 @@ vi.mock('../../../src/core/logger', () => ({
   }),
 }))
 
-// Mock flow-store so tests don't leak child-workflow tasks into the real board
-vi.mock('../../plugins/tasks/lib/flow-store', () => ({
+// Mock flow-store so tests don't leak child-workflow tasks into the real board.
+// The path needs three `../` to reach the repo root — two would land in tests/
+// and the mock would silently no-op, letting the real module write to
+// ~/.openclaw/flows/registry.sqlite.
+vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
   createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
   addTaskLog: vi.fn(() => Promise.resolve()),
   moveTask: vi.fn(() => Promise.resolve()),
@@ -39,6 +42,14 @@ vi.mock('../../plugins/tasks/lib/flow-store', () => ({
   })),
   getTask: vi.fn(() => null),
   getTaskWithColumn: vi.fn(() => null),
+}))
+
+// Defense-in-depth: even if another module reaches openclaw-home, redirect it
+// into testDir instead of ~/.openclaw/.
+vi.mock('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => testDir,
+  getOpenClawPath: (...parts: string[]) => join(testDir, ...parts),
+  resetOpenClawHome: vi.fn(),
 }))
 
 import {
