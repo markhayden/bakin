@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,6 +16,7 @@ import {
   Trash2,
   ListFilter,
   Link2,
+  Search,
 } from 'lucide-react'
 import { PluginHeader } from '@/components/plugin-header'
 import { FacetFilter } from '@/components/facet-filter'
@@ -169,9 +171,9 @@ export function ContentCalendar() {
       const q = search.toLowerCase()
       if (
         !i.title.toLowerCase().includes(q) &&
-        !i.agent.toLowerCase().includes(q) &&
-        !i.contentType.toLowerCase().includes(q) &&
-        !(i.brief || '').toLowerCase().includes(q)
+        !(i.brief || '').toLowerCase().includes(q) &&
+        !(i.draft?.caption || '').toLowerCase().includes(q) &&
+        !(i.draft?.agentNotes || '').toLowerCase().includes(q)
       ) return false
     }
     return true
@@ -487,11 +489,6 @@ export function ContentCalendar() {
       <PluginHeader
         title="Calendar"
         count={filteredItems.length}
-        search={{
-          value: search,
-          onChange: setSearch,
-          placeholder: 'Search items...',
-        }}
         actions={
           <div className="flex items-center gap-3">
             <div className="flex items-center rounded-lg bg-muted/50 p-0.5">
@@ -559,23 +556,34 @@ export function ContentCalendar() {
             onChange={setChannelFilter}
           />
 
-          {/* Date navigation — far right */}
-          {(view === 'month' || view === 'week') && (
-            <div className="flex items-center gap-1 ml-auto shrink-0">
-              <Button size="icon-xs" variant="ghost" onClick={prevPeriod}>
-                <ChevronLeft className="size-3.5" />
-              </Button>
-              <span className="text-sm font-medium text-foreground min-w-[160px] text-center">
-                {navLabel}
-              </span>
-              <Button size="icon-xs" variant="ghost" onClick={nextPeriod}>
-                <ChevronRight className="size-3.5" />
-              </Button>
-              <Button size="xs" variant="ghost" className="ml-1 text-muted-foreground" onClick={goToday}>
-                Today
-              </Button>
+          {/* Search + date navigation — far right */}
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            <div className="relative w-56">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search calendar..."
+                className="pl-9 h-8 bg-surface border-border"
+              />
             </div>
-          )}
+            {(view === 'month' || view === 'week') && (
+              <div className="flex items-center gap-1">
+                <Button size="icon-xs" variant="ghost" onClick={prevPeriod}>
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+                <span className="text-sm font-medium text-foreground min-w-[160px] text-center">
+                  {navLabel}
+                </span>
+                <Button size="icon-xs" variant="ghost" onClick={nextPeriod}>
+                  <ChevronRight className="size-3.5" />
+                </Button>
+                <Button size="xs" variant="ghost" className="ml-1 text-muted-foreground" onClick={goToday}>
+                  Today
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
