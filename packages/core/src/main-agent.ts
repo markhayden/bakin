@@ -2,7 +2,9 @@
  * Main agent (orchestrator) resolution for Bakin.
  *
  * The orchestrator id is NOT hardcoded. It resolves dynamically per install:
- *   1. `settings.mainAgentId` from ~/.bakin/settings.json (set by `bakin onboard`)
+ *   1. `settings.mainAgentId` from ~/.bakin/settings.json — explicit override,
+ *      never auto-written. Set it by hand only if auto-detection picks the
+ *      wrong agent (e.g. two orchestrators in the same openclaw.json).
  *   2. Auto-detect from OpenClaw: the agent whose `workspace` equals
  *      `agents.defaults.workspace` (subagents override with per-agent paths).
  *   3. Fallback: the first agent in `agents.list` with a populated
@@ -11,8 +13,12 @@
  *
  * If nothing resolves, throws — the caller should run onboarding or set
  * `mainAgentId` in settings.json. Display names come from `identity.name`.
+ *
+ * Reads are mtime-cached: every call stats `openclaw.json` (cheap), re-parses
+ * only when the file changes. Rename the orchestrator in openclaw.json and the
+ * next call picks it up without a restart.
  */
-import { readFileSync } from 'fs'
+import { readFileSync, statSync } from 'fs'
 
 import { getSettings } from './settings'
 import { getOpenClawPath } from './openclaw-home'
@@ -85,10 +91,24 @@ function findOpenClawAgentById(id: string): OpenClawAgentEntry | null {
   return list.find((a) => a.id === id) ?? null
 }
 
+let cachedConfig: { mtimeMs: number; config: OpenClawConfig | null } | null = null
+
 function readOpenClawConfig(): OpenClawConfig | null {
+  const path = getOpenClawPath('openclaw.json')
+  let mtimeMs: number
   try {
-    return JSON.parse(readFileSync(getOpenClawPath('openclaw.json'), 'utf-8')) as OpenClawConfig
+    mtimeMs = statSync(path).mtimeMs
   } catch {
+    cachedConfig = null
     return null
   }
+  if (cachedConfig && cachedConfig.mtimeMs === mtimeMs) return cachedConfig.config
+  let config: OpenClawConfig | null
+  try {
+    config = JSON.parse(readFileSync(path, 'utf-8')) as OpenClawConfig
+  } catch {
+    config = null
+  }
+  cachedConfig = { mtimeMs, config }
+  return config
 }

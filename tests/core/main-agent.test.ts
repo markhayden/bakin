@@ -11,11 +11,11 @@ vi.mock('../../packages/core/src/settings', () => ({
 
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>()
-  return { ...actual, readFileSync: vi.fn() }
+  return { ...actual, readFileSync: vi.fn(), statSync: vi.fn() }
 })
 
 import { getSettings } from '../../packages/core/src/settings'
-import { readFileSync } from 'fs'
+import { readFileSync, statSync } from 'fs'
 
 let getMainAgentId: typeof import('../../packages/core/src/main-agent').getMainAgentId
 let getMainAgentName: typeof import('../../packages/core/src/main-agent').getMainAgentName
@@ -32,11 +32,18 @@ function openclawConfig(overrides: Record<string, unknown> = {}): string {
   })
 }
 
+function mockOpenclawFile(mtimeMs: number, content: string): void {
+  vi.mocked(statSync).mockReturnValue({ mtimeMs } as any)
+  vi.mocked(readFileSync).mockReturnValue(content)
+}
+
 describe('main-agent', () => {
   beforeEach(async () => {
     vi.resetModules()
+    vi.clearAllMocks()
     vi.mocked(getSettings).mockReturnValue({} as any)
     vi.mocked(readFileSync).mockImplementation(() => { throw new Error('ENOENT') })
+    vi.mocked(statSync).mockImplementation(() => { throw new Error('ENOENT') })
 
     const mod = await import('../../packages/core/src/main-agent')
     getMainAgentId = mod.getMainAgentId
@@ -50,7 +57,7 @@ describe('main-agent', () => {
     })
 
     it('detects orchestrator from OpenClaw when its workspace equals agents.defaults.workspace', () => {
-      vi.mocked(readFileSync).mockReturnValue(openclawConfig({
+      mockOpenclawFile(1000, openclawConfig({
         list: [
           { id: 'pixel', workspace: '/tmp/openclaw/workspaces/pixel' },
           { id: 'roscoe', workspace: WS, identity: { name: 'Roscoe' } },
@@ -61,7 +68,7 @@ describe('main-agent', () => {
     })
 
     it('detects orchestrator when openclaw uses `main` as the id', () => {
-      vi.mocked(readFileSync).mockReturnValue(openclawConfig({
+      mockOpenclawFile(1000, openclawConfig({
         list: [
           { id: 'main', workspace: WS },
           { id: 'pixel', workspace: '/tmp/openclaw/workspaces/pixel' },
@@ -71,7 +78,7 @@ describe('main-agent', () => {
     })
 
     it('falls back to agent with populated subagents allowlist when workspace match is absent', () => {
-      vi.mocked(readFileSync).mockReturnValue(openclawConfig({
+      mockOpenclawFile(1000, openclawConfig({
         list: [
           { id: 'alpha', subagents: { allowAgents: ['x', 'y', 'z'] } },
           { id: 'x', workspace: '/tmp/openclaw/workspaces/x' },
@@ -81,12 +88,12 @@ describe('main-agent', () => {
     })
 
     it('throws when settings has no mainAgentId and OpenClaw config is unreadable', () => {
-      vi.mocked(readFileSync).mockImplementation(() => { throw new Error('ENOENT') })
+      vi.mocked(statSync).mockImplementation(() => { throw new Error('ENOENT') })
       expect(() => getMainAgentId()).toThrow(/main agent/i)
     })
 
     it('throws when OpenClaw config has no matching orchestrator', () => {
-      vi.mocked(readFileSync).mockReturnValue(openclawConfig({
+      mockOpenclawFile(1000, openclawConfig({
         list: [
           { id: 'pixel', workspace: '/tmp/openclaw/workspaces/pixel' },
           { id: 'patch', workspace: '/tmp/openclaw/workspaces/patch' },
@@ -97,7 +104,7 @@ describe('main-agent', () => {
 
     it('prefers settings.mainAgentId over OpenClaw detection', () => {
       vi.mocked(getSettings).mockReturnValue({ mainAgentId: 'chief' } as any)
-      vi.mocked(readFileSync).mockReturnValue(openclawConfig({
+      mockOpenclawFile(1000, openclawConfig({
         list: [{ id: 'roscoe', workspace: WS }],
       }))
       expect(getMainAgentId()).toBe('chief')
@@ -105,7 +112,7 @@ describe('main-agent', () => {
 
     it('ignores empty-string mainAgentId in settings', () => {
       vi.mocked(getSettings).mockReturnValue({ mainAgentId: '' } as any)
-      vi.mocked(readFileSync).mockReturnValue(openclawConfig({
+      mockOpenclawFile(1000, openclawConfig({
         list: [{ id: 'roscoe', workspace: WS }],
       }))
       expect(getMainAgentId()).toBe('roscoe')
@@ -114,33 +121,79 @@ describe('main-agent', () => {
 
   describe('getMainAgentName', () => {
     it('returns identity.name when set on the resolved agent', () => {
-      vi.mocked(readFileSync).mockReturnValue(openclawConfig({
+      mockOpenclawFile(1000, openclawConfig({
         list: [{ id: 'roscoe', workspace: WS, identity: { name: 'Roscoe' } }],
       }))
       expect(getMainAgentName()).toBe('Roscoe')
     })
 
     it('falls back to title-cased id when identity.name is missing', () => {
-      vi.mocked(readFileSync).mockReturnValue(openclawConfig({
+      mockOpenclawFile(1000, openclawConfig({
         list: [{ id: 'boss', workspace: WS }],
       }))
       expect(getMainAgentName()).toBe('Boss')
     })
 
     it('propagates throw from getMainAgentId when nothing resolves', () => {
-      vi.mocked(readFileSync).mockImplementation(() => { throw new Error('ENOENT') })
+      vi.mocked(statSync).mockImplementation(() => { throw new Error('ENOENT') })
       expect(() => getMainAgentName()).toThrow(/main agent/i)
     })
 
     it('uses settings.mainAgentId to locate the matching agent entry', () => {
       vi.mocked(getSettings).mockReturnValue({ mainAgentId: 'orchestrator' } as any)
-      vi.mocked(readFileSync).mockReturnValue(openclawConfig({
+      mockOpenclawFile(1000, openclawConfig({
         list: [
           { id: 'roscoe', workspace: WS, identity: { name: 'Wrong' } },
           { id: 'orchestrator', identity: { name: 'Captain' } },
         ],
       }))
       expect(getMainAgentName()).toBe('Captain')
+    })
+  })
+
+  describe('mtime-cached config reads', () => {
+    it('reuses parsed config across calls when mtime is unchanged', () => {
+      mockOpenclawFile(1000, openclawConfig({
+        list: [{ id: 'boss', workspace: WS }],
+      }))
+      expect(getMainAgentId()).toBe('boss')
+      expect(getMainAgentId()).toBe('boss')
+      expect(getMainAgentId()).toBe('boss')
+      // One parse, three stats — stat is the only per-call cost.
+      expect(readFileSync).toHaveBeenCalledTimes(1)
+      expect(statSync).toHaveBeenCalledTimes(3)
+    })
+
+    it('re-reads when mtime changes (live rename recovery)', () => {
+      mockOpenclawFile(1000, openclawConfig({
+        list: [{ id: 'old-name', workspace: WS }],
+      }))
+      expect(getMainAgentId()).toBe('old-name')
+
+      mockOpenclawFile(2000, openclawConfig({
+        list: [{ id: 'new-name', workspace: WS }],
+      }))
+      expect(getMainAgentId()).toBe('new-name')
+      expect(readFileSync).toHaveBeenCalledTimes(2)
+    })
+
+    it('recovers when openclaw.json becomes available after being missing', () => {
+      expect(() => getMainAgentId()).toThrow(/main agent/i)
+
+      mockOpenclawFile(1000, openclawConfig({
+        list: [{ id: 'boss', workspace: WS }],
+      }))
+      expect(getMainAgentId()).toBe('boss')
+    })
+
+    it('does not cache a stale config across consecutive getMainAgentId + getMainAgentName calls', () => {
+      mockOpenclawFile(1000, openclawConfig({
+        list: [{ id: 'boss', workspace: WS, identity: { name: 'Boss Man' } }],
+      }))
+      expect(getMainAgentId()).toBe('boss')
+      expect(getMainAgentName()).toBe('Boss Man')
+      // Both helpers share the same cache — only one parse total.
+      expect(readFileSync).toHaveBeenCalledTimes(1)
     })
   })
 })
