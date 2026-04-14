@@ -233,3 +233,7 @@ The watcher path is the safety net for writes that bypass REST entirely
 3. **Use `transform()` for status-only changes** — avoids expensive re-embedding when only metadata changed.
 4. **Document keys must be stable** — use the item's unique ID, not a path that might change. For multi-pattern tables, prefix the key (`def:`, `inst:`) so different patterns can't collide.
 5. **Test the unlink hook.** The `tests/plugins/<plugin>/unlink-hook.test.ts` files (and the `tests/integration/search-watcher-sync.test.ts` integration test) drive the watcher pipeline end-to-end with mocked chokidar — copy the pattern.
+
+## Client-side consumer pattern
+
+The server side is only half the story. Every plugin UI that exposes a search box must wire the results into its filter memo the same way so the loading-flash guard, relevance sort, URL state, and debug score overlay all behave consistently across plugins. See **`shared-ui-patterns.md` → "Search/List/Filter Reference Pattern"** for the canonical wiring, and copy `plugins/messaging/components/session-list.tsx` when building a new list surface.

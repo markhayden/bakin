@@ -315,6 +315,63 @@ const [dir, setDir] = useState<SortDir>('desc')
 
 Set `disabled` while a search is active so the upstream relevance order (e.g. Antfly RRF) wins — the cell still renders but clicks are ignored and the arrow indicator hides. Used by tasks' task-log-table and messaging's session-list.
 
+## Search/List/Filter Reference Pattern
+
+Every list-bearing plugin composes the same seven shared pieces: `PluginHeader`, `useSearch`, `AgentFilter`, `FacetFilter`, `SortableHead`, `useQueryState`/`useQueryArrayState`, and a filter memo with a loading-flash guard. The canonical implementation lives in **`plugins/messaging/components/session-list.tsx`** (plus `brainstorm-view.tsx` for the page wrapper) — copy its shape verbatim when building a new plugin list.
+
+### Wiring checklist
+
+1. **URL-backed filter state** — every user-visible filter goes through `useQueryState(key, default)` (single value) or `useQueryArrayState(key)` (comma-separated). No `useState` for agent, status, view, or search query.
+2. **Search hook** — `const searchHook = useSearch({ plugin: '<id>', facets: ['agent', 'status'], debounce: 300 })`. The `plugin` option auto-targets the plugin's `/api/plugins/<id>/search` route.
+3. **Score map** — build a `Map<id, { score, indexScores }>` from `searchHook.results` once via `useMemo`. If the plugin's Antfly rows carry a key prefix (e.g. workflows use `def:<id>`), strip it at map construction; otherwise the raw `r.id` is the item id.
+4. **Filter memo — three paths in order**:
+   ```tsx
+   const filtered = useMemo(() => {
+     let base = items
+     // (a) apply non-search filters first (agent, status, type, ...)
+     if (statusFilter.length) base = base.filter(...)
+     if (!search) return base
+     // (b) score-map-exhaustive: Antfly returned hits → filter + sort by score
+     if (searchHook.results.length) {
+       return base
+         .filter(i => scoreMap.has(i.id))
+         .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
+     }
+     // (c) flash guard: search in flight, no hits yet → keep full list visible
+     //     so the UI does not flash "no matches" during the 300ms debounce window
+     if (searchHook.loading) return base
+     // (d) optional local substring fallback for plugins that want it
+     const q = search.toLowerCase()
+     return base.filter(i => i.title.toLowerCase().includes(q))
+   }, [items, statusFilter, search, searchHook.results, searchHook.loading, scoreMap])
+   ```
+   Plugins that use the score-map-exhaustive pattern (memory audit timeline) skip path (d) entirely — when Antfly settles with no hits, they show the full agent/event-filtered list rather than running a client-side narrow.
+5. **`disabled={isSearching}` on every SortableHead** — pass `!!search.trim()` (or the local `isSearching` derivation) so relevance order wins during active search and the sort arrows hide.
+6. **PluginHeader** — `<PluginHeader title=".." count={loading ? undefined : filtered.length} search={{ value: search, onChange: setSearch, placeholder: '...' }} actions={...} />`. The `count` is the post-filter count so users see how many rows their filters yielded.
+7. **Facet aggregations** — if you want server-side facet counts in the `FacetFilter` chips, pass `counts={searchHook.aggregations?.<facet> ? Object.fromEntries(...) : undefined}`.
+8. **Agent filter** — `<AgentFilter agentIds={useAgentIds()} value={agentFilter} onChange={setAgentFilter} />` backed by `useQueryState('agent', 'all')`.
+9. **Debug score overlay** — when `useDebug()` is on and a search is active, render RRF / BM25 / SEM scores from `scoreMap.get(id).indexScores` as an absolute-positioned badge on each row/card. The same score map powers both the sort and the overlay — do not fetch twice.
+
+### Where it is wired
+
+| Plugin | List component | Score key | Substring fallback? |
+|--------|---------------|-----------|--------------------|
+| Messaging (brainstorm) | `session-list.tsx` | raw id | yes |
+| Tasks | `task-log-table.tsx` + `hooks/use-task-filters.ts` | raw id | yes |
+| Workflows | `workflows-page.tsx` | strips `def:` | no (card grid) |
+| Assets | `assets-page.tsx` + `assets-list.tsx` | path key | yes |
+| Projects | `project-grid.tsx` | raw id | yes (title only) |
+| Schedule | `schedule-page.tsx` + `job-list.tsx` | raw id | yes |
+| Memory | `audit-timeline.tsx` | ts + `audit-<ts>-<event>` strip | **no** (score-map-exhaustive) |
+
+### Common bugs the pattern prevents
+
+- **"No matches" flash during debounce** — without the `searchHook.loading` guard, the memo falls through to the substring path on the first keystroke and hides everything until Antfly replies ~300 ms later.
+- **Sort overriding relevance mid-search** — without `disabled={isSearching}`, clicking a sort header while Antfly results are active reorders by the local sort key instead of the RRF score.
+- **Filters not bookmarkable** — plain `useState` filters vanish on reload and do not survive back/forward navigation. The `useQueryState` hooks keep the URL authoritative.
+
+When adding a new plugin with a list surface, open `plugins/messaging/components/session-list.tsx` side-by-side and copy the hook wiring, memo structure, and header composition. If your plugin deviates (e.g. no agent filter, no substring fallback), write a one-line comment on the deviation so future readers know it is intentional.
+
 ## Key Files
 
 ```
