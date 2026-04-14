@@ -140,8 +140,8 @@ afterAll(() => {
 // ===========================================================================
 
 describe('route registration', () => {
-  it('registers all 9 routes', () => {
-    expect(plugin.routes.length).toBe(9)
+  it('registers all 10 routes', () => {
+    expect(plugin.routes.length).toBe(10)
   })
 
   it.each([
@@ -154,6 +154,7 @@ describe('route registration', () => {
     ['POST', '/trash/:file/restore'],
     ['DELETE', '/trash'],
     ['DELETE', '/trash/:file'],
+    ['GET', '/search'],
   ])('registers %s %s', (method, path) => {
     const route = findRoute(plugin.routes, method, path)
     expect(route).toBeDefined()

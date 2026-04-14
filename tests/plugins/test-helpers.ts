@@ -9,6 +9,8 @@ import type {
   APIRoute,
   ExecToolDefinition,
   BakinPlugin,
+  SearchResult,
+  SearchResponse,
 } from '../../src/lib/plugin-types'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
@@ -17,6 +19,12 @@ export interface ActivatedPlugin {
   ctx: PluginContext
   routes: APIRoute[]
   execTools: ExecToolDefinition[]
+  /**
+   * Seed the mocked `ctx.search.query()` to return these results on the
+   * next (and all subsequent) calls until re-seeded. Aggregations, meta,
+   * and source fields are filled in with sensible defaults.
+   */
+  seedResults: (results: SearchResult[], aggregations?: SearchResponse['aggregations']) => void
 }
 
 /**
@@ -32,6 +40,40 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
   const execTools: ExecToolDefinition[] = []
   const storage = new MarkdownStorageAdapter(testDir)
   const events = new BakinEventBus(() => {})
+
+  let seededResults: SearchResult[] = []
+  let seededAggregations: SearchResponse['aggregations'] = undefined
+
+  const seedResults = (
+    results: SearchResult[],
+    aggregations?: SearchResponse['aggregations'],
+  ) => {
+    seededResults = results
+    seededAggregations = aggregations
+  }
+
+  let searchRouteRegistered = false
+  const maybeAutoRegisterSearchRoute = () => {
+    if (searchRouteRegistered) return
+    searchRouteRegistered = true
+    routes.push({
+      path: '/search',
+      method: 'GET',
+      description: `Search ${pluginId}`,
+      handler: async (req: Request) => {
+        const url = new URL(req.url, 'http://localhost')
+        const q = url.searchParams.get('q')
+        if (!q) return Response.json({ error: 'Missing ?q= parameter' }, { status: 400 })
+        const result = await ctx.search.query({
+          q,
+          limit: Number(url.searchParams.get('limit')) || undefined,
+          offset: Number(url.searchParams.get('offset')) || undefined,
+          facets: url.searchParams.get('facets')?.split(',').filter(Boolean),
+        })
+        return Response.json(result)
+      },
+    })
+  }
 
   const ctx: PluginContext = {
     storage,
@@ -50,12 +92,25 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
       audit: vi.fn(),
     },
     search: {
-      registerContentType: vi.fn(),
-      registerFileBackedContentType: vi.fn(),
+      registerContentType: vi.fn(() => {
+        maybeAutoRegisterSearchRoute()
+      }),
+      registerFileBackedContentType: vi.fn(() => {
+        maybeAutoRegisterSearchRoute()
+      }),
       index: vi.fn(async () => {}),
       remove: vi.fn(async () => {}),
       transform: vi.fn(async () => {}),
-      query: vi.fn(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      query: vi.fn(async (params) => ({
+        results: seededResults,
+        aggregations: seededAggregations,
+        meta: {
+          query: params.q,
+          total: seededResults.length,
+          took_ms: 0,
+          source: 'fallback' as const,
+        },
+      })),
     },
     hooks: {
       register: vi.fn(() => () => {}),
@@ -64,7 +119,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     },
   }
 
-  return { ctx, routes, execTools }
+  return { ctx, routes, execTools, seedResults }
 }
 
 /**
@@ -77,6 +132,24 @@ export async function activatePlugin(
   const result = createTestContext(plugin.id, testDir)
   await plugin.activate(result.ctx)
   return result
+}
+
+/**
+ * Convenience: call the auto-registered GET /search route on an activated
+ * plugin with a query string. Returns the parsed JSON body and status.
+ */
+export async function callSearchRoute(
+  activated: ActivatedPlugin,
+  q: string,
+  extra: Record<string, string> = {},
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const route = findRoute(activated.routes, 'GET', '/search')
+  if (!route) {
+    throw new Error(
+      `Activated plugin has no /search route. Did it call ctx.search.registerContentType()?`,
+    )
+  }
+  return callRoute(route, activated.ctx, { searchParams: { q, ...extra } })
 }
 
 /**
