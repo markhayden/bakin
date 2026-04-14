@@ -51,6 +51,7 @@ import {
   findRoute,
   findTool,
   callRoute,
+  callSearchRoute,
   callTool,
 } from '../test-helpers'
 import type { ActivatedPlugin } from '../test-helpers'
@@ -816,6 +817,85 @@ describe('Calendar exec tools', () => {
         expect.objectContaining({ itemId: 'tool-rej-4', note: 'Feedback' }),
       )
     })
+  })
+})
+
+// ===========================================================================
+// Search route (auto-registered via ctx.search.registerFileBackedContentType)
+// ===========================================================================
+
+describe('GET /search — auto-registered brainstorm search', () => {
+  beforeEach(() => {
+    // Reset seeded results between tests
+    plugin.seedResults([])
+  })
+
+  it('returns 200 with seeded brainstorm results on a happy-path query', async () => {
+    plugin.seedResults([
+      {
+        id: 'brainstorm-sess-1',
+        table: 'bakin_messaging_brainstorm',
+        score: 0.92,
+        fields: {
+          session_id: 'sess-1',
+          title: 'Week 16 recipes',
+          status: 'active',
+          agent_id: 'chef',
+          message_body: 'Looking for spring smoothies',
+        },
+      },
+      {
+        id: 'brainstorm-sess-2',
+        table: 'bakin_messaging_brainstorm',
+        score: 0.74,
+        fields: {
+          session_id: 'sess-2',
+          title: 'Outdoor sprint',
+          status: 'completed',
+          agent_id: 'explorer',
+          message_body: 'Outdoor activity ideas',
+        },
+      },
+    ])
+
+    const { status, body } = await callSearchRoute(plugin, 'recipes')
+    expect(status).toBe(200)
+    const results = body.results as Array<Record<string, unknown>>
+    expect(results).toHaveLength(2)
+    expect(results[0].id).toBe('brainstorm-sess-1')
+    expect(results[0].table).toBe('bakin_messaging_brainstorm')
+    expect((results[0].fields as Record<string, unknown>).agent_id).toBe('chef')
+  })
+
+  it('returns 400 when q is missing', async () => {
+    const route = findRoute(plugin.routes, 'GET', '/search')!
+    expect(route).toBeDefined()
+    const { status, body } = await callRoute(route, plugin.ctx)
+    expect(status).toBe(400)
+    expect(body.error).toMatch(/[Mm]issing/)
+  })
+
+  it('passes the actual brainstorm facets (status, agent_id) through to ctx.search.query', async () => {
+    plugin.seedResults([])
+    await callSearchRoute(plugin, 'anything', { facets: 'status,agent_id' })
+
+    expect(plugin.ctx.search.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: 'anything',
+        facets: ['status', 'agent_id'],
+      }),
+    )
+  })
+
+  it('returns 200 with empty results when seed is empty', async () => {
+    plugin.seedResults([])
+
+    const { status, body } = await callSearchRoute(plugin, 'no-such-thing')
+    expect(status).toBe(200)
+    const results = body.results as unknown[]
+    expect(results).toEqual([])
+    const meta = body.meta as Record<string, unknown> | undefined
+    expect(meta?.total).toBe(0)
   })
 })
 
