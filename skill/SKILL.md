@@ -56,32 +56,14 @@ mcporter list bakin-<agent> --schema
 ```
 
 <!-- bakin:exec-tools:start -->
-## Execution Tools
-
-> Auto-managed by `bakin doctor`. Do not edit this block manually.
-
-Use these tools to accomplish actual work — saving files, posting content, generating images, scheduling jobs. Called the same way as MCP tools via mcporter.
-
-| Tool | Purpose |
-|------|---------|
-| `bakin_exec_post_discord` | Post a message to a Discord channel via bot. Resolves channel names to IDs automatically. Supports image/video attachments and embeds. |
-
-### Quick Reference
-
-```bash
-# Save a file as a managed asset (handles naming + sidecar automatically)
-mcporter call bakin-<agent>.bakin_exec_save_asset taskId=<id> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<desc>"
-# Post to Discord (with optional image/video attachment)
-mcporter call bakin-<agent>.bakin_exec_post_discord channel="<name>" content="<msg>" taskId=<id>
-# Generate image via Nano Banana
-mcporter call bakin-<agent>.bakin_exec_gen_image taskId=<id> prompt="<text>" preset=social-portrait model=flash
-# Check workflow gate statuses
-mcporter call bakin-<agent>.bakin_exec_check_gates taskId=<id>
-# Create a recurring scheduled job (NEVER use openclaw cron directly)
-mcporter call bakin-<agent>.bakin_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="basil" taskPrompt="Post a short recipe"
-# List all scheduled jobs
-mcporter call bakin-<agent>.bakin_exec_schedule_list
-```
+<!--
+  The exec-tools block is generated at sync time by bakin doctor
+  (src/core/doctor.ts → checkAndSyncSkill) and written only to the
+  installed copy at ~/.openclaw/workspace/skills/bakin/SKILL.md. The
+  repo template intentionally keeps this block empty so the file
+  stays stable across deploys regardless of which exec tools are
+  registered at runtime.
+-->
 <!-- bakin:exec-tools:end -->
 
 ## Task Lifecycle
