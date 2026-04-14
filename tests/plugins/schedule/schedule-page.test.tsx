@@ -83,12 +83,14 @@ vi.mock('@/hooks/use-query-state', () => ({
 
 interface SearchHookState {
   results: Array<{ id: string; table: string; score: number; fields: Record<string, unknown> }>
+  loading: boolean
   search: ReturnType<typeof vi.fn>
   clear: ReturnType<typeof vi.fn>
 }
 
 const searchHookState: SearchHookState = {
   results: [],
+  loading: false,
   search: vi.fn(),
   clear: vi.fn(),
 }
@@ -97,7 +99,7 @@ vi.mock('@/hooks/use-search', () => ({
   useSearch: () => ({
     results: searchHookState.results,
     aggregations: {},
-    loading: false,
+    loading: searchHookState.loading,
     error: null,
     meta: null,
     search: searchHookState.search,
@@ -236,6 +238,7 @@ beforeEach(() => {
   // Reset module state
   for (const k of Object.keys(queryStateRefs)) delete queryStateRefs[k]
   searchHookState.results = []
+  searchHookState.loading = false
   searchHookState.search.mockReset()
   searchHookState.clear.mockReset()
   scheduleState.jobs = []
@@ -293,6 +296,29 @@ describe('SchedulePage smoke', () => {
     expect(jobNodes.map(n => n.getAttribute('data-testid'))).toEqual(['job-c', 'job-b'])
     expect(screen.queryByTestId('job-a')).toBeNull()
     expect(screen.getByTestId('header-count').textContent).toBe('2')
+  })
+
+  it('keeps the full list while searchLoading and no results yet', () => {
+    // 300ms debounce window: user has typed a query but Antfly hasn't
+    // responded. Job list must not flash empty via the local substring
+    // fallback before results land.
+    scheduleState.jobs = [
+      makeJob({ id: 'a', displayName: 'Alpha' }),
+      makeJob({ id: 'b', displayName: 'Beta' }),
+      makeJob({ id: 'c', displayName: 'Gamma' }),
+    ]
+    queryStateRefs.view = 'list'
+    queryStateRefs.q = 'zzzzzz' // substring that matches nothing
+    searchHookState.results = []
+    searchHookState.loading = true
+
+    render(<SchedulePage />)
+
+    // All three jobs still visible despite the query — flash guard holds.
+    expect(screen.getByTestId('job-a')).toBeDefined()
+    expect(screen.getByTestId('job-b')).toBeDefined()
+    expect(screen.getByTestId('job-c')).toBeDefined()
+    expect(screen.getByTestId('header-count').textContent).toBe('3')
   })
 
   it('falls back to local substring filter when useSearch returns no hits', () => {

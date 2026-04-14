@@ -108,6 +108,7 @@ type StubSearchResult = {
 }
 
 let stubSearchResults: StubSearchResult[] = []
+let stubSearchLoading = false
 const searchSpy = vi.fn<[string], void>()
 const clearSpy = vi.fn<[], void>()
 
@@ -115,7 +116,7 @@ vi.mock('@/hooks/use-search', () => ({
   useSearch: () => ({
     results: stubSearchResults,
     aggregations: {},
-    loading: false,
+    loading: stubSearchLoading,
     error: null,
     meta: null,
     search: searchSpy,
@@ -206,6 +207,7 @@ beforeEach(() => {
   for (const k of Object.keys(queryState)) delete queryState[k]
   for (const k of Object.keys(querySetters)) delete querySetters[k]
   stubSearchResults = []
+  stubSearchLoading = false
   searchSpy.mockClear()
   clearSpy.mockClear()
   pushMock.mockClear()
@@ -284,6 +286,31 @@ describe('ProjectGrid', () => {
     const cards = screen.getAllByTestId(/^project-card-/)
     const ids = cards.map((c) => c.getAttribute('data-testid'))
     expect(ids.indexOf('project-card-p2')).toBeLessThan(ids.indexOf('project-card-p1'))
+  })
+
+  it('keeps the full list while searchLoading and no results yet', async () => {
+    // 300ms debounce window: user has typed a query but Antfly hasn't
+    // responded. Grid must not flash "no matching projects" via the local
+    // substring fallback.
+    stubSearchResults = []
+    stubSearchLoading = true
+
+    render(<ProjectGrid />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('project-card-p1')).toBeDefined()
+    })
+
+    act(() => {
+      setQueryStateValue('q', 'zzzzzz') // substring that matches nothing
+    })
+
+    // All three projects remain visible despite the query — flash guard holds.
+    await waitFor(() => {
+      expect(screen.queryByTestId('project-card-p1')).not.toBeNull()
+      expect(screen.queryByTestId('project-card-p2')).not.toBeNull()
+      expect(screen.queryByTestId('project-card-p3')).not.toBeNull()
+    })
   })
 
   it('falls back to local substring filter on title when useSearch returns empty', async () => {

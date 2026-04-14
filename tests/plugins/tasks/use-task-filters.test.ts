@@ -71,9 +71,11 @@ interface MockSearchResult {
 const mockSearchState: {
   results: MockSearchResult[]
   aggregations: Record<string, Array<{ value: string; count: number }>>
+  loading: boolean
 } = {
   results: [],
   aggregations: {},
+  loading: false,
 }
 
 const searchSpy = vi.fn()
@@ -83,7 +85,7 @@ vi.mock('@/hooks/use-search', () => ({
   useSearch: () => ({
     results: mockSearchState.results,
     aggregations: mockSearchState.aggregations,
-    loading: false,
+    loading: mockSearchState.loading,
     error: null,
     meta: null,
     search: searchSpy,
@@ -146,6 +148,7 @@ function makeColumns(): TaskColumns {
 beforeEach(() => {
   mockSearchState.results = []
   mockSearchState.aggregations = {}
+  mockSearchState.loading = false
   searchSpy.mockClear()
   clearSpy.mockClear()
   cleanup()
@@ -192,6 +195,28 @@ describe('filterBoardColumns', () => {
     expect(filtered.backlog.map(t => t.id)).toEqual(['a'])
     expect(filtered.todo).toEqual([])
     expect(filtered.done.map(t => t.id)).toEqual(['e'])
+  })
+
+  it('keeps the full (agent-filtered) list while searchLoading and no results yet', () => {
+    // A user has typed a query but the search hook hasn't resolved —
+    // we must NOT run the local text match or the board flashes
+    // "no matches" during the 300ms debounce window.
+    const cols = makeColumns()
+    const filtered = filterBoardColumns(cols, 'banana', 'all', [], true)
+    expect(filtered.backlog.map(t => t.id)).toEqual(['a'])
+    expect(filtered.todo.map(t => t.id)).toEqual(['b'])
+    expect(filtered.inProgress.map(t => t.id)).toEqual(['c'])
+    expect(filtered.done.map(t => t.id)).toEqual(['e'])
+  })
+
+  it('falls back to local matchesSearch once loading settles with no hits', () => {
+    // Same state but loading has settled (searchLoading=false) — now
+    // the local title/agent fallback runs and narrows the board.
+    const cols = makeColumns()
+    const filtered = filterBoardColumns(cols, 'banana', 'all', [], false)
+    expect(filtered.todo.map(t => t.id)).toEqual(['b'])
+    expect(filtered.backlog).toEqual([])
+    expect(filtered.done).toEqual([])
   })
 })
 
@@ -240,6 +265,28 @@ describe('useTaskFilters', () => {
     expect(result.current.allTasksFlat.map(t => t.id)).toEqual(['b'])
     expect(result.current.filteredColumns.todo.map(t => t.id)).toEqual(['b'])
     expect(result.current.filteredColumns.backlog).toEqual([])
+  })
+
+  it('keeps the full list while search is loading and no results yet', () => {
+    // Simulates the 300ms debounce window: user has typed a query
+    // but Antfly hasn't responded. The hook should return the full
+    // list so the board doesn't flash "no matches" before results
+    // land.
+    mockSearchState.results = []
+    mockSearchState.loading = true
+
+    const cols = makeColumns()
+    const { result } = renderHook(() =>
+      useTaskFilters(cols, { search: 'banana', agentFilter: 'all', statusFilter: [] }),
+    )
+
+    // Full set visible despite the active query.
+    expect(result.current.allTasksFlat.map(t => t.id)).toEqual(['a', 'b', 'c', 'd', 'e'])
+    expect(result.current.filteredColumns.backlog.map(t => t.id)).toEqual(['a'])
+    expect(result.current.filteredColumns.todo.map(t => t.id)).toEqual(['b'])
+    // exposed through the hook return for consumers that want to
+    // surface a spinner or disable sort headers while loading.
+    expect(result.current.searchLoading).toBe(true)
   })
 
   it('filters flat tasks by agentFilter', () => {

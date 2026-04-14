@@ -245,6 +245,7 @@ function resetState() {
   queryArrays.clear()
   searchHookState.results = []
   searchHookState.aggregations = {}
+  searchHookState.loading = false
   searchHookState.search.mockClear()
   searchHookState.clear.mockClear()
   useAssetsState.assets = []
@@ -323,6 +324,48 @@ describe('AssetsPage smoke', () => {
     expect(filenames).toContain('dog.png')
     expect(filenames).toContain('fish.png')
     expect(filenames).not.toContain('bird.png')
+  })
+
+  it('keeps the full list while searchLoading and no results yet', () => {
+    // 300ms debounce window: user has typed a query but Antfly hasn't
+    // responded. Grid should keep showing all assets, not flash "no matches"
+    // via the local substring fallback.
+    useAssetsState.loading = false
+    useAssetsState.assets = [
+      makeAsset({ path: 'p1', filename: 'cat.png' }),
+      makeAsset({ path: 'p2', filename: 'dog.png' }),
+      makeAsset({ path: 'p3', filename: 'fish.png' }),
+    ]
+    getQueryString('q', '').setValue('zzzzzz') // substring that matches nothing
+    searchHookState.results = []
+    searchHookState.loading = true
+
+    render(<AssetsPage />)
+
+    const filenames = (assetsGridProps.current.assets ?? []).map(a => a.filename)
+    // All three still visible despite the query — flash guard holds.
+    expect(filenames).toEqual(['cat.png', 'dog.png', 'fish.png'])
+  })
+
+  it('falls back to local substring filter once searchLoading settles with no hits', () => {
+    // Same setup as above but loading has resolved — the local fallback
+    // should now narrow the grid.
+    useAssetsState.loading = false
+    useAssetsState.assets = [
+      makeAsset({ path: 'p1', filename: 'cat.png' }),
+      makeAsset({ path: 'p2', filename: 'dog.png' }),
+      makeAsset({ path: 'p3', filename: 'fish.png' }),
+    ]
+    getQueryString('q', '').setValue('cat')
+    searchHookState.results = []
+    searchHookState.loading = false
+
+    render(<AssetsPage />)
+
+    const filenames = (assetsGridProps.current.assets ?? []).map(a => a.filename)
+    expect(filenames).toContain('cat.png')
+    expect(filenames).not.toContain('dog.png')
+    expect(filenames).not.toContain('fish.png')
   })
 
   it('intersects multi-select type filter with search results', () => {
