@@ -20,14 +20,44 @@ export function collectAgents(steps: WorkflowStep[]): string[] {
   return Array.from(ids)
 }
 
-export function WorkflowCard({ template, onClick }: { template: WorkflowTemplate; onClick: () => void }) {
+interface ScoreInfo {
+  score: number
+  indexScores?: Record<string, number>
+}
+
+export function WorkflowCard({
+  template,
+  onClick,
+  scoreInfo,
+}: {
+  template: WorkflowTemplate
+  onClick: () => void
+  /** Antfly score info — only shown when debug mode + active search */
+  scoreInfo?: ScoreInfo
+}) {
   const agentIds = collectAgents(template.definition.steps)
+
+  const semKey = 'embeddings'
+  const bm25Key = scoreInfo?.indexScores
+    ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
+    : undefined
 
   return (
     <button
       onClick={onClick}
-      className="text-left w-full rounded-lg border border-border bg-card p-4 hover:bg-[rgba(255,255,255,0.04)] transition-colors group"
+      className="relative text-left w-full rounded-lg border border-border bg-card p-4 hover:bg-[rgba(255,255,255,0.04)] transition-colors group"
     >
+      {scoreInfo && (
+        <div className="absolute top-1.5 left-1.5 flex flex-col gap-0.5 font-mono text-[10px] bg-black/80 px-1.5 py-1 rounded pointer-events-none">
+          <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
+          <span className="text-cyan-400">
+            BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+          </span>
+          <span className="text-purple-400">
+            SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+          </span>
+        </div>
+      )}
       <div className="flex items-start gap-2 mb-2">
         <Workflow className="size-4 shrink-0 text-amber-400 mt-0.5" />
         <h3 className="text-sm font-medium text-foreground group-hover:text-white line-clamp-1">
