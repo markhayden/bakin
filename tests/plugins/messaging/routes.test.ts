@@ -824,8 +824,8 @@ describe('Calendar exec tools', () => {
 // ===========================================================================
 
 describe('Calendar plugin registration', () => {
-  it('registers exactly 16 routes', () => {
-    expect(plugin.routes.length).toBe(16)
+  it('registers exactly 17 routes', () => {
+    expect(plugin.routes.length).toBe(17)
   })
 
   it('registers exactly 15 exec tools', () => {
