@@ -29,6 +29,9 @@ export default defineConfig({
       '@bakin/workflows': path.resolve(__dirname, 'plugins/workflows'),
       '@bakin/assets': path.resolve(__dirname, 'plugins/assets'),
       '@bakin/schedule': path.resolve(__dirname, 'plugins/schedule'),
+      '@bakin/team': path.resolve(__dirname, 'plugins/team'),
+      '@bakin/projects': path.resolve(__dirname, 'plugins/projects'),
+      '@bakin/health': path.resolve(__dirname, 'plugins/health'),
     },
   },
 })
