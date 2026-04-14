@@ -95,7 +95,11 @@ function isSelfTest(filePath, patternLabel) {
   const slug = base.split('/').pop()
   if (!slug) return false
   // Label contains the slug as a path segment (e.g. 'openclaw-home' in the label)
-  return patternLabel.includes(slug)
+  if (patternLabel.includes(slug)) return true
+  // tests/core/leak-guard.test.ts is the regression test for both guards;
+  // it intentionally imports the real modules to verify they throw.
+  if (slug === 'leak-guard' && (patternLabel.includes('content-dir') || patternLabel.includes('openclaw-home'))) return true
+  return false
 }
 
 function check(filePath) {

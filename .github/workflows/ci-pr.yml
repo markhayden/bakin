@@ -41,5 +41,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check for ~/.bakin and ~/.openclaw bypasses
+        run: pnpm lint:home-bypasses
+
       - name: Run affected workspace checks
         run: pnpm ci:affected
