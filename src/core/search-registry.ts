@@ -5,6 +5,7 @@
  * Uses globalThis to survive Next.js webpack re-evaluation.
  */
 import type {
+  APIRoute,
   FileBackedContentTypeDefinition,
   FilePatternMapper,
   SearchAPI,
@@ -301,11 +302,64 @@ export function getRerankField(tableName: string): string | undefined {
 }
 
 /**
+ * Options for building a plugin-scoped SearchAPI.
+ */
+export interface BuildSearchAPIOptions {
+  /**
+   * Callback invoked when a plugin registers a content type, used to
+   * auto-wire a `GET /search` route on the plugin's router without the
+   * plugin writing any boilerplate. When omitted (tests, catch-all
+   * dispatch, etc.), no route is registered — the caller must surface
+   * search some other way.
+   */
+  registerRoute?: (route: APIRoute) => void
+  /**
+   * Skip the side effects of `registerFileBackedContentType` — watcher
+   * sync/unlink hooks and pending startup reconcile. The primary register
+   * (content type + auto /search route) still runs. Used by the Next.js
+   * catch-all route where the real custom-server activation already wired
+   * watchers; re-wiring them here would double-fire on every file change.
+   */
+  skipFileBackedWiring?: boolean
+}
+
+/**
  * Build a SearchAPI instance scoped to a specific plugin.
  * This is what gets injected as ctx.search in PluginContext.
+ *
+ * When `opts.registerRoute` is provided, `registerContentType` (and
+ * therefore `registerFileBackedContentType`, which wraps it) will
+ * additionally auto-register a `GET /search` route that pipes through
+ * the same `api.query()` the plugin would have hand-written itself.
+ * This is the blessed path — plugins get a searchable HTTP endpoint for
+ * free by calling a single registration API.
  */
-export function buildSearchAPI(pluginId: string): SearchAPI {
+export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): SearchAPI {
   const registry = getRegistry()
+
+  let searchRouteRegistered = false
+  const maybeAutoRegisterSearchRoute = () => {
+    if (searchRouteRegistered) return
+    if (!opts?.registerRoute) return
+    searchRouteRegistered = true
+    opts.registerRoute({
+      path: '/search',
+      method: 'GET',
+      description: `Search ${pluginId}`,
+      handler: async (req: Request) => {
+        const url = new URL(req.url, 'http://localhost')
+        const q = url.searchParams.get('q')
+        if (!q) return Response.json({ error: 'Missing ?q= parameter' }, { status: 400 })
+        const result = await api.query({
+          q,
+          limit: Number(url.searchParams.get('limit')) || undefined,
+          offset: Number(url.searchParams.get('offset')) || undefined,
+          facets: url.searchParams.get('facets')?.split(',').filter(Boolean),
+        })
+        return Response.json(result)
+      },
+    })
+  }
 
   const api: SearchAPI = {
     registerContentType(def: SearchContentTypeDefinition): void {
@@ -313,12 +367,14 @@ export function buildSearchAPI(pluginId: string): SearchAPI {
       registry.contentTypes.set(tableName, { ...def, pluginId })
       registry.pluginTables.set(pluginId, tableName)
       log.info(`Content type registered: ${tableName} (plugin: ${pluginId})`)
+      maybeAutoRegisterSearchRoute()
     },
 
     registerFileBackedContentType(def: FileBackedContentTypeDefinition): void {
       // Standard registration first — gives us the table, schema, and reindex
       // generator. Everything below layers watcher hooks + reconcile on top.
       api.registerContentType(def)
+      if (opts?.skipFileBackedWiring) return
       const tableName = fullTableName(def.table)
 
       const includePatterns = def.filePatterns.map(p => p.pattern)
