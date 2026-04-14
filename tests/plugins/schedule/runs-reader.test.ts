@@ -1,7 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+
+const { hoistedBakinHome } = vi.hoisted(() => {
+  const { mkdtempSync } = require('fs')
+  const { tmpdir } = require('os')
+  const { join } = require('path')
+  const bakinHome = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
+  process.env.BAKIN_HOME = bakinHome
+  process.env.OPENCLAW_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
+  return { hoistedBakinHome: bakinHome }
+})
+
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+
+vi.mock('../../../src/core/content-dir', () => ({
+  getContentDir: () => hoistedBakinHome,
+}))
 
 vi.mock('../../../src/core/logger', () => ({
   createLogger: () => ({
