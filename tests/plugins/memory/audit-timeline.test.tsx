@@ -39,21 +39,23 @@ vi.mock('../../../packages/core/src/content-dir', () => ({
 // Hoisted mocks (must be declared before the component imports them)
 // ---------------------------------------------------------------------------
 
-const { searchMock, clearMock, agentListMock, contentStoreMock, searchState } = vi.hoisted(() => ({
+const { searchMock, clearMock, agentIdsMock, contentStoreMock, searchState, queryStateRefs } = vi.hoisted(() => ({
   searchMock: vi.fn(),
   clearMock: vi.fn(),
-  agentListMock: vi.fn(),
+  agentIdsMock: vi.fn(),
   contentStoreMock: vi.fn(),
   searchState: {
     results: [] as Array<{ id: string; table: string; score: number; fields: Record<string, unknown> }>,
+    loading: false,
   },
+  queryStateRefs: {} as Record<string, string>,
 }))
 
 vi.mock('@/hooks/use-search', () => ({
   useSearch: () => ({
     results: searchState.results,
     aggregations: {},
-    loading: false,
+    loading: searchState.loading,
     error: null,
     meta: null,
     search: searchMock,
@@ -68,7 +70,37 @@ vi.mock('@/hooks/use-content-store', () => ({
 }))
 
 vi.mock('@bakin/team/hooks/use-agent-store', () => ({
-  useAgentList: () => agentListMock(),
+  useAgentIds: () => agentIdsMock(),
+}))
+
+// useQueryState — simple module-level ref per key so tests can drive URL
+// state without a full Next.js router.
+vi.mock('@/hooks/use-query-state', () => {
+  const React = require('react')
+  return {
+    useQueryState: (key: string, defaultValue: string = '') => {
+      if (!(key in queryStateRefs)) queryStateRefs[key] = defaultValue
+      const [value, setValue] = React.useState<string>(queryStateRefs[key])
+      const setter = (v: string) => {
+        queryStateRefs[key] = v
+        setValue(v)
+      }
+      return [value, setter, setter] as const
+    },
+  }
+})
+
+// AgentFilter stub — renders one button per agent id with the id as both
+// test id and accessible label so tests can click a specific agent.
+vi.mock('@/components/agent-filter', () => ({
+  AgentFilter: ({ agentIds, value, onChange }: { agentIds: string[]; value: string; onChange: (v: string) => void }) => (
+    <div data-testid="agent-filter" data-value={value}>
+      <button title="all" onClick={() => onChange('all')}>all</button>
+      {agentIds.map(id => (
+        <button key={id} title={id} onClick={() => onChange(id)}>{id}</button>
+      ))}
+    </div>
+  ),
 }))
 
 // Stub the heavy timeline row — we only care about the surrounding logic
@@ -115,11 +147,10 @@ const sampleEntries: AuditEntry[] = [
 
 beforeEach(() => {
   searchState.results = []
+  searchState.loading = false
+  for (const k of Object.keys(queryStateRefs)) delete queryStateRefs[k]
   contentStoreMock.mockReturnValue([])
-  agentListMock.mockReturnValue([
-    { id: 'chef', name: 'Chef', emoji: '🌿', role: 'Cook', headshot: '' },
-    { id: 'pixel', name: 'Pixel', emoji: '🎨', role: 'Designer', headshot: '' },
-  ])
+  agentIdsMock.mockReturnValue(['chef', 'pixel'])
 
   vi.stubGlobal(
     'fetch',
@@ -201,8 +232,34 @@ describe('AuditTimeline', () => {
     })
   })
 
-  it('falls back to local text filter when search results are empty', async () => {
-    searchState.results = [] // no matches from useSearch
+  it('keeps the full list while searchLoading and no results yet', async () => {
+    // 300ms debounce window — Antfly hasn't responded. List must not flash
+    // "no matches" during the loading window.
+    searchState.results = []
+    searchState.loading = true
+
+    render(<AuditTimeline />)
+    await waitFor(() => {
+      expect(screen.getAllByTestId('timeline-entry').length).toBe(3)
+    })
+
+    const input = screen.getByTestId('search-input') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'zzzzzz' } })
+    })
+
+    // All three entries still visible — flash guard holds.
+    await waitFor(() => {
+      expect(screen.getAllByTestId('timeline-entry').length).toBe(3)
+    })
+  })
+
+  it('drops the local substring fallback: empty results show full list after loading settles', async () => {
+    // Memory intentionally does NOT run a local substring fallback. When
+    // Antfly returns no hits and loading settles, the timeline shows the
+    // full agent/event-filtered list (score-map-exhaustive pattern).
+    searchState.results = []
+    searchState.loading = false
 
     render(<AuditTimeline />)
     await waitFor(() => {
@@ -214,20 +271,19 @@ describe('AuditTimeline', () => {
       fireEvent.change(input, { target: { value: 'agent.online' } })
     })
 
+    // Full list stays visible — no client-side substring narrowing.
     await waitFor(() => {
-      const rows = screen.getAllByTestId('timeline-entry')
-      expect(rows).toHaveLength(1)
-      expect(rows[0].getAttribute('data-event')).toBe('agent.online')
+      expect(screen.getAllByTestId('timeline-entry').length).toBe(3)
     })
   })
 
-  it('filters by agent when the agent button is clicked', async () => {
+  it('filters by agent when the AgentFilter emits an id', async () => {
     render(<AuditTimeline />)
     await waitFor(() => {
       expect(screen.getAllByTestId('timeline-entry').length).toBe(3)
     })
 
-    const pixelBtn = screen.getByTitle('Pixel')
+    const pixelBtn = screen.getByTitle('pixel')
     await act(async () => {
       fireEvent.click(pixelBtn)
     })

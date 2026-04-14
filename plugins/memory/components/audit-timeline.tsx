@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useContentStore } from '@/hooks/use-content-store'
-import { useAgentList } from '@bakin/team/hooks/use-agent-store'
+import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useSearch, type SearchResult } from '@/hooks/use-search'
 import { useDebug } from '@/hooks/use-debug'
+import { useQueryState } from '@/hooks/use-query-state'
+import { AgentFilter } from '@/components/agent-filter'
 import { TimelineEntry } from './timeline-entry'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -54,12 +56,12 @@ const EVENT_TYPES = [
 ]
 
 export function AuditTimeline() {
-  const agents = useAgentList()
+  const agentIds = useAgentIds()
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [agentFilter, setAgentFilter] = useState('')
-  const [eventFilter, setEventFilter] = useState('')
-  const [search, setSearch] = useState('')
+  const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
+  const [eventFilter, setEventFilter] = useQueryState('event', '')
+  const [search, setSearch] = useQueryState('q', '')
   const searchHook = useSearch({ plugin: 'memory', facets: ['event', 'agent'], debounce: 300 })
   const [debug] = useDebug()
   useEffect(() => {
@@ -95,7 +97,7 @@ export function AuditTimeline() {
   const filtered = useMemo(() => {
     let result = allEntries
 
-    if (agentFilter) {
+    if (agentFilter && agentFilter !== 'all') {
       result = result.filter((e) => e.agent === agentFilter)
     }
 
@@ -110,24 +112,21 @@ export function AuditTimeline() {
 
     if (search) {
       if (searchHook.results.length) {
-        result = result
+        return result
           .filter(e => scoreMap.has(e.ts))
           .sort((a, b) => (scoreMap.get(b.ts)?.score ?? 0) - (scoreMap.get(a.ts)?.score ?? 0))
-        return result
-      } else {
-        const q = search.toLowerCase()
-        result = result.filter(
-          (e) =>
-            e.event.toLowerCase().includes(q) ||
-            JSON.stringify(e.data).toLowerCase().includes(q)
-        )
       }
+      // While Antfly is in flight we keep the full agent/event-filtered list
+      // visible instead of flashing "no matches" during the 300ms debounce
+      // window. Once loading settles with still no hits, fall through to the
+      // newest-first sort so the user sees everything that passed the
+      // non-search filters.
+      if (searchHook.loading) return result
     }
 
     // Newest-first when not searching
     return [...result].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allEntries, agentFilter, eventFilter, search, scoreMap])
+  }, [allEntries, agentFilter, eventFilter, search, searchHook.results, searchHook.loading, scoreMap])
 
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading audit log...</p>
@@ -157,25 +156,8 @@ export function AuditTimeline() {
             </Button>
           ))}
         </div>
-        <div className="flex items-center gap-1 ml-auto">
-          <Button
-            variant={agentFilter === '' ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => setAgentFilter('')}
-          >
-            All
-          </Button>
-          {agents.map((a) => (
-            <Button
-              key={a.id}
-              variant={agentFilter === a.id ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setAgentFilter(a.id)}
-              title={a.name}
-            >
-              {a.emoji}
-            </Button>
-          ))}
+        <div className="ml-auto">
+          <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} showIcon={false} />
         </div>
       </div>
 
