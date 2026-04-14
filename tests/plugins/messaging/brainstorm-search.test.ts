@@ -183,7 +183,7 @@ describe('buildDoc', () => {
     expect(summaries).not.toContain(': Brief Only')
   })
 
-  it('coerces missing optional top-level fields to empty strings', () => {
+  it('handles missing optional top-level fields', () => {
     // Cast through unknown so we can simulate a session that's missing
     // optional-shaped fields without TypeScript complaining.
     const partial = {
@@ -194,10 +194,13 @@ describe('buildDoc', () => {
     } as unknown as PlanningSession
     const doc = buildDoc(partial)
     expect(doc.session_id).toBe('sess-2')
+    // String fields coerce to '' so Antfly text indexes don't choke.
     expect(doc.title).toBe('')
     expect(doc.status).toBe('')
-    expect(doc.created_at).toBe('')
-    expect(doc.updated_at).toBe('')
+    // Datetime fields are omitted when missing — Antfly rejects '' for
+    // `datetime` types, so the key simply isn't present on the doc.
+    expect(doc.created_at).toBeUndefined()
+    expect(doc.updated_at).toBeUndefined()
   })
 })
 

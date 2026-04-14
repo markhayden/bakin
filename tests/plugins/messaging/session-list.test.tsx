@@ -224,4 +224,69 @@ describe('SessionList', () => {
     fireEvent.click(screen.getByTestId('agent-card-basil'))
     expect(onCreate).toHaveBeenCalledWith('basil')
   })
+
+  it('reorders by Antfly score when searchResults are provided', async () => {
+    globalThis.fetch = mockFetch()
+    // s3 wins, then s1. s2 is filtered out because it's not in scoreMap.
+    // Keys come in with the `brainstorm-` prefix — the component strips it.
+    const searchResults = [
+      { id: 'brainstorm-s3', table: 'messaging_brainstorm', score: 0.9, fields: {} },
+      { id: 'brainstorm-s1', table: 'messaging_brainstorm', score: 0.4, fields: {} },
+    ]
+    render(
+      <SessionList
+        onSelectSession={vi.fn()}
+        search="tips"
+        searchResults={searchResults}
+      />
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('session-entry-s3')).toBeDefined()
+    })
+    expect(screen.getByTestId('session-entry-s1')).toBeDefined()
+    expect(screen.queryByTestId('session-entry-s2')).toBeNull()
+    const s3 = screen.getByTestId('session-entry-s3')
+    const s1 = screen.getByTestId('session-entry-s1')
+    // Higher score (s3) should render before lower (s1)
+    expect(s3.compareDocumentPosition(s1) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('keeps full list visible while searchLoading and no results yet', async () => {
+    globalThis.fetch = mockFetch()
+    // Search is typed, but the hook hasn't resolved — searchLoading=true.
+    // The list should stay populated instead of flashing "no matches".
+    render(
+      <SessionList
+        onSelectSession={vi.fn()}
+        search="water"
+        searchResults={[]}
+        searchLoading={true}
+      />
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('session-entry-s1')).toBeDefined()
+    })
+    expect(screen.getByTestId('session-entry-s2')).toBeDefined()
+    expect(screen.getByTestId('session-entry-s3')).toBeDefined()
+    expect(screen.queryByText(/No sessions matching/)).toBeNull()
+  })
+
+  it('falls back to local substring match when loading settles with no hits', async () => {
+    globalThis.fetch = mockFetch()
+    // Loading has settled (searchLoading=false) and Antfly returned nothing
+    // — the local title/agentId substring path runs.
+    render(
+      <SessionList
+        onSelectSession={vi.fn()}
+        search="outdoor"
+        searchResults={[]}
+        searchLoading={false}
+      />
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('session-entry-s3')).toBeDefined()
+    })
+    expect(screen.queryByTestId('session-entry-s1')).toBeNull()
+    expect(screen.queryByTestId('session-entry-s2')).toBeNull()
+  })
 })

@@ -6,7 +6,8 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
-import { MessageSquare, CheckCircle, MoreHorizontal, Trash2, ArrowUpDown } from 'lucide-react'
+import { SortableHead, type SortDir } from '@/components/sortable-head'
+import { MessageSquare, CheckCircle, MoreHorizontal, Trash2 } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -16,15 +17,13 @@ import {
 import type { SearchResult } from '@/hooks/use-search'
 import { useDebug } from '@/hooks/use-debug'
 import { DeleteSessionDialog } from './delete-session-dialog'
-import type { ContentAgent } from '../types'
 import { AGENT_INFO } from '../types'
+import { CONTENT_AGENTS } from '../constants'
 
 interface ScoreInfo {
   score: number
   indexScores?: Record<string, number>
 }
-
-const CONTENT_AGENTS = Object.keys(AGENT_INFO) as ContentAgent[]
 
 interface SessionSummary {
   id: string
@@ -38,7 +37,6 @@ interface SessionSummary {
 }
 
 type SortField = 'title' | 'agent' | 'threads' | 'status' | 'updatedAt'
-type SortDir = 'asc' | 'desc'
 
 interface Props {
   onSelectSession: (sessionId: string) => void
@@ -111,7 +109,7 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
 
     if (!search?.trim()) return agentFiltered
 
-    if (searchResults && searchResults.length > 0) {
+    if (scoreMap.size > 0) {
       return agentFiltered
         .filter(s => scoreMap.has(s.id))
         .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
@@ -126,7 +124,9 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
       s.title.toLowerCase().includes(q) ||
       s.agentId.toLowerCase().includes(q)
     )
-  }, [sessions, search, searchResults, searchLoading, scoreMap, agentFilter])
+    // `scoreMap` is derived from `searchResults`; listing both in deps would
+    // double-trigger. Keep `scoreMap` since it's what we actually read.
+  }, [sessions, search, searchLoading, scoreMap, agentFilter])
 
   // When searching, Antfly relevance order wins — skip manual sort.
   const isSearching = !!search?.trim()
@@ -240,10 +240,14 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
                       <span className="flex items-center gap-1.5 font-mono text-[10px] shrink-0">
                         <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
                         <span className="text-cyan-400">
-                          BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+                          BM25 {bm25Key && scoreInfo.indexScores?.[bm25Key] !== undefined
+                            ? scoreInfo.indexScores[bm25Key].toFixed(3)
+                            : '—'}
                         </span>
                         <span className="text-purple-400">
-                          SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+                          SEM {scoreInfo.indexScores?.[semKey] !== undefined
+                            ? scoreInfo.indexScores[semKey].toFixed(3)
+                            : '—'}
                         </span>
                       </span>
                     )}
@@ -313,28 +317,3 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
   )
 }
 
-function SortableHead({ field, current, dir, onSort, disabled, children }: {
-  field: SortField
-  current: SortField
-  dir: SortDir
-  onSort: (f: SortField) => void
-  disabled?: boolean
-  children: React.ReactNode
-}) {
-  const isActive = current === field && !disabled
-  return (
-    <TableHead>
-      <button
-        onClick={() => !disabled && onSort(field)}
-        disabled={disabled}
-        className={`flex items-center gap-1 hover:text-foreground transition-colors ${
-          isActive ? 'text-foreground' : ''
-        } ${disabled ? 'cursor-default opacity-60' : ''}`}
-      >
-        {children}
-        {!disabled && <ArrowUpDown className={`size-3 ${isActive ? 'opacity-100' : 'opacity-40'}`} />}
-        {isActive && <span className="text-[10px]">{dir === 'asc' ? '↑' : '↓'}</span>}
-      </button>
-    </TableHead>
-  )
-}
