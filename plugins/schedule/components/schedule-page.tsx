@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button'
 import { BakinDrawer } from '@/components/bakin-drawer'
 import { PluginHeader } from '@/components/plugin-header'
 import { AgentFilter } from '@/components/agent-filter'
+import { FacetFilter, type FacetOption } from '@/components/facet-filter'
 import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
-import { useQueryState } from '@/hooks/use-query-state'
+import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
 import { useDebug } from '@/hooks/use-debug'
 import { useScheduleJobs, type ScheduleJob } from '@/hooks/use-schedule'
@@ -28,6 +29,18 @@ const VIEWS: { id: ViewMode; icon: typeof List; label: string }[] = [
   { id: 'month', icon: CalendarDays, label: 'Month' },
 ]
 
+const STATUS_OPTIONS: FacetOption[] = [
+  { value: 'active', label: 'Active' },
+  { value: 'paused', label: 'Paused' },
+  { value: 'disabled', label: 'Disabled' },
+]
+
+function jobStatus(job: ScheduleJob): 'active' | 'paused' | 'disabled' {
+  if (job.paused) return 'paused'
+  if (!job.enabled) return 'disabled'
+  return 'active'
+}
+
 export function SchedulePage() {
   const agentIds = useAgentIds()
   const router = useRouter()
@@ -36,6 +49,7 @@ export function SchedulePage() {
 
   const [view, setView] = useQueryState('view', 'week')
   const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
+  const [statusFilter, setStatusFilter] = useQueryArrayState('status')
   const [search, setSearch] = useQueryState('q', '')
   const [jobIdParam, setJobIdParam, pushJobId] = useQueryState('jobId', '')
   const [mode, setMode, pushMode] = useQueryState('mode', '')
@@ -70,24 +84,30 @@ export function SchedulePage() {
   }, [searchHook.results])
 
   const filtered = useMemo(() => {
-    if (!search) return jobs
+    // Status filter applies first (client-side, multi-select).
+    let base = jobs
+    if (statusFilter.length > 0) {
+      const wanted = new Set(statusFilter)
+      base = base.filter(j => wanted.has(jobStatus(j)))
+    }
+    if (!search) return base
     if (searchHook.results.length) {
-      return jobs
+      return base
         .filter(j => scoreMap.has(j.id))
         .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
     }
     // While the search hook is in flight, keep the full job list
     // visible instead of flashing "no jobs" during the 300ms debounce
     // window before Antfly returns.
-    if (searchHook.loading) return jobs
+    if (searchHook.loading) return base
     const q = search.toLowerCase()
-    return jobs.filter(j =>
+    return base.filter(j =>
       (j.displayName || '').toLowerCase().includes(q) ||
       j.id.toLowerCase().includes(q) ||
       (j.agentId || '').toLowerCase().includes(q) ||
       j.humanSchedule.toLowerCase().includes(q)
     )
-  }, [jobs, search, searchHook.results, searchHook.loading, scoreMap])
+  }, [jobs, statusFilter, search, searchHook.results, searchHook.loading, scoreMap])
 
   // Derive drawer/form visibility from URL state
   const selectedJob = jobIdParam ? jobs.find(j => j.id === jobIdParam) ?? null : null
@@ -220,7 +240,16 @@ export function SchedulePage() {
       />
 
       {/* Filters */}
-      <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
+      <div className="flex items-center gap-3 flex-wrap">
+        <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
+        <FacetFilter
+          label="Status"
+          options={STATUS_OPTIONS}
+          selected={statusFilter}
+          onChange={setStatusFilter}
+          counts={searchHook.aggregations?.enabled ? Object.fromEntries(searchHook.aggregations.enabled.map(a => [a.value, a.count])) : undefined}
+        />
+      </div>
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">
