@@ -114,8 +114,13 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
     )
   }, [sessions, search, searchResults, scoreMap])
 
-  // Group by agent, active before completed, sorted by updatedAt desc
+  // When a search is active, respect the relevance order from `filtered`
+  // and render a flat list — agent grouping + updatedAt sort would otherwise
+  // throw away the score ranking. When idle, keep the original agent-grouped,
+  // active-first, updatedAt-desc UX.
+  const isSearching = !!search?.trim()
   const grouped = useMemo(() => {
+    if (isSearching) return filtered
     const active = filtered
       .filter(s => s.status === 'active')
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
@@ -123,16 +128,17 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
       .filter(s => s.status === 'completed')
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     return [...active, ...completed]
-  }, [filtered])
+  }, [filtered, isSearching])
 
   const sessionsByAgent = useMemo(() => {
+    if (isSearching) return null
     const groups: Record<string, SessionSummary[]> = {}
     for (const s of grouped) {
       if (!groups[s.agentId]) groups[s.agentId] = []
       groups[s.agentId].push(s)
     }
     return groups
-  }, [grouped])
+  }, [grouped, isSearching])
 
   if (loading) {
     return (
@@ -187,102 +193,116 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
     )
   }
 
+  const renderSessionRow = (session: SessionSummary) => {
+    const scoreInfo = scoreMap.get(session.id)
+    const showScores = debug && scoreInfo && isSearching
+    const semKey = 'embeddings'
+    const bm25Key = scoreInfo?.indexScores
+      ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
+      : undefined
+    return (
+      <div
+        key={session.id}
+        className="group flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-muted/50 transition-colors cursor-pointer"
+        data-testid={`session-entry-${session.id}`}
+        onClick={() => onSelectSession(session.id)}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-foreground truncate">
+            {session.title}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+            <span>{new Date(session.updatedAt).toLocaleDateString()}</span>
+            <span className="flex items-center gap-0.5">
+              <MessageSquare className="size-3" />
+              {session.proposalCount} proposals
+            </span>
+            {showScores && scoreInfo && (
+              <span className="flex items-center gap-2 font-mono text-[10px]">
+                <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
+                <span className="text-cyan-400">
+                  BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+                </span>
+                <span className="text-purple-400">
+                  SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+                </span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {isSearching && (
+            <div className="flex items-center gap-1">
+              <AgentAvatar agentId={session.agentId} size="xs" />
+              <span className="text-[10px] text-muted-foreground uppercase">{session.agentId}</span>
+            </div>
+          )}
+          {session.proposalCount > 0 && (
+            <Badge variant="outline" className="text-[10px]">
+              {session.approvedCount}/{session.proposalCount}
+            </Badge>
+          )}
+          {session.status === 'completed' ? (
+            <CheckCircle className="size-3.5 text-emerald-400" />
+          ) : (
+            <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-400/30">
+              Active
+            </Badge>
+          )}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.06)] transition-colors opacity-0 group-hover:opacity-100"
+            >
+              <MoreHorizontal className="size-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-36">
+              <DropdownMenuItem
+                onClick={(e: React.MouseEvent) => { e.stopPropagation(); setDeleteTarget(session) }}
+                className="text-red-400 focus:text-red-400"
+              >
+                <Trash2 className="size-3.5 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
-      <div className="space-y-6">
-        {Object.entries(sessionsByAgent).map(([agentId, agentSessions]) => {
-          const info = AGENT_INFO[agentId as ContentAgent]
-          return (
-            <div key={agentId} data-testid={`agent-group-${agentId}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <AgentAvatar agentId={agentId} size="xs" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {info?.name || agentId}
-                </span>
-                <Badge variant="outline" className="text-[10px]">
-                  {agentSessions.length}
-                </Badge>
+      {isSearching ? (
+        <div className="space-y-1.5" data-testid="search-results">
+          {(grouped as SessionSummary[]).map(renderSessionRow)}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {Object.entries(sessionsByAgent ?? {}).map(([agentId, agentSessions]) => {
+            const info = AGENT_INFO[agentId as ContentAgent]
+            return (
+              <div key={agentId} data-testid={`agent-group-${agentId}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <AgentAvatar agentId={agentId} size="xs" />
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {info?.name || agentId}
+                  </span>
+                  <Badge variant="outline" className="text-[10px]">
+                    {agentSessions.length}
+                  </Badge>
+                </div>
+
+                <div className="space-y-1.5">
+                  {agentSessions.map(renderSessionRow)}
+                </div>
               </div>
-
-              <div className="space-y-1.5">
-                {agentSessions.map(session => {
-                  const scoreInfo = scoreMap.get(session.id)
-                  const showScores = debug && scoreInfo && search?.trim()
-                  const semKey = 'embeddings'
-                  const bm25Key = scoreInfo?.indexScores
-                    ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
-                    : undefined
-                  return (
-                  <div
-                    key={session.id}
-                    className="group flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-muted/50 transition-colors cursor-pointer"
-                    data-testid={`session-entry-${session.id}`}
-                    onClick={() => onSelectSession(session.id)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-foreground truncate">
-                        {session.title}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
-                        <span>{new Date(session.updatedAt).toLocaleDateString()}</span>
-                        <span className="flex items-center gap-0.5">
-                          <MessageSquare className="size-3" />
-                          {session.proposalCount} proposals
-                        </span>
-                        {showScores && scoreInfo && (
-                          <span className="flex items-center gap-2 font-mono text-[10px]">
-                            <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
-                            <span className="text-cyan-400">
-                              BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
-                            </span>
-                            <span className="text-purple-400">
-                              SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      {session.proposalCount > 0 && (
-                        <Badge variant="outline" className="text-[10px]">
-                          {session.approvedCount}/{session.proposalCount}
-                        </Badge>
-                      )}
-                      {session.status === 'completed' ? (
-                        <CheckCircle className="size-3.5 text-emerald-400" />
-                      ) : (
-                        <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-400/30">
-                          Active
-                        </Badge>
-                      )}
-
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                          className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.06)] transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <MoreHorizontal className="size-3.5" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-36">
-                          <DropdownMenuItem
-                            onClick={(e: React.MouseEvent) => { e.stopPropagation(); setDeleteTarget(session) }}
-                            className="text-red-400 focus:text-red-400"
-                          >
-                            <Trash2 className="size-3.5 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
       <DeleteSessionDialog
         open={!!deleteTarget}
