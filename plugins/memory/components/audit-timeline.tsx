@@ -3,12 +3,48 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useContentStore } from '@/hooks/use-content-store'
 import { useAgentList } from '@bakin/team/hooks/use-agent-store'
-import { useSearch } from '@/hooks/use-search'
+import { useSearch, type SearchResult } from '@/hooks/use-search'
+import { useDebug } from '@/hooks/use-debug'
 import { TimelineEntry } from './timeline-entry'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Search } from 'lucide-react'
 import type { AuditEntry } from '../types'
+
+interface ScoreInfo {
+  score: number
+  indexScores?: Record<string, number>
+}
+
+/**
+ * Build a score map keyed by audit entry timestamp. Audit rows in Antfly are
+ * keyed as `audit-${ts}-${event}` (see plugins/memory/index.ts reindex), so
+ * we recover the `ts` either from the indexed doc fields (`created_at`) or by
+ * stripping the `audit-` prefix and the trailing `-${event}` segment off the
+ * search result id. The fields-first path keeps the test fixtures (which
+ * pass a raw ts as `id` and an empty `fields` object) working too.
+ */
+function buildAuditScoreMap(results: SearchResult[]): Map<string, ScoreInfo> {
+  const map = new Map<string, ScoreInfo>()
+  for (const r of results) {
+    const info: ScoreInfo = { score: r.score, indexScores: r.indexScores }
+    const created = r.fields?.created_at
+    if (typeof created === 'string') {
+      map.set(created, info)
+    }
+    // Also key by the raw id — covers both legacy callers and the
+    // `audit-${ts}-${event}` case where we can recover ts by stripping.
+    map.set(r.id, info)
+    if (r.id.startsWith('audit-')) {
+      const event = r.fields?.event
+      const stripped = typeof event === 'string'
+        ? r.id.slice('audit-'.length, r.id.length - (event.length + 1))
+        : r.id.slice('audit-'.length)
+      if (stripped) map.set(stripped, info)
+    }
+  }
+  return map
+}
 
 const EVENT_TYPES = [
   { value: '', label: 'All events' },
@@ -25,12 +61,19 @@ export function AuditTimeline() {
   const [eventFilter, setEventFilter] = useState('')
   const [search, setSearch] = useState('')
   const searchHook = useSearch({ plugin: 'memory', facets: ['event', 'agent'], debounce: 300 })
+  const [debug] = useDebug()
   useEffect(() => {
     if (search) searchHook.search(search)
     else searchHook.clear()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
   const auditEntries = useContentStore((s) => s.auditEntries)
+
+  // Score map shared by the relevance reorder AND the debug-mode score overlay.
+  const scoreMap = useMemo(
+    () => buildAuditScoreMap(searchHook.results),
+    [searchHook.results],
+  )
 
   // Fetch full audit log on mount
   useEffect(() => {
@@ -67,11 +110,9 @@ export function AuditTimeline() {
 
     if (search) {
       if (searchHook.results.length) {
-        const matchIds = new Set(searchHook.results.map(r => r.id))
-        const scoreMap = new Map(searchHook.results.map(r => [r.id, r.score]))
         result = result
-          .filter(e => matchIds.has(e.ts))
-          .sort((a, b) => (scoreMap.get(b.ts) ?? 0) - (scoreMap.get(a.ts) ?? 0))
+          .filter(e => scoreMap.has(e.ts))
+          .sort((a, b) => (scoreMap.get(b.ts)?.score ?? 0) - (scoreMap.get(a.ts)?.score ?? 0))
         return result
       } else {
         const q = search.toLowerCase()
@@ -85,7 +126,8 @@ export function AuditTimeline() {
 
     // Newest-first when not searching
     return [...result].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
-  }, [allEntries, agentFilter, eventFilter, search])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allEntries, agentFilter, eventFilter, search, scoreMap])
 
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading audit log...</p>
@@ -141,9 +183,30 @@ export function AuditTimeline() {
         {filtered.length === 0 && (
           <p className="text-sm text-muted-foreground py-4">No audit entries found.</p>
         )}
-        {filtered.map((entry, i) => (
-          <TimelineEntry key={`${entry.ts}-${i}`} entry={entry} />
-        ))}
+        {filtered.map((entry, i) => {
+          const scoreInfo = scoreMap.get(entry.ts)
+          const showScores = debug && !!search?.trim() && !!scoreInfo
+          const semKey = 'embeddings'
+          const bm25Key = scoreInfo?.indexScores
+            ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
+            : undefined
+          return (
+            <div key={`${entry.ts}-${i}`} className="relative">
+              <TimelineEntry entry={entry} />
+              {showScores && scoreInfo && (
+                <div className="absolute top-2 right-2 flex items-center gap-2 font-mono text-[10px] bg-black/70 px-1.5 py-0.5 rounded pointer-events-none">
+                  <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
+                  <span className="text-cyan-400">
+                    BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+                  </span>
+                  <span className="text-purple-400">
+                    SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
