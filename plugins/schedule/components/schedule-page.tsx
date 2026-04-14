@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import { List, CalendarDays, CalendarRange, Clock, Plus, ListFilter } from 'lucide-react'
+import { List, CalendarDays, CalendarRange, Clock, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BakinDrawer } from '@/components/bakin-drawer'
 import { PluginHeader } from '@/components/plugin-header'
-import { AgentAvatar } from '@/components/agent-avatar'
+import { AgentFilter } from '@/components/agent-filter'
 import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useQueryState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
@@ -216,34 +216,7 @@ export function SchedulePage() {
       />
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
-        <ListFilter className="size-3.5 text-muted-foreground shrink-0" />
-        <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
-          <button
-            onClick={() => setAgentFilter('all')}
-            className={`px-2 py-0.5 rounded-md text-xs font-medium transition-all ${
-              agentFilter === 'all'
-                ? 'bg-accent text-accent-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            All
-          </button>
-          {agentIds.map(id => (
-            <button
-              key={id}
-              onClick={() => setAgentFilter(id)}
-              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium transition-all ${
-                agentFilter === id
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100'
-              }`}
-            >
-              <AgentAvatar agentId={id} size="xs" />
-            </button>
-          ))}
-        </div>
-      </div>
+      <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">

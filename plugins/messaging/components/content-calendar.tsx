@@ -14,12 +14,12 @@ import {
   Check,
   X,
   Trash2,
-  ListFilter,
   Link2,
   Search,
 } from 'lucide-react'
 import { PluginHeader } from '@/components/plugin-header'
 import { FacetFilter } from '@/components/facet-filter'
+import { AgentFilter } from '@/components/agent-filter'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import type { CalendarItem, ContentAgent } from '../types'
@@ -85,21 +85,6 @@ const VIEW_DEFS: { id: ViewMode; icon: typeof List; label: string }[] = [
   { id: 'week', icon: CalendarRange, label: 'Week' },
   { id: 'list', icon: List, label: 'List' },
 ]
-
-function AgentPill({ agentId, isActive, onClick }: { agentId: string; isActive: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium transition-all ${
-        isActive
-          ? 'bg-accent text-accent-foreground'
-          : 'text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100'
-      }`}
-    >
-      <AgentAvatar agentId={agentId} size="xs" />
-    </button>
-  )
-}
 
 export function ContentCalendar() {
   const router = useRouter()
@@ -516,27 +501,7 @@ export function ContentCalendar() {
       {/* Filters + date nav */}
       {(
         <div className="flex items-center gap-3 mt-4 mb-4">
-          <ListFilter className="size-3.5 text-muted-foreground shrink-0" />
-          <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
-            <button
-              onClick={() => setAgentFilter('all')}
-              className={`px-2 py-0.5 rounded-md text-xs font-medium transition-all ${
-                agentFilter === 'all'
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              All
-            </button>
-            {CONTENT_AGENTS.map(id => (
-              <AgentPill
-                key={id}
-                agentId={id}
-                isActive={agentFilter === id}
-                onClick={() => setAgentFilter(id)}
-              />
-            ))}
-          </div>
+          <AgentFilter agentIds={[...CONTENT_AGENTS]} value={agentFilter} onChange={setAgentFilter} />
           <FacetFilter
             label="Status"
             options={STATUS_OPTIONS}

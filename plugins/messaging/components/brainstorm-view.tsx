@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { PluginHeader } from '@/components/plugin-header'
 import { AgentAvatar } from '@/components/agent-avatar'
+import { AgentFilter } from '@/components/agent-filter'
 import { useQueryState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
 import { AGENT_INFO } from '../types'
@@ -128,36 +129,12 @@ export function BrainstormView() {
         }
       />
 
-      <div className="mt-4 flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => setAgentFilter('all')}
-          className={`px-3 h-7 rounded-full border text-xs font-medium transition-colors ${
-            agentFilter === 'all'
-              ? 'bg-foreground text-background border-foreground'
-              : 'bg-surface text-muted-foreground border-border hover:bg-muted/50'
-          }`}
-        >
-          All
-        </button>
-        {CONTENT_AGENTS.map(agentId => {
-          const info = AGENT_INFO[agentId]
-          const active = agentFilter === agentId
-          return (
-            <button
-              key={agentId}
-              onClick={() => setAgentFilter(agentId)}
-              title={info.name}
-              className={`flex items-center gap-1.5 px-2 h-7 rounded-full border text-xs font-medium transition-colors ${
-                active
-                  ? 'bg-foreground text-background border-foreground'
-                  : 'bg-surface text-muted-foreground border-border hover:bg-muted/50'
-              }`}
-            >
-              <AgentAvatar agentId={agentId} size="xs" />
-              <span>{info.name}</span>
-            </button>
-          )
-        })}
+      <div className="mt-4">
+        <AgentFilter
+          agentIds={CONTENT_AGENTS}
+          value={agentFilter}
+          onChange={setAgentFilter}
+        />
       </div>
 
       <div className="mt-4">
