@@ -138,6 +138,23 @@ describe('search-registry', () => {
     expect(() => getTableForPlugin('multi')).toThrow(/multi.*2 registered/)
   })
 
+  it('getTableForPlugin returns null when the registry is completely empty', () => {
+    // Reset wipes all registrations — no content types at all.
+    resetSearchRegistry()
+    expect(getContentTypes().size).toBe(0)
+    expect(getTableForPlugin('anything')).toBeNull()
+  })
+
+  it('getTableForPlugin error message names the conflicting tables', () => {
+    const api = buildSearchAPI('multi')
+    api.registerContentType(makeDef('alpha'))
+    api.registerContentType(makeDef('beta'))
+    // The error must list both bakin_alpha and bakin_beta so an operator
+    // tracking down a misconfiguration can find them without code-diving.
+    expect(() => getTableForPlugin('multi')).toThrow(/bakin_alpha/)
+    expect(() => getTableForPlugin('multi')).toThrow(/bakin_beta/)
+  })
+
   it('registerContentType preserves pluginId', () => {
     const api = buildSearchAPI('my-plugin')
     api.registerContentType(makeDef('widgets'))
