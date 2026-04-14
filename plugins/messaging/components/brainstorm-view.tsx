@@ -142,6 +142,7 @@ export function BrainstormView() {
           onSelectSession={pushSessionId}
           search={search}
           searchResults={searchHook.results}
+          searchLoading={searchHook.loading}
           agentFilter={agentFilter}
           onCountChange={setSessionCount}
           onCreateSession={handleStartCreate}

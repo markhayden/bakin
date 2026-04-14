@@ -44,13 +44,14 @@ interface Props {
   onSelectSession: (sessionId: string) => void
   search?: string
   searchResults?: SearchResult[]
+  searchLoading?: boolean
   agentFilter?: string
   onCountChange?: (count: number) => void
   onCreateSession?: (agentId: string) => void
   creating?: boolean
 }
 
-export function SessionList({ onSelectSession, search, searchResults, agentFilter, onCountChange, onCreateSession, creating }: Props) {
+export function SessionList({ onSelectSession, search, searchResults, searchLoading, agentFilter, onCountChange, onCreateSession, creating }: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<SessionSummary | null>(null)
@@ -115,12 +116,17 @@ export function SessionList({ onSelectSession, search, searchResults, agentFilte
         .filter(s => scoreMap.has(s.id))
         .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
     }
+    // While the search hook is in-flight we don't yet know the Antfly
+    // hits — keep the full (agent-filtered) list visible instead of
+    // flashing "no matches" during the 300ms debounce window.
+    if (searchLoading) return agentFiltered
+
     const q = search.toLowerCase()
     return agentFiltered.filter(s =>
       s.title.toLowerCase().includes(q) ||
       s.agentId.toLowerCase().includes(q)
     )
-  }, [sessions, search, searchResults, scoreMap, agentFilter])
+  }, [sessions, search, searchResults, searchLoading, scoreMap, agentFilter])
 
   // When searching, Antfly relevance order wins — skip manual sort.
   const isSearching = !!search?.trim()
@@ -191,7 +197,7 @@ export function SessionList({ onSelectSession, search, searchResults, agentFilte
     )
   }
 
-  if (filtered.length === 0 && search) {
+  if (filtered.length === 0 && search && !searchLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
         <span className="text-sm">No sessions matching &ldquo;{search}&rdquo;</span>
