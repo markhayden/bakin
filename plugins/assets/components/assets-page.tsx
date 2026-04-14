@@ -6,7 +6,7 @@ import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import { useDebug } from '@/hooks/use-debug'
 import { useSearch } from '@/hooks/use-search'
 import { useAssets, useTrash } from '@/hooks/use-assets'
-import { AssetsGrid } from './assets-grid'
+import { AssetsGrid, type AssetScoreInfo } from './assets-grid'
 import { AssetsList, type SortField, type SortDir } from './assets-list'
 import { TrashGrid } from './trash-grid'
 import { AssetDetail } from './asset-detail'
@@ -84,6 +84,17 @@ export function AssetsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
+  // Score map keyed by asset.path. Assets index rows using the file path as
+  // the Antfly doc key, so r.id === asset.path with no prefix strip. Shared
+  // by the filter/sort memo, the grid overlay, and the list overlay.
+  const scoreMap = useMemo(() => {
+    const map = new Map<string, AssetScoreInfo>()
+    for (const r of searchHook.results) {
+      map.set(r.id, { score: r.score, indexScores: r.indexScores })
+    }
+    return map
+  }, [searchHook.results])
+
   const filtered = useMemo(() => {
     let result = assets
     if (typeFilter.length > 1) {
@@ -91,11 +102,9 @@ export function AssetsPage() {
     }
     if (search) {
       if (searchHook.results.length) {
-        const matchIds = new Set(searchHook.results.map(r => r.id))
-        const scoreMap = new Map(searchHook.results.map(r => [r.id, r.score]))
         result = result
-          .filter(a => matchIds.has(a.path))
-          .sort((a, b) => (scoreMap.get(b.path) ?? 0) - (scoreMap.get(a.path) ?? 0))
+          .filter(a => scoreMap.has(a.path))
+          .sort((a, b) => (scoreMap.get(b.path)?.score ?? 0) - (scoreMap.get(a.path)?.score ?? 0))
       } else if (!searchHook.loading) {
         // Only fall back to the local substring filter once the search
         // hook has settled. During the 300ms debounce window we keep the
@@ -111,7 +120,7 @@ export function AssetsPage() {
       }
     }
     return result
-  }, [assets, typeFilter, search, searchHook.results, searchHook.loading])
+  }, [assets, typeFilter, search, searchHook.results, searchHook.loading, scoreMap])
 
   const sorted = useMemo(() => {
     if (search && searchHook.results.length) return filtered
@@ -189,13 +198,15 @@ export function AssetsPage() {
           sortDir={sortDir as SortDir}
           onSort={handleSort}
           isSearching={!!search.trim()}
+          scoreMap={scoreMap}
+          showScores={debug && !!search.trim()}
         />
       ) : (
         <AssetsGrid
           assets={paged}
           onSelect={(a: AssetMeta) => setAssetPath(a.path)}
           onDelete={deleteAsset}
-          scores={search && searchHook.results.length && debug ? new Map(searchHook.results.map(r => [r.id, { score: r.score, indexScores: r.indexScores }])) : undefined}
+          scores={debug && !!search.trim() ? scoreMap : undefined}
         />
       )}
 

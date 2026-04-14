@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { formatAge, formatSize } from '@/lib/format'
 import { DeleteAssetDialog } from './delete-asset-dialog'
+import type { AssetScoreInfo } from './assets-grid'
 import type { AssetMeta } from '@/types'
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
@@ -51,9 +52,24 @@ interface AssetsListProps {
   /** When true, sort headers are disabled — used while an Antfly search is
    *  active so relevance order wins over user-chosen column sort. */
   isSearching?: boolean
+  /** Per-row relevance scores from Antfly, keyed by asset.path. When present
+   *  together with `showScores`, each row renders an RRF/BM25/SEM overlay. */
+  scoreMap?: Map<string, AssetScoreInfo>
+  /** Render the debug score overlay on each row. Usually `debug && !!search`. */
+  showScores?: boolean
 }
 
-function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () => void; onDelete: (path: string) => void }) {
+function AssetRow({
+  asset,
+  onClick,
+  onDelete,
+  scoreInfo,
+}: {
+  asset: AssetMeta
+  onClick: () => void
+  onDelete: (path: string) => void
+  scoreInfo?: AssetScoreInfo
+}) {
   const [imgError, setImgError] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
@@ -63,6 +79,16 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
   const thumbnailVariant = asset.variants?.find(v => v.role === 'thumbnail')
   const previewPath = thumbnailVariant ? thumbnailVariant.path : asset.path
   const previewUrl = `/api/plugins/assets/file?path=${encodeURIComponent(previewPath)}&v=${asset.mtimeMs || ''}`
+
+  // Assets is a multimodal table: Bleve BM25 + assets_text + assets_visual.
+  // Bleve's key is an absolute index path containing "bleve", so detect it by
+  // substring; everything else is a semantic index. We show BM25 alongside the
+  // visual and text embedding scores so you can see which modality hit.
+  const scores = scoreInfo?.indexScores ?? {}
+  const bm25Key = Object.keys(scores).find(k => /bleve|full_text/.test(k))
+  const bm25 = bm25Key ? scores[bm25Key] ?? 0 : 0
+  const txt = scores['assets_text'] ?? 0
+  const vis = scores['assets_visual'] ?? 0
 
   return (
     <>
@@ -90,6 +116,14 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
               <span className="text-sm text-foreground truncate block">{asset.filename}</span>
               {asset.metadata.description && (
                 <span className="text-[10px] text-muted-foreground truncate block">{asset.metadata.description}</span>
+              )}
+              {scoreInfo && (
+                <span className="flex items-center gap-2 font-mono text-[10px] mt-0.5">
+                  <span className="text-amber-400">RRF {scoreInfo.score.toFixed(4)}</span>
+                  <span className="text-cyan-400">BM25 {bm25.toFixed(4)}</span>
+                  <span className="text-purple-400">TXT {txt.toFixed(4)}</span>
+                  <span className="text-pink-400">VIS {vis.toFixed(4)}</span>
+                </span>
               )}
             </div>
           </div>
@@ -145,7 +179,17 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
   )
 }
 
-export function AssetsList({ assets, onSelect, onDelete, sort = 'created', sortDir = 'desc', onSort, isSearching }: AssetsListProps) {
+export function AssetsList({
+  assets,
+  onSelect,
+  onDelete,
+  sort = 'created',
+  sortDir = 'desc',
+  onSort,
+  isSearching,
+  scoreMap,
+  showScores,
+}: AssetsListProps) {
   if (assets.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -187,6 +231,7 @@ export function AssetsList({ assets, onSelect, onDelete, sort = 'created', sortD
             asset={asset}
             onClick={() => onSelect(asset)}
             onDelete={onDelete}
+            scoreInfo={showScores ? scoreMap?.get(asset.path) : undefined}
           />
         ))}
       </TableBody>

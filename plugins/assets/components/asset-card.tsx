@@ -108,12 +108,17 @@ export function AssetCard({ asset, onClick, onDelete, scoreInfo }: AssetCardProp
             <span className="text-amber-400">RRF {scoreInfo.score.toFixed(4)}</span>
             {(() => {
               const scores = scoreInfo.indexScores ?? {}
-              const semKey = 'embeddings'
-              const bm25Key = Object.keys(scores).find(k => k !== semKey)
+              // Multimodal: Bleve key is an abs index path, assets_text is
+              // BGE text embeddings, assets_visual is CLIP on image pixels.
+              const bm25Key = Object.keys(scores).find(k => /bleve|full_text/.test(k))
+              const bm25 = bm25Key ? (scores[bm25Key] as number) ?? 0 : 0
+              const txt = (scores['assets_text'] as number) ?? 0
+              const vis = (scores['assets_visual'] as number) ?? 0
               return (
                 <>
-                  <span className="text-cyan-400">BM25 {(bm25Key ? scores[bm25Key] as number : 0).toFixed(4)}</span>
-                  <span className="text-purple-400">SEM {((scores[semKey] as number) ?? 0).toFixed(4)}</span>
+                  <span className="text-cyan-400">BM25 {bm25.toFixed(4)}</span>
+                  <span className="text-purple-400">TXT {txt.toFixed(4)}</span>
+                  <span className="text-pink-400">VIS {vis.toFixed(4)}</span>
                 </>
               )
             })()}
