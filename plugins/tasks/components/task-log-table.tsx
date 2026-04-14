@@ -9,6 +9,7 @@ import { useAgent } from '@bakin/team/hooks/use-agent-store'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { ArrowUpDown } from 'lucide-react'
 import type { FlatTask } from '../hooks/use-task-filters'
+import type { TaskScoreInfo } from './task-card'
 import type { ColumnId } from '../types'
 
 interface AuditEntry {
@@ -55,9 +56,11 @@ interface TaskLogTableProps {
   statusFilter: string[]
   /** When true, preserve Antfly relevance order instead of manual sort */
   isSearching?: boolean
+  /** Per-task search score info, keyed by task id. Only set when debug + active search. */
+  scoreMap?: Map<string, TaskScoreInfo>
 }
 
-export function TaskLogTable({ currentTasks, statusFilter, isSearching }: TaskLogTableProps) {
+export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap }: TaskLogTableProps) {
   const [auditTasks, setAuditTasks] = useState<HistoricalTask[]>([])
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<SortField>('completedAt')
@@ -193,10 +196,30 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching }: TaskLo
                 const created = getCreatedAt(task)
                 const completed = getCompletedAt(task)
                 const badgeStyle = STATUS_BADGE_STYLES[task.status as ColumnId]
+                const scoreInfo = scoreMap?.get(task.id)
+                const semKey = 'embeddings'
+                const bm25Key = scoreInfo?.indexScores
+                  ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
+                  : undefined
                 return (
                   <TableRow key={task.id}>
                     <TableCell className="font-mono text-xs text-muted-foreground">{task.id.slice(0, 8)}</TableCell>
-                    <TableCell className="max-w-[300px] truncate">{task.title}</TableCell>
+                    <TableCell className="max-w-[300px] truncate">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate">{task.title}</span>
+                        {scoreInfo && (
+                          <span className="flex items-center gap-1.5 font-mono text-[10px] shrink-0">
+                            <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
+                            <span className="text-cyan-400">
+                              BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+                            </span>
+                            <span className="text-purple-400">
+                              SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       {task.agent ? (
                         <AgentCell agentId={task.agent} />
