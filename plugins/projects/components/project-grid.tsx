@@ -6,7 +6,7 @@ import { Plus, ListFilter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
 import { useQueryState } from '@/hooks/use-query-state'
-import { useAntflySearch, reorderByAntflyResults } from '@/hooks/use-antfly-search'
+import { useSearch } from '@/hooks/use-search'
 import { ProjectCard } from './project-card'
 import type { ProjectSummary, ProjectStatus } from '../types'
 
@@ -45,25 +45,25 @@ export function ProjectGrid() {
     fetchProjects()
   }, [fetchProjects])
 
-  const antfly = useAntflySearch({ table: 'projects', facets: ['status'], debounce: 300 })
+  const searchHook = useSearch({ plugin: 'projects', facets: ['status'], debounce: 300 })
   useEffect(() => {
-    if (search) antfly.search(search)
-    else antfly.clear()
+    if (search) searchHook.search(search)
+    else searchHook.clear()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
   const filtered = useMemo(() => {
     if (!search.trim()) return projects
-    if (antfly.results.length) {
-      const matchIds = new Set(antfly.results.map(r => r.id))
-      const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+    if (searchHook.results.length) {
+      const matchIds = new Set(searchHook.results.map(r => r.id))
+      const scoreMap = new Map(searchHook.results.map(r => [r.id, r.score]))
       return projects
         .filter(p => matchIds.has(p.id))
         .sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0))
     }
     const q = search.toLowerCase()
     return projects.filter(p => p.title.toLowerCase().includes(q))
-  }, [projects, search, antfly.results])
+  }, [projects, search, searchHook.results])
 
   const handleNew = () => {
     router.push('/projects/new')

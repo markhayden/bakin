@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useContentStore } from '@/hooks/use-content-store'
 import { useAgentList } from '@bakin/team/hooks/use-agent-store'
-import { useAntflySearch } from '@/hooks/use-antfly-search'
+import { useSearch } from '@/hooks/use-search'
 import { TimelineEntry } from './timeline-entry'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -24,10 +24,10 @@ export function AuditTimeline() {
   const [agentFilter, setAgentFilter] = useState('')
   const [eventFilter, setEventFilter] = useState('')
   const [search, setSearch] = useState('')
-  const antfly = useAntflySearch({ table: 'audit', facets: ['event', 'agent'], debounce: 300 })
+  const searchHook = useSearch({ plugin: 'memory', facets: ['event', 'agent'], debounce: 300 })
   useEffect(() => {
-    if (search) antfly.search(search)
-    else antfly.clear()
+    if (search) searchHook.search(search)
+    else searchHook.clear()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
   const auditEntries = useContentStore((s) => s.auditEntries)
@@ -66,9 +66,9 @@ export function AuditTimeline() {
     }
 
     if (search) {
-      if (antfly.results.length) {
-        const matchIds = new Set(antfly.results.map(r => r.id))
-        const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+      if (searchHook.results.length) {
+        const matchIds = new Set(searchHook.results.map(r => r.id))
+        const scoreMap = new Map(searchHook.results.map(r => [r.id, r.score]))
         result = result
           .filter(e => matchIds.has(e.ts))
           .sort((a, b) => (scoreMap.get(b.ts) ?? 0) - (scoreMap.get(a.ts) ?? 0))

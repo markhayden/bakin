@@ -9,7 +9,7 @@ import { PluginHeader } from '@/components/plugin-header'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useQueryState } from '@/hooks/use-query-state'
-import { useAntflySearch } from '@/hooks/use-antfly-search'
+import { useSearch } from '@/hooks/use-search'
 import { useScheduleJobs, type ScheduleJob } from '@/hooks/use-schedule'
 import { JobList } from './job-list'
 import { JobDrawer } from './job-drawer'
@@ -48,18 +48,18 @@ export function SchedulePage() {
     agent: agentFilter === 'all' ? undefined : agentFilter,
   })
 
-  const antfly = useAntflySearch({ table: 'schedule', facets: ['agent', 'enabled'], debounce: 300 })
+  const searchHook = useSearch({ plugin: 'schedule', facets: ['agent', 'enabled'], debounce: 300 })
   useEffect(() => {
-    if (search) antfly.search(search)
-    else antfly.clear()
+    if (search) searchHook.search(search)
+    else searchHook.clear()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
   const filtered = useMemo(() => {
     if (!search) return jobs
-    if (antfly.results.length) {
-      const matchIds = new Set(antfly.results.map(r => r.id))
-      const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+    if (searchHook.results.length) {
+      const matchIds = new Set(searchHook.results.map(r => r.id))
+      const scoreMap = new Map(searchHook.results.map(r => [r.id, r.score]))
       return jobs
         .filter(j => matchIds.has(j.id))
         .sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0))
@@ -71,7 +71,7 @@ export function SchedulePage() {
       (j.agentId || '').toLowerCase().includes(q) ||
       j.humanSchedule.toLowerCase().includes(q)
     )
-  }, [jobs, search, antfly.results])
+  }, [jobs, search, searchHook.results])
 
   // Derive drawer/form visibility from URL state
   const selectedJob = jobIdParam ? jobs.find(j => j.id === jobIdParam) ?? null : null
