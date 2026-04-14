@@ -1,4 +1,45 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { join } from 'path'
+
+const testHome = vi.hoisted(() => {
+  const { mkdtempSync } = require('fs')
+  const { tmpdir } = require('os')
+  const { join } = require('path')
+  const home = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
+  const openclaw = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
+  process.env.BAKIN_HOME = home
+  process.env.OPENCLAW_HOME = openclaw
+  return { home, openclaw }
+})
+
+vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: () => testHome.home,
+  getBakinPaths: () => ({
+    home: testHome.home,
+    memoryLog: join(testHome.home, 'MEMORY-LOG.md'),
+    messaging: join(testHome.home, 'messaging.json'),
+    audit: join(testHome.home, 'audit.jsonl'),
+    assets: join(testHome.home, 'assets'),
+    'assets.text': join(testHome.home, 'assets', 'text'),
+    'assets.images': join(testHome.home, 'assets', 'images'),
+    'assets.video': join(testHome.home, 'assets', 'video'),
+    'assets.audio': join(testHome.home, 'assets', 'audio'),
+    'assets.plans': join(testHome.home, 'assets', 'plans'),
+    'assets.data': join(testHome.home, 'assets', 'data'),
+    'assets.other': join(testHome.home, 'assets', 'other'),
+    agents: join(testHome.home, 'agents'),
+    personas: join(testHome.home, 'team', 'personas'),
+    team: join(testHome.home, 'team'),
+    heartbeats: join(testHome.home, 'heartbeats'),
+    inbox: join(testHome.home, 'inbox'),
+    projects: join(testHome.home, 'projects'),
+    workflows: join(testHome.home, 'workflows'),
+    settings: join(testHome.home, 'settings.json'),
+    logs: join(testHome.home, 'logs'),
+  }),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+}))
 
 vi.mock('../../src/core/logger', () => ({
   createLogger: () => ({

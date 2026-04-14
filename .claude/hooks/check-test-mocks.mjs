@@ -58,8 +58,12 @@ function resolveRelativeMock(testFile, mockArg) {
 // and aliases ('@/core/content-dir', '@bakin/core/openclaw-home').
 const REQUIRED_PATTERNS = [
   {
-    label: 'src/core/content-dir',
-    matches: (p) => /(^|\/)src\/core\/content-dir$/.test(p) || /@\/core\/content-dir$/.test(p),
+    label: 'src/core/content-dir (or packages/core/src/content-dir)',
+    matches: (p) =>
+      /(^|\/)src\/core\/content-dir$/.test(p)
+      || /(^|\/)packages\/core\/src\/content-dir$/.test(p)
+      || /@\/core\/content-dir$/.test(p)
+      || /@bakin\/core\/content-dir$/.test(p),
     always: true,
   },
   {
@@ -81,6 +85,19 @@ const REQUIRED_PATTERNS = [
   },
 ]
 
+// Self-test exception: a file like tests/core/openclaw-home.test.ts IS the
+// test for the openclaw-home module, so it can't mock the module under test.
+// We detect this by matching the test file's basename against each pattern's
+// label keywords and skip the requirement.
+function isSelfTest(filePath, patternLabel) {
+  const base = filePath.replace(/.*\/tests\//, '').replace(/\.test\.tsx?$/, '')
+  // e.g. 'core/openclaw-home' → slug 'openclaw-home'
+  const slug = base.split('/').pop()
+  if (!slug) return false
+  // Label contains the slug as a path segment (e.g. 'openclaw-home' in the label)
+  return patternLabel.includes(slug)
+}
+
 function check(filePath) {
   let src
   try {
@@ -101,6 +118,7 @@ function check(filePath) {
   for (const req of REQUIRED_PATTERNS) {
     const found = mockPaths.some(req.matches)
     if (found) continue
+    if (isSelfTest(filePath, req.label)) continue
     if (req.always) {
       missing.push(req.label)
     } else if (req.requiredIf && req.requiredIf(src)) {

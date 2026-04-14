@@ -7,6 +7,14 @@
  *
  * Mocks BOTH the alias path and the re-export in `src/core/` because some
  * production modules still import via relative paths.
+ *
+ * Test-data leak protection works in two layers:
+ *  1. Runtime guards in content-dir.ts and openclaw-home.ts throw if
+ *     any test run resolves to the real ~/.bakin/ or ~/.openclaw/.
+ *  2. Individual tests must mock those modules or set BAKIN_HOME /
+ *     OPENCLAW_HOME to a temp directory.
+ * We do NOT force-set BAKIN_HOME/OPENCLAW_HOME here because tests that
+ * vi.mock('os', …) to redirect homedir() rely on env vars being unset.
  */
 import { vi } from 'vitest'
 

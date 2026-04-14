@@ -1,5 +1,33 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { join } from 'path'
+
+// These tests exercise the getOpenClawHome/getOpenClawPath fallback path
+// that resolves against os.homedir(). The runtime guard in openclaw-home.ts
+// compares the resolved path to process.env.HOME → so we redirect the
+// module's `os.homedir()` to one fake value while pointing process.env.HOME
+// at a DIFFERENT fake value. Result: caller resolves via mocked homedir
+// → /tmp/module/.openclaw. Guard compares against /tmp/guard/.openclaw.
+// Paths differ → no guard trip.
+//
+// We deliberately do NOT mock @bakin/core/openclaw-home — that is the
+// module under test. The test-mock hook skips this via its self-test
+// exception (basename of the test file matches the pattern label).
+//
+// String literals are inlined (not top-level consts) because vi.mock
+// factories are hoisted above consts and would TDZ-error if they closed
+// over them.
+
+vi.mock('os', async () => {
+  const actual = await vi.importActual<typeof import('os')>('os')
+  return { ...actual, homedir: () => '/tmp/bakin-test-module-home-fake' }
+})
+
+// Satisfy the content-dir mock requirement even though these tests don't
+// touch it — any transitive import could reach it otherwise.
+vi.mock('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => '/tmp/bakin-test-guard-home-fake',
+  getBakinPaths: () => ({ home: '/tmp/bakin-test-guard-home-fake' }),
+  resetContentDir: vi.fn(),
+}))
 
 describe('openclaw-home', () => {
   const originalEnv = { ...process.env }
@@ -18,6 +46,7 @@ describe('openclaw-home', () => {
 
     it('falls back to ~/.openclaw when OPENCLAW_HOME is not set', async () => {
       delete process.env.OPENCLAW_HOME
+      process.env.HOME = '/tmp/bakin-test-guard-home-fake'
       const { getOpenClawHome } = await import('../../packages/core/src/openclaw-home')
       const result = getOpenClawHome()
       expect(result).toMatch(/\.openclaw$/)
@@ -47,6 +76,7 @@ describe('openclaw-home', () => {
 
     it('uses default home when OPENCLAW_HOME is not set', async () => {
       delete process.env.OPENCLAW_HOME
+      process.env.HOME = '/tmp/bakin-test-guard-home-fake'
       const { getOpenClawPath } = await import('../../packages/core/src/openclaw-home')
       const result = getOpenClawPath('flows', 'registry.sqlite')
       expect(result).toMatch(/\.openclaw\/flows\/registry\.sqlite$/)
