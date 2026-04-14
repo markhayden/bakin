@@ -24,6 +24,7 @@ import { handleSSE, broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
 import * as vault from './src/core/vault'
 import * as openclaw from './src/core/openclaw-client'
+import { getMainAgentId } from './src/core/main-agent'
 import { handleJsonPost, jsonResponse } from './src/core/middleware'
 import * as watcher from './src/core/watcher'
 import * as dispatch from './src/core/dispatch'
@@ -182,8 +183,8 @@ app.prepare().then(async () => {
   const handleInboxFile = watcher.createInboxHandler({
     contentDir: CONTENT_DIR,
     sendNotification: (message: string) => {
-      openclaw.sendMessage('main', message).catch(err => {
-        log.error('Failed to notify main-operator of completion', err)
+      openclaw.sendMessage(getMainAgentId(), message).catch(err => {
+        log.error('Failed to notify main agent of completion', err)
       })
     },
   })

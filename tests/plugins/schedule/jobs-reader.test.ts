@@ -1,4 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+vi.hoisted(() => {
+  const { mkdtempSync } = require('fs')
+  const { tmpdir } = require('os')
+  const { join } = require('path')
+  process.env.BAKIN_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
+  process.env.OPENCLAW_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
+})
+
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -85,7 +94,7 @@ describe('schedule/jobs-reader', () => {
       expect(merged.name).toBe('Raw Job')
       expect(merged.isBakinJob).toBe(false)
       expect(merged.displayName).toBe('Raw Job')
-      expect(merged.owner).toBe('main-operator')
+      expect(merged.owner).toBe('main')
       expect(merged.paused).toBe(false)
       expect(merged.humanSchedule).toBe('Daily at 9am')
     })
@@ -97,14 +106,14 @@ describe('schedule/jobs-reader', () => {
         isBakinJob: true,
         displayName: 'Morning Report',
         agentId: 'chef',
-        owner: 'main-operator',
+        owner: 'main',
       })
       const merged = mergeJob(job, sidecar)
 
       expect(merged.isBakinJob).toBe(true)
       expect(merged.displayName).toBe('Morning Report')
       expect(merged.agentId).toBe('chef')
-      expect(merged.owner).toBe('main-operator')
+      expect(merged.owner).toBe('main')
     })
 
     it('uses sidecar defaults for missing fields', () => {

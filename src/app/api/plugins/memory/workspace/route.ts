@@ -2,9 +2,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
+import { tryGetMainAgentId } from '@bakin/core/main-agent'
 
 function getAgentWorkspacePath(agentId: string): string {
-  if (agentId === 'main-operator') return getOpenClawPath('workspace')
+  if (agentId === tryGetMainAgentId()) return getOpenClawPath('workspace')
   return getOpenClawPath('workspaces', agentId)
 }
 

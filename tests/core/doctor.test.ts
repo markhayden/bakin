@@ -3,10 +3,50 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync
 import { join } from 'path'
 import { tmpdir } from 'os'
 
+const testHome = vi.hoisted(() => {
+  const { mkdtempSync } = require('fs')
+  const { tmpdir } = require('os')
+  const { join } = require('path')
+  const home = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
+  const openclaw = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
+  process.env.BAKIN_HOME = home
+  process.env.OPENCLAW_HOME = openclaw
+  return { home, openclaw }
+})
+
+vi.mock('@/core/content-dir', () => ({
+  getContentDir: () => testHome.home,
+  getBakinPaths: () => ({
+    home: testHome.home,
+    memoryLog: join(testHome.home, 'MEMORY-LOG.md'),
+    messaging: join(testHome.home, 'messaging.json'),
+    audit: join(testHome.home, 'audit.jsonl'),
+    assets: join(testHome.home, 'assets'),
+    'assets.text': join(testHome.home, 'assets', 'text'),
+    'assets.images': join(testHome.home, 'assets', 'images'),
+    'assets.video': join(testHome.home, 'assets', 'video'),
+    'assets.audio': join(testHome.home, 'assets', 'audio'),
+    'assets.plans': join(testHome.home, 'assets', 'plans'),
+    'assets.data': join(testHome.home, 'assets', 'data'),
+    'assets.other': join(testHome.home, 'assets', 'other'),
+    agents: join(testHome.home, 'agents'),
+    personas: join(testHome.home, 'team', 'personas'),
+    team: join(testHome.home, 'team'),
+    heartbeats: join(testHome.home, 'heartbeats'),
+    inbox: join(testHome.home, 'inbox'),
+    projects: join(testHome.home, 'projects'),
+    workflows: join(testHome.home, 'workflows'),
+    settings: join(testHome.home, 'settings.json'),
+    logs: join(testHome.home, 'logs'),
+  }),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+}))
+
 // Mock settings
 vi.mock('@/core/settings', () => ({
   getSettings: vi.fn(() => ({
-    agents: ['main-operator', 'patch', 'pixel'],
+    agents: ['main', 'patch', 'pixel'],
     antfly: { enabled: false },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
     openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -51,7 +91,7 @@ vi.mock('@/core/mcporter', () => ({
     installed: true,
     configExists: true,
     agentEntries: [
-      { agent: 'main-operator', name: 'bakin-main-operator', url: 'http://localhost:3737/mcp?agent=main-operator', correct: true },
+      { agent: 'main', name: 'bakin-main', url: 'http://localhost:3737/mcp?agent=main', correct: true },
       { agent: 'patch', name: 'bakin-patch', url: 'http://localhost:3737/mcp?agent=patch', correct: true },
       { agent: 'pixel', name: 'bakin-pixel', url: 'http://localhost:3737/mcp?agent=pixel', correct: true },
     ],
@@ -82,8 +122,8 @@ describe('doctor', () => {
 
   it('should detect missing persona files', async () => {
     const doctor = await import('@/core/doctor')
-    // Only create persona for main-operator, not patch or pixel
-    writeFileSync(join(contentDir, 'team', 'personas', 'main-operator.md'), '# Main Operator')
+    // Only create persona for main, not patch or pixel
+    writeFileSync(join(contentDir, 'team', 'personas', 'main.md'), '# Main')
 
     const results = await doctor.runDiagnostics(contentDir, tempDir)
     const personaResults = results.filter(r => r.check === 'personas')
@@ -139,7 +179,7 @@ describe('doctor', () => {
       // Override settings to enable autoFix
       const { getSettings } = await import('@/core/settings')
       vi.mocked(getSettings).mockReturnValue({
-        agents: ['main-operator', 'patch', 'pixel'],
+        agents: ['main', 'patch', 'pixel'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: true },
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -219,7 +259,7 @@ describe('doctor', () => {
       const { getSettings } = await import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
       settings.mockReturnValueOnce({
-        agents: ['main-operator'],
+        agents: ['main'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -238,7 +278,7 @@ describe('doctor', () => {
       const { getSettings } = await import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
       settings.mockReturnValueOnce({
-        agents: ['main-operator'],
+        agents: ['main'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },

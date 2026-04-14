@@ -7,7 +7,7 @@
     "list": [
       {
         "id": "main",
-        "identity": { "name": "Main Operator", "emoji": "🐕" },
+        "identity": { "name": "Crab", "emoji": "🦀" },
         "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
       },
       {

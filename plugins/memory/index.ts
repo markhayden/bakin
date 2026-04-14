@@ -6,6 +6,7 @@ import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { parseAuditLog, filterAuditEntries } from './lib/audit-parser'
 import { parseGatewayLog } from './lib/gateway-parser'
 import { getAgentIds } from '../team/lib/openclaw-adapter'
+import { getMainAgentId } from '@bakin/core/main-agent'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -20,7 +21,7 @@ const WORKSPACE_FILES = [
 ]
 
 function getWorkspacePath(agentId: string): string {
-  if (agentId === 'main-operator') {
+  if (agentId === getMainAgentId()) {
     return getOpenClawPath('workspace')
   }
   return getOpenClawPath('workspaces', agentId)

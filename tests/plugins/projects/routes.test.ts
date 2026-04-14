@@ -99,7 +99,7 @@ function writeProjectFixture(
 ) {
   const title = opts.title ?? `Project ${id}`
   const status = opts.status ?? 'active'
-  const owner = opts.owner ?? 'main-operator'
+  const owner = opts.owner ?? 'main'
   const tasks = opts.tasks ?? []
   const assets = opts.assets ?? []
   const body = opts.body ?? `# ${title}\nProject body text.`

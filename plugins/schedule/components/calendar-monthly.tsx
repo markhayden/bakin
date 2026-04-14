@@ -8,7 +8,7 @@ import type { ScheduleJob } from '@/hooks/use-schedule'
 
 // Matching glow colors from the weekly view's AGENT_STYLES
 const AGENT_DOT_GLOW: Record<string, string> = {
-  main-operator:  'rgba(96,165,250,0.35)',
+  main:    'rgba(96,165,250,0.35)',
   chef:   'rgba(74,222,128,0.35)',
   pixel:   'rgba(167,139,250,0.35)',
   rolo:    'rgba(251,146,60,0.35)',

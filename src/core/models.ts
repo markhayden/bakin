@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import * as vault from './vault'
+import { tryGetMainAgentId } from './main-agent'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 
 const log = createLogger('models')
@@ -76,20 +77,6 @@ export function updateConfig(updater: (config: OpenclawConfig) => void): void {
 }
 
 // ---------------------------------------------------------------------------
-// Agent metadata
-// ---------------------------------------------------------------------------
-const AGENT_META: Record<string, { name: string; emoji: string }> = {
-  main: { name: 'Main Operator', emoji: '🐾' },
-  patch: { name: 'Patch', emoji: '⚙️' },
-  pixel: { name: 'Pixel', emoji: '🖼️' },
-  rolo: { name: 'Rolo', emoji: '🎬' },
-  chef: { name: 'Chef', emoji: '🥗' },
-  explorer: { name: 'Explorer', emoji: '🔍' },
-  trainer: { name: 'Trainer', emoji: '🐠' },
-  coach: { name: 'Coach', emoji: '🧘' },
-}
-
-// ---------------------------------------------------------------------------
 // Agent resolution
 // ---------------------------------------------------------------------------
 export function resolveAgents(config?: OpenclawConfig): AgentModelConfig[] {
@@ -98,17 +85,14 @@ export function resolveAgents(config?: OpenclawConfig): AgentModelConfig[] {
   const defaultSubagentModel = cfg.agents.defaults.subagents?.model ?? null
 
   const agents = cfg.agents.list.map((agent) => {
-    const id = agent.id === 'main' ? 'main-operator' : agent.id
-    const meta = AGENT_META[agent.id] || {
-      name: agent.identity?.name || agent.name || agent.id,
-      emoji: agent.identity?.emoji || '🤖',
-    }
+    const name = agent.identity?.name || agent.name || agent.id
+    const emoji = agent.identity?.emoji || '🤖'
     const ownModel = agent.model?.primary ?? null
     const subagentModel = agent.subagents?.model ?? null
     return {
-      agentId: id,
-      name: meta.name,
-      emoji: meta.emoji,
+      agentId: agent.id,
+      name,
+      emoji,
       ownModel,
       subagentModel,
       defaultModel,
@@ -117,9 +101,12 @@ export function resolveAgents(config?: OpenclawConfig): AgentModelConfig[] {
     }
   })
 
+  const mainId = tryGetMainAgentId()
   agents.sort((a, b) => {
-    if (a.agentId === 'main-operator') return -1
-    if (b.agentId === 'main-operator') return 1
+    if (mainId) {
+      if (a.agentId === mainId) return -1
+      if (b.agentId === mainId) return 1
+    }
     return a.name.localeCompare(b.name)
   })
 

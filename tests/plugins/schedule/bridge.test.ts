@@ -51,7 +51,7 @@ const mockTaskboard = {
   },
 }
 
-vi.mock('../../../plugins/tasks/taskboard', () => ({
+vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
   getTask: vi.fn((id: string) => {
     for (const col of Object.values(mockTaskboard.columns)) {
       const t = col.find(task => task.id === id)
@@ -60,6 +60,8 @@ vi.mock('../../../plugins/tasks/taskboard', () => ({
     return null
   }),
   readTaskboard: vi.fn(() => mockTaskboard),
+  createTask: vi.fn(() => Promise.resolve({ id: 'task-abc' })),
+  addTaskLog: vi.fn(() => Promise.resolve()),
 }))
 
 // Mock the hook registry so getHookRegistry().invoke() routes to the taskboard mock
@@ -94,7 +96,7 @@ function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
     isBakinJob: true,
     displayName: 'Test Job',
     agentId: 'chef',
-    owner: 'main-operator',
+    owner: 'main',
     taskPrompt: 'Do the thing',
     taskTitle: 'Scheduled: {jobName} on {date}',
     allowOverlap: false,
@@ -110,12 +112,34 @@ function writeSidecarFile(sidecar: ScheduleSidecar) {
   writeFileSync(sidecarPath, JSON.stringify(sidecar))
 }
 
+// 64-char hex matches the length of a real randomBytes(32).toString('hex')
+// secret, so getOrCreateBridgeSecret treats it as valid and won't regenerate.
+const TEST_BRIDGE_SECRET = 'a'.repeat(64)
+
+// Stateful settings store so plugin-side updateSettings() persists across the
+// bridge call — needed so getOrCreateBridgeSecret returns the same value the
+// test is passing as the query param.
+let mockSettings: Record<string, unknown> = {}
+
+interface CallBridgeOptions {
+  /** Override settings for this call. */
+  settings?: Record<string, unknown>
+  /** Secret to append to the URL. Defaults to TEST_BRIDGE_SECRET; set to
+   *  an empty string or a wrong value to exercise the auth failure path. */
+  secret?: string
+}
+
 // We test the bridge by importing the plugin and calling the bridge handler directly
 // The bridge is registered as a route, so we simulate Request/Response
-async function callBridge(payload: Record<string, unknown>): Promise<{ status: number; body: Record<string, unknown> }> {
+async function callBridge(
+  payload: Record<string, unknown>,
+  opts: CallBridgeOptions = {},
+): Promise<{ status: number; body: Record<string, unknown> }> {
   // Dynamically import the plugin to get fresh state
   const mod = await import('@bakin/schedule/index')
   const plugin = mod.default
+
+  mockSettings = { bridgeEnabled: true, bridgeSecret: TEST_BRIDGE_SECRET, ...(opts.settings ?? {}) }
 
   // Find the bridge route handler by activating the plugin
   let bridgeHandler: ((req: Request) => Promise<Response>) | undefined
@@ -152,8 +176,10 @@ async function callBridge(payload: Record<string, unknown>): Promise<{ status: n
       has: vi.fn(() => false),
       invoke: mockHookRegistry.invoke,
     },
-    getSettings: vi.fn(() => ({})),
-    updateSettings: vi.fn(),
+    getSettings: vi.fn(() => ({ ...mockSettings })),
+    updateSettings: vi.fn((patch: Record<string, unknown>) => {
+      mockSettings = { ...mockSettings, ...patch }
+    }),
     search: {
       registerContentType: vi.fn(),
       index: vi.fn(async () => {}),
@@ -167,7 +193,11 @@ async function callBridge(payload: Record<string, unknown>): Promise<{ status: n
 
   if (!bridgeHandler) throw new Error('Bridge handler not found')
 
-  const req = new Request('http://localhost/api/plugins/schedule/bridge', {
+  const providedSecret = opts.secret === undefined ? TEST_BRIDGE_SECRET : opts.secret
+  const url = providedSecret
+    ? `http://localhost/api/plugins/schedule/bridge?secret=${providedSecret}`
+    : 'http://localhost/api/plugins/schedule/bridge'
+  const req = new Request(url, {
     method: 'POST',
     body: JSON.stringify(payload),
     headers: { 'Content-Type': 'application/json' },
@@ -210,6 +240,41 @@ describe('schedule/bridge', () => {
     const { body } = await callBridge({ jobId: 'unknown-job', runId: 'r1', timestamp: '2026-03-27T09:00:00Z' })
     expect(body.ok).toBe(true)
     expect(body.skipped).toBe('not-bakin')
+    expect(mockCreateTask).not.toHaveBeenCalled()
+  })
+
+  it('rejects request with no secret (401)', async () => {
+    upsertJob(makeMeta())
+    const { status, body } = await callBridge(
+      { jobId: 'test-job', runId: 'r1', timestamp: '2026-03-27T09:00:00Z' },
+      { secret: '' },
+    )
+    expect(status).toBe(401)
+    expect(body.ok).toBe(false)
+    expect(body.error).toBe('unauthorized')
+    expect(mockCreateTask).not.toHaveBeenCalled()
+  })
+
+  it('rejects request with wrong secret (401)', async () => {
+    upsertJob(makeMeta())
+    const { status, body } = await callBridge(
+      { jobId: 'test-job', runId: 'r1', timestamp: '2026-03-27T09:00:00Z' },
+      { secret: 'b'.repeat(64) },
+    )
+    expect(status).toBe(401)
+    expect(body.error).toBe('unauthorized')
+    expect(mockCreateTask).not.toHaveBeenCalled()
+  })
+
+  it('rejects request when bridgeEnabled=false (503)', async () => {
+    upsertJob(makeMeta())
+    const { status, body } = await callBridge(
+      { jobId: 'test-job', runId: 'r1', timestamp: '2026-03-27T09:00:00Z' },
+      { settings: { bridgeEnabled: false } },
+    )
+    expect(status).toBe(503)
+    expect(body.ok).toBe(false)
+    expect(body.error).toBe('bridge disabled')
     expect(mockCreateTask).not.toHaveBeenCalled()
   })
 

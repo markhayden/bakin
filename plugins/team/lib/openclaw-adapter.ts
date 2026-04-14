@@ -5,14 +5,18 @@
  *
  * This module centralizes all access to ~/.openclaw/ for agent data:
  * - openclaw.json → agent roster, models, identity, subagent perms
- * - workspace/ → main agent (main-operator) workspace files
+ * - workspace/ → main agent workspace files (id resolved via getMainAgentId)
  * - workspaces/{id}/ → subagent workspace files
  * - agents/{id}/sessions/ → session JSONL for usage tracking
+ *
+ * Agent ids flow through unchanged — Bakin uses the same canonical ids as
+ * OpenClaw. Display names are resolved from `identity.name` at render time.
  */
 import { readFileSync, readdirSync, writeFileSync, existsSync, statSync, mkdirSync, renameSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '../../../src/core/logger'
 import { getOpenClawHome, getOpenClawPath } from '@bakin/core/openclaw-home'
+import { tryGetMainAgentId } from '@bakin/core/main-agent'
 import type { AgentMeta, AgentProfile, SkillSummary } from '../types'
 
 const log = createLogger('team:openclaw')
@@ -21,21 +25,6 @@ const log = createLogger('team:openclaw')
 
 const OPENCLAW_ROOT = getOpenClawHome()
 const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
-
-// ─── ID Mapping ──────────────────────────────────────────────────────────────
-
-const BAKIN_TO_OPENCLAW: Record<string, string> = { main-operator: 'main' }
-const OPENCLAW_TO_BAKIN: Record<string, string> = { main: 'main-operator' }
-
-/** Convert a Bakin-facing ID to the OpenClaw internal ID */
-export function toOpenClawId(bakinId: string): string {
-  return BAKIN_TO_OPENCLAW[bakinId] ?? bakinId
-}
-
-/** Convert an OpenClaw internal ID to the Bakin-facing ID */
-export function toBakinId(openclawId: string): string {
-  return OPENCLAW_TO_BAKIN[openclawId] ?? openclawId
-}
 
 // ─── Config Reading ──────────────────────────────────────────────────────────
 
@@ -85,16 +74,15 @@ export function listAgents(): AgentMeta[] {
   const agents = config.agents?.list ?? []
 
   return agents.map((a) => {
-    const id = toBakinId(a.id)
-    const name = a.identity?.name ?? a.name ?? id
+    const name = a.identity?.name ?? a.name ?? a.id
     const emoji = a.identity?.emoji ?? ''
-    const role = resolveRole(id)
+    const role = resolveRole(a.id)
     return {
-      id,
+      id: a.id,
       name,
       emoji,
       role,
-      headshot: `/api/plugins/team/${id}/avatar`,
+      headshot: `/api/plugins/team/${a.id}/avatar`,
     }
   })
 }
@@ -108,24 +96,23 @@ export function getAgentIds(): string[] {
 
 /**
  * Resolve the workspace path for an agent.
- * Main agent uses ~/.openclaw/workspace/
+ * Main agent (resolved via tryGetMainAgentId) uses ~/.openclaw/workspace/
  * Subagents use ~/.openclaw/workspaces/{id}/
  */
-export function getWorkspacePath(bakinId: string): string {
+export function getWorkspacePath(agentId: string): string {
   const config = getOpenClawConfig()
-  const openclawId = toOpenClawId(bakinId)
-  const agent = config.agents?.list?.find((a) => a.id === openclawId)
+  const agent = config.agents?.list?.find((a) => a.id === agentId)
 
   // If agent has an explicit workspace path, use it
   if (agent?.workspace) return agent.workspace
 
-  // Main agent default
-  if (openclawId === 'main') {
+  // Main agent default — resolve orchestrator id dynamically
+  if (agentId === tryGetMainAgentId()) {
     return config.agents?.defaults?.workspace ?? join(OPENCLAW_ROOT, 'workspace')
   }
 
   // Subagent default
-  return join(OPENCLAW_ROOT, 'workspaces', openclawId)
+  return join(OPENCLAW_ROOT, 'workspaces', agentId)
 }
 
 // ─── Workspace File Operations ───────────────────────────────────────────────
@@ -133,12 +120,12 @@ export function getWorkspacePath(bakinId: string): string {
 const WORKSPACE_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md', 'USER.md', 'BOOTSTRAP.md'] as const
 
 /** Read a workspace file for an agent. Returns null if missing. */
-export function readWorkspaceFile(bakinId: string, filename: string): string | null {
+export function readWorkspaceFile(agentId: string, filename: string): string | null {
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-    log.warn('Blocked path traversal attempt', { agent: bakinId, filename })
+    log.warn('Blocked path traversal attempt', { agent: agentId, filename })
     return null
   }
-  const wsPath = getWorkspacePath(bakinId)
+  const wsPath = getWorkspacePath(agentId)
   const filePath = join(wsPath, filename)
   try {
     return readFileSync(filePath, 'utf-8')
@@ -148,19 +135,19 @@ export function readWorkspaceFile(bakinId: string, filename: string): string | n
 }
 
 /** Write a workspace file for an agent. Creates if missing. */
-export function writeWorkspaceFile(bakinId: string, filename: string, content: string): void {
+export function writeWorkspaceFile(agentId: string, filename: string, content: string): void {
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
     throw new Error(`Invalid filename: "${filename}" — path traversal not allowed`)
   }
-  const wsPath = getWorkspacePath(bakinId)
+  const wsPath = getWorkspacePath(agentId)
   const filePath = join(wsPath, filename)
   writeFileSync(filePath, content, 'utf-8')
-  log.info('Wrote workspace file', { agent: bakinId, file: filename, bytes: content.length })
+  log.info('Wrote workspace file', { agent: agentId, file: filename, bytes: content.length })
 }
 
 /** List all files in an agent's workspace root (not recursive). */
-export function listWorkspaceFiles(bakinId: string): string[] {
-  const wsPath = getWorkspacePath(bakinId)
+export function listWorkspaceFiles(agentId: string): string[] {
+  const wsPath = getWorkspacePath(agentId)
   try {
     return readdirSync(wsPath)
       .filter((f) => {
@@ -180,8 +167,8 @@ export function listWorkspaceFiles(bakinId: string): string[] {
 // ─── Skills ──────────────────────────────────────────────────────────────────
 
 /** List installed skills for an agent */
-export function listSkills(bakinId: string): SkillSummary[] {
-  const wsPath = getWorkspacePath(bakinId)
+export function listSkills(agentId: string): SkillSummary[] {
+  const wsPath = getWorkspacePath(agentId)
   const skillsDir = join(wsPath, 'skills')
   try {
     return readdirSync(skillsDir, { withFileTypes: true })
@@ -197,8 +184,8 @@ export function listSkills(bakinId: string): SkillSummary[] {
 }
 
 /** Read the SKILL.md for a specific skill */
-export function readSkillFile(bakinId: string, skillId: string): string | null {
-  const wsPath = getWorkspacePath(bakinId)
+export function readSkillFile(agentId: string, skillId: string): string | null {
+  const wsPath = getWorkspacePath(agentId)
   const filePath = join(wsPath, 'skills', skillId, 'SKILL.md')
   try {
     return readFileSync(filePath, 'utf-8')
@@ -210,8 +197,8 @@ export function readSkillFile(bakinId: string, skillId: string): string | null {
 // ─── Memory ──────────────────────────────────────────────────────────────────
 
 /** List memory files (YYYY-MM-DD.md) for an agent, newest first */
-export function listMemoryFiles(bakinId: string): string[] {
-  const wsPath = getWorkspacePath(bakinId)
+export function listMemoryFiles(agentId: string): string[] {
+  const wsPath = getWorkspacePath(agentId)
   const memoryDir = join(wsPath, 'memory')
   try {
     return readdirSync(memoryDir)
@@ -224,8 +211,8 @@ export function listMemoryFiles(bakinId: string): string[] {
 }
 
 /** Read a specific memory file */
-export function readMemoryFile(bakinId: string, filename: string): string | null {
-  const wsPath = getWorkspacePath(bakinId)
+export function readMemoryFile(agentId: string, filename: string): string | null {
+  const wsPath = getWorkspacePath(agentId)
   const filePath = join(wsPath, 'memory', filename)
   try {
     return readFileSync(filePath, 'utf-8')
@@ -237,42 +224,39 @@ export function readMemoryFile(bakinId: string, filename: string): string | null
 // ─── Full Profile ────────────────────────────────────────────────────────────
 
 /** Get full agent profile by merging OpenClaw config + workspace files */
-export function getAgentProfile(bakinId: string): AgentProfile | null {
+export function getAgentProfile(agentId: string): AgentProfile | null {
   const config = getOpenClawConfig()
-  const openclawId = toOpenClawId(bakinId)
-  const agent = config.agents?.list?.find((a) => a.id === openclawId)
+  const agent = config.agents?.list?.find((a) => a.id === agentId)
   if (!agent) return null
 
-  const id = toBakinId(agent.id)
   const defaultModel = config.agents?.defaults?.model?.primary ?? 'unknown'
   const model = agent.model?.primary ?? defaultModel
-  const name = agent.identity?.name ?? agent.name ?? id
+  const name = agent.identity?.name ?? agent.name ?? agent.id
   const emoji = agent.identity?.emoji ?? ''
 
   return {
-    id,
+    id: agent.id,
     name,
     emoji,
-    role: resolveRole(id),
-    headshot: `/api/plugins/team/${id}/avatar`,
+    role: resolveRole(agent.id),
+    headshot: `/api/plugins/team/${agent.id}/avatar`,
     model,
-    workspacePath: getWorkspacePath(bakinId),
-    soul: readWorkspaceFile(bakinId, 'SOUL.md'),
-    identity: readWorkspaceFile(bakinId, 'IDENTITY.md'),
-    rules: readWorkspaceFile(bakinId, 'AGENTS.md'),
-    tools: readWorkspaceFile(bakinId, 'TOOLS.md'),
-    heartbeatMd: readWorkspaceFile(bakinId, 'HEARTBEAT.md'),
-    subagentPerms: agent.subagents?.allowAgents?.map(toBakinId) ?? null,
+    workspacePath: getWorkspacePath(agent.id),
+    soul: readWorkspaceFile(agent.id, 'SOUL.md'),
+    identity: readWorkspaceFile(agent.id, 'IDENTITY.md'),
+    rules: readWorkspaceFile(agent.id, 'AGENTS.md'),
+    tools: readWorkspaceFile(agent.id, 'TOOLS.md'),
+    heartbeatMd: readWorkspaceFile(agent.id, 'HEARTBEAT.md'),
+    subagentPerms: agent.subagents?.allowAgents ?? null,
   }
 }
 
 // ─── Model Resolution ────────────────────────────────────────────────────────
 
 /** Get the model assigned to an agent (stripped of provider prefix) */
-export function getAgentModel(bakinId: string): string {
+export function getAgentModel(agentId: string): string {
   const config = getOpenClawConfig()
-  const openclawId = toOpenClawId(bakinId)
-  const agent = config.agents?.list?.find((a) => a.id === openclawId)
+  const agent = config.agents?.list?.find((a) => a.id === agentId)
   const defaultModel = config.agents?.defaults?.model?.primary ?? 'unknown'
   const raw = agent?.model?.primary ?? defaultModel
   return raw
@@ -346,30 +330,29 @@ export function addAgent(input: NewAgentInput): void {
  * Workspace is moved to ~/.openclaw/.trash/{id}__deleted-{timestamp}/
  * so it can be recovered if needed.
  */
-export function removeAgent(bakinId: string): boolean {
+export function removeAgent(agentId: string): boolean {
   const config = getOpenClawConfig()
   if (!config.agents?.list) return false
 
-  const openclawId = toOpenClawId(bakinId)
   const before = config.agents.list.length
-  config.agents.list = config.agents.list.filter((a) => a.id !== openclawId)
+  config.agents.list = config.agents.list.filter((a) => a.id !== agentId)
   if (config.agents.list.length === before) return false
 
   writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
   configCache = null
-  log.info('Removed agent from openclaw.json', { id: bakinId })
+  log.info('Removed agent from openclaw.json', { id: agentId })
 
   // Move workspace to trash
-  const wsPath = join(OPENCLAW_ROOT, 'workspaces', openclawId)
+  const wsPath = join(OPENCLAW_ROOT, 'workspaces', agentId)
   if (existsSync(wsPath)) {
     const trashDir = join(OPENCLAW_ROOT, '.trash')
     if (!existsSync(trashDir)) mkdirSync(trashDir, { recursive: true })
-    const trashName = `${openclawId}__deleted-${Date.now()}`
+    const trashName = `${agentId}__deleted-${Date.now()}`
     try {
       renameSync(wsPath, join(trashDir, trashName))
-      log.info('Workspace moved to trash', { id: bakinId, trashName })
+      log.info('Workspace moved to trash', { id: agentId, trashName })
     } catch (err) {
-      log.warn('Failed to move workspace to trash', { id: bakinId, error: err instanceof Error ? err.message : String(err) })
+      log.warn('Failed to move workspace to trash', { id: agentId, error: err instanceof Error ? err.message : String(err) })
     }
   }
 
@@ -382,9 +365,9 @@ export function removeAgent(bakinId: string): boolean {
  * Resolve agent role from IDENTITY.md or SOUL.md content.
  * Falls back to a generic role derived from position in the roster.
  */
-function resolveRole(bakinId: string): string {
+function resolveRole(agentId: string): string {
   // Try IDENTITY.md first (has structured fields)
-  const identity = readWorkspaceFile(bakinId, 'IDENTITY.md')
+  const identity = readWorkspaceFile(agentId, 'IDENTITY.md')
   if (identity) {
     // Parse simple key: value or YAML frontmatter
     const vibeMatch = identity.match(/^[-*]\s*\*?Vibe\*?:\s*(.+)/mi)
@@ -392,7 +375,7 @@ function resolveRole(bakinId: string): string {
   }
 
   // Try SOUL.md — look for a role-like first line
-  const soul = readWorkspaceFile(bakinId, 'SOUL.md')
+  const soul = readWorkspaceFile(agentId, 'SOUL.md')
   if (soul) {
     const firstLine = soul.split('\n').find((l) => l.startsWith('You are ') || l.startsWith('# '))
     if (firstLine) {
@@ -405,11 +388,7 @@ function resolveRole(bakinId: string): string {
     }
   }
 
-  // Fallback based on position
-  const config = getOpenClawConfig()
-  const openclawId = toOpenClawId(bakinId)
-  const agent = config.agents?.list?.find((a) => a.id === openclawId)
-  if (agent?.id === 'main') return 'Orchestrator'
-
+  // Main agent fallback
+  if (agentId === tryGetMainAgentId()) return 'Orchestrator'
   return 'Agent'
 }

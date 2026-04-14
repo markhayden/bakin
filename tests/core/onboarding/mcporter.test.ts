@@ -135,7 +135,7 @@ describe('onboarding mcporter component', () => {
     it('installs mcporter and syncs config when not already installed', async () => {
       isInstalledReturn = false
       installMcporterReturn = true
-      syncConfigReturn = ['added bakin-main-operator', 'added bakin-pixel']
+      syncConfigReturn = ['added bakin-main', 'added bakin-pixel']
       const result = await mcporterComponent.install(optsAutoYes)
       expect(result.status).toBe('installed')
       expect(installMcporterCalls).toBe(1)
@@ -154,7 +154,7 @@ describe('onboarding mcporter component', () => {
 
     it('reports installed (not noop) when already installed but config was updated', async () => {
       isInstalledReturn = true
-      syncConfigReturn = ['updated bakin-main-operator']
+      syncConfigReturn = ['updated bakin-main']
       const result = await mcporterComponent.install(optsAutoYes)
       expect(result.status).toBe('installed')
       expect(result.message).toContain('synced')

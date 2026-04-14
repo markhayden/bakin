@@ -42,6 +42,13 @@ const log = createLogger('workflow-runtime')
  * Create a board task for a nested workflow so it's visible in the UI.
  * Fire-and-forget — the workflow instance is the source of truth;
  * the board task is just for visibility and gate approvals.
+ *
+ * Idempotent: skips the INSERT if a task with `childTaskId` already exists.
+ * Without this guard, the watchdog's stale-task recovery (which moves a
+ * parent workflow task back to todo and re-dispatches it) can re-run
+ * advanceWorkflow() and create a duplicate "Run Child" row for the same
+ * nested workflow step — one of the root causes of the mystery "child-wf"
+ * tasks on the board.
  */
 function createBoardTaskForChild(
   childTaskId: string,
@@ -50,7 +57,12 @@ function createBoardTaskForChild(
   childDef: WorkflowDefinition | null,
   assignee?: string,
 ) {
-  import('../../tasks/lib/flow-store').then(({ createTask, addTaskLog }) => {
+  import('../../tasks/lib/flow-store').then(({ createTask, addTaskLog, getTask }) => {
+    if (getTask(childTaskId)) {
+      log.debug(`Skipping duplicate child task for ${childTaskId} — already on board`)
+      return
+    }
+
     const title = `${nestedStep.label || nestedStep.workflow_id} (sub-workflow)`
     const description = nestedStep.description || childDef?.description || undefined
     // Find the first agent step in the child workflow for the assignee
@@ -68,8 +80,12 @@ function createBoardTaskForChild(
       childTaskId,
     ).then(() => {
       addTaskLog(childTaskId, 'workflow', `Sub-workflow of task ${parentTaskId}`).catch(() => {})
-    }).catch(() => {})
-  }).catch(() => {})
+    }).catch((err) => {
+      log.error(`Failed to create board task for child ${childTaskId}`, err)
+    })
+  }).catch((err) => {
+    log.error(`Failed to import flow-store for child task ${childTaskId}`, err)
+  })
 }
 
 function generateId(): string {

@@ -25,6 +25,7 @@ import {
   autoCheckLinkedItem,
 } from './lib/project-service'
 import { createLogger } from '../../src/core/logger'
+import { getMainAgentId } from '../../src/core/main-agent'
 import type { Project, ProjectStatus } from './types'
 
 const log = createLogger('projects')
@@ -411,7 +412,7 @@ const projectsPlugin: BakinPlugin = {
 
         try {
           const { sendMessage } = await import('../../src/core/openclaw-client')
-          const agentId = body.agent || 'main'
+          const agentId = body.agent || getMainAgentId()
           const reply = await sendMessage(agentId, context)
           return json({ ok: true, reply })
         } catch (err: unknown) {
@@ -751,7 +752,7 @@ const projectsPlugin: BakinPlugin = {
 
         try {
           const { sendMessage } = await import('../../src/core/openclaw-client')
-          const agentId = (params.agent as string) || 'main'
+          const agentId = (params.agent as string) || getMainAgentId()
           const reply = await sendMessage(agentId, context)
           ctx.activity.audit('project.asked', 'system', { projectId, agent: agentId })
           return { ok: true, reply }

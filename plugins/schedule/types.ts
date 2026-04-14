@@ -17,7 +17,7 @@ export interface BakinJobMeta {
   displayName?: string
   description?: string
   agentId?: string
-  owner?: string // agent who receives alerts/briefings (default 'main-operator')
+  owner?: string // agent who receives alerts/briefings (defaults to the main agent)
   requireTriage?: boolean // true = create task unassigned, owner triages first
   workflowId?: string
   taskPrompt?: string

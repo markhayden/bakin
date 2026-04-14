@@ -6,11 +6,6 @@ import { useActivityContext } from '@/context/activity-context'
 import { useContentStore } from '@/hooks/use-content-store'
 import { AgentAvatar } from '@/components/agent-avatar'
 
-/** Normalize agent IDs for display — "main" is the main-operator process */
-const DISPLAY_AGENT: Record<string, string> = {
-  main: 'system',
-}
-
 /** Non-agent sources that will never have a headshot image */
 const SYSTEM_SOURCES = new Set(['system', 'workflow', 'dispatch', 'watchdog', 'dashboard', 'api'])
 
@@ -109,14 +104,14 @@ export function ActivityFeed() {
                 evt.type === 'alert' ? 'bg-warning/10' : ''
               }`}
             >
-              <FeedAvatar agent={DISPLAY_AGENT[evt.agent] ?? evt.agent} />
+              <FeedAvatar agent={evt.agent} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1.5 mb-0.5">
                   <span
                     className="text-[11px] font-medium"
-                    style={{ color: SYSTEM_SOURCES.has(DISPLAY_AGENT[evt.agent] ?? evt.agent) ? 'var(--muted-foreground)' : `var(--agent-${DISPLAY_AGENT[evt.agent] ?? evt.agent}, var(--muted-foreground))` }}
+                    style={{ color: SYSTEM_SOURCES.has(evt.agent) ? 'var(--muted-foreground)' : `var(--agent-${evt.agent}, var(--muted-foreground))` }}
                   >
-                    {DISPLAY_AGENT[evt.agent] ?? evt.agent}
+                    {evt.agent}
                   </span>
                   <span className="text-muted-foreground text-[10px] shrink-0 tabular-nums">{relativeTime(evt.ts)}</span>
                 </div>

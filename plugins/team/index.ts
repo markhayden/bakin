@@ -15,6 +15,7 @@ import { readHeartbeats } from '../../src/lib/content'
 import { getContentDir, getBakinPaths } from '../../packages/core/src/content-dir'
 import { startAgent, stopAgent } from '../../src/lib/agents'
 import { resetSettingsCache } from '../../src/core/settings'
+import { getMainAgentId } from '../../src/core/main-agent'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
 import { restartGateway } from '../../src/core/openclaw-client'
@@ -29,7 +30,7 @@ const DEFAULT_STALE_THRESHOLD_MS = 15 * 60 * 1000
 // ─── Display Settings (Bakin-owned) ──────────────────────────────────────────
 
 const DEFAULT_COLORS: Record<string, string> = {
-  main-operator: '#60a5fa',
+  main: '#60a5fa',
   chef: '#4ade80',
   pixel: '#a78bfa',
   rolo: '#fb923c',
@@ -398,7 +399,7 @@ const teamPlugin: BakinPlugin = {
           }
 
           const teams = readTeams()
-          return Response.json({ agents: result, displaySettings, teams })
+          return Response.json({ agents: result, displaySettings, teams, mainAgentId: getMainAgentId() })
         } catch (err) {
           log.error('Failed to list agents', err)
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -468,7 +469,7 @@ const teamPlugin: BakinPlugin = {
           if (!agentId) return Response.json({ error: 'agentId is required' }, { status: 400 })
 
           // Prevent deleting the main agent
-          if (agentId === 'main-operator') {
+          if (agentId === getMainAgentId()) {
             return Response.json({ error: 'Cannot delete the main orchestrator agent' }, { status: 403 })
           }
 
@@ -697,8 +698,7 @@ const teamPlugin: BakinPlugin = {
         if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
 
         const allUsage = getAllAgentUsage()
-        const openclawId = adapter.toOpenClawId(agentId)
-        const usage = allUsage.find((u) => u.agent === openclawId)
+        const usage = allUsage.find((u) => u.agent === agentId)
 
         return Response.json({ usage: usage ?? null })
       },

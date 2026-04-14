@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Mock antfly module
 vi.mock('@/core/antfly', () => ({
   enabled: vi.fn(() => true),
+  available: vi.fn(() => true),
   createTable: vi.fn(async () => true),
   listTables: vi.fn(async () => []),
   indexDocument: vi.fn(async () => {}),
@@ -793,6 +794,15 @@ describe('search-registry', () => {
 
   it('getSearchHealth returns enabled false when antfly disabled', async () => {
     vi.mocked(antfly.enabled).mockReturnValueOnce(false)
+
+    const health = await getSearchHealth()
+
+    expect(health.enabled).toBe(false)
+    expect(health.tables).toEqual([])
+  })
+
+  it('getSearchHealth returns enabled false when antfly is configured but unavailable', async () => {
+    vi.mocked(antfly.available).mockReturnValueOnce(false)
 
     const health = await getSearchHealth()
 

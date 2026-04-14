@@ -4,6 +4,7 @@
 import { readFileSync, existsSync } from 'fs'
 import { createLogger } from '../../../src/core/logger'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
+import { getMainAgentId } from '../../../src/core/main-agent'
 import { readSidecar, writeSidecar, withDefaults } from './sidecar'
 import { cronToHuman } from './cron-parser'
 import type { OpenClawJob, OpenClawJobsFile, MergedJob, BakinJobMeta } from '../types'
@@ -71,7 +72,7 @@ export function mergeJob(job: OpenClawJob, sidecar: BakinJobMeta | undefined): M
     displayName: meta?.displayName ?? job.name,
     description: meta?.description,
     agentId: meta?.agentId,  // null for orphans — don't guess, flag for triage
-    owner: meta?.owner ?? 'main-operator',
+    owner: meta?.owner ?? getMainAgentId(),
     requireTriage: meta?.requireTriage ?? (!meta), // orphans need triage
     workflowId: meta?.workflowId,
     taskPrompt: meta?.taskPrompt ?? orphanContext.prompt,

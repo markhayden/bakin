@@ -6,6 +6,7 @@
 import fs from 'fs'
 import { createLogger } from './logger'
 import { getOpenClawPath } from './openclaw-home'
+import { tryGetMainAgentId } from './main-agent'
 
 const log = createLogger('vault')
 
@@ -74,7 +75,9 @@ function loadFromOpenClawConfig(): void {
 }
 
 function loadFromAuthProfiles(): void {
-  const profilePath = getOpenClawPath('agents', 'main', 'agent', 'auth-profiles.json')
+  const mainId = tryGetMainAgentId()
+  if (!mainId) return
+  const profilePath = getOpenClawPath('agents', mainId, 'agent', 'auth-profiles.json')
 
   try {
     if (!fs.existsSync(profilePath)) return

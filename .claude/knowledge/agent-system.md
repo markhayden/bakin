@@ -13,7 +13,7 @@ Agent data lives in the OpenClaw home directory and is accessed through the team
 All OpenClaw paths are resolved via `getOpenClawHome()` / `getOpenClawPath()` from `packages/core/src/openclaw-home.ts`. This respects the `OPENCLAW_HOME` env var (defaults to `~/.openclaw/`), enabling dev/test environments via the Imitation Crab mock (`dev/imitation-crab/`).
 
 - `{OPENCLAW_HOME}/openclaw.json` — agent roster (IDs, names, models, identity, subagent perms)
-- `{OPENCLAW_HOME}/workspace/` — main agent (main-operator) workspace files
+- `{OPENCLAW_HOME}/workspace/` — main agent workspace files (resolved via `getMainAgentId()`)
 - `{OPENCLAW_HOME}/workspaces/{id}/` — subagent workspace files (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md, etc.)
 
 ```typescript
@@ -46,8 +46,8 @@ Agent models are changed via the models plugin API, not direct OpenClaw writes:
 - **Models page** (`/models`): manages `agents.defaults.model.primary`, `agents.defaults.model.fallbacks`, per-agent `model.primary`, and default/per-agent subagent model settings
 - The models plugin writes to `{OPENCLAW_HOME}/openclaw.json` and fires the `models.configChanged` hook when agent effective model changes
 
-### ID mapping
-`main-operator` <-> `main` is the only mapping. Centralized in `toOpenClawId()`/`toBakinId()` in the adapter. All other agents use identity mapping.
+### Agent IDs
+Bakin uses OpenClaw's canonical agent ids verbatim — no translation layer. The orchestrator is `main`; subagents keep whatever ids OpenClaw assigns. Display names (e.g. "Main Operator", "Crab") come from `identity.name` in `openclaw.json` at render time and never leak into storage keys. Resolution helpers: `getMainAgentId()` and `getMainAgentName()` in `packages/core/src/main-agent.ts`.
 
 ## Agent Communication
 

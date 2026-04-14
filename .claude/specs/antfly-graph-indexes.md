@@ -32,7 +32,7 @@ Bakin's search system after `feat/multimodal-search` uses:
 That covers retrieval. What it doesn't cover is **relationships** between documents. The things search can't answer well today:
 
 - "Show me every task that references project X, every asset attached to those tasks, and every audit entry for those tasks in the last week."
-- "Given this message from Main Operator, what's the graph of tasks, assets, and prior messages that relate to the topic?"
+- "Given this message from the main agent, what's the graph of tasks, assets, and prior messages that relate to the topic?"
 - "Which projects have the most interconnected task graphs versus which have flat to-do lists?"
 - "Show me the lineage of a piece of content: the original brainstorm → the planning task → the work task → the review task → the published asset."
 
@@ -51,7 +51,7 @@ Antfly supports graph queries natively via `GraphQuery` in the query API. Relati
 - **Graph index type** — `src/store/db/indexes/graph_index.go` — a dedicated index that stores edges alongside the normal full-text and embedding indexes. Edges live in Pebble under the shard's storage root.
 - **Automatic relationship extraction** — Antfly can extract entities and relationships from document text during enrichment and auto-populate the graph index. This happens server-side via Termite/NER. Requires an NER model pulled via `antfly termite pull`.
 - **Topology constraints** — one-to-one, one-to-many, many-to-many. Enforced at write time.
-- **TTL on edges** — edges can expire independently of their documents. Useful for temporary associations (e.g. "this task is currently watched by Main Operator").
+- **TTL on edges** — edges can expire independently of their documents. Useful for temporary associations (e.g. "this task is currently watched by the main agent").
 - **Query composition** — `GraphQuery` inside a `QueryRequest` runs a graph traversal over search results. The `expand_strategy` field (`union` | `intersection`) controls how graph results merge with the hybrid search results. The result is a single response with search-ranked documents plus a traversal subgraph.
 - **Declarative query DSL** — graph queries are JSON objects describing node and edge filters, not custom Cypher-like strings.
 

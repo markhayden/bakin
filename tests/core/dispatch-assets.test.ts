@@ -21,7 +21,7 @@ vi.mock('../../src/core/logger', () => ({
 vi.mock('../../src/core/settings', () => ({
   getSettings: vi.fn().mockReturnValue({
     dispatch: { intervalMs: 1000, maxRetries: 3, failureCooldownMs: 60000, maxDispatched: 500 },
-    agents: ['main-operator', 'pixel'],
+    agents: ['main', 'pixel'],
     watchdog: { stuckThresholdMs: 30 * 60 * 1000 },
   }),
 }))
@@ -110,13 +110,13 @@ describe('buildDispatchMessage — attached assets', () => {
     expect(msg).toContain('## Attached Assets')
   })
 
-  it('includes attached assets for main-operator-assigned tasks', () => {
+  it('includes attached assets for main-assigned tasks', () => {
     const task = {
       id: 'task-1',
       title: 'My task',
-      agent: 'main-operator',
+      agent: 'main',
     }
-    const msg = buildDispatchMessage(task, 'main-operator', testDir, 3737)
+    const msg = buildDispatchMessage(task, 'main', testDir, 3737)
     expect(msg).toContain('## Attached Assets')
   })
 })

@@ -203,11 +203,11 @@ Local smoke test against a running `pnpm dev:mock`:
 ```bash
 # 1. Drop test content
 cp my-recipe.pdf ~/.imitationcrab/assets/other/test-pdf/
-echo '{"agent":"main-operator","taskId":"test","created":"2026-04-12T00:00:00Z","description":"pdf test","tags":[]}' \
+echo '{"agent":"main","taskId":"test","created":"2026-04-12T00:00:00Z","description":"pdf test","tags":[]}' \
   > ~/.imitationcrab/assets/other/test-pdf/my-recipe.pdf.meta.json
 
 cp my-photo.jpg ~/.imitationcrab/assets/images/test-img/
-echo '{"agent":"main-operator","taskId":"test","created":"2026-04-12T00:00:00Z","description":"image test","tags":[]}' \
+echo '{"agent":"main","taskId":"test","created":"2026-04-12T00:00:00Z","description":"image test","tags":[]}' \
   > ~/.imitationcrab/assets/images/test-img/my-photo.jpg.meta.json
 
 # 2. Force a reindex (the watcher would also catch the drops, but this is deterministic)

@@ -29,8 +29,11 @@ vi.mock('../../../src/core/logger', () => ({
   }),
 }))
 
-// Mock flow-store so tests don't leak child-workflow tasks into the real board
-vi.mock('../../plugins/tasks/lib/flow-store', () => ({
+// Mock flow-store so tests don't leak child-workflow tasks into the real board.
+// The path needs three `../` to reach the repo root — two would land in tests/
+// and the mock would silently no-op, letting the real module write to
+// ~/.openclaw/flows/registry.sqlite.
+vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
   createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
   addTaskLog: vi.fn(() => Promise.resolve()),
   moveTask: vi.fn(() => Promise.resolve()),
@@ -39,6 +42,14 @@ vi.mock('../../plugins/tasks/lib/flow-store', () => ({
   })),
   getTask: vi.fn(() => null),
   getTaskWithColumn: vi.fn(() => null),
+}))
+
+// Defense-in-depth: even if another module reaches openclaw-home, redirect it
+// into testDir instead of ~/.openclaw/.
+vi.mock('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => testDir,
+  getOpenClawPath: (...parts: string[]) => join(testDir, ...parts),
+  resetOpenClawHome: vi.fn(),
 }))
 
 import {
@@ -110,7 +121,7 @@ steps:
   - id: publish
     type: agent
     label: Publish
-    agent: main-operator
+    agent: main
     description: Publish it all
 `
 
@@ -137,7 +148,7 @@ steps:
   - id: publish
     type: agent
     label: Publish
-    agent: main-operator
+    agent: main
     description: Publish
 `
 
@@ -534,7 +545,7 @@ Write a great caption.
 
     it('rejects orchestrator completing a subagent step', () => {
       createInstance('task-scope-orch', 'linear', testDir)
-      const result = completeStep('task-scope-orch', 'step-one', { data: 'done' }, 'main-operator', testDir)
+      const result = completeStep('task-scope-orch', 'step-one', { data: 'done' }, 'main', testDir)
       expect(result.success).toBe(false)
       expect(result.errors![0]).toContain('assigned to "chef"')
     })
@@ -589,7 +600,7 @@ steps:
   - id: review
     type: agent
     label: Review
-    agent: main-operator
+    agent: main
     description: Review it
 `
 
@@ -770,6 +781,59 @@ steps:
       cancelInstance('task-nested9', testDir)
       const agents = getActiveAgents('task-nested9', testDir)
       expect(agents).toHaveLength(0)
+    })
+
+    // Regression: the watchdog recovery path can re-run createInstance/
+    // advanceWorkflow for an already-active workflow, which previously
+    // called createTask on the child board row a second time, creating
+    // duplicate "Run Child (sub-workflow)" cards. createBoardTaskForChild
+    // now guards on getTask(childTaskId) to make the retry a no-op.
+    it('createBoardTaskForChild is idempotent across retries', async () => {
+      // parent-first-nested has a nested workflow as its FIRST step so
+      // createInstance() triggers createBoardTaskForChild directly (the
+      // simplest path to exercise the idempotency guard).
+      writeFileSync(join(defsDir, 'parent-first-nested.yaml'), `
+name: Parent First Nested
+description: Parent whose first step is a nested child workflow
+version: 1
+steps:
+  - id: nested-child
+    type: workflow
+    label: Run Child
+    workflow_id: child-wf
+`)
+
+      // Stateful mock: track which ids have been "created" on the board
+      // so getTask(id) returns truthy after createTask has been called.
+      const flowStore = await import('../../../plugins/tasks/lib/flow-store')
+      const createdIds = new Set<string>()
+      vi.mocked(flowStore.createTask).mockImplementation(
+        // Positional signature: (title, column, assignee, description, workflowId, createdBy, id, parentId, projectId)
+        (((...args: unknown[]) => {
+          const id = (args[6] as string) ?? 'mock-task'
+          createdIds.add(id)
+          return Promise.resolve({ id } as unknown)
+        }) as unknown) as typeof flowStore.createTask,
+      )
+      vi.mocked(flowStore.getTask).mockImplementation(
+        (id: string) => (createdIds.has(id) ? ({ id, title: 'stub' } as unknown as ReturnType<typeof flowStore.getTask>) : null),
+      )
+
+      createInstance('task-retry', 'parent-first-nested', testDir)
+      await vi.waitFor(() => expect(createdIds.has('task-retry--nested-child')).toBe(true))
+      const firstCallCount = vi.mocked(flowStore.createTask).mock.calls.length
+      expect(firstCallCount).toBeGreaterThanOrEqual(1)
+
+      // Simulate watchdog re-dispatch: createInstance overwrites the parent
+      // instance and re-enters the nested-first-step spawn path. Without
+      // the guard this would call createTask a second time.
+      createInstance('task-retry', 'parent-first-nested', testDir)
+      // Drain any pending microtasks from the second createInstance so a
+      // duplicate createTask would have time to land before we assert.
+      await new Promise(resolve => setImmediate(resolve))
+
+      const secondCallCount = vi.mocked(flowStore.createTask).mock.calls.length
+      expect(secondCallCount).toBe(firstCallCount)
     })
   })
 })

@@ -15,6 +15,7 @@
     "build": "next build",
     "start": "npx tsx server.ts",
     "lint": "eslint src plugins tests scripts dev cli server.ts bakin.config.ts next.config.ts vitest.config.ts eslint.config.mjs",
+    "lint:home-bypasses": "node scripts/bin/check-home-bypasses.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "test": "vitest run",
     "test:components": "vitest run tests/components",

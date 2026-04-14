@@ -258,7 +258,7 @@ describe('task-service', () => {
         service.createTaskWithEffects({
           title: 'Bogus',
           workflowId: 'instagram-post',
-          createdBy: 'main-operator',
+          createdBy: 'main',
         })
       ).rejects.toThrow(/Unknown workflow: "instagram-post"/)
 
@@ -273,7 +273,7 @@ describe('task-service', () => {
         service.createTaskWithEffects({
           title: 'Bogus',
           workflowId: 'made-up',
-          createdBy: 'main-operator',
+          createdBy: 'main',
         })
       ).rejects.toThrow(/image-social-post/)
     })
@@ -284,7 +284,7 @@ describe('task-service', () => {
       const result = await service.createTaskWithEffects({
         title: 'Real one',
         workflowId: 'image-social-post',
-        createdBy: 'main-operator',
+        createdBy: 'main',
       })
 
       expect(result.workflowId).toBe('image-social-post')

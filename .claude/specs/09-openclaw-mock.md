@@ -106,7 +106,7 @@ Seeded structure:
 ```
 ~/.imitationcrab/
   openclaw.json              — 8 agents with identities and models
-  workspace/                 — Main agent (main-operator) workspace files
+  workspace/                 — Main agent workspace files (Crab 🦀 in the mock)
   workspaces/{id}/           — Subagent workspaces (7 agents)
   cron/jobs.json             — Sample scheduled jobs
   cron/runs/{jobId}.jsonl    — Sample run history

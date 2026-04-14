@@ -81,7 +81,7 @@ function setupFixtures() {
   writeFileSync(
     join(assetsRoot, 'other', 'task-1', 'wyoming.pdf.meta.json'),
     JSON.stringify({
-      agent: 'main-operator',
+      agent: 'main',
       taskId: 'task-1',
       created: '2026-04-11T00:00:00.000Z',
       description: 'Wyoming LLC operating agreement',
@@ -94,7 +94,7 @@ function setupFixtures() {
   writeFileSync(
     join(assetsRoot, 'images', 'task-1', 'diagram.png.meta.json'),
     JSON.stringify({
-      agent: 'main-operator',
+      agent: 'main',
       taskId: 'task-1',
       created: '2026-04-11T00:00:00.000Z',
       description: 'Kafka pipeline diagram',
@@ -107,7 +107,7 @@ function setupFixtures() {
   writeFileSync(
     join(assetsRoot, 'images', 'task-1', 'icon.svg.meta.json'),
     JSON.stringify({
-      agent: 'main-operator',
+      agent: 'main',
       taskId: 'task-1',
       created: '2026-04-11T00:00:00.000Z',
       description: 'Vector icon',
@@ -123,7 +123,7 @@ function setupFixtures() {
   writeFileSync(
     join(assetsRoot, 'text', 'task-1', 'notes.md.meta.json'),
     JSON.stringify({
-      agent: 'main-operator',
+      agent: 'main',
       taskId: 'task-1',
       created: '2026-04-11T00:00:00.000Z',
       description: 'Meeting notes',
@@ -271,7 +271,7 @@ describe('assets multimodal indexing', () => {
     const pdfDoc = docs['assets/other/task-1/wyoming.pdf']
     expect(pdfDoc.description).toBe('Wyoming LLC operating agreement')
     expect(pdfDoc.tags).toBe('legal, llc')
-    expect(pdfDoc.agent).toBe('main-operator')
+    expect(pdfDoc.agent).toBe('main')
     expect(pdfDoc.task_id).toBe('task-1')
     expect(pdfDoc.asset_type).toBe('other')
     expect(pdfDoc.file_name).toBe('wyoming.pdf')

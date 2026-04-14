@@ -20,7 +20,7 @@ vi.mock('../../src/core/settings', () => ({
       failureCooldownMs: 60000,
       maxDispatched: 500,
     },
-    agents: ['main-operator', 'pixel', 'trainer'],
+    agents: ['main', 'pixel', 'trainer'],
     watchdog: { stuckThresholdMs: 30 * 60 * 1000 },
   }),
 }))

@@ -10,6 +10,7 @@ import { createTaskWithEffects } from '../../../src/core/task-service'
 import { appendAudit } from '../../../src/core/audit'
 import { getContentDir } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
+import { getMainAgentId } from '../../../src/core/main-agent'
 import type { Project, ProjectTask, ProjectStatus } from '../types'
 
 const log = createLogger('projects')
@@ -112,7 +113,7 @@ export async function createProject(opts: CreateProjectOpts): Promise<{ id: stri
       status: 'draft',
       created: now,
       updated: now,
-      owner: opts.owner || 'main-operator',
+      owner: opts.owner || getMainAgentId(),
       tasks: taskItems,
       assets: [],
       body: opts.body || (opts.title ? `# ${opts.title}\n` : ''),

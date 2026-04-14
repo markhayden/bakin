@@ -42,9 +42,9 @@ function detectFromOpenClaw(): string | null {
 }
 ```
 
-- `getMainAgentId()` replaces all hardcoded "main-operator" references that mean "the orchestrator"
-- Agent persona data (name, headshot, role description) remains in agent definition files keyed by the runtime ID
-- `~/.bakin/settings.json` stores `{ mainAgentId: "main-operator" }` — set during `bakin init` by auto-detecting from OpenClaw
+- `getMainAgentId()` replaces all hardcoded orchestrator-id references — the canonical id is `main`
+- Agent persona data (display name, headshot, role description) lives in OpenClaw `identity` and is resolved at render time via `getMainAgentName()`
+- `~/.bakin/settings.json` stores `{ mainAgentId: "main" }` — set during `bakin init` by auto-detecting from OpenClaw
 
 ### 3. Rename audit
 
@@ -64,8 +64,8 @@ Full grep audit for every variant that needs replacement:
 | `BakinEventBus` | `BakinEventBus` |
 | `@bakin/*` tsconfig paths | `@bakin/*` |
 | `bakin-plugin.json` | `PLUGIN_MANIFEST_FILE` |
-| `main-operator` (as orchestrator role) | `getMainAgentId()` |
-| `main-operator` (as persona data) | stays — it's agent-specific data |
+| hardcoded orchestrator id (was `main-operator`) | `getMainAgentId()` — canonical id is `main` |
+| orchestrator display name | `getMainAgentName()` — read from OpenClaw `identity.name` |
 
 ### 4. File/directory renames
 

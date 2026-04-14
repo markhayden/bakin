@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+vi.hoisted(() => {
+  const { mkdtempSync } = require('fs')
+  const { tmpdir } = require('os')
+  const { join } = require('path')
+  process.env.BAKIN_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
+  process.env.OPENCLAW_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
+})
+
 vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: vi.fn(() => '/tmp/bakin-test'),
   getBakinPaths: vi.fn(() => ({
     home: '/tmp/bakin-test',
     'assets.images': '/tmp/bakin-test/assets/images',

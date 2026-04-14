@@ -6,6 +6,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+    setupFiles: ['./tests/setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
@@ -17,6 +18,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, 'src'),
       '@bakin/core/openclaw-home': path.resolve(__dirname, 'packages/core/src/openclaw-home.ts'),
+      '@bakin/core/main-agent': path.resolve(__dirname, 'packages/core/src/main-agent.ts'),
       '@bakin/core': path.resolve(__dirname, 'packages/core/src/index.ts'),
       '@bakin/tasks': path.resolve(__dirname, 'plugins/tasks'),
       '@bakin/memory': path.resolve(__dirname, 'plugins/memory'),
