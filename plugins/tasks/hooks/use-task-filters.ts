@@ -30,7 +30,13 @@ interface TaskFilterState {
   statusFilter: string[]
 }
 
-export function filterBoardColumns(columns: TaskColumns, search: string, agentFilter: string, searchResults?: SearchResult[]): TaskColumns {
+export function filterBoardColumns(
+  columns: TaskColumns,
+  search: string,
+  agentFilter: string,
+  searchResults?: SearchResult[],
+  searchLoading?: boolean,
+): TaskColumns {
   const result = {} as TaskColumns
   const matchIds = searchResults?.length ? new Set(searchResults.map(r => r.id)) : null
 
@@ -39,7 +45,10 @@ export function filterBoardColumns(columns: TaskColumns, search: string, agentFi
     if (search) {
       if (matchIds) {
         tasks = tasks.filter(t => matchIds.has(t.id))
-      } else {
+      } else if (!searchLoading) {
+        // Only fall back to the local text match when the search hook has
+        // settled. During the 300ms debounce window we keep the full list
+        // so the board doesn't flash "no matches" before Antfly returns.
         tasks = tasks.filter(t => matchesSearch(t, search))
       }
     }
@@ -67,8 +76,8 @@ export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
   }, [search])
 
   const filteredColumns = useMemo(() => {
-    return filterBoardColumns(columns, search, agentFilter, searchHook.results)
-  }, [columns, search, agentFilter, searchHook.results])
+    return filterBoardColumns(columns, search, agentFilter, searchHook.results, searchHook.loading)
+  }, [columns, search, agentFilter, searchHook.results, searchHook.loading])
 
   const allTasksFlat = useMemo(() => {
     const flat: FlatTask[] = []
@@ -82,7 +91,9 @@ export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
       if (searchHook.results.length) {
         const matchIds = new Set(searchHook.results.map(r => r.id))
         filtered = filtered.filter(t => matchIds.has(t.id))
-      } else {
+      } else if (!searchHook.loading) {
+        // Same debounce-flash guard as filterBoardColumns — only run the
+        // local fallback once the search hook has settled.
         filtered = filtered.filter(t => matchesSearch(t, search))
       }
     }
@@ -90,12 +101,13 @@ export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
     if (statusFilter.length > 0) filtered = filtered.filter(t => statusFilter.includes(t.status))
     if (searchHook.results.length) filtered = reorderBySearchResults(filtered, searchHook.results)
     return filtered
-  }, [columns, search, agentFilter, statusFilter, searchHook.results])
+  }, [columns, search, agentFilter, statusFilter, searchHook.results, searchHook.loading])
 
   return {
     filteredColumns,
     allTasksFlat,
     aggregations: searchHook.aggregations,
     searchResults: searchHook.results,
+    searchLoading: searchHook.loading,
   }
 }

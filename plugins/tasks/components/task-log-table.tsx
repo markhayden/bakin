@@ -182,11 +182,11 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
             <TableHeader>
               <TableRow>
                 <TableHead className="w-20">ID</TableHead>
-                <SortableHead field="title" current={sortField} dir={sortDir} onSort={toggleSort}>Title</SortableHead>
-                <SortableHead field="agent" current={sortField} dir={sortDir} onSort={toggleSort}>Agent</SortableHead>
-                <SortableHead field="status" current={sortField} dir={sortDir} onSort={toggleSort}>Status</SortableHead>
-                <SortableHead field="createdAt" current={sortField} dir={sortDir} onSort={toggleSort}>Created</SortableHead>
-                <SortableHead field="completedAt" current={sortField} dir={sortDir} onSort={toggleSort}>Completed</SortableHead>
+                <SortableHead field="title" current={sortField} dir={sortDir} onSort={toggleSort} disabled={isSearching}>Title</SortableHead>
+                <SortableHead field="agent" current={sortField} dir={sortDir} onSort={toggleSort} disabled={isSearching}>Agent</SortableHead>
+                <SortableHead field="status" current={sortField} dir={sortDir} onSort={toggleSort} disabled={isSearching}>Status</SortableHead>
+                <SortableHead field="createdAt" current={sortField} dir={sortDir} onSort={toggleSort} disabled={isSearching}>Created</SortableHead>
+                <SortableHead field="completedAt" current={sortField} dir={sortDir} onSort={toggleSort} disabled={isSearching}>Completed</SortableHead>
                 <TableHead>Duration</TableHead>
               </TableRow>
             </TableHeader>
