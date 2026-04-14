@@ -149,8 +149,38 @@ vi.mock('lucide-react', () => {
     Plus: Icon,
     ListFilter: Icon,
     Search: Icon,
+    ChevronDown: Icon,
+    X: Icon,
   }
 })
+
+// FacetFilter uses Popover + Command shells; stub it to a minimal list of
+// toggle buttons so we can drive status selection without importing the
+// full shadcn tree.
+vi.mock('@/components/facet-filter', () => ({
+  FacetFilter: ({ options, selected, onChange }: {
+    label: string
+    options: Array<{ value: string; label: string }>
+    selected: string[]
+    onChange: (next: string[]) => void
+  }) => (
+    <div data-testid="facet-filter">
+      {options.map(o => {
+        const isSelected = selected.includes(o.value)
+        return (
+          <button
+            key={o.value}
+            data-testid={`status-${o.value}`}
+            data-selected={isSelected || undefined}
+            onClick={() => onChange(isSelected ? selected.filter(v => v !== o.value) : [...selected, o.value])}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  ),
+}))
 
 // project-card has its own dependencies — stub it to a simple title button.
 vi.mock('../../../plugins/projects/components/project-card', () => ({

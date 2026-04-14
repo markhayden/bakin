@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { Plus, ListFilter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
-import { useQueryState } from '@/hooks/use-query-state'
+import { FacetFilter, type FacetOption } from '@/components/facet-filter'
+import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
 import { useDebug } from '@/hooks/use-debug'
 import { ProjectCard } from './project-card'
@@ -16,28 +17,34 @@ interface ScoreInfo {
   indexScores?: Record<string, number>
 }
 
-const STATUS_TABS: { label: string; value: ProjectStatus | 'all' }[] = [
-  { label: 'All', value: 'all' },
-  { label: 'Draft', value: 'draft' },
-  { label: 'Active', value: 'active' },
-  { label: 'Completed', value: 'completed' },
-  { label: 'Archived', value: 'archived' },
+const STATUS_OPTIONS: FacetOption[] = [
+  { value: 'draft', label: 'Draft' },
+  { value: 'active', label: 'Active' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'archived', label: 'Archived' },
 ]
+
+const STATUS_VALUES: ReadonlySet<ProjectStatus> = new Set(['draft', 'active', 'completed', 'archived'])
 
 export function ProjectGrid() {
   const router = useRouter()
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [status, setStatus] = useQueryState('status', 'all')
+  const [statusFilter, setStatusFilter] = useQueryArrayState('status')
   const [search, setSearch] = useQueryState('q', '')
   const [debug] = useDebug()
 
+  // When exactly one status is selected we can ask the server to narrow the
+  // query; otherwise we fetch everything and apply the filter client-side so
+  // multi-select works without multi-request fan-out.
+  const serverStatus = statusFilter.length === 1 ? statusFilter[0] : undefined
+
   const fetchProjects = useCallback(async () => {
     try {
-      const url = status === 'all'
-        ? '/api/plugins/projects/'
-        : `/api/plugins/projects/?status=${status}`
+      const url = serverStatus
+        ? `/api/plugins/projects/?status=${serverStatus}`
+        : '/api/plugins/projects/'
       const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
@@ -46,7 +53,7 @@ export function ProjectGrid() {
     } finally {
       setLoading(false)
     }
-  }, [status])
+  }, [serverStatus])
 
   useEffect(() => {
     fetchProjects()
@@ -72,19 +79,25 @@ export function ProjectGrid() {
   }, [searchHook.results])
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return projects
+    // Multi-status client filter (single-status is already handled server-side).
+    let base = projects
+    if (statusFilter.length > 1) {
+      const wanted = new Set(statusFilter.filter((s): s is ProjectStatus => STATUS_VALUES.has(s as ProjectStatus)))
+      base = base.filter(p => wanted.has(p.status))
+    }
+    if (!search.trim()) return base
     if (searchHook.results.length) {
-      return projects
+      return base
         .filter(p => scoreMap.has(p.id))
         .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
     }
     // While the search hook is in flight, keep the full list visible
     // instead of flashing "no matching projects" during the 300ms
     // debounce window before Antfly returns.
-    if (searchHook.loading) return projects
+    if (searchHook.loading) return base
     const q = search.toLowerCase()
-    return projects.filter(p => p.title.toLowerCase().includes(q))
-  }, [projects, search, searchHook.results, searchHook.loading, scoreMap])
+    return base.filter(p => p.title.toLowerCase().includes(q))
+  }, [projects, statusFilter, search, searchHook.results, searchHook.loading, scoreMap])
 
   const handleNew = () => {
     router.push('/projects/new')
@@ -108,21 +121,12 @@ export function ProjectGrid() {
       {/* Status filter */}
       <div className="flex items-center gap-3">
         <ListFilter className="size-3.5 text-muted-foreground shrink-0" />
-        <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => setStatus(tab.value)}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                status === tab.value
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <FacetFilter
+          label="Status"
+          options={STATUS_OPTIONS}
+          selected={statusFilter}
+          onChange={setStatusFilter}
+        />
       </div>
 
       {/* Grid */}
@@ -131,7 +135,7 @@ export function ProjectGrid() {
           <div className="text-sm text-muted-foreground">Loading projects...</div>
         ) : filtered.length === 0 ? (
           <div className="text-sm text-muted-foreground">
-            {search ? 'No matching projects.' : status === 'all' ? 'No projects yet. Create one to get started.' : `No ${status} projects.`}
+            {search ? 'No matching projects.' : statusFilter.length === 0 ? 'No projects yet. Create one to get started.' : `No ${statusFilter.join('/')} projects.`}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
