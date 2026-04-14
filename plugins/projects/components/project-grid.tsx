@@ -7,8 +7,14 @@ import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
 import { useQueryState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
+import { useDebug } from '@/hooks/use-debug'
 import { ProjectCard } from './project-card'
 import type { ProjectSummary, ProjectStatus } from '../types'
+
+interface ScoreInfo {
+  score: number
+  indexScores?: Record<string, number>
+}
 
 const STATUS_TABS: { label: string; value: ProjectStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
@@ -25,6 +31,7 @@ export function ProjectGrid() {
 
   const [status, setStatus] = useQueryState('status', 'all')
   const [search, setSearch] = useQueryState('q', '')
+  const [debug] = useDebug()
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -52,18 +59,28 @@ export function ProjectGrid() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
+  // Build a score map keyed by project id. Projects index with the raw
+  // project.id (no Antfly prefix — see plugins/projects/index.ts reindex), so
+  // no prefix-strip is needed. Used for both the relevance reorder AND the
+  // debug-mode RRF/BM25/SEM overlay.
+  const scoreMap = useMemo(() => {
+    const map = new Map<string, ScoreInfo>()
+    for (const r of searchHook.results) {
+      map.set(r.id, { score: r.score, indexScores: r.indexScores })
+    }
+    return map
+  }, [searchHook.results])
+
   const filtered = useMemo(() => {
     if (!search.trim()) return projects
     if (searchHook.results.length) {
-      const matchIds = new Set(searchHook.results.map(r => r.id))
-      const scoreMap = new Map(searchHook.results.map(r => [r.id, r.score]))
       return projects
-        .filter(p => matchIds.has(p.id))
-        .sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0))
+        .filter(p => scoreMap.has(p.id))
+        .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
     }
     const q = search.toLowerCase()
     return projects.filter(p => p.title.toLowerCase().includes(q))
-  }, [projects, search, searchHook.results])
+  }, [projects, search, searchHook.results, scoreMap])
 
   const handleNew = () => {
     router.push('/projects/new')
@@ -114,13 +131,33 @@ export function ProjectGrid() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((p) => (
-              <ProjectCard
-                key={p.id}
-                project={p}
-                onClick={() => router.push(`/projects/${p.id}`)}
-              />
-            ))}
+            {filtered.map((p) => {
+              const scoreInfo = scoreMap.get(p.id)
+              const showScores = debug && scoreInfo && search.trim()
+              const semKey = 'embeddings'
+              const bm25Key = scoreInfo?.indexScores
+                ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
+                : undefined
+              return (
+                <div key={p.id} className="relative">
+                  <ProjectCard
+                    project={p}
+                    onClick={() => router.push(`/projects/${p.id}`)}
+                  />
+                  {showScores && scoreInfo && (
+                    <div className="absolute top-1.5 left-1.5 flex flex-col gap-0.5 font-mono text-[10px] bg-black/80 px-1.5 py-1 rounded pointer-events-none">
+                      <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
+                      <span className="text-cyan-400">
+                        BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+                      </span>
+                      <span className="text-purple-400">
+                        SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
