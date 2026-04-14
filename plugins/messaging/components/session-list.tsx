@@ -10,6 +10,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
+import type { SearchResult } from '@/hooks/use-search'
 import { DeleteSessionDialog } from './delete-session-dialog'
 import type { ContentAgent } from '../types'
 import { AGENT_INFO } from '../types'
@@ -30,12 +31,13 @@ interface SessionSummary {
 interface Props {
   onSelectSession: (sessionId: string) => void
   search?: string
+  searchResults?: SearchResult[]
   onCountChange?: (count: number) => void
   onCreateSession?: (agentId: string) => void
   creating?: boolean
 }
 
-export function SessionList({ onSelectSession, search, onCountChange, onCreateSession, creating }: Props) {
+export function SessionList({ onSelectSession, search, searchResults, onCountChange, onCreateSession, creating }: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<SessionSummary | null>(null)
@@ -74,15 +76,31 @@ export function SessionList({ onSelectSession, search, onCountChange, onCreateSe
     setDeleteTarget(null)
   }
 
-  // Filter by search
+  // Filter by search. When the Antfly-backed hook returned hits, trust them
+  // and reorder by score. When it returned nothing (or search is empty),
+  // fall back to a local substring match on title/agentId so the UI stays
+  // usable while the index is cold or disabled. Antfly keys look like
+  // `brainstorm-{sessionId}`, so we map by stripping that prefix.
   const filtered = useMemo(() => {
-    if (!search) return sessions
+    if (!search?.trim()) return sessions
+    if (searchResults && searchResults.length > 0) {
+      const matchIds = new Set<string>()
+      const scoreMap = new Map<string, number>()
+      for (const r of searchResults) {
+        const id = r.id.startsWith('brainstorm-') ? r.id.slice('brainstorm-'.length) : r.id
+        matchIds.add(id)
+        scoreMap.set(id, r.score)
+      }
+      return sessions
+        .filter(s => matchIds.has(s.id))
+        .sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0))
+    }
     const q = search.toLowerCase()
     return sessions.filter(s =>
       s.title.toLowerCase().includes(q) ||
       s.agentId.toLowerCase().includes(q)
     )
-  }, [sessions, search])
+  }, [sessions, search, searchResults])
 
   // Group by agent, active before completed, sorted by updatedAt desc
   const grouped = useMemo(() => {
