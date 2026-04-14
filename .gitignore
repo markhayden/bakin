@@ -48,8 +48,9 @@ next-env.d.ts
 mc-server.log
 mc-server-error.log
 
-# claude code (keep project content, ignore local settings)
+# claude code (keep project content, ignore local settings + runtime locks)
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # playwright mcp
 .playwright-mcp/
