@@ -96,7 +96,11 @@ export function AssetsPage() {
         result = result
           .filter(a => matchIds.has(a.path))
           .sort((a, b) => (scoreMap.get(b.path) ?? 0) - (scoreMap.get(a.path) ?? 0))
-      } else {
+      } else if (!searchHook.loading) {
+        // Only fall back to the local substring filter once the search
+        // hook has settled. During the 300ms debounce window we keep the
+        // full type-filtered list so the grid doesn't flash "no matches"
+        // before Antfly returns.
         const q = search.toLowerCase()
         result = result.filter(a =>
           a.filename.toLowerCase().includes(q) ||
@@ -107,7 +111,7 @@ export function AssetsPage() {
       }
     }
     return result
-  }, [assets, typeFilter, search, searchHook.results])
+  }, [assets, typeFilter, search, searchHook.results, searchHook.loading])
 
   const sorted = useMemo(() => {
     if (search && searchHook.results.length) return filtered
