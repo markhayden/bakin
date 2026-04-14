@@ -19,6 +19,8 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src'),
       '@bakin/core/openclaw-home': path.resolve(__dirname, 'packages/core/src/openclaw-home.ts'),
       '@bakin/core/main-agent': path.resolve(__dirname, 'packages/core/src/main-agent.ts'),
+      '@bakin/core/content-dir': path.resolve(__dirname, 'packages/core/src/content-dir.ts'),
+      '@bakin/core/settings': path.resolve(__dirname, 'packages/core/src/settings.ts'),
       '@bakin/core': path.resolve(__dirname, 'packages/core/src/index.ts'),
       '@bakin/tasks': path.resolve(__dirname, 'plugins/tasks'),
       '@bakin/memory': path.resolve(__dirname, 'plugins/memory'),
