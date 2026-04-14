@@ -79,7 +79,7 @@ vi.mock('@/core/sse', () => ({
 import {
   buildSearchAPI,
   getContentTypes,
-  getPluginTable,
+  getTableForPlugin,
   createRegisteredTables,
   resetSearchRegistry,
   reindexContentTypes,
@@ -124,7 +124,18 @@ describe('search-registry', () => {
 
     expect(getContentTypes().size).toBe(1)
     expect(getContentTypes().has('bakin_tasks')).toBe(true)
-    expect(getPluginTable('tasks')).toBe('bakin_tasks')
+    expect(getTableForPlugin('tasks')).toBe('bakin_tasks')
+  })
+
+  it('getTableForPlugin returns null for unknown plugin', () => {
+    expect(getTableForPlugin('nonexistent')).toBeNull()
+  })
+
+  it('getTableForPlugin throws if a plugin has multiple content types', () => {
+    const api = buildSearchAPI('multi')
+    api.registerContentType(makeDef('one'))
+    api.registerContentType(makeDef('two'))
+    expect(() => getTableForPlugin('multi')).toThrow(/multi.*2 registered/)
   })
 
   it('registerContentType preserves pluginId', () => {

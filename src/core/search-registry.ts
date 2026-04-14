@@ -274,10 +274,25 @@ export function getContentTypes(): Map<string, SearchContentTypeDefinition & { p
 }
 
 /**
- * Get the full table name for a plugin.
+ * Get the full table name for a plugin. Returns null when the plugin has
+ * no registered content type. Throws when a plugin has registered multiple
+ * content types — the API/MCP layers assume 1:1 plugin→table, and the spec
+ * §5.1d decision reinforces that. This is a defensive guard; no plugin
+ * ships more than one content type today.
  */
-export function getPluginTable(pluginId: string): string | undefined {
-  return getRegistry().pluginTables.get(pluginId)
+export function getTableForPlugin(pluginId: string): string | null {
+  const matches: string[] = []
+  for (const [tableName, def] of getRegistry().contentTypes) {
+    if (def.pluginId === pluginId) matches.push(tableName)
+  }
+  if (matches.length === 0) return null
+  if (matches.length > 1) {
+    throw new Error(
+      `Plugin "${pluginId}" has ${matches.length} registered content types (${matches.join(', ')}); expected 1. ` +
+        `The /search and MCP plugin-param routing assumes a single table per plugin.`,
+    )
+  }
+  return matches[0]
 }
 
 /**
