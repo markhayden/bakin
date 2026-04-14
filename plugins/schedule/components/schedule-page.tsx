@@ -241,6 +241,7 @@ export function SchedulePage() {
             onSkipNext={(id) => skipNext(id)}
             scoreMap={scoreMap}
             showScores={debug && !!search.trim()}
+            isSearching={!!search.trim()}
           />
         ) : view === 'today' ? (
           <CalendarToday jobs={filtered} onSelectJob={openJob} />
