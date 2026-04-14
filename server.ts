@@ -26,6 +26,7 @@ import * as vault from './src/core/vault'
 import * as openclaw from './src/core/openclaw-client'
 import { getMainAgentId } from './src/core/main-agent'
 import { handleJsonPost, jsonResponse } from './src/core/middleware'
+import { writeCrossPluginSearchResponse } from './src/core/api-search-handler'
 import * as watcher from './src/core/watcher'
 import * as dispatch from './src/core/dispatch'
 import * as watchdog from './src/core/watchdog'
@@ -198,21 +199,8 @@ app.prepare().then(async () => {
 
     // Search endpoint — cross-table or per-table Antfly search
     if (url.pathname === '/api/search' && req.method === 'GET') {
-      const query = url.searchParams.get('q')
-      if (!query) {
-        jsonResponse(res, 400, { error: 'Missing ?q= parameter' })
-        return
-      }
-      const { crossTableSearch } = require('./src/core/search-registry')
-      crossTableSearch(query, {
-        table: url.searchParams.get('table') || undefined,
-        limit: Number(url.searchParams.get('limit')) || undefined,
-        offset: Number(url.searchParams.get('offset')) || undefined,
-        facets: url.searchParams.get('facets')?.split(',').filter(Boolean) || undefined,
-      }).then((response: Record<string, unknown>) => {
-        jsonResponse(res, 200, response)
-      }).catch((err: unknown) => {
-        log.error('Search request failed', err)
+      writeCrossPluginSearchResponse(url, res).catch((err) => {
+        log.error('Search response write failed', err)
         jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
       })
       return
