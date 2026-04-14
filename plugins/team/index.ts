@@ -348,24 +348,6 @@ const teamPlugin: BakinPlugin = {
 
     // ─── REST Routes ───────────────────────────────────────────────────
 
-    // GET /search — search agents via Antfly
-    ctx.registerRoute({
-      path: '/search',
-      method: 'GET',
-      description: 'Search agents',
-      handler: async (req: Request) => {
-        const url = new URL(req.url, 'http://localhost')
-        const q = url.searchParams.get('q')
-        if (!q) return Response.json({ error: 'Missing ?q= parameter' }, { status: 400 })
-        return Response.json(await ctx.search.query({
-          q,
-          limit: Number(url.searchParams.get('limit')) || undefined,
-          offset: Number(url.searchParams.get('offset')) || undefined,
-          facets: url.searchParams.get('facets')?.split(',').filter(Boolean),
-        }))
-      },
-    })
-
     // GET / — List all agents with status
     ctx.registerRoute({
       path: '/',
