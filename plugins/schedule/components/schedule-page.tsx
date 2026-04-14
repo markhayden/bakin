@@ -76,6 +76,10 @@ export function SchedulePage() {
         .filter(j => scoreMap.has(j.id))
         .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
     }
+    // While the search hook is in flight, keep the full job list
+    // visible instead of flashing "no jobs" during the 300ms debounce
+    // window before Antfly returns.
+    if (searchHook.loading) return jobs
     const q = search.toLowerCase()
     return jobs.filter(j =>
       (j.displayName || '').toLowerCase().includes(q) ||
@@ -83,7 +87,7 @@ export function SchedulePage() {
       (j.agentId || '').toLowerCase().includes(q) ||
       j.humanSchedule.toLowerCase().includes(q)
     )
-  }, [jobs, search, searchHook.results, scoreMap])
+  }, [jobs, search, searchHook.results, searchHook.loading, scoreMap])
 
   // Derive drawer/form visibility from URL state
   const selectedJob = jobIdParam ? jobs.find(j => j.id === jobIdParam) ?? null : null
