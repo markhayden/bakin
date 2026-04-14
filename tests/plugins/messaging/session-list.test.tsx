@@ -53,6 +53,18 @@ vi.mock('lucide-react', () => ({
   CheckCircle: () => <span data-testid="check-circle" />,
   MoreHorizontal: () => <span />,
   Trash2: () => <span />,
+  ArrowUpDown: () => <span />,
+}))
+
+vi.mock('@/components/ui/table', () => ({
+  Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
+  TableHeader: ({ children }: { children: React.ReactNode }) => <thead>{children}</thead>,
+  TableBody: ({ children }: { children: React.ReactNode }) => <tbody>{children}</tbody>,
+  TableRow: ({ children, onClick, ...props }: { children: React.ReactNode; onClick?: () => void } & Record<string, unknown>) => (
+    <tr onClick={onClick} {...props}>{children}</tr>
+  ),
+  TableHead: ({ children }: { children: React.ReactNode }) => <th>{children}</th>,
+  TableCell: ({ children }: { children: React.ReactNode }) => <td>{children}</td>,
 }))
 
 vi.mock('@/components/ui/dropdown-menu', () => ({
@@ -172,9 +184,10 @@ describe('SessionList', () => {
     globalThis.fetch = mockFetch()
     render(<SessionList onSelectSession={vi.fn()} />)
     await waitFor(() => {
-      expect(screen.getByText('5 proposals')).toBeDefined()
+      expect(screen.getByText('3/5')).toBeDefined()
     })
-    expect(screen.getByText('3 proposals')).toBeDefined()
+    expect(screen.getByText('7/7')).toBeDefined()
+    expect(screen.getByText('1/3')).toBeDefined()
   })
 
   it('shows active before completed (sorting)', async () => {

@@ -154,8 +154,20 @@ vi.mock('lucide-react', () => {
     ListFilter: Icon,
     Link2: Icon,
     Search: Icon,
+    ArrowUpDown: Icon,
   }
 })
+
+vi.mock('@/components/ui/table', () => ({
+  Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
+  TableHeader: ({ children }: { children: React.ReactNode }) => <thead>{children}</thead>,
+  TableBody: ({ children }: { children: React.ReactNode }) => <tbody>{children}</tbody>,
+  TableRow: ({ children, onClick, ...props }: { children: React.ReactNode; onClick?: () => void } & Record<string, unknown>) => (
+    <tr onClick={onClick} {...props}>{children}</tr>
+  ),
+  TableHead: ({ children }: { children: React.ReactNode }) => <th>{children}</th>,
+  TableCell: ({ children }: { children: React.ReactNode }) => <td>{children}</td>,
+}))
 
 vi.mock('../../../plugins/messaging/components/planning-layout', () => ({
   PlanningLayout: () => <div data-testid="planning-layout" />,
