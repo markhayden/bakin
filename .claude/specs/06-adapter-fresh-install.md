@@ -82,7 +82,7 @@ Settings determine which bridge to use:
 // ~/.bakin/settings.json
 {
   "agentBridge": "openclaw",
-  "mainAgentId": "roscoe"
+  "mainAgentId": "main"
 }
 ```
 
@@ -135,7 +135,7 @@ Checking dependencies...
 
 Detecting agent bridge...
   Found OpenClaw config at ~/.openclaw/openclaw.json
-  Main agent: roscoe (from identity.name)
+  Main agent: main (display name "Roscoe" from identity.name)
 
 Creating ~/.bakin/ directory structure...
   ✓ settings.json

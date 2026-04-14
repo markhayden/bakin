@@ -106,6 +106,7 @@ describe('antfly', () => {
     const antfly = await import('@/core/antfly')
     expect(typeof antfly.enabled).toBe('function')
     expect(typeof antfly.initialize).toBe('function')
+    expect(typeof antfly.available).toBe('function')
     expect(typeof antfly.indexDocument).toBe('function')
     expect(typeof antfly.removeDocument).toBe('function')
     expect(typeof antfly.transformDocument).toBe('function')
@@ -125,6 +126,7 @@ describe('antfly', () => {
   it('should report disabled when settings say so', async () => {
     const antfly = await import('@/core/antfly')
     expect(antfly.enabled()).toBe(false)
+    expect(antfly.available()).toBe(false)
   })
 
   it('queryTable should return empty when disabled', async () => {

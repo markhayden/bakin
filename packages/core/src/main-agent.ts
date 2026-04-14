@@ -1,51 +1,114 @@
 /**
- * Main agent resolution for Bakin.
+ * Main agent (orchestrator) resolution for Bakin.
  *
- * The orchestrator agent name is NOT hardcoded in source.
- * It's resolved at runtime from settings or OpenClaw config.
+ * The orchestrator id is NOT hardcoded. It resolves dynamically per install:
+ *   1. `settings.mainAgentId` from ~/.bakin/settings.json — explicit override,
+ *      never auto-written. Set it by hand only if auto-detection picks the
+ *      wrong agent (e.g. two orchestrators in the same openclaw.json).
+ *   2. Auto-detect from OpenClaw: the agent whose `workspace` equals
+ *      `agents.defaults.workspace` (subagents override with per-agent paths).
+ *   3. Fallback: the first agent in `agents.list` with a populated
+ *      `subagents.allowAgents` listing (covers configs where the orchestrator
+ *      inherits the default workspace instead of setting it explicitly).
+ *
+ * If nothing resolves, throws — the caller should run onboarding or set
+ * `mainAgentId` in settings.json. Display names come from `identity.name`.
+ *
+ * Reads are mtime-cached: every call stats `openclaw.json` (cheap), re-parses
+ * only when the file changes. Rename the orchestrator in openclaw.json and the
+ * next call picks it up without a restart.
  */
-import { readFileSync } from 'fs'
+import { readFileSync, statSync } from 'fs'
 
 import { getSettings } from './settings'
 import { getOpenClawPath } from './openclaw-home'
 
-const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
-
-/**
- * Fallback mapping from OpenClaw canonical agent ids to Bakin display names.
- * Kept in sync with OPENCLAW_TO_BAKIN in packages/core/src/settings.ts — both
- * exist because settings.ts can't import from here without a cycle.
- */
-const OPENCLAW_ID_TO_BAKIN_NAME: Record<string, string> = { main: 'roscoe' }
-
-/**
- * Resolve the main/orchestrator agent ID.
- *
- * Resolution order:
- * 1. settings.json → mainAgentId
- * 2. OpenClaw config → agents.list → find id='main' → identity.name
- * 3. Hardcoded mapping (OpenClaw 'main' → Bakin 'roscoe')
- * 4. Fallback: 'main'
- */
-export function getMainAgentId(): string {
-  const settings = getSettings()
-  const fromSettings = (settings as unknown as Record<string, unknown>).mainAgentId
-  if (typeof fromSettings === 'string' && fromSettings) return fromSettings
-
-  const fromOpenClaw = detectFromOpenClaw()
-  if (fromOpenClaw) return fromOpenClaw
-
-  return OPENCLAW_ID_TO_BAKIN_NAME.main ?? 'main'
+interface OpenClawAgentEntry {
+  id: string
+  workspace?: string
+  identity?: { name?: string; emoji?: string }
+  subagents?: { allowAgents?: string[] }
 }
 
-function detectFromOpenClaw(): string | null {
+interface OpenClawConfig {
+  agents?: {
+    defaults?: { workspace?: string }
+    list?: OpenClawAgentEntry[]
+  }
+}
+
+export function getMainAgentId(): string {
+  const id = tryGetMainAgentId()
+  if (id) return id
+  throw new Error(
+    'Cannot resolve main agent id. Set `mainAgentId` in ~/.bakin/settings.json ' +
+    'or run `bakin onboard` to detect it from OpenClaw.'
+  )
+}
+
+/**
+ * Non-throwing variant for call sites that have a sensible degraded behavior
+ * (e.g. sort order, optional UI defaults, diagnostic logging).
+ */
+export function tryGetMainAgentId(): string | null {
+  const settings = getSettings()
+  const fromSettings = settings.mainAgentId
+  if (typeof fromSettings === 'string' && fromSettings) return fromSettings
+
+  return detectOrchestratorFromOpenClaw()
+}
+
+export function getMainAgentName(): string {
+  const id = getMainAgentId()
+  const entry = findOpenClawAgentById(id)
+  const name = entry?.identity?.name
+  if (typeof name === 'string' && name.trim().length > 0) return name
+  return id.charAt(0).toUpperCase() + id.slice(1)
+}
+
+function detectOrchestratorFromOpenClaw(): string | null {
+  const config = readOpenClawConfig()
+  if (!config) return null
+  const list = config.agents?.list
+  if (!Array.isArray(list) || list.length === 0) return null
+
+  const defaultWorkspace = config.agents?.defaults?.workspace
+  if (typeof defaultWorkspace === 'string' && defaultWorkspace) {
+    const workspaceMatch = list.find((a) => a.workspace === defaultWorkspace)
+    if (workspaceMatch) return workspaceMatch.id
+  }
+
+  const withSubagents = list.find(
+    (a) => Array.isArray(a.subagents?.allowAgents) && (a.subagents?.allowAgents?.length ?? 0) > 0
+  )
+  return withSubagents?.id ?? null
+}
+
+function findOpenClawAgentById(id: string): OpenClawAgentEntry | null {
+  const config = readOpenClawConfig()
+  const list = config?.agents?.list
+  if (!Array.isArray(list)) return null
+  return list.find((a) => a.id === id) ?? null
+}
+
+let cachedConfig: { mtimeMs: number; config: OpenClawConfig | null } | null = null
+
+function readOpenClawConfig(): OpenClawConfig | null {
+  const path = getOpenClawPath('openclaw.json')
+  let mtimeMs: number
   try {
-    const config = JSON.parse(readFileSync(OPENCLAW_JSON, 'utf-8'))
-    const mainAgent = (config.agents?.list as Array<{ id: string; identity?: { name?: string } }>)
-      ?.find((a: { id: string }) => a.id === 'main')
-    if (mainAgent?.identity?.name) return mainAgent.identity.name.toLowerCase()
-    return null
+    mtimeMs = statSync(path).mtimeMs
   } catch {
+    cachedConfig = null
     return null
   }
+  if (cachedConfig && cachedConfig.mtimeMs === mtimeMs) return cachedConfig.config
+  let config: OpenClawConfig | null
+  try {
+    config = JSON.parse(readFileSync(path, 'utf-8')) as OpenClawConfig
+  } catch {
+    config = null
+  }
+  cachedConfig = { mtimeMs, config }
+  return config
 }

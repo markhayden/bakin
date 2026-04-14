@@ -14,7 +14,7 @@ vi.mock('../../src/core/logger', () => ({
 
 vi.mock('../../src/core/settings', () => ({
   getSettings: vi.fn().mockReturnValue({
-    agents: ['roscoe', 'pixel', 'nemo'],
+    agents: ['main', 'pixel', 'nemo'],
   }),
 }))
 
@@ -69,7 +69,7 @@ describe('mcporter', () => {
   describe('serverName', () => {
     it('prefixes agent name with "bakin-"', () => {
       expect(serverName('pixel')).toBe('bakin-pixel')
-      expect(serverName('roscoe')).toBe('bakin-roscoe')
+      expect(serverName('main')).toBe('bakin-main')
     })
   })
 
@@ -132,12 +132,12 @@ describe('mcporter', () => {
     it('creates entries for all agents when no config exists', () => {
       const changes = syncConfig(3737)
       expect(changes).toHaveLength(3)
-      expect(changes).toContain('added bakin-roscoe')
+      expect(changes).toContain('added bakin-main')
       expect(changes).toContain('added bakin-pixel')
       expect(changes).toContain('added bakin-nemo')
 
       const config = JSON.parse(readFileSync(mcporterConfig, 'utf-8'))
-      expect(config.mcpServers['bakin-roscoe'].url).toBe('http://localhost:3737/mcp?agent=roscoe')
+      expect(config.mcpServers['bakin-main'].url).toBe('http://localhost:3737/mcp?agent=main')
     })
 
     it('returns empty when config is already up to date', () => {
@@ -153,14 +153,14 @@ describe('mcporter', () => {
       expect(changes.every(c => c.startsWith('updated'))).toBe(true)
 
       const config = JSON.parse(readFileSync(mcporterConfig, 'utf-8'))
-      expect(config.mcpServers['bakin-roscoe'].url).toContain('4000')
+      expect(config.mcpServers['bakin-main'].url).toContain('4000')
     })
 
     it('removes stale entries for agents no longer in settings', () => {
       mkdirSync(mcporterHome, { recursive: true })
       writeFileSync(mcporterConfig, JSON.stringify({
         mcpServers: {
-          'bakin-roscoe': { url: 'http://localhost:3737/mcp?agent=roscoe' },
+          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main' },
           'bakin-pixel': { url: 'http://localhost:3737/mcp?agent=pixel' },
           'bakin-nemo': { url: 'http://localhost:3737/mcp?agent=nemo' },
           'bakin-oldagent': { url: 'http://localhost:3737/mcp?agent=oldagent' },
@@ -217,7 +217,7 @@ describe('mcporter', () => {
       mkdirSync(mcporterHome, { recursive: true })
       writeFileSync(mcporterConfig, JSON.stringify({
         mcpServers: {
-          'bakin-roscoe': { url: 'http://localhost:3737/mcp?agent=roscoe' },
+          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main' },
           'bakin-stale': { url: 'http://localhost:3737/mcp?agent=stale' },
         },
       }))

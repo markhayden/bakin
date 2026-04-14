@@ -193,6 +193,10 @@ describe('PluginRegistryImpl', () => {
    * Write a fake plugin as a CommonJS .js file in tempDir.
    * The import path in loadPlugin is `../../${pluginPath}`, so we use
    * absolute paths and the plugin writes its own index.js.
+   *
+   * NOTE: fake plugins live under tempDir/fake-plugins/ (NOT tempDir/plugins/)
+   * because the content dir is also tempDir — if we put them in plugins/,
+   * loadUserPlugins would find them and try to re-load them as user plugins.
    */
   function writeFakePlugin(
     id: string,
@@ -206,7 +210,7 @@ describe('PluginRegistryImpl', () => {
       onSettingsChange?: string
     } = {},
   ): string {
-    const pluginDir = join(tempDir, 'plugins', id)
+    const pluginDir = join(tempDir, 'fake-plugins', id)
     mkdirSync(pluginDir, { recursive: true })
 
     const manifest = {

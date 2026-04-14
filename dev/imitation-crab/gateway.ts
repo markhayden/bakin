@@ -12,8 +12,7 @@ const CHAT_MODE = process.env.OPENCLAW_MOCK_CHAT_MODE || 'canned'
 
 // Agent name lookup for canned responses
 const AGENT_NAMES: Record<string, string> = {
-  main: 'Roscoe',
-  roscoe: 'Roscoe',
+  main: 'Crab',
   pixel: 'Pixel',
   rolo: 'Rolo',
   basil: 'Basil',

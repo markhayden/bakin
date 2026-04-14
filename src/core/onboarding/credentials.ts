@@ -18,6 +18,7 @@
  */
 import { existsSync, readFileSync } from 'fs'
 import { createLogger } from '../logger'
+import { getMainAgentId } from '@bakin/core/main-agent'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
@@ -48,7 +49,7 @@ function hasCredentialField(entry: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 async function checkLlm(): Promise<CheckResult> {
-  const profilePath = getOpenClawPath('agents', 'main', 'agent', 'auth-profiles.json')
+  const profilePath = getOpenClawPath('agents', getMainAgentId(), 'agent', 'auth-profiles.json')
 
   if (!existsSync(profilePath)) {
     return {

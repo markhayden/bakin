@@ -10,12 +10,10 @@ import { appendAudit } from './audit'
 import * as openclaw from './openclaw-client'
 import { isStale } from '../lib/format'
 import { getHookRegistry } from '../lib/plugin-registry'
+import { getMainAgentId } from '@bakin/core/main-agent'
 
 const log = createLogger('dispatch')
 const hooks = () => getHookRegistry()
-
-const AGENT_ID_MAP: Record<string, string> = { roscoe: 'main' }
-const resolveId = (name: string) => AGENT_ID_MAP[name] || name
 
 // Upstream openclaw error bodies land in task logs and audit JSONL via
 // the dispatch catch handlers. Bound the blast radius — a runaway gateway
@@ -186,15 +184,14 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         continue
       }
 
-      const targetAgent = task.agent ? resolveId(task.agent) : 'main'
-      const agentName = task.agent || 'roscoe'
+      const targetAgent = task.agent ?? getMainAgentId()
 
-      const message = buildDispatchMessage(task, agentName, contentDir, port)
+      const message = buildDispatchMessage(task, targetAgent, contentDir, port)
 
       try {
         // Move to inProgress BEFORE sending message to eliminate race condition
         // where fast agents complete before dispatch moves the task
-        await moveTaskToInProgress(task.id, agentName)
+        await moveTaskToInProgress(task.id, targetAgent)
         appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
         await openclaw.sendMessage(targetAgent, message)
@@ -298,13 +295,12 @@ export async function dispatchSingleTask(
     }
 
     // Regular task dispatch
-    const targetAgent = task.agent ? resolveId(task.agent) : 'main'
-    const agentName = task.agent || 'roscoe'
-    const message = buildDispatchMessage(task, agentName, contentDir, port)
+    const targetAgent = task.agent ?? getMainAgentId()
+    const message = buildDispatchMessage(task, targetAgent, contentDir, port)
 
     try {
       // Move to inProgress BEFORE sending message to eliminate race condition
-      await moveTaskToInProgress(task.id, agentName)
+      await moveTaskToInProgress(task.id, targetAgent)
       appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
       await openclaw.sendMessage(targetAgent, message)
@@ -384,7 +380,7 @@ export function buildDispatchMessage(
     return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, basil=research/strategy) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
-  if (task.agent === 'roscoe') {
+  if (task.agent === getMainAgentId()) {
     return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}\n\n${contactsRef} When done: \`${mc('bakin_report_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
@@ -522,7 +518,7 @@ async function dispatchWorkflowTask(
     const { columns: fresh } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; agent?: string; title?: string; workflowId?: string }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const stillInTodo = fresh.todo.some(t => t.id === task.id)
     if (stillInTodo) {
-      const firstAgent = activeAgents[0]?.agent || task.agent || 'roscoe'
+      const firstAgent = activeAgents[0]?.agent || task.agent || getMainAgentId()
       await moveTaskToInProgress(task.id, firstAgent)
       appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
     }
@@ -543,7 +539,7 @@ async function dispatchWorkflowTask(
       previousOutput?: Record<string, unknown>; priorStepOutput?: Record<string, unknown>;
       stepOutputs?: Record<string, Record<string, unknown>>; deny_tools?: string[]
     }
-    const targetAgent = resolveId(agent)
+    const targetAgent = agent
     // Pass contextTaskId so the step/complete API targets the right instance
     const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port)
 

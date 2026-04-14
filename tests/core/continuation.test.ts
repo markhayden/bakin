@@ -73,9 +73,9 @@ describe('continuation', () => {
     expect(mockClearDependency).toHaveBeenCalledWith('t2')
   })
 
-  it('maps roscoe agent to main for OpenClaw', async () => {
+  it('passes the canonical main agent id through unchanged', async () => {
     mockColumns({
-      todo: [{ id: 't3', title: 'Roscoe Task', agent: 'roscoe', dependsOn: 'completed-1' }],
+      todo: [{ id: 't3', title: 'Main Task', agent: 'main', dependsOn: 'completed-1' }],
       inProgress: [],
     })
 

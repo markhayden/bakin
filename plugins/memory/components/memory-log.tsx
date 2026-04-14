@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { useContentStore } from '@/hooks/use-content-store'
+import { useMainAgentId } from '@bakin/team/hooks/use-agent-store'
 import { parseMemoryLog } from '../lib/parser'
 import { Search, Plus, ChevronDown } from 'lucide-react'
 import type { MemoryEntry } from '@/types'
@@ -31,7 +32,6 @@ const TYPE_CONFIG = {
 } as const
 
 function extractAgent(text: string): string {
-  // Try to extract agent name from the text patterns like "(via Roscoe)" or "@roscoe"
   // For now, return empty — entries don't currently embed agent names
   return ''
 }
@@ -64,6 +64,7 @@ type FilterType = 'all' | MemoryEntry['type']
 export function MemoryLog() {
   const files = useContentStore((s) => s.files)
   const content = files['MEMORY-LOG.md'] || ''
+  const mainAgentId = useMainAgentId()
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<FilterType>('all')
   const [filterAgent, setFilterAgent] = useState('all')
@@ -113,13 +114,13 @@ export function MemoryLog() {
   }, [days, filterType, filterAgent, search])
 
   const handleSubmit = useCallback(async () => {
-    if (!newText.trim() || isSubmitting) return
+    if (!newText.trim() || isSubmitting || !mainAgentId) return
     setIsSubmitting(true)
     try {
       const res = await fetch('/api/memory/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: newType, agent: 'roscoe', text: newText.trim() }),
+        body: JSON.stringify({ type: newType, agent: mainAgentId, text: newText.trim() }),
       })
       if (res.ok) {
         setNewText('')
@@ -130,7 +131,7 @@ export function MemoryLog() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [newText, newType, isSubmitting])
+  }, [newText, newType, isSubmitting, mainAgentId])
 
   const today = new Date().toISOString().slice(0, 10)
   const isToday = (dateStr: string) => dateStr === today

@@ -108,7 +108,7 @@ and are managed by OpenClaw — they're not part of this repo.
 │   ├── OFFICE.md                     ← ASCII office map + multi-agent status
 │   ├── audit.jsonl                   ← Append-only event log (all state changes)
 │   ├── heartbeats/                   ← Per-agent heartbeat JSON (each agent writes own)
-│   │   ├── roscoe.json
+│   │   ├── main.json
 │   │   ├── patch.json
 │   │   ├── pixel.json
 │   │   ├── rolo.json
@@ -557,7 +557,7 @@ const server = http.createServer((req, res) => {
 
   // Agent control — shell out to openclaw CLI
   if (req.url.startsWith('/api/agents/')) {
-    // e.g., execSync('openclaw agent --agent roscoe --message "..." --deliver')
+    // e.g., execSync('openclaw agent --agent main --message "..." --deliver')
   }
 
   // Static files
@@ -719,7 +719,8 @@ multi-agent config. Each agent gets its own workspace but shares the
   "agents": {
     "list": [
       {
-        "id": "roscoe",
+        "id": "main",
+        "identity": { "name": "Roscoe", "emoji": "🎯" },
         "workspace": "~/.openclaw/workspace",
         "model": { "primary": "anthropic/claude-sonnet-4-6" },
         "default": true
@@ -758,7 +759,7 @@ multi-agent config. Each agent gets its own workspace but shares the
   "tools": {
     "agentToAgent": {
       "enabled": true,
-      "allow": ["roscoe", "patch", "pixel", "rolo", "basil"]
+      "allow": ["main", "patch", "pixel", "rolo", "basil"]
     }
   }
 }
@@ -875,7 +876,7 @@ built-in `HEARTBEAT.md` convention — each agent's workspace contains a
 Each agent writes a heartbeat file to the shared mission-control directory:
 ```
 ~/.openclaw/workspace/content/heartbeats/
-  roscoe.json
+  main.json
   patch.json
   pixel.json
   rolo.json
@@ -885,7 +886,7 @@ Each agent writes a heartbeat file to the shared mission-control directory:
 **Heartbeat file format:**
 ```json
 {
-  "agent": "roscoe",
+  "agent": "main",
   "status": "working",
   "currentTask": "Researching stock picks for AI thesis",
   "timestamp": "2026-03-18T14:45:00-06:00",
@@ -944,7 +945,7 @@ Dashboard POST /api/plugins/tasks/:taskId/assign
 For time-sensitive actions (task assignment, agent start/stop), the MC server
 can also trigger Roscoe directly via the OpenClaw gateway API:
 ```bash
-openclaw agent --agent roscoe --message "Mark assigned 'Build MC server v1' to patch" --deliver
+openclaw agent --agent main --message "Mark assigned 'Build MC server v1' to patch" --deliver
 ```
 
 ---
@@ -990,15 +991,15 @@ The MC server also appends directly for dashboard-initiated actions.
 
 **Event format:**
 ```jsonl
-{"ts":"2026-03-18T14:30:00-06:00","event":"task.created","agent":"roscoe","data":{"title":"Build MC server v1","assignee":"patch","column":"todo"}}
-{"ts":"2026-03-18T14:31:00-06:00","event":"task.moved","agent":"roscoe","data":{"title":"Build MC server v1","from":"todo","to":"in_progress"}}
+{"ts":"2026-03-18T14:30:00-06:00","event":"task.created","agent":"main","data":{"title":"Build MC server v1","assignee":"patch","column":"todo"}}
+{"ts":"2026-03-18T14:31:00-06:00","event":"task.moved","agent":"main","data":{"title":"Build MC server v1","from":"todo","to":"in_progress"}}
 {"ts":"2026-03-18T14:32:00-06:00","event":"task.assigned","agent":"mark","data":{"title":"Generate lentil soup hero image","assignee":"pixel","via":"dashboard"}}
 {"ts":"2026-03-18T14:35:00-06:00","event":"heartbeat","agent":"basil","data":{"status":"working","task":"Writing turmeric lentil soup recipe"}}
 {"ts":"2026-03-18T14:40:00-06:00","event":"task.completed","agent":"patch","data":{"title":"Build nanobanan integration","duration_min":120}}
-{"ts":"2026-03-18T14:41:00-06:00","event":"agent.health","agent":"roscoe","data":{"target":"rolo","status":"stale","missed_heartbeats":3}}
-{"ts":"2026-03-18T14:42:00-06:00","event":"agent.restart","agent":"roscoe","data":{"target":"rolo","reason":"missed 3 heartbeats"}}
+{"ts":"2026-03-18T14:41:00-06:00","event":"agent.health","agent":"main","data":{"target":"rolo","status":"stale","missed_heartbeats":3}}
+{"ts":"2026-03-18T14:42:00-06:00","event":"agent.restart","agent":"main","data":{"target":"rolo","reason":"missed 3 heartbeats"}}
 {"ts":"2026-03-18T15:00:00-06:00","event":"asset.created","agent":"pixel","data":{"file":"2026-03-18-lentil-soup-hero.jpg","brief_from":"basil","type":"image"}}
-{"ts":"2026-03-18T15:10:00-06:00","event":"content.published","agent":"roscoe","data":{"platform":"discord","channel":"#recipes","assets":["2026-03-18-lentil-soup-hero.jpg"]}}
+{"ts":"2026-03-18T15:10:00-06:00","event":"content.published","agent":"main","data":{"platform":"discord","channel":"#recipes","assets":["2026-03-18-lentil-soup-hero.jpg"]}}
 ```
 
 **Event types:**

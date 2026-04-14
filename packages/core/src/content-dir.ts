@@ -14,9 +14,48 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { APP_SLUG } from './constants'
 
-const BAKIN_HOME_DEFAULT = join(homedir(), `.${APP_SLUG}`)
+// Computed lazily (not at module load) so tests that `vi.mock('os', …)` to
+// redirect homedir() still work — vi.mock hoists the factory above module-
+// level code, and evaluating it at import time would TDZ-error on the
+// per-file testHome consts the factory captures.
+function bakinHomeDefault(): string {
+  return join(homedir(), `.${APP_SLUG}`)
+}
 
 let resolvedContentDir: string | null = null
+
+function isTestEnv(): boolean {
+  return process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || !!process.env.VITEST
+}
+
+// Refuse to resolve to the developer's REAL ~/.bakin/ during a test run. A
+// misconfigured test (missing vi.mock, stale cache, forgotten BAKIN_HOME
+// override) has repeatedly leaked test data into the production instance.
+// When this guard fires, the fix is to mock src/core/content-dir or set
+// BAKIN_HOME to a temp directory — never to remove the guard.
+//
+// The comparison uses process.env.HOME directly instead of os.homedir() so
+// tests that vi.mock('os') to redirect homedir() still benefit from the
+// guard — the mock changes the module's view, but the real shell $HOME is
+// the thing we're actually protecting.
+function realBakinHome(): string {
+  const realHome = process.env.HOME || process.env.USERPROFILE || ''
+  if (!realHome) return ''
+  return join(realHome, `.${APP_SLUG}`)
+}
+
+function assertSafeForTest(path: string): void {
+  if (!isTestEnv()) return
+  const real = realBakinHome()
+  if (real && path === real) {
+    throw new Error(
+      `[bakin] getContentDir() resolved to the real Bakin home (${real}) `
+      + `during a test run. This would write test data to your production instance. `
+      + `Fix: mock src/core/content-dir in this test, or set BAKIN_HOME to a temp `
+      + `directory before importing any Bakin module. See CLAUDE.md § Testing Rules.`
+    )
+  }
+}
 
 /**
  * Resolve the content directory path.
@@ -24,34 +63,28 @@ let resolvedContentDir: string | null = null
 export function getContentDir(): string {
   if (resolvedContentDir) return resolvedContentDir
 
+  const resolved = resolveContentDirInner()
+  assertSafeForTest(resolved)
+  resolvedContentDir = resolved
+  return resolvedContentDir
+}
+
+function resolveContentDirInner(): string {
   // 1. BAKIN_HOME env var
-  if (process.env.BAKIN_HOME) {
-    resolvedContentDir = process.env.BAKIN_HOME
-    return resolvedContentDir
-  }
+  if (process.env.BAKIN_HOME) return process.env.BAKIN_HOME
 
   // 2. CONTENT_DIR env var (existing compat)
-  if (process.env.CONTENT_DIR) {
-    resolvedContentDir = process.env.CONTENT_DIR
-    return resolvedContentDir
-  }
+  if (process.env.CONTENT_DIR) return process.env.CONTENT_DIR
 
   // 3. ~/.bakin/ if it exists
-  if (existsSync(BAKIN_HOME_DEFAULT)) {
-    resolvedContentDir = BAKIN_HOME_DEFAULT
-    return resolvedContentDir
-  }
+  if (existsSync(bakinHomeDefault())) return bakinHomeDefault()
 
   // 4. ./content/ fallback
   const localContent = join(process.cwd(), 'content')
-  if (existsSync(localContent)) {
-    resolvedContentDir = localContent
-    return resolvedContentDir
-  }
+  if (existsSync(localContent)) return localContent
 
   // Default: ./content/ even if it doesn't exist yet
-  resolvedContentDir = localContent
-  return resolvedContentDir
+  return localContent
 }
 
 /**
@@ -59,7 +92,7 @@ export function getContentDir(): string {
  */
 export function isUsingBakinHome(): boolean {
   const dir = getContentDir()
-  return dir === BAKIN_HOME_DEFAULT || dir === process.env.BAKIN_HOME
+  return dir === bakinHomeDefault() || dir === process.env.BAKIN_HOME
 }
 
 /**
@@ -129,7 +162,7 @@ export function getBakinPaths(): BakinPaths {
  * Called by `bakin init` CLI command or on first run.
  */
 export function initBakinHome(targetDir?: string): { created: string[]; seeded: string[] } {
-  const home = targetDir || BAKIN_HOME_DEFAULT
+  const home = targetDir || bakinHomeDefault()
   const created: string[] = []
   const seeded: string[] = []
 

@@ -118,7 +118,7 @@ function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
     isBakinJob: true,
     displayName: 'Daily Report',
     agentId: 'basil',
-    owner: 'roscoe',
+    owner: 'main',
     taskPrompt: 'Generate daily report',
     taskTitle: 'Report: {date}',
     allowOverlap: false,
@@ -139,7 +139,7 @@ function makeMergedJob(overrides: Partial<MergedJob> = {}): MergedJob {
     isBakinJob: true,
     displayName: 'Daily Report',
     agentId: 'basil',
-    owner: 'roscoe',
+    owner: 'main',
     requireTriage: false,
     paused: false,
     allowOverlap: false,
@@ -301,13 +301,13 @@ describe('schedule routes', () => {
       expect(body.error).toContain('Could not parse')
     })
 
-    it('defaults owner to roscoe', async () => {
+    it('defaults owner to the main agent', async () => {
       const route = findRoute(plugin.routes, 'POST', '/')!
       await callRoute(route, plugin.ctx, {
         body: { name: 'No Owner', schedule: '0 9 * * *' },
       })
       const meta = getJob('new-job-id')
-      expect(meta!.owner).toBe('roscoe')
+      expect(meta!.owner).toBe('main')
     })
 
     it('respects provided optional fields', async () => {
@@ -890,7 +890,7 @@ describe('schedule exec tools', () => {
       expect(meta!.displayName).toBe('Nightly Digest')
       expect(meta!.agentId).toBe('pixel')
       expect(meta!.isBakinJob).toBe(true)
-      expect(meta!.owner).toBe('roscoe')
+      expect(meta!.owner).toBe('main')
       expect(meta!.allowOverlap).toBe(false)
       expect(meta!.maxFailures).toBe(3)
       expect(meta!.consecutiveFailures).toBe(0)
@@ -1126,7 +1126,7 @@ describe('schedule exec tools', () => {
       expect(job.id).toBe('job-get')
       expect(job.name).toBe('Get Test')
       expect(job.agent).toBe('basil')
-      expect(job.owner).toBe('roscoe')
+      expect(job.owner).toBe('main')
       expect(job.paused).toBe(false)
       expect(job.workflowId).toBe('wf-1')
       expect(job.taskPrompt).toBe('Do stuff')

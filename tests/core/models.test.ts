@@ -1,4 +1,45 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { join } from 'path'
+
+const testHome = vi.hoisted(() => {
+  const { mkdtempSync } = require('fs')
+  const { tmpdir } = require('os')
+  const { join } = require('path')
+  const home = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
+  const openclaw = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
+  process.env.BAKIN_HOME = home
+  process.env.OPENCLAW_HOME = openclaw
+  return { home, openclaw }
+})
+
+vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: () => testHome.home,
+  getBakinPaths: () => ({
+    home: testHome.home,
+    memoryLog: join(testHome.home, 'MEMORY-LOG.md'),
+    messaging: join(testHome.home, 'messaging.json'),
+    audit: join(testHome.home, 'audit.jsonl'),
+    assets: join(testHome.home, 'assets'),
+    'assets.text': join(testHome.home, 'assets', 'text'),
+    'assets.images': join(testHome.home, 'assets', 'images'),
+    'assets.video': join(testHome.home, 'assets', 'video'),
+    'assets.audio': join(testHome.home, 'assets', 'audio'),
+    'assets.plans': join(testHome.home, 'assets', 'plans'),
+    'assets.data': join(testHome.home, 'assets', 'data'),
+    'assets.other': join(testHome.home, 'assets', 'other'),
+    agents: join(testHome.home, 'agents'),
+    personas: join(testHome.home, 'team', 'personas'),
+    team: join(testHome.home, 'team'),
+    heartbeats: join(testHome.home, 'heartbeats'),
+    inbox: join(testHome.home, 'inbox'),
+    projects: join(testHome.home, 'projects'),
+    workflows: join(testHome.home, 'workflows'),
+    settings: join(testHome.home, 'settings.json'),
+    logs: join(testHome.home, 'logs'),
+  }),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+}))
 
 vi.mock('../../src/core/logger', () => ({
   createLogger: () => ({
@@ -73,25 +114,25 @@ describe('models', () => {
       const agents = resolveAgents(SAMPLE_CONFIG as any)
       expect(agents.length).toBe(3)
 
-      const roscoe = agents.find(a => a.agentId === 'roscoe')!
-      expect(roscoe.effectiveModel).toBe('claude-sonnet-4-6') // uses default
-      expect(roscoe.ownModel).toBeNull()
+      const main = agents.find(a => a.agentId === 'main')!
+      expect(main.effectiveModel).toBe('claude-sonnet-4-6') // uses default
+      expect(main.ownModel).toBeNull()
 
       const pixel = agents.find(a => a.agentId === 'pixel')!
       expect(pixel.effectiveModel).toBe('claude-opus-4-6') // own model
       expect(pixel.ownModel).toBe('claude-opus-4-6')
     })
 
-    it('maps "main" agent id to "roscoe"', () => {
+    it('passes "main" agent id through unchanged', () => {
       const agents = resolveAgents(SAMPLE_CONFIG as any)
       const ids = agents.map(a => a.agentId)
-      expect(ids).toContain('roscoe')
-      expect(ids).not.toContain('main')
+      expect(ids).toContain('main')
+      expect(ids).not.toContain('roscoe')
     })
 
-    it('sorts roscoe first, then alphabetically', () => {
+    it('sorts main agent first, then alphabetically', () => {
       const agents = resolveAgents(SAMPLE_CONFIG as any)
-      expect(agents[0].agentId).toBe('roscoe')
+      expect(agents[0].agentId).toBe('main')
       // Remaining should be alphabetical by name
       const rest = agents.slice(1).map(a => a.name)
       expect(rest).toEqual([...rest].sort())
@@ -100,19 +141,23 @@ describe('models', () => {
     it('includes default and per-agent subagent models', () => {
       const agents = resolveAgents(SAMPLE_CONFIG as any)
 
-      const roscoe = agents.find(a => a.agentId === 'roscoe')!
-      expect(roscoe.defaultSubagentModel).toBe('claude-haiku-4-5')
-      expect(roscoe.subagentModel).toBeNull()
+      const main = agents.find(a => a.agentId === 'main')!
+      expect(main.defaultSubagentModel).toBe('claude-haiku-4-5')
+      expect(main.subagentModel).toBeNull()
 
       const nemo = agents.find(a => a.agentId === 'nemo')!
       expect(nemo.subagentModel).toBe('claude-sonnet-4-5')
     })
 
-    it('uses agent metadata from AGENT_META for known agents', () => {
+    it('reads identity.name and emoji directly from OpenClaw config', () => {
       const agents = resolveAgents(SAMPLE_CONFIG as any)
       const pixel = agents.find(a => a.agentId === 'pixel')!
       expect(pixel.name).toBe('Pixel')
       expect(pixel.emoji).toBe('🖼️')
+
+      const main = agents.find(a => a.agentId === 'main')!
+      expect(main.name).toBe('Roscoe')
+      expect(main.emoji).toBe('🐾')
     })
 
     it('falls back to identity/name for unknown agents', () => {

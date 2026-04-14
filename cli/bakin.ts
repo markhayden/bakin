@@ -3,8 +3,7 @@
  * Bakin CLI — command-line interface for Bakin orchestration platform.
  * All commands are thin wrappers around the Bakin HTTP API.
  */
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { getMainAgentId } from '@bakin/core/main-agent'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
@@ -13,26 +12,7 @@ import {
 
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
-// Resolve the orchestrator agent name from openclaw config.
-// Convention: 'main' in openclaw.json maps to the orchestrator display name.
-// Matches the resolution logic in src/core/models.ts — checks identity.name
-// first, falls back to the AGENT_META mapping ('main' → 'roscoe').
-function getCliAgent(): string {
-  try {
-    const configPath = getOpenClawPath('openclaw.json')
-    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
-    const mainAgent = (config.agents?.list as Array<{ id: string; identity?: { name?: string } }>)
-      ?.find(a => a.id === 'main')
-    // identity.name takes precedence; otherwise use the standard main→roscoe mapping
-    if (mainAgent?.identity?.name) return mainAgent.identity.name.toLowerCase()
-    // Same default as models.ts AGENT_META for 'main'
-    return 'roscoe'
-  } catch {
-    return 'roscoe'
-  }
-}
-
-const CLI_AGENT = getCliAgent()
+const CLI_AGENT = getMainAgentId()
 
 // ---------------------------------------------------------------------------
 // HTTP helpers
@@ -915,9 +895,9 @@ async function cmdStart(): Promise<void> {
 
 async function cmdLogs(filter?: string): Promise<void> {
   const { spawn, execSync } = await import('child_process')
-  const { join } = await import('path')
   const { existsSync } = await import('fs')
-  const auditPath = join(process.env.HOME || '~', '.bakin', 'audit.jsonl')
+  const { getBakinPaths } = await import('../packages/core/src/content-dir')
+  const auditPath = getBakinPaths().audit
 
   if (!existsSync(auditPath)) {
     console.error(`Audit log not found: ${auditPath}`)

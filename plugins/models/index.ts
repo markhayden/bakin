@@ -11,6 +11,7 @@ import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 // Relative
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
+import { tryGetMainAgentId } from '@bakin/core/main-agent'
 import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
 
 const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
@@ -109,11 +110,10 @@ async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
     : null
 
   const agents = config.agents.list.map((agent) => {
-    const bakinId = agent.id === 'main' ? 'roscoe' : agent.id
     // Resolve from team hook first, then OpenClaw identity, then ID
-    const teamAgent = teamAgents.find((a) => a.id === bakinId)
+    const teamAgent = teamAgents.find((a) => a.id === agent.id)
     const rawName = teamAgent?.name || agent.identity?.name || agent.name || agent.id
-    // Capitalize raw IDs that look like slugs (e.g. 'roscoe' → 'Roscoe')
+    // Capitalize raw IDs that look like slugs (e.g. 'main' → 'Main')
     const name = rawName === rawName.toLowerCase() && !rawName.includes(' ')
       ? rawName.charAt(0).toUpperCase() + rawName.slice(1)
       : rawName
@@ -122,7 +122,7 @@ async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
     const ownModel = agent.model?.primary ? normalizeModelId(agent.model.primary) : null
     const subagentModel = agent.subagents?.model ? normalizeModelId(agent.subagents.model) : null
     return {
-      agentId: bakinId,
+      agentId: agent.id,
       name,
       emoji,
       ownModel,
@@ -133,10 +133,13 @@ async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
     }
   })
 
-  // Sort: roscoe first, then alphabetically
+  // Sort: main agent first, then alphabetically
+  const mainId = tryGetMainAgentId()
   agents.sort((a, b) => {
-    if (a.agentId === 'roscoe') return -1
-    if (b.agentId === 'roscoe') return 1
+    if (mainId) {
+      if (a.agentId === mainId) return -1
+      if (b.agentId === mainId) return 1
+    }
     return a.name.localeCompare(b.name)
   })
 
@@ -417,15 +420,13 @@ const modelsPlugin: BakinPlugin = {
           const body = ConfigUpdateSchema.parse(raw)
           const { agentId } = body
 
-          const ocId = agentId === 'roscoe' ? 'main' : agentId
-
           // Capture old model for hook notification
           const agentsBefore = await resolveAgents(ctx)
           const before = agentsBefore.find((a) => a.agentId === agentId)
           const oldModel = before?.effectiveModel ?? null
 
           updateConfig((config) => {
-            const agent = config.agents.list.find((a) => a.id === ocId)
+            const agent = config.agents.list.find((a) => a.id === agentId)
             if (!agent) throw new Error(`Agent "${agentId}" not found`)
 
             if (body.ownModel !== undefined) {
