@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table'
+import { SortableHead, type SortDir } from '@/components/sortable-head'
 import { STATUS_BADGE_STYLES } from '../constants'
 import { useAgent } from '@bakin/team/hooks/use-agent-store'
 import { AgentAvatar } from '@/components/agent-avatar'
-import { ArrowUpDown } from 'lucide-react'
 import type { FlatTask } from '../hooks/use-task-filters'
 import type { TaskScoreInfo } from './task-card'
 import type { ColumnId } from '../types'
@@ -47,7 +47,6 @@ function getCompletedAt(t: TaskRow): string | undefined {
 }
 
 type SortField = 'title' | 'agent' | 'status' | 'createdAt' | 'completedAt'
-type SortDir = 'asc' | 'desc'
 
 interface TaskLogTableProps {
   /** Pre-filtered tasks from the parent (search + agent already applied) */
@@ -260,26 +259,3 @@ function AgentCell({ agentId }: { agentId: string }) {
   )
 }
 
-function SortableHead({ field, current, dir, onSort, children }: {
-  field: SortField
-  current: SortField
-  dir: SortDir
-  onSort: (f: SortField) => void
-  children: React.ReactNode
-}) {
-  const isActive = current === field
-  return (
-    <TableHead>
-      <button
-        onClick={() => onSort(field)}
-        className={`flex items-center gap-1 hover:text-foreground transition-colors ${
-          isActive ? 'text-foreground' : ''
-        }`}
-      >
-        {children}
-        <ArrowUpDown className={`size-3 ${isActive ? 'opacity-100' : 'opacity-40'}`} />
-        {isActive && <span className="text-[10px]">{dir === 'asc' ? '↑' : '↓'}</span>}
-      </button>
-    </TableHead>
-  )
-}

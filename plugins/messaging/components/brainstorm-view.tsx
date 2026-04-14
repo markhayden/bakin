@@ -15,13 +15,11 @@ import { AgentAvatar } from '@/components/agent-avatar'
 import { AgentFilter } from '@/components/agent-filter'
 import { useQueryState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
-import { AGENT_INFO } from '../types'
-import type { ContentAgent } from '../types'
+import { AGENT_INFO, type ContentAgent } from '../types'
+import { CONTENT_AGENTS } from '../constants'
 import { SessionList } from './session-list'
 import { PlanningLayout } from './planning-layout'
 import { NewSessionDialog } from './new-session-dialog'
-
-const CONTENT_AGENTS = Object.keys(AGENT_INFO) as ContentAgent[]
 
 export function BrainstormView() {
   const searchParams = useSearchParams()
@@ -39,6 +37,8 @@ export function BrainstormView() {
   useEffect(() => {
     if (search) searchHook.search(search)
     else searchHook.clear()
+    // searchHook is a fresh object each render; including it in deps would
+    // re-fire every tick. Only the query string change should re-run this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
@@ -129,15 +129,12 @@ export function BrainstormView() {
         }
       />
 
-      <div className="mt-4">
+      <div className="mt-4 flex flex-col gap-4">
         <AgentFilter
           agentIds={CONTENT_AGENTS}
           value={agentFilter}
           onChange={setAgentFilter}
         />
-      </div>
-
-      <div className="mt-4">
         <SessionList
           onSelectSession={pushSessionId}
           search={search}

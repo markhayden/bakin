@@ -44,16 +44,19 @@ export function buildDoc(session: PlanningSession): Record<string, unknown> {
     .filter(s => s.length > 0)
     .join('\n\n')
 
-  return {
+  const doc: Record<string, unknown> = {
     session_id: session.id,
     title: session.title ?? '',
     status: session.status ?? '',
     agent_id: session.agentId ?? '',
     message_body: messageBody,
     proposal_summaries: proposalSummaries,
-    created_at: session.createdAt ?? '',
-    updated_at: session.updatedAt ?? '',
   }
+  // Antfly rejects empty strings for `datetime` fields — omit the key
+  // entirely when the value is missing rather than forcing a coerce.
+  if (session.createdAt) doc.created_at = session.createdAt
+  if (session.updatedAt) doc.updated_at = session.updatedAt
+  return doc
 }
 
 /**

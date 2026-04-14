@@ -285,14 +285,46 @@ Located at `src/hooks/use-search.ts`. Provides Antfly-powered semantic search al
 
 **Currently wired in:** Tasks, Assets, Projects, Workflows, Schedule, Memory (audit timeline), Messaging (brainstorm).
 
+## AgentFilter
+
+`src/components/agent-filter.tsx` — Single-select agent pill strip with an "All" button. Used on every plugin page that has a per-agent filter (tasks, schedule, messaging calendar, brainstorm).
+
+```tsx
+<AgentFilter
+  agentIds={agentIds}           // any string[] — useAgentIds() for OpenClaw agents, CONTENT_AGENTS for messaging
+  value={agentFilter}            // current selection ('all' or an id)
+  onChange={setAgentFilter}      // typically wired to useQueryState('agent', 'all')
+/>
+```
+
+Always back the `value` with `useQueryState('agent', 'all')` so the selection is bookmarkable and survives back/forward navigation. The component is purely presentational — it does not know about `useAgentIds` or `CONTENT_AGENTS`, so the caller picks the source.
+
+## SortableHead
+
+`src/components/sortable-head.tsx` — Generic sortable `<TableHead>` cell for list tables. Click toggles ascending/descending; clicking a different field switches to that field and resets to descending. Generic over the field union so each table stays type-safe.
+
+```tsx
+type SortField = 'title' | 'agent' | 'updated'
+const [field, setField] = useState<SortField>('updated')
+const [dir, setDir] = useState<SortDir>('desc')
+
+<SortableHead field="title" current={field} dir={dir} onSort={toggleSort}>Title</SortableHead>
+<SortableHead field="agent" current={field} dir={dir} onSort={toggleSort}>Agent</SortableHead>
+<SortableHead field="updated" current={field} dir={dir} onSort={toggleSort} disabled={isSearching}>Updated</SortableHead>
+```
+
+Set `disabled` while a search is active so the upstream relevance order (e.g. Antfly RRF) wins — the cell still renders but clicks are ignored and the arrow indicator hides. Used by tasks' task-log-table and messaging's session-list.
+
 ## Key Files
 
 ```
 src/components/bakin-drawer.tsx      — Resizable drawer shell
+src/components/agent-filter.tsx      — Single-select agent pill strip
 src/components/agent-select.tsx      — Agent picker with avatars
 src/components/model-select.tsx      — Model picker grouped by tier
 src/components/plugin-header.tsx     — Page header with search + actions
 src/components/facet-filter.tsx      — Multi-select filter with optional Antfly counts
+src/components/sortable-head.tsx     — Generic sortable table header cell
 src/hooks/use-search.ts              — Search hook (Antfly-backed) with debounce + fallback
 src/hooks/use-gateway-status.ts     — Gateway restart sync checker
 src/components/ui/dropdown-menu.tsx  — Base dropdown (focus: bg-secondary)
