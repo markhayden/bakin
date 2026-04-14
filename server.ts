@@ -69,9 +69,6 @@ app.prepare().then(async () => {
   // Initialize vault (load credentials from disk)
   vault.initialize()
 
-  // Load settings (initializes with defaults if no settings file)
-  const settings = getSettings()
-
   // Initialize plugin registry
   log.info('Loading plugins...')
   await pluginRegistry.initialize(config, storage, eventBus)
@@ -96,53 +93,10 @@ app.prepare().then(async () => {
   // and we trigger a full reindex after plugins are ready.
   const migration = await migrateIfNeeded()
 
-  // Register audit content type for search (core module, not a plugin)
-  const { createRegisteredTables, buildSearchAPI, runPendingReconciles } = await import('./src/core/search-registry')
-  const auditSearch = buildSearchAPI('_audit')
-  auditSearch.registerContentType({
-    table: 'audit',
-    schema: {
-      event: { type: 'keyword' },
-      agent: { type: 'keyword' },
-      channel: { type: 'keyword' },
-      content: { type: 'text' },
-      created_at: { type: 'datetime' },
-    },
-    searchableFields: ['content', 'event'],
-    rerankField: 'content',
-    embeddingTemplate: '{{event}} {{agent}} {{content}}',
-    facets: ['event', 'agent', 'channel'],
-    ttl: settings.antfly.auditTtl,
-    ttlField: 'created_at',
-    reindex: async function* () {
-      // Read audit.jsonl and yield each entry
-      const { createReadStream } = await import('fs')
-      const { createInterface } = await import('readline')
-      const auditPath = join(CONTENT_DIR, 'audit.jsonl')
-      if (!existsSync(auditPath)) return
-      const rl = createInterface({ input: createReadStream(auditPath) })
-      for await (const line of rl) {
-        if (!line.trim()) continue
-        try {
-          const entry = JSON.parse(line)
-          const key = `audit-${entry.ts}-${entry.event}`
-          yield {
-            key,
-            doc: {
-              event: entry.event,
-              agent: entry.agent,
-              channel: entry.channel || '',
-              content: `[${entry.ts}] ${entry.event} by ${entry.agent}: ${JSON.stringify(entry.data || {})}`,
-              created_at: entry.ts,
-            },
-          }
-        } catch { /* skip malformed lines */ }
-      }
-    },
-    verifyExists: async () => true, // audit entries are append-only, never deleted
-  })
-
-  // Create Antfly tables for all registered search content types
+  // Create Antfly tables for all registered search content types.
+  // Plugins (including memory, which owns the audit content type)
+  // registered their schemas during pluginRegistry.initialize() above.
+  const { createRegisteredTables, runPendingReconciles } = await import('./src/core/search-registry')
   await createRegisteredTables()
 
   // Drain any startup reconciles enqueued by registerFileBackedContentType.
