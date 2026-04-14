@@ -13,6 +13,7 @@ import { createLogger } from './logger'
 // indexCompletedTask removed — tasks plugin now handles indexing via ctx.search
 import { checkAndContinueDependents } from './continuation'
 import * as openclaw from './openclaw-client'
+import { getMainAgentId } from './main-agent'
 import { getHookRegistry } from '../lib/plugin-registry'
 
 const log = createLogger('task-service')
@@ -284,7 +285,7 @@ export async function reportComplete(
   // Notify orchestrator
   const title = await resolveTitle(taskId)
   try {
-    await openclaw.sendMessage('main', `TASK COMPLETE: ${title} — ${summary}`)
+    await openclaw.sendMessage(getMainAgentId(), `TASK COMPLETE: ${title} — ${summary}`)
   } catch (err) {
     log.warn('Failed to notify orchestrator of task completion', err)
   }

@@ -1,2 +1,2 @@
 // Re-export from @bakin/core
-export { getMainAgentId, getMainAgentName } from '../../packages/core/src/main-agent'
+export { getMainAgentId, getMainAgentName, tryGetMainAgentId } from '../../packages/core/src/main-agent'

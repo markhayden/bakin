@@ -36,7 +36,7 @@ export function JobForm({
   initial?: Partial<JobFormData>
   mode?: 'create' | 'edit' | 'duplicate'
 }) {
-  const mainAgentId = useMainAgentId() ?? 'main'
+  const mainAgentId = useMainAgentId()
   const [name, setName] = useState(initial?.name ?? '')
   const [schedule, setSchedule] = useState(initial?.schedule ?? '')
   const [agentId, setAgentId] = useState<string>(initial?.agentId ?? '')
@@ -44,7 +44,7 @@ export function JobForm({
   const [advanced, setAdvanced] = useState(false)
   const [workflowId, setWorkflowId] = useState(initial?.workflowId ?? '')
   const [taskTitle, setTaskTitle] = useState(initial?.taskTitle ?? '')
-  const [owner, setOwner] = useState(initial?.owner ?? mainAgentId)
+  const [owner, setOwner] = useState(initial?.owner ?? mainAgentId ?? '')
   const [requireTriage, setRequireTriage] = useState(initial?.requireTriage ?? false)
   const [allowOverlap, setAllowOverlap] = useState(initial?.allowOverlap ?? false)
   const [maxFailures, setMaxFailures] = useState(initial?.maxFailures ?? 3)
@@ -59,13 +59,19 @@ export function JobForm({
       setPrompt(initial.taskPrompt ?? '')
       setWorkflowId(initial.workflowId ?? '')
       setTaskTitle(initial.taskTitle ?? '')
-      setOwner(initial.owner ?? mainAgentId)
+      setOwner(initial.owner ?? mainAgentId ?? '')
       setRequireTriage(initial.requireTriage ?? false)
       setAllowOverlap(initial.allowOverlap ?? false)
       setMaxFailures(initial.maxFailures ?? 3)
       setParsedOk(mode === 'edit')
     }
   }, [initial, mode])
+
+  // Sync default owner once main agent id resolves from the team store.
+  useEffect(() => {
+    if (!mainAgentId) return
+    setOwner((prev) => (prev ? prev : mainAgentId))
+  }, [mainAgentId])
 
   const canSubmit = name.trim() && schedule.trim() && parsedOk && !submitting
 
@@ -177,7 +183,7 @@ export function JobForm({
             <Label className="text-sm">Owner</Label>
             <AgentSelect
               value={owner}
-              onValueChange={(v) => setOwner(v ?? mainAgentId)}
+              onValueChange={(v) => setOwner(v ?? mainAgentId ?? '')}
               className="text-sm"
             />
           </div>

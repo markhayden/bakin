@@ -11,6 +11,7 @@ import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 // Relative
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
+import { tryGetMainAgentId } from '@bakin/core/main-agent'
 import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
 
 const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
@@ -133,9 +134,12 @@ async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
   })
 
   // Sort: main agent first, then alphabetically
+  const mainId = tryGetMainAgentId()
   agents.sort((a, b) => {
-    if (a.agentId === 'main') return -1
-    if (b.agentId === 'main') return 1
+    if (mainId) {
+      if (a.agentId === mainId) return -1
+      if (b.agentId === mainId) return 1
+    }
     return a.name.localeCompare(b.name)
   })
 

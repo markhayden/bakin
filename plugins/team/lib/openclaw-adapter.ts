@@ -5,7 +5,7 @@
  *
  * This module centralizes all access to ~/.openclaw/ for agent data:
  * - openclaw.json → agent roster, models, identity, subagent perms
- * - workspace/ → main agent (id === 'main') workspace files
+ * - workspace/ → main agent workspace files (id resolved via getMainAgentId)
  * - workspaces/{id}/ → subagent workspace files
  * - agents/{id}/sessions/ → session JSONL for usage tracking
  *
@@ -16,6 +16,7 @@ import { readFileSync, readdirSync, writeFileSync, existsSync, statSync, mkdirSy
 import { join } from 'path'
 import { createLogger } from '../../../src/core/logger'
 import { getOpenClawHome, getOpenClawPath } from '@bakin/core/openclaw-home'
+import { tryGetMainAgentId } from '@bakin/core/main-agent'
 import type { AgentMeta, AgentProfile, SkillSummary } from '../types'
 
 const log = createLogger('team:openclaw')
@@ -95,7 +96,7 @@ export function getAgentIds(): string[] {
 
 /**
  * Resolve the workspace path for an agent.
- * Main agent (id === 'main') uses ~/.openclaw/workspace/
+ * Main agent (resolved via tryGetMainAgentId) uses ~/.openclaw/workspace/
  * Subagents use ~/.openclaw/workspaces/{id}/
  */
 export function getWorkspacePath(agentId: string): string {
@@ -105,8 +106,8 @@ export function getWorkspacePath(agentId: string): string {
   // If agent has an explicit workspace path, use it
   if (agent?.workspace) return agent.workspace
 
-  // Main agent default
-  if (agentId === 'main') {
+  // Main agent default — resolve orchestrator id dynamically
+  if (agentId === tryGetMainAgentId()) {
     return config.agents?.defaults?.workspace ?? join(OPENCLAW_ROOT, 'workspace')
   }
 
@@ -388,6 +389,6 @@ function resolveRole(agentId: string): string {
   }
 
   // Main agent fallback
-  if (agentId === 'main') return 'Orchestrator'
+  if (agentId === tryGetMainAgentId()) return 'Orchestrator'
   return 'Agent'
 }
