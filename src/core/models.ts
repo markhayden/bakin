@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import * as vault from './vault'
+import { tryGetMainAgentId } from './main-agent'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 
 const log = createLogger('models')
@@ -100,9 +101,12 @@ export function resolveAgents(config?: OpenclawConfig): AgentModelConfig[] {
     }
   })
 
+  const mainId = tryGetMainAgentId()
   agents.sort((a, b) => {
-    if (a.agentId === 'main') return -1
-    if (b.agentId === 'main') return 1
+    if (mainId) {
+      if (a.agentId === mainId) return -1
+      if (b.agentId === mainId) return 1
+    }
     return a.name.localeCompare(b.name)
   })
 

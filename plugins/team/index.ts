@@ -469,7 +469,7 @@ const teamPlugin: BakinPlugin = {
           if (!agentId) return Response.json({ error: 'agentId is required' }, { status: 400 })
 
           // Prevent deleting the main agent
-          if (agentId === 'main') {
+          if (agentId === getMainAgentId()) {
             return Response.json({ error: 'Cannot delete the main orchestrator agent' }, { status: 403 })
           }
 

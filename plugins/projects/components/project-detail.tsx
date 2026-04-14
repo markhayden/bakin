@@ -110,7 +110,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   const router = useRouter()
   const isNew = !projectId
   const currentId = projectId || ''
-  const mainAgentId = useMainAgentId() ?? 'main'
+  const mainAgentId = useMainAgentId() ?? ''
   const [project, setProject] = useState<ProjectData | null>(null)
   const [loading, setLoading] = useState(!isNew)
 
@@ -184,6 +184,16 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
       fetchProject(initialEdit)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync default owner once main agent id resolves from the team store.
+  useEffect(() => {
+    if (!mainAgentId) return
+    setBrainstormAgent((prev) => (prev ? prev : mainAgentId))
+    if (isNew) {
+      setEditOwner((prev) => (prev ? prev : mainAgentId))
+      setProject((prev) => (prev && !prev.owner ? { ...prev, owner: mainAgentId } : prev))
+    }
+  }, [mainAgentId, isNew])
 
   // Close status dropdown on outside click
   useEffect(() => {

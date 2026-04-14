@@ -16,7 +16,7 @@ import { MarkdownContent } from '@/components/markdown-content'
 import { ModelSelect } from '@/components/model-select'
 import { useGatewayStatus } from '@/hooks/use-gateway-status'
 import type { AvailableModel } from '@bakin/models/types'
-import { useAgentStore, useAgentColor } from '../hooks/use-agent-store'
+import { useAgentStore, useAgentColor, useMainAgentId } from '../hooks/use-agent-store'
 import type { AgentProfile, SkillSummary } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
 
@@ -35,6 +35,7 @@ const TABS: { id: Tab; label: string }[] = [
 export function AgentDetail({ agentId }: { agentId: string }) {
   const router = useRouter()
   const accentColor = useAgentColor(agentId)
+  const mainAgentId = useMainAgentId()
   const teams = useAgentStore((s) => s.teams)
   const displaySettings = useAgentStore((s) => s.displaySettings)
   const reload = useAgentStore((s) => s.load)
@@ -211,7 +212,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
             )}
           </div>
         </div>
-        {agentId !== 'main' && (
+        {agentId !== mainAgentId && (
           <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive shrink-0" onClick={() => setDeleteOpen(true)}>
             <Trash2 className="size-4" />
           </Button>

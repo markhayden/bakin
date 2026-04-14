@@ -300,10 +300,10 @@ function deepMerge(defaults: Record<string, unknown>, overrides: Record<string, 
 
 export function getSettings(): BakinSettings {
   let settings = getCachedSettings()
+  let overrides: Record<string, unknown> = {}
 
   if (!settings) {
     const settingsPath = getSettingsPath()
-    let overrides: Record<string, unknown> = {}
 
     try {
       if (fs.existsSync(settingsPath)) {
@@ -334,21 +334,23 @@ export function getSettings(): BakinSettings {
     }
 
     setCachedSettings(settings)
+  } else {
+    const settingsPath = getSettingsPath()
+    try {
+      if (fs.existsSync(settingsPath)) {
+        overrides = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      }
+    } catch {
+      // keep cached settings, treat as no explicit overrides
+    }
   }
 
-  // Always refresh agents from OpenClaw (mtime-cached, cheap when unchanged).
-  // This ensures agents added via OpenClaw directly are picked up without
-  // needing a Bakin restart or explicit cache bust.
-  if (!settings.agents.length) {
+  const hasExplicitAgentsOverride = Array.isArray(overrides.agents)
+
+  // If the user did not explicitly set an agent roster, mirror OpenClaw.
+  // If they did, respect it and do not overwrite it based on openclaw.json mtime.
+  if (!hasExplicitAgentsOverride) {
     settings.agents = readAgentIdsFromOpenClaw()
-  } else {
-    // Check if openclaw.json changed — mtime comparison is a single stat() call
-    try {
-      const stat = fs.statSync(getOpenClawPath('openclaw.json'))
-      if (stat.mtimeMs !== _g.__bakinOpenClawMtime) {
-        settings.agents = readAgentIdsFromOpenClaw()
-      }
-    } catch { /* keep cached agents */ }
   }
 
   return settings

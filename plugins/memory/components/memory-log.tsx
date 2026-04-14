@@ -64,7 +64,7 @@ type FilterType = 'all' | MemoryEntry['type']
 export function MemoryLog() {
   const files = useContentStore((s) => s.files)
   const content = files['MEMORY-LOG.md'] || ''
-  const mainAgentId = useMainAgentId() ?? 'main'
+  const mainAgentId = useMainAgentId()
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<FilterType>('all')
   const [filterAgent, setFilterAgent] = useState('all')
@@ -114,7 +114,7 @@ export function MemoryLog() {
   }, [days, filterType, filterAgent, search])
 
   const handleSubmit = useCallback(async () => {
-    if (!newText.trim() || isSubmitting) return
+    if (!newText.trim() || isSubmitting || !mainAgentId) return
     setIsSubmitting(true)
     try {
       const res = await fetch('/api/memory/log', {
