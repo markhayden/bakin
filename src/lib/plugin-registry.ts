@@ -4,7 +4,6 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { homedir } from 'os'
 import type {
   BakinConfig,
   BakinPlugin,
@@ -273,8 +272,7 @@ class PluginRegistryImpl {
    * User plugins with the same ID as built-in plugins override them.
    */
   private async loadUserPlugins(storage: StorageAdapter, events: EventBus): Promise<void> {
-    const bakinHome = process.env.BAKIN_HOME || join(homedir(), '.bakin')
-    const userPluginsDir = join(bakinHome, 'plugins')
+    const userPluginsDir = join(getContentDir(), 'plugins')
 
     if (!existsSync(userPluginsDir)) return
 

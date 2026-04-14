@@ -895,9 +895,9 @@ async function cmdStart(): Promise<void> {
 
 async function cmdLogs(filter?: string): Promise<void> {
   const { spawn, execSync } = await import('child_process')
-  const { join } = await import('path')
   const { existsSync } = await import('fs')
-  const auditPath = join(process.env.HOME || '~', '.bakin', 'audit.jsonl')
+  const { getBakinPaths } = await import('../packages/core/src/content-dir')
+  const auditPath = getBakinPaths().audit
 
   if (!existsSync(auditPath)) {
     console.error(`Audit log not found: ${auditPath}`)
