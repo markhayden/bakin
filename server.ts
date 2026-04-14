@@ -320,18 +320,6 @@ app.prepare().then(async () => {
       return
     }
 
-    // Antfly health endpoint
-    if (url.pathname === '/api/antfly/health' && req.method === 'GET') {
-      const { getSearchHealth } = require('./src/core/search-registry')
-      getSearchHealth().then((health: Record<string, unknown>) => {
-        jsonResponse(res, 200, health)
-      }).catch((err: unknown) => {
-        log.error('Antfly health check failed', err)
-        jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
-      })
-      return
-    }
-
     // Plugin install/remove endpoints
     if (url.pathname === '/api/plugins/install' && req.method === 'POST') {
       handleJsonPost(req, res, async (body) => {
