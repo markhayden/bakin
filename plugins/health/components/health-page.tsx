@@ -32,6 +32,7 @@ interface DiagnosticResult {
 interface DoctorData {
   results: DiagnosticResult[]
   summary: { total: number; errors: number; warnings: number }
+  cachedAt?: string
 }
 
 interface ServerData {
@@ -166,6 +167,7 @@ function formatTime(iso: string): string {
 function formatAge(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(ms / 60_000)
+  if (mins < 1) return 'just now'
   if (mins < 60) return `${mins}m ago`
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `${hrs}h ago`
@@ -996,7 +998,17 @@ export function HealthPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              <span>Diagnostics</span>
+              <span className="flex items-baseline gap-2">
+                <span>Diagnostics</span>
+                {doctor.cachedAt && (
+                  <span
+                    className="text-xs font-normal text-muted-foreground"
+                    title={new Date(doctor.cachedAt).toLocaleString()}
+                  >
+                    ran {formatAge(doctor.cachedAt)}
+                  </span>
+                )}
+              </span>
               <div className="flex gap-2 text-xs">
                 <Badge className={STATUS_STYLES.ok}>
                   {doctor.summary.total - doctor.summary.errors - doctor.summary.warnings} ok
