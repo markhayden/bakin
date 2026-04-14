@@ -782,5 +782,64 @@ steps:
       const agents = getActiveAgents('task-nested9', testDir)
       expect(agents).toHaveLength(0)
     })
+
+    // Regression: the watchdog recovery path can re-run createInstance/
+    // advanceWorkflow for an already-active workflow, which previously
+    // called createTask on the child board row a second time, creating
+    // duplicate "Run Child (sub-workflow)" cards. createBoardTaskForChild
+    // now guards on getTask(childTaskId) to make the retry a no-op.
+    it('createBoardTaskForChild is idempotent across retries', async () => {
+      // parent-first-nested has a nested workflow as its FIRST step so
+      // createInstance() triggers createBoardTaskForChild directly (the
+      // simplest path to exercise the idempotency guard).
+      writeFileSync(join(defsDir, 'parent-first-nested.yaml'), `
+name: Parent First Nested
+description: Parent whose first step is a nested child workflow
+version: 1
+steps:
+  - id: nested-child
+    type: workflow
+    label: Run Child
+    workflow_id: child-wf
+`)
+
+      // Stateful mock: track which ids have been "created" on the board
+      // so getTask(id) returns truthy after createTask has been called.
+      const flowStore = await import('../../../plugins/tasks/lib/flow-store')
+      const createdIds = new Set<string>()
+      vi.mocked(flowStore.createTask).mockImplementation(
+        // Positional signature: (title, column, assignee, description, workflowId, createdBy, id, parentId, projectId)
+        (((...args: unknown[]) => {
+          const id = (args[6] as string) ?? 'mock-task'
+          createdIds.add(id)
+          return Promise.resolve({ id } as unknown)
+        }) as unknown) as typeof flowStore.createTask,
+      )
+      vi.mocked(flowStore.getTask).mockImplementation(
+        (id: string) => (createdIds.has(id) ? ({ id, title: 'stub' } as unknown as ReturnType<typeof flowStore.getTask>) : null),
+      )
+
+      // Wait for the async import chain inside createBoardTaskForChild to settle.
+      // Dynamic import + .then().then() needs real tick flushing, not just
+      // microtasks — setTimeout(0) runs after the entire microtask queue drains.
+      async function flushAsync() {
+        await new Promise(resolve => setTimeout(resolve, 20))
+      }
+
+      createInstance('task-retry', 'parent-first-nested', testDir)
+      await flushAsync()
+      expect(createdIds.has('task-retry--nested-child')).toBe(true)
+      const firstCallCount = vi.mocked(flowStore.createTask).mock.calls.length
+      expect(firstCallCount).toBeGreaterThanOrEqual(1)
+
+      // Simulate watchdog re-dispatch: createInstance overwrites the parent
+      // instance and re-enters the nested-first-step spawn path. Without
+      // the guard this would call createTask a second time.
+      createInstance('task-retry', 'parent-first-nested', testDir)
+      await flushAsync()
+
+      const secondCallCount = vi.mocked(flowStore.createTask).mock.calls.length
+      expect(secondCallCount).toBe(firstCallCount)
+    })
   })
 })

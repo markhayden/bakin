@@ -2,6 +2,7 @@
  * Schedule plugin — server entry point.
  * Registers API routes, exec tools, and the cron→task bridge.
  */
+import { randomBytes, timingSafeEqual } from 'crypto'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { readMergedJobs } from './lib/jobs-reader'
@@ -50,6 +51,43 @@ function expandTemplate(template: string, vars: Record<string, string>): string 
   return result
 }
 
+/** Settings shape used by handleBridge + webhook URL construction. */
+interface ScheduleSettings {
+  bridgeEnabled?: boolean
+  bridgeSecret?: string
+}
+
+/** Constant-time string comparison. Returns false for any length mismatch. */
+function safeEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a, 'utf-8')
+  const bBuf = Buffer.from(b, 'utf-8')
+  if (aBuf.length !== bBuf.length) return false
+  return timingSafeEqual(aBuf, bBuf)
+}
+
+/**
+ * Resolve the bridge secret, generating and persisting one on first use.
+ * Returns null if pluginCtx isn't set yet (shouldn't happen after activate()).
+ */
+function getOrCreateBridgeSecret(): string | null {
+  if (!pluginCtx) return null
+  const settings = pluginCtx.getSettings<ScheduleSettings>()
+  if (settings.bridgeSecret && settings.bridgeSecret.length >= 32) {
+    return settings.bridgeSecret
+  }
+  const fresh = randomBytes(32).toString('hex')
+  pluginCtx.updateSettings({ bridgeSecret: fresh })
+  return fresh
+}
+
+/** Build the webhook URL the OpenClaw cron will POST to, with secret attached. */
+function buildBridgeWebhookUrl(): string {
+  const port = process.env.PORT || '3737'
+  const base = `${process.env.BAKIN_URL || `http://localhost:${port}`}/api/plugins/schedule/bridge`
+  const secret = getOrCreateBridgeSecret()
+  return secret ? `${base}?secret=${secret}` : base
+}
+
 // ---------------------------------------------------------------------------
 // Bridge logic (cron → task)
 // ---------------------------------------------------------------------------
@@ -58,6 +96,31 @@ function expandTemplate(template: string, vars: Record<string, string>): string 
 let pluginCtx: PluginContext | null = null
 
 async function handleBridge(req: Request): Promise<Response> {
+  // Gate 1: feature flag. The bridge setting defaults to enabled, but admins
+  // can disable it to stop ALL cron-driven task creation without tearing down
+  // the underlying OpenClaw cron jobs.
+  const settings = pluginCtx?.getSettings<ScheduleSettings>() ?? {}
+  if (settings.bridgeEnabled === false) {
+    log.warn('Bridge call rejected — bridgeEnabled setting is false')
+    return json({ ok: false, error: 'bridge disabled' }, 503)
+  }
+
+  // Gate 2: shared-secret auth. OpenClaw calls the webhook with ?secret=<hex>
+  // from the URL we registered when the cron was created (see
+  // buildBridgeWebhookUrl). We require a match so a stale cron from a
+  // previous install — or any unauthorized caller — cannot create tasks.
+  const expected = getOrCreateBridgeSecret()
+  if (!expected) {
+    log.error('Bridge call rejected — plugin context not initialized')
+    return json({ ok: false, error: 'bridge not ready' }, 503)
+  }
+  const url = new URL(req.url)
+  const provided = url.searchParams.get('secret') || ''
+  if (!safeEqual(provided, expected)) {
+    log.warn('Bridge call rejected — invalid or missing secret')
+    return json({ ok: false, error: 'unauthorized' }, 401)
+  }
+
   const payload = await readBody<BridgePayload>(req)
   const { jobId, runId } = payload
 
@@ -194,6 +257,8 @@ const schedulePlugin: BakinPlugin = {
       { key: 'bridgeEnabled', type: 'boolean', label: 'Bridge enabled', description: 'Allow cron jobs to create tasks via the bridge', default: true },
     ],
   },
+  // bridgeSecret is stored alongside settings but not exposed in the UI —
+  // it's auto-generated on first use (see getOrCreateBridgeSecret).
 
   navItems: [],
   contentFiles: [],
@@ -314,12 +379,11 @@ const schedulePlugin: BakinPlugin = {
       }
 
       const tz = body.tz || getSystemTimezone()
-      const port = process.env.PORT || '3737'
       const jobId = await cronAdd({
         name: body.name,
         cron: parsed.cron,
         session: 'isolated',
-        webhookUrl: `${process.env.BAKIN_URL || `http://localhost:${port}`}/api/plugins/schedule/bridge`,
+        webhookUrl: buildBridgeWebhookUrl(),
         tz,
       })
 
@@ -579,12 +643,11 @@ const schedulePlugin: BakinPlugin = {
         if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
 
         const tz = getSystemTimezone()
-        const port = process.env.PORT || '3737'
         const jobId = await cronAdd({
           name: params.name as string,
           cron: parsed.cron,
           session: 'isolated',
-          webhookUrl: `${process.env.BAKIN_URL || `http://localhost:${port}`}/api/plugins/schedule/bridge`,
+          webhookUrl: buildBridgeWebhookUrl(),
           tz,
         })
 
