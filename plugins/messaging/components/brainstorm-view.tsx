@@ -29,6 +29,7 @@ export function BrainstormView() {
 
   const sessionId = searchParams.get('session') ?? ''
   const [search, setSearch] = useQueryState('q', '')
+  const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
   const [creating, setCreating] = useState(false)
   const [sessionCount, setSessionCount] = useState<number | undefined>(undefined)
   const [pendingAgent, setPendingAgent] = useState<ContentAgent | null>(null)
@@ -127,11 +128,44 @@ export function BrainstormView() {
         }
       />
 
+      <div className="mt-4 flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => setAgentFilter('all')}
+          className={`px-3 h-7 rounded-full border text-xs font-medium transition-colors ${
+            agentFilter === 'all'
+              ? 'bg-foreground text-background border-foreground'
+              : 'bg-surface text-muted-foreground border-border hover:bg-muted/50'
+          }`}
+        >
+          All
+        </button>
+        {CONTENT_AGENTS.map(agentId => {
+          const info = AGENT_INFO[agentId]
+          const active = agentFilter === agentId
+          return (
+            <button
+              key={agentId}
+              onClick={() => setAgentFilter(agentId)}
+              title={info.name}
+              className={`flex items-center gap-1.5 px-2 h-7 rounded-full border text-xs font-medium transition-colors ${
+                active
+                  ? 'bg-foreground text-background border-foreground'
+                  : 'bg-surface text-muted-foreground border-border hover:bg-muted/50'
+              }`}
+            >
+              <AgentAvatar agentId={agentId} size="xs" />
+              <span>{info.name}</span>
+            </button>
+          )
+        })}
+      </div>
+
       <div className="mt-4">
         <SessionList
           onSelectSession={pushSessionId}
           search={search}
           searchResults={searchHook.results}
+          agentFilter={agentFilter}
           onCountChange={setSessionCount}
           onCreateSession={handleStartCreate}
           creating={creating}
