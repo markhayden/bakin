@@ -1,4 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { tmpdir } from 'os'
+import { join } from 'path'
+
+const testDir = join(tmpdir(), `bakin-search-registry-test-${Date.now()}`)
+
+vi.mock('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    root: testDir,
+    settings: join(testDir, 'settings.json'),
+    pluginSettings: join(testDir, 'plugin-settings'),
+    plugins: join(testDir, 'plugins'),
+    audit: join(testDir, 'audit.jsonl'),
+    logs: join(testDir, 'logs'),
+  }),
+}))
 
 // Mock antfly module
 vi.mock('@/core/antfly', () => ({
@@ -117,6 +133,60 @@ describe('search-registry', () => {
 
     const entry = getContentTypes().get('bakin_widgets')
     expect(entry?.pluginId).toBe('my-plugin')
+  })
+
+  // ── auto-registration of /search route (C1 — issue #67) ──────────────
+
+  it('registerContentType auto-registers a GET /search route when registerRoute opt is provided', () => {
+    const routes: Array<{ path: string; method: string }> = []
+    const api = buildSearchAPI('tasks', {
+      registerRoute: (r) => routes.push({ path: r.path, method: r.method }),
+    })
+    api.registerContentType(makeDef('tasks'))
+
+    expect(routes).toHaveLength(1)
+    expect(routes[0]).toEqual({ path: '/search', method: 'GET' })
+  })
+
+  it('registerContentType auto-route is idempotent across multiple calls', () => {
+    const routes: Array<{ path: string; method: string }> = []
+    const api = buildSearchAPI('tasks', { registerRoute: (r) => routes.push(r) })
+    api.registerContentType(makeDef('tasks'))
+    api.registerContentType(makeDef('tasks'))
+
+    expect(routes).toHaveLength(1)
+  })
+
+  it('registerContentType does not register a route when registerRoute opt is absent', () => {
+    const api = buildSearchAPI('tasks')
+    // Smoke test — the bare form still works for tests and reconciles.
+    expect(() => api.registerContentType(makeDef('tasks'))).not.toThrow()
+  })
+
+  it('auto-registered /search route handler pipes through api.query', async () => {
+    let captured: { path: string; method: string; handler: (req: Request) => Promise<Response> } | null = null
+    const api = buildSearchAPI('tasks', {
+      registerRoute: (r) => { captured = r as typeof captured },
+    })
+    api.registerContentType(makeDef('tasks'))
+    expect(captured).not.toBeNull()
+
+    const route = captured as unknown as { handler: (req: Request) => Promise<Response> }
+
+    // Missing `q` → 400
+    const missing = await route.handler(new Request('http://localhost/search'))
+    expect(missing.status).toBe(400)
+
+    // With `q` → 200 + antfly.queryTable hit
+    const ok = await route.handler(new Request('http://localhost/search?q=build&facets=status&limit=5'))
+    expect(ok.status).toBe(200)
+    const body = await ok.json()
+    expect(body.meta.source).toBe('antfly')
+    expect(antfly.queryTable).toHaveBeenCalledWith(
+      'bakin_tasks',
+      'build',
+      expect.objectContaining({ limit: 5 }),
+    )
   })
 
   it('index calls antfly.indexDocument with resolved table', async () => {
