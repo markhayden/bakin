@@ -104,27 +104,27 @@ Located at `src/components/facet-filter.tsx`. Shared multi-select filter compone
 - Options support icons (avatars, dots, file type icons)
 - Optional `counts` prop shows Antfly aggregation counts next to each option
 
-## useAntflySearch Hook
+## useSearch Hook
 
-Located at `src/hooks/use-antfly-search.ts`. Provides Antfly-powered search alongside existing client-side filtering.
+Located at `src/hooks/use-search.ts`. Provides Antfly-powered search alongside existing client-side filtering. Pass `plugin: <pluginId>` to hit the plugin's auto-registered `/api/plugins/{plugin}/search` route, or omit `plugin` to fall back to the cross-plugin `/api/search` endpoint.
 
 ```tsx
-const antfly = useAntflySearch({ table: 'tasks', facets: ['status', 'agent'], debounce: 300 })
+const search = useSearch({ plugin: 'tasks', facets: ['status', 'agent'], debounce: 300 })
 
 useEffect(() => {
-  if (search) antfly.search(search)
-  else antfly.clear()
-}, [search])
+  if (q) search.search(q)
+  else search.clear()
+}, [q])
 
-// Use antfly.results to reorder client-side filtered list
-// Use antfly.aggregations to populate FacetFilter counts
+// Use search.results to reorder client-side filtered list
+// Use search.aggregations to populate FacetFilter counts
 ```
 
-Returns: `{ results, aggregations, loading, error, meta, search, clear }`
+Returns: `{ results, aggregations, loading, error, meta, search, clear }`. Types: `SearchResult`, `SearchResponse`, `UseSearchOptions`, `UseSearchReturn`.
 
-Helper: `reorderByAntflyResults(items, antflyResults)` — reorders a client-side filtered array using Antfly relevance scores.
+Helper: `reorderBySearchResults(items, searchResults)` — reorders a client-side filtered array using relevance scores.
 
-Pattern: client-side filtering runs immediately (instant feedback), Antfly search fires debounced in background and reorders results when available. If Antfly is disabled or errors, client-side filtering is the fallback.
+Pattern: client-side filtering runs immediately (instant feedback), search fires debounced in background and reorders results when available. If Antfly is disabled or errors, client-side filtering is the fallback.
 
 ## Implementation Status
 

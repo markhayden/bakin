@@ -2,14 +2,18 @@
 
 ## REST Endpoints
 
-### GET /api/search — Cross-table or per-table search
+### GET /api/search — Cross-plugin search
+
+Backed by `src/core/api-search-handler.ts` (extracted from `server.ts` during the issue #67 cleanup so the handler is unit-testable).
 
 Query params:
 - `q` (required) — search query text
-- `table` — limit to a specific table (tasks, assets, projects, workflows, schedule, team, audit)
+- `plugin` — limit to a specific plugin (tasks, assets, projects, workflows, schedule, team, memory, messaging)
 - `limit` — max results (default: 20)
 - `offset` — skip N results for pagination
 - `facets` — comma-separated facet fields for aggregation counts
+
+For per-plugin search use `GET /api/plugins/{plugin}/search` instead — these routes are auto-registered when a plugin calls `ctx.search.registerContentType()` or `registerFileBackedContentType()` during `activate()`.
 
 Response:
 ```json
@@ -76,7 +80,9 @@ Response:
 
 `ok` is `true` only when both `errors === 0` and `enrichmentErrors === 0`. Per-table failures appear as an `error` string on the corresponding `tables[]` entry. `enrichment` surfaces Antfly's async enrichment status per index — `healthy: false` when any index has an `error` or non-zero `walBacklog`. When `verify=true`, each table entry also includes `verified` (actual doc count) and `verifyDiscrepancy` (difference from indexed count).
 
-### GET /api/antfly/health — Search system health
+### GET /api/plugins/health/antfly-status — Search system health
+
+Moved out of `server.ts` into the health plugin during the issue #67 cleanup.
 
 Response:
 ```json
@@ -99,7 +105,7 @@ Response:
 
 ### GET /api/plugins/{pluginId}/search — Per-plugin search
 
-Each searchable plugin exposes a `/search` route. Same query params as `/api/search` but scoped to that plugin's table.
+Each searchable plugin exposes a `/search` route — **auto-registered** when the plugin calls `ctx.search.registerContentType()` or `registerFileBackedContentType()`. Same query params as `/api/search` minus `plugin`, scoped to that plugin's table.
 
 Available at:
 - `/api/plugins/tasks/search?q=...`
@@ -108,25 +114,29 @@ Available at:
 - `/api/plugins/workflows/search?q=...`
 - `/api/plugins/schedule/search?q=...`
 - `/api/plugins/team/search?q=...`
+- `/api/plugins/memory/search?q=...`
+- `/api/plugins/messaging/search?q=...`
 
 ## MCP Tools (Agent-Facing)
 
+All search MCP tools take a `plugin: <pluginId>` parameter — agents pass plugin ids (`tasks`, `assets`, `memory`, …), not raw `bakin_*` table names. Resolution happens server-side via `getTableForPlugin()`, so plugins can never leak their internal table prefix to the MCP surface.
+
 ### bakin_exec_search_query
-Cross-table or single-table search. Primary tool for agents to find information.
+Cross-plugin or single-plugin search. Primary tool for agents to find information.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | q | string | yes | Search query |
-| table | string | no | Limit to specific table |
+| plugin | string | no | Limit to a specific plugin id (omit for cross-plugin search) |
 | limit | number | no | Max results (default: 20) |
 | offset | number | no | Pagination offset |
 
 ### bakin_exec_search_table
-Search a specific table with facet counts. Use when the agent knows which content type to search.
+Search a specific plugin with facet counts. Use when the agent knows which content type to search.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| table | string | yes | Table to search |
+| plugin | string | yes | Plugin id to search |
 | q | string | yes | Search query |
 | facets | string | no | Comma-separated facet fields |
 | limit | number | no | Max results |
@@ -136,15 +146,15 @@ Look up a specific document by key. Direct retrieval, not a search.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| table | string | yes | Table name |
+| plugin | string | yes | Plugin id |
 | key | string | yes | Document key |
 
 ### bakin_exec_search_facets
-Get facet value distributions for a table without searching. Useful for understanding data shape.
+Get facet value distributions for a plugin without searching. Useful for understanding data shape.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| table | string | yes | Table name |
+| plugin | string | yes | Plugin id |
 | facets | string | yes | Comma-separated facet fields |
 
 ### bakin_exec_search_similar
@@ -153,7 +163,7 @@ Semantic similarity search. Finds documents with similar meaning to the given te
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | text | string | yes | Text to find similar docs for |
-| table | string | no | Limit to specific table |
+| plugin | string | no | Limit to a specific plugin id |
 | limit | number | no | Max results (default: 10) |
 
 ### bakin_exec_search_reindex
@@ -161,8 +171,9 @@ Trigger a full reindex. Use after bulk data changes or schema updates.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| table | string | no | Specific table (omit for all) |
+| plugin | string | no | Specific plugin id (omit for all) |
 | rebuild | boolean | no | Drop and recreate indexes first |
+| verify | boolean | no | Re-query tables after reindex to verify doc counts |
 
 ### bakin_exec_search_stats
 Get search system health and per-table stats. No parameters.
@@ -200,6 +211,7 @@ bakin search:stats   # show Antfly status and per-table doc counts
 | `bakin_workflows` | workflows | type, status | No | `embeddings` (BGE) | `description` |
 | `bakin_schedule` | schedule | agent, enabled | No | `embeddings` (BGE) | `command` |
 | `bakin_team` | team | model, status | No | `embeddings` (BGE) | `soul` |
-| `bakin_audit` | _audit (core) | event, agent, channel | No (TTL) | `embeddings` (BGE) | `content` |
+| `bakin_audit` | memory | event, agent, channel | No (TTL) | `embeddings` (BGE) | `content` |
+| `bakin_messaging_brainstorm` | messaging | status, agent_id | No | `embeddings` (BGE) | `message_body` |
 
 **`bakin_assets` is the only multi-index table.** See `.claude/knowledge/multimodal-search.md` for why it has separate `assets_text` and `assets_visual` indexes, how server-side content extraction feeds the text index, and the format support matrix for which file types land in which index.
