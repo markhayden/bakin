@@ -11,9 +11,15 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import type { SearchResult } from '@/hooks/use-search'
+import { useDebug } from '@/hooks/use-debug'
 import { DeleteSessionDialog } from './delete-session-dialog'
 import type { ContentAgent } from '../types'
 import { AGENT_INFO } from '../types'
+
+interface ScoreInfo {
+  score: number
+  indexScores?: Record<string, number>
+}
 
 const CONTENT_AGENTS = Object.keys(AGENT_INFO) as ContentAgent[]
 
@@ -41,6 +47,7 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<SessionSummary | null>(null)
+  const [debug] = useDebug()
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -76,31 +83,36 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
     setDeleteTarget(null)
   }
 
+  // Build a score map keyed by session id (stripping the `brainstorm-` Antfly
+  // prefix). Used for both the relevance reorder AND the debug-mode RRF/BM25/SEM
+  // overlay, so build it once here.
+  const scoreMap = useMemo(() => {
+    const map = new Map<string, ScoreInfo>()
+    if (!searchResults) return map
+    for (const r of searchResults) {
+      const id = r.id.startsWith('brainstorm-') ? r.id.slice('brainstorm-'.length) : r.id
+      map.set(id, { score: r.score, indexScores: r.indexScores })
+    }
+    return map
+  }, [searchResults])
+
   // Filter by search. When the Antfly-backed hook returned hits, trust them
   // and reorder by score. When it returned nothing (or search is empty),
   // fall back to a local substring match on title/agentId so the UI stays
-  // usable while the index is cold or disabled. Antfly keys look like
-  // `brainstorm-{sessionId}`, so we map by stripping that prefix.
+  // usable while the index is cold or disabled.
   const filtered = useMemo(() => {
     if (!search?.trim()) return sessions
     if (searchResults && searchResults.length > 0) {
-      const matchIds = new Set<string>()
-      const scoreMap = new Map<string, number>()
-      for (const r of searchResults) {
-        const id = r.id.startsWith('brainstorm-') ? r.id.slice('brainstorm-'.length) : r.id
-        matchIds.add(id)
-        scoreMap.set(id, r.score)
-      }
       return sessions
-        .filter(s => matchIds.has(s.id))
-        .sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0))
+        .filter(s => scoreMap.has(s.id))
+        .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
     }
     const q = search.toLowerCase()
     return sessions.filter(s =>
       s.title.toLowerCase().includes(q) ||
       s.agentId.toLowerCase().includes(q)
     )
-  }, [sessions, search, searchResults])
+  }, [sessions, search, searchResults, scoreMap])
 
   // Group by agent, active before completed, sorted by updatedAt desc
   const grouped = useMemo(() => {
@@ -193,7 +205,14 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
               </div>
 
               <div className="space-y-1.5">
-                {agentSessions.map(session => (
+                {agentSessions.map(session => {
+                  const scoreInfo = scoreMap.get(session.id)
+                  const showScores = debug && scoreInfo && search?.trim()
+                  const semKey = 'embeddings'
+                  const bm25Key = scoreInfo?.indexScores
+                    ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
+                    : undefined
+                  return (
                   <div
                     key={session.id}
                     className="group flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-muted/50 transition-colors cursor-pointer"
@@ -210,6 +229,17 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
                           <MessageSquare className="size-3" />
                           {session.proposalCount} proposals
                         </span>
+                        {showScores && scoreInfo && (
+                          <span className="flex items-center gap-2 font-mono text-[10px]">
+                            <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
+                            <span className="text-cyan-400">
+                              BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+                            </span>
+                            <span className="text-purple-400">
+                              SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+                            </span>
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -246,7 +276,8 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
                       </DropdownMenu>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )
