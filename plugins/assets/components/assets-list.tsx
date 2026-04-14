@@ -1,9 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { FileText, Image, Video, Music, Map, Database, Package, Clock, MoreHorizontal, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { FileText, Image, Video, Music, Map, Database, Package, Clock, MoreHorizontal, Trash2 } from 'lucide-react'
+import {
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
+import { SortableHead } from '@/components/sortable-head'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -44,30 +48,9 @@ interface AssetsListProps {
   sort?: SortField
   sortDir?: SortDir
   onSort?: (field: SortField) => void
-}
-
-function SortIcon({ field, activeField, dir }: { field: SortField; activeField?: SortField; dir?: SortDir }) {
-  if (field !== activeField) return <ArrowUpDown className="size-3 opacity-0 group-hover/col:opacity-50" />
-  return dir === 'asc' ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />
-}
-
-function SortableHeader({ field, label, activeField, dir, onSort, className }: {
-  field: SortField
-  label: string
-  activeField?: SortField
-  dir?: SortDir
-  onSort?: (field: SortField) => void
-  className?: string
-}) {
-  return (
-    <button
-      onClick={() => onSort?.(field)}
-      className={`group/col flex items-center gap-1 hover:text-foreground transition-colors ${className ?? ''}`}
-    >
-      {label}
-      <SortIcon field={field} activeField={activeField} dir={dir} />
-    </button>
-  )
+  /** When true, sort headers are disabled — used while an Antfly search is
+   *  active so relevance order wins over user-chosen column sort. */
+  isSearching?: boolean
 }
 
 function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () => void; onDelete: (path: string) => void }) {
@@ -83,74 +66,74 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
 
   return (
     <>
-      <div
+      <TableRow
         onClick={onClick}
-        className="flex items-center gap-3 px-3 py-2 hover:bg-muted/30 rounded-md cursor-pointer transition-colors group"
+        className="group cursor-pointer"
       >
-        {/* Preview / Icon */}
-        <div className="size-8 rounded bg-zinc-900/50 flex items-center justify-center shrink-0 overflow-hidden">
-          {isImage && !imgError ? (
-            <img
-              src={previewUrl}
-              alt={asset.filename}
-              onError={() => setImgError(true)}
-              className="size-8 object-cover rounded"
-              loading="lazy"
-            />
-          ) : (
-            <Icon className={`size-4 ${iconColor} opacity-60`} />
-          )}
-        </div>
-
-        {/* Name */}
-        <div className="flex-1 min-w-0">
-          <span className="text-sm text-foreground truncate block">{asset.filename}</span>
-          {asset.metadata.description && (
-            <span className="text-[10px] text-muted-foreground truncate block">{asset.metadata.description}</span>
-          )}
-        </div>
-
-        {/* Type */}
-        <Badge variant="outline" className="text-[10px] h-4 shrink-0 hidden sm:flex">
-          {asset.type}
-        </Badge>
-
-        {/* Size */}
-        <span className="text-xs text-muted-foreground w-16 text-right shrink-0 hidden md:block">
+        {/* Preview + name */}
+        <TableCell className="max-w-[400px]">
+          <div className="flex items-center gap-3">
+            <div className="size-8 rounded bg-zinc-900/50 flex items-center justify-center shrink-0 overflow-hidden">
+              {isImage && !imgError ? (
+                <img
+                  src={previewUrl}
+                  alt={asset.filename}
+                  onError={() => setImgError(true)}
+                  className="size-8 object-cover rounded"
+                  loading="lazy"
+                />
+              ) : (
+                <Icon className={`size-4 ${iconColor} opacity-60`} />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-sm text-foreground truncate block">{asset.filename}</span>
+              {asset.metadata.description && (
+                <span className="text-[10px] text-muted-foreground truncate block">{asset.metadata.description}</span>
+              )}
+            </div>
+          </div>
+        </TableCell>
+        <TableCell className="hidden sm:table-cell">
+          <Badge variant="outline" className="text-[10px] h-4">
+            {asset.type}
+          </Badge>
+        </TableCell>
+        <TableCell className="hidden md:table-cell text-right text-xs text-muted-foreground w-16">
           {formatSize(asset.size)}
-        </span>
-
-        {/* Agent */}
-        <div className="flex items-center gap-1.5 w-24 shrink-0 hidden lg:flex">
-          <AgentAvatar agentId={asset.metadata.agent} size="xs" />
-          <span className="text-xs text-muted-foreground truncate">{asset.metadata.agent}</span>
-        </div>
-
-        {/* Created */}
-        <div className="flex items-center gap-1 w-20 shrink-0 hidden lg:flex">
-          <Clock className="size-3 text-muted-foreground/50" />
-          <span className="text-[10px] text-muted-foreground">{formatAge(asset.metadata.created)}</span>
-        </div>
-
-        {/* Actions */}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-          >
-            <MoreHorizontal className="size-3.5" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-36">
-            <DropdownMenuItem
-              onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConfirmOpen(true) }}
-              className="text-red-400 focus:text-red-400"
+        </TableCell>
+        <TableCell className="hidden lg:table-cell w-24">
+          <div className="flex items-center gap-1.5">
+            <AgentAvatar agentId={asset.metadata.agent} size="xs" />
+            <span className="text-xs text-muted-foreground truncate">{asset.metadata.agent}</span>
+          </div>
+        </TableCell>
+        <TableCell className="hidden lg:table-cell w-20">
+          <div className="flex items-center gap-1">
+            <Clock className="size-3 text-muted-foreground/50" />
+            <span className="text-[10px] text-muted-foreground">{formatAge(asset.metadata.created)}</span>
+          </div>
+        </TableCell>
+        <TableCell className="w-8">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
             >
-              <Trash2 className="size-3.5 mr-2" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+              <MoreHorizontal className="size-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-36">
+              <DropdownMenuItem
+                onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConfirmOpen(true) }}
+                className="text-red-400 focus:text-red-400"
+              >
+                <Trash2 className="size-3.5 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+      </TableRow>
 
       <DeleteAssetDialog
         open={confirmOpen}
@@ -162,7 +145,7 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
   )
 }
 
-export function AssetsList({ assets, onSelect, onDelete, sort, sortDir, onSort }: AssetsListProps) {
+export function AssetsList({ assets, onSelect, onDelete, sort = 'created', sortDir = 'desc', onSort, isSearching }: AssetsListProps) {
   if (assets.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -174,36 +157,39 @@ export function AssetsList({ assets, onSelect, onDelete, sort, sortDir, onSort }
     )
   }
 
-  return (
-    <div className="flex flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-3 py-1.5 text-[10px] text-muted-foreground/60 uppercase tracking-wider font-medium border-b border-border/50">
-        <div className="size-8 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <SortableHeader field="name" label="Name" activeField={sort} dir={sortDir} onSort={onSort} />
-        </div>
-        <div className="w-14 shrink-0 hidden sm:block">
-          <SortableHeader field="type" label="Type" activeField={sort} dir={sortDir} onSort={onSort} />
-        </div>
-        <div className="w-16 shrink-0 hidden md:flex justify-end">
-          <SortableHeader field="size" label="Size" activeField={sort} dir={sortDir} onSort={onSort} />
-        </div>
-        <div className="w-24 shrink-0 hidden lg:block">Agent</div>
-        <div className="w-20 shrink-0 hidden lg:block">
-          <SortableHeader field="created" label="Created" activeField={sort} dir={sortDir} onSort={onSort} />
-        </div>
-        <div className="size-6 shrink-0" />
-      </div>
+  const noop = () => {}
+  const handleSort = onSort ?? noop
 
-      {/* Rows */}
-      {assets.map(asset => (
-        <AssetRow
-          key={asset.path}
-          asset={asset}
-          onClick={() => onSelect(asset)}
-          onDelete={onDelete}
-        />
-      ))}
-    </div>
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <SortableHead field="name" current={sort} dir={sortDir} onSort={handleSort} disabled={isSearching}>
+            Name
+          </SortableHead>
+          <SortableHead field="type" current={sort} dir={sortDir} onSort={handleSort} disabled={isSearching}>
+            Type
+          </SortableHead>
+          <SortableHead field="size" current={sort} dir={sortDir} onSort={handleSort} disabled={isSearching}>
+            Size
+          </SortableHead>
+          <TableHead className="hidden lg:table-cell">Agent</TableHead>
+          <SortableHead field="created" current={sort} dir={sortDir} onSort={handleSort} disabled={isSearching}>
+            Created
+          </SortableHead>
+          <TableHead className="w-8"></TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {assets.map(asset => (
+          <AssetRow
+            key={asset.path}
+            asset={asset}
+            onClick={() => onSelect(asset)}
+            onDelete={onDelete}
+          />
+        ))}
+      </TableBody>
+    </Table>
   )
 }

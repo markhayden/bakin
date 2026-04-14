@@ -188,6 +188,7 @@ export function AssetsPage() {
           sort={sort as SortField}
           sortDir={sortDir as SortDir}
           onSort={handleSort}
+          isSearching={!!search.trim()}
         />
       ) : (
         <AssetsGrid
