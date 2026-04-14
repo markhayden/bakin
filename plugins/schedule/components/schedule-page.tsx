@@ -10,6 +10,7 @@ import { AgentAvatar } from '@/components/agent-avatar'
 import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useQueryState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
+import { useDebug } from '@/hooks/use-debug'
 import { useScheduleJobs, type ScheduleJob } from '@/hooks/use-schedule'
 import { JobList } from './job-list'
 import { JobDrawer } from './job-drawer'
@@ -40,6 +41,7 @@ export function SchedulePage() {
   const [mode, setMode, pushMode] = useQueryState('mode', '')
 
   const [submitting, setSubmitting] = useState(false)
+  const [debug] = useDebug()
 
   const {
     jobs, loading, refresh,
@@ -55,14 +57,24 @@ export function SchedulePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
+  // Build a score map keyed by job id. Schedule indexes by the raw jobId
+  // (see plugins/schedule/index.ts → ctx.search.index(jobId, ...)), so no
+  // prefix-strip is needed. Used for both the relevance reorder AND the
+  // debug-mode RRF/BM25/SEM overlay rendered in JobRow.
+  const scoreMap = useMemo(() => {
+    const map = new Map<string, { score: number; indexScores?: Record<string, number> }>()
+    for (const r of searchHook.results) {
+      map.set(r.id, { score: r.score, indexScores: r.indexScores })
+    }
+    return map
+  }, [searchHook.results])
+
   const filtered = useMemo(() => {
     if (!search) return jobs
     if (searchHook.results.length) {
-      const matchIds = new Set(searchHook.results.map(r => r.id))
-      const scoreMap = new Map(searchHook.results.map(r => [r.id, r.score]))
       return jobs
-        .filter(j => matchIds.has(j.id))
-        .sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0))
+        .filter(j => scoreMap.has(j.id))
+        .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
     }
     const q = search.toLowerCase()
     return jobs.filter(j =>
@@ -71,7 +83,7 @@ export function SchedulePage() {
       (j.agentId || '').toLowerCase().includes(q) ||
       j.humanSchedule.toLowerCase().includes(q)
     )
-  }, [jobs, search, searchHook.results])
+  }, [jobs, search, searchHook.results, scoreMap])
 
   // Derive drawer/form visibility from URL state
   const selectedJob = jobIdParam ? jobs.find(j => j.id === jobIdParam) ?? null : null
@@ -250,6 +262,8 @@ export function SchedulePage() {
             onEdit={openEditFor}
             onDuplicate={openDuplicateFor}
             onSkipNext={(id) => skipNext(id)}
+            scoreMap={scoreMap}
+            showScores={debug && !!search.trim()}
           />
         ) : view === 'today' ? (
           <CalendarToday jobs={filtered} onSelectJob={openJob} />
