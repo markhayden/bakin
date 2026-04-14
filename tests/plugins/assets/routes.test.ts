@@ -2,7 +2,7 @@
  * Comprehensive tests for the assets plugin routes and exec tools.
  * Tests all 7 API routes and 9 MCP exec tools registered by the plugin.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest'
 import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -12,6 +12,7 @@ import {
   findTool,
   callRoute,
   callTool,
+  callSearchRoute,
   makeRequest,
   type ActivatedPlugin,
 } from '../test-helpers'
@@ -50,6 +51,11 @@ vi.mock('../../../src/core/logger', () => ({
 
 vi.mock('../../../src/core/watcher', () => ({
   registerSyncHook: vi.fn(),
+  registerUnlinkHook: vi.fn(),
+}))
+
+vi.mock('../../../src/core/openclaw-client', () => ({
+  sendToAgent: vi.fn(),
 }))
 
 // Import the plugin after mocks are set up
@@ -1180,5 +1186,84 @@ describe('DELETE route integration — browser URL simulation', () => {
 
     expect(res.status).toBe(200)
     expect(body.ok).toBe(true)
+  })
+})
+
+// ===========================================================================
+// GET /search — auto-registered by registerFileBackedContentType
+// ===========================================================================
+
+describe('Assets Plugin — GET /search', () => {
+  beforeEach(() => {
+    plugin.seedResults([])
+  })
+
+  it('returns seeded results for a valid query', async () => {
+    plugin.seedResults(
+      [
+        {
+          id: 'assets/images/task-001/hero.png',
+          table: 'bakin_assets',
+          score: 0.92,
+          fields: { file_name: 'hero.png', asset_type: 'images', agent: 'pixel' },
+        },
+        {
+          id: 'assets/text/task-002/readme.md',
+          table: 'bakin_assets',
+          score: 0.71,
+          fields: { file_name: 'readme.md', asset_type: 'text', agent: 'scribe' },
+        },
+      ],
+      {
+        asset_type: [
+          { value: 'images', count: 1 },
+          { value: 'text', count: 1 },
+        ],
+        agent: [
+          { value: 'pixel', count: 1 },
+          { value: 'scribe', count: 1 },
+        ],
+      },
+    )
+
+    const { status, body } = await callSearchRoute(plugin, 'hero')
+
+    expect(status).toBe(200)
+    const results = body.results as Array<{ id: string; score: number }>
+    expect(results).toHaveLength(2)
+    expect(results[0].id).toBe('assets/images/task-001/hero.png')
+    expect(results[0].score).toBe(0.92)
+    const aggs = body.aggregations as Record<string, Array<{ value: string; count: number }>>
+    expect(aggs.asset_type).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: 'images', count: 1 }),
+        expect.objectContaining({ value: 'text', count: 1 }),
+      ]),
+    )
+  })
+
+  it('returns 400 when q is missing', async () => {
+    const { status, body } = await callSearchRoute(plugin, '')
+
+    expect(status).toBe(400)
+    expect(body.error).toBe('Missing ?q= parameter')
+  })
+
+  it('passes parsed asset_type,agent facets to ctx.search.query', async () => {
+    await callSearchRoute(plugin, 'hero', { facets: 'asset_type,agent' })
+
+    expect(plugin.ctx.search.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: 'hero',
+        facets: ['asset_type', 'agent'],
+      }),
+    )
+  })
+
+  it('returns 200 with empty results when no matches', async () => {
+    const { status, body } = await callSearchRoute(plugin, 'zzz-no-match')
+
+    expect(status).toBe(200)
+    expect(body.results).toEqual([])
   })
 })
