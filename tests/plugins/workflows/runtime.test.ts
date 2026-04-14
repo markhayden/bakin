@@ -819,16 +819,8 @@ steps:
         (id: string) => (createdIds.has(id) ? ({ id, title: 'stub' } as unknown as ReturnType<typeof flowStore.getTask>) : null),
       )
 
-      // Wait for the async import chain inside createBoardTaskForChild to settle.
-      // Dynamic import + .then().then() needs real tick flushing, not just
-      // microtasks — setTimeout(0) runs after the entire microtask queue drains.
-      async function flushAsync() {
-        await new Promise(resolve => setTimeout(resolve, 20))
-      }
-
       createInstance('task-retry', 'parent-first-nested', testDir)
-      await flushAsync()
-      expect(createdIds.has('task-retry--nested-child')).toBe(true)
+      await vi.waitFor(() => expect(createdIds.has('task-retry--nested-child')).toBe(true))
       const firstCallCount = vi.mocked(flowStore.createTask).mock.calls.length
       expect(firstCallCount).toBeGreaterThanOrEqual(1)
 
@@ -836,7 +828,9 @@ steps:
       // instance and re-enters the nested-first-step spawn path. Without
       // the guard this would call createTask a second time.
       createInstance('task-retry', 'parent-first-nested', testDir)
-      await flushAsync()
+      // Drain any pending microtasks from the second createInstance so a
+      // duplicate createTask would have time to land before we assert.
+      await new Promise(resolve => setImmediate(resolve))
 
       const secondCallCount = vi.mocked(flowStore.createTask).mock.calls.length
       expect(secondCallCount).toBe(firstCallCount)

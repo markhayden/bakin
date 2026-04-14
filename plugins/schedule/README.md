@@ -11,11 +11,21 @@ The schedule plugin sits between **OpenClaw** (the cron engine) and **Bakin's ta
 3. **Bridge endpoint** receives the webhook, checks pause/skip/overlap rules, and creates a task on the board
 
 ```
-OpenClaw cron fires  →  POST /api/plugins/schedule/bridge
+OpenClaw cron fires  →  POST /api/plugins/schedule/bridge?secret=<hex>
+                         ├── Auth: bridgeEnabled setting + shared-secret gate
                          ├── Check: paused? skip? overlap? failure limit?
                          ├── Create task on board (via task-service)
                          └── Update sidecar (lastTaskId, failure count, etc.)
 ```
+
+### Bridge Authentication
+
+The `/bridge` endpoint is gated on two things:
+
+1. **`bridgeEnabled` setting** — set to `false` to kill-switch the bridge without deleting crons. Rejects with `503`.
+2. **Shared secret** — a 32-byte hex token stored in plugin settings as `bridgeSecret`, passed as a `?secret=...` query param. Compared with `timingSafeEqual`. Rejects with `401`.
+
+The secret is auto-generated on first access (`getOrCreateBridgeSecret`) and persisted to `~/.bakin/plugin-settings/schedule.json`. Every cron registered via `bakin_exec_schedule_create` or `POST /api/plugins/schedule/` builds its webhook URL through `buildBridgeWebhookUrl()`, which embeds the current secret — agents and UI code never see or handle it directly. `bridgeSecret` is intentionally absent from `settingsSchema` so the settings UI doesn't expose it.
 
 ## Data Model
 
@@ -94,7 +104,7 @@ All routes are prefixed with `/api/plugins/schedule/`.
 | POST | `/:jobId/run` | Trigger immediate run |
 | GET | `/:jobId/runs` | Get run history for a job |
 | POST | `/parse` | Parse NL/cron schedule expression |
-| POST | `/bridge` | Webhook endpoint (called by OpenClaw) |
+| POST | `/bridge?secret=<hex>` | Webhook endpoint (called by OpenClaw). Requires `bridgeEnabled=true` and a matching `bridgeSecret`. See [Bridge Authentication](#bridge-authentication). |
 
 ## Exec Tools (Agent-Facing)
 
