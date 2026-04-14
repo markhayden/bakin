@@ -2,6 +2,30 @@
 
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
+import { tmpdir } from 'os'
+import { join } from 'path'
+
+const testDir = join(tmpdir(), `bakin-test-session-list-${Date.now()}`)
+
+vi.mock('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    root: testDir,
+    settings: join(testDir, 'settings.json'),
+  }),
+}))
+
+vi.mock('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+}))
+
+vi.mock('../../../src/core/watcher', () => ({
+  watchFiles: vi.fn(),
+}))
+
+vi.mock('../../../src/core/openclaw-client', () => ({
+  sendMessage: vi.fn(),
+}))
 
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, ...props }: Record<string, unknown>) => (
@@ -134,13 +158,14 @@ describe('SessionList', () => {
     expect(screen.getByText('Outdoor content sprint')).toBeDefined()
   })
 
-  it('groups sessions by agent', async () => {
+  it('filters sessions by agentFilter prop', async () => {
     globalThis.fetch = mockFetch()
-    render(<SessionList onSelectSession={vi.fn()} />)
+    render(<SessionList onSelectSession={vi.fn()} agentFilter="chef" />)
     await waitFor(() => {
-      expect(screen.getByTestId('agent-group-chef')).toBeDefined()
+      expect(screen.getByTestId('session-entry-s1')).toBeDefined()
     })
-    expect(screen.getByTestId('agent-group-explorer')).toBeDefined()
+    expect(screen.getByTestId('session-entry-s2')).toBeDefined()
+    expect(screen.queryByTestId('session-entry-s3')).toBeNull()
   })
 
   it('shows proposal counts on entries', async () => {

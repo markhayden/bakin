@@ -38,12 +38,13 @@ interface Props {
   onSelectSession: (sessionId: string) => void
   search?: string
   searchResults?: SearchResult[]
+  agentFilter?: string
   onCountChange?: (count: number) => void
   onCreateSession?: (agentId: string) => void
   creating?: boolean
 }
 
-export function SessionList({ onSelectSession, search, searchResults, onCountChange, onCreateSession, creating }: Props) {
+export function SessionList({ onSelectSession, search, searchResults, agentFilter, onCountChange, onCreateSession, creating }: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<SessionSummary | null>(null)
@@ -96,30 +97,34 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
     return map
   }, [searchResults])
 
-  // Filter by search. When the Antfly-backed hook returned hits, trust them
-  // and reorder by score. When it returned nothing (or search is empty),
-  // fall back to a local substring match on title/agentId so the UI stays
-  // usable while the index is cold or disabled.
+  // Apply agent facet filter first (independent of search), then filter/sort
+  // by search. When the Antfly-backed hook returned hits, trust them and
+  // reorder by score. When it returned nothing (or search is empty), fall
+  // back to a local substring match on title/agentId.
   const filtered = useMemo(() => {
-    if (!search?.trim()) return sessions
+    const agentFiltered = agentFilter && agentFilter !== 'all'
+      ? sessions.filter(s => s.agentId === agentFilter)
+      : sessions
+
+    if (!search?.trim()) return agentFiltered
+
     if (searchResults && searchResults.length > 0) {
-      return sessions
+      return agentFiltered
         .filter(s => scoreMap.has(s.id))
         .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
     }
     const q = search.toLowerCase()
-    return sessions.filter(s =>
+    return agentFiltered.filter(s =>
       s.title.toLowerCase().includes(q) ||
       s.agentId.toLowerCase().includes(q)
     )
-  }, [sessions, search, searchResults, scoreMap])
+  }, [sessions, search, searchResults, scoreMap, agentFilter])
 
-  // When a search is active, respect the relevance order from `filtered`
-  // and render a flat list — agent grouping + updatedAt sort would otherwise
-  // throw away the score ranking. When idle, keep the original agent-grouped,
-  // active-first, updatedAt-desc UX.
+  // When searching, relevance order from `filtered` wins. When idle, sort
+  // active-first then updatedAt-desc. Agent grouping is gone — the parent
+  // now passes `agentFilter` and we render a single flat list either way.
   const isSearching = !!search?.trim()
-  const grouped = useMemo(() => {
+  const ordered = useMemo(() => {
     if (isSearching) return filtered
     const active = filtered
       .filter(s => s.status === 'active')
@@ -129,16 +134,6 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     return [...active, ...completed]
   }, [filtered, isSearching])
-
-  const sessionsByAgent = useMemo(() => {
-    if (isSearching) return null
-    const groups: Record<string, SessionSummary[]> = {}
-    for (const s of grouped) {
-      if (!groups[s.agentId]) groups[s.agentId] = []
-      groups[s.agentId].push(s)
-    }
-    return groups
-  }, [grouped, isSearching])
 
   if (loading) {
     return (
@@ -232,12 +227,10 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {isSearching && (
-            <div className="flex items-center gap-1">
-              <AgentAvatar agentId={session.agentId} size="xs" />
-              <span className="text-[10px] text-muted-foreground uppercase">{session.agentId}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-1">
+            <AgentAvatar agentId={session.agentId} size="xs" />
+            <span className="text-[10px] text-muted-foreground uppercase">{session.agentId}</span>
+          </div>
           {session.proposalCount > 0 && (
             <Badge variant="outline" className="text-[10px]">
               {session.approvedCount}/{session.proposalCount}
@@ -275,34 +268,9 @@ export function SessionList({ onSelectSession, search, searchResults, onCountCha
 
   return (
     <>
-      {isSearching ? (
-        <div className="space-y-1.5" data-testid="search-results">
-          {(grouped as SessionSummary[]).map(renderSessionRow)}
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {Object.entries(sessionsByAgent ?? {}).map(([agentId, agentSessions]) => {
-            const info = AGENT_INFO[agentId as ContentAgent]
-            return (
-              <div key={agentId} data-testid={`agent-group-${agentId}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <AgentAvatar agentId={agentId} size="xs" />
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    {info?.name || agentId}
-                  </span>
-                  <Badge variant="outline" className="text-[10px]">
-                    {agentSessions.length}
-                  </Badge>
-                </div>
-
-                <div className="space-y-1.5">
-                  {agentSessions.map(renderSessionRow)}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <div className="space-y-1.5" data-testid="session-list">
+        {ordered.map(renderSessionRow)}
+      </div>
 
       <DeleteSessionDialog
         open={!!deleteTarget}
