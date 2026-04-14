@@ -330,7 +330,7 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
 }
 
 async function cmdSearchStats(): Promise<void> {
-  const result = await apiGet('/api/antfly/health') as {
+  const result = await apiGet('/api/plugins/health/antfly-status') as {
     enabled: boolean
     tables: Array<{
       table: string
