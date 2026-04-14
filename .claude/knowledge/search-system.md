@@ -45,6 +45,29 @@ Boot-time migration (every start)
   → Write new version to the state file
 ```
 
+### Auto-registered `/search` route (canonical wiring path)
+
+Plugins **no longer register their own `/search` route**. When a plugin
+calls `ctx.search.registerContentType()` or
+`ctx.search.registerFileBackedContentType()` during `activate()`, the
+search registry's `buildSearchAPI(pluginId, { registerRoute })` helper
+automatically wires a `GET /search` route on the plugin's router. The
+route handler resolves the plugin's table via `getTableForPlugin()`,
+forwards the query params (`q`, `limit`, `offset`, `facets`, `filters`)
+to `ctx.search.query()`, and returns the standard `SearchResponse`
+shape. Registration is idempotent — calling `registerContentType` twice
+for the same plugin doesn't double-register the route. The catch-all
+plugin dispatch path uses `BuildSearchAPIOptions.skipFileBackedWiring`
+to avoid double-wiring file-backed hooks when the API is constructed
+outside the plugin activation phase.
+
+`getTableForPlugin(pluginId)` (formerly `getPluginTable`) returns the
+single registered table name for that plugin and **throws** when one
+plugin has registered more than one content type, so the auto-wired
+`/search` route can't ambiguously resolve a table. Plugins that need
+multiple content types must register a custom route and call
+`ctx.search.query({ table: '...' })` explicitly.
+
 ### Three consistency paths
 
 The search index stays in sync with source data through three layered paths.
@@ -86,13 +109,14 @@ Higher-numbered paths exist as backstops for the lower ones.
 | `packages/core/src/plugin-types.ts` | `SearchAPI`, `SearchContentTypeDefinition`, `SearchIndexDefinition` interfaces |
 | `plugins/assets/lib/content-extractor.ts` | Server-side text extraction for PDFs (pdf-parse) and plain text formats |
 | `plugins/assets/lib/asset-url.ts` | `buildAssetFileUrl()` — produces `file://` URLs for CLIP's visual index |
-| `src/hooks/use-antfly-search.ts` | Client-side hook for search queries + `reorderByAntflyResults` utility |
+| `src/hooks/use-search.ts` | Client-side hook for search queries (`useSearch`, types `SearchResult` / `SearchResponse` / `UseSearchOptions` / `UseSearchReturn`) + `reorderBySearchResults` utility |
+| `src/core/api-search-handler.ts` | Cross-plugin `/api/search` request handler (extracted from `server.ts` for testability) |
 
 ## Table Naming
 
 All Antfly tables use the `bakin_` prefix: `bakin_tasks`, `bakin_assets`, `bakin_projects`, etc.
 
-**Registered tables:** tasks, audit, assets, projects, workflows, schedule, team (7 total). Audit is registered in `server.ts` (not a plugin); the other 6 are registered by their respective plugins.
+**Registered tables:** tasks, assets, projects, workflows, schedule, team, audit, brainstorm (8 total). All are registered by their owning plugin. The audit table is now owned by the **memory** plugin (moved out of `server.ts` during the issue #67 cleanup) and the brainstorm table is owned by the **messaging** plugin.
 
 **Multi-index tables:** `bakin_assets` is currently the only table with more than one embedding index — it has `assets_text` (BGE over sidecar metadata + extracted PDF/text content) and `assets_visual` (CLIP over raster image pixels). All other tables use a single default embedding index named `embeddings`.
 
@@ -222,7 +246,8 @@ Optional cross-encoder reranking after initial retrieval. Configured globally vi
 | `bakin_workflows` | `description` | Workflow purpose text |
 | `bakin_schedule` | `command` | The thing you actually search for |
 | `bakin_team` | `soul` | Agent persona text |
-| `bakin_audit` | `content` | Audit log entry body |
+| `bakin_audit` | `content` | Audit log entry body (owned by **memory** plugin) |
+| `bakin_messaging_brainstorm` | `message_body` | Brainstorm session messages (owned by **messaging** plugin) |
 | **`bakin_assets`** | **(unset)** | **Intentionally skipped — see below** |
 
 **Why `bakin_assets` skips the reranker**
@@ -457,7 +482,7 @@ This is opt-in because it adds one query per table. Intended for smoke tests and
 
 ### Health endpoint enrichment status (Layer 4)
 
-`GET /api/antfly/health` includes `indexHealth` (array of per-index status) and `healthy` (aggregate boolean) for each table. The health page shows visual indicators:
+`GET /api/plugins/health/antfly-status` (the health plugin owns this route post-issue-#67 — formerly `/api/antfly/health` in `server.ts`) includes `indexHealth` (array of per-index status) and `healthy` (aggregate boolean) for each table. The health page shows visual indicators:
 
 - Green `CircleCheck` — all indexes healthy
 - Amber `Clock` — WAL backlog (enrichment in progress)
@@ -490,12 +515,18 @@ These map directly from the Antfly SDK's `IndexStatus.status` fields (`Embedding
 
 All plugin pages follow the same pattern for search:
 
-1. Use `useAntflySearch({ table })` hook for queries
-2. **Antfly results are the primary filter** — when results exist, filter the local list to matching IDs
-3. **Keyword is the fallback** — only used when Antfly returns no results
-4. **Skip manual sort when Antfly is active** — Antfly returns results in relevance order (RRF score). Any post-hoc sort (by date, name, etc.) destroys relevance. Always check `if (search && antfly.results.length)` before applying manual sorts.
+1. Use `useSearch({ plugin })` hook for queries — when `plugin` is set,
+   the hook fetches `/api/plugins/{plugin}/search?q=...` (the
+   auto-registered per-plugin route). When `plugin` is omitted it falls
+   back to the cross-plugin `/api/search?q=...` endpoint backed by
+   `src/core/api-search-handler.ts`.
+2. **Search results are the primary filter** — when results exist, filter the local list to matching IDs
+3. **Keyword is the fallback** — only used when search returns no results
+4. **Skip manual sort when search is active** — search returns results in relevance order (RRF score). Any post-hoc sort (by date, name, etc.) destroys relevance. Always check `if (search && results.length)` before applying manual sorts.
 
-`reorderByAntflyResults<T>()` from `use-antfly-search.ts` is a utility that sorts a local array by Antfly score order.
+`reorderBySearchResults<T>()` from `src/hooks/use-search.ts` is a utility that sorts a local array by relevance score order.
+
+The hook exports the `SearchResult`, `SearchResponse`, `UseSearchOptions`, and `UseSearchReturn` types — there are no `Antfly`-prefixed aliases.
 
 ## Settings Reference
 

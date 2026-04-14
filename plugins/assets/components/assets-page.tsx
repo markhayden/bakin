@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import { useDebug } from '@/hooks/use-debug'
-import { useAntflySearch, reorderByAntflyResults } from '@/hooks/use-antfly-search'
+import { useSearch } from '@/hooks/use-search'
 import { useAssets, useTrash } from '@/hooks/use-assets'
 import { AssetsGrid } from './assets-grid'
 import { AssetsList, type SortField, type SortDir } from './assets-list'
@@ -77,30 +77,26 @@ export function AssetsPage() {
     return assets.find(a => a.path === assetPath) ?? null
   }, [assetPath, assets, loading])
 
-  // Antfly search for semantic ranking
-  const antfly = useAntflySearch({ table: 'assets', facets: ['asset_type', 'agent'], debounce: 300 })
+  const searchHook = useSearch({ plugin: 'assets', facets: ['asset_type', 'agent'], debounce: 300 })
   useEffect(() => {
-    if (search) antfly.search(search)
-    else antfly.clear()
+    if (search) searchHook.search(search)
+    else searchHook.clear()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
-  // Semantic search via Antfly with keyword fallback
   const filtered = useMemo(() => {
     let result = assets
     if (typeFilter.length > 1) {
       result = result.filter(a => typeFilter.includes(a.type))
     }
     if (search) {
-      if (antfly.results.length) {
-        // Antfly returned semantic matches — use those as the filter
-        const matchIds = new Set(antfly.results.map(r => r.id))
-        const scoreMap = new Map(antfly.results.map(r => [r.id, r.score]))
+      if (searchHook.results.length) {
+        const matchIds = new Set(searchHook.results.map(r => r.id))
+        const scoreMap = new Map(searchHook.results.map(r => [r.id, r.score]))
         result = result
           .filter(a => matchIds.has(a.path))
           .sort((a, b) => (scoreMap.get(b.path) ?? 0) - (scoreMap.get(a.path) ?? 0))
       } else {
-        // Fallback: keyword filter while Antfly is loading or returned empty
         const q = search.toLowerCase()
         result = result.filter(a =>
           a.filename.toLowerCase().includes(q) ||
@@ -111,11 +107,10 @@ export function AssetsPage() {
       }
     }
     return result
-  }, [assets, typeFilter, search, antfly.results])
+  }, [assets, typeFilter, search, searchHook.results])
 
-  // Sorting — skip when Antfly results are active (preserve relevance order)
   const sorted = useMemo(() => {
-    if (search && antfly.results.length) return filtered
+    if (search && searchHook.results.length) return filtered
     const s = sort as SortField
     const dir = sortDir === 'asc' ? 1 : -1
     return [...filtered].sort((a, b) => {
@@ -128,7 +123,7 @@ export function AssetsPage() {
           return dir * (new Date(a.metadata.created).getTime() - new Date(b.metadata.created).getTime())
       }
     })
-  }, [filtered, sort, sortDir, search, antfly.results])
+  }, [filtered, sort, sortDir, search, searchHook.results])
 
   const handleSort = (field: SortField) => {
     if (sort === field) {
@@ -167,7 +162,7 @@ export function AssetsPage() {
         view={view}
         onViewChange={setView}
         onAdd={() => setUploadOpen(true)}
-        typeCounts={antfly.aggregations?.asset_type ? Object.fromEntries(antfly.aggregations.asset_type.map(a => [a.value, a.count])) : undefined}
+        typeCounts={searchHook.aggregations?.asset_type ? Object.fromEntries(searchHook.aggregations.asset_type.map(a => [a.value, a.count])) : undefined}
       />
 
       {activeLoading ? (
@@ -195,7 +190,7 @@ export function AssetsPage() {
           assets={paged}
           onSelect={(a: AssetMeta) => setAssetPath(a.path)}
           onDelete={deleteAsset}
-          scores={search && antfly.results.length && debug ? new Map(antfly.results.map(r => [r.id, { score: r.score, indexScores: r.indexScores }])) : undefined}
+          scores={search && searchHook.results.length && debug ? new Map(searchHook.results.map(r => [r.id, { score: r.score, indexScores: r.indexScores }])) : undefined}
         />
       )}
 

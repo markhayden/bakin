@@ -11,12 +11,15 @@ import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { buildSearchAPI } from '@/core/search-registry'
 import { appendAudit } from '@/core/audit'
-import type { PluginContext, BakinPlugin, APIRoute, SearchAPI } from '@/lib/plugin-types'
+import type { PluginContext, BakinPlugin, APIRoute } from '@/lib/plugin-types'
 
 const log = createLogger('plugin-route')
 
 /** Build the settings + activity for a lightweight PluginContext */
-function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | 'updateSettings' | 'activity' | 'hooks' | 'search'> {
+function buildCtxExtras(
+  pluginId: string,
+  registerRoute: (route: APIRoute) => void,
+): Pick<PluginContext, 'getSettings' | 'updateSettings' | 'activity' | 'hooks' | 'search'> {
   return {
     getSettings: <T = Record<string, unknown>>(): T => {
       const p = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
@@ -63,24 +66,13 @@ function buildCtxExtras(pluginId: string): Pick<PluginContext, 'getSettings' | '
         }
       },
     },
-    // Delegate read/write methods to the real, globalThis-backed registry so
-    // plugin REST handlers can actually query and mutate Antfly. Registration
-    // methods are stubbed: the custom server in server.ts has already
-    // activated every plugin with the real API, populating the shared
-    // registry and wiring the watcher hooks. Re-registering here would
-    // double-fire watcher sync/unlink hooks.
-    search: (() => {
-      const real = buildSearchAPI(pluginId)
-      const api: SearchAPI = {
-        registerContentType: () => {},
-        registerFileBackedContentType: () => {},
-        index: real.index,
-        remove: real.remove,
-        transform: real.transform,
-        query: real.query,
-      }
-      return api
-    })(),
+    // Build a real SearchAPI in `skipFileBackedWiring` mode: content type
+    // registrations still fire and the auto /search route still lands in
+    // `state.routes`, but watcher sync/unlink hooks and pending reconciles
+    // are skipped — the custom server in server.ts already wired those
+    // against the shared globalThis registry during its own activation,
+    // and re-wiring here would double-fire on every file change.
+    search: buildSearchAPI(pluginId, { registerRoute, skipFileBackedWiring: true }),
     hooks: {
       register: (name: string, handler: (data: any) => any) => {
         const registry = (globalThis as any).__bakinHookRegistry
@@ -153,17 +145,18 @@ function ensureInitialized() {
       routes: [],
     }
 
+    const registerRoute = (route: APIRoute) => { state.routes.push(route) }
     const ctx: PluginContext = {
       storage,
       events,
       pluginId: plugin.id,
       registerNav: () => {},
-      registerRoute: (route: APIRoute) => { state.routes.push(route) },
+      registerRoute,
       registerSlot: () => {},
       registerExecTool: () => {},
       registerSkill: () => {},
       watchFiles: () => {},
-      ...buildCtxExtras(plugin.id),
+      ...buildCtxExtras(plugin.id, registerRoute),
     }
 
     plugin.activate(ctx)
@@ -211,17 +204,23 @@ function matchRoute(pluginId: string, path: string, method: string): { route: AP
 function buildContext(pluginId: string): PluginContext {
   const storage = new MarkdownStorageAdapter()
   const events = new BakinEventBus(relayBroadcast)
+  // Per-request ctx — ctx.registerRoute is a no-op because plugin activation
+  // (and therefore route registration) already happened in ensureInitialized.
+  // The search API is constructed with the same no-op so auto-registration
+  // from any handler-time `registerContentType` call (shouldn't happen, but
+  // defensive) silently does nothing instead of corrupting shared state.
+  const noopRegisterRoute = () => {}
   return {
     storage,
     events,
     pluginId,
     registerNav: () => {},
-    registerRoute: () => {},
+    registerRoute: noopRegisterRoute,
     registerSlot: () => {},
     registerExecTool: () => {},
     registerSkill: () => {},
     watchFiles: () => {},
-    ...buildCtxExtras(pluginId),
+    ...buildCtxExtras(pluginId, noopRegisterRoute),
   }
 }
 

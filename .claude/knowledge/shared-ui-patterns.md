@@ -272,28 +272,60 @@ Server tracks `lastConfigChangeAt` and `lastRestartAt` timestamps via `globalThi
 | Team | team-grid | "Save Without Restart" on agent creation |
 | Models | models-page | Any config/defaults change |
 
-## useAntflySearch
+## useSearch
 
-Located at `src/hooks/use-antfly-search.ts`. Provides Antfly-powered semantic search alongside client-side filtering in all plugin UIs.
+Located at `src/hooks/use-search.ts`. Provides Antfly-powered semantic search alongside client-side filtering in all plugin UIs. Takes a `plugin: <pluginId>` option that targets the plugin's auto-registered `/api/plugins/{plugin}/search` route — omit `plugin` to fall back to the cross-plugin `/api/search` endpoint.
 
-**Usage:** Every plugin with a search bar fires `useAntflySearch` when the user types. Results are used to reorder client-side filtered lists by Antfly relevance scores. Aggregation counts from `antfly.aggregations` feed into FacetFilter's `counts` prop.
+**Usage:** Every plugin with a search bar fires `useSearch` when the user types. Results are used to reorder client-side filtered lists by relevance scores. Aggregation counts from `search.aggregations` feed into FacetFilter's `counts` prop.
 
 **Integration pattern:**
-1. Call `antfly.search(q)` when search text changes
-2. Merge `antfly.results` into client-side filter via `reorderByAntflyResults()`
-3. Pass `antfly.aggregations.{facet}` as `counts` to FacetFilter
+1. Call `search.search(q)` when search text changes
+2. Merge `search.results` into client-side filter via `reorderBySearchResults()`
+3. Pass `search.aggregations.{facet}` as `counts` to FacetFilter
 
-**Currently wired in:** Tasks, Assets, Projects, Workflows, Schedule, Memory (audit timeline).
+**Currently wired in:** Tasks, Assets, Projects, Workflows, Schedule, Memory (audit timeline), Messaging (brainstorm).
+
+## AgentFilter
+
+`src/components/agent-filter.tsx` — Single-select agent pill strip with an "All" button. Used on every plugin page that has a per-agent filter (tasks, schedule, messaging calendar, brainstorm).
+
+```tsx
+<AgentFilter
+  agentIds={agentIds}           // any string[] — useAgentIds() for OpenClaw agents, CONTENT_AGENTS for messaging
+  value={agentFilter}            // current selection ('all' or an id)
+  onChange={setAgentFilter}      // typically wired to useQueryState('agent', 'all')
+/>
+```
+
+Always back the `value` with `useQueryState('agent', 'all')` so the selection is bookmarkable and survives back/forward navigation. The component is purely presentational — it does not know about `useAgentIds` or `CONTENT_AGENTS`, so the caller picks the source.
+
+## SortableHead
+
+`src/components/sortable-head.tsx` — Generic sortable `<TableHead>` cell for list tables. Click toggles ascending/descending; clicking a different field switches to that field and resets to descending. Generic over the field union so each table stays type-safe.
+
+```tsx
+type SortField = 'title' | 'agent' | 'updated'
+const [field, setField] = useState<SortField>('updated')
+const [dir, setDir] = useState<SortDir>('desc')
+
+<SortableHead field="title" current={field} dir={dir} onSort={toggleSort}>Title</SortableHead>
+<SortableHead field="agent" current={field} dir={dir} onSort={toggleSort}>Agent</SortableHead>
+<SortableHead field="updated" current={field} dir={dir} onSort={toggleSort} disabled={isSearching}>Updated</SortableHead>
+```
+
+Set `disabled` while a search is active so the upstream relevance order (e.g. Antfly RRF) wins — the cell still renders but clicks are ignored and the arrow indicator hides. Used by tasks' task-log-table and messaging's session-list.
 
 ## Key Files
 
 ```
 src/components/bakin-drawer.tsx      — Resizable drawer shell
+src/components/agent-filter.tsx      — Single-select agent pill strip
 src/components/agent-select.tsx      — Agent picker with avatars
 src/components/model-select.tsx      — Model picker grouped by tier
 src/components/plugin-header.tsx     — Page header with search + actions
 src/components/facet-filter.tsx      — Multi-select filter with optional Antfly counts
-src/hooks/use-antfly-search.ts      — Antfly search hook with debounce + fallback
+src/components/sortable-head.tsx     — Generic sortable table header cell
+src/hooks/use-search.ts              — Search hook (Antfly-backed) with debounce + fallback
 src/hooks/use-gateway-status.ts     — Gateway restart sync checker
 src/components/ui/dropdown-menu.tsx  — Base dropdown (focus: bg-secondary)
 src/components/ui/sheet.tsx          — Sheet primitive (used by BakinDrawer)

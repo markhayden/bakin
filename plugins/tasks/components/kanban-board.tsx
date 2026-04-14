@@ -16,11 +16,13 @@ import { TaskLogTable } from './task-log-table'
 import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
 import { WithLoading } from '@/components/layout/skeleton-loader'
 import { useContentStore } from '@/hooks/use-content-store'
+import { useDebug } from '@/hooks/use-debug'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import { toast } from '@/hooks/use-toast'
 import { useGateStatus } from '../hooks/use-gate-status'
 import { Button } from '@/components/ui/button'
 import { Kanban, Table2, Plus } from 'lucide-react'
+import type { TaskScoreInfo } from './task-card'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
 const COLUMN_ORDER: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived']
@@ -177,9 +179,25 @@ export function KanbanBoard() {
   const [taskIdParam, setTaskIdParam] = useQueryState('taskId', '')
   const hasBoardFilters = Boolean(search) || agentFilter !== 'all'
 
-  const { filteredColumns, allTasksFlat, aggregations } = useTaskFilters(displayColumns, {
+  const { filteredColumns, allTasksFlat, aggregations, searchResults } = useTaskFilters(displayColumns, {
     search, agentFilter, statusFilter,
   })
+
+  const [debug] = useDebug()
+
+  // Per-task search score map for the debug overlay. Tasks register their
+  // Antfly key as the raw `task.id` (see `plugins/tasks/index.ts` reindex
+  // generator), so no prefix to strip. Only build/pass when debug is on AND
+  // there's an active search query — the map is undefined otherwise so
+  // TaskCardContent skips the overlay entirely.
+  const scoreMap = useMemo(() => {
+    if (!debug || !search.trim() || !searchResults.length) return undefined
+    const map = new Map<string, TaskScoreInfo>()
+    for (const r of searchResults) {
+      map.set(r.id, { score: r.score, indexScores: r.indexScores })
+    }
+    return map
+  }, [debug, search, searchResults])
 
   const workflowTaskIds = useMemo(() => {
     const ids: string[] = []
@@ -450,6 +468,7 @@ export function KanbanBoard() {
                       tasks={colId === 'archived' ? [] : filteredColumns[colId]}
                       gateLabels={gateLabels}
                       childTaskLabels={childTaskLabels}
+                      scoreMap={scoreMap}
                       onAssign={handleAssign}
                       onDelete={setDeleteTarget}
                       onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}
@@ -464,7 +483,7 @@ export function KanbanBoard() {
           </DragDropProvider>
         ) : (
           <div className="flex-1 overflow-auto min-h-0 px-6 pb-[25px]">
-            <TaskLogTable currentTasks={allTasksFlat} statusFilter={statusFilter} isSearching={Boolean(search)} />
+            <TaskLogTable currentTasks={allTasksFlat} statusFilter={statusFilter} isSearching={Boolean(search)} scoreMap={scoreMap} />
           </div>
         )}
 

@@ -8,6 +8,8 @@ import { parseGatewayLog } from './lib/gateway-parser'
 import { getAgentIds } from '../team/lib/openclaw-adapter'
 import { getMainAgentId } from '@bakin/core/main-agent'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
+import { getContentDir } from '@bakin/core/content-dir'
+import { getSettings } from '@bakin/core/settings'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -47,6 +49,52 @@ const memoryPlugin: BakinPlugin = {
   ],
 
   activate(ctx: PluginContext) {
+    // ─── Search Content Type Registration ─────────────────────────────
+    // Memory owns audit reading (/api/plugins/memory/audit) so it also
+    // owns the audit search content type. Table name stays `bakin_audit`.
+    ctx.search.registerContentType({
+      table: 'audit',
+      schema: {
+        event: { type: 'keyword' },
+        agent: { type: 'keyword' },
+        channel: { type: 'keyword' },
+        content: { type: 'text' },
+        created_at: { type: 'datetime' },
+      },
+      searchableFields: ['content', 'event'],
+      rerankField: 'content',
+      embeddingTemplate: '{{event}} {{agent}} {{content}}',
+      facets: ['event', 'agent', 'channel'],
+      ttl: getSettings().antfly.auditTtl,
+      ttlField: 'created_at',
+      reindex: async function* () {
+        // Read audit.jsonl and yield each entry
+        const { createReadStream, existsSync } = await import('fs')
+        const { createInterface } = await import('readline')
+        const auditPath = path.join(getContentDir(), 'audit.jsonl')
+        if (!existsSync(auditPath)) return
+        const rl = createInterface({ input: createReadStream(auditPath) })
+        for await (const line of rl) {
+          if (!line.trim()) continue
+          try {
+            const entry = JSON.parse(line)
+            const key = `audit-${entry.ts}-${entry.event}`
+            yield {
+              key,
+              doc: {
+                event: entry.event,
+                agent: entry.agent,
+                channel: entry.channel || '',
+                content: `[${entry.ts}] ${entry.event} by ${entry.agent}: ${JSON.stringify(entry.data || {})}`,
+                created_at: entry.ts,
+              },
+            }
+          } catch { /* skip malformed lines */ }
+        }
+      },
+      verifyExists: async () => true, // audit entries are append-only, never deleted
+    })
+
     // GET /api/plugins/memory/audit
     ctx.registerRoute({
       path: '/audit',

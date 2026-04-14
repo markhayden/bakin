@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 
-export interface AntflySearchResult {
+export interface SearchResult {
   id: string
   table: string
   score: number
@@ -12,8 +12,8 @@ export interface AntflySearchResult {
   indexScores?: Record<string, number>
 }
 
-export interface AntflySearchResponse {
-  results: AntflySearchResult[]
+export interface SearchResponse {
+  results: SearchResult[]
   aggregations?: Record<string, Array<{ value: string; count: number }>>
   meta?: {
     query: string
@@ -23,42 +23,47 @@ export interface AntflySearchResponse {
   }
 }
 
-export interface UseAntflySearchOptions {
-  /** Table to search (omit for cross-table) */
-  table?: string
+export interface UseSearchOptions {
+  /**
+   * Plugin id to route the query to. When set, the hook fetches
+   * `/api/plugins/{plugin}/search?q=...` — the plugin owns its table
+   * name and the client never sees the raw `bakin_` prefix. Omit for
+   * cross-plugin search, which falls back to `/api/search?q=...`.
+   */
+  plugin?: string
   /** Max results */
   limit?: number
   /** Facet fields to include aggregation counts for */
   facets?: string[]
   /** Debounce delay in ms (default: 250) */
   debounce?: number
-  /** Fallback filter function when Antfly returns no results or errors */
-  fallback?: (query: string) => AntflySearchResult[]
+  /** Fallback filter function when search returns no results or errors */
+  fallback?: (query: string) => SearchResult[]
 }
 
-export interface UseAntflySearchReturn {
-  results: AntflySearchResult[]
+export interface UseSearchReturn {
+  results: SearchResult[]
   aggregations: Record<string, Array<{ value: string; count: number }>>
   loading: boolean
   error: string | null
-  meta: AntflySearchResponse['meta'] | null
+  meta: SearchResponse['meta'] | null
   search: (query: string) => void
   clear: () => void
 }
 
 /**
- * Given a client-side filtered list and Antfly search results,
- * reorder the list so Antfly-matched items appear first (by score).
- * Items not in Antfly results keep their original order at the end.
+ * Given a client-side filtered list and search results, reorder the list
+ * so matched items appear first (by score). Items not in results keep
+ * their original order at the end.
  */
-export function reorderByAntflyResults<T extends { id: string }>(
+export function reorderBySearchResults<T extends { id: string }>(
   items: T[],
-  antflyResults: AntflySearchResult[],
+  searchResults: SearchResult[],
 ): T[] {
-  if (!antflyResults.length) return items
+  if (!searchResults.length) return items
 
   const scoreMap = new Map<string, number>()
-  for (const r of antflyResults) {
+  for (const r of searchResults) {
     scoreMap.set(r.id, r.score)
   }
 
@@ -73,31 +78,31 @@ export function reorderByAntflyResults<T extends { id: string }>(
     }
   }
 
-  // Sort matched items by Antfly score (descending)
   matched.sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0))
 
   return [...matched, ...unmatched]
 }
 
 /**
- * React hook for Antfly-powered search with debouncing, AbortController,
- * and optional client-side fallback.
+ * React hook for Bakin search with debouncing, AbortController, and an
+ * optional client-side fallback. Scopes to a plugin via `plugin:` or
+ * runs cross-plugin when omitted.
  */
-export function useAntflySearch(options: UseAntflySearchOptions = {}): UseAntflySearchReturn {
+export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const {
-    table,
+    plugin,
     limit = 20,
     facets,
     debounce: debounceMs = 250,
     fallback,
   } = options
 
-  const [results, setResults] = useState<AntflySearchResult[]>([])
+  const [results, setResults] = useState<SearchResult[]>([])
   const [aggregations, setAggregations] = useState<Record<string, Array<{ value: string; count: number }>>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [meta, setMeta] = useState<AntflySearchResponse['meta'] | null>(null)
-  const [query, setQuery] = useState('')
+  const [meta, setMeta] = useState<SearchResponse['meta'] | null>(null)
+  const [, setQuery] = useState('')
 
   const abortRef = useRef<AbortController | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -122,7 +127,6 @@ export function useAntflySearch(options: UseAntflySearchOptions = {}): UseAntfly
       return
     }
 
-    // Abort any in-flight request
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -132,13 +136,16 @@ export function useAntflySearch(options: UseAntflySearchOptions = {}): UseAntfly
 
     try {
       const params = new URLSearchParams({ q })
-      if (table) params.set('table', table)
       if (limit) params.set('limit', String(limit))
       if (facets?.length) params.set('facets', facets.join(','))
 
-      const res = await fetch(`/api/search?${params}`, {
-        signal: controller.signal,
-      })
+      // Plugin-scoped → /api/plugins/{plugin}/search (table name stays server-side).
+      // No plugin → /api/search (cross-plugin).
+      const url = plugin
+        ? `/api/plugins/${plugin}/search?${params}`
+        : `/api/search?${params}`
+
+      const res = await fetch(url, { signal: controller.signal })
 
       if (!mountedRef.current) return
 
@@ -146,11 +153,10 @@ export function useAntflySearch(options: UseAntflySearchOptions = {}): UseAntfly
         throw new Error(`Search failed: ${res.status}`)
       }
 
-      const data: AntflySearchResponse = await res.json()
+      const data: SearchResponse = await res.json()
 
       if (!mountedRef.current) return
 
-      // If Antfly returned empty results and we have a fallback, use it
       if (data.results.length === 0 && data.meta?.source === 'fallback' && fallback) {
         setResults(fallback(q))
         setAggregations({})
@@ -167,7 +173,6 @@ export function useAntflySearch(options: UseAntflySearchOptions = {}): UseAntfly
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
 
-      // Use fallback on error
       if (fallback) {
         setResults(fallback(q))
         setAggregations({})
@@ -178,9 +183,8 @@ export function useAntflySearch(options: UseAntflySearchOptions = {}): UseAntfly
     } finally {
       if (mountedRef.current) setLoading(false)
     }
-  }, [table, limit, facets, fallback])
+  }, [plugin, limit, facets, fallback])
 
-  // Debounced search trigger
   const search = useCallback((q: string) => {
     setQuery(q)
     if (timerRef.current) clearTimeout(timerRef.current)

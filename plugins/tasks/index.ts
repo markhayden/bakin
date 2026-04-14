@@ -144,25 +144,6 @@ const tasksPlugin: BakinPlugin = {
 
     // ─── REST API Routes ───────────────────────────────────────────────
 
-    // GET /search — search tasks via Antfly
-    ctx.registerRoute({
-      path: '/search',
-      method: 'GET',
-      description: 'Search tasks',
-      handler: async (req: Request) => {
-        const url = new URL(req.url, 'http://localhost')
-        const q = url.searchParams.get('q')
-        if (!q) return Response.json({ error: 'Missing ?q= parameter' }, { status: 400 })
-        const result = await ctx.search.query({
-          q,
-          limit: Number(url.searchParams.get('limit')) || undefined,
-          offset: Number(url.searchParams.get('offset')) || undefined,
-          facets: url.searchParams.get('facets')?.split(',').filter(Boolean),
-        })
-        return Response.json(result)
-      },
-    })
-
     // GET / — list all tasks
     ctx.registerRoute({
       path: '/',

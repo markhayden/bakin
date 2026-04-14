@@ -1,7 +1,7 @@
 'use client'
 
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { JobRow } from './job-row'
+import { JobRow, type JobScoreInfo } from './job-row'
 import type { ScheduleJob } from '@/hooks/use-schedule'
 
 export function JobList({
@@ -14,6 +14,8 @@ export function JobList({
   onEdit,
   onDuplicate,
   onSkipNext,
+  scoreMap,
+  showScores,
 }: {
   jobs: ScheduleJob[]
   onSelect: (job: ScheduleJob) => void
@@ -24,6 +26,8 @@ export function JobList({
   onEdit: (job: ScheduleJob) => void
   onDuplicate: (job: ScheduleJob) => void
   onSkipNext: (jobId: string) => void
+  scoreMap?: Map<string, JobScoreInfo>
+  showScores?: boolean
 }) {
   if (jobs.length === 0) {
     return (
@@ -57,6 +61,7 @@ export function JobList({
             onEdit={() => onEdit(job)}
             onDuplicate={() => onDuplicate(job)}
             onSkipNext={() => onSkipNext(job.id)}
+            scoreInfo={showScores ? scoreMap?.get(job.id) : undefined}
           />
         ))}
       </TableBody>

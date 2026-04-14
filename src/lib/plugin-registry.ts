@@ -146,15 +146,19 @@ class PluginRegistryImpl {
     storage: StorageAdapter,
     events: EventBus,
   ): PluginContext {
+    // Extract as a local so both ctx.registerRoute and the search API's
+    // auto-route wiring land routes in the same place (and share the
+    // same docs registration side effect).
+    const registerRoute = (route: APIRoute) => {
+      state.routes.push(route)
+      registerRouteDoc(pluginId, route)
+    }
     return {
       storage,
       events,
       pluginId,
       registerNav: (items: NavItem[]) => { state.navItems.push(...items) },
-      registerRoute: (route: APIRoute) => {
-        state.routes.push(route)
-        registerRouteDoc(pluginId, route)
-      },
+      registerRoute,
       registerSlot: (reg: UISlotRegistration) => { state.slots.push(reg) },
       registerExecTool: (tool: ExecToolDefinition) => {
         tool.source = `plugin:${pluginId}`
@@ -210,7 +214,7 @@ class PluginRegistryImpl {
           appendAudit(getContentDir(), `${pluginId}.${event}`, agent, data || {})
         },
       },
-      search: buildSearchAPI(pluginId),
+      search: buildSearchAPI(pluginId, { registerRoute }),
       hooks: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         register: (name: string, handler: (data: any) => any) => {

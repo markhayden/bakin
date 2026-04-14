@@ -77,6 +77,13 @@ vi.mock('../../../src/core/agent-usage', () => ({
   ],
 }))
 
+vi.mock('../../../src/core/search-registry', () => ({
+  getSearchHealth: vi.fn(async () => ({
+    enabled: false,
+    tables: [],
+  })),
+}))
+
 // Mock globalThis registry accessors
 ;(globalThis as any).__bakinGetRegistrySnapshot = () => [
   { id: 'tasks', name: 'Tasks', version: '1.0.0', description: 'Task management', source: 'built-in', routes: 5 },
@@ -131,8 +138,8 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 5 routes', () => {
-    expect(activated.routes.length).toBe(5)
+  it('registers 6 routes', () => {
+    expect(activated.routes.length).toBe(6)
   })
 
   it('registers 2 exec tools', () => {
