@@ -6,7 +6,6 @@ import fs from 'fs'
 import path from 'path'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
-import { getAgentIds as getOpenClawAgentIds } from './openclaw-config'
 
 const log = createLogger('settings')
 
@@ -53,13 +52,6 @@ export interface BakinSettings {
     allowlist?: string[]
     blocklist?: string[]
   }
-  agents: string[]
-  /**
-   * Canonical id of the main/orchestrator agent. Overrides the OpenClaw
-   * config lookup performed by `getMainAgentId()`. Usually unset — the
-   * OpenClaw config is the source of truth.
-   */
-  mainAgentId?: string
   antfly: {
     enabled: boolean
     url: string
@@ -179,7 +171,6 @@ const DEFAULTS: BakinSettings = {
     gatewayPort: 18789,
   },
   models: {},
-  agents: [], // populated dynamically from OpenClaw at load time
   antfly: {
     enabled: true,
     url: 'http://localhost:8080/api/v1',
@@ -272,60 +263,41 @@ function deepMerge(defaults: Record<string, unknown>, overrides: Record<string, 
 }
 
 export function getSettings(): BakinSettings {
-  let settings = getCachedSettings()
+  const cached = getCachedSettings()
+  if (cached) return cached
+
+  const settingsPath = getSettingsPath()
   let overrides: Record<string, unknown> = {}
 
-  if (!settings) {
-    const settingsPath = getSettingsPath()
-
-    try {
-      if (fs.existsSync(settingsPath)) {
-        overrides = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
-        log.info('Settings loaded', { path: settingsPath })
-      }
-    } catch (err) {
-      log.warn('Failed to read settings, using defaults', err)
+  try {
+    if (fs.existsSync(settingsPath)) {
+      overrides = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      log.info('Settings loaded', { path: settingsPath })
     }
-
-    settings = deepMerge(
-      DEFAULTS as unknown as Record<string, unknown>,
-      overrides
-    ) as unknown as BakinSettings
-
-    // Legacy embedder field — migrate to embedders.default if the user
-    // set it directly without also setting embedders.default. This is
-    // detected by inspecting the raw overrides, not the merged settings,
-    // since defaults alone never populate the legacy field.
-    const overrideAntfly = (overrides as { antfly?: Record<string, unknown> }).antfly
-    const legacyEmbedder = overrideAntfly && (overrideAntfly as { embedder?: { provider: string; model: string } }).embedder
-    const hasEmbedders = overrideAntfly && 'embedders' in overrideAntfly
-    if (legacyEmbedder && !hasEmbedders) {
-      settings.antfly.embedders.default = { provider: legacyEmbedder.provider, model: legacyEmbedder.model }
-      log.warn('settings.antfly.embedder is deprecated — migrate to settings.antfly.embedders.default')
-    } else if (legacyEmbedder && hasEmbedders) {
-      log.warn('settings.antfly.embedder is deprecated and ignored — using settings.antfly.embedders instead')
-    }
-
-    setCachedSettings(settings)
-  } else {
-    const settingsPath = getSettingsPath()
-    try {
-      if (fs.existsSync(settingsPath)) {
-        overrides = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
-      }
-    } catch {
-      // keep cached settings, treat as no explicit overrides
-    }
+  } catch (err) {
+    log.warn('Failed to read settings, using defaults', err)
   }
 
-  const hasExplicitAgentsOverride = Array.isArray(overrides.agents)
+  const settings = deepMerge(
+    DEFAULTS as unknown as Record<string, unknown>,
+    overrides
+  ) as unknown as BakinSettings
 
-  // If the user did not explicitly set an agent roster, mirror OpenClaw.
-  // If they did, respect it and do not overwrite it based on openclaw.json mtime.
-  if (!hasExplicitAgentsOverride) {
-    settings.agents = getOpenClawAgentIds()
+  // Legacy embedder field — migrate to embedders.default if the user
+  // set it directly without also setting embedders.default. This is
+  // detected by inspecting the raw overrides, not the merged settings,
+  // since defaults alone never populate the legacy field.
+  const overrideAntfly = (overrides as { antfly?: Record<string, unknown> }).antfly
+  const legacyEmbedder = overrideAntfly && (overrideAntfly as { embedder?: { provider: string; model: string } }).embedder
+  const hasEmbedders = overrideAntfly && 'embedders' in overrideAntfly
+  if (legacyEmbedder && !hasEmbedders) {
+    settings.antfly.embedders.default = { provider: legacyEmbedder.provider, model: legacyEmbedder.model }
+    log.warn('settings.antfly.embedder is deprecated — migrate to settings.antfly.embedders.default')
+  } else if (legacyEmbedder && hasEmbedders) {
+    log.warn('settings.antfly.embedder is deprecated and ignored — using settings.antfly.embedders instead')
   }
 
+  setCachedSettings(settings)
   return settings
 }
 

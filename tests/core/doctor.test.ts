@@ -179,7 +179,6 @@ describe('doctor', () => {
       // Override settings to enable autoFix
       const { getSettings } = await import('@/core/settings')
       vi.mocked(getSettings).mockReturnValue({
-        agents: ['main', 'patch', 'pixel'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: true },
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },

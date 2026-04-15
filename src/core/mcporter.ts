@@ -12,7 +12,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { execSync } from 'child_process'
 import { createLogger } from './logger'
-import { getSettings } from './settings'
+import { getAgentIds } from '@bakin/core/openclaw-config'
 
 const log = createLogger('mcporter')
 
@@ -103,8 +103,7 @@ export function mcpUrl(agent: string, port: number): string {
  * Returns list of changes made.
  */
 export function syncConfig(port: number): string[] {
-  const settings = getSettings()
-  const agents = settings.agents
+  const agents = getAgentIds()
   const config = readConfig()
   const changes: string[] = []
 
@@ -152,8 +151,7 @@ export function verifyConfig(port: number): {
   agentEntries: Array<{ agent: string; name: string; url: string; correct: boolean }>
   staleEntries: string[]
 } {
-  const settings = getSettings()
-  const agents = settings.agents
+  const agents = getAgentIds()
   const config = readConfig()
   const servers = config.mcpServers || {}
 
