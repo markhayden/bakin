@@ -143,6 +143,86 @@ export function notifyStepDispatched(
 // Discord Gate Alerts
 // ---------------------------------------------------------------------------
 
+/** Discord embed field value cap — fields rendering longer values are truncated by Discord. */
+const DISCORD_FIELD_CAP = 1024
+/** Discord message content cap — longer messages must be split across multiple posts. */
+const DISCORD_MESSAGE_CAP = 2000
+/** Discord thread name cap — anything longer is truncated by the API. */
+const DISCORD_THREAD_NAME_CAP = 100
+
+/**
+ * Start a thread on an existing channel message and post the given content
+ * inside it. Splits content longer than DISCORD_MESSAGE_CAP into sequential
+ * posts so the full text always lands. Fire-and-forget — failures log but
+ * do not throw, so a missing CREATE_PUBLIC_THREADS permission won't break
+ * the gate alert flow.
+ */
+export async function postThreadReply(
+  channelId: string,
+  messageId: string,
+  threadName: string,
+  content: string,
+): Promise<void> {
+  const config = loadDiscordConfig()
+  if (!config) return
+
+  const truncatedName = threadName.slice(0, DISCORD_THREAD_NAME_CAP)
+  const authHeaders = {
+    Authorization: `Bot ${config.botToken}`,
+    'Content-Type': 'application/json',
+  }
+
+  let threadId: string | null = null
+  try {
+    const startRes = await fetch(
+      `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/threads`,
+      {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ name: truncatedName, auto_archive_duration: 60 }),
+      },
+    )
+
+    if (!startRes.ok) {
+      const text = await startRes.text()
+      log.warn(`Discord thread create failed (${startRes.status}): ${text}`)
+      return
+    }
+    const thread = await startRes.json() as { id: string }
+    threadId = thread.id
+  } catch (err) {
+    log.error('Discord thread create error', err)
+    return
+  }
+
+  // Split content into Discord-message-sized chunks and post sequentially.
+  const chunks: string[] = []
+  let remaining = content
+  while (remaining.length > 0) {
+    chunks.push(remaining.slice(0, DISCORD_MESSAGE_CAP))
+    remaining = remaining.slice(DISCORD_MESSAGE_CAP)
+  }
+
+  for (const chunk of chunks) {
+    try {
+      const postRes = await fetch(
+        `https://discord.com/api/v10/channels/${threadId}/messages`,
+        {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({ content: chunk }),
+        },
+      )
+      if (!postRes.ok) {
+        const text = await postRes.text()
+        log.warn(`Discord thread message failed (${postRes.status}): ${text}`)
+      }
+    } catch (err) {
+      log.error('Discord thread message error', err)
+    }
+  }
+}
+
 export interface DiscordGateSettings {
   discordGateAlerts: boolean
   discordGateChannel: string
@@ -175,15 +255,24 @@ export async function sendDiscordGateAlert(
     return null
   }
 
-  // Build prior output summary (truncated for embed)
+  // Build prior output summary (truncated for embed). The full text is
+  // posted as a thread reply below if it overflows the embed field cap.
   let outputSummary = ''
+  let outputFull = ''
   if (priorOutput) {
     const entries = Object.entries(priorOutput)
     for (const [key, value] of entries) {
+      const fullValue = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+      outputFull += `**${key}:**\n${fullValue}\n\n`
       const preview = typeof value === 'string' ? value : JSON.stringify(value)
       outputSummary += `**${key}:** ${preview.slice(0, 200)}${preview.length > 200 ? '...' : ''}\n`
     }
   }
+
+  // The summary is pre-truncated per-value to 200 chars, so it's always
+  // small; the meaningful overflow signal is the full content size.
+  const overflowsEmbedField = outputFull.length > DISCORD_FIELD_CAP
+  const truncationNotice = overflowsEmbedField ? '\n\n_Full output posted in thread below._' : ''
 
   const embed = {
     title: `Gate: ${label}`,
@@ -192,7 +281,10 @@ export async function sendDiscordGateAlert(
     fields: [
       { name: 'Task', value: instance.taskId, inline: true },
       { name: 'Step', value: stepId, inline: true },
-      ...(outputSummary ? [{ name: 'Prior Output', value: outputSummary.slice(0, 1024) }] : []),
+      ...(outputSummary ? [{
+        name: 'Prior Output',
+        value: outputSummary.slice(0, DISCORD_FIELD_CAP - truncationNotice.length) + truncationNotice,
+      }] : []),
     ],
     timestamp: new Date().toISOString(),
   }
@@ -234,6 +326,15 @@ export async function sendDiscordGateAlert(
 
     const msg = await res.json() as { id: string }
     log.info(`Discord gate alert sent for ${instance.taskId}:${stepId}`, { messageId: msg.id })
+
+    // Overflow: if the summary was too long for the embed field, post the
+    // full prior output as a thread reply on the gate message. Fire-and-
+    // forget — a thread permission failure does not invalidate the alert.
+    if (overflowsEmbedField && outputFull) {
+      const threadName = `${instance.workflowId} — ${label}`
+      postThreadReply(channelId, msg.id, threadName, outputFull).catch(() => {})
+    }
+
     return msg.id
   } catch (err) {
     log.error('Discord gate alert error', err)

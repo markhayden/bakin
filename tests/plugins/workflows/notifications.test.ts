@@ -43,6 +43,7 @@ import {
   sendDiscordGateAlert,
   editDiscordGateMessage,
   sendDiscordGateSummary,
+  postThreadReply,
   setDiscordGateSettings,
   type DiscordGateSettings,
 } from '@bakin/workflows/lib/notifications'
@@ -436,6 +437,135 @@ describe('Discord gate notifications', () => {
         { ...enabledSettings, discordGateAlerts: false },
       )
       expect(mockFetch).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('postThreadReply', () => {
+    it('starts a thread on the message and posts the content', async () => {
+      // First fetch: thread create
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: 'thread-456' }),
+      })
+      // Second fetch: thread message
+      mockFetch.mockResolvedValueOnce({ ok: true })
+
+      await postThreadReply('ch-123', 'msg-789', 'My thread', 'short content')
+
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+
+      const [createUrl, createOpts] = mockFetch.mock.calls[0]
+      expect(createUrl).toBe('https://discord.com/api/v10/channels/ch-123/messages/msg-789/threads')
+      expect(createOpts.method).toBe('POST')
+      const createBody = JSON.parse(createOpts.body)
+      expect(createBody.name).toBe('My thread')
+      expect(createBody.auto_archive_duration).toBe(60)
+
+      const [postUrl, postOpts] = mockFetch.mock.calls[1]
+      expect(postUrl).toBe('https://discord.com/api/v10/channels/thread-456/messages')
+      expect(postOpts.method).toBe('POST')
+      expect(JSON.parse(postOpts.body).content).toBe('short content')
+    })
+
+    it('truncates thread name to 100 chars', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: 't' }),
+      })
+      mockFetch.mockResolvedValueOnce({ ok: true })
+
+      const longName = 'x'.repeat(150)
+      await postThreadReply('ch-123', 'msg-789', longName, 'content')
+
+      const createBody = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(createBody.name.length).toBe(100)
+    })
+
+    it('splits content > 2000 chars across multiple posts', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: 'thread-123' }),
+      })
+      mockFetch.mockResolvedValueOnce({ ok: true })
+      mockFetch.mockResolvedValueOnce({ ok: true })
+
+      const longContent = 'a'.repeat(3500)
+      await postThreadReply('ch-123', 'msg-789', 'overflow', longContent)
+
+      // 1 thread create + 2 message posts (3500 → 2000 + 1500)
+      expect(mockFetch).toHaveBeenCalledTimes(3)
+      const firstChunk = JSON.parse(mockFetch.mock.calls[1][1].body).content
+      const secondChunk = JSON.parse(mockFetch.mock.calls[2][1].body).content
+      expect(firstChunk.length).toBe(2000)
+      expect(secondChunk.length).toBe(1500)
+    })
+
+    it('does not throw when thread create fails (missing permission)', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: () => Promise.resolve('Missing permissions'),
+      })
+
+      await expect(postThreadReply('ch-123', 'msg-789', 'name', 'content')).resolves.toBeUndefined()
+      // Only the thread-create call happened — no message post attempted
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('sendDiscordGateAlert overflow handling', () => {
+    it('triggers thread reply when prior output exceeds field cap', async () => {
+      // First fetch: gate message create
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: 'gate-msg-1' }),
+      })
+      // Second fetch: thread create
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: 'thread-1' }),
+      })
+      // Third+ fetches: thread message posts
+      mockFetch.mockResolvedValue({ ok: true })
+
+      const huge = 'x'.repeat(2000)
+      await sendDiscordGateAlert(
+        mockInstance,
+        'review-gate',
+        'Review Draft',
+        { 'big-output': huge },
+        enabledSettings,
+      )
+
+      // Wait a tick for the fire-and-forget thread call to start
+      await new Promise(r => setTimeout(r, 10))
+
+      // Expect at least: gate message + thread create + at least one thread post
+      expect(mockFetch.mock.calls.length).toBeGreaterThanOrEqual(3)
+      const threadCreateCall = mockFetch.mock.calls.find(([url]) =>
+        typeof url === 'string' && url.includes('/messages/gate-msg-1/threads')
+      )
+      expect(threadCreateCall).toBeDefined()
+    })
+
+    it('does not trigger thread reply when prior output fits in field cap', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: 'gate-msg-2' }),
+      })
+
+      await sendDiscordGateAlert(
+        mockInstance,
+        'review-gate',
+        'Review Draft',
+        { 'small-output': 'short' },
+        enabledSettings,
+      )
+
+      await new Promise(r => setTimeout(r, 10))
+
+      // Only the single gate message call — no thread create
+      expect(mockFetch).toHaveBeenCalledTimes(1)
     })
   })
 })
