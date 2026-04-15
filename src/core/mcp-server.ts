@@ -24,6 +24,7 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
 import { appendAudit } from './audit'
+import { recordUsage } from '@/core/usage'
 import { getAllExecTools, recordExecToolCall, recordExecToolError, getToolContext } from '../../scripts/lib/registry'
 
 // Script execution tools that stay in scripts/lib/ — self-register on import.
@@ -125,11 +126,26 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
         const taskId = (params as Record<string, unknown>).taskId as string | undefined
         log.info('Exec tool called', { tool: tool.name, agent, taskId })
 
+        const start = Date.now()
         try {
           const toolCtx = getToolContext(tool.name)
           const result = await tool.handler(params as Record<string, unknown>, agent, toolCtx)
+          const durationMs = Date.now() - start
 
           if (!result.ok) recordExecToolError(tool.name, String(result.error || 'unknown'))
+
+          recordUsage({
+            kind: 'mcp',
+            name: tool.name,
+            agent,
+            durationMs,
+            status: result.ok ? 'ok' : 'error',
+            meta: {
+              taskId,
+              label: tool.label,
+              ...(result.ok ? {} : { error: String(result.error || 'unknown') }),
+            },
+          })
 
           appendAudit(
             getContentDir(),
@@ -144,8 +160,17 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
             : `ERROR: ${result.error}${result.details ? '\n' + JSON.stringify(result.details, null, 2) : ''}`
           return { content: [{ type: 'text' as const, text }], isError: !result.ok }
         } catch (err) {
+          const durationMs = Date.now() - start
           const errMsg = err instanceof Error ? err.message : String(err)
           recordExecToolError(tool.name, errMsg)
+          recordUsage({
+            kind: 'mcp',
+            name: tool.name,
+            agent,
+            durationMs,
+            status: 'error',
+            meta: { taskId, label: tool.label, error: errMsg },
+          })
           appendAudit(getContentDir(), `exec.${tool.name}.error`, agent, { taskId, label: tool.label, ...(tool.activityDuplicate ? { duplicate: true } : {}), error: errMsg }, 'mcp')
           return { content: [{ type: 'text' as const, text: `Exec tool error: ${errMsg}` }], isError: true }
         }
