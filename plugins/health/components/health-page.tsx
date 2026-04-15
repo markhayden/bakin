@@ -138,6 +138,11 @@ interface RestHealth {
   recent: { windowSec: number; total: number; errors: number; byPlugin: RestPluginBucket[] }
 }
 
+interface ErrorsByKind {
+  total: number
+  byKind: { mcp: number; rest: number; agent: number }
+}
+
 interface HealthSummary {
   mcp: McpData | null
   mcpHealth: McpHealth | null
@@ -146,6 +151,7 @@ interface HealthSummary {
   requests: RequestsData | null
   server: ServerData | null
   openclawPort: number | null
+  errors1h: ErrorsByKind | null
 }
 
 function formatUptime(since: string): string {
@@ -451,94 +457,13 @@ export function HealthPage() {
       </div>
 
       {/* Top row — summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card size="sm">
           <CardContent className="pt-3">
             <p className="text-xs text-muted-foreground">Uptime</p>
             <p className="text-xl font-mono font-semibold">
               {requests?.upSince ? formatUptime(requests.upSince) : mcp?.upSince ? formatUptime(mcp.upSince) : '—'}
             </p>
-          </CardContent>
-        </Card>
-
-        <Card size="sm">
-          <CardContent className="pt-3">
-            <p className="text-xs text-muted-foreground">API Requests</p>
-            <p className="text-xl font-mono font-semibold">
-              {requests?.totalRequests ?? 0}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card size="sm">
-          <CardContent className="pt-3">
-            <p className="text-xs text-muted-foreground">MCP Health</p>
-            {(() => {
-              const mh = data?.mcpHealth
-              if (!mh || mh.total === 0) {
-                return (
-                  <>
-                    <p className="text-xl font-mono font-semibold text-muted-foreground">—</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">no calls last hour</p>
-                  </>
-                )
-              }
-              const pct = Math.round(mh.successRate * 100)
-              const tone = pct >= 99
-                ? 'text-emerald-400'
-                : pct >= 95
-                ? 'text-amber-400'
-                : 'text-red-400'
-              return (
-                <>
-                  <p className={`text-xl font-mono font-semibold ${tone}`}>{pct}%</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {mh.errors} err / {mh.total} req · 1h
-                    {mh.recent.errors > 0 && (
-                      <span className="ml-1 text-red-400">
-                        · {mh.recent.errors} in last {mh.recent.windowSec}s
-                      </span>
-                    )}
-                  </p>
-                </>
-              )
-            })()}
-          </CardContent>
-        </Card>
-
-        <Card size="sm">
-          <CardContent className="pt-3">
-            <p className="text-xs text-muted-foreground">REST Health</p>
-            {(() => {
-              const rh = data?.restHealth
-              if (!rh || rh.total === 0) {
-                return (
-                  <>
-                    <p className="text-xl font-mono font-semibold text-muted-foreground">—</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">no calls last hour</p>
-                  </>
-                )
-              }
-              const pct = Math.round(rh.successRate * 100)
-              const tone = pct >= 99
-                ? 'text-emerald-400'
-                : pct >= 95
-                ? 'text-amber-400'
-                : 'text-red-400'
-              return (
-                <>
-                  <p className={`text-xl font-mono font-semibold ${tone}`}>{pct}%</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {rh.errors} err / {rh.total} req · 1h
-                    {rh.recent.errors > 0 && (
-                      <span className="ml-1 text-red-400">
-                        · {rh.recent.errors} in last {rh.recent.windowSec}s
-                      </span>
-                    )}
-                  </p>
-                </>
-              )
-            })()}
           </CardContent>
         </Card>
 
@@ -570,6 +495,26 @@ export function HealthPage() {
                 </div>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        <Card size="sm">
+          <CardContent className="pt-3">
+            <p className="text-xs text-muted-foreground">Errors (1h)</p>
+            {(() => {
+              const e = data?.errors1h
+              const total = e?.total ?? 0
+              const tone = total > 0 ? 'text-red-400' : 'text-emerald-400'
+              const bk = e?.byKind ?? { mcp: 0, rest: 0, agent: 0 }
+              return (
+                <>
+                  <p className={`text-xl font-mono font-semibold ${tone}`}>{total}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    mcp: {bk.mcp} · rest: {bk.rest} · agent: {bk.agent}
+                  </p>
+                </>
+              )
+            })()}
           </CardContent>
         </Card>
       </div>
