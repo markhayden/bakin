@@ -6,7 +6,7 @@ import fs from 'fs'
 import path from 'path'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
-import { getOpenClawPath } from './openclaw-home'
+import { getAgentIds as getOpenClawAgentIds } from './openclaw-config'
 
 const log = createLogger('settings')
 
@@ -241,36 +241,9 @@ const DEFAULTS: BakinSettings = {
 // bust the cache seen by the custom server's /api/settings handler.
 const _g = globalThis as typeof globalThis & {
   __bakinSettingsCache?: BakinSettings | null
-  __bakinOpenClawMtime?: number
-  __bakinOpenClawAgents?: string[]
 }
 function getCachedSettings(): BakinSettings | null { return _g.__bakinSettingsCache ?? null }
 function setCachedSettings(v: BakinSettings | null) { _g.__bakinSettingsCache = v }
-
-/**
- * Read agent IDs from ~/.openclaw/openclaw.json with mtime-based caching.
- * Re-reads when the file changes on disk — picks up agents added via OpenClaw
- * without needing a Bakin restart or explicit cache bust. Ids flow through
- * unchanged; display names are resolved separately at render time.
- */
-function readAgentIdsFromOpenClaw(): string[] {
-  try {
-    const openclawJsonPath = getOpenClawPath('openclaw.json')
-    const stat = fs.statSync(openclawJsonPath)
-    if (_g.__bakinOpenClawMtime === stat.mtimeMs && _g.__bakinOpenClawAgents) {
-      return _g.__bakinOpenClawAgents
-    }
-    const config = JSON.parse(fs.readFileSync(openclawJsonPath, 'utf-8'))
-    const list = config?.agents?.list as Array<{ id: string }> | undefined
-    if (!Array.isArray(list)) return []
-    const agents = list.map((a) => a.id)
-    _g.__bakinOpenClawMtime = stat.mtimeMs
-    _g.__bakinOpenClawAgents = agents
-    return agents
-  } catch {
-    return []
-  }
-}
 
 function getSettingsPath(): string {
   return path.join(getContentDir(), 'settings.json')
@@ -350,7 +323,7 @@ export function getSettings(): BakinSettings {
   // If the user did not explicitly set an agent roster, mirror OpenClaw.
   // If they did, respect it and do not overwrite it based on openclaw.json mtime.
   if (!hasExplicitAgentsOverride) {
-    settings.agents = readAgentIdsFromOpenClaw()
+    settings.agents = getOpenClawAgentIds()
   }
 
   return settings

@@ -18,24 +18,8 @@
  * only when the file changes. Rename the orchestrator in openclaw.json and the
  * next call picks it up without a restart.
  */
-import { readFileSync, statSync } from 'fs'
-
 import { getSettings } from './settings'
-import { getOpenClawPath } from './openclaw-home'
-
-interface OpenClawAgentEntry {
-  id: string
-  workspace?: string
-  identity?: { name?: string; emoji?: string }
-  subagents?: { allowAgents?: string[] }
-}
-
-interface OpenClawConfig {
-  agents?: {
-    defaults?: { workspace?: string }
-    list?: OpenClawAgentEntry[]
-  }
-}
+import { readOpenClawConfig, findAgentById } from './openclaw-config'
 
 export function getMainAgentId(): string {
   const id = tryGetMainAgentId()
@@ -60,7 +44,7 @@ export function tryGetMainAgentId(): string | null {
 
 export function getMainAgentName(): string {
   const id = getMainAgentId()
-  const entry = findOpenClawAgentById(id)
+  const entry = findAgentById(id)
   const name = entry?.identity?.name
   if (typeof name === 'string' && name.trim().length > 0) return name
   return id.charAt(0).toUpperCase() + id.slice(1)
@@ -82,33 +66,4 @@ function detectOrchestratorFromOpenClaw(): string | null {
     (a) => Array.isArray(a.subagents?.allowAgents) && (a.subagents?.allowAgents?.length ?? 0) > 0
   )
   return withSubagents?.id ?? null
-}
-
-function findOpenClawAgentById(id: string): OpenClawAgentEntry | null {
-  const config = readOpenClawConfig()
-  const list = config?.agents?.list
-  if (!Array.isArray(list)) return null
-  return list.find((a) => a.id === id) ?? null
-}
-
-let cachedConfig: { mtimeMs: number; config: OpenClawConfig | null } | null = null
-
-function readOpenClawConfig(): OpenClawConfig | null {
-  const path = getOpenClawPath('openclaw.json')
-  let mtimeMs: number
-  try {
-    mtimeMs = statSync(path).mtimeMs
-  } catch {
-    cachedConfig = null
-    return null
-  }
-  if (cachedConfig && cachedConfig.mtimeMs === mtimeMs) return cachedConfig.config
-  let config: OpenClawConfig | null
-  try {
-    config = JSON.parse(readFileSync(path, 'utf-8')) as OpenClawConfig
-  } catch {
-    config = null
-  }
-  cachedConfig = { mtimeMs, config }
-  return config
 }
