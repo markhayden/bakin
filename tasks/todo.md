@@ -26,8 +26,8 @@
 
 ## Phase 3 — Docs (solo)
 
-- [ ] **T8** — update `.claude/knowledge/agent-system.md`, create/append `.claude/knowledge/team-plugin.md`, verify `CLAUDE.md` is still accurate. _(commit: `docs: update agent-system and team-plugin knowledge notes`)_
-- [ ] ✅ **Phase 3 checkpoint:** all tests green, docs match shipped code.
+- [x] **T8** — updated `.claude/knowledge/agent-system.md`, created `.claude/knowledge/team-plugin.md`, tidied `CLAUDE.md` (mainAgentId no longer under ~/.bakin/settings.json). _(commit: `docs: update agent-system and team-plugin knowledge notes` — da2a6c4)_
+- [x] ✅ **Phase 3 checkpoint:** 141 files / 2108 passing / 1 skipped. Docs match shipped code.
 
 ## Phase 4 — Manual cleanup (runbook, no commit)
 
