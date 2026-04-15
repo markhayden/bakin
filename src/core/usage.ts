@@ -183,6 +183,25 @@ export function getUsageStats(query: UsageQuery): { total: number; errors: numbe
   return { total: entries.length, errors }
 }
 
+// Watchdog-facing variant: takes raw windowMs from settings rather than a
+// named WindowKey, so alert thresholds stay configurable without having to
+// pin to 5m/1h/24h buckets.
+export function getStatsByMs(query: { kind?: UsageKind; windowMs: number; agent?: string }): { total: number; errors: number } {
+  const state = getState()
+  const cutoff = Date.now() - query.windowMs
+  let total = 0
+  let errors = 0
+  for (const e of state.entries) {
+    const ts = Date.parse(e.ts)
+    if (isNaN(ts) || ts < cutoff) continue
+    if (query.kind && e.kind !== query.kind) continue
+    if (query.agent && e.agent !== query.agent) continue
+    total++
+    if (e.status === 'error') errors++
+  }
+  return { total, errors }
+}
+
 export function getErrorCount(windowMs: number): ErrorCount {
   const state = getState()
   const cutoff = Date.now() - windowMs

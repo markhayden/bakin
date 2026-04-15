@@ -11,18 +11,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { PluginHeader } from '@/components/plugin-header'
 import { ExternalLink, Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
 
-interface McpSession {
+interface McpSessionInfo {
   agent: string
   sessions: number
   connectedAt: string
-  toolCalls: number
-}
-
-interface McpData {
-  activeSessions: McpSession[]
-  toolCallCounts: Record<string, number>
-  totalRequests: number
-  upSince: string
 }
 
 interface DiagnosticResult {
@@ -45,30 +37,6 @@ interface ServerData {
   totalMemoryMB: number
 }
 
-interface EndpointStat {
-  endpoint: string
-  count: number
-  errors: number
-  lastCalled: string
-}
-
-interface RecentRequest {
-  ts: string
-  method: string
-  path: string
-  status: number
-  durationMs: number
-  agent?: string
-}
-
-interface RequestsData {
-  totalRequests: number
-  totalErrors: number
-  upSince: string
-  endpoints: EndpointStat[]
-  recent: RecentRequest[]
-}
-
 interface PluginInfo {
   id: string
   name: string
@@ -78,18 +46,8 @@ interface PluginInfo {
   routes: number
 }
 
-interface ExecToolStat {
-  name: string
-  source: string
-  calls: number
-  errors: number
-  lastUsed: string | null
-  lastError: string | null
-}
-
 interface RegistryData {
   plugins: PluginInfo[]
-  execTools: ExecToolStat[]
 }
 
 interface AgentUsage {
@@ -112,32 +70,6 @@ interface AgentUsage {
     cacheWrite: number
     total: number
   }
-}
-
-interface McpHealth {
-  windowSec: number
-  total: number
-  errors: number
-  successRate: number
-  recent: { windowSec: number; total: number; errors: number }
-}
-
-interface RestPluginBucket {
-  pluginId: string
-  total: number
-  errors: number
-  successRate: number
-  perMethod: Record<string, number>
-  lastCalled: string | null
-}
-
-interface RestHealth {
-  windowSec: number
-  total: number
-  errors: number
-  successRate: number
-  byPlugin: RestPluginBucket[]
-  recent: { windowSec: number; total: number; errors: number; byPlugin: RestPluginBucket[] }
 }
 
 interface ErrorsByKind {
@@ -178,14 +110,12 @@ interface UsageFeedData {
 }
 
 interface HealthSummary {
-  mcp: McpData | null
-  mcpHealth: McpHealth | null
-  restHealth: RestHealth | null
   doctor: DoctorData | null
-  requests: RequestsData | null
-  server: ServerData | null
-  openclawPort: number | null
   errors1h: ErrorsByKind | null
+  activeSessions: McpSessionInfo[] | null
+  upSince: string | null
+  openclawPort: number | null
+  server: ServerData | null
 }
 
 function formatUptime(since: string): string {
@@ -198,10 +128,6 @@ function formatUptime(since: string): string {
   if (hrs < 24) return `${hrs}h ${mins % 60}m`
   const days = Math.floor(hrs / 24)
   return `${days}d ${hrs % 24}h`
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString()
 }
 
 function formatAge(iso: string): string {
@@ -272,33 +198,6 @@ function HorizontalBars({ items, unit = '' }: { items: BarItem[]; unit?: string 
           </div>
         </div>
       ))}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Pagination helper
-// ---------------------------------------------------------------------------
-
-const PAGE_SIZE = 20
-
-function PaginationControls({ page, total, onPageChange }: { page: number; total: number; onPageChange: (p: number) => void }) {
-  const totalPages = Math.ceil(total / PAGE_SIZE)
-  if (totalPages <= 1) return null
-
-  return (
-    <div className="flex items-center justify-between pt-3 border-t border-white/5">
-      <span className="text-xs text-muted-foreground">
-        {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
-      </span>
-      <div className="flex gap-1">
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={page === 0} onClick={() => onPageChange(page - 1)}>
-          Prev
-        </Button>
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={page >= totalPages - 1} onClick={() => onPageChange(page + 1)}>
-          Next
-        </Button>
-      </div>
     </div>
   )
 }
@@ -445,12 +344,6 @@ export function HealthPage() {
 
   // Search state
   const [pluginSearch, setPluginSearch] = useState('')
-  const [toolSearch, setToolSearch] = useState('')
-
-  // Pagination state
-  const [toolPage, setToolPage] = useState(0)
-  const [endpointPage, setEndpointPage] = useState(0)
-  const [recentPage, setRecentPage] = useState(0)
 
   // Usage tabs state (URL-backed)
   const [usageTab, setUsageTab] = useQueryState('usage_tab', 'tools')
@@ -499,25 +392,6 @@ export function HealthPage() {
     return () => clearInterval(interval)
   }, [fetchData])
 
-  // Filtered + sorted tools
-  const filteredTools = useMemo(() => {
-    if (!registry) return []
-    let tools = registry.execTools
-    if (toolSearch) {
-      const q = toolSearch.toLowerCase()
-      tools = tools.filter(t =>
-        t.name.toLowerCase().includes(q) || t.source.toLowerCase().includes(q)
-      )
-    }
-    return [...tools].sort((a, b) => {
-      // Sort by lastUsed desc (null at bottom), then calls desc
-      if (a.lastUsed && b.lastUsed) return new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime()
-      if (a.lastUsed && !b.lastUsed) return -1
-      if (!a.lastUsed && b.lastUsed) return 1
-      return b.calls - a.calls
-    })
-  }, [registry, toolSearch])
-
   // Filtered plugins
   const filteredPlugins = useMemo(() => {
     if (!registry) return []
@@ -527,10 +401,6 @@ export function HealthPage() {
       p.name.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
     )
   }, [registry, pluginSearch])
-
-  // Reset pages when search changes
-  useEffect(() => { setToolPage(0) }, [toolSearch])
-  useEffect(() => { setEndpointPage(0) }, [pluginSearch])
 
   if (loading) {
     return (
@@ -548,7 +418,7 @@ export function HealthPage() {
     )
   }
 
-  const { mcp, doctor, requests, server, openclawPort } = data
+  const { doctor, server, openclawPort } = data
 
   const memoryPercent = server?.totalMemoryMB
     ? Math.round((server.memoryMB / server.totalMemoryMB) * 100)
@@ -591,7 +461,7 @@ export function HealthPage() {
           <CardContent className="pt-3">
             <p className="text-xs text-muted-foreground">Uptime</p>
             <p className="text-xl font-mono font-semibold">
-              {requests?.upSince ? formatUptime(requests.upSince) : mcp?.upSince ? formatUptime(mcp.upSince) : '—'}
+              {data.upSince ? formatUptime(data.upSince) : '—'}
             </p>
           </CardContent>
         </Card>
@@ -600,7 +470,7 @@ export function HealthPage() {
           <CardContent className="pt-3">
             <p className="text-xs text-muted-foreground">Active Sessions</p>
             <p className="text-xl font-mono font-semibold">
-              {mcp?.activeSessions.length ?? 0}
+              {data.activeSessions?.length ?? 0}
             </p>
           </CardContent>
         </Card>
@@ -647,51 +517,6 @@ export function HealthPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* REST traffic by plugin — agents should be using MCP exec tools,
-          not REST. Non-trivial REST traffic here flags bad habits. */}
-      {data?.restHealth && data.restHealth.byPlugin.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>REST traffic by plugin (last hour)</span>
-              <span className="text-xs font-normal text-muted-foreground">
-                Agents should prefer MCP exec tools over REST
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2.5">
-              {data.restHealth.byPlugin.map((bucket, i) => {
-                const pct = Math.round(bucket.successRate * 100)
-                const tone = pct >= 99 ? 'text-emerald-400' : pct >= 95 ? 'text-amber-400' : 'text-red-400'
-                const methods = Object.entries(bucket.perMethod)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([m, n]) => `${m} ${n}`)
-                  .join(' · ')
-                return (
-                  <div key={bucket.pluginId}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-mono truncate mr-2">{bucket.pluginId}</span>
-                      <span className="text-xs font-mono font-medium shrink-0">
-                        {bucket.total}
-                        <span className={`ml-2 ${tone}`}>{pct}%</span>
-                        <span className="text-muted-foreground font-normal ml-2">{methods}</span>
-                      </span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${BAR_COLORS[i % BAR_COLORS.length]} transition-all duration-500`}
-                        style={{ width: `${(bucket.total / Math.max(...data.restHealth!.byPlugin.map(b => b.total), 1)) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Search / Antfly Section */}
       {searchHealth && (
@@ -909,172 +734,48 @@ export function HealthPage() {
         </div>
       )}
 
-      {/* API Endpoints */}
-      {requests && requests.endpoints.length > 0 && (() => {
-        const endpoints = requests.endpoints
-        const pagedEndpoints = endpoints.slice(endpointPage * PAGE_SIZE, (endpointPage + 1) * PAGE_SIZE)
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>API Endpoints</span>
-                {requests.totalErrors > 0 && (
-                  <Badge className={STATUS_STYLES.error}>{requests.totalErrors} errors</Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+      {/* Active Plugins */}
+      {registry && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Active Plugins</span>
+              <Badge variant="secondary" className="font-mono text-xs">{registry.plugins.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ListSearch value={pluginSearch} onChange={setPluginSearch} placeholder="Search plugins..." />
+            {filteredPlugins.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{pluginSearch ? 'No matching plugins' : 'No plugins loaded'}</p>
+            ) : (
               <div className="space-y-1.5">
                 <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                  <span className="flex-1">Endpoint</span>
-                  <span className="w-16 text-right">Calls</span>
-                  <span className="w-16 text-right">Errors</span>
-                  <span className="w-24 text-right">Last Called</span>
+                  <span className="flex-1">Plugin</span>
+                  <span className="w-16 text-right">Version</span>
+                  <span className="w-16 text-right">Source</span>
+                  <span className="w-14 text-right">Routes</span>
                 </div>
-                {pagedEndpoints.map((ep) => (
-                  <div key={ep.endpoint} className="flex items-center text-sm">
-                    <span className="flex-1 font-mono text-muted-foreground truncate">{ep.endpoint}</span>
-                    <span className="w-16 text-right font-mono">{ep.count}</span>
-                    <span className={`w-16 text-right font-mono ${ep.errors > 0 ? 'text-red-400' : ''}`}>
-                      {ep.errors || '—'}
+                {filteredPlugins.map((p) => (
+                  <div key={p.id} className="flex items-center text-sm">
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium">{p.name}</span>
+                      {p.description && (
+                        <p className="text-[11px] text-muted-foreground truncate">{p.description}</p>
+                      )}
+                    </div>
+                    <span className="w-16 text-right font-mono text-xs text-muted-foreground shrink-0">{p.version}</span>
+                    <span className="w-16 text-right shrink-0">
+                      <Badge variant="secondary" className="text-[10px] px-1.5">
+                        {p.source}
+                      </Badge>
                     </span>
-                    <span className="w-24 text-right text-xs text-muted-foreground">
-                      {formatTime(ep.lastCalled)}
-                    </span>
+                    <span className="w-14 text-right font-mono text-xs text-muted-foreground shrink-0">{p.routes}</span>
                   </div>
                 ))}
               </div>
-              <PaginationControls page={endpointPage} total={endpoints.length} onPageChange={setEndpointPage} />
-            </CardContent>
-          </Card>
-        )
-      })()}
-
-      {/* Recent Requests */}
-      {requests && requests.recent.length > 0 && (() => {
-        const recent = requests.recent
-        const pagedRecent = recent.slice(recentPage * PAGE_SIZE, (recentPage + 1) * PAGE_SIZE)
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Requests</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-1">
-                <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                  <span className="w-16">Method</span>
-                  <span className="flex-1">Path</span>
-                  <span className="w-14 text-right">Status</span>
-                  <span className="w-16 text-right">Duration</span>
-                  <span className="w-20 text-right">Agent</span>
-                  <span className="w-20 text-right">Time</span>
-                </div>
-                {pagedRecent.map((r, i) => (
-                  <div key={i} className="flex items-center text-sm">
-                    <span className="w-16 font-mono text-xs text-muted-foreground">{r.method}</span>
-                    <span className="flex-1 font-mono text-muted-foreground truncate">{r.path}</span>
-                    <span className={`w-14 text-right font-mono text-xs ${r.status >= 400 ? 'text-red-400' : r.status >= 300 ? 'text-yellow-400' : 'text-green-400'}`}>
-                      {r.status}
-                    </span>
-                    <span className="w-16 text-right font-mono text-xs text-muted-foreground">{r.durationMs}ms</span>
-                    <span className="w-20 text-right text-xs text-muted-foreground truncate">{r.agent || '—'}</span>
-                    <span className="w-20 text-right text-xs text-muted-foreground">{formatTime(r.ts)}</span>
-                  </div>
-                ))}
-              </div>
-              <PaginationControls page={recentPage} total={recent.length} onPageChange={setRecentPage} />
-            </CardContent>
-          </Card>
-        )
-      })()}
-
-      {/* Registry — Active Plugins & Active Tools */}
-      {registry && (
-        <div className="grid md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Active Plugins</span>
-                <Badge variant="secondary" className="font-mono text-xs">{registry.plugins.length}</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ListSearch value={pluginSearch} onChange={setPluginSearch} placeholder="Search plugins..." />
-              {filteredPlugins.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{pluginSearch ? 'No matching plugins' : 'No plugins loaded'}</p>
-              ) : (
-                <div className="space-y-1.5">
-                  <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                    <span className="flex-1">Plugin</span>
-                    <span className="w-16 text-right">Version</span>
-                    <span className="w-16 text-right">Source</span>
-                    <span className="w-14 text-right">Routes</span>
-                  </div>
-                  {filteredPlugins.map((p) => (
-                    <div key={p.id} className="flex items-center text-sm">
-                      <div className="flex-1 min-w-0">
-                        <span className="font-medium">{p.name}</span>
-                        {p.description && (
-                          <p className="text-[11px] text-muted-foreground truncate">{p.description}</p>
-                        )}
-                      </div>
-                      <span className="w-16 text-right font-mono text-xs text-muted-foreground shrink-0">{p.version}</span>
-                      <span className="w-16 text-right shrink-0">
-                        <Badge variant="secondary" className="text-[10px] px-1.5">
-                          {p.source}
-                        </Badge>
-                      </span>
-                      <span className="w-14 text-right font-mono text-xs text-muted-foreground shrink-0">{p.routes}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Active Tools</span>
-                <Badge variant="secondary" className="font-mono text-xs">{registry.execTools.length}</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ListSearch value={toolSearch} onChange={setToolSearch} placeholder="Search tools..." />
-              {filteredTools.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{toolSearch ? 'No matching tools' : 'No exec tools registered'}</p>
-              ) : (
-                <>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                      <span className="flex-1">Tool</span>
-                      <span className="w-24 text-right">Source</span>
-                      <span className="w-14 text-right">Calls</span>
-                      <span className="w-14 text-right">Errors</span>
-                      <span className="w-20 text-right">Last Used</span>
-                    </div>
-                    {filteredTools.slice(toolPage * PAGE_SIZE, (toolPage + 1) * PAGE_SIZE).map((t) => (
-                      <div key={t.name} className="flex items-center text-sm" title={t.lastError || undefined}>
-                        <span className="flex-1 font-mono text-muted-foreground truncate">{t.name.replace('bakin_exec_', '')}</span>
-                        <span className="w-24 text-right">
-                          <Badge variant="secondary" className="text-[10px] px-1.5">
-                            plugin:{t.source === 'core' ? 'core' : t.source}
-                          </Badge>
-                        </span>
-                        <span className="w-14 text-right font-mono">{t.calls}</span>
-                        <span className={`w-14 text-right font-mono ${t.errors > 0 ? 'text-red-400' : 'text-muted-foreground'}`}>{t.errors}</span>
-                        <span className="w-20 text-right text-xs text-muted-foreground">
-                          {t.lastUsed ? formatAge(t.lastUsed) : '—'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <PaginationControls page={toolPage} total={filteredTools.length} onPageChange={setToolPage} />
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Diagnostics */}

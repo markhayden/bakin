@@ -77,10 +77,6 @@ app.prepare().then(async () => {
   // Expose registry accessors on globalThis so Next.js API routes (which get
   // separate webpack-compiled module instances) can read the real data.
   ;(globalThis as any).__bakinGetRegistrySnapshot = () => pluginRegistry.getRegistrySnapshot()
-  ;(globalThis as any).__bakinGetExecToolStats = () => {
-    const { getExecToolStats } = require('./scripts/lib/registry')
-    return getExecToolStats()
-  }
 
   // Start Antfly server if enabled (auto-manages the process)
   await antflyServer.start()
