@@ -386,7 +386,7 @@ Write a great caption.
       createInstance('task-gate-a', 'gate', testDir)
       completeStep('task-gate-a', 'write-copy', { text: 'hello' }, undefined, testDir)
 
-      const approveResult = approveGate('task-gate-a', 'review-gate', testDir)
+      const approveResult = approveGate('task-gate-a', 'review-gate', { contentDir: testDir })
       expect(approveResult.success).toBe(true)
 
       const instance = loadInstance('task-gate-a', testDir)
@@ -398,7 +398,7 @@ Write a great caption.
       createInstance('task-gate-r', 'gate', testDir)
       completeStep('task-gate-r', 'write-copy', { text: 'hello' }, undefined, testDir)
 
-      const rejectResult = rejectGate('task-gate-r', 'review-gate', 'Not good enough', undefined, testDir)
+      const rejectResult = rejectGate('task-gate-r', 'review-gate', 'Not good enough', { contentDir: testDir })
       expect(rejectResult.success).toBe(true)
       expect(rejectResult.rewoundTo).toBe('write-copy')
 
@@ -411,7 +411,7 @@ Write a great caption.
       createInstance('task-gate-n', 'gate', testDir)
       completeStep('task-gate-n', 'write-copy', { text: 'hello' }, undefined, testDir)
 
-      rejectGate('task-gate-n', 'review-gate', 'Caption too long', undefined, testDir)
+      rejectGate('task-gate-n', 'review-gate', 'Caption too long', { contentDir: testDir })
 
       const instance = loadInstance('task-gate-n', testDir)
       expect(instance!.stepStates['write-copy'].rejectionReason).toBe('Caption too long')
@@ -422,7 +422,7 @@ Write a great caption.
 
     it('returns error when approving non-gate step', () => {
       createInstance('task-gate-bad', 'linear', testDir)
-      const result = approveGate('task-gate-bad', 'step-one', testDir)
+      const result = approveGate('task-gate-bad', 'step-one', { contentDir: testDir })
       expect(result.success).toBe(false)
       expect(result.errors![0]).toContain('not a gate')
     })
@@ -430,8 +430,82 @@ Write a great caption.
     it('returns error when gate is not pending_approval', () => {
       createInstance('task-gate-np', 'gate', testDir)
       // Gate is still pending (not reached yet)
-      const result = approveGate('task-gate-np', 'review-gate', testDir)
+      const result = approveGate('task-gate-np', 'review-gate', { contentDir: testDir })
       expect(result.success).toBe(false)
+    })
+
+    // ─── Decision timeline (issue #91) ──────────────────────────────────
+
+    it('advanceWorkflow sets requestedAt when gate enters pending_approval', () => {
+      createInstance('task-gate-req', 'gate', testDir)
+      completeStep('task-gate-req', 'write-copy', { text: 'hello' }, undefined, testDir)
+
+      const instance = loadInstance('task-gate-req', testDir)
+      const gateState = instance!.stepStates['review-gate']
+      expect(gateState.status).toBe('pending_approval')
+      expect(gateState.requestedAt).toBeTruthy()
+      expect(new Date(gateState.requestedAt!).getTime()).not.toBeNaN()
+    })
+
+    it('approveGate persists decidedAt and approver', () => {
+      createInstance('task-gate-app', 'gate', testDir)
+      completeStep('task-gate-app', 'write-copy', { text: 'hello' }, undefined, testDir)
+
+      approveGate('task-gate-app', 'review-gate', {
+        contentDir: testDir,
+        approver: { source: 'discord', id: '999', displayName: 'Approver Person' },
+      })
+
+      const instance = loadInstance('task-gate-app', testDir)
+      const gateState = instance!.stepStates['review-gate']
+      expect(gateState.decidedAt).toBeTruthy()
+      expect(gateState.approver).toEqual({
+        source: 'discord',
+        id: '999',
+        displayName: 'Approver Person',
+      })
+    })
+
+    it('rejectGate records decidedAt and approver in history (durable across rewind reset)', () => {
+      createInstance('task-gate-rej', 'gate', testDir)
+      completeStep('task-gate-rej', 'write-copy', { text: 'hello' }, undefined, testDir)
+
+      const result = rejectGate('task-gate-rej', 'review-gate', 'Not approved', {
+        contentDir: testDir,
+        approver: { source: 'web', id: 'mark', displayName: 'mark' },
+      })
+
+      // Decision is returned in result so callers don't need to reload
+      expect(result.decision).toBeDefined()
+      expect(result.decision!.approver).toEqual({ source: 'web', id: 'mark', displayName: 'mark' })
+      expect(result.decision!.decidedAt).toBeTruthy()
+      expect(result.decision!.reason).toBe('Not approved')
+
+      // History entry is the durable record (gate stepState gets reset on rewind)
+      const instance = loadInstance('task-gate-rej', testDir)
+      const rejectionEntry = instance!.history.find(h => h.stepId === 'review-gate' && h.status === 'rejected')
+      expect(rejectionEntry).toBeDefined()
+      expect(rejectionEntry!.approver).toEqual({ source: 'web', id: 'mark', displayName: 'mark' })
+      expect(rejectionEntry!.rejectionReason).toBe('Not approved')
+    })
+
+    it('approveGate returns decision in result with computed durationMs', async () => {
+      createInstance('task-gate-dur', 'gate', testDir)
+      completeStep('task-gate-dur', 'write-copy', { text: 'hello' }, undefined, testDir)
+
+      // Wait briefly so durationMs is non-zero
+      await new Promise(r => setTimeout(r, 5))
+
+      const result = approveGate('task-gate-dur', 'review-gate', {
+        contentDir: testDir,
+        approver: { source: 'discord', id: '999', displayName: 'Approver' },
+      })
+
+      expect(result.decision).toBeDefined()
+      expect(result.decision!.gateLabel).toBeTruthy()
+      expect(result.decision!.requestedAt).toBeTruthy()
+      expect(result.decision!.decidedAt).toBeTruthy()
+      expect(result.decision!.durationMs).toBeGreaterThanOrEqual(0)
     })
   })
 
@@ -442,7 +516,7 @@ Write a great caption.
       createInstance('task-rew', 'gate', testDir)
       completeStep('task-rew', 'write-copy', { text: 'hello' }, undefined, testDir)
 
-      rejectGate('task-rew', 'review-gate', 'redo it', undefined, testDir)
+      rejectGate('task-rew', 'review-gate', 'redo it', { contentDir: testDir })
 
       const instance = loadInstance('task-rew', testDir)
       expect(instance!.stepStates['write-copy'].status).toBe('in_progress')
@@ -565,7 +639,7 @@ Write a great caption.
       completeStep('task-prev', 'write-copy', { text: 'original work' }, undefined, testDir)
 
       // Gate is pending_approval — reject it
-      rejectGate('task-prev', 'review-gate', 'Too short', undefined, testDir)
+      rejectGate('task-prev', 'review-gate', 'Too short', { contentDir: testDir })
 
       const instance = loadInstance('task-prev', testDir)
       expect(instance!.stepStates['write-copy'].previousOutput).toEqual({ text: 'original work' })
@@ -574,7 +648,7 @@ Write a great caption.
     it('passes previousOutput through getCurrentStep context', () => {
       createInstance('task-prev-ctx', 'gate', testDir)
       completeStep('task-prev-ctx', 'write-copy', { text: 'original work' }, undefined, testDir)
-      rejectGate('task-prev-ctx', 'review-gate', 'Redo it', undefined, testDir)
+      rejectGate('task-prev-ctx', 'review-gate', 'Redo it', { contentDir: testDir })
 
       const step = getCurrentStep('task-prev-ctx', undefined, testDir) as Record<string, unknown>
       expect(step.previousOutput).toEqual({ text: 'original work' })

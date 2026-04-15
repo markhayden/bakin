@@ -2,6 +2,10 @@
  * Workflow plugin types — definitions, runtime instances, and skills.
  */
 
+import type { ApprovalActor } from '@bakin/core/plugin-types'
+
+export type { ApprovalActor }
+
 // ─── Definition Types ────────────────────────────────────────────────────────
 
 export interface WorkflowInput {
@@ -133,6 +137,10 @@ export interface StepState {
   childTaskId?: string
   /** Discord message ID for gate alert — used to edit the message after approval/rejection */
   discordMessageId?: string
+  /** Gate decision metadata — set when a gate enters pending_approval and when a decision is recorded */
+  requestedAt?: string
+  decidedAt?: string
+  approver?: ApprovalActor
 }
 
 export interface StepHistoryEntry {
@@ -141,6 +149,10 @@ export interface StepHistoryEntry {
   completedAt: string
   output?: Record<string, unknown>
   rejectionReason?: string
+  /** For gate decisions — who approved/rejected this step */
+  approver?: ApprovalActor
+  /** For gate decisions — when the gate entered pending_approval */
+  requestedAt?: string
 }
 
 export interface WorkflowInstance {

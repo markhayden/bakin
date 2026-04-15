@@ -11,6 +11,13 @@ vi.mock('../../src/core/logger', () => ({
   }),
 }))
 
+// Defensive content-dir mock — the gateway itself doesn't touch storage,
+// but transitive imports from logger / globalThis state could in principle.
+vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: () => '/tmp/bakin-test-discord-gateway',
+  getBakinPaths: () => ({}),
+}))
+
 // Mock global WebSocket
 class MockWebSocket {
   static OPEN = 1
@@ -273,5 +280,120 @@ describe('discord-gateway', () => {
     startGateway(testConfig) // Should not create a second connection
     // Second call should be a no-op (logged "already running")
     expect(mockWsInstance).toBe(firstWs)
+  })
+
+  // ─── Approver extraction (issue #91) ────────────────────────────────────
+
+  describe('approver extraction', () => {
+    function emitButtonInteraction(payloadData: Record<string, unknown>): void {
+      mockWsInstance!.emit('message', {
+        data: JSON.stringify({
+          op: 0,
+          t: 'INTERACTION_CREATE',
+          s: 1,
+          d: {
+            id: 'i1',
+            token: 't1',
+            type: 3,
+            data: { custom_id: 'gate:approve:task-1:step-1', component_type: 2 },
+            ...payloadData,
+          },
+        }),
+      })
+    }
+
+    function emitModalSubmit(payloadData: Record<string, unknown>): void {
+      mockWsInstance!.emit('message', {
+        data: JSON.stringify({
+          op: 0,
+          t: 'INTERACTION_CREATE',
+          s: 2,
+          d: {
+            id: 'i2',
+            token: 't2',
+            type: 5,
+            data: {
+              custom_id: 'gate:reject:task-1:step-1',
+              components: [{ components: [{ custom_id: 'reason', value: 'no good' }] }],
+            },
+            ...payloadData,
+          },
+        }),
+      })
+    }
+
+    it('prefers member.user.global_name over username', async () => {
+      const handler = vi.fn().mockImplementation(async (i) => i.acknowledge())
+      onGateInteraction(handler)
+      startGateway(testConfig, false)
+      await vi.waitFor(() => expect(mockWsInstance).not.toBeNull())
+
+      emitButtonInteraction({
+        member: { user: { id: '111', username: 'mark_h', global_name: 'Mark Hayden' } },
+      })
+
+      await vi.waitFor(() => expect(handler).toHaveBeenCalled())
+      const call = handler.mock.calls[0][0]
+      expect(call.approver).toEqual({ source: 'discord', id: '111', displayName: 'Mark Hayden' })
+    })
+
+    it('falls back to username when global_name absent', async () => {
+      const handler = vi.fn().mockImplementation(async (i) => i.acknowledge())
+      onGateInteraction(handler)
+      startGateway(testConfig, false)
+      await vi.waitFor(() => expect(mockWsInstance).not.toBeNull())
+
+      emitButtonInteraction({
+        member: { user: { id: '222', username: 'mark_h' } },
+      })
+
+      await vi.waitFor(() => expect(handler).toHaveBeenCalled())
+      const call = handler.mock.calls[0][0]
+      expect(call.approver).toEqual({ source: 'discord', id: '222', displayName: 'mark_h' })
+    })
+
+    it('falls back to data.user when member absent (DM context)', async () => {
+      const handler = vi.fn().mockImplementation(async (i) => i.acknowledge())
+      onGateInteraction(handler)
+      startGateway(testConfig, false)
+      await vi.waitFor(() => expect(mockWsInstance).not.toBeNull())
+
+      emitButtonInteraction({
+        user: { id: '333', username: 'mark_h', global_name: 'Mark' },
+      })
+
+      await vi.waitFor(() => expect(handler).toHaveBeenCalled())
+      const call = handler.mock.calls[0][0]
+      expect(call.approver).toEqual({ source: 'discord', id: '333', displayName: 'Mark' })
+    })
+
+    it('returns unknown sentinel when both member and user absent', async () => {
+      const handler = vi.fn().mockImplementation(async (i) => i.acknowledge())
+      onGateInteraction(handler)
+      startGateway(testConfig, false)
+      await vi.waitFor(() => expect(mockWsInstance).not.toBeNull())
+
+      emitButtonInteraction({})
+
+      await vi.waitFor(() => expect(handler).toHaveBeenCalled())
+      const call = handler.mock.calls[0][0]
+      expect(call.approver).toEqual({ source: 'discord', id: 'unknown', displayName: 'unknown Discord user' })
+    })
+
+    it('extracts approver from MODAL_SUBMIT (reject path)', async () => {
+      const handler = vi.fn().mockImplementation(async (i) => i.acknowledge())
+      onGateInteraction(handler)
+      startGateway(testConfig)
+      await vi.waitFor(() => expect(mockWsInstance).not.toBeNull())
+
+      emitModalSubmit({
+        member: { user: { id: '444', username: 'reviewer', global_name: 'The Reviewer' } },
+      })
+
+      await vi.waitFor(() => expect(handler).toHaveBeenCalled())
+      const call = handler.mock.calls[0][0]
+      expect(call.approver).toEqual({ source: 'discord', id: '444', displayName: 'The Reviewer' })
+      expect(call.reason).toBe('no good')
+    })
   })
 })
