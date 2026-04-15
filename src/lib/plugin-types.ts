@@ -1,5 +1,6 @@
 // Re-export from @bakin/core — this file exists for backward compatibility
 export type {
+  ApprovalActor,
   StorageAdapter,
   EventBus,
   NavItem,
