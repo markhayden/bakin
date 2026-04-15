@@ -191,7 +191,10 @@ const healthPlugin: BakinPlugin = {
 
         try {
           const results = await runDiagnostics(getContentDir(), process.cwd())
-          return Response.json(buildDoctorResponse(results))
+          return Response.json({
+            ...buildDoctorResponse(results),
+            cachedAt: new Date().toISOString(),
+          })
         } catch (err) {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
@@ -260,7 +263,7 @@ const healthPlugin: BakinPlugin = {
 
         try {
           const results = await runDiagnostics(getContentDir(), process.cwd())
-          return { ok: true, ...buildDoctorResponse(results) }
+          return { ok: true, ...buildDoctorResponse(results), cachedAt: new Date().toISOString() }
         } catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
