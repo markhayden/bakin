@@ -102,18 +102,27 @@ export function AssetCard({ asset, onClick, onDelete, scoreInfo }: AssetCardProp
           {formatSize(asset.size)}
         </span>
 
-        {/* Antfly relevance score debug overlay */}
+        {/* Antfly relevance score debug overlay.
+            bakin_assets is a multimodal table: Bleve BM25 + assets_text (BGE
+            text embeddings) + assets_visual (CLIP on image pixels). The Bleve
+            key is an absolute index path containing "bleve", so detect it by
+            substring. Previously this hardcoded `semKey = 'embeddings'` which
+            matched neither semantic index, so SEM always read 0.0000 and BM25
+            could land on assets_text instead of Bleve. */}
         {scoreInfo && (
           <div className="absolute top-1.5 left-1.5 flex flex-col gap-0.5 text-[9px] font-mono bg-black/80 px-1.5 py-1 rounded">
             <span className="text-amber-400">RRF {scoreInfo.score.toFixed(4)}</span>
             {(() => {
               const scores = scoreInfo.indexScores ?? {}
-              const semKey = 'embeddings'
-              const bm25Key = Object.keys(scores).find(k => k !== semKey)
+              const bm25Key = Object.keys(scores).find(k => /bleve|full_text/.test(k))
+              const bm25 = bm25Key ? (scores[bm25Key] as number) ?? 0 : 0
+              const txt = (scores['assets_text'] as number) ?? 0
+              const vis = (scores['assets_visual'] as number) ?? 0
               return (
                 <>
-                  <span className="text-cyan-400">BM25 {(bm25Key ? scores[bm25Key] as number : 0).toFixed(4)}</span>
-                  <span className="text-purple-400">SEM {((scores[semKey] as number) ?? 0).toFixed(4)}</span>
+                  <span className="text-cyan-400">BM25 {bm25.toFixed(4)}</span>
+                  <span className="text-purple-400">TXT {txt.toFixed(4)}</span>
+                  <span className="text-pink-400">VIS {vis.toFixed(4)}</span>
                 </>
               )
             })()}
