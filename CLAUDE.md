@@ -192,6 +192,9 @@ Real-time updates via `broadcast()` from `src/core/sse.ts`. Uses `globalThis.__b
 ### Agent Activity
 Agents report progress via `bakin_log_progress` MCP tool → `logProgress()` in task-service → SSE broadcast. Structured audit via `appendAudit()` → `audit.jsonl` + SSE + Antfly.
 
+### Usage Recording
+All MCP tool calls, REST requests, and agent lifecycle events flow through one in-memory recorder in `src/core/usage.ts`. Emit via `recordUsage({ kind, name, agent, durationMs, status, meta })` where `kind` is `'mcp' | 'rest' | 'agent'`. Reads go through `getUsageFeed({ kind?, window, agent? })` for top-N/by-agent/recent aggregation, `getStatsByMs({ kind?, windowMs, agent? })` for simple total/error counts (watchdog), and `getErrorCount(windowMs)` for the `/summary` errors tile. The ring buffer holds 10k entries, FIFO-evicted. Windows are `'5m' | '1h' | '24h'`. MCP tool calls record automatically in `src/core/mcp-server.ts:registerTools`; REST traffic records automatically via the `trackResponse` middleware in `src/core/rest-tracking.ts`; agent kind entries are emitted from dispatch/heartbeat/lifecycle. **Never add a parallel stat-tracking system** — the previous fragmentation (request-log.ts + toolStats in registry.ts) caused the health dashboard to show zeroes while real traffic was flowing. The health plugin's `/usage-feed` route and the tabbed Usage section on the health page are the only consumers you should add to.
+
 ### OpenClaw Home Directory
 All OpenClaw paths resolved through `getOpenClawHome()` / `getOpenClawPath()` in `packages/core/src/openclaw-home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/` fallback. For development without OpenClaw: `npm run dev:mock` starts the Imitation Crab mock (`dev/imitation-crab/`), which seeds `~/.imitationcrab/` and sets both `OPENCLAW_HOME` and `BAKIN_HOME` automatically. To reseed fixtures manually, run `pnpm mock:seed --force`.
 
