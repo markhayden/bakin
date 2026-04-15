@@ -42,7 +42,7 @@ import * as pluginInstaller from './src/core/plugin-installer'
 import * as doctor from './src/core/doctor'
 import { handleMcpRequest } from './src/core/mcp-server'
 import * as mcporter from './src/core/mcporter'
-import { recordRequest } from './src/core/request-log'
+import { trackResponse } from './src/core/rest-tracking'
 
 const log = createLogger('server')
 
@@ -77,10 +77,6 @@ app.prepare().then(async () => {
   // Expose registry accessors on globalThis so Next.js API routes (which get
   // separate webpack-compiled module instances) can read the real data.
   ;(globalThis as any).__bakinGetRegistrySnapshot = () => pluginRegistry.getRegistrySnapshot()
-  ;(globalThis as any).__bakinGetExecToolStats = () => {
-    const { getExecToolStats } = require('./scripts/lib/registry')
-    return getExecToolStats()
-  }
 
   // Start Antfly server if enabled (auto-manages the process)
   await antflyServer.start()
@@ -150,19 +146,7 @@ app.prepare().then(async () => {
 
     // Track API requests (skip static assets and Next.js internals)
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/mcp')) {
-      const origEnd = res.end.bind(res)
-      res.end = function (...args: Parameters<typeof res.end>) {
-        const path = url.pathname.replace(/\?.*/, '')
-        recordRequest({
-          ts: new Date().toISOString(),
-          method: req.method || 'GET',
-          path,
-          status: res.statusCode,
-          durationMs: Date.now() - reqStart,
-          agent: url.searchParams.get('agent') || undefined,
-        })
-        return origEnd(...args)
-      } as typeof res.end
+      trackResponse(req, res, url, reqStart)
     }
 
     // MCP endpoint — agent-facing tool server

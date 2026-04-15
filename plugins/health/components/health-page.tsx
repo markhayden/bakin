@@ -2,25 +2,25 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useContentStore } from '@/hooks/use-content-store'
+import { useQueryState } from '@/hooks/use-query-state'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PluginHeader } from '@/components/plugin-header'
+import { UnderlineTabs } from '@/components/underline-tabs'
 import { ExternalLink, Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
 
-interface McpSession {
+const USAGE_TABS = [
+  { id: 'tools', label: 'Tool Usage' },
+  { id: 'endpoints', label: 'Endpoint Usage' },
+  { id: 'agents', label: 'Agent Usage' },
+] as const
+
+interface McpSessionInfo {
   agent: string
   sessions: number
   connectedAt: string
-  toolCalls: number
-}
-
-interface McpData {
-  activeSessions: McpSession[]
-  toolCallCounts: Record<string, number>
-  totalRequests: number
-  upSince: string
 }
 
 interface DiagnosticResult {
@@ -43,30 +43,6 @@ interface ServerData {
   totalMemoryMB: number
 }
 
-interface EndpointStat {
-  endpoint: string
-  count: number
-  errors: number
-  lastCalled: string
-}
-
-interface RecentRequest {
-  ts: string
-  method: string
-  path: string
-  status: number
-  durationMs: number
-  agent?: string
-}
-
-interface RequestsData {
-  totalRequests: number
-  totalErrors: number
-  upSince: string
-  endpoints: EndpointStat[]
-  recent: RecentRequest[]
-}
-
 interface PluginInfo {
   id: string
   name: string
@@ -76,18 +52,8 @@ interface PluginInfo {
   routes: number
 }
 
-interface ExecToolStat {
-  name: string
-  source: string
-  calls: number
-  errors: number
-  lastUsed: string | null
-  lastError: string | null
-}
-
 interface RegistryData {
   plugins: PluginInfo[]
-  execTools: ExecToolStat[]
 }
 
 interface AgentUsage {
@@ -112,40 +78,51 @@ interface AgentUsage {
   }
 }
 
-interface McpHealth {
-  windowSec: number
+interface ErrorsByKind {
   total: number
-  errors: number
-  successRate: number
-  recent: { windowSec: number; total: number; errors: number }
+  byKind: { mcp: number; rest: number; agent: number }
 }
 
-interface RestPluginBucket {
-  pluginId: string
-  total: number
-  errors: number
-  successRate: number
-  perMethod: Record<string, number>
-  lastCalled: string | null
+type UsageKind = 'mcp' | 'rest' | 'agent'
+
+interface UsageEntry {
+  ts: string
+  kind: UsageKind
+  name: string
+  agent: string | null
+  durationMs: number | null
+  status: 'ok' | 'error'
+  meta?: Record<string, unknown>
 }
 
-interface RestHealth {
-  windowSec: number
-  total: number
+interface TopByNameRow {
+  name: string
+  count: number
   errors: number
-  successRate: number
-  byPlugin: RestPluginBucket[]
-  recent: { windowSec: number; total: number; errors: number; byPlugin: RestPluginBucket[] }
+  medianDurationMs: number | null
+}
+
+interface ByAgentRow {
+  agent: string
+  count: number
+  errors: number
+  lastActivity: UsageEntry | null
+}
+
+interface UsageFeedData {
+  totals: { count: number; errors: number; errorRate: number }
+  topByName: TopByNameRow[]
+  byAgent: ByAgentRow[]
+  recent: UsageEntry[]
 }
 
 interface HealthSummary {
-  mcp: McpData | null
-  mcpHealth: McpHealth | null
-  restHealth: RestHealth | null
   doctor: DoctorData | null
-  requests: RequestsData | null
-  server: ServerData | null
+  errors1h: ErrorsByKind | null
+  activeSessions: McpSessionInfo[] | null
+  upSince: string | null
   openclawPort: number | null
+  server: ServerData | null
 }
 
 function formatUptime(since: string): string {
@@ -158,10 +135,6 @@ function formatUptime(since: string): string {
   if (hrs < 24) return `${hrs}h ${mins % 60}m`
   const days = Math.floor(hrs / 24)
   return `${days}d ${hrs % 24}h`
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString()
 }
 
 function formatAge(iso: string): string {
@@ -237,33 +210,6 @@ function HorizontalBars({ items, unit = '' }: { items: BarItem[]; unit?: string 
 }
 
 // ---------------------------------------------------------------------------
-// Pagination helper
-// ---------------------------------------------------------------------------
-
-const PAGE_SIZE = 20
-
-function PaginationControls({ page, total, onPageChange }: { page: number; total: number; onPageChange: (p: number) => void }) {
-  const totalPages = Math.ceil(total / PAGE_SIZE)
-  if (totalPages <= 1) return null
-
-  return (
-    <div className="flex items-center justify-between pt-3 border-t border-white/5">
-      <span className="text-xs text-muted-foreground">
-        {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
-      </span>
-      <div className="flex gap-1">
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={page === 0} onClick={() => onPageChange(page - 1)}>
-          Prev
-        </Button>
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={page >= totalPages - 1} onClick={() => onPageChange(page + 1)}>
-          Next
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Inline search input
 // ---------------------------------------------------------------------------
 
@@ -286,6 +232,163 @@ const STATUS_STYLES: Record<string, string> = {
   warn: 'bg-yellow-500/10 text-yellow-400',
   error: 'bg-red-500/10 text-red-400',
   fixed: 'bg-blue-500/10 text-blue-400',
+}
+
+// ---------------------------------------------------------------------------
+// Usage tab panels
+// ---------------------------------------------------------------------------
+
+function extractErrorMessage(entry: UsageEntry): string {
+  const meta = entry.meta ?? {}
+  if (typeof meta.error === 'string' && meta.error.length > 0) return meta.error
+  if (typeof meta.httpStatus === 'number') {
+    const method = typeof meta.method === 'string' ? `${meta.method} ` : ''
+    return `${method}HTTP ${meta.httpStatus}`
+  }
+  return 'Error (no detail)'
+}
+
+function UsageBarsPanel({
+  feed,
+  kind,
+  emptyLabel,
+  labelTransform,
+}: {
+  feed: UsageFeedData | null
+  kind: UsageKind
+  emptyLabel: string
+  labelTransform?: (name: string) => string
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  if (!feed || feed.topByName.length === 0) {
+    return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+  }
+  const mostRecent = feed.recent[0]
+  const lastLabel = mostRecent
+    ? labelTransform ? labelTransform(mostRecent.name) : mostRecent.name
+    : null
+  const max = Math.max(...feed.topByName.map(r => r.count), 1)
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2.5">
+        {feed.topByName.map((row, i) => {
+          const label = labelTransform ? labelTransform(row.name) : row.name
+          const isExpanded = expanded === row.name
+          const hasErrors = row.errors > 0
+          const errorEntries = hasErrors
+            ? feed.recent.filter(e => e.name === row.name && e.status === 'error')
+            : []
+
+          return (
+            <div key={row.name}>
+              <button
+                type="button"
+                onClick={() => hasErrors && setExpanded(isExpanded ? null : row.name)}
+                disabled={!hasErrors}
+                aria-expanded={isExpanded}
+                className={`w-full text-left group ${hasErrors ? 'cursor-pointer' : 'cursor-default'}`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-mono truncate mr-2 ${hasErrors ? 'text-foreground group-hover:text-accent' : 'text-muted-foreground'}`}>
+                    {label}
+                  </span>
+                  <span className="text-xs font-mono font-medium shrink-0">
+                    {row.count}
+                    <span className={`ml-1.5 font-normal ${hasErrors ? 'text-red-400' : 'text-muted-foreground'}`}>
+                      {hasErrors ? `${row.errors} err` : 'ok'}
+                      {row.medianDurationMs !== null && ` · ${row.medianDurationMs}ms`}
+                    </span>
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${BAR_COLORS[i % BAR_COLORS.length]} transition-all duration-500`}
+                    style={{ width: `${(row.count / max) * 100}%` }}
+                  />
+                </div>
+              </button>
+
+              {isExpanded && errorEntries.length > 0 && (
+                <div className="mt-2 ml-2 pl-3 border-l-2 border-red-500/40 space-y-1.5">
+                  {errorEntries.map((e, ei) => (
+                    <div key={ei} className="text-[11px] font-mono">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span className="text-red-400">{formatAge(e.ts)}</span>
+                        {e.agent && <span>· {e.agent}</span>}
+                        {e.durationMs !== null && <span>· {e.durationMs}ms</span>}
+                      </div>
+                      <div className="text-red-400/90 break-all whitespace-pre-wrap">
+                        {extractErrorMessage(e)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {isExpanded && errorEntries.length === 0 && (
+                <p className="mt-2 ml-2 text-[11px] text-muted-foreground italic">
+                  Error older than the recent window — details not retained.
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[11px] text-muted-foreground">
+        <span>
+          {feed.totals.count} {kind} calls
+          {feed.totals.errors > 0 && (
+            <span className="ml-1.5 text-red-400">· {feed.totals.errors} errors</span>
+          )}
+        </span>
+        {lastLabel && (
+          <span className="truncate ml-2 font-mono">latest: {lastLabel}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function formatActivity(entry: UsageEntry | null): string {
+  if (!entry) return 'no activity'
+  const ageSec = Math.max(0, Math.round((Date.now() - new Date(entry.ts).getTime()) / 1000))
+  if (ageSec >= 30) return `idle ${ageSec}s`
+  if (entry.kind === 'mcp') return `calling ${entry.name.replace('bakin_exec_', '')} · ${ageSec}s ago`
+  if (entry.kind === 'rest') return `handling ${entry.name} · ${ageSec}s ago`
+  return `${entry.name} · ${ageSec}s ago`
+}
+
+function AgentUsagePanel({ feed }: { feed: UsageFeedData | null }) {
+  if (!feed || feed.byAgent.length === 0) {
+    return <p className="text-sm text-muted-foreground">No agent activity in this window</p>
+  }
+  // Filter out heartbeat noise from the count display (still visible in "current activity").
+  const rows = feed.byAgent
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+        <span className="w-24">Agent</span>
+        <span className="flex-1">Current activity</span>
+        <span className="w-16 text-right">Events</span>
+        <span className="w-14 text-right">Errors</span>
+      </div>
+      {rows.map((row) => (
+        <div key={row.agent} className="flex items-center text-sm">
+          <span className="w-24 font-medium truncate">{row.agent}</span>
+          <span className="flex-1 font-mono text-xs text-muted-foreground truncate">
+            {formatActivity(row.lastActivity)}
+          </span>
+          <span className="w-16 text-right font-mono">{row.count}</span>
+          <span className={`w-14 text-right font-mono ${row.errors > 0 ? 'text-red-400' : 'text-muted-foreground'}`}>
+            {row.errors || '—'}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function HealthPage() {
@@ -318,20 +421,21 @@ export function HealthPage() {
 
   // Search state
   const [pluginSearch, setPluginSearch] = useState('')
-  const [toolSearch, setToolSearch] = useState('')
 
-  // Pagination state
-  const [toolPage, setToolPage] = useState(0)
-  const [endpointPage, setEndpointPage] = useState(0)
-  const [recentPage, setRecentPage] = useState(0)
+  // Usage tabs state (URL-backed)
+  const [usageTab, setUsageTab] = useQueryState('usage_tab', 'tools')
+  const [usageWindow, setUsageWindow] = useQueryState('usage_window', '1h')
+  const kindForTab: UsageKind = usageTab === 'endpoints' ? 'rest' : usageTab === 'agents' ? 'agent' : 'mcp'
+  const [usageFeed, setUsageFeed] = useState<UsageFeedData | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
-      const [summaryRes, registryRes, usageRes, searchRes] = await Promise.all([
+      const [summaryRes, registryRes, usageRes, searchRes, feedRes] = await Promise.all([
         fetch('/api/plugins/health/summary'),
         fetch('/api/plugins/health/registry'),
         fetch('/api/plugins/health/usage'),
         fetch('/api/plugins/health/antfly-status'),
+        fetch(`/api/plugins/health/usage-feed?kind=${kindForTab}&window=${usageWindow}`),
       ])
       const json = await summaryRes.json()
       setData(json)
@@ -344,6 +448,10 @@ export function HealthPage() {
         if (Array.isArray(usageJson)) setUsage(usageJson)
       } catch { /* usage endpoint optional */ }
       try {
+        const feedJson = await feedRes.json()
+        setUsageFeed(feedJson)
+      } catch { /* usage-feed optional */ }
+      try {
         const searchJson = await searchRes.json()
         setSearchHealth(searchJson)
       } catch { /* search endpoint optional */ }
@@ -353,32 +461,13 @@ export function HealthPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [kindForTab, usageWindow])
 
   useEffect(() => {
     fetchData()
     const interval = setInterval(fetchData, 10_000)
     return () => clearInterval(interval)
   }, [fetchData])
-
-  // Filtered + sorted tools
-  const filteredTools = useMemo(() => {
-    if (!registry) return []
-    let tools = registry.execTools
-    if (toolSearch) {
-      const q = toolSearch.toLowerCase()
-      tools = tools.filter(t =>
-        t.name.toLowerCase().includes(q) || t.source.toLowerCase().includes(q)
-      )
-    }
-    return [...tools].sort((a, b) => {
-      // Sort by lastUsed desc (null at bottom), then calls desc
-      if (a.lastUsed && b.lastUsed) return new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime()
-      if (a.lastUsed && !b.lastUsed) return -1
-      if (!a.lastUsed && b.lastUsed) return 1
-      return b.calls - a.calls
-    })
-  }, [registry, toolSearch])
 
   // Filtered plugins
   const filteredPlugins = useMemo(() => {
@@ -389,10 +478,6 @@ export function HealthPage() {
       p.name.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
     )
   }, [registry, pluginSearch])
-
-  // Reset pages when search changes
-  useEffect(() => { setToolPage(0) }, [toolSearch])
-  useEffect(() => { setEndpointPage(0) }, [pluginSearch])
 
   if (loading) {
     return (
@@ -410,10 +495,7 @@ export function HealthPage() {
     )
   }
 
-  const { mcp, doctor, requests, server, openclawPort } = data
-  const sortedTools = mcp
-    ? Object.entries(mcp.toolCallCounts).sort(([, a], [, b]) => b - a)
-    : []
+  const { doctor, server, openclawPort } = data
 
   const memoryPercent = server?.totalMemoryMB
     ? Math.round((server.memoryMB / server.totalMemoryMB) * 100)
@@ -451,94 +533,13 @@ export function HealthPage() {
       </div>
 
       {/* Top row — summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card size="sm">
           <CardContent className="pt-3">
             <p className="text-xs text-muted-foreground">Uptime</p>
             <p className="text-xl font-mono font-semibold">
-              {requests?.upSince ? formatUptime(requests.upSince) : mcp?.upSince ? formatUptime(mcp.upSince) : '—'}
+              {data.upSince ? formatUptime(data.upSince) : '—'}
             </p>
-          </CardContent>
-        </Card>
-
-        <Card size="sm">
-          <CardContent className="pt-3">
-            <p className="text-xs text-muted-foreground">API Requests</p>
-            <p className="text-xl font-mono font-semibold">
-              {requests?.totalRequests ?? 0}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card size="sm">
-          <CardContent className="pt-3">
-            <p className="text-xs text-muted-foreground">MCP Health</p>
-            {(() => {
-              const mh = data?.mcpHealth
-              if (!mh || mh.total === 0) {
-                return (
-                  <>
-                    <p className="text-xl font-mono font-semibold text-muted-foreground">—</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">no calls last hour</p>
-                  </>
-                )
-              }
-              const pct = Math.round(mh.successRate * 100)
-              const tone = pct >= 99
-                ? 'text-emerald-400'
-                : pct >= 95
-                ? 'text-amber-400'
-                : 'text-red-400'
-              return (
-                <>
-                  <p className={`text-xl font-mono font-semibold ${tone}`}>{pct}%</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {mh.errors} err / {mh.total} req · 1h
-                    {mh.recent.errors > 0 && (
-                      <span className="ml-1 text-red-400">
-                        · {mh.recent.errors} in last {mh.recent.windowSec}s
-                      </span>
-                    )}
-                  </p>
-                </>
-              )
-            })()}
-          </CardContent>
-        </Card>
-
-        <Card size="sm">
-          <CardContent className="pt-3">
-            <p className="text-xs text-muted-foreground">REST Health</p>
-            {(() => {
-              const rh = data?.restHealth
-              if (!rh || rh.total === 0) {
-                return (
-                  <>
-                    <p className="text-xl font-mono font-semibold text-muted-foreground">—</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">no calls last hour</p>
-                  </>
-                )
-              }
-              const pct = Math.round(rh.successRate * 100)
-              const tone = pct >= 99
-                ? 'text-emerald-400'
-                : pct >= 95
-                ? 'text-amber-400'
-                : 'text-red-400'
-              return (
-                <>
-                  <p className={`text-xl font-mono font-semibold ${tone}`}>{pct}%</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {rh.errors} err / {rh.total} req · 1h
-                    {rh.recent.errors > 0 && (
-                      <span className="ml-1 text-red-400">
-                        · {rh.recent.errors} in last {rh.recent.windowSec}s
-                      </span>
-                    )}
-                  </p>
-                </>
-              )
-            })()}
           </CardContent>
         </Card>
 
@@ -546,7 +547,7 @@ export function HealthPage() {
           <CardContent className="pt-3">
             <p className="text-xs text-muted-foreground">Active Sessions</p>
             <p className="text-xl font-mono font-semibold">
-              {mcp?.activeSessions.length ?? 0}
+              {data.activeSessions?.length ?? 0}
             </p>
           </CardContent>
         </Card>
@@ -572,52 +573,27 @@ export function HealthPage() {
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* REST traffic by plugin — agents should be using MCP exec tools,
-          not REST. Non-trivial REST traffic here flags bad habits. */}
-      {data?.restHealth && data.restHealth.byPlugin.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>REST traffic by plugin (last hour)</span>
-              <span className="text-xs font-normal text-muted-foreground">
-                Agents should prefer MCP exec tools over REST
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2.5">
-              {data.restHealth.byPlugin.map((bucket, i) => {
-                const pct = Math.round(bucket.successRate * 100)
-                const tone = pct >= 99 ? 'text-emerald-400' : pct >= 95 ? 'text-amber-400' : 'text-red-400'
-                const methods = Object.entries(bucket.perMethod)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([m, n]) => `${m} ${n}`)
-                  .join(' · ')
-                return (
-                  <div key={bucket.pluginId}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-mono truncate mr-2">{bucket.pluginId}</span>
-                      <span className="text-xs font-mono font-medium shrink-0">
-                        {bucket.total}
-                        <span className={`ml-2 ${tone}`}>{pct}%</span>
-                        <span className="text-muted-foreground font-normal ml-2">{methods}</span>
-                      </span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${BAR_COLORS[i % BAR_COLORS.length]} transition-all duration-500`}
-                        style={{ width: `${(bucket.total / Math.max(...data.restHealth!.byPlugin.map(b => b.total), 1)) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+        <Card size="sm">
+          <CardContent className="pt-3">
+            <p className="text-xs text-muted-foreground">Errors (1h)</p>
+            {(() => {
+              const e = data?.errors1h
+              const total = e?.total ?? 0
+              const tone = total > 0 ? 'text-red-400' : 'text-emerald-400'
+              const bk = e?.byKind ?? { mcp: 0, rest: 0, agent: 0 }
+              return (
+                <>
+                  <p className={`text-xl font-mono font-semibold ${tone}`}>{total}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    mcp: {bk.mcp} · rest: {bk.rest} · agent: {bk.agent}
+                  </p>
+                </>
+              )
+            })()}
           </CardContent>
         </Card>
-      )}
+      </div>
 
       {/* Search / Antfly Section */}
       {searchHealth && (
@@ -712,49 +688,50 @@ export function HealthPage() {
         </Card>
       )}
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Tool Usage — horizontal bar chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Tool Usage</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {sortedTools.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No MCP calls yet this session</p>
-            ) : (
-              <HorizontalBars
-                items={sortedTools.map(([tool, count]) => ({
-                  label: tool.replace('bakin_', ''),
-                  value: count,
-                }))}
-              />
-            )}
-          </CardContent>
-        </Card>
+      {/* Usage — unified tabbed section backed by /api/plugins/health/usage-feed */}
+      <Card>
+        <CardContent className="pt-4 space-y-4">
+          <UnderlineTabs
+            tabs={USAGE_TABS}
+            value={usageTab}
+            onValueChange={setUsageTab}
+            rightSlot={
+              <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+                {(['5m', '1h', '24h'] as const).map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => setUsageWindow(w)}
+                    className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
+                      usageWindow === w
+                        ? 'bg-foreground/10 text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {w}
+                  </button>
+                ))}
+              </div>
+            }
+          />
 
-        {/* Agent Usage — horizontal bar chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Agent Usage</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {!mcp?.activeSessions.length ? (
-              <p className="text-sm text-muted-foreground">No active sessions</p>
-            ) : (
-              <HorizontalBars
-                items={mcp.activeSessions
-                  .sort((a, b) => b.toolCalls - a.toolCalls)
-                  .map((s) => ({
-                    label: s.agent,
-                    value: s.toolCalls,
-                    sublabel: `${s.sessions} session${s.sessions !== 1 ? 's' : ''}`,
-                  }))}
-                unit=" calls"
-              />
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          {usageTab === 'tools' && (
+            <UsageBarsPanel
+              feed={usageFeed}
+              kind="mcp"
+              emptyLabel="No MCP calls in this window"
+              labelTransform={(name) => name.replace('bakin_exec_', '')}
+            />
+          )}
+          {usageTab === 'endpoints' && (
+            <UsageBarsPanel
+              feed={usageFeed}
+              kind="rest"
+              emptyLabel="No REST requests in this window"
+            />
+          )}
+          {usageTab === 'agents' && <AgentUsagePanel feed={usageFeed} />}
+        </CardContent>
+      </Card>
 
       {/* Agent Context Usage */}
       {usage.length > 0 && (
@@ -825,172 +802,48 @@ export function HealthPage() {
         </div>
       )}
 
-      {/* API Endpoints */}
-      {requests && requests.endpoints.length > 0 && (() => {
-        const endpoints = requests.endpoints
-        const pagedEndpoints = endpoints.slice(endpointPage * PAGE_SIZE, (endpointPage + 1) * PAGE_SIZE)
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>API Endpoints</span>
-                {requests.totalErrors > 0 && (
-                  <Badge className={STATUS_STYLES.error}>{requests.totalErrors} errors</Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+      {/* Active Plugins */}
+      {registry && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Active Plugins</span>
+              <Badge variant="secondary" className="font-mono text-xs">{registry.plugins.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ListSearch value={pluginSearch} onChange={setPluginSearch} placeholder="Search plugins..." />
+            {filteredPlugins.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{pluginSearch ? 'No matching plugins' : 'No plugins loaded'}</p>
+            ) : (
               <div className="space-y-1.5">
                 <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                  <span className="flex-1">Endpoint</span>
-                  <span className="w-16 text-right">Calls</span>
-                  <span className="w-16 text-right">Errors</span>
-                  <span className="w-24 text-right">Last Called</span>
+                  <span className="flex-1">Plugin</span>
+                  <span className="w-16 text-right">Version</span>
+                  <span className="w-16 text-right">Source</span>
+                  <span className="w-14 text-right">Routes</span>
                 </div>
-                {pagedEndpoints.map((ep) => (
-                  <div key={ep.endpoint} className="flex items-center text-sm">
-                    <span className="flex-1 font-mono text-muted-foreground truncate">{ep.endpoint}</span>
-                    <span className="w-16 text-right font-mono">{ep.count}</span>
-                    <span className={`w-16 text-right font-mono ${ep.errors > 0 ? 'text-red-400' : ''}`}>
-                      {ep.errors || '—'}
+                {filteredPlugins.map((p) => (
+                  <div key={p.id} className="flex items-center text-sm">
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium">{p.name}</span>
+                      {p.description && (
+                        <p className="text-[11px] text-muted-foreground truncate">{p.description}</p>
+                      )}
+                    </div>
+                    <span className="w-16 text-right font-mono text-xs text-muted-foreground shrink-0">{p.version}</span>
+                    <span className="w-16 text-right shrink-0">
+                      <Badge variant="secondary" className="text-[10px] px-1.5">
+                        {p.source}
+                      </Badge>
                     </span>
-                    <span className="w-24 text-right text-xs text-muted-foreground">
-                      {formatTime(ep.lastCalled)}
-                    </span>
+                    <span className="w-14 text-right font-mono text-xs text-muted-foreground shrink-0">{p.routes}</span>
                   </div>
                 ))}
               </div>
-              <PaginationControls page={endpointPage} total={endpoints.length} onPageChange={setEndpointPage} />
-            </CardContent>
-          </Card>
-        )
-      })()}
-
-      {/* Recent Requests */}
-      {requests && requests.recent.length > 0 && (() => {
-        const recent = requests.recent
-        const pagedRecent = recent.slice(recentPage * PAGE_SIZE, (recentPage + 1) * PAGE_SIZE)
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Requests</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-1">
-                <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                  <span className="w-16">Method</span>
-                  <span className="flex-1">Path</span>
-                  <span className="w-14 text-right">Status</span>
-                  <span className="w-16 text-right">Duration</span>
-                  <span className="w-20 text-right">Agent</span>
-                  <span className="w-20 text-right">Time</span>
-                </div>
-                {pagedRecent.map((r, i) => (
-                  <div key={i} className="flex items-center text-sm">
-                    <span className="w-16 font-mono text-xs text-muted-foreground">{r.method}</span>
-                    <span className="flex-1 font-mono text-muted-foreground truncate">{r.path}</span>
-                    <span className={`w-14 text-right font-mono text-xs ${r.status >= 400 ? 'text-red-400' : r.status >= 300 ? 'text-yellow-400' : 'text-green-400'}`}>
-                      {r.status}
-                    </span>
-                    <span className="w-16 text-right font-mono text-xs text-muted-foreground">{r.durationMs}ms</span>
-                    <span className="w-20 text-right text-xs text-muted-foreground truncate">{r.agent || '—'}</span>
-                    <span className="w-20 text-right text-xs text-muted-foreground">{formatTime(r.ts)}</span>
-                  </div>
-                ))}
-              </div>
-              <PaginationControls page={recentPage} total={recent.length} onPageChange={setRecentPage} />
-            </CardContent>
-          </Card>
-        )
-      })()}
-
-      {/* Registry — Active Plugins & Active Tools */}
-      {registry && (
-        <div className="grid md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Active Plugins</span>
-                <Badge variant="secondary" className="font-mono text-xs">{registry.plugins.length}</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ListSearch value={pluginSearch} onChange={setPluginSearch} placeholder="Search plugins..." />
-              {filteredPlugins.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{pluginSearch ? 'No matching plugins' : 'No plugins loaded'}</p>
-              ) : (
-                <div className="space-y-1.5">
-                  <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                    <span className="flex-1">Plugin</span>
-                    <span className="w-16 text-right">Version</span>
-                    <span className="w-16 text-right">Source</span>
-                    <span className="w-14 text-right">Routes</span>
-                  </div>
-                  {filteredPlugins.map((p) => (
-                    <div key={p.id} className="flex items-center text-sm">
-                      <div className="flex-1 min-w-0">
-                        <span className="font-medium">{p.name}</span>
-                        {p.description && (
-                          <p className="text-[11px] text-muted-foreground truncate">{p.description}</p>
-                        )}
-                      </div>
-                      <span className="w-16 text-right font-mono text-xs text-muted-foreground shrink-0">{p.version}</span>
-                      <span className="w-16 text-right shrink-0">
-                        <Badge variant="secondary" className="text-[10px] px-1.5">
-                          {p.source}
-                        </Badge>
-                      </span>
-                      <span className="w-14 text-right font-mono text-xs text-muted-foreground shrink-0">{p.routes}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Active Tools</span>
-                <Badge variant="secondary" className="font-mono text-xs">{registry.execTools.length}</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ListSearch value={toolSearch} onChange={setToolSearch} placeholder="Search tools..." />
-              {filteredTools.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{toolSearch ? 'No matching tools' : 'No exec tools registered'}</p>
-              ) : (
-                <>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                      <span className="flex-1">Tool</span>
-                      <span className="w-24 text-right">Source</span>
-                      <span className="w-14 text-right">Calls</span>
-                      <span className="w-14 text-right">Errors</span>
-                      <span className="w-20 text-right">Last Used</span>
-                    </div>
-                    {filteredTools.slice(toolPage * PAGE_SIZE, (toolPage + 1) * PAGE_SIZE).map((t) => (
-                      <div key={t.name} className="flex items-center text-sm" title={t.lastError || undefined}>
-                        <span className="flex-1 font-mono text-muted-foreground truncate">{t.name.replace('bakin_exec_', '')}</span>
-                        <span className="w-24 text-right">
-                          <Badge variant="secondary" className="text-[10px] px-1.5">
-                            plugin:{t.source === 'core' ? 'core' : t.source}
-                          </Badge>
-                        </span>
-                        <span className="w-14 text-right font-mono">{t.calls}</span>
-                        <span className={`w-14 text-right font-mono ${t.errors > 0 ? 'text-red-400' : 'text-muted-foreground'}`}>{t.errors}</span>
-                        <span className="w-20 text-right text-xs text-muted-foreground">
-                          {t.lastUsed ? formatAge(t.lastUsed) : '—'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <PaginationControls page={toolPage} total={filteredTools.length} onPageChange={setToolPage} />
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Diagnostics */}

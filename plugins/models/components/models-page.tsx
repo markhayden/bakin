@@ -7,6 +7,7 @@ import { AlertCircle, ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
 // Internal
 import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
+import { UnderlineTabs } from '@/components/underline-tabs'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -405,21 +406,12 @@ export function ModelsPage() {
       )}
 
       {/* Tab bar */}
-      <div className="flex gap-1 border-b border-border">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            className={`px-3 py-2 text-sm transition-colors ${
-              tab === t.id
-                ? 'text-foreground border-b-2 border-accent font-medium'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <UnderlineTabs
+        tabs={TABS}
+        value={tab}
+        onValueChange={(id) => setTab(id as typeof tab)}
+      />
+
 
       {/* Tab content */}
       {tab === 'agents' && (

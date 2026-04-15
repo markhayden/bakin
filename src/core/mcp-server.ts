@@ -24,7 +24,8 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
 import { appendAudit } from './audit'
-import { getAllExecTools, recordExecToolCall, recordExecToolError, getToolContext } from '../../scripts/lib/registry'
+import { recordUsage } from '@/core/usage'
+import { getAllExecTools, getToolContext } from '../../scripts/lib/registry'
 
 // Script execution tools that stay in scripts/lib/ — self-register on import.
 // Must be imported AFTER registry.ts so the Map is initialized.
@@ -59,28 +60,30 @@ interface SseSession {
 }
 const sseSessions = new Map<string, SseSession>()
 
-// ---------------------------------------------------------------------------
-// In-memory stats (reset on server restart)
-// ---------------------------------------------------------------------------
-
-interface McpStats {
-  toolCalls: Record<string, number>
-  totalRequests: number
-  sessionsByAgent: Record<string, number>
-}
-
-const stats: McpStats = {
-  toolCalls: {},
-  totalRequests: 0,
-  sessionsByAgent: {},
-}
-
 const startedAt = new Date().toISOString()
 
-function recordToolCall(toolName: string, agent: string): void {
-  stats.toolCalls[toolName] = (stats.toolCalls[toolName] || 0) + 1
-  stats.sessionsByAgent[agent] = (stats.sessionsByAgent[agent] || 0) + 1
-  stats.totalRequests++
+// Expose MCP session state to plugin-land without an HTTP hop. The health
+// plugin reads this via globalThis to avoid bundling mcp-server.ts into the
+// Next.js webpack context. Same pattern as __bakinBroadcast.
+;(globalThis as unknown as { __bakinGetMcpSessions?: () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } }).__bakinGetMcpSessions = () => {
+  const agentMap = new Map<string, { sessions: number; latestAt: number }>()
+  for (const [, s] of sessions) {
+    const existing = agentMap.get(s.agentId)
+    if (existing) {
+      existing.sessions++
+      existing.latestAt = Math.max(existing.latestAt, s.createdAt)
+    } else {
+      agentMap.set(s.agentId, { sessions: 1, latestAt: s.createdAt })
+    }
+  }
+  return {
+    activeSessions: Array.from(agentMap.entries()).map(([agent, info]) => ({
+      agent,
+      sessions: info.sessions,
+      connectedAt: new Date(info.latestAt).toISOString(),
+    })),
+    upSince: startedAt,
+  }
 }
 
 // Clean up stale sessions every 5 minutes.
@@ -119,17 +122,27 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
       tool.parameters,
       async (params) => {
         const agent = getAgent()
-        recordToolCall(tool.name, agent)
-        recordExecToolCall(tool.name)
-
         const taskId = (params as Record<string, unknown>).taskId as string | undefined
         log.info('Exec tool called', { tool: tool.name, agent, taskId })
 
+        const start = Date.now()
         try {
           const toolCtx = getToolContext(tool.name)
           const result = await tool.handler(params as Record<string, unknown>, agent, toolCtx)
+          const durationMs = Date.now() - start
 
-          if (!result.ok) recordExecToolError(tool.name, String(result.error || 'unknown'))
+          recordUsage({
+            kind: 'mcp',
+            name: tool.name,
+            agent,
+            durationMs,
+            status: result.ok ? 'ok' : 'error',
+            meta: {
+              taskId,
+              label: tool.label,
+              ...(result.ok ? {} : { error: String(result.error || 'unknown') }),
+            },
+          })
 
           appendAudit(
             getContentDir(),
@@ -144,8 +157,16 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
             : `ERROR: ${result.error}${result.details ? '\n' + JSON.stringify(result.details, null, 2) : ''}`
           return { content: [{ type: 'text' as const, text }], isError: !result.ok }
         } catch (err) {
+          const durationMs = Date.now() - start
           const errMsg = err instanceof Error ? err.message : String(err)
-          recordExecToolError(tool.name, errMsg)
+          recordUsage({
+            kind: 'mcp',
+            name: tool.name,
+            agent,
+            durationMs,
+            status: 'error',
+            meta: { taskId, label: tool.label, error: errMsg },
+          })
           appendAudit(getContentDir(), `exec.${tool.name}.error`, agent, { taskId, label: tool.label, ...(tool.activityDuplicate ? { duplicate: true } : {}), error: errMsg }, 'mcp')
           return { content: [{ type: 'text' as const, text: `Exec tool error: ${errMsg}` }], isError: true }
         }
@@ -204,35 +225,14 @@ export async function handleMcpRequest(
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
   const method = req.method?.toUpperCase()
 
-  // /mcp/stats — lightweight observability endpoint
+  // /mcp/stats — lightweight observability endpoint. Call counts and error
+  // rates now live in the unified usage recorder (see /api/plugins/health/*);
+  // this endpoint only exposes raw MCP session state.
   if (url.pathname === '/mcp/stats' && method === 'GET') {
-    const agentMap = new Map<string, { sessions: number; latestAt: number; toolCalls: number }>()
-    for (const [, s] of sessions) {
-      const existing = agentMap.get(s.agentId)
-      if (existing) {
-        existing.sessions++
-        existing.latestAt = Math.max(existing.latestAt, s.createdAt)
-      } else {
-        agentMap.set(s.agentId, {
-          sessions: 1,
-          latestAt: s.createdAt,
-          toolCalls: stats.sessionsByAgent[s.agentId] || 0,
-        })
-      }
-    }
-    const activeSessions = Array.from(agentMap.entries()).map(([agent, info]) => ({
-      agent,
-      sessions: info.sessions,
-      connectedAt: new Date(info.latestAt).toISOString(),
-      toolCalls: info.toolCalls,
-    }))
+    const snapshot = (globalThis as unknown as { __bakinGetMcpSessions?: () => { activeSessions: unknown; upSince: string } }).__bakinGetMcpSessions?.()
+      ?? { activeSessions: [], upSince: startedAt }
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({
-      activeSessions,
-      toolCallCounts: stats.toolCalls,
-      totalRequests: stats.totalRequests,
-      upSince: startedAt,
-    }, null, 2))
+    res.end(JSON.stringify(snapshot, null, 2))
     return
   }
 

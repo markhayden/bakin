@@ -5,7 +5,7 @@
  * PluginContext.registerExecTool() which calls addExecTool().
  * The MCP server iterates over getAllExecTools() to register them.
  */
-import type { ExecToolDefinition, ExecToolResult, PluginToolContext, StorageAdapter, EventBus } from '../../src/lib/plugin-types'
+import type { ExecToolDefinition, PluginToolContext, StorageAdapter, EventBus } from '../../src/lib/plugin-types'
 
 // ---------------------------------------------------------------------------
 // Registry state
@@ -19,10 +19,6 @@ import type { ExecToolDefinition, ExecToolResult, PluginToolContext, StorageAdap
 const execTools: Map<string, ExecToolDefinition> =
   (globalThis as any).__bakinExecTools ??= new Map<string, ExecToolDefinition>()
 
-/** Per-tool call stats for health dashboard */
-const toolStats: Map<string, { calls: number; errors: number; lastUsed: string | null; lastError: string | null }> =
-  (globalThis as any).__bakinExecToolStats ??= new Map<string, { calls: number; errors: number; lastUsed: string | null; lastError: string | null }>()
-
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
@@ -32,9 +28,6 @@ export function addExecTool(tool: ExecToolDefinition): void {
     console.warn(`Exec tool "${tool.name}" already registered — overriding`)
   }
   execTools.set(tool.name, tool)
-  if (!toolStats.has(tool.name)) {
-    toolStats.set(tool.name, { calls: 0, errors: 0, lastUsed: null, lastError: null })
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -47,49 +40,6 @@ export function getAllExecTools(): ExecToolDefinition[] {
 
 export function getExecTool(name: string): ExecToolDefinition | undefined {
   return execTools.get(name)
-}
-
-// ---------------------------------------------------------------------------
-// Stats
-// ---------------------------------------------------------------------------
-
-export function recordExecToolCall(name: string): void {
-  const stat = toolStats.get(name)
-  if (stat) {
-    stat.calls++
-    stat.lastUsed = new Date().toISOString()
-  }
-}
-
-export function recordExecToolError(name: string, error: string): void {
-  const stat = toolStats.get(name)
-  if (stat) {
-    stat.errors++
-    stat.lastError = error
-  }
-}
-
-export interface ExecToolStat {
-  name: string
-  source: string
-  calls: number
-  errors: number
-  lastUsed: string | null
-  lastError: string | null
-}
-
-export function getExecToolStats(): ExecToolStat[] {
-  return [...execTools.entries()].map(([name, tool]) => {
-    const stat = toolStats.get(name) || { calls: 0, errors: 0, lastUsed: null, lastError: null }
-    return {
-      name,
-      source: tool.source || 'core',
-      calls: stat.calls,
-      errors: stat.errors,
-      lastUsed: stat.lastUsed,
-      lastError: stat.lastError,
-    }
-  })
 }
 
 // ---------------------------------------------------------------------------
