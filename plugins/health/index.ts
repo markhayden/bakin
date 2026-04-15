@@ -12,6 +12,7 @@ import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getSettings } from '../../src/core/settings'
 import { getContentDir } from '../../src/core/content-dir'
 import { getSearchHealth } from '../../src/core/search-registry'
+import { getUsageFeed, getErrorCount, WINDOW_MS, type UsageKind, type WindowKey } from '../../src/core/usage'
 // Registry accessors live on globalThis because Next.js API routes get
 // separate webpack-compiled module instances with empty Maps. The custom
 // server (server.ts) registers the real accessors after plugin init.
@@ -114,12 +115,15 @@ const healthPlugin: BakinPlugin = {
           recent: { windowSec: 60, total: restHot.total, errors: restHot.errors, byPlugin: restHot.byPlugin },
         }
 
+        const errors1h = getErrorCount(WINDOW_MS['1h'])
+
         return Response.json({
           mcp,
           mcpHealth,
           restHealth,
           doctor,
           requests,
+          errors1h,
           openclawPort: settings.openclaw.gatewayPort,
           server: {
             port: Number(port),
@@ -129,6 +133,35 @@ const healthPlugin: BakinPlugin = {
             totalMemoryMB: Math.round(totalmem() / 1024 / 1024),
           },
         })
+      },
+    })
+
+    // Unified usage feed — backs the tabbed usage section on the health page.
+    // Query params: kind (mcp|rest|agent, optional), window (5m|1h|24h), agent (optional).
+    ctx.registerRoute({
+      path: '/usage-feed',
+      method: 'GET',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const schema = z.object({
+          kind: z.enum(['mcp', 'rest', 'agent']).optional(),
+          window: z.enum(['5m', '1h', '24h']).default('1h'),
+          agent: z.string().min(1).optional(),
+        })
+        const parsed = schema.safeParse({
+          kind: url.searchParams.get('kind') ?? undefined,
+          window: url.searchParams.get('window') ?? undefined,
+          agent: url.searchParams.get('agent') ?? undefined,
+        })
+        if (!parsed.success) {
+          return Response.json({ error: 'Invalid query', details: parsed.error.flatten() }, { status: 400 })
+        }
+        const { kind, window, agent } = parsed.data
+        return Response.json(getUsageFeed({
+          ...(kind ? { kind: kind as UsageKind } : {}),
+          window: window as WindowKey,
+          ...(agent ? { agent } : {}),
+        }))
       },
     })
 
