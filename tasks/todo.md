@@ -31,7 +31,8 @@
 
 ## Phase 4 — Manual cleanup (runbook, no commit)
 
-- [ ] **T9** — runbook execution on this machine per `tasks/plan.md` Phase 4. Backup → edit openclaw.json (merge roscoe into main) → move avatars → delete heartbeats → edit team.json → edit settings.json → `bakin check openclaw` → restart → visually verify one Roscoe card at the pyramid top with Creators + Builders under it.
+- [x] **T9** — runbook executed on this machine. Backed up `~/.openclaw/openclaw.json` → `.pre-issue-90` and `~/.bakin` → `~/.bakin.pre-issue-90` (122 MB). Stopped bakin, merged `roscoe` identity into the `main` entry in openclaw.json (emoji changed from 🐾 to 🐷), deleted the `roscoe` entry, moved `avatar.jpg` + `avatar-full.png` into `~/.bakin/agents/main/`, removed `~/.bakin/agents/roscoe/`, removed `~/.bakin/heartbeats/roscoe.json`, normalized both team `reportsTo` values to null in `plugin-settings/team.json`, deleted the stale top-level `agents` array from `settings.json`. `bakin check openclaw` clean (T7 integrity validator returned ok). Restarted — mcporter auto-pruned `bakin-roscoe`, roster API returned `mainAgentId: main → Roscoe 🐷` with 8 agents and no duplicates. Team page visually verified: Mark at top, one Roscoe card under him, Creators + Builders branching off correctly.
+- [x] **Bonus fix** — founder node edge jog. Founder card had no explicit width so xyflow drew a slightly kinked smoothstep edge between off-center handles; fixed by forcing `w-[152px]` on the founder and aligning `FOUNDER_W` to `CARD_W`. _(commit: `fix(team): align founder node width with agent cards to eliminate edge jog` — 4acc9b3)_
 
 ## Post-merge
 
