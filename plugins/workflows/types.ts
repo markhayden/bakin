@@ -149,6 +149,10 @@ export interface StepHistoryEntry {
   completedAt: string
   output?: Record<string, unknown>
   rejectionReason?: string
+  /** For gate decisions — who approved/rejected this step */
+  approver?: ApprovalActor
+  /** For gate decisions — when the gate entered pending_approval */
+  requestedAt?: string
 }
 
 export interface WorkflowInstance {

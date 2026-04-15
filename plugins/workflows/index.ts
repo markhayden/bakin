@@ -316,7 +316,7 @@ const workflowsPlugin: BakinPlugin = {
           const { action, taskId, stepId, reason } = interaction
 
           if (action === 'approve') {
-            const result = approveGate(taskId, stepId)
+            const result = approveGate(taskId, stepId, { approver: interaction.approver })
             if (!result.success) {
               await interaction.reply(`Approve failed: ${result.errors?.[0] || 'unknown error'}`)
               return
@@ -335,7 +335,7 @@ const workflowsPlugin: BakinPlugin = {
             }
           } else if (action === 'reject') {
             const rejectReason = reason || 'Rejected via Discord'
-            const result = rejectGate(taskId, stepId, rejectReason)
+            const result = rejectGate(taskId, stepId, rejectReason, { approver: interaction.approver })
             if (!result.success) {
               await interaction.reply(`Reject failed: ${result.errors?.[0] || 'unknown error'}`)
               return
@@ -517,7 +517,7 @@ const workflowsPlugin: BakinPlugin = {
       const preInstance = loadInstance(taskId)
       const discordMsgId = preInstance?.stepStates[stepId]?.discordMessageId
 
-      const result = approveGate(taskId, stepId)
+      const result = approveGate(taskId, stepId, {})
 
       if (!result.success) {
         return Response.json({ error: result.errors?.[0], errors: result.errors }, { status: 400 })
@@ -560,7 +560,7 @@ const workflowsPlugin: BakinPlugin = {
       const preInstance = loadInstance(taskId)
       const discordMsgId = preInstance?.stepStates[stepId]?.discordMessageId
 
-      const result = rejectGate(taskId, stepId, reason, rewindTo)
+      const result = rejectGate(taskId, stepId, reason, { rewindTo })
 
       if (!result.success) {
         return Response.json({ error: result.errors?.[0], errors: result.errors }, { status: 400 })
