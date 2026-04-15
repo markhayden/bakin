@@ -5,8 +5,9 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { userInfo } from 'os'
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { ApprovalActor, BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { listDefinitions, loadDefinition } from './lib/parser'
 import {
   createInstance,
@@ -327,11 +328,17 @@ const workflowsPlugin: BakinPlugin = {
             indexInstance(taskId).catch(() => {})
             triggerDispatch()
 
-            // Edit the Discord message to show approved
+            // Edit the Discord message to show approved (preserving context)
             const instance = loadInstance(taskId)
             const msgId = instance?.stepStates[stepId]?.discordMessageId
-            if (msgId) {
-              editDiscordGateMessage(discordSettings.discordGateChannel, msgId, 'approved').catch(() => {})
+            if (msgId && result.decision) {
+              editDiscordGateMessage(
+                discordSettings.discordGateChannel,
+                msgId,
+                'approved',
+                interaction.approver,
+                result.decision.decidedAt,
+              ).catch(() => {})
             }
           } else if (action === 'reject') {
             const rejectReason = reason || 'Rejected via Discord'
@@ -345,11 +352,18 @@ const workflowsPlugin: BakinPlugin = {
             ctx.activity.log('discord', `Gate "${stepId}" rejected via Discord: ${rejectReason}`, { taskId })
             indexInstance(taskId).catch(() => {})
 
-            // Edit the Discord message to show rejected
+            // Edit the Discord message to show rejected (preserving context)
             const instance = loadInstance(taskId)
             const msgId = instance?.stepStates[stepId]?.discordMessageId
-            if (msgId) {
-              editDiscordGateMessage(discordSettings.discordGateChannel, msgId, 'rejected', rejectReason).catch(() => {})
+            if (msgId && result.decision) {
+              editDiscordGateMessage(
+                discordSettings.discordGateChannel,
+                msgId,
+                'rejected',
+                interaction.approver,
+                result.decision.decidedAt,
+                rejectReason,
+              ).catch(() => {})
             }
           }
         })
@@ -497,6 +511,15 @@ const workflowsPlugin: BakinPlugin = {
     ctx.registerRoute({ path: '/steps/:taskId/complete', method: 'POST', description: 'Submit step output, validates against schema, advances workflow', handler: completeStepHandler })
 
 
+    // Web-source approver — REST endpoints come from the Bakin UI, which is
+    // single-user behind Tailscale. Use the OS username so the audit log and
+    // Discord summary card identify "who clicked the button" with at least
+    // machine-level granularity.
+    const webApprover = (): ApprovalActor => {
+      const { username } = userInfo()
+      return { source: 'web', id: username, displayName: username }
+    }
+
     // POST /gates/:taskId/approve — approve a gate step
     const approveHandler = async (req: Request) => {
       const url = new URL(req.url)
@@ -517,7 +540,8 @@ const workflowsPlugin: BakinPlugin = {
       const preInstance = loadInstance(taskId)
       const discordMsgId = preInstance?.stepStates[stepId]?.discordMessageId
 
-      const result = approveGate(taskId, stepId, {})
+      const approver = webApprover()
+      const result = approveGate(taskId, stepId, { approver })
 
       if (!result.success) {
         return Response.json({ error: result.errors?.[0], errors: result.errors }, { status: 400 })
@@ -531,8 +555,14 @@ const workflowsPlugin: BakinPlugin = {
       triggerDispatch()
 
       // Sync Discord message if one was sent
-      if (discordMsgId && discordSettings.discordGateAlerts) {
-        editDiscordGateMessage(discordSettings.discordGateChannel, discordMsgId, 'approved').catch(() => {})
+      if (discordMsgId && discordSettings.discordGateAlerts && result.decision) {
+        editDiscordGateMessage(
+          discordSettings.discordGateChannel,
+          discordMsgId,
+          'approved',
+          approver,
+          result.decision.decidedAt,
+        ).catch(() => {})
       }
 
       return Response.json(result)
@@ -560,7 +590,8 @@ const workflowsPlugin: BakinPlugin = {
       const preInstance = loadInstance(taskId)
       const discordMsgId = preInstance?.stepStates[stepId]?.discordMessageId
 
-      const result = rejectGate(taskId, stepId, reason, { rewindTo })
+      const approver = webApprover()
+      const result = rejectGate(taskId, stepId, reason, { rewindTo, approver })
 
       if (!result.success) {
         return Response.json({ error: result.errors?.[0], errors: result.errors }, { status: 400 })
@@ -571,8 +602,15 @@ const workflowsPlugin: BakinPlugin = {
       indexInstance(taskId).catch(() => {})
 
       // Sync Discord message if one was sent
-      if (discordMsgId && discordSettings.discordGateAlerts) {
-        editDiscordGateMessage(discordSettings.discordGateChannel, discordMsgId, 'rejected', reason).catch(() => {})
+      if (discordMsgId && discordSettings.discordGateAlerts && result.decision) {
+        editDiscordGateMessage(
+          discordSettings.discordGateChannel,
+          discordMsgId,
+          'rejected',
+          approver,
+          result.decision.decidedAt,
+          reason,
+        ).catch(() => {})
       }
 
       return Response.json(result)

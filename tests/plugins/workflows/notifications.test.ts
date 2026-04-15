@@ -11,6 +11,21 @@ vi.mock('../../../src/core/logger', () => ({
   }),
 }))
 
+// Defensive mocks: notifications doesn't read content-dir or call flow-store,
+// but enforce isolation rules across the suite.
+vi.mock('../../../src/core/content-dir', () => ({
+  getContentDir: () => '/tmp/bakin-test-notifications',
+  getBakinPaths: () => ({}),
+}))
+
+vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
+  createTask: vi.fn(() => Promise.resolve({ id: 'mock' })),
+  addTaskLog: vi.fn(() => Promise.resolve()),
+  moveTask: vi.fn(() => Promise.resolve()),
+  readTaskboard: vi.fn(() => ({ columns: {} })),
+  getTask: vi.fn(() => null),
+}))
+
 // Mock post-discord config and channel resolution
 vi.mock('../../../scripts/lib/post-discord', () => ({
   loadDiscordConfig: vi.fn(() => ({
@@ -179,38 +194,102 @@ describe('Discord gate notifications', () => {
   })
 
   describe('editDiscordGateMessage', () => {
-    it('patches message with approved status (green)', async () => {
+    const approver: import('@bakin/core/plugin-types').ApprovalActor = {
+      source: 'discord',
+      id: '111',
+      displayName: 'Mark',
+    }
+    const decidedAt = '2026-04-13T12:34:56Z'
+
+    it('GET-preserves original embed fields and appends Decision + Decided by', async () => {
+      // First fetch: GET returns the existing message with original fields
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          embeds: [{
+            title: 'Gate: Review Draft',
+            description: 'Workflow content-pipeline has reached a gate.',
+            color: 16776960,
+            fields: [
+              { name: 'Task', value: 'task-42', inline: true },
+              { name: 'Step', value: 'review-gate', inline: true },
+              { name: 'Prior Output', value: '**caption:** Hello' },
+            ],
+          }],
+        }),
+      })
+      // Second fetch: PATCH succeeds
       mockFetch.mockResolvedValueOnce({ ok: true })
 
-      await editDiscordGateMessage('approvals', 'msg-789', 'approved')
+      await editDiscordGateMessage('approvals', 'msg-789', 'approved', approver, decidedAt)
 
-      expect(mockFetch).toHaveBeenCalledTimes(1)
-      const [url, opts] = mockFetch.mock.calls[0]
-      expect(url).toBe('https://discord.com/api/v10/channels/ch-123/messages/msg-789')
-      expect(opts.method).toBe('PATCH')
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      const [getUrl, getOpts] = mockFetch.mock.calls[0]
+      expect(getUrl).toBe('https://discord.com/api/v10/channels/ch-123/messages/msg-789')
+      expect(getOpts.method ?? 'GET').toBe('GET')
 
-      const body = JSON.parse(opts.body)
-      expect(body.embeds[0].color).toBe(5763719) // Green
-      expect(body.embeds[0].title).toBe('Gate Approved')
-      expect(body.components).toEqual([]) // Buttons removed
+      const [patchUrl, patchOpts] = mockFetch.mock.calls[1]
+      expect(patchUrl).toBe('https://discord.com/api/v10/channels/ch-123/messages/msg-789')
+      expect(patchOpts.method).toBe('PATCH')
+
+      const body = JSON.parse(patchOpts.body)
+      const embed = body.embeds[0]
+      expect(embed.title).toBe('Gate: Review Draft') // preserved
+      expect(embed.color).toBe(5763719) // updated to green
+      const fieldNames = embed.fields.map((f: { name: string }) => f.name)
+      expect(fieldNames).toContain('Task')
+      expect(fieldNames).toContain('Step')
+      expect(fieldNames).toContain('Prior Output')
+      expect(fieldNames).toContain('Decision')
+      expect(fieldNames).toContain('Decided by')
+
+      const decisionField = embed.fields.find((f: { name: string }) => f.name === 'Decision')
+      expect(decisionField.value).toBe('Approved')
+      const byField = embed.fields.find((f: { name: string }) => f.name === 'Decided by')
+      expect(byField.value).toContain('Mark')
+      expect(byField.value).toContain('discord')
+
+      expect(body.components).toEqual([])
     })
 
-    it('patches message with rejected status (red) and reason', async () => {
+    it('uses red color and includes Reason field on reject', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ embeds: [{ title: 'Gate: Review Draft', fields: [] }] }),
+      })
       mockFetch.mockResolvedValueOnce({ ok: true })
 
-      await editDiscordGateMessage('approvals', 'msg-789', 'rejected', 'Off-brand colors')
+      await editDiscordGateMessage('approvals', 'msg-789', 'rejected', approver, decidedAt, 'Off-brand colors')
 
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
-      expect(body.embeds[0].color).toBe(15548997) // Red
-      expect(body.embeds[0].title).toBe('Gate Rejected')
-      expect(body.embeds[0].description).toContain('Off-brand colors')
+      const body = JSON.parse(mockFetch.mock.calls[1][1].body)
+      const embed = body.embeds[0]
+      expect(embed.color).toBe(15548997) // Red
+      const fieldNames = embed.fields.map((f: { name: string }) => f.name)
+      expect(fieldNames).toContain('Decision')
+      expect(fieldNames).toContain('Reason')
+      const reasonField = embed.fields.find((f: { name: string }) => f.name === 'Reason')
+      expect(reasonField.value).toBe('Off-brand colors')
+    })
+
+    it('falls back to stripped embed when GET fails', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 403, text: () => Promise.resolve('Missing perms') })
+      mockFetch.mockResolvedValueOnce({ ok: true })
+
+      await editDiscordGateMessage('approvals', 'msg-789', 'approved', approver, decidedAt)
+
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      const body = JSON.parse(mockFetch.mock.calls[1][1].body)
+      const embed = body.embeds[0]
+      // Fallback shape: still updates color and shows decision in title/description
+      expect(embed.color).toBe(5763719)
+      expect(embed.title).toContain('Gate Approved')
       expect(body.components).toEqual([])
     })
 
     it('skips edit when Discord is not configured', async () => {
       vi.mocked(loadDiscordConfig).mockReturnValue(null)
 
-      await editDiscordGateMessage('approvals', 'msg-789', 'approved')
+      await editDiscordGateMessage('approvals', 'msg-789', 'approved', approver, decidedAt)
 
       expect(mockFetch).not.toHaveBeenCalled()
     })
