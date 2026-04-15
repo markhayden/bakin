@@ -26,7 +26,7 @@ export const X_GAP = 24
 export const Y_GAP = 50
 const TEAM_GAP = 80
 const SECTION_W = 200
-const FOUNDER_W = 160
+const FOUNDER_W = CARD_W
 const FOUNDER_ROW_H = 80
 const SECTION_ROW_H = 30
 

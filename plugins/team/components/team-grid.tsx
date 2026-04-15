@@ -67,8 +67,8 @@ interface FounderNodeData extends Record<string, unknown> {
 function FounderNode({ data }: NodeProps) {
   const { label, subtitle } = data as FounderNodeData
   return (
-    <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-5 py-3 flex items-center gap-3 shadow-md">
-      <div className="size-9 rounded-full bg-zinc-800 flex items-center justify-center text-base">👤</div>
+    <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-5 py-3 flex items-center justify-center gap-3 shadow-md w-[152px]">
+      <div className="size-9 rounded-full bg-zinc-800 flex items-center justify-center text-base shrink-0">👤</div>
       <div>
         <div className="text-sm font-semibold text-zinc-100">{label}</div>
         <div className="text-xs text-zinc-400">{subtitle}</div>
