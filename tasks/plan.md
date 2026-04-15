@@ -1,390 +1,431 @@
-# Plan: Health Plugin Overhaul
+# Plan: Team plugin canonical main-agent ids
 
-**Spec:** `.claude/specs/health-plugin-overhaul.md`
-**Branch:** `fix/health-plugin-overhaul`
-**Created:** 2026-04-14
-
----
-
-## Ground truth (verified from source, not assumed)
-
-Before planning I verified the key code paths. The spec assumptions were mostly right but one audit claim was wrong — correcting it here:
-
-1. **`server.ts:147-166` middleware DOES catch plugin catch-all REST traffic.** It wraps `res.end()` at the Node HTTP layer, so every response — including ones Next.js produces for `/api/plugins/*` — flows through `recordRequest()`. The audit that claimed GET requests silently bypass tracking was wrong at the architectural level. GET tracking is real; it's just in-memory only and uses a *different* agent-attribution path than the catch-all.
-
-2. **Agent attribution is currently split in two:**
-   - `server.ts:162` reads `url.searchParams.get('agent')` — for clients that pass `?agent=` as a query param.
-   - `src/app/api/plugins/[pluginId]/[[...path]]/route.ts:249` reads `req.headers.get('x-bakin-agent')` — for agents that set a header.
-   Neither path reads the other. Unified recorder must check header first, then query param, then `'unknown'`.
-
-3. **The catch-all does its own audit + duration tracking** in parallel with the middleware. This is redundant — the middleware already records duration. The catch-all's audit behavior (writes + errors only, skips successful GETs) stays, but its duration/stat tracking is dead work once we unify.
-
-4. **Consumers of `request-log.ts` outside health**: `src/core/watchdog.ts` uses `getRecentStatsForPathPrefix` for MCP 5xx alerting. Must be retargeted to `getUsageStats({kind: 'mcp'})` before we can delete the module.
-
-5. **Existing test at `tests/core/request-log.test.ts`** will be deleted in Phase 5 alongside the module.
-
-6. **`scripts/lib/registry.ts:22-24, 56-93`** holds a parallel in-memory stats map (`toolStats`). Delete in Phase 5.
-
-7. **`setInterval` cleanup in `mcp-server.ts:88`** for stale sessions is unrelated and stays untouched.
+**Spec:** `.claude/specs/issue-90-team-main-agent-canonical.md`
+**Issue:** https://github.com/madeinwyo/bakin/issues/90
+**Branch:** `fix/issue-90-team-main-agent`
+**Created:** 2026-04-15
+**Author:** claude (opus-4-6) / roscoe
 
 ---
 
-## Strategy: vertical slices with feature-flag-free safe rollback
+## Spec correction (apply before starting work)
 
-The central design constraint: each commit must leave the app **in a working, deployable state**, so any one commit can be reverted independently. That rules out "delete the old system, then build the new one in 6 commits" because the middle commits would be broken.
+The spec as written says Bakin "never writes to openclaw.json, ever." That's wrong — `plugins/team/lib/openclaw-adapter.ts:279` (`addAgent`) and `:333` (`removeAgent`) already write to it as part of normal user-initiated agent CRUD, and the CLAUDE.md adapter principle explicitly permits it ("Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never *copies* OpenClaw").
 
-Strategy: **build the new system alongside the old, switch the consumers, then delete the old**. Five phases with commit-sized rollback points between each.
+The correct rule is: **doctor checks, migration helpers, and onboarding code never auto-mutate openclaw.json.** User-initiated CRUD through the existing adapter functions is fine.
 
-```
-Phase 1    Recorder exists in isolation            ← rollback here is free
-Phase 2    Producers feed BOTH old & new           ← rollback safely, UI still works
-Phase 3    New API route alongside old             ← rollback, UI unaffected
-Phase 4    UI switches to new API                  ← rollback reverts the UI only
-Phase 5    Old code deleted                        ← final — rollback from here
-                                                     goes back to phase 4 state
-```
-
-Between every phase, `pnpm lint && pnpm test && pnpm typecheck` must be green.
+**Pre-flight task:** update section 4 ("Out of scope") and section 7 ("Never") of the spec to reflect this. Do this in the same PR, at the top of commit 1.
 
 ---
 
 ## Dependency graph
 
 ```
-┌─────────────────────────────────────────────────┐
-│ Phase 1: Recorder                               │
-│   T1.1  src/core/usage.ts  + unit tests         │
-└─────────────────────────┬───────────────────────┘
-                          │
-       ┌──────────────────┼──────────────────┐
-       │                  │                  │
-┌──────▼─────┐   ┌────────▼────────┐  ┌──────▼──────────┐
-│ Phase 2a   │   │ Phase 2b        │  │ Phase 2c        │
-│ T2.1  MCP  │   │ T2.2  REST      │  │ T2.3  Agent     │
-│ producer   │   │ producers       │  │ producers       │
-│            │   │ (server.ts +    │  │ (dispatch +     │
-│            │   │  catch-all)     │  │  heartbeat +    │
-│            │   │                 │  │  task-service)  │
-└──────┬─────┘   └────────┬────────┘  └──────┬──────────┘
-       │                  │                  │
-       └──────────────────┼──────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────┐
-│ Phase 3: API route                              │
-│   T3.1  /usage-feed + trim /summary             │
-└─────────────────────────┬───────────────────────┘
-                          │
-       ┌──────────────────┼──────────────────┐
-       │                  │                  │
-┌──────▼──────┐   ┌───────▼────────┐  ┌──────▼────────┐
-│ T4.1        │   │ T4.2           │  │ T4.3          │
-│ Top row     │   │ Tabs shell     │  │ Tab contents  │
-│ rebuild     │   │ + window       │  │ (Tool/Endpt/  │
-│             │   │ filter         │  │  Agent)       │
-└──────┬──────┘   └───────┬────────┘  └──────┬────────┘
-       │                  │                  │
-       └──────────────────┼──────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────┐
-│ Phase 5: Cleanup                                │
-│   T5.1  Delete old code + retarget watchdog     │
-│   T5.2  Rewrite routes.test.ts with real wiring │
-│   T5.3  Docs: CLAUDE.md + .claude/knowledge     │
-└─────────────────────────────────────────────────┘
+Phase 1 (solo):
+  T3 — create openclaw-config.ts, migrate the three duplicate readers
+       (pure refactor, no behavior change)
+              │
+              ▼
+Phase 2 (6-way parallel, all file-disjoint after T3):
+  ┌──── T1 — main-agent.ts: strip detection heuristic
+  │
+  ├──── T2 — settings.ts: delete `agents` + `mainAgentId` fields,
+  │          migrate cli/bakin.ts consumers
+  │
+  ├──── T4 — openclaw-adapter.ts: listAgents validation + dedupe
+  │
+  ├──── T5 — team-grid.tsx: pyramid root = main agent,
+  │          reportsTo?.mainAgentId resolution
+  │
+  ├──── T6 — team/index.ts: writer normalization (reportsTo===main → null)
+  │
+  └──── T7 — onboarding/openclaw.ts: doctor integrity check
+              │
+              ▼
+Phase 3 (solo):
+  T8 — docs (describes the final shipped state)
+              │
+              ▼
+Phase 4 (runbook, no commit):
+  T9 — manual cleanup on this machine
 ```
 
----
+**Why this shape:** after the T3 refactor lands, each of T1/T2/T4/T5/T6/T7 touches a single file that no other task touches. Zero merge conflicts, zero ordering dependencies. They can execute as 6 parallel sub-agents (6× wall-time speedup on Phase 2) or serially by a single agent — either way the commit graph is the same.
 
-## Tasks
+**Key micro-reshuffle from v1 of this plan:** the `settings.mainAgentId` field deletion moved from T1 into T2, so T1 is now `main-agent.ts`-only and T2 is `settings.ts` + `cli/bakin.ts`-only. That removes the false conflict between T1 and T2 that made them appear sequential.
 
-### Phase 1 — Recorder foundation
-
-#### T1.1  Create `src/core/usage.ts` + unit tests
-- **Files:** `src/core/usage.ts` (new), `tests/core/usage.test.ts` (new)
-- **What:** Module exports `recordUsage`, `getUsageFeed`, `getUsageStats`, `getErrorCount`, `getCurrentAgentActivity`, `clearUsage` (test-only), and the `UsageEntry` type. State is a `globalThis.__bakinUsage`-backed array with FIFO eviction at `MAX_ENTRIES = 10_000`. Window constants: `WINDOW_MS = { '5m': 300_000, '1h': 3_600_000, '24h': 86_400_000 }`.
-- **API surface:**
-  ```ts
-  type UsageKind = 'mcp' | 'rest' | 'agent'
-  interface UsageEntry {
-    ts: string
-    kind: UsageKind
-    name: string
-    agent: string | null
-    durationMs: number | null
-    status: 'ok' | 'error'
-    meta?: Record<string, unknown>
-  }
-  interface UsageQuery {
-    kind?: UsageKind
-    window: '5m' | '1h' | '24h'
-    agent?: string
-  }
-  interface UsageFeed {
-    totals: { count: number; errors: number; errorRate: number }
-    topByName: Array<{ name: string; count: number; errors: number; medianDurationMs: number | null }>
-    recent: UsageEntry[]  // last 50 matching the filter, newest first
-    byAgent: Array<{ agent: string; count: number; errors: number; lastActivity: UsageEntry | null }>
-  }
-  ```
-- **Acceptance:**
-  - [ ] `recordUsage` inserts an entry; `getUsageFeed` returns it.
-  - [ ] Window filter excludes entries older than window.
-  - [ ] Kind filter narrows to one kind.
-  - [ ] Agent filter narrows to one agent.
-  - [ ] Ring buffer evicts oldest on overflow; entry count never exceeds `MAX_ENTRIES`.
-  - [ ] `getCurrentAgentActivity` returns `{ agent, latest, idleSec }` per agent. `idleSec >= 30` means idle.
-  - [ ] `getErrorCount(windowMs)` returns `{ total, byKind: { mcp, rest, agent } }`.
-  - [ ] `topByName` is sorted by count desc, top 10.
-  - [ ] Median duration computed correctly for entries with non-null `durationMs`; returns `null` when no entries have durations.
-  - [ ] `globalThis.__bakinUsage` is used — not a module-level array (per `feedback_globalthis_sse.md`).
-- **Verify:** `pnpm vitest tests/core/usage.test.ts` green.
-- **Commit:** `feat(core): add unified usage recorder`
-
-**Checkpoint 1** — recorder lives alongside nothing else; can be deleted without affecting any other module. ✅
+**Commit landing order** (for rollback sanity) follows the graph: T3 first, then any order of T1/T2/T4/T5/T6/T7, then T8. T9 is a runbook, not a commit.
 
 ---
 
-### Phase 2 — Wire producers (parallel after Phase 1)
+## Phase 1 — Refactor prelude (solo, 1 commit)
 
-All three tasks can be worked in parallel. Each writes to the new recorder **in addition to** the existing systems. The old systems keep working; the new recorder just gets populated too. Every task includes a *real-wiring* integration test — no mocks on the recorder.
+### T3. Centralize the `openclaw.json` reader
 
-#### T2.1  MCP producer
-- **Files:** `src/core/mcp-server.ts` (lines 80-84, 120-151), `tests/integration/usage-wiring-mcp.test.ts` (new)
-- **What:** Inside the `registerTools` callback, after `recordToolCall` / `recordExecToolCall`, call `recordUsage({ kind: 'mcp', name: tool.name, agent, durationMs, status, meta: { taskId } })`. Measure duration around the `tool.handler(...)` call. Status `'error'` on `!result.ok` or thrown exception. Leave `recordToolCall` / `recordExecToolCall` calls in place — Phase 5 removes them.
-- **Integration test:** Import `registerTools` and `recordUsage`, register a dummy exec tool that returns `{ ok: true }`, invoke the MCP server's JSON-RPC handler directly with a `tools/call` payload, assert `getUsageFeed({ kind: 'mcp', window: '5m' })` contains the tool name with status ok and a non-null duration. Also test an error case where the handler throws. Mock `getContentDir` + `logger` per project rules.
-- **Acceptance:**
-  - [ ] Success path writes `status: 'ok'` entry.
-  - [ ] Thrown error writes `status: 'error'` entry with `meta.error`.
-  - [ ] Handler-returned `{ ok: false }` writes `status: 'error'` entry.
-  - [ ] `durationMs` is > 0 and < 1000 for a no-op handler.
-  - [ ] Integration test fails if you comment out the `recordUsage` call.
-- **Verify:** `pnpm vitest tests/integration/usage-wiring-mcp.test.ts` green.
-- **Commit:** `feat(mcp): record tool calls to unified usage store`
+**Files:**
+- `packages/core/src/openclaw-config.ts` — **new file**
+- `packages/core/src/main-agent.ts` — migrate to use the new module (keep existing heuristic for now; T1 strips it)
+- `plugins/team/lib/openclaw-adapter.ts` — migrate `getOpenClawConfig` to use the new module
+- `packages/core/src/settings.ts` — migrate `readAgentIdsFromOpenClaw` to use the new module (keep the field for now; T2 deletes it)
+- `tests/core/openclaw-config.test.ts` — **new** unit tests for the reader
 
-#### T2.2  REST producers (server.ts middleware + catch-all)
-- **Files:** `server.ts` (lines 147-166), `src/app/api/plugins/[pluginId]/[[...path]]/route.ts` (lines 245-303), `tests/integration/usage-wiring-rest.test.ts` (new)
-- **What (server.ts):** In the `res.end` override, after `recordRequest(...)`, also call `recordUsage({ kind: 'rest', name: normalizedPath, agent, durationMs, status, meta: { method, status } })`. Normalize path: strip query string, keep `/api/plugins/{pluginId}/{...}` verbatim, replace UUID-shaped segments elsewhere with `:id`. Status = `'ok'` if `< 400`, else `'error'`. Agent = header `x-bakin-agent` if present (need to peek from `req.headers['x-bakin-agent']`), else query param `agent`, else `null`.
-- **What (catch-all route.ts):** Remove the now-redundant `appendAudit` block at lines 276-289 only if it's fully replaced by middleware recording — **no, keep `appendAudit` calls**, they feed the audit log/SSE which is a separate system. Just ensure the middleware is the sole source of usage tracking. No new code here unless the integration test reveals a gap.
-- **Integration test:**
-  - Extract the middleware logic from `server.ts` into a tiny helper if necessary to make it testable without booting a full Next server. OR: spin up a minimal `http.createServer` in the test that runs the exact middleware closure, fire a real `http.request`, assert the recorder got the entry.
-  - Test three cases: (a) `/api/plugins/tasks/list` with `x-bakin-agent: roscoe` header → entry has `agent: 'roscoe'`; (b) `/api/plugins/tasks/list?agent=pixel` without header → entry has `agent: 'pixel'`; (c) `/api/version` 200 response → entry with `kind: 'rest'`, status `'ok'`.
-  - Test path normalization: `/api/some/resource/550e8400-e29b-41d4-a716-446655440000/edit` → `/api/some/resource/:id/edit`.
-- **Acceptance:**
-  - [ ] Every `/api/*` and `/mcp*` request writes one usage entry.
-  - [ ] Agent attribution precedence: header → query param → null.
-  - [ ] Path normalization preserves plugin IDs, replaces UUIDs elsewhere.
-  - [ ] Integration test fires a real HTTP request and observes it in the recorder.
-- **Verify:** `pnpm vitest tests/integration/usage-wiring-rest.test.ts` green.
-- **Commit:** `feat(server): record REST requests to unified usage store`
+**Changes:**
+- **Create `packages/core/src/openclaw-config.ts`** — owns the single mtime-cached reader for `openclaw.json`. Exports:
+  - `readOpenClawConfig(): OpenClawConfig | null`
+  - `getAgentList(): OpenClawAgent[]`
+  - `getAgentIds(): string[]`
+  - `findAgentById(id: string): OpenClawAgent | null`
+  - Shared `OpenClawConfig` / `OpenClawAgent` Zod schemas (types defined here and re-exported).
+- **Delete the three duplicate readers:**
+  - `packages/core/src/main-agent.ts` — `readOpenClawConfig` + `cachedConfig` (lines ~94–114)
+  - `plugins/team/lib/openclaw-adapter.ts` — `getOpenClawConfig` + `configCache` (lines ~51–67)
+  - `packages/core/src/settings.ts` — `readAgentIdsFromOpenClaw` + its `__bakinOpenClawMtime` / `__bakinOpenClawAgents` globals (lines ~256–273)
+- **Replace with imports** from `@bakin/core/openclaw-config`.
+- **No behavior change.** `getMainAgentId()` still runs its heuristic. `BakinSettings.agents` is still populated. All existing tests still pass unchanged.
+- Pure plumbing refactor. The sole purpose of this commit is to collapse three readers into one so Phase 2 can fan out cleanly.
 
-#### T2.3  Agent producers (dispatch + heartbeat + task-service)
-- **Files:** `src/core/dispatch.ts` (around `dispatchSingleTask` line 236), `scripts/lib/heartbeat.ts` (inside the handler around line 36), `src/core/task-service.ts` (wherever task status transitions happen), `tests/integration/usage-wiring-agent.test.ts` (new)
-- **What:**
-  - **dispatch.ts:** In `dispatchSingleTask`, record `{ kind: 'agent', name: 'dispatch', agent: <task.agent>, durationMs: <measured>, status: <ok|error>, meta: { taskId, title } }` when dispatch completes.
-  - **heartbeat.ts:** After writing the heartbeat file, record `{ kind: 'agent', name: 'heartbeat', agent, durationMs: null, status: 'ok', meta: { status: params.status, currentTask: params.currentTask } }`.
-  - **task-service.ts:** On task status change (claim/start/complete/fail), record `{ kind: 'agent', name: 'task.<status>', agent, ..., meta: { taskId } }`.
-- **Integration test:**
-  - Call `dispatchSingleTask` against a real fixture task with a stubbed OpenClaw client, assert recorder entry.
-  - Call `heartbeat` handler directly as the MCP server would, assert recorder entry with `name: 'heartbeat'`.
-  - Call task-service lifecycle transition, assert recorder entry.
-- **Acceptance:**
-  - [ ] Dispatch emits an entry with `name: 'dispatch'` and the task's assigned agent.
-  - [ ] Heartbeat emits an entry with `name: 'heartbeat'` and the agent that called it.
-  - [ ] Task status transitions emit entries with `name: 'task.<status>'`.
-  - [ ] Integration test fails if any of the three `recordUsage` calls is commented out.
-- **Verify:** `pnpm vitest tests/integration/usage-wiring-agent.test.ts` green.
-- **Commit:** `feat(agents): record agent lifecycle events to unified usage store`
+**Acceptance:**
+- `packages/core/src/openclaw-config.ts` exists with the exports above.
+- Net LOC reduction across the three touched files: ~30–50 lines.
+- No behavior observable from outside: all pre-existing tests pass without modification.
+- `grep -rn "statSync.*openclaw.json" packages src plugins` returns exactly one hit (the new module).
 
-**Checkpoint 2** — all three producers feed the recorder. Old systems still populated in parallel. Old health UI still works. ✅
+**Verification:**
+- `npm run test` passes in full.
+- `npm run typecheck` passes.
+- `bakin check openclaw` still works.
+- Team page renders identically to before.
+
+**Commit:** `refactor(core): centralize openclaw.json reader into openclaw-config module`
 
 ---
 
-### Phase 3 — API route
+## ✅ Phase 1 checkpoint
 
-#### T3.1  Add `/api/plugins/health/usage-feed` + trim `/summary`
-- **Files:** `plugins/health/index.ts`, `tests/plugins/health/routes.test.ts` (update existing)
-- **What:**
-  - Register `GET /usage-feed` that accepts `?kind=mcp|rest|agent&window=5m|1h|24h&agent=<id>`, parsed via Zod. Returns `UsageFeed` from `getUsageFeed(...)`.
-  - Add `errors1h` field to `/summary` response: `{ total, byKind: { mcp, rest, agent } }` sourced from `getErrorCount(WINDOW_MS['1h'])`.
-  - **Do NOT remove `/requests`, `/registry.execTools`, `mcp`, `restHealth`, `requests` fields yet.** Phase 5 does the deletion. This keeps the old UI working.
-- **Tests:**
-  - Seed recorder via `recordUsage`, fire `GET /usage-feed?kind=mcp&window=1h`, assert response shape.
-  - Test that window filter narrows results.
-  - Test Zod validation rejects bad params (400 response).
-  - Test `errors1h` field populated in `/summary` from real recorder state.
-- **Acceptance:**
-  - [ ] New route returns valid `UsageFeed` for all three kinds.
-  - [ ] Zod rejects unknown kinds and windows.
-  - [ ] Existing `/summary`, `/requests`, `/registry`, `/usage`, `/doctor` routes still pass their original tests.
-- **Verify:** `pnpm vitest tests/plugins/health/routes.test.ts` green.
-- **Commit:** `feat(health): add usage-feed route backed by unified recorder`
+- `npm run typecheck` green
+- `npm run test` green (full suite, no modifications)
+- Manual: start dev server, team page and `/api/settings` both unchanged from Phase 0
 
-**Checkpoint 3** — new API exists alongside old. Frontend still uses old fields. Safe to deploy. ✅
+If this fails, `git revert` the T3 commit — everything is back to pre-refactor state with zero side effects.
 
 ---
 
-### Phase 4 — UI rebuild
+## Phase 2 — Parallel fan-out (6 commits, independently landable)
 
-These three tasks touch the same file (`plugins/health/components/health-page.tsx`) and must be sequential. But each is small and produces a visually verifiable state.
+**All six tasks below touch disjoint files and can execute in parallel.** Either as six concurrent sub-agents (fastest), or serially by one agent in any order. Each lands as its own commit for granular rollback.
 
-#### T4.1  Top row rebuild
-- **Files:** `plugins/health/components/health-page.tsx` (lines 453-575)
-- **What:** Replace the 6-card grid with a 4-card grid: `Uptime`, `Active Sessions`, `Memory`, `Errors (1h)`. Errors card reads `data.errors1h` (added in T3.1). Card shows total count big; subtext `mcp: N · rest: N · agent: N`; color red if total > 0, emerald if 0.
-- **Acceptance:**
-  - [ ] API Requests, MCP Health, REST Health cards gone.
-  - [ ] Errors card renders with breakdown.
-  - [ ] Grid is 4 columns on desktop, 2 on mobile.
-- **Verify:** Start dev server, load `/health`, visually confirm.
-- **Commit:** `feat(health): rebuild top row — drop redundant cards, add errors tile`
+### T1. Strip the detection heuristic from `getMainAgentId()`
 
-#### T4.2  Usage tabs shell + window filter
-- **Files:** `plugins/health/components/health-page.tsx`, reuse `src/components/ui/tabs.tsx`
-- **What:** Replace the 4-up usage grid with a single `Card` containing `<Tabs value={activeTab}>` with three `TabsTrigger` (Tool Usage / Endpoint Usage / Agent Usage). Shared window state via `useQueryState('usage_window', '1h')` per CLAUDE.md URL-state rule. A small segmented control renders `5m | 1h | 24h`. Active tab state via `useQueryState('usage_tab', 'tools')`. Content panels render placeholder text; T4.3 fills them.
-- **Acceptance:**
-  - [ ] Tab state is in URL, bookmarkable.
-  - [ ] Window state is in URL.
-  - [ ] Switching tabs/windows triggers a re-fetch of `/usage-feed`.
-  - [ ] Context Usage and Cost Breakdown still render below, unchanged.
-- **Verify:** Visually confirm; reload page with `?usage_tab=endpoints&usage_window=24h` and state is restored.
-- **Commit:** `feat(health): tabbed usage section with window filter`
+**Files:**
+- `packages/core/src/main-agent.ts` — rewrite
+- `tests/core/main-agent.test.ts` — update + add cases
 
-#### T4.3  Tab contents — Tool / Endpoint / Agent
-- **Files:** `plugins/health/components/health-page.tsx`
-- **What:** Populate each `TabsContent`:
-  - **Tool Usage:** `HorizontalBars` of `topByName` with count badge; small line underneath each showing `{errors} err · {median}ms`; footer row showing `recent[0]` as "firing right now: {name} · {agent} · Xs ago".
-  - **Endpoint Usage:** Same pattern on REST data. Below bars, a compact per-plugin rollup derived client-side from `topByName` (group by plugin id extracted from path).
-  - **Agent Usage:** One row per entry in `byAgent`. Left column agent id. Middle column "current activity" string derived from `lastActivity` (the latest entry): format `calling {name} · {age}s ago` (mcp), `handling {method} {path} · {age}s ago` (rest), or `{name} · {age}s ago` (agent). If age > 30s, show `idle {age}s`. Right column total calls in window and error count.
-- **Acceptance:**
-  - [ ] Each tab populates with real data once the dev server has seen traffic.
-  - [ ] "Firing right now" row updates as new data arrives on refresh.
-  - [ ] Idle agents labelled correctly.
-  - [ ] Empty state ("no data in this window") renders cleanly.
-- **Verify:** Dev server. Trigger some MCP tool calls via the mock, click through all three tabs and all three windows, confirm data flows.
-- **Commit:** `feat(health): populate tool/endpoint/agent usage tabs`
+**Changes:**
+- `getMainAgentId()` reads from `openclaw-config.findAgentById("main")`. If present, returns `"main"`. If missing, throws: *"openclaw.json has no agent with id 'main'. OpenClaw's orchestrator id is always 'main'; add that entry or run `bakin check openclaw`."*
+- `tryGetMainAgentId()` returns `"main"` if the entry exists, `null` otherwise. No detection, no fallback.
+- `getMainAgentName()` returns `identity.name` from the `main` entry, falling back to the string `"Main"` when unset.
+- Delete `detectOrchestratorFromOpenClaw()`. (This function becomes dead code after the heuristic is stripped.)
+- **Does NOT touch `settings.ts`.** The `mainAgentId` override deletion is T2's responsibility.
 
-**Checkpoint 4** — new UI live, reads new API. Old API endpoints still present but the frontend no longer reads their deprecated fields. ✅
+**Acceptance:**
+- `getMainAgentId()` with a valid openclaw.json returns `"main"`.
+- With `agents.list[0] = { id: "main" }` only, returns `"main"`.
+- With `{ id: "bob" }` only (no `main`), throws.
+- With an empty list, throws.
+- `tryGetMainAgentId()` returns `null` in the empty / missing cases.
+- `getMainAgentName()` returns `"Roscoe"` when the main entry has `identity.name: "Roscoe"`, returns `"Main"` when identity is absent.
+
+**Verification:**
+- `npm run test -- tests/core/main-agent.test.ts` passes.
+- `npm run typecheck` passes.
+- `grep -rn "detectOrchestratorFromOpenClaw\|OPENCLAW_TO_BAKIN\|OPENCLAW_ID_TO_BAKIN_NAME"` returns zero hits.
+
+**Commit:** `refactor(core): getMainAgentId always returns "main"`
 
 ---
 
-### Phase 5 — Cleanup
+### T2. Delete `BakinSettings.agents` + `settings.mainAgentId`, migrate consumers
 
-#### T5.1  Delete old code + retarget watchdog
-- **Files:** delete `src/core/request-log.ts`, delete `tests/core/request-log.test.ts`, edit `scripts/lib/registry.ts` (drop `toolStats`, `recordExecToolCall`, `recordExecToolError`, `getExecToolStats`, `ExecToolStat`), edit `src/core/mcp-server.ts` (drop `recordToolCall`, `stats` object), edit `src/core/watchdog.ts` (retarget `getRecentStatsForPathPrefix` → `getUsageStats({kind:'mcp', window:...})` with matching semantics), edit `plugins/health/index.ts` (drop `/requests` route, drop `execTools` from `/registry`, drop `mcp`/`restHealth`/`requests` from `/summary`), edit `server.ts` (drop `recordRequest` call — middleware now writes only to recorder).
-- **What:** Clean slate. No shims, no aliases.
-- **Acceptance:**
-  - [ ] Grep for `request-log`, `toolStats`, `recordToolCall`, `recordExecToolCall`, `getRestStatsByPlugin`, `getRecentStatsForPathPrefix`, `getExecToolStats` returns zero matches in `src/`, `plugins/`, `scripts/`, `server.ts`.
-  - [ ] Watchdog MCP 5xx alerting still triggers — verified by unit test.
-  - [ ] `pnpm typecheck` green.
-  - [ ] `pnpm test` green.
-- **Verify:** Full test suite + manual watchdog trigger.
-- **Commit:** `refactor(health): remove legacy request-log and toolStats systems`
+**Files:**
+- `packages/core/src/settings.ts` — delete the two fields and related code
+- `cli/bakin.ts` — migrate consumers to `openclaw-config.getAgentIds()`
+- `tests/core/settings.test.ts` (if exists) — drop assertions on the deleted fields
 
-#### T5.2  Rewrite `routes.test.ts` with real wiring
-- **Files:** `tests/plugins/health/routes.test.ts`
-- **What:** Remove mocks of usage sources. Tests now call `recordUsage` directly to seed recorder state, then hit the route handlers. Only `agent-usage.ts` (OpenClaw session files) and `doctor` remain mocked. Add a test that intentionally verifies the route is wired to the real `getUsageFeed` — if someone swaps it for a mock, the test fails.
-- **Acceptance:**
-  - [ ] No mock for `src/core/usage.ts` anywhere in the test file.
-  - [ ] Every route test passes with real recorder backing.
-  - [ ] Removing a `recordUsage` call from any producer would still fail at least one integration test (from Phase 2) — verified by deliberately breaking one producer momentarily.
-- **Verify:** `pnpm vitest tests/plugins/health/routes.test.ts` green.
-- **Commit:** `test(health): replace mocked stat sources with real recorder`
+**Changes:**
+- Delete `agents: string[]` from `BakinSettings` (line 56).
+- Delete `mainAgentId?: string` from `BakinSettings` (line 62) and its comment block.
+- Delete `agents: []` from `DEFAULTS` (line 182).
+- Delete `readAgentIdsFromOpenClaw()` and its globals (already thin after T3's centralization; just remove the wrapper).
+- Delete the `hasExplicitAgentsOverride` branch (lines 348–354).
+- Migrate `cli/bakin.ts` consumers:
+  - `cli/bakin.ts:87` — replace `settings.agents.join(', ')` with `getAgentIds().join(', ')`
+  - `cli/bakin.ts:882` — delete the `(settings as Record...).agents as string[]` cast hack; replace with `getAgentIds()`
+  - `cli/bakin.ts:147` — verify this is reading an API response's `result.agents` (not settings); leave alone if so
+- **Does NOT touch `main-agent.ts`.** T1 handles that.
 
-#### T5.3  Docs
-- **Files:** `CLAUDE.md` (Key Patterns section), audit `.claude/knowledge/*` for health references
-- **What:**
-  - Add "Usage Recording" subsection to `CLAUDE.md` Key Patterns: describe `recordUsage()`, the three kinds, the globalThis pattern, and the rule that new producers must add a wiring integration test.
-  - Grep `.claude/knowledge/` for `request-log`, `toolStats`, `/api/plugins/health/requests`, `mcpHealth`, `restHealth` and fix any stale refs.
-  - Update `README.md` only if it mentions the health page features being removed.
-- **Acceptance:**
-  - [ ] CLAUDE.md has a "Usage Recording" subsection.
-  - [ ] `.claude/knowledge/` has no stale references to deleted APIs.
-  - [ ] Memory updated: add a `project_health_overhaul.md` pointing to this spec + plan.
-- **Verify:** Read the subsection; skim the knowledge docs.
-- **Commit:** `docs: document unified usage recorder pattern`
+**Acceptance:**
+- `BakinSettings` type has no `agents` or `mainAgentId` fields.
+- `getSettings()` returns a settings object that is identical to before for all other fields.
+- No code path in `settings.ts` touches `openclaw.json`.
+- `grep -rn "settings\\.agents\|settings\\.mainAgentId" packages src plugins cli` returns no hits.
 
-**Checkpoint 5 (final)** — overhaul complete. Every checkpoint between 1–4 is a valid rollback target. ✅
+**Verification:**
+- `npm run typecheck` passes.
+- `npm run test` passes.
+- `bakin` commands that listed agents render identical output.
+
+**Commit:** `refactor(core): drop stale settings.agents + mainAgentId fields`
 
 ---
 
-## Commit strategy summary
+### T4. `listAgents()` dedupes and validates OpenClaw's agent list
 
-10 commits total, each a valid deployable state. Conventional-commit format with scope.
+### T4. `listAgents()` dedupes and validates OpenClaw's agent list
 
-| # | Phase | Commit message | Rollback safety |
-|---|-------|----------------|-----------------|
-| 1 | 1 | `feat(core): add unified usage recorder` | Full — new code only |
-| 2 | 2a | `feat(mcp): record tool calls to unified usage store` | Old system still runs |
-| 3 | 2b | `feat(server): record REST requests to unified usage store` | Old system still runs |
-| 4 | 2c | `feat(agents): record agent lifecycle events to unified usage store` | Old system still runs |
-| 5 | 3 | `feat(health): add usage-feed route backed by unified recorder` | Old routes still work |
-| 6 | 4a | `feat(health): rebuild top row — drop redundant cards, add errors tile` | Usage grid unchanged |
-| 7 | 4b | `feat(health): tabbed usage section with window filter` | Content is placeholder |
-| 8 | 4c | `feat(health): populate tool/endpoint/agent usage tabs` | New UI complete |
-| 9 | 5a | `refactor(health): remove legacy request-log and toolStats systems` | Point of no return for old code |
-| 10 | 5b | `test(health): replace mocked stat sources with real recorder` | — |
-| 11 | 5c | `docs: document unified usage recorder pattern` | — |
+**Files:**
+- `plugins/team/lib/openclaw-adapter.ts` — `listAgents()` rewrite
+- `tests/plugins/team/openclaw-adapter.test.ts` — new or extended
+- `tests/fixtures/openclaw/` — add negative fixtures (broken configs)
 
-**Rollback drill**: if commit 9 breaks something in production, `git revert` it; commits 1–8 leave us in a working state with the new UI and new recorder, minus the code deletion. Re-attempt commit 9 after fixing.
+**Changes:**
+- After T3, `listAgents()` pulls its raw list from `openclaw-config.getAgentList()`. Validation pass:
+  1. Track seen ids; on duplicate id, log error and skip the second occurrence.
+  2. Resolve each agent's effective workspace (explicit `workspace` field OR `defaults.workspace` when the agent has no override). Track seen resolved workspaces; on collision, log an error naming both ids and skip the second.
+  3. Confirm an entry with `id === "main"` exists. If missing, log a critical error and return an empty list so the UI surfaces an unmistakable empty state instead of silently hiding the orchestrator.
+- Log level: use `log.error` for dupes, `log.error` + empty-return for missing main. Never `log.warn` — these are bugs in the config, not curiosities.
+- Do NOT mutate `openclaw.json`. Read-only path.
 
----
+**Acceptance:**
+- Given a fixture with `[{id:"main"},{id:"roscoe",workspace:<default>}]`, `listAgents()` returns 1 entry (`main`) and logs one error mentioning both ids and the shared workspace.
+- Given a fixture with `[{id:"main"},{id:"main"}]`, returns 1 entry, logs one error mentioning duplicate id.
+- Given a fixture with `[{id:"bob"}]` (no main), returns `[]` and logs a critical error.
+- Given a clean fixture, returns the full list unchanged.
 
-## Parallelization opportunities
+**Verification:**
+- `npm run test -- tests/plugins/team/openclaw-adapter.test.ts` passes.
+- `npm run typecheck` passes.
 
-The user asked to fan out work. Here's what can actually go in parallel without stepping on itself:
-
-- **After Phase 1 lands**, Phase 2 tasks T2.1, T2.2, T2.3 are fully independent — three different agents, three different files, three different integration tests. Spawn all three simultaneously.
-- **Phase 4 tasks are sequential** — same file (`health-page.tsx`) and each builds on the previous visual state. Don't parallelize.
-- **Phase 5 tasks T5.1 and T5.2 can overlap** only if T5.2 is drafted but not committed until T5.1 lands, because the test rewrite depends on deletions. Cleaner to do them sequentially.
-- **T5.3 docs** can be drafted in parallel with any other Phase 5 task.
-
-Recommended execution:
-- **Serial:** T1.1
-- **Parallel fan-out (3 agents):** T2.1 + T2.2 + T2.3
-- **Serial:** T3.1
-- **Serial:** T4.1 → T4.2 → T4.3
-- **Serial:** T5.1 → T5.2
-- **Parallel with T5.1:** T5.3
+**Commit:** `feat(team): validate and dedupe openclaw agent list`
 
 ---
 
-## Verification gates between phases
+### T5. Pyramid root is always `main`; `reportsTo` defaults to main at render time
 
-Before committing each phase's final task:
+**Files:**
+- `plugins/team/components/team-grid.tsx` — rewrite `buildGraph()` grouping logic
+- `plugins/team/hooks/use-agent-store.ts` — ensure a selector for the main agent id is available (route response already returns `mainAgentId`)
+- `plugins/team/index.ts` — the `GET /` route already returns `mainAgentId`; verify the store consumes it
+- `tests/plugins/team/team-grid.test.tsx` — new or extended (or write assertions against `buildGraph` as a pure function if component-level tests aren't set up)
 
-1. `pnpm lint` — no new warnings
-2. `pnpm typecheck` — no new errors
-3. `pnpm test` — full suite green (not just the new tests)
-4. Dev server loads `/health` without console errors
-5. The integration tests from Phase 2 still pass — this is the regression safety net
+**Changes in `team-grid.tsx:buildGraph()`:**
+- Accept `mainAgentId: string` as a new input field in `GraphInput`. Pass it from the store.
+- Pyramid root = the agent whose `id === mainAgentId`. Always. Not derived from `topAgentIds`.
+- `teamsByReporter` key resolution: `team.reportsTo ?? mainAgentId`. This means a null/undefined `reportsTo` renders under the main agent automatically.
+- Delete the `topAgentIds` heuristic; replace with `new Set([mainAgentId])` plus any additional ids that appear as non-null `reportsTo` values. (An agent who is a team leader for a non-default reporter also gets a "top-of-subtree" row.)
+- Unassigned bucket: only include agents that (a) are not in any team's `teamMembers`, (b) are not the `mainAgentId`, (c) are not a team leader. In the default flat config, subagents all go under main via the default `reportsTo` fallback, so unassigned is empty.
+- Row 1 now always has exactly the main agent (if present); teams for main render in row 2 (section headers) and row 3 (members). Matches current visual hierarchy for the "one orchestrator with teams under it" case.
+- If `mainAgentId` is not in the roster (e.g. `listAgents()` returned empty per T4's missing-main path), render only the founder + an empty state message.
 
-If any of these fail, stop and fix before committing. No skipping gates.
+**Acceptance:**
+- Fresh install simulation: `team.json` absent, openclaw.json has `main` + 7 subagents. Pyramid renders founder → main → single row of 7 subagents. No "Unassigned" bucket.
+- Current user state during transition: openclaw.json still has both `main` and `roscoe` — T4 dedupes to just `main`, T5 puts `main` at the root, Creators + Builders teams with `reportsTo: "roscoe"` (unresolvable) fall back to main per T6.
+- Roster override: team.json has a team with `reportsTo: "basil"`. That team renders under basil, not main.
+- Empty roster: only the founder node renders.
+- No duplicate card for the main agent anywhere in the grid.
+
+**Verification:**
+- `npm run test -- tests/plugins/team/team-grid.test.tsx` passes (or whichever harness we use).
+- Manual: start dev server on imitation-crab fixture, visually confirm the pyramid shape.
+
+**Commit:** `feat(team): pyramid root is always the main agent`
 
 ---
 
-## Known risks & mitigations
+### T6. Normalize `team.json` writes: null/omit `reportsTo` when it equals main
 
-1. **Risk:** T2.2 test (REST wiring) is hard to write without booting a real HTTP server.
-   **Mitigation:** Extract the middleware body into a pure `trackResponse(req, res, start)` helper exported from `server.ts` or a new `src/core/rest-tracking.ts`. Test the helper directly. The server.ts `res.end` override becomes a one-liner that calls the helper.
+**Files:**
+- `plugins/team/index.ts` — the team.json writer route (POST/PUT for teams)
+- `plugins/team/lib/team-settings.ts` (if exists) or wherever `writePluginSettings` lives
+- `tests/plugins/team/routes.test.ts` — add normalization assertion
 
-2. **Risk:** `globalThis.__bakinUsage` gets duplicated by webpack re-evaluation.
-   **Mitigation:** This is exactly the case the `feedback_globalthis_sse.md` memory warns about. Use the `(globalThis as any).__bakinUsage ??= []` idiom, not a module-level `const`.
+**Changes:**
+- On write: for each team in the incoming payload, if `reportsTo === getMainAgentId()` or `reportsTo === undefined`, set it to `null`. (Null over omission for schema stability.)
+- On read: in `buildGraph`, a `null`/missing `reportsTo` resolves to `mainAgentId` at render time (already covered by T5).
+- Reading a team.json written by old code that has `"reportsTo": "roscoe"` (an unknown id): **graceful degradation** — treat any `reportsTo` that isn't in the roster as null, and log a warning telling the user to re-save. This way, the user's current messy team.json starts rendering correctly as soon as T5+T6 land.
 
-3. **Risk:** `watchdog.ts` MCP alerting semantics drift when retargeted.
-   **Mitigation:** T5.1 includes a unit test that asserts watchdog fires on the same thresholds it used to fire on, using seeded recorder state. Match the semantics (5xx counts in window) exactly — `status === 'error' && kind === 'mcp'` in the new model.
+**Acceptance:**
+- POST `/api/plugins/team/teams` with `reportsTo: "main"` → written file has `reportsTo: null`.
+- POST with `reportsTo: "basil"` → written file has `reportsTo: "basil"`.
+- Reading a file with `reportsTo: "roscoe"` (unknown id) logs a warning and treats the team as reporting to main.
+- Reading a file with `reportsTo: null` resolves to main at render time.
 
-4. **Risk:** Heartbeats dominate Agent Usage counts because they're frequent.
-   **Mitigation:** T4.3 filters `name === 'heartbeat'` out of the activity-count column (shows separately) but includes them in `lastActivity` so "current state" is accurate.
+**Verification:**
+- `npm run test -- tests/plugins/team/routes.test.ts` passes.
+- `npm run test -- tests/plugins/team/team-grid.test.tsx` still passes.
+- Manual: edit team.json by hand with `reportsTo: "roscoe"`, reload, confirm the team renders under main.
 
-5. **Risk:** Spec assumed the Next.js catch-all bypassed tracking; it doesn't. One of the motivating bullets (fix the GET bypass) may not be a real bug.
-   **Mitigation:** T2.2 integration test will reveal the truth. If the middleware is capturing everything, the fix becomes "unify agent attribution paths" instead of "fix the bypass". Either way the test is the proof, not the spec bullet.
+**Commit:** `feat(team): normalize team.json writes to drop implicit main reportsTo`
 
 ---
 
-## Done definition
+### T7. Doctor check for openclaw.json integrity
 
-- All 11 commits merged.
-- `pnpm test` fully green.
-- Mark can open `/health`, see 4 top cards, switch tabs + windows, and see live data.
-- `request-log.ts` gone from the repo.
-- CLAUDE.md documents the pattern.
-- Breaking any producer's `recordUsage` call fails at least one Phase 2 integration test.
+**Files:**
+- `src/core/onboarding/openclaw.ts` — extend the existing `check()` function OR add a new sub-check
+- `tests/core/doctor.test.ts` (or `tests/core/onboarding/openclaw.test.ts`) — new cases
+- `cli/bakin.ts` — if a `bakin check openclaw` subcommand exists, ensure it hits the new validation
+
+**Changes:**
+- Add a validator that, on `bakin check openclaw` / `bakin doctor`, reports:
+  1. Does an agent with `id === "main"` exist? If not, error with actionable text.
+  2. Are there duplicate ids in `agents.list`? If so, error naming the dupes.
+  3. Are there two agents whose effective workspace (explicit + defaults fallback) resolves to the same path? If so, error naming both ids and the shared path.
+- Reports-only. Does not auto-fix. Non-zero exit on error.
+- Wire into `bakin onboard` and the doctor loop so fresh installs catch broken configs immediately.
+
+**Acceptance:**
+- Clean openclaw.json: check passes silently.
+- Missing main: clear error *"openclaw.json has no agent with id 'main'. Add an entry: `{ \"id\": \"main\", \"identity\": { \"name\": \"<your-agent-name>\" } }`"*.
+- Duplicate id: clear error naming the id.
+- Two agents sharing workspace `/Users/.../workspace`: clear error naming both ids and the shared path.
+- Non-zero exit code when any of the above fire.
+
+**Verification:**
+- `npm run test -- tests/core/doctor.test.ts` passes.
+- Manual: break openclaw.json intentionally (add a duplicate id), run `bakin check openclaw`, confirm the error.
+- Manual: run on a known-good imitation-crab fixture, confirm silence.
+
+**Commit:** `feat(onboarding): doctor validates openclaw.json integrity`
+
+---
+
+## ✅ Phase 2 checkpoint
+
+After T1, T2, T4, T5, T6, T7 have all landed (in any order):
+- `npm run typecheck` green
+- `npm run test` green (full suite)
+- Manual: start dev server on imitation-crab fixture — team page shows founder → Crab → 7 subagents. No duplicate cards.
+- Manual: edit team.json on imitation-crab to add a Creators team with `reportsTo: null`. Reload. Confirm Creators renders under Crab.
+- Manual: run `bakin check openclaw` against a deliberately-broken fixture. Confirm it flags the expected error and exits non-zero.
+
+Commits so far: 7 on the branch (T3 + T1 + T2 + T4 + T5 + T6 + T7). Revert granularity: any single commit is independently reversible because all six parallel tasks touch disjoint files.
+
+---
+
+## Phase 3 — Docs (solo, 1 commit)
+
+### T8. Doc updates
+
+**Files:**
+- `.claude/knowledge/agent-system.md` — confirm line 50 statement is now literally true (after fix, not aspirational); add a subsection on `getMainAgentId()` being trivial and the `openclaw-config.ts` centralized reader
+- `.claude/knowledge/team-plugin.md` — create if missing, or append: document the pyramid rendering rules (root = main, reportsTo resolution, unassigned bucket semantics) and the team.json schema
+- `CLAUDE.md` — check the "OpenClaw Adapter Principle" section and the Directory Map's `main-agent.ts` description; update if stale. The principle statement is still correct — leave it alone unless the specific file descriptions are wrong.
+- `README.md` — no changes needed (README doesn't discuss agent identity)
+
+**Acceptance:**
+- `.claude/knowledge/agent-system.md` mentions the centralized `openclaw-config.ts` reader and notes that `getMainAgentId()` is constant-return.
+- `.claude/knowledge/team-plugin.md` exists and documents the pyramid rules.
+- Running `grep -rn "roscoe\|OPENCLAW_TO_BAKIN" .claude/knowledge CLAUDE.md README.md` returns only intentional references (e.g. historical context).
+
+**Verification:**
+- Read each touched doc; confirm the statements match the shipped code.
+
+**Commit:** `docs: update agent-system and team-plugin knowledge notes`
+
+---
+
+### T9. Manual cleanup on this machine (documented, not code)
+
+**Not a commit — a runbook for roscoe to execute after T1–T8 merge.**
+
+```bash
+# 1. Back everything up first
+cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.pre-issue-90
+cp -r ~/.bakin ~/.bakin.pre-issue-90
+
+# 2. Stop Bakin
+bakin stop
+
+# 3. Edit ~/.openclaw/openclaw.json by hand:
+#    - In the agents.list[0] "main" entry, add identity.name = "Roscoe" and identity.emoji = "🐾"
+#    - Delete the agents.list[] entry with id: "roscoe"
+#    (Do not leave a stale workspace field — inherit from agents.defaults.workspace)
+
+# 4. Move avatars
+mv ~/.bakin/agents/roscoe/avatar.jpg ~/.bakin/agents/main/
+mv ~/.bakin/agents/roscoe/avatar-full.png ~/.bakin/agents/main/
+rm ~/.bakin/agents/roscoe/AGENTS.md    # stale — owned by openclaw now
+rmdir ~/.bakin/agents/roscoe
+
+# 5. Delete stale heartbeat
+rm ~/.bakin/heartbeats/roscoe.json
+
+# 6. Edit ~/.bakin/plugin-settings/team.json by hand:
+#    - Remove "reportsTo": "roscoe" from both team entries
+#    (null/omitted means main at render time — T5/T6)
+
+# 7. Edit ~/.bakin/settings.json by hand:
+#    - Delete the top-level "agents": [...] array
+#    (T2 deleted the field from the type — it's no longer read)
+
+# 8. Run the new doctor check
+bakin check openclaw
+# Should print nothing (clean)
+
+# 9. Start Bakin
+bakin start
+
+# 10. Open team page in browser. Expected:
+#     - Founder (Mark) at top
+#     - Roscoe as single card below
+#     - Creators + Builders sections under Roscoe
+#     - No orphan "main" card anywhere
+```
+
+**Acceptance:**
+- Team page renders one Roscoe card at the pyramid top, with Creators + Builders underneath. No duplicate.
+- `bakin check openclaw` passes.
+- No files in `~/.bakin/agents/roscoe/` or `~/.bakin/heartbeats/roscoe.json`.
+- `~/.bakin/settings.json` has no `agents` field.
+- `~/.bakin/plugin-settings/team.json` has `reportsTo: null` (or omitted) on both teams.
+
+**Commit:** (no code commit — this is a runbook the user executes.)
+
+---
+
+## ✅ Phase 3 checkpoint (final)
+
+- All tests green.
+- Team page visually correct on this machine.
+- Issue #90 closable with a summary comment linking the commits.
+
+---
+
+## Commit sequence summary
+
+| # | Task | Commit | Phase | Parallel? | Reversible? |
+|---|------|--------|-------|-----------|-------------|
+| 1 | T3 | `refactor(core): centralize openclaw.json reader into openclaw-config module` | 1 (solo) | No — must land first | Yes (pure refactor) |
+| 2 | T1 | `refactor(core): getMainAgentId always returns "main"` | 2 | ✅ Parallel | Yes |
+| 3 | T2 | `refactor(core): drop stale settings.agents + mainAgentId fields` | 2 | ✅ Parallel | Yes |
+| 4 | T4 | `feat(team): validate and dedupe openclaw agent list` | 2 | ✅ Parallel | Yes |
+| 5 | T5 | `feat(team): pyramid root is always the main agent` | 2 | ✅ Parallel | Yes |
+| 6 | T6 | `feat(team): normalize team.json writes to drop implicit main reportsTo` | 2 | ✅ Parallel | Yes |
+| 7 | T7 | `feat(onboarding): doctor validates openclaw.json integrity` | 2 | ✅ Parallel | Yes |
+| 8 | T8 | `docs: update agent-system and team-plugin knowledge notes` | 3 (solo) | No — must land last | Yes |
+
+**8 commits. 3 phases. 3 checkpoints (after Phase 1, Phase 2, Phase 3).**
+
+The Phase 2 fan-out (commits 2–7) is truly parallel: each task touches a disjoint set of files, so they can execute as six concurrent sub-agents or serially in any order. The commit landing order within Phase 2 doesn't matter for correctness — only for reviewability.
+
+Any single commit can be reverted with `git revert <sha>` without corrupting the ones before it. The only ordering constraint is: commit 1 must land before any Phase 2 commit, and commit 8 must land after.
+
+---
+
+## Risks and open edges
+
+1. **T3 scope creep.** Centralizing the openclaw.json reader touches main-agent.ts, settings.ts, openclaw-adapter.ts, and possibly cli/bakin.ts. If the refactor touches more than ~150 lines, split it into "create openclaw-config.ts" and "migrate consumers" as two commits.
+2. **team-grid.tsx tests may not exist yet.** The current test file structure is unclear — if no test harness exists for rendering React components in this repo, we'll write assertions against `buildGraph()` as a pure function rather than the full component. That's fine for verifying the pyramid shape.
+3. **T6 unresolved-id fallback.** Graceful degradation means team.json with `reportsTo: "roscoe"` "just works" after Phase 2 — which is good for the user but means the T9 manual edit of team.json is optional, not strictly required. Keep it in the runbook so on-disk state matches code expectations.
+4. **Imitation Crab fixture.** `dev/imitation-crab/fixtures/openclaw.json:9` already has `id: "main"`. Good — this is the "fresh install" reference for F2/F6 tests. Don't touch it.
+5. **`~/.bakin/agents/{id}/AGENTS.md`** — origin unclear. The plan treats it as a stale artifact on this machine. If something still writes it and the spec's implication is wrong, that's a follow-up to investigate, not a blocker for this PR.
