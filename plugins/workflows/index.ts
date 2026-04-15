@@ -21,12 +21,13 @@ import {
   getActiveAgents,
   isGateNotified,
   markGateNotified,
+  type GateDecisionRecord,
 } from './lib/runtime'
 import { matchWorkflow } from './lib/matcher'
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../src/core/content-dir'
 import { validateStepOutput } from './lib/schema-validator'
-import { setEventBus, setDiscordGateSettings, editDiscordGateMessage, type DiscordGateSettings } from './lib/notifications'
+import { setEventBus, setDiscordGateSettings, editDiscordGateMessage, sendDiscordGateSummary, type DiscordGateSettings } from './lib/notifications'
 import { startGateway, stopGateway, onGateInteraction, isGatewayConnected } from '../../src/core/discord-gateway'
 import { loadDiscordConfig } from '../../scripts/lib/post-discord'
 import type { WorkflowTemplate, WorkflowDefinition, WorkflowInstance, NestedWorkflowStep } from './types'
@@ -323,21 +324,37 @@ const workflowsPlugin: BakinPlugin = {
               return
             }
             await interaction.acknowledge()
-            ctx.activity.audit('gate.approved', 'discord', { taskId, stepId })
+
+            const auditPayload = buildGateAuditPayload(taskId, stepId, result.decision)
+            ctx.activity.audit('gate.approved', 'discord', auditPayload)
             ctx.activity.log('discord', `Gate "${stepId}" approved via Discord`, { taskId })
             indexInstance(taskId).catch(() => {})
             triggerDispatch()
 
-            // Edit the Discord message to show approved (preserving context)
+            // Edit + summary (both fire-and-forget)
             const instance = loadInstance(taskId)
             const msgId = instance?.stepStates[stepId]?.discordMessageId
-            if (msgId && result.decision) {
-              editDiscordGateMessage(
-                discordSettings.discordGateChannel,
-                msgId,
+            if (instance && result.decision) {
+              if (msgId) {
+                editDiscordGateMessage(
+                  discordSettings.discordGateChannel,
+                  msgId,
+                  'approved',
+                  interaction.approver,
+                  result.decision.decidedAt,
+                ).catch(() => {})
+              }
+              sendDiscordGateSummary(
+                instance,
+                stepId,
+                result.decision.gateLabel,
+                getGateDescription(instance.workflowId, stepId),
                 'approved',
                 interaction.approver,
+                result.decision.requestedAt,
                 result.decision.decidedAt,
+                undefined,
+                discordSettings,
               ).catch(() => {})
             }
           } else if (action === 'reject') {
@@ -348,21 +365,37 @@ const workflowsPlugin: BakinPlugin = {
               return
             }
             await interaction.acknowledge()
-            ctx.activity.audit('gate.rejected', 'discord', { taskId, stepId, reason: rejectReason })
+
+            const auditPayload = buildGateAuditPayload(taskId, stepId, result.decision, rejectReason)
+            ctx.activity.audit('gate.rejected', 'discord', auditPayload)
             ctx.activity.log('discord', `Gate "${stepId}" rejected via Discord: ${rejectReason}`, { taskId })
             indexInstance(taskId).catch(() => {})
 
-            // Edit the Discord message to show rejected (preserving context)
+            // Edit + summary (both fire-and-forget)
             const instance = loadInstance(taskId)
             const msgId = instance?.stepStates[stepId]?.discordMessageId
-            if (msgId && result.decision) {
-              editDiscordGateMessage(
-                discordSettings.discordGateChannel,
-                msgId,
+            if (instance && result.decision) {
+              if (msgId) {
+                editDiscordGateMessage(
+                  discordSettings.discordGateChannel,
+                  msgId,
+                  'rejected',
+                  interaction.approver,
+                  result.decision.decidedAt,
+                  rejectReason,
+                ).catch(() => {})
+              }
+              sendDiscordGateSummary(
+                instance,
+                stepId,
+                result.decision.gateLabel,
+                getGateDescription(instance.workflowId, stepId),
                 'rejected',
                 interaction.approver,
+                result.decision.requestedAt,
                 result.decision.decidedAt,
                 rejectReason,
+                discordSettings,
               ).catch(() => {})
             }
           }
@@ -520,6 +553,35 @@ const workflowsPlugin: BakinPlugin = {
       return { source: 'web', id: username, displayName: username }
     }
 
+    // Resolve a gate's description from its workflow definition for the
+    // Discord summary message. Returns undefined if the workflow or step
+    // can't be loaded — the summary will simply omit the description.
+    const getGateDescription = (workflowId: string, stepId: string): string | undefined => {
+      const def = loadDefinition(workflowId)
+      if (!def) return undefined
+      const step = def.steps.find(s => s.id === stepId)
+      return (step as { description?: string } | undefined)?.description
+    }
+
+    // Build the structured audit payload for gate.approved / gate.rejected.
+    // The decision record is the source of truth — approver, gateLabel,
+    // timestamps, durationMs all flow through it.
+    const buildGateAuditPayload = (
+      taskId: string,
+      stepId: string,
+      decision: GateDecisionRecord | undefined,
+      reason?: string,
+    ): Record<string, unknown> => ({
+      taskId,
+      stepId,
+      gateLabel: decision?.gateLabel,
+      approver: decision?.approver,
+      requestedAt: decision?.requestedAt,
+      decidedAt: decision?.decidedAt,
+      durationMs: decision?.durationMs,
+      ...(reason !== undefined ? { reason } : {}),
+    })
+
     // POST /gates/:taskId/approve — approve a gate step
     const approveHandler = async (req: Request) => {
       const url = new URL(req.url)
@@ -547,22 +609,39 @@ const workflowsPlugin: BakinPlugin = {
         return Response.json({ error: result.errors?.[0], errors: result.errors }, { status: 400 })
       }
 
-      ctx.activity.audit('gate.approved', 'system', { taskId, stepId })
-      ctx.activity.log('system', `Gate "${stepId}" approved`, { taskId })
+      ctx.activity.audit('gate.approved', 'web', buildGateAuditPayload(taskId, stepId, result.decision))
+      ctx.activity.log('web', `Gate "${stepId}" approved`, { taskId })
       indexInstance(taskId).catch(() => {})
 
       // Kick dispatch so the next step's agent starts immediately
       triggerDispatch()
 
-      // Sync Discord message if one was sent
-      if (discordMsgId && discordSettings.discordGateAlerts && result.decision) {
-        editDiscordGateMessage(
-          discordSettings.discordGateChannel,
-          discordMsgId,
-          'approved',
-          approver,
-          result.decision.decidedAt,
-        ).catch(() => {})
+      // Sync Discord (edit + summary) when alerts are enabled
+      if (discordSettings.discordGateAlerts && result.decision) {
+        const instance = loadInstance(taskId)
+        if (discordMsgId) {
+          editDiscordGateMessage(
+            discordSettings.discordGateChannel,
+            discordMsgId,
+            'approved',
+            approver,
+            result.decision.decidedAt,
+          ).catch(() => {})
+        }
+        if (instance) {
+          sendDiscordGateSummary(
+            instance,
+            stepId,
+            result.decision.gateLabel,
+            getGateDescription(instance.workflowId, stepId),
+            'approved',
+            approver,
+            result.decision.requestedAt,
+            result.decision.decidedAt,
+            undefined,
+            discordSettings,
+          ).catch(() => {})
+        }
       }
 
       return Response.json(result)
@@ -597,20 +676,37 @@ const workflowsPlugin: BakinPlugin = {
         return Response.json({ error: result.errors?.[0], errors: result.errors }, { status: 400 })
       }
 
-      ctx.activity.audit('gate.rejected', 'system', { taskId, stepId, reason })
-      ctx.activity.log('system', `Gate "${stepId}" rejected: ${reason}`, { taskId })
+      ctx.activity.audit('gate.rejected', 'web', buildGateAuditPayload(taskId, stepId, result.decision, reason))
+      ctx.activity.log('web', `Gate "${stepId}" rejected: ${reason}`, { taskId })
       indexInstance(taskId).catch(() => {})
 
-      // Sync Discord message if one was sent
-      if (discordMsgId && discordSettings.discordGateAlerts && result.decision) {
-        editDiscordGateMessage(
-          discordSettings.discordGateChannel,
-          discordMsgId,
-          'rejected',
-          approver,
-          result.decision.decidedAt,
-          reason,
-        ).catch(() => {})
+      // Sync Discord (edit + summary) when alerts are enabled
+      if (discordSettings.discordGateAlerts && result.decision) {
+        const instance = loadInstance(taskId)
+        if (discordMsgId) {
+          editDiscordGateMessage(
+            discordSettings.discordGateChannel,
+            discordMsgId,
+            'rejected',
+            approver,
+            result.decision.decidedAt,
+            reason,
+          ).catch(() => {})
+        }
+        if (instance) {
+          sendDiscordGateSummary(
+            instance,
+            stepId,
+            result.decision.gateLabel,
+            getGateDescription(instance.workflowId, stepId),
+            'rejected',
+            approver,
+            result.decision.requestedAt,
+            result.decision.decidedAt,
+            reason,
+            discordSettings,
+          ).catch(() => {})
+        }
       }
 
       return Response.json(result)

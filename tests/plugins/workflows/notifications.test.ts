@@ -42,6 +42,7 @@ vi.stubGlobal('fetch', mockFetch)
 import {
   sendDiscordGateAlert,
   editDiscordGateMessage,
+  sendDiscordGateSummary,
   setDiscordGateSettings,
   type DiscordGateSettings,
 } from '@bakin/workflows/lib/notifications'
@@ -291,6 +292,149 @@ describe('Discord gate notifications', () => {
 
       await editDiscordGateMessage('approvals', 'msg-789', 'approved', approver, decidedAt)
 
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('sendDiscordGateSummary', () => {
+    const approver: import('@bakin/core/plugin-types').ApprovalActor = {
+      source: 'discord',
+      id: '111',
+      displayName: 'Mark',
+    }
+    const requestedAt = '2026-04-13T12:30:00Z'
+    const decidedAt = '2026-04-13T12:35:00Z'
+
+    it('posts an embed with all decision fields on approval', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) })
+
+      await sendDiscordGateSummary(
+        mockInstance,
+        'review-gate',
+        'Review Draft',
+        'Final review before publishing',
+        'approved',
+        approver,
+        requestedAt,
+        decidedAt,
+        undefined,
+        enabledSettings,
+      )
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const [url, opts] = mockFetch.mock.calls[0]
+      expect(url).toBe('https://discord.com/api/v10/channels/ch-123/messages')
+      expect(opts.method).toBe('POST')
+
+      const body = JSON.parse(opts.body)
+      const embed = body.embeds[0]
+      expect(embed.title).toBe('Gate Approved: Review Draft')
+      expect(embed.description).toBe('Final review before publishing')
+      expect(embed.color).toBe(5763719)
+      expect(embed.footer.text).toBe('instance wf_abc123')
+
+      const fieldNames = embed.fields.map((f: { name: string }) => f.name)
+      expect(fieldNames).toContain('Decision')
+      expect(fieldNames).toContain('Decided by')
+      expect(fieldNames).toContain('Workflow')
+      expect(fieldNames).toContain('Task')
+      expect(fieldNames).toContain('Step')
+      expect(fieldNames).toContain('Requested')
+      expect(fieldNames).toContain('Decided')
+      expect(fieldNames).toContain('Duration')
+
+      const decisionField = embed.fields.find((f: { name: string }) => f.name === 'Decision')
+      expect(decisionField.value).toBe('Approved')
+
+      const requestedField = embed.fields.find((f: { name: string }) => f.name === 'Requested')
+      expect(requestedField.value).toMatch(/^<t:\d+:R>$/)
+
+      const decidedField = embed.fields.find((f: { name: string }) => f.name === 'Decided')
+      expect(decidedField.value).toMatch(/^<t:\d+:R>$/)
+
+      const durationField = embed.fields.find((f: { name: string }) => f.name === 'Duration')
+      expect(durationField.value).toBe('5m 0s')
+    })
+
+    it('includes Reason field and red color on rejection', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) })
+
+      await sendDiscordGateSummary(
+        mockInstance,
+        'review-gate',
+        'Review Draft',
+        undefined,
+        'rejected',
+        approver,
+        requestedAt,
+        decidedAt,
+        'Off-brand colors',
+        enabledSettings,
+      )
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      const embed = body.embeds[0]
+      expect(embed.color).toBe(15548997)
+      const reasonField = embed.fields.find((f: { name: string }) => f.name === 'Reason')
+      expect(reasonField).toBeDefined()
+      expect(reasonField.value).toBe('Off-brand colors')
+    })
+
+    it('omits Requested/Duration when requestedAt is missing (legacy instance)', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) })
+
+      await sendDiscordGateSummary(
+        mockInstance,
+        'review-gate',
+        'Review Draft',
+        undefined,
+        'approved',
+        approver,
+        undefined,
+        decidedAt,
+        undefined,
+        enabledSettings,
+      )
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      const fieldNames = body.embeds[0].fields.map((f: { name: string }) => f.name)
+      expect(fieldNames).not.toContain('Requested')
+      expect(fieldNames).not.toContain('Duration')
+      expect(fieldNames).toContain('Decided')
+    })
+
+    it('does not throw when Discord API fails', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 403, text: () => Promise.resolve('Missing perms') })
+
+      await expect(
+        sendDiscordGateSummary(
+          mockInstance,
+          'review-gate',
+          'Review Draft',
+          undefined,
+          'approved',
+          approver,
+          requestedAt,
+          decidedAt,
+          undefined,
+          enabledSettings,
+        ),
+      ).resolves.toBeUndefined()
+    })
+
+    it('skips when alerts are disabled', async () => {
+      await sendDiscordGateSummary(
+        mockInstance,
+        'review-gate',
+        'Review Draft',
+        undefined,
+        'approved',
+        approver,
+        requestedAt,
+        decidedAt,
+        undefined,
+        { ...enabledSettings, discordGateAlerts: false },
+      )
       expect(mockFetch).not.toHaveBeenCalled()
     })
   })
