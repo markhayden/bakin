@@ -17,6 +17,12 @@ import { join } from 'path'
 import { createLogger } from '../../../src/core/logger'
 import { getOpenClawHome, getOpenClawPath } from '@bakin/core/openclaw-home'
 import { tryGetMainAgentId } from '@bakin/core/main-agent'
+import {
+  readOpenClawConfig,
+  resetOpenClawConfigCache,
+  type OpenClawAgent,
+  type OpenClawConfig,
+} from '@bakin/core/openclaw-config'
 import type { AgentMeta, AgentProfile, SkillSummary } from '../types'
 
 const log = createLogger('team:openclaw')
@@ -28,42 +34,13 @@ const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
 
 // ─── Config Reading ──────────────────────────────────────────────────────────
 
-interface OpenClawAgent {
-  id: string
-  name?: string
-  workspace?: string
-  agentDir?: string
-  model?: { primary?: string }
-  identity?: { name?: string; emoji?: string }
-  subagents?: { allowAgents?: string[]; model?: string }
-}
-
-interface OpenClawConfig {
-  agents?: {
-    defaults?: {
-      model?: { primary?: string }
-      workspace?: string
-    }
-    list?: OpenClawAgent[]
-  }
-}
-
-let configCache: { data: OpenClawConfig; mtime: number } | null = null
-
-/** Read and cache openclaw.json. Re-reads when file changes. */
+/**
+ * Read openclaw.json. Thin adapter over the centralized reader in
+ * `@bakin/core/openclaw-config` — returns `{}` on failure for historical
+ * compatibility with call sites that expect a non-null object.
+ */
 export function getOpenClawConfig(): OpenClawConfig {
-  try {
-    const stat = statSync(OPENCLAW_JSON)
-    if (configCache && configCache.mtime === stat.mtimeMs) {
-      return configCache.data
-    }
-    const data = JSON.parse(readFileSync(OPENCLAW_JSON, 'utf-8')) as OpenClawConfig
-    configCache = { data, mtime: stat.mtimeMs }
-    return data
-  } catch (err) {
-    log.warn('Failed to read openclaw.json', { error: err instanceof Error ? err.message : String(err) })
-    return {}
-  }
+  return readOpenClawConfig() ?? {}
 }
 
 // ─── Agent List ──────────────────────────────────────────────────────────────
@@ -301,7 +278,7 @@ export function addAgent(input: NewAgentInput): void {
 
   // Write updated config
   writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
-  configCache = null // bust cache
+  resetOpenClawConfigCache() // bust cache
   log.info('Added agent to openclaw.json', { id: input.id, name: input.name })
 
   // Create workspace directory with initial files
@@ -339,7 +316,7 @@ export function removeAgent(agentId: string): boolean {
   if (config.agents.list.length === before) return false
 
   writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
-  configCache = null
+  resetOpenClawConfigCache()
   log.info('Removed agent from openclaw.json', { id: agentId })
 
   // Move workspace to trash
