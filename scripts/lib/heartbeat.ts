@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '../../src/core/content-dir'
+import { recordUsage } from '../../src/core/usage'
 import { addExecTool } from './registry'
 
 addExecTool({
@@ -34,8 +35,28 @@ addExecTool({
       }
 
       writeFileSync(join(heartbeatsDir, `${agent}.json`), JSON.stringify(entry, null, 2))
+      recordUsage({
+        kind: 'agent',
+        name: 'heartbeat',
+        agent,
+        durationMs: null,
+        status: 'ok',
+        meta: {
+          status: params.status ?? 'idle',
+          ...(params.currentTask ? { taskId: params.currentTask } : {}),
+          ...(params.message ? { message: params.message } : {}),
+        },
+      })
       return { ok: true, heartbeat: entry }
     } catch (err) {
+      recordUsage({
+        kind: 'agent',
+        name: 'heartbeat',
+        agent,
+        durationMs: null,
+        status: 'error',
+        meta: { error: String(err) },
+      })
       return { ok: false, error: `Failed to write heartbeat: ${String(err)}` }
     }
   },
