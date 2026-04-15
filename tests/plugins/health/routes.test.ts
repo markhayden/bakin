@@ -258,9 +258,11 @@ describe('Health Plugin Routes', () => {
         searchParams: { kind: 'mcp', window: '1h' },
       })
       expect(status).toBe(200)
-      expect(body.totals.count).toBe(2)
-      expect(body.topByName[0].name).toBe('bakin_exec_tasks_list')
-      expect(body.topByName[0].count).toBe(2)
+      const totals = (body as { totals: { count: number } }).totals
+      const topByName = (body as { topByName: Array<{ name: string; count: number }> }).topByName
+      expect(totals.count).toBe(2)
+      expect(topByName[0].name).toBe('bakin_exec_tasks_list')
+      expect(topByName[0].count).toBe(2)
       clearUsage()
     })
 
@@ -270,7 +272,7 @@ describe('Health Plugin Routes', () => {
       const route = findRoute(activated.routes, 'GET', '/usage-feed')!
       const { status, body } = await callRoute(route, activated.ctx)
       expect(status).toBe(200)
-      expect(body.totals.count).toBe(1)
+      expect((body as { totals: { count: number } }).totals.count).toBe(1)
       clearUsage()
     })
 
@@ -282,7 +284,7 @@ describe('Health Plugin Routes', () => {
       const { body } = await callRoute(route, activated.ctx, {
         searchParams: { window: '1h', agent: 'alice' },
       })
-      expect(body.totals.count).toBe(1)
+      expect((body as { totals: { count: number } }).totals.count).toBe(1)
       clearUsage()
     })
 
