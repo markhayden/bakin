@@ -242,6 +242,102 @@ export async function sendDiscordGateAlert(
 }
 
 /**
+ * Post a standalone summary message after a gate decision. This is the
+ * durable "what happened" trace — the awaiting card edit (above) preserves
+ * the original ask, but this message is what someone scrolling the
+ * approvals channel reads to understand who decided what, when, and why.
+ *
+ * Fire-and-forget — failures log but do not throw, so a Discord outage
+ * never blocks workflow progression.
+ */
+export async function sendDiscordGateSummary(
+  instance: WorkflowInstance,
+  stepId: string,
+  gateLabel: string,
+  gateDescription: string | undefined,
+  decision: 'approved' | 'rejected',
+  approver: ApprovalActor,
+  requestedAt: string | undefined,
+  decidedAt: string,
+  reason: string | undefined,
+  settings: DiscordGateSettings,
+): Promise<void> {
+  if (!settings.discordGateAlerts) return
+
+  const config = loadDiscordConfig()
+  if (!config) return
+
+  const channelName = settings.discordGateChannel || 'general'
+  const { id: channelId } = await resolveChannelId(channelName)
+  if (!channelId) return
+
+  const decisionLabel = decision === 'approved' ? 'Approved' : 'Rejected'
+  const color = decision === 'approved' ? 5763719 : 15548997
+  const approverLabel = `${approver.displayName ?? approver.id} (${approver.source})`
+
+  // Discord's relative timestamp marker — clients render "5 minutes ago"
+  const tsRel = (iso: string): string => `<t:${Math.floor(Date.parse(iso) / 1000)}:R>`
+
+  const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+    { name: 'Decision', value: decisionLabel, inline: true },
+    { name: 'Decided by', value: approverLabel, inline: true },
+    { name: 'Workflow', value: instance.workflowId, inline: true },
+    { name: 'Task', value: instance.taskId, inline: true },
+    { name: 'Step', value: stepId, inline: true },
+  ]
+
+  if (requestedAt) {
+    fields.push({ name: 'Requested', value: tsRel(requestedAt), inline: true })
+    const durationMs = Date.parse(decidedAt) - Date.parse(requestedAt)
+    fields.push({ name: 'Duration', value: humanizeDuration(durationMs), inline: true })
+  }
+  fields.push({ name: 'Decided', value: tsRel(decidedAt), inline: true })
+
+  if (reason) {
+    fields.push({ name: 'Reason', value: reason })
+  }
+
+  const embed: Record<string, unknown> = {
+    title: `Gate ${decisionLabel}: ${gateLabel}`,
+    description: gateDescription ?? '',
+    color,
+    fields,
+    footer: { text: `instance ${instance.instanceId}` },
+    timestamp: decidedAt,
+  }
+
+  try {
+    const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bot ${config.botToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ embeds: [embed] }),
+    })
+
+    if (!res.ok) {
+      const text = await res.text()
+      log.warn(`Discord gate summary failed (${res.status}): ${text}`)
+    }
+  } catch (err) {
+    log.error('Discord gate summary error', err)
+  }
+}
+
+function humanizeDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ${s % 60}s`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ${m % 60}m`
+  const d = Math.floor(h / 24)
+  return `${d}d ${h % 24}h`
+}
+
+/**
  * Edit a Discord gate alert message to reflect the outcome (approved/rejected).
  * Preserves the original embed's title and fields, appends a Decision and
  * Decided-by field (plus Reason on reject), updates the color, and removes
