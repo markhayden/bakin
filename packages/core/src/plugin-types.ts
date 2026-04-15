@@ -6,6 +6,15 @@
 import type { ZodRawShape } from 'zod'
 
 // ---------------------------------------------------------------------------
+// Approval actor — identifies who decided a gate (or any reviewable action)
+// ---------------------------------------------------------------------------
+export interface ApprovalActor {
+  id: string
+  displayName?: string
+  source: 'discord' | 'web' | 'system'
+}
+
+// ---------------------------------------------------------------------------
 // Storage
 // ---------------------------------------------------------------------------
 export interface StorageAdapter {
