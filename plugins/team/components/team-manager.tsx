@@ -110,7 +110,7 @@ export function TeamManager() {
                   <div className="text-xs text-muted-foreground">
                     Reports to{' '}
                     <select
-                      value={team.reportsTo}
+                      value={team.reportsTo ?? ''}
                       onChange={(e) => handleUpdate(team.id, { reportsTo: e.target.value })}
                       className="inline-flex h-5 rounded border border-border bg-transparent px-1 text-[10px] text-foreground focus:outline-none"
                     >
