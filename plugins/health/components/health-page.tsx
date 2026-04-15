@@ -2,10 +2,12 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useContentStore } from '@/hooks/use-content-store'
+import { useQueryState } from '@/hooks/use-query-state'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { PluginHeader } from '@/components/plugin-header'
 import { ExternalLink, Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
 
@@ -141,6 +143,38 @@ interface RestHealth {
 interface ErrorsByKind {
   total: number
   byKind: { mcp: number; rest: number; agent: number }
+}
+
+type UsageKind = 'mcp' | 'rest' | 'agent'
+
+interface UsageEntry {
+  ts: string
+  kind: UsageKind
+  name: string
+  agent: string | null
+  durationMs: number | null
+  status: 'ok' | 'error'
+}
+
+interface TopByNameRow {
+  name: string
+  count: number
+  errors: number
+  medianDurationMs: number | null
+}
+
+interface ByAgentRow {
+  agent: string
+  count: number
+  errors: number
+  lastActivity: UsageEntry | null
+}
+
+interface UsageFeedData {
+  totals: { count: number; errors: number; errorRate: number }
+  topByName: TopByNameRow[]
+  byAgent: ByAgentRow[]
+  recent: UsageEntry[]
 }
 
 interface HealthSummary {
@@ -294,6 +328,93 @@ const STATUS_STYLES: Record<string, string> = {
   fixed: 'bg-blue-500/10 text-blue-400',
 }
 
+// ---------------------------------------------------------------------------
+// Usage tab panels
+// ---------------------------------------------------------------------------
+
+function UsageBarsPanel({
+  feed,
+  kind,
+  emptyLabel,
+  labelTransform,
+}: {
+  feed: UsageFeedData | null
+  kind: UsageKind
+  emptyLabel: string
+  labelTransform?: (name: string) => string
+}) {
+  if (!feed || feed.topByName.length === 0) {
+    return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+  }
+  const mostRecent = feed.recent[0]
+  const lastLabel = mostRecent
+    ? labelTransform ? labelTransform(mostRecent.name) : mostRecent.name
+    : null
+  return (
+    <div className="space-y-3">
+      <HorizontalBars
+        items={feed.topByName.map((row) => ({
+          label: labelTransform ? labelTransform(row.name) : row.name,
+          value: row.count,
+          sublabel: `${row.errors > 0 ? `${row.errors} err` : 'ok'}${
+            row.medianDurationMs !== null ? ` · ${row.medianDurationMs}ms` : ''
+          }`,
+        }))}
+      />
+      <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[11px] text-muted-foreground">
+        <span>
+          {feed.totals.count} {kind} calls
+          {feed.totals.errors > 0 && (
+            <span className="ml-1.5 text-red-400">· {feed.totals.errors} errors</span>
+          )}
+        </span>
+        {lastLabel && (
+          <span className="truncate ml-2 font-mono">latest: {lastLabel}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function formatActivity(entry: UsageEntry | null): string {
+  if (!entry) return 'no activity'
+  const ageSec = Math.max(0, Math.round((Date.now() - new Date(entry.ts).getTime()) / 1000))
+  if (ageSec >= 30) return `idle ${ageSec}s`
+  if (entry.kind === 'mcp') return `calling ${entry.name.replace('bakin_exec_', '')} · ${ageSec}s ago`
+  if (entry.kind === 'rest') return `handling ${entry.name} · ${ageSec}s ago`
+  return `${entry.name} · ${ageSec}s ago`
+}
+
+function AgentUsagePanel({ feed }: { feed: UsageFeedData | null }) {
+  if (!feed || feed.byAgent.length === 0) {
+    return <p className="text-sm text-muted-foreground">No agent activity in this window</p>
+  }
+  // Filter out heartbeat noise from the count display (still visible in "current activity").
+  const rows = feed.byAgent
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+        <span className="w-24">Agent</span>
+        <span className="flex-1">Current activity</span>
+        <span className="w-16 text-right">Events</span>
+        <span className="w-14 text-right">Errors</span>
+      </div>
+      {rows.map((row) => (
+        <div key={row.agent} className="flex items-center text-sm">
+          <span className="w-24 font-medium truncate">{row.agent}</span>
+          <span className="flex-1 font-mono text-xs text-muted-foreground truncate">
+            {formatActivity(row.lastActivity)}
+          </span>
+          <span className="w-16 text-right font-mono">{row.count}</span>
+          <span className={`w-14 text-right font-mono ${row.errors > 0 ? 'text-red-400' : 'text-muted-foreground'}`}>
+            {row.errors || '—'}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function HealthPage() {
   const [data, setData] = useState<HealthSummary | null>(null)
   const [registry, setRegistry] = useState<RegistryData | null>(null)
@@ -331,13 +452,20 @@ export function HealthPage() {
   const [endpointPage, setEndpointPage] = useState(0)
   const [recentPage, setRecentPage] = useState(0)
 
+  // Usage tabs state (URL-backed)
+  const [usageTab, setUsageTab] = useQueryState('usage_tab', 'tools')
+  const [usageWindow, setUsageWindow] = useQueryState('usage_window', '1h')
+  const kindForTab: UsageKind = usageTab === 'endpoints' ? 'rest' : usageTab === 'agents' ? 'agent' : 'mcp'
+  const [usageFeed, setUsageFeed] = useState<UsageFeedData | null>(null)
+
   const fetchData = useCallback(async () => {
     try {
-      const [summaryRes, registryRes, usageRes, searchRes] = await Promise.all([
+      const [summaryRes, registryRes, usageRes, searchRes, feedRes] = await Promise.all([
         fetch('/api/plugins/health/summary'),
         fetch('/api/plugins/health/registry'),
         fetch('/api/plugins/health/usage'),
         fetch('/api/plugins/health/antfly-status'),
+        fetch(`/api/plugins/health/usage-feed?kind=${kindForTab}&window=${usageWindow}`),
       ])
       const json = await summaryRes.json()
       setData(json)
@@ -350,6 +478,10 @@ export function HealthPage() {
         if (Array.isArray(usageJson)) setUsage(usageJson)
       } catch { /* usage endpoint optional */ }
       try {
+        const feedJson = await feedRes.json()
+        setUsageFeed(feedJson)
+      } catch { /* usage-feed optional */ }
+      try {
         const searchJson = await searchRes.json()
         setSearchHealth(searchJson)
       } catch { /* search endpoint optional */ }
@@ -359,7 +491,7 @@ export function HealthPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [kindForTab, usageWindow])
 
   useEffect(() => {
     fetchData()
@@ -417,9 +549,6 @@ export function HealthPage() {
   }
 
   const { mcp, doctor, requests, server, openclawPort } = data
-  const sortedTools = mcp
-    ? Object.entries(mcp.toolCallCounts).sort(([, a], [, b]) => b - a)
-    : []
 
   const memoryPercent = server?.totalMemoryMB
     ? Math.round((server.memoryMB / server.totalMemoryMB) * 100)
@@ -657,49 +786,59 @@ export function HealthPage() {
         </Card>
       )}
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Tool Usage — horizontal bar chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Tool Usage</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {sortedTools.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No MCP calls yet this session</p>
-            ) : (
-              <HorizontalBars
-                items={sortedTools.map(([tool, count]) => ({
-                  label: tool.replace('bakin_', ''),
-                  value: count,
-                }))}
-              />
-            )}
-          </CardContent>
-        </Card>
+      {/* Usage — unified tabbed section backed by /api/plugins/health/usage-feed */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-3">
+            <span>Usage</span>
+            <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+              {(['5m', '1h', '24h'] as const).map((w) => (
+                <button
+                  key={w}
+                  onClick={() => setUsageWindow(w)}
+                  className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
+                    usageWindow === w
+                      ? 'bg-foreground/10 text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {w}
+                </button>
+              ))}
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={usageTab} onValueChange={(v) => setUsageTab(v as string)}>
+            <TabsList>
+              <TabsTrigger value="tools">Tool Usage</TabsTrigger>
+              <TabsTrigger value="endpoints">Endpoint Usage</TabsTrigger>
+              <TabsTrigger value="agents">Agent Usage</TabsTrigger>
+            </TabsList>
 
-        {/* Agent Usage — horizontal bar chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Agent Usage</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {!mcp?.activeSessions.length ? (
-              <p className="text-sm text-muted-foreground">No active sessions</p>
-            ) : (
-              <HorizontalBars
-                items={mcp.activeSessions
-                  .sort((a, b) => b.toolCalls - a.toolCalls)
-                  .map((s) => ({
-                    label: s.agent,
-                    value: s.toolCalls,
-                    sublabel: `${s.sessions} session${s.sessions !== 1 ? 's' : ''}`,
-                  }))}
-                unit=" calls"
+            <TabsContent value="tools" className="pt-4">
+              <UsageBarsPanel
+                feed={usageFeed}
+                kind="mcp"
+                emptyLabel="No MCP calls in this window"
+                labelTransform={(name) => name.replace('bakin_exec_', '')}
               />
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            </TabsContent>
+
+            <TabsContent value="endpoints" className="pt-4">
+              <UsageBarsPanel
+                feed={usageFeed}
+                kind="rest"
+                emptyLabel="No REST requests in this window"
+              />
+            </TabsContent>
+
+            <TabsContent value="agents" className="pt-4">
+              <AgentUsagePanel feed={usageFeed} />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
 
       {/* Agent Context Usage */}
       {usage.length > 0 && (
