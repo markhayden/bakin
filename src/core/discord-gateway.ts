@@ -9,6 +9,7 @@
  */
 import { createLogger } from './logger'
 import type { DiscordConfig } from '../../scripts/lib/post-discord'
+import type { ApprovalActor } from '@bakin/core/plugin-types'
 
 const log = createLogger('discord-gateway')
 
@@ -48,6 +49,8 @@ export interface GateInteraction {
   taskId: string
   stepId: string
   reason?: string
+  /** The Discord user who triggered the interaction */
+  approver: ApprovalActor
   /** Respond to the Discord interaction */
   acknowledge: () => Promise<void>
   /** Send an ephemeral reply to the user */
@@ -123,6 +126,26 @@ function parseCustomId(customId: string): { action: 'approve' | 'reject'; taskId
   return { action: match[1] as 'approve' | 'reject', taskId: match[2], stepId: match[3] }
 }
 
+interface DiscordUserPayload {
+  id: string
+  username: string
+  global_name?: string
+}
+
+function extractApprover(data: Record<string, unknown>): ApprovalActor {
+  const member = data.member as { user?: DiscordUserPayload } | undefined
+  const user = member?.user ?? (data.user as DiscordUserPayload | undefined)
+  if (!user) {
+    log.warn('Discord interaction missing both member.user and user — using unknown sentinel')
+    return { source: 'discord', id: 'unknown', displayName: 'unknown Discord user' }
+  }
+  return {
+    source: 'discord',
+    id: user.id,
+    displayName: user.global_name || user.username,
+  }
+}
+
 async function handleInteraction(data: Record<string, unknown>): Promise<void> {
   const type = data.type as number
   const interactionId = data.id as string
@@ -171,6 +194,7 @@ async function handleInteraction(data: Record<string, unknown>): Promise<void> {
 
     const interaction: GateInteraction = {
       ...parsed,
+      approver: extractApprover(data),
       acknowledge: () => interactionRespond(interactionId, interactionToken, {
         type: CALLBACK_TYPE.DEFERRED_UPDATE,
       }),
@@ -207,6 +231,7 @@ async function handleInteraction(data: Record<string, unknown>): Promise<void> {
     const interaction: GateInteraction = {
       ...parsed,
       reason,
+      approver: extractApprover(data),
       acknowledge: () => interactionRespond(interactionId, interactionToken, {
         type: CALLBACK_TYPE.DEFERRED_UPDATE,
       }),
