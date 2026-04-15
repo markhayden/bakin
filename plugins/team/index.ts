@@ -87,6 +87,51 @@ function writeTeams(teams: OrgTeam[]): void {
   writePluginSettings({ ...current, teams })
 }
 
+/**
+ * Normalize a `reportsTo` value for persistence in team.json.
+ *
+ * Stores `null` when the incoming value is undefined/null or equals the
+ * current main agent id. This decouples team.json from the specific
+ * orchestrator name so installs sharing the file don't get pinned to
+ * "main" (or whatever id the local main agent happens to use).
+ *
+ * If `getMainAgentId()` itself fails (e.g. a malformed roster), we fall
+ * back to returning the value as-is rather than crashing the write path.
+ */
+function normalizeReportsTo(value: unknown): string | null {
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'string') return null
+  try {
+    if (value === getMainAgentId()) return null
+  } catch (err) {
+    log.warn('normalizeReportsTo: getMainAgentId() threw — preserving value as-is', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+  return value
+}
+
+/**
+ * Degrade teams whose `reportsTo` points at an agent that no longer
+ * exists in the roster. The render-time resolver treats `null` as
+ * "report to main", so this keeps legacy team.json files rendering
+ * cleanly after a rename or removal. Read-only — never rewrites the
+ * file from the read path.
+ */
+function degradeUnknownReportsTo(teams: OrgTeam[], knownIds: Set<string>): OrgTeam[] {
+  return teams.map((team) => {
+    const reportsTo = team.reportsTo
+    if (typeof reportsTo === 'string' && !knownIds.has(reportsTo)) {
+      log.warn('team.json has a team reporting to unknown agent id — treating as null', {
+        teamId: team.id,
+        reportsTo,
+      })
+      return { ...team, reportsTo: null }
+    }
+    return team
+  })
+}
+
 function mergeDisplayDefaults(overrides: AgentDisplaySettingsMap): AgentDisplaySettingsMap {
   const result: AgentDisplaySettingsMap = {}
   const ids = adapter.getAgentIds()
@@ -380,7 +425,8 @@ const teamPlugin: BakinPlugin = {
             ]).catch(() => {})
           }
 
-          const teams = readTeams()
+          const knownIds = new Set(agents.map((a) => a.id))
+          const teams = degradeUnknownReportsTo(readTeams(), knownIds)
           return Response.json({ agents: result, displaySettings, teams, mainAgentId: getMainAgentId() })
         } catch (err) {
           log.error('Failed to list agents', err)
@@ -792,7 +838,6 @@ const teamPlugin: BakinPlugin = {
         const id = (body.id as string || '').toLowerCase().replace(/[^a-z0-9-]/g, '')
         if (!id) return Response.json({ error: 'id required' }, { status: 400 })
         if (!body.label) return Response.json({ error: 'label required' }, { status: 400 })
-        if (!body.reportsTo) return Response.json({ error: 'reportsTo required' }, { status: 400 })
 
         const teams = readTeams()
         if (teams.some((t) => t.id === id)) {
@@ -802,7 +847,7 @@ const teamPlugin: BakinPlugin = {
         const team: OrgTeam = {
           id,
           label: body.label as string,
-          reportsTo: body.reportsTo as string,
+          reportsTo: normalizeReportsTo(body.reportsTo),
           color: body.color as string | undefined,
           order: typeof body.order === 'number' ? body.order : teams.length,
         }
@@ -830,7 +875,7 @@ const teamPlugin: BakinPlugin = {
 
         const body = await req.json() as Record<string, unknown>
         if (body.label !== undefined) teams[idx].label = body.label as string
-        if (body.reportsTo !== undefined) teams[idx].reportsTo = body.reportsTo as string
+        if (body.reportsTo !== undefined) teams[idx].reportsTo = normalizeReportsTo(body.reportsTo)
         if (body.color !== undefined) teams[idx].color = body.color as string
         if (body.order !== undefined) teams[idx].order = body.order as number
 
