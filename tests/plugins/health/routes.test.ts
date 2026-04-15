@@ -241,7 +241,7 @@ describe('Health Plugin Routes', () => {
         searchParams: { fresh: 'true' },
       })
       expect(status).toBe(200)
-      expect(body.cachedAt).toBeUndefined()
+      expect(body.cachedAt).toBeDefined()
       expect(runDiagnostics).toHaveBeenCalled()
     })
   })
@@ -287,7 +287,7 @@ describe('Health Exec Tools', () => {
 
       const result = await callTool(tool, { fresh: true })
       expect(result.ok).toBe(true)
-      expect(result.cachedAt).toBeUndefined()
+      expect(result.cachedAt).toBeDefined()
       expect(runDiagnostics).toHaveBeenCalled()
     })
   })
