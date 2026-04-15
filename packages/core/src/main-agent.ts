@@ -1,32 +1,26 @@
 /**
  * Main agent (orchestrator) resolution for Bakin.
  *
- * The orchestrator id is NOT hardcoded. It resolves dynamically per install:
- *   1. `settings.mainAgentId` from ~/.bakin/settings.json — explicit override,
- *      never auto-written. Set it by hand only if auto-detection picks the
- *      wrong agent (e.g. two orchestrators in the same openclaw.json).
- *   2. Auto-detect from OpenClaw: the agent whose `workspace` equals
- *      `agents.defaults.workspace` (subagents override with per-agent paths).
- *   3. Fallback: the first agent in `agents.list` with a populated
- *      `subagents.allowAgents` listing (covers configs where the orchestrator
- *      inherits the default workspace instead of setting it explicitly).
+ * OpenClaw's canonical orchestrator id is the literal string `"main"` on every
+ * install. There is no detection heuristic, no settings override, no fallback:
+ * if `openclaw.json` has an agent with `id: "main"` we return that id; if it
+ * doesn't, we throw and point the caller at `bakin check openclaw`.
  *
- * If nothing resolves, throws — the caller should run onboarding or set
- * `mainAgentId` in settings.json. Display names come from `identity.name`.
+ * Display name comes from `identity.name` on that entry, with a static `"Main"`
+ * fallback when the name is missing.
  *
- * Reads are mtime-cached: every call stats `openclaw.json` (cheap), re-parses
- * only when the file changes. Rename the orchestrator in openclaw.json and the
- * next call picks it up without a restart.
+ * Reads go through `openclaw-config`, which owns the mtime-keyed cache — a
+ * live edit to `openclaw.json` (e.g. renaming via `identity.name`) is picked
+ * up on the next call without a restart.
  */
-import { getSettings } from './settings'
-import { readOpenClawConfig, findAgentById } from './openclaw-config'
+import { findAgentById } from './openclaw-config'
 
 export function getMainAgentId(): string {
-  const id = tryGetMainAgentId()
-  if (id) return id
+  const entry = findAgentById('main')
+  if (entry) return 'main'
   throw new Error(
-    'Cannot resolve main agent id. Set `mainAgentId` in ~/.bakin/settings.json ' +
-    'or run `bakin onboard` to detect it from OpenClaw.'
+    "openclaw.json has no agent with id 'main'. OpenClaw's orchestrator id is always 'main'; " +
+    'add that entry or run `bakin check openclaw`.'
   )
 }
 
@@ -35,35 +29,12 @@ export function getMainAgentId(): string {
  * (e.g. sort order, optional UI defaults, diagnostic logging).
  */
 export function tryGetMainAgentId(): string | null {
-  const settings = getSettings()
-  const fromSettings = settings.mainAgentId
-  if (typeof fromSettings === 'string' && fromSettings) return fromSettings
-
-  return detectOrchestratorFromOpenClaw()
+  return findAgentById('main') ? 'main' : null
 }
 
 export function getMainAgentName(): string {
-  const id = getMainAgentId()
-  const entry = findAgentById(id)
+  const entry = findAgentById('main')
   const name = entry?.identity?.name
   if (typeof name === 'string' && name.trim().length > 0) return name
-  return id.charAt(0).toUpperCase() + id.slice(1)
-}
-
-function detectOrchestratorFromOpenClaw(): string | null {
-  const config = readOpenClawConfig()
-  if (!config) return null
-  const list = config.agents?.list
-  if (!Array.isArray(list) || list.length === 0) return null
-
-  const defaultWorkspace = config.agents?.defaults?.workspace
-  if (typeof defaultWorkspace === 'string' && defaultWorkspace) {
-    const workspaceMatch = list.find((a) => a.workspace === defaultWorkspace)
-    if (workspaceMatch) return workspaceMatch.id
-  }
-
-  const withSubagents = list.find(
-    (a) => Array.isArray(a.subagents?.allowAgents) && (a.subagents?.allowAgents?.length ?? 0) > 0
-  )
-  return withSubagents?.id ?? null
+  return 'Main'
 }
