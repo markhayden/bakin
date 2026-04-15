@@ -13,6 +13,7 @@ const log = createLogger('antfly-server')
 
 let antflyProcess: ChildProcess | null = null
 let isRunning = false
+let recheckTimer: NodeJS.Timeout | null = null
 
 /**
  * Find the antfly binary on the system. Exported for reuse by the
@@ -61,6 +62,28 @@ async function waitForReady(url: string, timeoutMs = 15000): Promise<boolean> {
   return false
 }
 
+function clearRecheckTimer(): void {
+  if (recheckTimer) {
+    clearTimeout(recheckTimer)
+    recheckTimer = null
+  }
+}
+
+function scheduleExternalRecheck(url: string): void {
+  clearRecheckTimer()
+  recheckTimer = setTimeout(async () => {
+    recheckTimer = null
+
+    if (antflyProcess) return
+
+    const stillRunning = await isAlreadyRunning(url)
+    if (stillRunning) return
+
+    log.warn('Antfly disappeared after startup check, attempting takeover restart', { url })
+    await start()
+  }, 3000)
+}
+
 /**
  * Start the Antfly server if enabled and not already running.
  * Returns true if Antfly is available (either started or already running).
@@ -79,6 +102,7 @@ export async function start(): Promise<boolean> {
   if (await isAlreadyRunning(url)) {
     log.info('Antfly already running', { url })
     isRunning = true
+    scheduleExternalRecheck(url)
     return true
   }
 
@@ -119,6 +143,7 @@ export async function start(): Promise<boolean> {
     antflyProcess.on('exit', (code, signal) => {
       isRunning = false
       antflyProcess = null
+      clearRecheckTimer()
       if (code !== null && code !== 0) {
         log.error('Antfly exited unexpectedly', { code, signal })
       } else {
@@ -152,6 +177,8 @@ export async function start(): Promise<boolean> {
  * Stop the Antfly server if we started it.
  */
 export function stop(): void {
+  clearRecheckTimer()
+
   if (!antflyProcess) return
 
   log.info('Stopping Antfly server...')
