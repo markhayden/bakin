@@ -3,6 +3,7 @@
  * Bakin CLI — command-line interface for Bakin orchestration platform.
  * All commands are thin wrappers around the Bakin HTTP API.
  */
+import { getAgentIds } from '@bakin/core/openclaw-config'
 import { getMainAgentId } from '@bakin/core/main-agent'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import {
@@ -77,14 +78,13 @@ function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
 // ---------------------------------------------------------------------------
 async function cmdStatus(): Promise<void> {
   const dispatch = await apiGet('/api/dispatch') as Record<string, unknown>
-  const settings = await apiGet('/api/settings') as Record<string, unknown>
 
   console.log('=== Bakin Status ===')
   console.log(`Dispatch interval: ${dispatch.intervalMin}min`)
   console.log(`Last run: ${dispatch.lastRun || 'never'}`)
   console.log(`Next run: ${dispatch.nextRun} (${dispatch.secondsUntilNext}s)`)
   console.log(`Tasks dispatched: ${dispatch.dispatchedCount}`)
-  console.log(`Agents: ${(settings.agents as string[]).join(', ')}`)
+  console.log(`Agents: ${getAgentIds().join(', ')}`)
 }
 
 async function cmdDispatch(): Promise<void> {
@@ -878,9 +878,8 @@ async function cmdStart(): Promise<void> {
         console.log(`[OK] Bakin is up (${data.version})`)
         console.log('')
         console.log('MCP endpoints:')
-        const settings = await (await fetch(`${BASE_URL}/api/settings`)).json() as { agents?: string[] }
-        const agents = (settings as Record<string, unknown>).agents as string[] || []
-        for (const agent of agents as string[]) {
+        const agents = getAgentIds()
+        for (const agent of agents) {
           console.log(`  ${agent}: mcporter call bakin-${agent}.<tool> ...`)
         }
         console.log('')

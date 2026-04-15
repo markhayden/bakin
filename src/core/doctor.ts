@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 
 import { join, dirname } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
+import { getAgentIds } from '@bakin/core/openclaw-config'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { appendAudit } from './audit'
 import { isUsingBakinHome, getContentDir } from './content-dir'
@@ -65,7 +66,6 @@ function fixed(check: string, message: string): DiagnosticResult {
  */
 function checkAgentRoster(contentDir: string): DiagnosticResult[] {
   const results: DiagnosticResult[] = []
-  const settings = getSettings()
   const openclawConfigPath = getOpenClawPath('openclaw.json')
 
   if (!existsSync(openclawConfigPath)) {
@@ -76,7 +76,7 @@ function checkAgentRoster(contentDir: string): DiagnosticResult[] {
   try {
     const config = JSON.parse(readFileSync(openclawConfigPath, 'utf-8'))
     const openclawAgents = (config.agents?.list || []).map((a: { id: string }) => a.id)
-    const bakinAgents = settings.agents
+    const bakinAgents = getAgentIds()
 
     for (const agent of bakinAgents) {
       if (!openclawAgents.includes(agent)) {
@@ -106,7 +106,7 @@ function checkAgentRoster(contentDir: string): DiagnosticResult[] {
  */
 function checkPersonas(contentDir: string, autoFix: boolean): DiagnosticResult[] {
   const results: DiagnosticResult[] = []
-  const settings = getSettings()
+  const agentIds = getAgentIds()
   const personasDir = join(contentDir, 'team', 'personas')
 
   if (!existsSync(personasDir)) {
@@ -126,7 +126,7 @@ function checkPersonas(contentDir: string, autoFix: boolean): DiagnosticResult[]
   )
 
   let created = 0
-  for (const agent of settings.agents) {
+  for (const agent of agentIds) {
     if (!existing.has(agent)) {
       if (autoFix) {
         const stub = `# ${agent.charAt(0).toUpperCase() + agent.slice(1)}\n\n_Persona not yet configured. Update this file with the agent's personality, background, and communication style._\n`
@@ -143,7 +143,7 @@ function checkPersonas(contentDir: string, autoFix: boolean): DiagnosticResult[]
   }
 
   if (results.filter(r => r.check === 'personas').length === 0) {
-    results.push(ok('personas', `All ${settings.agents.length} agents have persona files`))
+    results.push(ok('personas', `All ${agentIds.length} agents have persona files`))
   }
 
   return results
@@ -738,7 +738,6 @@ function checkService(projectRoot: string): DiagnosticResult[] {
  */
 async function checkTaskConsistency(contentDir: string, autoFix: boolean): Promise<DiagnosticResult[]> {
   const results: DiagnosticResult[] = []
-  const settings = getSettings()
   const hooks = getHookRegistry()
 
   try {
@@ -748,8 +747,8 @@ async function checkTaskConsistency(contentDir: string, autoFix: boolean): Promi
     const { columns } = board
     const now = Date.now()
 
-    // Known agents from settings
-    const knownAgents = new Set(settings.agents)
+    // Known agents from openclaw.json
+    const knownAgents = new Set(getAgentIds())
 
     // Count tasks per agent
     const agentTaskCount: Record<string, number> = {}
@@ -861,7 +860,6 @@ interface ManagedBlockDef {
  *   <!-- bakin:{blockId}:end -->
  */
 function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): DiagnosticResult[] {
-  const settings = getSettings()
   const results: DiagnosticResult[] = []
   const openclawBase = getOpenClawPath()
   const startMarker = `<!-- bakin:${def.blockId}:start -->`
@@ -869,7 +867,7 @@ function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): DiagnosticRe
   const checkName = `agent-${def.blockId}`
 
   const mainId = getMainAgentId()
-  for (const agentId of settings.agents) {
+  for (const agentId of getAgentIds()) {
     if (agentId === mainId) continue
     if (def.agentFilter && !def.agentFilter(agentId)) continue
 

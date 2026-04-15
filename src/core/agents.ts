@@ -5,7 +5,7 @@
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from './logger'
-import { getSettings } from './settings'
+import { getAgentIds } from '@bakin/core/openclaw-config'
 import * as openclaw from './openclaw-client'
 import { readTaskboard } from '../lib/taskboard'
 
@@ -30,8 +30,7 @@ interface AgentTask {
  * Get status for a specific agent — their current tasks and last activity.
  */
 export async function getAgentStatus(agentId: string, contentDir: string): Promise<AgentStatus> {
-  const settings = getSettings()
-  const agents = settings.agents
+  const agents = getAgentIds()
 
   // Resolve name (agents list uses short names)
   const name = agents.includes(agentId) ? agentId : agentId
@@ -106,10 +105,9 @@ export async function sendMessageToAgent(
  * List all configured agents with their current status.
  */
 export async function listAgents(contentDir: string): Promise<AgentStatus[]> {
-  const settings = getSettings()
   const statuses: AgentStatus[] = []
 
-  for (const agentId of settings.agents) {
+  for (const agentId of getAgentIds()) {
     statuses.push(await getAgentStatus(agentId, contentDir))
   }
 

@@ -26,8 +26,6 @@ describe('Settings', () => {
     const settings = getSettings()
     expect(settings.dispatch.intervalMs).toBe(300000)
     expect(settings.sse.maxClients).toBe(50)
-    // agents is populated dynamically from OpenClaw; in test env it may be empty
-    expect(Array.isArray(settings.agents)).toBe(true)
     expect(settings.antfly.enabled).toBe(true)
   })
 
@@ -119,13 +117,11 @@ describe('Settings', () => {
     fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
       dispatch: { intervalMs: 60000 },
-      agents: ['main', 'patch'],
     }))
 
     const settings = getSettings()
     expect(settings.dispatch.intervalMs).toBe(60000)
     expect(settings.dispatch.failureCooldownMs).toBe(1800000) // default preserved
-    expect(settings.agents).toEqual(['main', 'patch'])
   })
 
   it('caches settings on subsequent calls', () => {
