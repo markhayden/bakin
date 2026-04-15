@@ -7,6 +7,11 @@ import { AgentAvatar } from '@/components/agent-avatar'
 import { STATUS_BADGE_STYLES } from '../constants'
 import type { Task, ColumnId } from '../types'
 
+export interface TaskScoreInfo {
+  score: number
+  indexScores?: Record<string, number>
+}
+
 function formatRelativeDate(dateStr: string): string {
   // Parse YYYY-MM-DD as local date, not UTC (appending T00:00 forces local interpretation)
   const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00')
@@ -25,9 +30,14 @@ function shortId(id: string): string {
   return id.slice(0, 6).toUpperCase()
 }
 
-export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, style }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; style?: CSSProperties }) {
+export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, style, scoreInfo }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; style?: CSSProperties; scoreInfo?: TaskScoreInfo }) {
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
   const isComplete = task.checked || columnId === 'done' || columnId === 'archived'
+
+  const semKey = 'embeddings'
+  const bm25Key = scoreInfo?.indexScores
+    ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
+    : undefined
 
   return (
     <div className={className} style={style}>
@@ -41,6 +51,17 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
         <span className="text-[10px] font-mono text-muted-foreground/50 uppercase tracking-widest">
           {shortId(task.id)}
         </span>
+        {scoreInfo && (
+          <span className="ml-auto flex items-center gap-1.5 font-mono text-[10px]">
+            <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
+            <span className="text-cyan-400">
+              BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+            </span>
+            <span className="text-purple-400">
+              SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+            </span>
+          </span>
+        )}
       </div>
 
       {/* Title */}
@@ -113,12 +134,13 @@ interface TaskCardProps {
   index?: number
   gateLabel?: string
   childTaskId?: string
+  scoreInfo?: TaskScoreInfo
   onAssign: (task: Task, agent: string) => void
   onDelete: (task: { id: string; title: string }) => void
   onClick: (task: Task, columnId: ColumnId) => void
 }
 
-export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, onAssign, onDelete, onClick }: TaskCardProps) {
+export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, scoreInfo, onAssign, onDelete, onClick }: TaskCardProps) {
   const { ref, isDragging } = useSortable({
     id: task.id,
     group: columnId,
@@ -158,6 +180,7 @@ export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, on
         columnId={columnId}
         gateLabel={gateLabel}
         childTaskId={childTaskId}
+        scoreInfo={scoreInfo}
         className="p-4"
       />
       </div>

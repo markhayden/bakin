@@ -8,10 +8,26 @@ calling one of two methods on `ctx.search` during `activate()`:
 | Method | When to use |
 |---|---|
 | `registerFileBackedContentType(def)` | **Default for any plugin whose source of truth is files on disk under `~/.bakin/`.** Auto-wires the watcher sync/unlink hooks AND registers a startup mtime reconcile. |
-| `registerContentType(def)` | Bare registration for plugins whose data isn't filesystem-backed (SQLite-backed `tasks`, OpenClaw-backed `team`/`schedule`, the audit table). The plugin owns its own sync calls. |
+| `registerContentType(def)` | Bare registration for plugins whose data isn't filesystem-backed (SQLite-backed `tasks`, OpenClaw-backed `team`/`schedule`, the audit JSONL log). The plugin owns its own sync calls. |
 
 This guide focuses on the file-backed helper. See `search-system.md` for the
 "Three consistency paths" architecture and the rationale.
+
+**One call wires everything.** As of issue #67, calling either method during
+`activate()` auto-registers a `GET /search` route on the plugin's router
+(`/api/plugins/{pluginId}/search`). You do **not** need to call
+`ctx.registerRoute({ path: '/search', ... })` yourself — that boilerplate is
+gone. The auto-wired route resolves the plugin's table via
+`getTableForPlugin(pluginId)` and forwards `q`, `limit`, `offset`, `facets`,
+and `filters` to `ctx.search.query()`. The MCP search exec tools (`search_query`,
+`search_table`, etc.) all take a `plugin: <pluginId>` parameter and reach the
+same backend, so registering a content type also makes the plugin's data
+agent-searchable.
+
+`getTableForPlugin(pluginId)` (formerly `getPluginTable`) throws if a single
+plugin registers more than one content type, since the auto-wired `/search`
+route can't disambiguate. Plugins with multiple content types must register
+their own custom route.
 
 ## Step-by-Step (file-backed plugins)
 
@@ -186,9 +202,16 @@ The watcher path is the safety net for writes that bypass REST entirely
 - `verifyExists()` returns `true` always
 - Batch-index on data load
 
-### Core module (audit)
-- Registered directly from `server.ts` using `buildSearchAPI('_audit')`
+### Memory plugin (audit)
+- Registered by the **memory** plugin via `ctx.search.registerContentType()`
+  (moved out of `server.ts` during the issue #67 cleanup — `_audit` is no
+  longer a synthetic plugin id)
 - TTL configured via `settings.antfly.auditTtl`
+
+### Messaging plugin (brainstorm sessions)
+- Registered by the **messaging** plugin via `ctx.search.registerFileBackedContentType()`
+- Indexes brainstorm planning sessions; calendar items get a local
+  substring filter and are not indexed
 
 ## Currently Registered Content Types
 
@@ -200,7 +223,8 @@ The watcher path is the safety net for writes that bypass REST entirely
 | workflows | `bakin_workflows` | YAML defs + JSON instances | `registerFileBackedContentType` (two filePatterns) |
 | schedule | `bakin_schedule` | OpenClaw cron jobs | `registerContentType` |
 | team | `bakin_team` | OpenClaw agents | `registerContentType` |
-| _audit | `bakin_audit` | `audit.jsonl` | `registerContentType` (TTL-managed) |
+| memory | `bakin_audit` | `audit.jsonl` | `registerContentType` (TTL-managed) |
+| messaging | `bakin_messaging_brainstorm` | brainstorm session JSON files | `registerFileBackedContentType` |
 
 ## Common Pitfalls
 

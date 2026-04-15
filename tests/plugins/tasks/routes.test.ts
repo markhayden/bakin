@@ -12,6 +12,7 @@ import {
   findTool,
   callRoute,
   callTool,
+  callSearchRoute,
   makeRequest,
   type ActivatedPlugin,
 } from '../test-helpers'
@@ -133,6 +134,7 @@ describe('Tasks Plugin — Route Registration', () => {
     ['POST', '/:taskId/block'],
     ['POST', '/:taskId/dependency'],
     ['POST', '/reorder'],
+    ['GET', '/search'],
   ])('registers %s %s', (method, path) => {
     expect(findRoute(activated.routes, method, path)).toBeDefined()
   })
@@ -1169,6 +1171,53 @@ describe('Search dual-write', () => {
     expect(activated.ctx.search.transform).toHaveBeenCalledWith(
       'task-asgn',
       [{ op: '$set', field: 'agent', value: 'pixel' }],
+    )
+  })
+})
+
+// ─── Search Route ───────────────────────────────────────────────────────────
+
+describe('Tasks Plugin — GET /search', () => {
+  beforeEach(() => {
+    activated.seedResults([])
+  })
+
+  it('returns seeded results for a valid query', async () => {
+    activated.seedResults([
+      { id: 't1', table: 'bakin_tasks', score: 0.9, fields: { title: 'Test task' } },
+    ])
+
+    const { status, body } = await callSearchRoute(activated, 'test')
+
+    expect(status).toBe(200)
+    const results = body.results as Array<{ id: string; score: number }>
+    expect(results).toHaveLength(1)
+    expect(results[0].id).toBe('t1')
+    expect(results[0].score).toBe(0.9)
+  })
+
+  it('returns 400 when q is missing', async () => {
+    const { status, body } = await callSearchRoute(activated, '')
+
+    expect(status).toBe(400)
+    expect(body.error).toBe('Missing ?q= parameter')
+  })
+
+  it('returns 200 with empty results when no matches', async () => {
+    const { status, body } = await callSearchRoute(activated, 'zzz')
+
+    expect(status).toBe(200)
+    expect(body.results).toEqual([])
+  })
+
+  it('passes parsed facets to ctx.search.query', async () => {
+    await callSearchRoute(activated, 'test', { facets: 'status,agent' })
+
+    expect(activated.ctx.search.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: 'test',
+        facets: ['status', 'agent'],
+      }),
     )
   })
 })

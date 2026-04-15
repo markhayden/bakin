@@ -8,8 +8,7 @@ import { AgentAvatar } from '@/components/agent-avatar'
 import { Send, Check, X, Loader2 } from 'lucide-react'
 import type { ContentAgent } from '../types'
 import { AGENT_INFO, DISCORD_GENERAL } from '../types'
-
-const CONTENT_AGENTS = Object.keys(AGENT_INFO) as ContentAgent[]
+import { CONTENT_AGENTS } from '../constants'
 
 interface ChatMessage {
   role: 'user' | 'assistant'

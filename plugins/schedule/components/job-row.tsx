@@ -13,6 +13,11 @@ import {
 import { AgentBadge } from './agent-badge'
 import type { ScheduleJob } from '@/hooks/use-schedule'
 
+export interface JobScoreInfo {
+  score: number
+  indexScores?: Record<string, number>
+}
+
 function StatusBadge({ job }: { job: ScheduleJob }) {
   if (job.paused) {
     const label = job.pauseReason === 'auto-failures'
@@ -44,6 +49,7 @@ export function JobRow({
   onEdit,
   onDuplicate,
   onSkipNext,
+  scoreInfo,
 }: {
   job: ScheduleJob
   onClick: () => void
@@ -54,7 +60,12 @@ export function JobRow({
   onEdit: () => void
   onDuplicate: () => void
   onSkipNext: () => void
+  scoreInfo?: JobScoreInfo
 }) {
+  const semKey = 'embeddings'
+  const bm25Key = scoreInfo?.indexScores
+    ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
+    : undefined
   return (
     <TableRow className="cursor-pointer group" onClick={onClick}>
       <TableCell>
@@ -62,6 +73,17 @@ export function JobRow({
           <span className="text-sm font-medium text-foreground">{job.displayName || job.id}</span>
           {job.isBakinJob && (
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Bakin</span>
+          )}
+          {scoreInfo && (
+            <span className="flex items-center gap-2 font-mono text-[10px] mt-0.5">
+              <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
+              <span className="text-cyan-400">
+                BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+              </span>
+              <span className="text-purple-400">
+                SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+              </span>
+            </span>
           )}
         </div>
       </TableCell>

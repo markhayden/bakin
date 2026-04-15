@@ -104,7 +104,7 @@ vi.mock('@bakin/schedule/lib/cron-parser', () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import { activatePlugin, findRoute, findTool, callRoute, callTool } from '../test-helpers'
+import { activatePlugin, findRoute, findTool, callRoute, callTool, callSearchRoute } from '../test-helpers'
 import schedulePlugin from '@bakin/schedule/index'
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 
@@ -1306,6 +1306,83 @@ describe('schedule exec tools', () => {
       expect((result.jobs as unknown[]).length).toBe(0)
       expect((result.alerts as unknown[]).length).toBe(0)
     })
+  })
+})
+
+// ===========================================================================
+// /search route (auto-registered via ctx.search.registerContentType)
+// ===========================================================================
+
+describe('GET /search', () => {
+  it('returns seeded job results for a happy-path query', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    activated.seedResults([
+      {
+        id: 'job-search-a',
+        table: 'bakin_schedule',
+        score: 1.5,
+        fields: {
+          name: 'Weekly planning',
+          schedule: 'Every Monday at 9am',
+          command: 'Plan the week',
+          agent: 'basil',
+          enabled: 'true',
+        },
+      },
+      {
+        id: 'job-search-b',
+        table: 'bakin_schedule',
+        score: 0.9,
+        fields: {
+          name: 'Daily report',
+          schedule: 'Every day at 9am',
+          command: 'Generate report',
+          agent: 'pixel',
+          enabled: 'true',
+        },
+      },
+    ])
+
+    const { status, body } = await callSearchRoute(activated, 'planning')
+    expect(status).toBe(200)
+    expect(Array.isArray(body.results)).toBe(true)
+    const results = body.results as Array<Record<string, unknown>>
+    expect(results).toHaveLength(2)
+    expect(results[0].id).toBe('job-search-a')
+    expect(body.meta).toMatchObject({ query: 'planning', total: 2 })
+  })
+
+  it('returns 400 when ?q= is missing', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    const route = findRoute(activated.routes, 'GET', '/search')!
+    expect(route).toBeDefined()
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(400)
+    expect(body.error).toMatch(/q=/i)
+  })
+
+  it('passes ?facets=agent,enabled through to ctx.search.query', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    activated.seedResults([])
+
+    await callSearchRoute(activated, 'anything', { facets: 'agent,enabled' })
+
+    expect(activated.ctx.search.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: 'anything',
+        facets: ['agent', 'enabled'],
+      }),
+    )
+  })
+
+  it('returns 200 with empty results when no jobs match', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    activated.seedResults([])
+
+    const { status, body } = await callSearchRoute(activated, 'nothing-matches')
+    expect(status).toBe(200)
+    expect(body.results).toEqual([])
+    expect(body.meta).toMatchObject({ query: 'nothing-matches', total: 0 })
   })
 })
 

@@ -9,12 +9,19 @@ import type { ExecToolDefinition, ExecToolResult, PluginToolContext, StorageAdap
 
 // ---------------------------------------------------------------------------
 // Registry state
+//
+// Backed by globalThis so the custom Node server context and the Next.js
+// webpack-bundled context share one registry instance. Without this, plugins
+// activated at boot (Node context) are invisible to code running in API route
+// handlers (bundled context), including the doctor's skill-sync check.
 // ---------------------------------------------------------------------------
 
-const execTools = new Map<string, ExecToolDefinition>()
+const execTools: Map<string, ExecToolDefinition> =
+  (globalThis as any).__bakinExecTools ??= new Map<string, ExecToolDefinition>()
 
 /** Per-tool call stats for health dashboard */
-const toolStats = new Map<string, { calls: number; errors: number; lastUsed: string | null; lastError: string | null }>()
+const toolStats: Map<string, { calls: number; errors: number; lastUsed: string | null; lastError: string | null }> =
+  (globalThis as any).__bakinExecToolStats ??= new Map<string, { calls: number; errors: number; lastUsed: string | null; lastError: string | null }>()
 
 // ---------------------------------------------------------------------------
 // Registration
