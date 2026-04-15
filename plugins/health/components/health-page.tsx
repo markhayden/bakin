@@ -7,9 +7,15 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { PluginHeader } from '@/components/plugin-header'
+import { UnderlineTabs } from '@/components/underline-tabs'
 import { ExternalLink, Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
+
+const USAGE_TABS = [
+  { id: 'tools', label: 'Tool Usage' },
+  { id: 'endpoints', label: 'Endpoint Usage' },
+  { id: 'agents', label: 'Agent Usage' },
+] as const
 
 interface McpSessionInfo {
   agent: string
@@ -612,10 +618,12 @@ export function HealthPage() {
       )}
 
       {/* Usage — unified tabbed section backed by /api/plugins/health/usage-feed */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-3">
-            <span>Usage</span>
+      <div className="space-y-4">
+        <UnderlineTabs
+          tabs={USAGE_TABS}
+          value={usageTab}
+          onValueChange={setUsageTab}
+          rightSlot={
             <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
               {(['5m', '1h', '24h'] as const).map((w) => (
                 <button
@@ -631,39 +639,26 @@ export function HealthPage() {
                 </button>
               ))}
             </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={usageTab} onValueChange={(v) => setUsageTab(v as string)}>
-            <TabsList>
-              <TabsTrigger value="tools">Tool Usage</TabsTrigger>
-              <TabsTrigger value="endpoints">Endpoint Usage</TabsTrigger>
-              <TabsTrigger value="agents">Agent Usage</TabsTrigger>
-            </TabsList>
+          }
+        />
 
-            <TabsContent value="tools" className="pt-4">
-              <UsageBarsPanel
-                feed={usageFeed}
-                kind="mcp"
-                emptyLabel="No MCP calls in this window"
-                labelTransform={(name) => name.replace('bakin_exec_', '')}
-              />
-            </TabsContent>
-
-            <TabsContent value="endpoints" className="pt-4">
-              <UsageBarsPanel
-                feed={usageFeed}
-                kind="rest"
-                emptyLabel="No REST requests in this window"
-              />
-            </TabsContent>
-
-            <TabsContent value="agents" className="pt-4">
-              <AgentUsagePanel feed={usageFeed} />
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+        {usageTab === 'tools' && (
+          <UsageBarsPanel
+            feed={usageFeed}
+            kind="mcp"
+            emptyLabel="No MCP calls in this window"
+            labelTransform={(name) => name.replace('bakin_exec_', '')}
+          />
+        )}
+        {usageTab === 'endpoints' && (
+          <UsageBarsPanel
+            feed={usageFeed}
+            kind="rest"
+            emptyLabel="No REST requests in this window"
+          />
+        )}
+        {usageTab === 'agents' && <AgentUsagePanel feed={usageFeed} />}
+      </div>
 
       {/* Agent Context Usage */}
       {usage.length > 0 && (
