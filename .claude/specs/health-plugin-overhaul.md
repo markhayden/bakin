@@ -1,6 +1,6 @@
 # Health Plugin Overhaul
 
-_Created: 2026-04-14 | Owner: Mark | Status: Draft — awaiting approval_
+_Created: 2026-04-14 | Owner: Mark | Status: Complete (shipped 2026-04-14 on branch `fix/health-plugin-overhaul`)_
 
 ---
 
