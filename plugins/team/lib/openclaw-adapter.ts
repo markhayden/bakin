@@ -45,23 +45,69 @@ export function getOpenClawConfig(): OpenClawConfig {
 
 // ─── Agent List ──────────────────────────────────────────────────────────────
 
-/** List all agents as lightweight AgentMeta (for dropdowns, badges, etc.) */
+/**
+ * List all agents as lightweight AgentMeta (for dropdowns, badges, etc.).
+ *
+ * This is a validation pass over `openclaw.json`, not a passthrough:
+ *   - Rejects duplicate agent ids (first occurrence wins).
+ *   - Rejects duplicate resolved workspaces — an agent's explicit
+ *     `workspace` or the inherited `agents.defaults.workspace`. When two
+ *     entries land on the same directory we keep the first and drop the
+ *     rest so the UI doesn't render ghost cards pointing at shared files.
+ *   - Requires a canonical `main` agent. If the roster has no `id: "main"`
+ *     we return an empty list so the UI surfaces the broken config instead
+ *     of silently hiding the orchestrator.
+ *
+ * All three violations log at `error` level — these are config bugs.
+ */
 export function listAgents(): AgentMeta[] {
   const config = getOpenClawConfig()
-  const agents = config.agents?.list ?? []
+  const raw = config.agents?.list ?? []
+  const defaultWorkspace = config.agents?.defaults?.workspace ?? null
 
-  return agents.map((a) => {
-    const name = a.identity?.name ?? a.name ?? a.id
-    const emoji = a.identity?.emoji ?? ''
-    const role = resolveRole(a.id)
-    return {
-      id: a.id,
+  const seenIds = new Set<string>()
+  const workspaceToFirstId = new Map<string, string>()
+  const accepted: AgentMeta[] = []
+
+  for (const agent of raw) {
+    if (seenIds.has(agent.id)) {
+      log.error(`openclaw.json contains duplicate agent id "${agent.id}" — dropping the later entry. See \`bakin check openclaw\`.`)
+      continue
+    }
+
+    const resolvedWorkspace = agent.workspace ?? defaultWorkspace
+    if (resolvedWorkspace !== null) {
+      const owner = workspaceToFirstId.get(resolvedWorkspace)
+      if (owner !== undefined) {
+        log.error(`openclaw.json agent "${agent.id}" resolves to workspace "${resolvedWorkspace}" already claimed by "${owner}" — dropping "${agent.id}". See \`bakin check openclaw\`.`)
+        continue
+      }
+    }
+
+    seenIds.add(agent.id)
+    if (resolvedWorkspace !== null) {
+      workspaceToFirstId.set(resolvedWorkspace, agent.id)
+    }
+
+    const name = agent.identity?.name ?? agent.name ?? agent.id
+    const emoji = agent.identity?.emoji ?? ''
+    const role = resolveRole(agent.id)
+    accepted.push({
+      id: agent.id,
       name,
       emoji,
       role,
-      headshot: `/api/plugins/team/${a.id}/avatar`,
-    }
-  })
+      headshot: `/api/plugins/team/${agent.id}/avatar`,
+    })
+  }
+
+  if (!seenIds.has('main')) {
+    const seen = Array.from(seenIds)
+    log.error(`openclaw.json must contain an agent with id "main" — got ids: [${seen.join(', ')}]. See \`bakin check openclaw\`.`)
+    return []
+  }
+
+  return accepted
 }
 
 /** Get IDs of all configured agents */
