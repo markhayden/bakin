@@ -1,4 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+// Sandbox — registry tests don't touch disk but the isolation rule is
+// enforced globally to prevent any accidental writes to ~/.bakin/.
+const testDir = join(tmpdir(), `bakin-test-registry-${Date.now()}`)
+vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ content: testDir }),
+}))
 
 // Mock self-registering tool imports to prevent side-effect errors
 vi.mock('../../scripts/lib/log-progress', () => ({}))
@@ -10,9 +20,12 @@ import {
   addExecTool,
   getAllExecTools,
   getExecTool,
-  recordExecToolCall,
-  getExecToolStats,
 } from '../../scripts/lib/registry'
+
+// Per-tool call counting now lives in the unified usage recorder
+// (src/core/usage.ts). The registry is just a Map lookup; any test that
+// wants to assert call/error counts for a tool should drive recordUsage()
+// directly and query getUsageFeed({ kind: 'mcp' }).
 
 describe('exec tool registry', () => {
   const mockTool = {
@@ -36,24 +49,5 @@ describe('exec tool registry', () => {
     addExecTool(mockTool)
     const all = getAllExecTools()
     expect(all.find(t => t.name === 'bakin_exec_test_tool')).toBeDefined()
-  })
-
-  it('records tool call stats', () => {
-    addExecTool(mockTool)
-    recordExecToolCall('bakin_exec_test_tool')
-    recordExecToolCall('bakin_exec_test_tool')
-
-    const stats = getExecToolStats()
-    const stat = stats.find(s => s.name === 'bakin_exec_test_tool')
-    expect(stat).toBeDefined()
-    expect(stat!.calls).toBeGreaterThanOrEqual(2)
-    expect(stat!.lastUsed).toBeTruthy()
-  })
-
-  it('getExecToolStats includes source', () => {
-    addExecTool(mockTool)
-    const stats = getExecToolStats()
-    const stat = stats.find(s => s.name === 'bakin_exec_test_tool')
-    expect(stat!.source).toBe('test')
   })
 })
