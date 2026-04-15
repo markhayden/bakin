@@ -24,6 +24,8 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { createLogger } from '../logger'
 import { getOpenClawHome, getOpenClawPath } from '@bakin/core/openclaw-home'
+import { readOpenClawConfig, resetOpenClawConfigCache } from '@bakin/core/openclaw-config'
+import type { OpenClawConfig } from '@bakin/core/openclaw-config'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
 const log = createLogger('onboarding:openclaw')
@@ -51,6 +53,81 @@ function findBinary(): string | null {
     if (existsSync(candidate)) return candidate
   }
   return null
+}
+
+/**
+ * Reports-only integrity validator for a parsed openclaw.json.
+ *
+ * After issue #90, we rely on the invariant that OpenClaw's orchestrator
+ * lives at `id: "main"` in every install, that agent ids are unique, and
+ * that no two agents resolve to the same workspace (otherwise Bakin's
+ * adapter cannot distinguish them). This scan collects *every* violation
+ * so the user sees the whole picture on one run of `bakin check openclaw`
+ * instead of playing whack-a-mole.
+ *
+ * **Never mutates openclaw.json.** Section 7 of the issue-90 spec is
+ * explicit: doctor and migration code must never auto-write OpenClaw's
+ * config. The user owns that file and decides how to fix it.
+ */
+export function validateOpenClawIntegrity(config: OpenClawConfig | null): string[] {
+  const issues: string[] = []
+  if (!config) return issues
+
+  const list = Array.isArray(config.agents?.list) ? config.agents!.list! : []
+
+  // 1. Missing main — OpenClaw's orchestrator id is always "main" on every
+  //    install; Bakin's main-agent resolver depends on that invariant.
+  const hasMain = list.some((a) => a?.id === 'main')
+  if (!hasMain) {
+    issues.push(
+      `openclaw.json has no agent with id 'main'. Add an entry like ` +
+        `{ "id": "main", "identity": { "name": "<your-agent-name>" } }. ` +
+        `OpenClaw's orchestrator id is always 'main' on every install.`
+    )
+  }
+
+  // 2. Duplicate ids — collect each colliding id exactly once in
+  //    encounter order so the report is stable across runs.
+  const seen = new Set<string>()
+  const reportedDupes = new Set<string>()
+  for (const agent of list) {
+    const id = agent?.id
+    if (typeof id !== 'string' || id.length === 0) continue
+    if (seen.has(id)) {
+      if (!reportedDupes.has(id)) {
+        issues.push(
+          `openclaw.json has duplicate agent id '${id}'. Keep one entry; remove the other.`
+        )
+        reportedDupes.add(id)
+      }
+    } else {
+      seen.add(id)
+    }
+  }
+
+  // 3. Duplicate resolved workspaces — resolve via `agent.workspace ??
+  //    defaults.workspace`. Agents with no resolved workspace are skipped
+  //    because there's nothing for them to collide with.
+  const defaultWorkspace = config.agents?.defaults?.workspace ?? null
+  const firstOwner = new Map<string, string>()
+  for (const agent of list) {
+    const id = agent?.id
+    if (typeof id !== 'string' || id.length === 0) continue
+    const resolved = agent?.workspace ?? defaultWorkspace
+    if (!resolved) continue
+    const existing = firstOwner.get(resolved)
+    if (existing && existing !== id) {
+      issues.push(
+        `openclaw.json has two agents sharing workspace '${resolved}': ` +
+          `'${existing}' and '${id}'. Bakin's adapter cannot distinguish ` +
+          `them — rename the workspace of one, or remove the duplicate entry.`
+      )
+    } else if (!existing) {
+      firstOwner.set(resolved, id)
+    }
+  }
+
+  return issues
 }
 
 async function check(): Promise<CheckResult> {
@@ -104,6 +181,22 @@ async function check(): Promise<CheckResult> {
       message: `openclaw.json at ${configPath} is not valid JSON`,
       remediation: 'Fix or regenerate the file via OpenClaw, then rerun onboarding.',
       details: { binary, configPath, parseError: String(err) },
+    }
+  }
+
+  // Integrity scan — reports-only. Never mutates openclaw.json. We drop
+  // the mtime cache first so successive `bakin check openclaw` runs after
+  // a manual edit observe the fresh file even on coarse-mtime filesystems.
+  resetOpenClawConfigCache()
+  const config = readOpenClawConfig()
+  const integrityIssues = validateOpenClawIntegrity(config)
+  if (integrityIssues.length > 0) {
+    return {
+      name: 'openclaw',
+      status: 'broken',
+      message: `openclaw.json has ${integrityIssues.length} integrity issue${integrityIssues.length === 1 ? '' : 's'}:\n  - ${integrityIssues.join('\n  - ')}`,
+      remediation: 'Edit openclaw.json to resolve the listed issues, then rerun `bakin check openclaw`. Bakin will not modify openclaw.json for you.',
+      details: { binary, configPath, integrityIssues },
     }
   }
 
