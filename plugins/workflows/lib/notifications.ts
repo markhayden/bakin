@@ -3,7 +3,7 @@
  * Emits SSE events for UI updates and optionally sends chat notifications
  * (Discord first) when gates are reached or workflows complete.
  */
-import type { EventBus } from '../../../src/lib/plugin-types'
+import type { ApprovalActor, EventBus } from '../../../src/lib/plugin-types'
 import type { WorkflowInstance } from '../types'
 import { loadDiscordConfig, resolveChannelId } from '../../../scripts/lib/post-discord'
 import { createLogger } from '../../../src/core/logger'
@@ -243,12 +243,17 @@ export async function sendDiscordGateAlert(
 
 /**
  * Edit a Discord gate alert message to reflect the outcome (approved/rejected).
- * Removes the buttons and updates the embed color.
+ * Preserves the original embed's title and fields, appends a Decision and
+ * Decided-by field (plus Reason on reject), updates the color, and removes
+ * the buttons. Falls back to a stripped embed if the GET fails so the edit
+ * still happens with at least minimal context.
  */
 export async function editDiscordGateMessage(
   channelName: string,
   messageId: string,
-  outcome: 'approved' | 'rejected',
+  decision: 'approved' | 'rejected',
+  approver: ApprovalActor,
+  decidedAt: string,
   reason?: string,
 ): Promise<void> {
   const config = loadDiscordConfig()
@@ -257,26 +262,66 @@ export async function editDiscordGateMessage(
   const { id: channelId } = await resolveChannelId(channelName)
   if (!channelId) return
 
-  const color = outcome === 'approved' ? 5763719 : 15548997 // Green : Red
-  const statusText = outcome === 'approved'
-    ? 'Approved'
-    : `Rejected${reason ? `: ${reason}` : ''}`
+  const color = decision === 'approved' ? 5763719 : 15548997 // Green : Red
+  const decisionLabel = decision === 'approved' ? 'Approved' : 'Rejected'
+  const approverLabel = `${approver.displayName ?? approver.id} (${approver.source})`
+  const messageUrl = `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`
+  const authHeaders = { Authorization: `Bot ${config.botToken}` }
+
+  // GET the existing message to preserve its embed context. If this fails
+  // (missing READ_MESSAGE_HISTORY permission, message deleted, etc.), fall
+  // back to a stripped embed — the audit log is the canonical record either
+  // way, and the second summary message in C5 carries the full context.
+  let preservedEmbed: Record<string, unknown> | null = null
+  try {
+    const getRes = await fetch(messageUrl, { headers: authHeaders })
+    if (getRes.ok) {
+      const msg = await getRes.json() as { embeds?: Array<Record<string, unknown>> }
+      preservedEmbed = msg.embeds?.[0] ?? null
+    } else {
+      const text = await getRes.text()
+      log.warn(`Discord message GET failed (${getRes.status}): ${text} — falling back to stripped embed`)
+    }
+  } catch (err) {
+    log.warn('Discord message GET error — falling back to stripped embed', err as Error)
+  }
+
+  const decisionFields: Array<{ name: string; value: string; inline?: boolean }> = [
+    { name: 'Decision', value: decisionLabel, inline: true },
+    { name: 'Decided by', value: approverLabel, inline: true },
+  ]
+  if (decision === 'rejected' && reason) {
+    decisionFields.push({ name: 'Reason', value: reason })
+  }
+
+  const newEmbed: Record<string, unknown> = preservedEmbed
+    ? {
+        ...preservedEmbed,
+        color,
+        fields: [
+          ...((preservedEmbed.fields as Array<unknown> | undefined) ?? []),
+          ...decisionFields,
+        ],
+        timestamp: decidedAt,
+      }
+    : {
+        title: `Gate ${decisionLabel}`,
+        description: decision === 'approved' ? 'Approved' : `Rejected${reason ? `: ${reason}` : ''}`,
+        color,
+        fields: decisionFields,
+        timestamp: decidedAt,
+      }
 
   try {
-    const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
+    const res = await fetch(messageUrl, {
       method: 'PATCH',
       headers: {
-        Authorization: `Bot ${config.botToken}`,
+        ...authHeaders,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        embeds: [{
-          title: `Gate ${outcome === 'approved' ? 'Approved' : 'Rejected'}`,
-          description: statusText,
-          color,
-          timestamp: new Date().toISOString(),
-        }],
-        components: [], // Remove buttons
+        embeds: [newEmbed],
+        components: [],
       }),
     })
 
