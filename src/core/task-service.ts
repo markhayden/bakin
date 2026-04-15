@@ -10,6 +10,7 @@
 import { getContentDir } from './content-dir'
 import { appendAudit } from './audit'
 import { createLogger } from './logger'
+import { recordUsage } from './usage'
 // indexCompletedTask removed — tasks plugin now handles indexing via ctx.search
 import { checkAndContinueDependents } from './continuation'
 import * as openclaw from './openclaw-client'
@@ -102,6 +103,14 @@ export async function moveTaskWithEffects(
 
   const title = await resolveTitle(taskId)
   appendAudit(getContentDir(), 'task.moved', agent, { id: taskId, title, from: opts?.from, to }, opts?.channel)
+  recordUsage({
+    kind: 'agent',
+    name: `task.${to.toLowerCase()}`,
+    agent,
+    durationMs: null,
+    status: 'ok',
+    meta: { taskId, previousStatus: opts?.from, title },
+  })
 
   // Side effects when moved to done
   if (to.toLowerCase() === 'done') {
@@ -162,6 +171,14 @@ export async function blockTaskWithEffects(
   const title = await resolveTitle(taskId)
   const contentDir = getContentDir()
   appendAudit(contentDir, 'task.blocked', agent, { id: taskId, title, reason }, channel)
+  recordUsage({
+    kind: 'agent',
+    name: 'task.blocked',
+    agent,
+    durationMs: null,
+    status: 'ok',
+    meta: { taskId, title, reason },
+  })
 
   // Propagate block to parent task for child workflow tasks (e.g., "parentId--stepId")
   const dashIdx = taskId.indexOf('--')
@@ -250,6 +267,14 @@ export async function createTaskWithEffects(opts: {
     skipWorkflowReason: opts.skipWorkflowReason,
     suggestedWorkflow: suggested,
   }, opts.channel)
+  recordUsage({
+    kind: 'agent',
+    name: 'task.created',
+    agent: opts.createdBy || 'system',
+    durationMs: null,
+    status: 'ok',
+    meta: { taskId: task.id, title: opts.title, assignee: opts.assignee, workflowId: effectiveWorkflowId },
+  })
   return { id: task.id, workflowId: effectiveWorkflowId, suggestedWorkflow: suggested }
 }
 

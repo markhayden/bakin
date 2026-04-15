@@ -7,6 +7,7 @@ import { join } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
+import { recordUsage } from './usage'
 import * as openclaw from './openclaw-client'
 import { isStale } from '../lib/format'
 import { getHookRegistry } from '../lib/plugin-registry'
@@ -279,6 +280,8 @@ export async function dispatchSingleTask(
     const taskWithWorkflow = task as typeof task & { workflowId?: string }
     if (taskWithWorkflow.workflowId) {
       const dispatchedSet = new Set(state.dispatched)
+      const wfStart = Date.now()
+      const wfAgent = task.agent ?? getMainAgentId()
       try {
         await dispatchWorkflowTask(
           { ...taskWithWorkflow, workflowId: taskWithWorkflow.workflowId },
@@ -288,8 +291,24 @@ export async function dispatchSingleTask(
         saveDispatchState(contentDir, state)
         appendAudit(contentDir, 'task.kicked', source, { id: taskId, title: task.title, workflow: true })
         log.info('Single-task dispatch (workflow)', { id: taskId, title: task.title, source })
+        recordUsage({
+          kind: 'agent',
+          name: 'dispatch',
+          agent: wfAgent,
+          durationMs: Date.now() - wfStart,
+          status: 'ok',
+          meta: { taskId: task.id, title: task.title, workflow: true, source },
+        })
       } catch (err) {
         log.error(`dispatchSingleTask: workflow dispatch failed for "${task.title}"`, err)
+        recordUsage({
+          kind: 'agent',
+          name: 'dispatch',
+          agent: wfAgent,
+          durationMs: Date.now() - wfStart,
+          status: 'error',
+          meta: { taskId: task.id, title: task.title, workflow: true, source, error: formatDispatchError(err) },
+        })
       }
       return
     }
@@ -297,6 +316,7 @@ export async function dispatchSingleTask(
     // Regular task dispatch
     const targetAgent = task.agent ?? getMainAgentId()
     const message = buildDispatchMessage(task, targetAgent, contentDir, port)
+    const dispatchStart = Date.now()
 
     try {
       // Move to inProgress BEFORE sending message to eliminate race condition
@@ -311,6 +331,14 @@ export async function dispatchSingleTask(
       appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title })
       appendAudit(contentDir, 'task.kicked', source, { id: task.id, title: task.title })
       log.info('Single-task dispatch', { id: task.id, title: task.title, agent: targetAgent, source })
+      recordUsage({
+        kind: 'agent',
+        name: 'dispatch',
+        agent: targetAgent,
+        durationMs: Date.now() - dispatchStart,
+        status: 'ok',
+        meta: { taskId: task.id, title: task.title, source },
+      })
     } catch (err) {
       log.error(`dispatchSingleTask: failed to dispatch "${task.title}" to ${targetAgent}`, err)
 
@@ -325,6 +353,15 @@ export async function dispatchSingleTask(
       } catch {
         // best effort
       }
+
+      recordUsage({
+        kind: 'agent',
+        name: 'dispatch',
+        agent: targetAgent,
+        durationMs: Date.now() - dispatchStart,
+        status: 'error',
+        meta: { taskId: task.id, title: task.title, source, error: formatDispatchError(err) },
+      })
     }
   })
 }
