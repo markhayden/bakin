@@ -92,6 +92,7 @@ interface UsageEntry {
   agent: string | null
   durationMs: number | null
   status: 'ok' | 'error'
+  meta?: Record<string, unknown>
 }
 
 interface TopByNameRow {
@@ -237,6 +238,16 @@ const STATUS_STYLES: Record<string, string> = {
 // Usage tab panels
 // ---------------------------------------------------------------------------
 
+function extractErrorMessage(entry: UsageEntry): string {
+  const meta = entry.meta ?? {}
+  if (typeof meta.error === 'string' && meta.error.length > 0) return meta.error
+  if (typeof meta.httpStatus === 'number') {
+    const method = typeof meta.method === 'string' ? `${meta.method} ` : ''
+    return `${method}HTTP ${meta.httpStatus}`
+  }
+  return 'Error (no detail)'
+}
+
 function UsageBarsPanel({
   feed,
   kind,
@@ -248,6 +259,8 @@ function UsageBarsPanel({
   emptyLabel: string
   labelTransform?: (name: string) => string
 }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
   if (!feed || feed.topByName.length === 0) {
     return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
   }
@@ -255,17 +268,75 @@ function UsageBarsPanel({
   const lastLabel = mostRecent
     ? labelTransform ? labelTransform(mostRecent.name) : mostRecent.name
     : null
+  const max = Math.max(...feed.topByName.map(r => r.count), 1)
+
   return (
     <div className="space-y-3">
-      <HorizontalBars
-        items={feed.topByName.map((row) => ({
-          label: labelTransform ? labelTransform(row.name) : row.name,
-          value: row.count,
-          sublabel: `${row.errors > 0 ? `${row.errors} err` : 'ok'}${
-            row.medianDurationMs !== null ? ` · ${row.medianDurationMs}ms` : ''
-          }`,
-        }))}
-      />
+      <div className="space-y-2.5">
+        {feed.topByName.map((row, i) => {
+          const label = labelTransform ? labelTransform(row.name) : row.name
+          const isExpanded = expanded === row.name
+          const hasErrors = row.errors > 0
+          const errorEntries = hasErrors
+            ? feed.recent.filter(e => e.name === row.name && e.status === 'error')
+            : []
+
+          return (
+            <div key={row.name}>
+              <button
+                type="button"
+                onClick={() => hasErrors && setExpanded(isExpanded ? null : row.name)}
+                disabled={!hasErrors}
+                aria-expanded={isExpanded}
+                className={`w-full text-left group ${hasErrors ? 'cursor-pointer' : 'cursor-default'}`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-mono truncate mr-2 ${hasErrors ? 'text-foreground group-hover:text-accent' : 'text-muted-foreground'}`}>
+                    {label}
+                  </span>
+                  <span className="text-xs font-mono font-medium shrink-0">
+                    {row.count}
+                    <span className={`ml-1.5 font-normal ${hasErrors ? 'text-red-400' : 'text-muted-foreground'}`}>
+                      {hasErrors ? `${row.errors} err` : 'ok'}
+                      {row.medianDurationMs !== null && ` · ${row.medianDurationMs}ms`}
+                    </span>
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${BAR_COLORS[i % BAR_COLORS.length]} transition-all duration-500`}
+                    style={{ width: `${(row.count / max) * 100}%` }}
+                  />
+                </div>
+              </button>
+
+              {isExpanded && errorEntries.length > 0 && (
+                <div className="mt-2 ml-2 pl-3 border-l-2 border-red-500/40 space-y-1.5">
+                  {errorEntries.map((e, ei) => (
+                    <div key={ei} className="text-[11px] font-mono">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span className="text-red-400">{formatAge(e.ts)}</span>
+                        {e.agent && <span>· {e.agent}</span>}
+                        {e.durationMs !== null && <span>· {e.durationMs}ms</span>}
+                      </div>
+                      <div className="text-red-400/90 break-all whitespace-pre-wrap">
+                        {extractErrorMessage(e)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {isExpanded && errorEntries.length === 0 && (
+                <p className="mt-2 ml-2 text-[11px] text-muted-foreground italic">
+                  Error older than the recent window — details not retained.
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
       <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[11px] text-muted-foreground">
         <span>
           {feed.totals.count} {kind} calls
@@ -618,47 +689,49 @@ export function HealthPage() {
       )}
 
       {/* Usage — unified tabbed section backed by /api/plugins/health/usage-feed */}
-      <div className="space-y-4">
-        <UnderlineTabs
-          tabs={USAGE_TABS}
-          value={usageTab}
-          onValueChange={setUsageTab}
-          rightSlot={
-            <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
-              {(['5m', '1h', '24h'] as const).map((w) => (
-                <button
-                  key={w}
-                  onClick={() => setUsageWindow(w)}
-                  className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
-                    usageWindow === w
-                      ? 'bg-foreground/10 text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {w}
-                </button>
-              ))}
-            </div>
-          }
-        />
+      <Card>
+        <CardContent className="pt-4 space-y-4">
+          <UnderlineTabs
+            tabs={USAGE_TABS}
+            value={usageTab}
+            onValueChange={setUsageTab}
+            rightSlot={
+              <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+                {(['5m', '1h', '24h'] as const).map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => setUsageWindow(w)}
+                    className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
+                      usageWindow === w
+                        ? 'bg-foreground/10 text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {w}
+                  </button>
+                ))}
+              </div>
+            }
+          />
 
-        {usageTab === 'tools' && (
-          <UsageBarsPanel
-            feed={usageFeed}
-            kind="mcp"
-            emptyLabel="No MCP calls in this window"
-            labelTransform={(name) => name.replace('bakin_exec_', '')}
-          />
-        )}
-        {usageTab === 'endpoints' && (
-          <UsageBarsPanel
-            feed={usageFeed}
-            kind="rest"
-            emptyLabel="No REST requests in this window"
-          />
-        )}
-        {usageTab === 'agents' && <AgentUsagePanel feed={usageFeed} />}
-      </div>
+          {usageTab === 'tools' && (
+            <UsageBarsPanel
+              feed={usageFeed}
+              kind="mcp"
+              emptyLabel="No MCP calls in this window"
+              labelTransform={(name) => name.replace('bakin_exec_', '')}
+            />
+          )}
+          {usageTab === 'endpoints' && (
+            <UsageBarsPanel
+              feed={usageFeed}
+              kind="rest"
+              emptyLabel="No REST requests in this window"
+            />
+          )}
+          {usageTab === 'agents' && <AgentUsagePanel feed={usageFeed} />}
+        </CardContent>
+      </Card>
 
       {/* Agent Context Usage */}
       {usage.length > 0 && (
