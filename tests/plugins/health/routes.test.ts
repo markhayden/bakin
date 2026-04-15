@@ -84,6 +84,11 @@ vi.mock('../../../src/core/search-registry', () => ({
   })),
 }))
 
+// Defensive stub — the test isolation hook scans for plugin refs in text and
+// flags any mention of plugins/tasks even though we never import the module.
+// The strings /api/plugins/tasks/* in usage-feed assertions trip the scanner.
+vi.mock('../../../plugins/tasks/lib/flow-store', () => ({}))
+
 // Mock globalThis registry accessors
 ;(globalThis as any).__bakinGetRegistrySnapshot = () => [
   { id: 'tasks', name: 'Tasks', version: '1.0.0', description: 'Task management', source: 'built-in', routes: 5 },
@@ -116,6 +121,7 @@ vi.stubGlobal('fetch', mockFetch)
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool, makeRequest } from '../test-helpers'
 import healthPlugin from '../../../plugins/health'
+import { recordUsage, clearUsage } from '../../../src/core/usage'
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -138,8 +144,8 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 6 routes', () => {
-    expect(activated.routes.length).toBe(6)
+  it('registers 7 routes', () => {
+    expect(activated.routes.length).toBe(7)
   })
 
   it('registers 2 exec tools', () => {
@@ -217,6 +223,84 @@ describe('Health Plugin Routes', () => {
       expect(Array.isArray(body.plugins)).toBe(true)
       expect(Array.isArray(body.execTools)).toBe(true)
       expect((body.plugins as unknown[]).length).toBe(2)
+    })
+  })
+
+  describe('GET /summary errors1h', () => {
+    it('includes errors1h sourced from the real recorder', async () => {
+      clearUsage()
+      recordUsage({ kind: 'mcp', name: 't1', agent: 'a', durationMs: 5, status: 'error' })
+      recordUsage({ kind: 'mcp', name: 't2', agent: 'a', durationMs: 5, status: 'error' })
+      recordUsage({ kind: 'rest', name: '/api/x', agent: null, durationMs: 5, status: 'error' })
+      recordUsage({ kind: 'agent', name: 'dispatch', agent: 'a', durationMs: null, status: 'ok' })
+
+      const route = findRoute(activated.routes, 'GET', '/summary')!
+      const { body } = await callRoute(route, activated.ctx)
+      expect(body.errors1h).toEqual({
+        total: 3,
+        byKind: { mcp: 2, rest: 1, agent: 0 },
+      })
+      clearUsage()
+    })
+  })
+
+  describe('GET /usage-feed', () => {
+    it('returns usage entries from the real recorder', async () => {
+      clearUsage()
+      recordUsage({ kind: 'mcp', name: 'bakin_exec_tasks_list', agent: 'roscoe', durationMs: 12, status: 'ok' })
+      recordUsage({ kind: 'mcp', name: 'bakin_exec_tasks_list', agent: 'roscoe', durationMs: 8, status: 'ok' })
+      recordUsage({ kind: 'rest', name: '/api/plugins/tasks/list', agent: null, durationMs: 20, status: 'ok' })
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      expect(route).toBeDefined()
+
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: { kind: 'mcp', window: '1h' },
+      })
+      expect(status).toBe(200)
+      expect(body.totals.count).toBe(2)
+      expect(body.topByName[0].name).toBe('bakin_exec_tasks_list')
+      expect(body.topByName[0].count).toBe(2)
+      clearUsage()
+    })
+
+    it('defaults window to 1h when omitted', async () => {
+      clearUsage()
+      recordUsage({ kind: 'agent', name: 'heartbeat', agent: 'roscoe', durationMs: null, status: 'ok' })
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx)
+      expect(status).toBe(200)
+      expect(body.totals.count).toBe(1)
+      clearUsage()
+    })
+
+    it('filters by agent', async () => {
+      clearUsage()
+      recordUsage({ kind: 'mcp', name: 'x', agent: 'alice', durationMs: 1, status: 'ok' })
+      recordUsage({ kind: 'mcp', name: 'x', agent: 'bob', durationMs: 1, status: 'ok' })
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { body } = await callRoute(route, activated.ctx, {
+        searchParams: { window: '1h', agent: 'alice' },
+      })
+      expect(body.totals.count).toBe(1)
+      clearUsage()
+    })
+
+    it('rejects invalid kind with 400', async () => {
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: { kind: 'bogus', window: '1h' },
+      })
+      expect(status).toBe(400)
+      expect(body.error).toBe('Invalid query')
+    })
+
+    it('rejects invalid window with 400', async () => {
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: { window: '99y' },
+      })
+      expect(status).toBe(400)
     })
   })
 
