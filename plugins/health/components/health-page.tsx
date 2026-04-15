@@ -331,7 +331,7 @@ export function HealthPage() {
         fetch('/api/plugins/health/summary'),
         fetch('/api/plugins/health/registry'),
         fetch('/api/plugins/health/usage'),
-        fetch('/api/antfly/health'),
+        fetch('/api/plugins/health/antfly-status'),
       ])
       const json = await summaryRes.json()
       setData(json)

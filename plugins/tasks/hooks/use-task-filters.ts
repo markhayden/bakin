@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo } from 'react'
-import { useAntflySearch, reorderByAntflyResults, type AntflySearchResult } from '@/hooks/use-antfly-search'
+import { useSearch, reorderBySearchResults, type SearchResult } from '@/hooks/use-search'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
 export interface FlatTask extends Task {
@@ -20,8 +20,8 @@ function matchesSearch(task: Task, q: string): boolean {
   )
 }
 
-function reorderColumn(tasks: Task[], antflyResults: AntflySearchResult[]): Task[] {
-  return reorderByAntflyResults(tasks, antflyResults)
+function reorderColumn(tasks: Task[], searchResults: SearchResult[]): Task[] {
+  return reorderBySearchResults(tasks, searchResults)
 }
 
 interface TaskFilterState {
@@ -30,9 +30,9 @@ interface TaskFilterState {
   statusFilter: string[]
 }
 
-export function filterBoardColumns(columns: TaskColumns, search: string, agentFilter: string, antflyResults?: AntflySearchResult[]): TaskColumns {
+export function filterBoardColumns(columns: TaskColumns, search: string, agentFilter: string, searchResults?: SearchResult[]): TaskColumns {
   const result = {} as TaskColumns
-  const matchIds = antflyResults?.length ? new Set(antflyResults.map(r => r.id)) : null
+  const matchIds = searchResults?.length ? new Set(searchResults.map(r => r.id)) : null
 
   for (const colId of COLUMN_IDS) {
     let tasks = columns[colId]
@@ -44,7 +44,7 @@ export function filterBoardColumns(columns: TaskColumns, search: string, agentFi
       }
     }
     if (agentFilter !== 'all') tasks = tasks.filter(t => t.agent === agentFilter)
-    if (antflyResults?.length) tasks = reorderColumn(tasks, antflyResults)
+    if (searchResults?.length) tasks = reorderColumn(tasks, searchResults)
     result[colId] = tasks
   }
 
@@ -54,22 +54,21 @@ export function filterBoardColumns(columns: TaskColumns, search: string, agentFi
 export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
   const { search, agentFilter, statusFilter } = state
 
-  const antfly = useAntflySearch({
-    table: 'tasks',
+  const searchHook = useSearch({
+    plugin: 'tasks',
     facets: ['status', 'agent', 'created_by'],
     debounce: 300,
   })
 
-  // Fire Antfly search when search text changes
   useEffect(() => {
-    if (search) antfly.search(search)
-    else antfly.clear()
+    if (search) searchHook.search(search)
+    else searchHook.clear()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
   const filteredColumns = useMemo(() => {
-    return filterBoardColumns(columns, search, agentFilter, antfly.results)
-  }, [columns, search, agentFilter, antfly.results])
+    return filterBoardColumns(columns, search, agentFilter, searchHook.results)
+  }, [columns, search, agentFilter, searchHook.results])
 
   const allTasksFlat = useMemo(() => {
     const flat: FlatTask[] = []
@@ -80,8 +79,8 @@ export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
     }
     let filtered = flat
     if (search) {
-      if (antfly.results.length) {
-        const matchIds = new Set(antfly.results.map(r => r.id))
+      if (searchHook.results.length) {
+        const matchIds = new Set(searchHook.results.map(r => r.id))
         filtered = filtered.filter(t => matchIds.has(t.id))
       } else {
         filtered = filtered.filter(t => matchesSearch(t, search))
@@ -89,9 +88,14 @@ export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
     }
     if (agentFilter !== 'all') filtered = filtered.filter(t => t.agent === agentFilter)
     if (statusFilter.length > 0) filtered = filtered.filter(t => statusFilter.includes(t.status))
-    if (antfly.results.length) filtered = reorderByAntflyResults(filtered, antfly.results)
+    if (searchHook.results.length) filtered = reorderBySearchResults(filtered, searchHook.results)
     return filtered
-  }, [columns, search, agentFilter, statusFilter, antfly.results])
+  }, [columns, search, agentFilter, statusFilter, searchHook.results])
 
-  return { filteredColumns, allTasksFlat, aggregations: antfly.aggregations }
+  return {
+    filteredColumns,
+    allTasksFlat,
+    aggregations: searchHook.aggregations,
+    searchResults: searchHook.results,
+  }
 }

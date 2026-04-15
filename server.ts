@@ -26,6 +26,7 @@ import * as vault from './src/core/vault'
 import * as openclaw from './src/core/openclaw-client'
 import { getMainAgentId } from './src/core/main-agent'
 import { handleJsonPost, jsonResponse } from './src/core/middleware'
+import { writeCrossPluginSearchResponse } from './src/core/api-search-handler'
 import * as watcher from './src/core/watcher'
 import * as dispatch from './src/core/dispatch'
 import * as watchdog from './src/core/watchdog'
@@ -69,9 +70,6 @@ app.prepare().then(async () => {
   // Initialize vault (load credentials from disk)
   vault.initialize()
 
-  // Load settings (initializes with defaults if no settings file)
-  const settings = getSettings()
-
   // Initialize plugin registry
   log.info('Loading plugins...')
   await pluginRegistry.initialize(config, storage, eventBus)
@@ -96,53 +94,10 @@ app.prepare().then(async () => {
   // and we trigger a full reindex after plugins are ready.
   const migration = await migrateIfNeeded()
 
-  // Register audit content type for search (core module, not a plugin)
-  const { createRegisteredTables, buildSearchAPI, runPendingReconciles } = await import('./src/core/search-registry')
-  const auditSearch = buildSearchAPI('_audit')
-  auditSearch.registerContentType({
-    table: 'audit',
-    schema: {
-      event: { type: 'keyword' },
-      agent: { type: 'keyword' },
-      channel: { type: 'keyword' },
-      content: { type: 'text' },
-      created_at: { type: 'datetime' },
-    },
-    searchableFields: ['content', 'event'],
-    rerankField: 'content',
-    embeddingTemplate: '{{event}} {{agent}} {{content}}',
-    facets: ['event', 'agent', 'channel'],
-    ttl: settings.antfly.auditTtl,
-    ttlField: 'created_at',
-    reindex: async function* () {
-      // Read audit.jsonl and yield each entry
-      const { createReadStream } = await import('fs')
-      const { createInterface } = await import('readline')
-      const auditPath = join(CONTENT_DIR, 'audit.jsonl')
-      if (!existsSync(auditPath)) return
-      const rl = createInterface({ input: createReadStream(auditPath) })
-      for await (const line of rl) {
-        if (!line.trim()) continue
-        try {
-          const entry = JSON.parse(line)
-          const key = `audit-${entry.ts}-${entry.event}`
-          yield {
-            key,
-            doc: {
-              event: entry.event,
-              agent: entry.agent,
-              channel: entry.channel || '',
-              content: `[${entry.ts}] ${entry.event} by ${entry.agent}: ${JSON.stringify(entry.data || {})}`,
-              created_at: entry.ts,
-            },
-          }
-        } catch { /* skip malformed lines */ }
-      }
-    },
-    verifyExists: async () => true, // audit entries are append-only, never deleted
-  })
-
-  // Create Antfly tables for all registered search content types
+  // Create Antfly tables for all registered search content types.
+  // Plugins (including memory, which owns the audit content type)
+  // registered their schemas during pluginRegistry.initialize() above.
+  const { createRegisteredTables, runPendingReconciles } = await import('./src/core/search-registry')
   await createRegisteredTables()
 
   // Drain any startup reconciles enqueued by registerFileBackedContentType.
@@ -244,21 +199,8 @@ app.prepare().then(async () => {
 
     // Search endpoint — cross-table or per-table Antfly search
     if (url.pathname === '/api/search' && req.method === 'GET') {
-      const query = url.searchParams.get('q')
-      if (!query) {
-        jsonResponse(res, 400, { error: 'Missing ?q= parameter' })
-        return
-      }
-      const { crossTableSearch } = require('./src/core/search-registry')
-      crossTableSearch(query, {
-        table: url.searchParams.get('table') || undefined,
-        limit: Number(url.searchParams.get('limit')) || undefined,
-        offset: Number(url.searchParams.get('offset')) || undefined,
-        facets: url.searchParams.get('facets')?.split(',').filter(Boolean) || undefined,
-      }).then((response: Record<string, unknown>) => {
-        jsonResponse(res, 200, response)
-      }).catch((err: unknown) => {
-        log.error('Search request failed', err)
+      writeCrossPluginSearchResponse(url, res).catch((err) => {
+        log.error('Search response write failed', err)
         jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
       })
       return
@@ -361,18 +303,6 @@ app.prepare().then(async () => {
         })
       }).catch((err: unknown) => {
         log.error('Reindex failed', err, { table, rebuild })
-        jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
-      })
-      return
-    }
-
-    // Antfly health endpoint
-    if (url.pathname === '/api/antfly/health' && req.method === 'GET') {
-      const { getSearchHealth } = require('./src/core/search-registry')
-      getSearchHealth().then((health: Record<string, unknown>) => {
-        jsonResponse(res, 200, health)
-      }).catch((err: unknown) => {
-        log.error('Antfly health check failed', err)
         jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
       })
       return

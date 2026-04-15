@@ -202,7 +202,7 @@ Bakin exposes a REST API on the same port as the dashboard. Full documentation i
 | `GET` | `/api/agents/avatar` | Agent avatar image (`?id=<agentId>`) |
 | `GET` | `/api/plugins/health/doctor` | Run health checks (`?fresh=true` to force re-run) |
 | `GET` | `/api/search` | Search indexed content (`?q=<query>&table=&agent=&limit=&facets=`) |
-| `GET` | `/api/antfly/health` | Search table stats and document counts |
+| `GET` | `/api/plugins/health/antfly-status` | Search table stats and document counts |
 | `POST` | `/api/reindex` | Reindex content to Antfly (`?table=&rebuild=true`) |
 | `GET` | `/api/docs` | API documentation (JSON) |
 | `POST` | `/api/activity/emit` | Emit activity event |
