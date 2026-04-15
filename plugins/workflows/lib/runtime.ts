@@ -17,6 +17,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
 import type {
+  ApprovalActor,
   WorkflowDefinition,
   WorkflowInstance,
   WorkflowStep,
@@ -753,8 +754,13 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     const childDef = loadDefinition(nested.workflow_id, contentDir)
     createBoardTaskForChild(childTaskId, instance.taskId, nested, childDef, instance.resolvedAgent)
   } else if (nextStep.type === 'gate') {
-    // Gates go to pending_approval
-    instance.stepStates[nextStep.id] = { status: 'pending_approval', startedAt: now }
+    // Gates go to pending_approval — record requestedAt so the decision
+    // timeline (and Discord summary duration) can be computed later.
+    instance.stepStates[nextStep.id] = {
+      status: 'pending_approval',
+      startedAt: now,
+      requestedAt: now,
+    }
     instance.status = 'pending_approval'
 
     // Gather prior step output for reviewer context
@@ -797,15 +803,38 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
 
 // ─── Gate Operations ────────────────────────────────────────────────────────
 
+export interface ApproveGateOptions {
+  approver?: ApprovalActor
+  contentDir?: string
+}
+
+export interface RejectGateOptions {
+  approver?: ApprovalActor
+  rewindTo?: string
+  contentDir?: string
+}
+
+/** Decision record returned by approveGate/rejectGate so callers (Discord
+ * summary, audit) don't have to reload the instance. requestedAt may be
+ * undefined for older instances created before #91 landed. */
+export interface GateDecisionRecord {
+  gateLabel: string
+  approver?: ApprovalActor
+  requestedAt?: string
+  decidedAt: string
+  durationMs?: number
+  reason?: string
+}
+
 /**
  * Approve a gate step, advancing the workflow past it.
  */
 export function approveGate(
   taskId: string,
   stepId: string,
-  contentDir?: string
-): { success: boolean; errors?: string[]; nextStep?: ReturnType<typeof getCurrentStep> | undefined } {
-  const dir = contentDir || getContentDir()
+  opts: ApproveGateOptions = {},
+): { success: boolean; errors?: string[]; nextStep?: ReturnType<typeof getCurrentStep> | undefined; decision?: GateDecisionRecord } {
+  const dir = opts.contentDir || getContentDir()
   const instance = loadInstance(taskId, dir)
   if (!instance) return { success: false, errors: ['Workflow instance not found'] }
 
@@ -822,16 +851,29 @@ export function approveGate(
     return { success: false, errors: [`Gate "${stepId}" is not pending approval (current: ${stepState?.status})`] }
   }
 
-  // Mark gate as complete
+  // Mark gate as complete and record the decision
   const now = new Date().toISOString()
+  const requestedAt = stepState.requestedAt
   stepState.status = 'complete'
   stepState.completedAt = now
+  stepState.decidedAt = now
+  if (opts.approver) stepState.approver = opts.approver
 
   instance.history.push({
     stepId,
     status: 'complete',
     completedAt: now,
+    approver: opts.approver,
+    requestedAt,
   })
+
+  const decision: GateDecisionRecord = {
+    gateLabel: step.label || stepId,
+    approver: opts.approver,
+    requestedAt,
+    decidedAt: now,
+    durationMs: requestedAt ? Date.parse(now) - Date.parse(requestedAt) : undefined,
+  }
 
   instance.status = 'in_progress'
   advanceWorkflow(instance, def, dir)
@@ -859,7 +901,7 @@ export function approveGate(
     // If this is a child workflow, propagate completion to parent
     if (instance.parentTaskId && instance.parentStepId) {
       propagateChildCompletion(instance, dir)
-      return { success: true, nextStep: { status: 'complete' } }
+      return { success: true, nextStep: { status: 'complete' }, decision }
     }
 
     // Auto-move the task to done on the taskboard + emit audit event
@@ -872,11 +914,11 @@ export function approveGate(
         .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: instance.taskId, from: 'review', to: 'done' }))
         .catch(() => {})
     }).catch(() => {})
-    return { success: true, nextStep: { status: 'complete' } }
+    return { success: true, nextStep: { status: 'complete' }, decision }
   }
 
   const nextStep = getCurrentStep(taskId, undefined, dir)
-  return { success: true, nextStep: nextStep || undefined }
+  return { success: true, nextStep: nextStep || undefined, decision }
 }
 
 /**
@@ -887,10 +929,9 @@ export function rejectGate(
   taskId: string,
   stepId: string,
   reason: string,
-  rewindTo?: string,
-  contentDir?: string
-): { success: boolean; errors?: string[]; rewoundTo?: string } {
-  const dir = contentDir || getContentDir()
+  opts: RejectGateOptions = {},
+): { success: boolean; errors?: string[]; rewoundTo?: string; decision?: GateDecisionRecord } {
+  const dir = opts.contentDir || getContentDir()
   const instance = loadInstance(taskId, dir)
   if (!instance) return { success: false, errors: ['Workflow instance not found'] }
 
@@ -909,7 +950,7 @@ export function rejectGate(
 
   // Determine rewind target
   const gateStep = step as GateStep
-  const targetId = rewindTo || gateStep.on_reject?.goto
+  const targetId = opts.rewindTo || gateStep.on_reject?.goto
   if (!targetId) {
     return { success: false, errors: ['No rewind target specified and gate has no on_reject.goto'] }
   }
@@ -919,17 +960,33 @@ export function rejectGate(
     return { success: false, errors: [`Rewind target step not found: ${targetId}`] }
   }
 
-  // Record rejection in history
+  // Record rejection in history (durable — survives the rewind reset that
+  // wipes the gate's stepState back to 'pending' for re-presentation).
   const now = new Date().toISOString()
+  const requestedAt = stepState.requestedAt
   instance.history.push({
     stepId,
     status: 'rejected',
     completedAt: now,
     rejectionReason: reason,
+    approver: opts.approver,
+    requestedAt,
   })
 
-  // Reset: mark gate as rejected
+  const decision: GateDecisionRecord = {
+    gateLabel: gateStep.label || stepId,
+    approver: opts.approver,
+    requestedAt,
+    decidedAt: now,
+    durationMs: requestedAt ? Date.parse(now) - Date.parse(requestedAt) : undefined,
+    reason,
+  }
+
+  // Mark gate as rejected pre-reset (the rewind loop below will overwrite,
+  // but the history above is the durable record).
   stepState.status = 'rejected'
+  stepState.decidedAt = now
+  if (opts.approver) stepState.approver = opts.approver
 
   // Capture previous output from the rewind target before resetting
   const targetPreviousOutput = instance.stepStates[targetId]?.output
@@ -979,7 +1036,7 @@ export function rejectGate(
       .catch(() => {})
   }).catch(() => {})
 
-  return { success: true, rewoundTo: targetId }
+  return { success: true, rewoundTo: targetId, decision }
 }
 
 /**
