@@ -12,7 +12,7 @@ import { isStale } from '../lib/format'
 import * as openclaw from './openclaw-client'
 import { getMainAgentId } from './main-agent'
 import { getHookRegistry } from '../lib/plugin-registry'
-import { getRecentStatsForPathPrefix } from './request-log'
+import { getStatsByMs } from './usage'
 
 const log = createLogger('watchdog')
 const hooks = () => getHookRegistry()
@@ -191,7 +191,7 @@ export function start(contentDir: string, port: number): void {
       // the stuck-task loop or the workflow checks below.
       try {
         const wd = settings.watchdog
-        const mcpStats = getRecentStatsForPathPrefix('/mcp', wd.mcpWindowMs)
+        const mcpStats = getStatsByMs({ kind: 'mcp', windowMs: wd.mcpWindowMs })
         if (mcpStats.total >= wd.mcpMinSamples) {
           const errorRate = mcpStats.errors / mcpStats.total
           if (errorRate >= wd.mcpErrorThreshold) {
@@ -237,7 +237,7 @@ export function start(contentDir: string, port: number): void {
       // through /api/plugins/*. Alert when that surface starts flapping.
       try {
         const wd = settings.watchdog
-        const restStats = getRecentStatsForPathPrefix('/api/plugins', wd.restWindowMs)
+        const restStats = getStatsByMs({ kind: 'rest', windowMs: wd.restWindowMs })
         if (restStats.total >= wd.restMinSamples) {
           const errorRate = restStats.errors / restStats.total
           if (errorRate >= wd.restErrorThreshold) {

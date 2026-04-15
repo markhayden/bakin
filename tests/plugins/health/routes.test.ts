@@ -1,16 +1,17 @@
 /**
  * Tests for health plugin routes and exec tools.
- * Covers all API routes and both bakin_exec_health_* tools.
+ *
+ * These tests exercise the unified usage recorder directly — they seed
+ * `recordUsage()` entries and assert the routes derive their responses
+ * from the same state the real server uses. The previous version of this
+ * file mocked every stat source and passed even when the wiring was
+ * broken; that is the failure mode the overhaul is meant to prevent.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { ActivatedPlugin } from '../test-helpers'
-
-// ---------------------------------------------------------------------------
-// Temp directory
-// ---------------------------------------------------------------------------
 
 const testDir = join(tmpdir(), `bakin-test-health-routes-${Date.now()}`)
 
@@ -35,26 +36,6 @@ vi.mock('../../../src/core/settings', () => ({
   getSettings: vi.fn(() => ({
     openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
   })),
-}))
-
-const mockRequestStats = {
-  totalRequests: 42,
-  totalErrors: 2,
-  upSince: '2026-04-01T00:00:00Z',
-  endpoints: [],
-  recent: [],
-}
-
-vi.mock('../../../src/core/request-log', () => ({
-  getRequestStats: () => mockRequestStats,
-  getRecentStatsForPathPrefix: () => ({ total: 0, errors: 0 }),
-  getRestStatsByPlugin: () => ({
-    windowSec: 0,
-    total: 0,
-    errors: 0,
-    successRate: 1,
-    byPlugin: [],
-  }),
 }))
 
 const mockDoctorResults = [
@@ -84,48 +65,32 @@ vi.mock('../../../src/core/search-registry', () => ({
   })),
 }))
 
-// Defensive stub — the test isolation hook scans for plugin refs in text and
-// flags any mention of plugins/tasks even though we never import the module.
-// The strings /api/plugins/tasks/* in usage-feed assertions trip the scanner.
+// Defensive stub — the test isolation hook scans for plugin refs in text
+// and flags any mention of plugins/tasks even though we never import the
+// module. Usage-feed assertions contain /api/plugins/tasks/* strings.
 vi.mock('../../../plugins/tasks/lib/flow-store', () => ({}))
 
-// Mock globalThis registry accessors
-;(globalThis as any).__bakinGetRegistrySnapshot = () => [
+// Registry snapshot accessor (plugins list only — exec tool stats are gone).
+;(globalThis as unknown as { __bakinGetRegistrySnapshot: () => unknown[] }).__bakinGetRegistrySnapshot = () => [
   { id: 'tasks', name: 'Tasks', version: '1.0.0', description: 'Task management', source: 'built-in', routes: 5 },
   { id: 'health', name: 'Health', version: '1.0.0', description: 'System health', source: 'built-in', routes: 5 },
 ]
-;(globalThis as any).__bakinGetExecToolStats = () => [
-  { name: 'bakin_exec_tasks_list', source: 'tasks', calls: 12, lastUsed: '2026-04-01T10:00:00Z' },
-  { name: 'bakin_exec_health_status', source: 'health', calls: 0, lastUsed: null },
-]
 
-// Mock fetch for MCP stats
-const mockFetch = vi.fn(async (url: string) => {
-  if (url.includes('/mcp/stats')) {
-    return {
-      json: async () => ({
-        activeSessions: [{ agent: 'patch', sessions: 1, toolCalls: 5, connectedAt: '2026-04-01T10:00:00Z' }],
-        toolCallCounts: { bakin_exec_tasks_list: 5 },
-        totalRequests: 10,
-        upSince: '2026-04-01T00:00:00Z',
-      }),
-    }
-  }
-  throw new Error(`unexpected fetch: ${url}`)
+// MCP session accessor — replaces the old mocked /mcp/stats fetch.
+;(globalThis as unknown as {
+  __bakinGetMcpSessions: () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string }
+}).__bakinGetMcpSessions = () => ({
+  activeSessions: [{ agent: 'patch', sessions: 1, connectedAt: '2026-04-01T10:00:00Z' }],
+  upSince: '2026-04-01T00:00:00Z',
 })
-vi.stubGlobal('fetch', mockFetch)
 
 // ---------------------------------------------------------------------------
 // Import after mocks
 // ---------------------------------------------------------------------------
 
-import { activatePlugin, findRoute, findTool, callRoute, callTool, makeRequest } from '../test-helpers'
+import { activatePlugin, findRoute, findTool, callRoute, callTool } from '../test-helpers'
 import healthPlugin from '../../../plugins/health'
 import { recordUsage, clearUsage } from '../../../src/core/usage'
-
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
 
 let activated: ActivatedPlugin
 
@@ -139,13 +104,17 @@ afterAll(() => {
   vi.restoreAllMocks()
 })
 
+beforeEach(() => {
+  clearUsage()
+})
+
 // ---------------------------------------------------------------------------
 // Route tests
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 7 routes', () => {
-    expect(activated.routes.length).toBe(7)
+  it('registers 6 routes', () => {
+    expect(activated.routes.length).toBe(6)
   })
 
   it('registers 2 exec tools', () => {
@@ -164,9 +133,20 @@ describe('Health Plugin Routes', () => {
       const { status, body } = await callRoute(route, activated.ctx)
       expect(status).toBe(200)
       expect(body.doctor).toBeDefined()
-      expect(body.requests).toBeDefined()
       expect(body.server).toBeDefined()
       expect(body.openclawPort).toBe(18789)
+      expect(body.upSince).toBe('2026-04-01T00:00:00Z')
+      expect(Array.isArray(body.activeSessions)).toBe(true)
+      expect((body.activeSessions as unknown[]).length).toBe(1)
+    })
+
+    it('no longer exposes legacy mcpHealth / restHealth / requests blocks', async () => {
+      const route = findRoute(activated.routes, 'GET', '/summary')!
+      const { body } = await callRoute(route, activated.ctx)
+      expect(body.mcpHealth).toBeUndefined()
+      expect(body.restHealth).toBeUndefined()
+      expect(body.requests).toBeUndefined()
+      expect(body.mcp).toBeUndefined()
     })
 
     it('includes server memory info', async () => {
@@ -187,48 +167,8 @@ describe('Health Plugin Routes', () => {
       expect(summary.errors).toBe(1)
       expect(summary.warnings).toBe(1)
     })
-  })
 
-  describe('GET /requests', () => {
-    it('returns request stats', async () => {
-      const route = findRoute(activated.routes, 'GET', '/requests')!
-      expect(route).toBeDefined()
-
-      const { status, body } = await callRoute(route, activated.ctx)
-      expect(status).toBe(200)
-      expect(body.totalRequests).toBe(42)
-      expect(body.totalErrors).toBe(2)
-    })
-  })
-
-  describe('GET /usage', () => {
-    it('returns agent usage data', async () => {
-      const route = findRoute(activated.routes, 'GET', '/usage')!
-      expect(route).toBeDefined()
-
-      const res = await route.handler(makeRequest('/usage'), activated.ctx)
-      const body = await res.json()
-      expect(Array.isArray(body)).toBe(true)
-      expect(body[0].agent).toBe('patch')
-    })
-  })
-
-  describe('GET /registry', () => {
-    it('returns plugins and exec tools', async () => {
-      const route = findRoute(activated.routes, 'GET', '/registry')!
-      expect(route).toBeDefined()
-
-      const { status, body } = await callRoute(route, activated.ctx)
-      expect(status).toBe(200)
-      expect(Array.isArray(body.plugins)).toBe(true)
-      expect(Array.isArray(body.execTools)).toBe(true)
-      expect((body.plugins as unknown[]).length).toBe(2)
-    })
-  })
-
-  describe('GET /summary errors1h', () => {
     it('includes errors1h sourced from the real recorder', async () => {
-      clearUsage()
       recordUsage({ kind: 'mcp', name: 't1', agent: 'a', durationMs: 5, status: 'error' })
       recordUsage({ kind: 'mcp', name: 't2', agent: 'a', durationMs: 5, status: 'error' })
       recordUsage({ kind: 'rest', name: '/api/x', agent: null, durationMs: 5, status: 'error' })
@@ -240,13 +180,36 @@ describe('Health Plugin Routes', () => {
         total: 3,
         byKind: { mcp: 2, rest: 1, agent: 0 },
       })
-      clearUsage()
+    })
+  })
+
+  describe('GET /usage', () => {
+    it('returns agent usage data', async () => {
+      const route = findRoute(activated.routes, 'GET', '/usage')!
+      expect(route).toBeDefined()
+      const { status, body } = await callRoute(route, activated.ctx)
+      expect(status).toBe(200)
+      expect(Array.isArray(body)).toBe(true)
+      const entries = body as unknown as Array<{ agent: string }>
+      expect(entries[0].agent).toBe('patch')
+    })
+  })
+
+  describe('GET /registry', () => {
+    it('returns plugins list without execTools', async () => {
+      const route = findRoute(activated.routes, 'GET', '/registry')!
+      expect(route).toBeDefined()
+
+      const { status, body } = await callRoute(route, activated.ctx)
+      expect(status).toBe(200)
+      expect(Array.isArray(body.plugins)).toBe(true)
+      expect(body.execTools).toBeUndefined()
+      expect((body.plugins as unknown[]).length).toBe(2)
     })
   })
 
   describe('GET /usage-feed', () => {
     it('returns usage entries from the real recorder', async () => {
-      clearUsage()
       recordUsage({ kind: 'mcp', name: 'bakin_exec_tasks_list', agent: 'roscoe', durationMs: 12, status: 'ok' })
       recordUsage({ kind: 'mcp', name: 'bakin_exec_tasks_list', agent: 'roscoe', durationMs: 8, status: 'ok' })
       recordUsage({ kind: 'rest', name: '/api/plugins/tasks/list', agent: null, durationMs: 20, status: 'ok' })
@@ -263,21 +226,17 @@ describe('Health Plugin Routes', () => {
       expect(totals.count).toBe(2)
       expect(topByName[0].name).toBe('bakin_exec_tasks_list')
       expect(topByName[0].count).toBe(2)
-      clearUsage()
     })
 
     it('defaults window to 1h when omitted', async () => {
-      clearUsage()
       recordUsage({ kind: 'agent', name: 'heartbeat', agent: 'roscoe', durationMs: null, status: 'ok' })
       const route = findRoute(activated.routes, 'GET', '/usage-feed')!
       const { status, body } = await callRoute(route, activated.ctx)
       expect(status).toBe(200)
       expect((body as { totals: { count: number } }).totals.count).toBe(1)
-      clearUsage()
     })
 
     it('filters by agent', async () => {
-      clearUsage()
       recordUsage({ kind: 'mcp', name: 'x', agent: 'alice', durationMs: 1, status: 'ok' })
       recordUsage({ kind: 'mcp', name: 'x', agent: 'bob', durationMs: 1, status: 'ok' })
       const route = findRoute(activated.routes, 'GET', '/usage-feed')!
@@ -285,7 +244,6 @@ describe('Health Plugin Routes', () => {
         searchParams: { window: '1h', agent: 'alice' },
       })
       expect((body as { totals: { count: number } }).totals.count).toBe(1)
-      clearUsage()
     })
 
     it('rejects invalid kind with 400', async () => {
@@ -299,7 +257,7 @@ describe('Health Plugin Routes', () => {
 
     it('rejects invalid window with 400', async () => {
       const route = findRoute(activated.routes, 'GET', '/usage-feed')!
-      const { status, body } = await callRoute(route, activated.ctx, {
+      const { status } = await callRoute(route, activated.ctx, {
         searchParams: { window: '99y' },
       })
       expect(status).toBe(400)
@@ -339,7 +297,12 @@ describe('Health Plugin Routes', () => {
 
 describe('Health Exec Tools', () => {
   describe('bakin_exec_health_status', () => {
-    it('returns system health summary', async () => {
+    it('returns system health summary from real state', async () => {
+      // Seed a few real usage entries; the exec tool now reads from the
+      // unified recorder via getStatsByMs rather than a mocked HTTP source.
+      recordUsage({ kind: 'mcp', name: 'bakin_exec_tasks_list', agent: 'patch', durationMs: 5, status: 'ok' })
+      recordUsage({ kind: 'rest', name: '/api/plugins/tasks/list', agent: null, durationMs: 3, status: 'error' })
+
       const tool = findTool(activated.execTools, 'bakin_exec_health_status')!
       expect(tool).toBeDefined()
 
@@ -349,7 +312,8 @@ describe('Health Exec Tools', () => {
       expect(result.totalMemoryMB).toBeTypeOf('number')
       expect(result.memoryPercent).toBeTypeOf('number')
       expect(result.activeSessions).toBe(1)
-      expect(result.apiRequests).toBe(42)
+      expect(result.calls1h).toBe(2)
+      expect(result.errors1h).toBe(1)
       expect(result.doctorErrors).toBe(1)
       expect(result.doctorWarnings).toBe(1)
     })

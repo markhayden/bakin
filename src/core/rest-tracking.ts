@@ -1,25 +1,15 @@
 /**
  * REST request tracking middleware helper.
  *
- * Wraps `res.end` to emit two usage records when the response completes:
- *   1. Legacy `recordRequest` (request-log.ts) — kept for backward compat,
- *      removed in Phase 5 of the health plugin overhaul.
- *   2. Unified `recordUsage` (usage.ts) — the new in-memory usage recorder
- *      that feeds the health dashboard.
- *
- * Extracted from server.ts so it can be unit/integration tested without
- * spinning up an HTTP server. See `.claude/specs/health-plugin-overhaul.md`.
+ * Wraps `res.end` to emit a `recordUsage({ kind: 'rest', ... })` entry when
+ * the response completes. Extracted from server.ts so it can be unit/
+ * integration tested without spinning up an HTTP server.
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
 
-import { recordRequest } from './request-log'
 import { recordUsage } from './usage'
 
-/**
- * Wrap `res.end` so that when the response completes we emit usage entries
- * to both the legacy request log and the new unified usage recorder.
- */
 export function trackResponse(
   req: IncomingMessage,
   res: ServerResponse,
@@ -33,15 +23,6 @@ export function trackResponse(
     const agent = resolveAgent(req, url)
     const method = req.method || 'GET'
     const status = res.statusCode
-
-    recordRequest({
-      ts: new Date().toISOString(),
-      method,
-      path,
-      status,
-      durationMs,
-      agent: agent ?? undefined,
-    })
 
     recordUsage({
       kind: 'rest',
