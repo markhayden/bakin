@@ -145,10 +145,12 @@ vi.mock('@bakin/team/lib/openclaw-adapter', () => ({
   readSkillFile: vi.fn(() => null),
   listMemoryFiles: vi.fn(() => []),
   readMemoryFile: vi.fn(() => null),
-  addAgent: vi.fn(),
+  addAgent: vi.fn(async (input: Record<string, unknown>) => ({ id: input.id, workspace: `/tmp/ws/${input.id}` })),
   removeAgent: vi.fn(() => true),
   updateAgentField: vi.fn(),
   getOpenClawConfig: vi.fn(() => ({ agents: { list: [] } })),
+  openclawExec: vi.fn(async () => '{}'),
+  synthesizeIdentityMd: vi.fn(() => '# IDENTITY.md\n'),
 }))
 
 // The team plugin's relative import path inside the plugin uses './lib/openclaw-adapter'.
@@ -179,10 +181,12 @@ vi.mock('../../../plugins/team/lib/openclaw-adapter', () => ({
   readSkillFile: vi.fn(() => null),
   listMemoryFiles: vi.fn(() => []),
   readMemoryFile: vi.fn(() => null),
-  addAgent: vi.fn(),
+  addAgent: vi.fn(async (input: Record<string, unknown>) => ({ id: input.id, workspace: `/tmp/ws/${input.id}` })),
   removeAgent: vi.fn(() => true),
   updateAgentField: vi.fn(),
   getOpenClawConfig: vi.fn(() => ({ agents: { list: [] } })),
+  openclawExec: vi.fn(async () => '{}'),
+  synthesizeIdentityMd: vi.fn(() => '# IDENTITY.md\n'),
 }))
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync, statSync, mkdirSync, renameSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '../../../src/core/logger'
+import { getSettings } from '../../../src/core/settings'
 import { getOpenClawHome, getOpenClawPath } from '@bakin/core/openclaw-home'
 import { tryGetMainAgentId } from '@bakin/core/main-agent'
 import {
@@ -285,67 +286,118 @@ export function getAgentModel(agentId: string): string {
   return raw
 }
 
-// ─── Agent Creation ─────────────────────────────────────────────────────────
+// ─── OpenClaw CLI Helper ────────────────────────────────────────────────────
 
-export interface NewAgentInput {
-  id: string
-  name: string
+/**
+ * Shell out to the `openclaw` CLI. Uses `settings.openclaw.binaryPath`.
+ * Returns stdout on success, throws on non-zero exit with stderr.
+ */
+export async function openclawExec(args: string[]): Promise<string> {
+  const { execFile } = await import('child_process')
+  const { promisify } = await import('util')
+  const execFileAsync = promisify(execFile)
+  const settings = getSettings()
+
+  const { stdout } = await execFileAsync(settings.openclaw.binaryPath, args)
+  return stdout
+}
+
+// ─── IDENTITY.md Synthesis ──────────────────────────────────────────────────
+
+export interface IdentityFields {
+  name?: string
   emoji?: string
-  model?: string   // full provider/model string, e.g. "anthropic/claude-sonnet-4-20250514"
-  soul?: string    // initial SOUL.md content
+  role?: string
+  vibe?: string
+  primaryFunction?: string
+  defaultMode?: string
 }
 
 /**
- * Add a new agent to openclaw.json and create its workspace directory.
- * Writes directly to OpenClaw — Bakin never copies OpenClaw.
+ * Build IDENTITY.md content from structured fields.
+ * Only non-empty fields are included.
  */
-export function addAgent(input: NewAgentInput): void {
-  const config = getOpenClawConfig()
-  if (!config.agents) config.agents = {}
-  if (!config.agents.list) config.agents.list = []
+export function synthesizeIdentityMd(fields: IdentityFields): string {
+  const lines = ['# IDENTITY.md', '']
+  const entries: [string, string | undefined][] = [
+    ['Name', fields.name],
+    ['Role', fields.role],
+    ['Emoji', fields.emoji],
+    ['Vibe', fields.vibe],
+    ['Primary Function', fields.primaryFunction],
+    ['Default Mode', fields.defaultMode],
+  ]
+  for (const [label, value] of entries) {
+    if (value) lines.push(`- **${label}:** ${value}`)
+  }
+  lines.push('')
+  return lines.join('\n')
+}
 
-  // Check for duplicate
-  if (config.agents.list.some((a) => a.id === input.id)) {
+// ─── Agent Creation ─────────────────────────────────────────────────────────
+
+export interface CreateAgentInput {
+  id: string
+  name: string
+  emoji?: string
+  role?: string
+  vibe?: string
+  primaryFunction?: string
+  defaultMode?: string
+  model?: string
+  soul?: string
+  tools?: string
+}
+
+/**
+ * Add a new agent via the OpenClaw CLI and write persona files.
+ * Shells out to `openclaw agents add` + `openclaw agents set-identity`.
+ */
+export async function addAgent(input: CreateAgentInput): Promise<{ id: string; workspace: string }> {
+  const config = getOpenClawConfig()
+  if (config.agents?.list?.some((a) => a.id === input.id)) {
     throw new Error(`Agent "${input.id}" already exists in openclaw.json`)
   }
 
-  const entry: OpenClawAgent = {
-    id: input.id,
-    identity: {
-      name: input.name,
-      emoji: input.emoji,
-    },
-  }
-  if (input.model) {
-    entry.model = { primary: input.model }
-  }
-
-  config.agents.list.push(entry)
-
-  // Write updated config
-  writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
-  resetOpenClawConfigCache() // bust cache
-  log.info('Added agent to openclaw.json', { id: input.id, name: input.name })
-
-  // Create workspace directory with initial files
   const wsPath = join(OPENCLAW_ROOT, 'workspaces', input.id)
-  if (!existsSync(wsPath)) {
-    mkdirSync(wsPath, { recursive: true })
+
+  // Register agent in OpenClaw via CLI
+  const addArgs = ['agents', 'add', input.id, '--workspace', wsPath, '--non-interactive', '--json']
+  if (input.model) addArgs.splice(3, 0, '--model', input.model)
+  await openclawExec(addArgs)
+
+  // Set identity (name + emoji) via CLI
+  const identityArgs = ['agents', 'set-identity', '--agent', input.id]
+  if (input.name) identityArgs.push('--name', input.name)
+  if (input.emoji) identityArgs.push('--emoji', input.emoji)
+  if (identityArgs.length > 4) {
+    await openclawExec(identityArgs)
   }
+
+  resetOpenClawConfigCache()
+
+  // Write persona files to the workspace
+  if (!existsSync(wsPath)) mkdirSync(wsPath, { recursive: true })
+
+  const identityMd = synthesizeIdentityMd({
+    name: input.name,
+    emoji: input.emoji,
+    role: input.role,
+    vibe: input.vibe,
+    primaryFunction: input.primaryFunction,
+    defaultMode: input.defaultMode,
+  })
+  writeFileSync(join(wsPath, 'IDENTITY.md'), identityMd, 'utf-8')
+
   if (input.soul) {
     writeFileSync(join(wsPath, 'SOUL.md'), input.soul, 'utf-8')
   }
-  // Create empty IDENTITY.md with structured fields
-  const identityContent = [
-    `# ${input.name}`,
-    '',
-    `- **Emoji:** ${input.emoji ?? ''}`,
-    `- **Vibe:** Agent`,
-    '',
-  ].join('\n')
-  writeFileSync(join(wsPath, 'IDENTITY.md'), identityContent, 'utf-8')
+  if (input.tools) {
+    writeFileSync(join(wsPath, 'TOOLS.md'), input.tools, 'utf-8')
+  }
 
-  log.info('Created workspace', { id: input.id, path: wsPath })
+  log.info('Created agent via CLI', { id: input.id, name: input.name, workspace: wsPath })
+  return { id: input.id, workspace: wsPath }
 }
 
 /**

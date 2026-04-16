@@ -447,12 +447,17 @@ const teamPlugin: BakinPlugin = {
           if (!id) return Response.json({ error: 'id is required (lowercase alphanumeric)' }, { status: 400 })
           if (!body.name) return Response.json({ error: 'name is required' }, { status: 400 })
 
-          adapter.addAgent({
+          await adapter.addAgent({
             id,
             name: body.name as string,
             emoji: body.emoji as string | undefined,
+            role: body.role as string | undefined,
+            vibe: body.vibe as string | undefined,
+            primaryFunction: body.primaryFunction as string | undefined,
+            defaultMode: body.defaultMode as string | undefined,
             model: body.model as string | undefined,
             soul: body.soul as string | undefined,
+            tools: body.tools as string | undefined,
           })
 
           ctx.activity.audit('agent.created', 'system', { agent: id, name: body.name as string })
