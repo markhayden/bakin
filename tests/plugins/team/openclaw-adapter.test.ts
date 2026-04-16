@@ -115,7 +115,11 @@ vi.mock('@bakin/core/openclaw-config', () => ({
 // Import after mocks are declared
 // ---------------------------------------------------------------------------
 
-import { listAgents, addAgent, removeAgent, removeFromAllowLists, openclawExec, synthesizeIdentityMd } from '../../../plugins/team/lib/openclaw-adapter'
+import {
+  listAgents, addAgent, removeAgent, removeFromAllowLists,
+  openclawExec, synthesizeIdentityMd, addToAllowLists,
+  setSubagentPermissions, parseIdentityMd, updateAgentIdentity,
+} from '../../../plugins/team/lib/openclaw-adapter'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -575,5 +579,217 @@ describe('team/openclaw-adapter · removeFromAllowLists', () => {
 
     removeFromAllowLists('pixel')
     expect(resetOpenClawConfigCacheMock).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// addToAllowLists
+// ---------------------------------------------------------------------------
+
+describe('team/openclaw-adapter · addToAllowLists', () => {
+  beforeEach(() => {
+    readOpenClawConfigMock.mockReset()
+    resetOpenClawConfigCacheMock.mockClear()
+    loggerMock.info.mockClear()
+    mkdirSync(join(testDir, 'openclaw'), { recursive: true })
+  })
+
+  it('dispatchable "main" adds to main only', () => {
+    setConfig({
+      agents: {
+        list: [
+          { id: 'main', subagents: { allowAgents: ['pixel'] } },
+          { id: 'basil', subagents: { allowAgents: ['rolo'] } },
+        ],
+      },
+    })
+
+    addToAllowLists('jessica', 'main')
+
+    const written = JSON.parse(readFileSync(join(testDir, 'openclaw', 'openclaw.json'), 'utf-8'))
+    expect(written.agents.list[0].subagents.allowAgents).toEqual(['pixel', 'jessica'])
+    expect(written.agents.list[1].subagents.allowAgents).toEqual(['rolo'])
+  })
+
+  it('dispatchable "all" adds to every agent', () => {
+    setConfig({
+      agents: {
+        list: [
+          { id: 'main', subagents: { allowAgents: ['pixel'] } },
+          { id: 'basil' },
+          { id: 'jessica' },
+        ],
+      },
+    })
+
+    addToAllowLists('jessica', 'all')
+
+    const written = JSON.parse(readFileSync(join(testDir, 'openclaw', 'openclaw.json'), 'utf-8'))
+    expect(written.agents.list[0].subagents.allowAgents).toContain('jessica')
+    expect(written.agents.list[1].subagents.allowAgents).toContain('jessica')
+    // Should not add self
+    expect(written.agents.list[2].subagents?.allowAgents ?? []).not.toContain('jessica')
+  })
+
+  it('dispatchable string[] adds to specific agents plus main', () => {
+    setConfig({
+      agents: {
+        list: [
+          { id: 'main', subagents: { allowAgents: ['pixel'] } },
+          { id: 'basil' },
+          { id: 'scout' },
+        ],
+      },
+    })
+
+    addToAllowLists('jessica', ['basil'])
+
+    const written = JSON.parse(readFileSync(join(testDir, 'openclaw', 'openclaw.json'), 'utf-8'))
+    expect(written.agents.list[0].subagents.allowAgents).toContain('jessica')
+    expect(written.agents.list[1].subagents.allowAgents).toContain('jessica')
+    expect(written.agents.list[2].subagents?.allowAgents ?? []).not.toContain('jessica')
+  })
+
+  it('does not add duplicates', () => {
+    setConfig({
+      agents: {
+        list: [
+          { id: 'main', subagents: { allowAgents: ['jessica'] } },
+        ],
+      },
+    })
+
+    addToAllowLists('jessica', 'main')
+    expect(resetOpenClawConfigCacheMock).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// setSubagentPermissions
+// ---------------------------------------------------------------------------
+
+describe('team/openclaw-adapter · setSubagentPermissions', () => {
+  beforeEach(() => {
+    readOpenClawConfigMock.mockReset()
+    resetOpenClawConfigCacheMock.mockClear()
+    loggerMock.info.mockClear()
+    mkdirSync(join(testDir, 'openclaw'), { recursive: true })
+  })
+
+  it('sets the allowAgents list on the target agent', () => {
+    setConfig({
+      agents: {
+        list: [
+          { id: 'main', subagents: { allowAgents: ['pixel'] } },
+          { id: 'basil' },
+        ],
+      },
+    })
+
+    setSubagentPermissions('main', ['pixel', 'basil', 'jessica'])
+
+    const written = JSON.parse(readFileSync(join(testDir, 'openclaw', 'openclaw.json'), 'utf-8'))
+    expect(written.agents.list[0].subagents.allowAgents).toEqual(['pixel', 'basil', 'jessica'])
+  })
+
+  it('throws when agent not found', () => {
+    setConfig({ agents: { list: [{ id: 'main' }] } })
+    expect(() => setSubagentPermissions('ghost', ['pixel'])).toThrow('not found')
+  })
+
+  it('throws on self-referencing', () => {
+    setConfig({ agents: { list: [{ id: 'main' }] } })
+    expect(() => setSubagentPermissions('main', ['main'])).toThrow('cannot dispatch to itself')
+  })
+
+  it('creates subagents field if it does not exist', () => {
+    setConfig({ agents: { list: [{ id: 'main' }] } })
+
+    setSubagentPermissions('main', ['pixel'])
+
+    const written = JSON.parse(readFileSync(join(testDir, 'openclaw', 'openclaw.json'), 'utf-8'))
+    expect(written.agents.list[0].subagents.allowAgents).toEqual(['pixel'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseIdentityMd
+// ---------------------------------------------------------------------------
+
+describe('team/openclaw-adapter · parseIdentityMd', () => {
+  it('parses structured fields from IDENTITY.md format', () => {
+    const content = [
+      '# IDENTITY.md',
+      '',
+      '- **Name:** Jessica Fetcher',
+      '- **Role:** Research Agent',
+      '- **Emoji:** 🔎',
+      '- **Vibe:** Sharp, credible',
+      '',
+    ].join('\n')
+
+    const parsed = parseIdentityMd(content)
+    expect(parsed['Name']).toBe('Jessica Fetcher')
+    expect(parsed['Role']).toBe('Research Agent')
+    expect(parsed['Emoji']).toBe('🔎')
+    expect(parsed['Vibe']).toBe('Sharp, credible')
+  })
+
+  it('returns empty for content with no structured fields', () => {
+    expect(parseIdentityMd('just some text')).toEqual({})
+  })
+})
+
+// ---------------------------------------------------------------------------
+// updateAgentIdentity
+// ---------------------------------------------------------------------------
+
+describe('team/openclaw-adapter · updateAgentIdentity', () => {
+  const pixelWs = join(testDir, 'openclaw', 'workspaces', 'pixel')
+
+  beforeEach(() => {
+    execFileMock.mockClear()
+    loggerMock.info.mockClear()
+    readOpenClawConfigMock.mockReset()
+    resetOpenClawConfigCacheMock.mockClear()
+    execFileMock.mockImplementation((_cmd: string, _args: string[], cb: (err: Error | null, result: { stdout: string; stderr: string }) => void) => {
+      cb(null, { stdout: '{}', stderr: '' })
+    })
+    mkdirSync(pixelWs, { recursive: true })
+  })
+
+  it('shells out to set-identity when name changes', async () => {
+    setConfig({ agents: { list: [{ id: 'main' }, { id: 'pixel' }] } })
+
+    await updateAgentIdentity('pixel', { name: 'Pixel 2.0' })
+
+    const args = execFileMock.mock.calls[0][1] as string[]
+    expect(args).toContain('set-identity')
+    expect(args).toContain('--name')
+    expect(args).toContain('Pixel 2.0')
+  })
+
+  it('returns list of updated fields', async () => {
+    setConfig({ agents: { list: [{ id: 'main' }, { id: 'pixel' }] } })
+
+    const updated = await updateAgentIdentity('pixel', { name: 'Pixel', role: 'Artist', soul: 'New soul' })
+
+    expect(updated).toContain('name')
+    expect(updated).toContain('role')
+    expect(updated).toContain('soul')
+  })
+
+  it('throws when agent does not exist', async () => {
+    setConfig({ agents: { list: [{ id: 'main' }] } })
+
+    await expect(updateAgentIdentity('ghost', { name: 'Ghost' })).rejects.toThrow('not found')
+  })
+
+  it('does not call set-identity when only structured fields change', async () => {
+    setConfig({ agents: { list: [{ id: 'main' }, { id: 'pixel' }] } })
+
+    await updateAgentIdentity('pixel', { role: 'New Role', vibe: 'Calm' })
+
+    expect(execFileMock).not.toHaveBeenCalled()
   })
 })

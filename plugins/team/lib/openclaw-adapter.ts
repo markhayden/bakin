@@ -448,6 +448,157 @@ export function removeFromAllowLists(agentId: string): void {
   }
 }
 
+/**
+ * Add a new agent to the specified agents' subagents.allowAgents lists.
+ * - "main": add to main only (default)
+ * - "all": add to every agent that has an existing allowAgents list,
+ *   plus create one on agents without
+ * - string[]: add to those specific agents, plus always main
+ */
+export function addToAllowLists(newAgentId: string, dispatchable: 'all' | 'main' | string[]): void {
+  const config = getOpenClawConfig()
+  if (!config.agents?.list) return
+
+  let modified = false
+
+  if (dispatchable === 'main') {
+    const main = config.agents.list.find((a) => a.id === 'main')
+    if (main) {
+      if (!main.subagents) main.subagents = {}
+      if (!main.subagents.allowAgents) main.subagents.allowAgents = []
+      if (!main.subagents.allowAgents.includes(newAgentId)) {
+        main.subagents.allowAgents.push(newAgentId)
+        modified = true
+      }
+    }
+  } else if (dispatchable === 'all') {
+    for (const agent of config.agents.list) {
+      if (agent.id === newAgentId) continue
+      if (!agent.subagents) agent.subagents = {}
+      if (!agent.subagents.allowAgents) agent.subagents.allowAgents = []
+      if (!agent.subagents.allowAgents.includes(newAgentId)) {
+        agent.subagents.allowAgents.push(newAgentId)
+        modified = true
+      }
+    }
+  } else {
+    const targetIds = new Set(dispatchable)
+    targetIds.add('main')
+    for (const agent of config.agents.list) {
+      if (!targetIds.has(agent.id)) continue
+      if (agent.id === newAgentId) continue
+      if (!agent.subagents) agent.subagents = {}
+      if (!agent.subagents.allowAgents) agent.subagents.allowAgents = []
+      if (!agent.subagents.allowAgents.includes(newAgentId)) {
+        agent.subagents.allowAgents.push(newAgentId)
+        modified = true
+      }
+    }
+  }
+
+  if (modified) {
+    writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
+    resetOpenClawConfigCache()
+    log.info('Updated allow lists', { newAgentId, dispatchable })
+  }
+}
+
+// ─── Subagent Permissions ───────────────────────────────────────────────────
+
+/**
+ * Set the subagents.allowAgents list for a specific agent.
+ * Direct openclaw.json write — no CLI command exists for this operation.
+ */
+export function setSubagentPermissions(agentId: string, allowAgents: string[]): void {
+  const config = getOpenClawConfig()
+  const agent = config.agents?.list?.find((a) => a.id === agentId)
+  if (!agent) throw new Error(`Agent "${agentId}" not found in roster`)
+
+  if (allowAgents.includes(agentId)) {
+    throw new Error(`Agent "${agentId}" cannot dispatch to itself`)
+  }
+
+  if (!agent.subagents) agent.subagents = {}
+  agent.subagents.allowAgents = allowAgents
+
+  writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
+  resetOpenClawConfigCache()
+  log.info('Updated subagent permissions', { agentId, allowAgents })
+}
+
+// ─── Identity Update ────────────────────────────────────────────────────────
+
+/**
+ * Parse structured fields from an existing IDENTITY.md file.
+ * Returns a map of field label → value.
+ */
+export function parseIdentityMd(content: string): Record<string, string> {
+  const fields: Record<string, string> = {}
+  const regex = /^[-*]\s*\*\*(.+?):\*\*\s*(.+)/gm
+  let match
+  while ((match = regex.exec(content)) !== null) {
+    fields[match[1]] = match[2].trim()
+  }
+  return fields
+}
+
+/**
+ * Update an existing agent's identity fields and/or workspace files.
+ * Shells out to `openclaw agents set-identity` for name/emoji changes.
+ * Re-synthesizes IDENTITY.md by merging new fields with existing.
+ */
+export async function updateAgentIdentity(agentId: string, fields: IdentityFields & { soul?: string; tools?: string }): Promise<string[]> {
+  const config = getOpenClawConfig()
+  if (!config.agents?.list?.some((a) => a.id === agentId)) {
+    throw new Error(`Agent "${agentId}" not found in roster`)
+  }
+
+  const updated: string[] = []
+
+  // Shell out to set-identity if name or emoji changed
+  if (fields.name || fields.emoji) {
+    const args = ['agents', 'set-identity', '--agent', agentId]
+    if (fields.name) { args.push('--name', fields.name); updated.push('name') }
+    if (fields.emoji) { args.push('--emoji', fields.emoji); updated.push('emoji') }
+    await openclawExec(args)
+    resetOpenClawConfigCache()
+  }
+
+  // Merge structured fields into IDENTITY.md
+  const structuredFields = ['role', 'vibe', 'primaryFunction', 'defaultMode'] as const
+  const hasStructuredUpdate = structuredFields.some((f) => fields[f])
+  if (hasStructuredUpdate || fields.name || fields.emoji) {
+    const existing = readWorkspaceFile(agentId, 'IDENTITY.md')
+    const parsed = existing ? parseIdentityMd(existing) : {}
+
+    const merged: IdentityFields = {
+      name: fields.name ?? parsed['Name'],
+      emoji: fields.emoji ?? parsed['Emoji'],
+      role: fields.role ?? parsed['Role'],
+      vibe: fields.vibe ?? parsed['Vibe'],
+      primaryFunction: fields.primaryFunction ?? parsed['Primary Function'],
+      defaultMode: fields.defaultMode ?? parsed['Default Mode'],
+    }
+
+    writeWorkspaceFile(agentId, 'IDENTITY.md', synthesizeIdentityMd(merged))
+    for (const f of structuredFields) {
+      if (fields[f]) updated.push(f)
+    }
+  }
+
+  if (fields.soul) {
+    writeWorkspaceFile(agentId, 'SOUL.md', fields.soul)
+    updated.push('soul')
+  }
+  if (fields.tools) {
+    writeWorkspaceFile(agentId, 'TOOLS.md', fields.tools)
+    updated.push('tools')
+  }
+
+  log.info('Updated agent identity', { agentId, updated })
+  return updated
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
