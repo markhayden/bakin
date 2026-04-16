@@ -24,6 +24,8 @@ vi.mock('../../../src/core/content-dir', () => ({
       'assets.video': join(base, 'video'),
       'assets.audio': join(base, 'audio'),
       'assets.plans': join(base, 'plans'),
+      'assets.research': join(base, 'research'),
+      'assets.pdf': join(base, 'pdf'),
       'assets.data': join(base, 'data'),
       'assets.other': join(base, 'other'),
     }
@@ -181,13 +183,13 @@ describe('POST /upload', () => {
     }
   })
 
-  it('auto-detects PDF as other type', async () => {
+  it('auto-detects PDF as pdf type', async () => {
     const form = createFormData(
       [{ name: 'document.pdf', content: '%PDF-fake', type: 'application/pdf' }],
       { taskId: 'task-pdf-1' },
     )
     const { status, body } = await callUpload(form)
     expect(status).toBe(200)
-    expect(body.path).toMatch(/assets\/other\/task-pdf-1\//)
+    expect(body.path).toMatch(/assets\/pdf\/task-pdf-1\//)
   })
 })

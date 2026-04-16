@@ -34,6 +34,8 @@ vi.mock('../../../src/core/content-dir', () => ({
     'assets.video': join(assetsRoot, 'video'),
     'assets.audio': join(assetsRoot, 'audio'),
     'assets.plans': join(assetsRoot, 'plans'),
+    'assets.research': join(assetsRoot, 'research'),
+    'assets.pdf': join(assetsRoot, 'pdf'),
     'assets.data': join(assetsRoot, 'data'),
     'assets.other': join(assetsRoot, 'other'),
   }),

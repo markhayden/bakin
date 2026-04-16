@@ -8,9 +8,7 @@ import { execSync } from 'child_process'
 import { randomBytes } from 'crypto'
 import { getBakinPaths } from '../../../src/core/content-dir'
 import type { AssetSource } from './sidecar'
-
-const ASSET_TYPES = ['text', 'images', 'video', 'audio', 'plans', 'data', 'other'] as const
-type AssetType = typeof ASSET_TYPES[number]
+import type { AssetType } from './constants'
 
 export interface SaveAssetParams {
   filePath: string
