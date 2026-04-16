@@ -9,8 +9,8 @@
  * The team plugin is an adapter over OpenClaw; all OpenClaw-touching
  * modules are stubbed so the test never reads from ~/.openclaw/.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
-import { mkdirSync, rmSync } from 'fs'
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest'
+import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -40,12 +40,19 @@ vi.mock('../../../packages/core/src/content-dir', () => ({
   }),
 }))
 
+const { logWarn, logInfo, logError, logDebug } = vi.hoisted(() => ({
+  logWarn: vi.fn(),
+  logInfo: vi.fn(),
+  logError: vi.fn(),
+  logDebug: vi.fn(),
+}))
+
 vi.mock('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: logInfo,
+    warn: logWarn,
+    error: logError,
+    debug: logDebug,
   }),
 }))
 
@@ -100,13 +107,21 @@ vi.mock('../../../src/lib/content', () => ({
   readHeartbeats: vi.fn(() => ({})),
 }))
 
+// Shared mutable roster so individual tests can simulate missing agents
+// without redefining the full adapter mock.
+const { rosterAgents } = vi.hoisted(() => ({
+  rosterAgents: {
+    current: [
+      { id: 'main', name: 'Main', emoji: '🤖', role: 'Orchestrator', headshot: '' },
+      { id: 'basil', name: 'Basil', emoji: '🌿', role: 'Cook', headshot: '' },
+    ] as Array<{ id: string; name: string; emoji: string; role: string; headshot: string }>,
+  },
+}))
+
 // OpenClaw adapter — fully stubbed, never touches ~/.openclaw/
 vi.mock('@bakin/team/lib/openclaw-adapter', () => ({
-  listAgents: vi.fn(() => [
-    { id: 'main', name: 'Main', emoji: '🤖', role: 'Orchestrator', headshot: '' },
-    { id: 'basil', name: 'Basil', emoji: '🌿', role: 'Cook', headshot: '' },
-  ]),
-  getAgentIds: vi.fn(() => ['main', 'basil']),
+  listAgents: vi.fn(() => rosterAgents.current),
+  getAgentIds: vi.fn(() => rosterAgents.current.map((a) => a.id)),
   getAgentModel: vi.fn(() => 'claude-opus-4'),
   getAgentProfile: vi.fn((id: string) => ({
     id,
@@ -139,11 +154,8 @@ vi.mock('@bakin/team/lib/openclaw-adapter', () => ({
 // The team plugin's relative import path inside the plugin uses './lib/openclaw-adapter'.
 // Add a relative-path alias so vi.mock catches both shapes.
 vi.mock('../../../plugins/team/lib/openclaw-adapter', () => ({
-  listAgents: vi.fn(() => [
-    { id: 'main', name: 'Main', emoji: '🤖', role: 'Orchestrator', headshot: '' },
-    { id: 'basil', name: 'Basil', emoji: '🌿', role: 'Cook', headshot: '' },
-  ]),
-  getAgentIds: vi.fn(() => ['main', 'basil']),
+  listAgents: vi.fn(() => rosterAgents.current),
+  getAgentIds: vi.fn(() => rosterAgents.current.map((a) => a.id)),
   getAgentModel: vi.fn(() => 'claude-opus-4'),
   getAgentProfile: vi.fn((id: string) => ({
     id,
@@ -256,5 +268,193 @@ describe('team plugin — non-search routes', () => {
     const route = findRoute(activated.routes, 'GET', '/')
     expect(route).toBeDefined()
     expect(route?.description).toMatch(/agent/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// team.json reportsTo normalization & graceful degradation
+// ---------------------------------------------------------------------------
+
+describe('team plugin — reportsTo normalization on write', () => {
+  const teamJsonPath = join(testDir, 'plugin-settings', 'team.json')
+
+  /**
+   * Write the raw team.json (bypassing the plugin) so tests can seed
+   * legacy values without going through the normalized POST path.
+   */
+  function seedTeamJson(teams: unknown[]): void {
+    mkdirSync(join(testDir, 'plugin-settings'), { recursive: true })
+    writeFileSync(
+      teamJsonPath,
+      JSON.stringify({ displaySettings: {}, teams }, null, 2),
+    )
+  }
+
+  function readTeamJson(): { teams: Array<Record<string, unknown>> } {
+    const raw = JSON.parse(readFileSync(teamJsonPath, 'utf-8')) as {
+      teams: Array<Record<string, unknown>>
+    }
+    return raw
+  }
+
+  beforeEach(() => {
+    if (existsSync(teamJsonPath)) {
+      rmSync(teamJsonPath, { force: true })
+    }
+    logWarn.mockClear()
+    // Reset roster to default for each test
+    rosterAgents.current = [
+      { id: 'main', name: 'Main', emoji: '🤖', role: 'Orchestrator', headshot: '' },
+      { id: 'basil', name: 'Basil', emoji: '🌿', role: 'Cook', headshot: '' },
+    ]
+  })
+
+  it('write with reportsTo="main" stores null in team.json', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const route = findRoute(activated.routes, 'POST', '/teams')!
+    const { status } = await callRoute(route, activated.ctx, {
+      body: { id: 'builders', label: 'Builders', reportsTo: 'main' },
+    })
+    expect(status).toBe(200)
+    const file = readTeamJson()
+    const team = file.teams.find((t) => t.id === 'builders')!
+    expect(team.reportsTo).toBeNull()
+  })
+
+  it('write with reportsTo undefined stores null in team.json', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const route = findRoute(activated.routes, 'POST', '/teams')!
+    const { status } = await callRoute(route, activated.ctx, {
+      body: { id: 'creators', label: 'Creators' },
+    })
+    expect(status).toBe(200)
+    const file = readTeamJson()
+    const team = file.teams.find((t) => t.id === 'creators')!
+    expect(team.reportsTo).toBeNull()
+  })
+
+  it('write with unknown non-null reportsTo preserves the value (basil not in roster)', async () => {
+    // "basil" is technically in the roster above, but we want to prove the
+    // write path does not validate against the roster — it only normalizes
+    // the "this is the main agent" case. Point at a clearly-unknown id.
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const route = findRoute(activated.routes, 'POST', '/teams')!
+    const { status } = await callRoute(route, activated.ctx, {
+      body: { id: 'scouts', label: 'Scouts', reportsTo: 'ghost' },
+    })
+    expect(status).toBe(200)
+    const file = readTeamJson()
+    const team = file.teams.find((t) => t.id === 'scouts')!
+    expect(team.reportsTo).toBe('ghost')
+  })
+
+  it('write with reportsTo="basil" (known roster member) preserves the value', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const route = findRoute(activated.routes, 'POST', '/teams')!
+    const { status } = await callRoute(route, activated.ctx, {
+      body: { id: 'cooks', label: 'Cooks', reportsTo: 'basil' },
+    })
+    expect(status).toBe(200)
+    const file = readTeamJson()
+    const team = file.teams.find((t) => t.id === 'cooks')!
+    expect(team.reportsTo).toBe('basil')
+  })
+})
+
+describe('team plugin — reportsTo graceful degradation on read', () => {
+  const teamJsonPath = join(testDir, 'plugin-settings', 'team.json')
+
+  function seedTeamJson(teams: unknown[]): void {
+    mkdirSync(join(testDir, 'plugin-settings'), { recursive: true })
+    writeFileSync(
+      teamJsonPath,
+      JSON.stringify({ displaySettings: {}, teams }, null, 2),
+    )
+  }
+
+  beforeEach(() => {
+    if (existsSync(teamJsonPath)) {
+      rmSync(teamJsonPath, { force: true })
+    }
+    logWarn.mockClear()
+    // Default roster contains main + basil (not "roscoe")
+    rosterAgents.current = [
+      { id: 'main', name: 'Main', emoji: '🤖', role: 'Orchestrator', headshot: '' },
+      { id: 'basil', name: 'Basil', emoji: '🌿', role: 'Cook', headshot: '' },
+    ]
+  })
+
+  it('degrades reportsTo pointing at a missing agent to null and logs once', async () => {
+    seedTeamJson([
+      { id: 'builders', label: 'Builders', reportsTo: 'roscoe' },
+    ])
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const route = findRoute(activated.routes, 'GET', '/')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    const teams = (body as { teams: Array<{ id: string; reportsTo: string | null }> }).teams
+    const builders = teams.find((t) => t.id === 'builders')!
+    expect(builders.reportsTo).toBeNull()
+
+    const warnCalls = logWarn.mock.calls.filter((call) =>
+      String(call[0]).includes('unknown agent id'),
+    )
+    expect(warnCalls.length).toBe(1)
+    expect(warnCalls[0][1]).toMatchObject({ teamId: 'builders', reportsTo: 'roscoe' })
+  })
+
+  it('preserves reportsTo=null in the response', async () => {
+    seedTeamJson([
+      { id: 'builders', label: 'Builders', reportsTo: null },
+    ])
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const route = findRoute(activated.routes, 'GET', '/')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    const teams = (body as { teams: Array<{ id: string; reportsTo: string | null }> }).teams
+    expect(teams.find((t) => t.id === 'builders')!.reportsTo).toBeNull()
+
+    const warnCalls = logWarn.mock.calls.filter((call) =>
+      String(call[0]).includes('unknown agent id'),
+    )
+    expect(warnCalls.length).toBe(0)
+  })
+
+  it('preserves reportsTo="basil" when basil is in the roster', async () => {
+    seedTeamJson([
+      { id: 'cooks', label: 'Cooks', reportsTo: 'basil' },
+    ])
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const route = findRoute(activated.routes, 'GET', '/')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    const teams = (body as { teams: Array<{ id: string; reportsTo: string | null }> }).teams
+    expect(teams.find((t) => t.id === 'cooks')!.reportsTo).toBe('basil')
+
+    const warnCalls = logWarn.mock.calls.filter((call) =>
+      String(call[0]).includes('unknown agent id'),
+    )
+    expect(warnCalls.length).toBe(0)
+  })
+
+  it('logs once per team when multiple reportsTo are unknown', async () => {
+    seedTeamJson([
+      { id: 'teamA', label: 'Team A', reportsTo: 'ghost1' },
+      { id: 'teamB', label: 'Team B', reportsTo: 'ghost2' },
+    ])
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const route = findRoute(activated.routes, 'GET', '/')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    const teams = (body as { teams: Array<{ id: string; reportsTo: string | null }> }).teams
+    expect(teams.find((t) => t.id === 'teamA')!.reportsTo).toBeNull()
+    expect(teams.find((t) => t.id === 'teamB')!.reportsTo).toBeNull()
+
+    const warnCalls = logWarn.mock.calls.filter((call) =>
+      String(call[0]).includes('unknown agent id'),
+    )
+    expect(warnCalls.length).toBe(2)
+    const teamIds = warnCalls.map((c) => (c[1] as { teamId: string }).teamId).sort()
+    expect(teamIds).toEqual(['teamA', 'teamB'])
   })
 })

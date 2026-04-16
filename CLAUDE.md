@@ -96,7 +96,7 @@ dev/imitation-crab/         — Imitation Crab: OpenClaw mock for dev without re
 Created by `bakin init`. Per-installation state, NOT in the repo.
 ```
 ~/.bakin/
-  settings.json            — Runtime config (mainAgentId, bridge settings)
+  settings.json            — Runtime config (dispatch/watchdog/antfly/bridge settings — NOT the agent roster)
   plugin-settings/         — Per-plugin configuration
   plugins/                 — Addon plugins (installed via bakin install)
   agents/                  — Per-agent data ({id}/avatar.jpg, avatar-full.png)

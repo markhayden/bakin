@@ -46,7 +46,13 @@ export type AgentDisplaySettingsMap = Record<string, AgentDisplaySettings>
 export interface OrgTeam {
   id: string
   label: string
-  reportsTo: string   // agent ID this team reports to (e.g. "main")
+  /**
+   * Agent ID this team reports to, or `null` to indicate "reports to the
+   * main orchestrator". Stored as `null` whenever the incoming value
+   * matches the current main agent id so team.json stays decoupled from
+   * the specific orchestrator name.
+   */
+  reportsTo: string | null
   color?: string
   order?: number
 }

@@ -8,7 +8,6 @@ import {
   Background,
   BackgroundVariant,
   type Node,
-  type Edge,
   type NodeTypes,
   Position,
   Handle,
@@ -25,10 +24,11 @@ import {
 } from '@/components/ui/dialog'
 import { BakinDrawer } from '@/components/bakin-drawer'
 import { useGatewayStatus } from '@/hooks/use-gateway-status'
-import { useAgentStore, useAgentColor } from '../hooks/use-agent-store'
+import { useAgentStore, useAgentColor, useMainAgentId } from '../hooks/use-agent-store'
+import { buildGraph } from '../lib/build-graph'
 import { AgentForm, type AgentFormData } from './agent-form'
 import { TeamManager } from './team-manager'
-import type { AgentWithStatus, OrgTeam, AgentDisplaySettingsMap } from '../types'
+import type { AgentWithStatus } from '../types'
 
 /** Strip default ReactFlow node chrome + animated edges + hover glow */
 const RESET_STYLES = `
@@ -67,8 +67,8 @@ interface FounderNodeData extends Record<string, unknown> {
 function FounderNode({ data }: NodeProps) {
   const { label, subtitle } = data as FounderNodeData
   return (
-    <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-5 py-3 flex items-center gap-3 shadow-md">
-      <div className="size-9 rounded-full bg-zinc-800 flex items-center justify-center text-base">👤</div>
+    <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-5 py-3 flex items-center justify-center gap-3 shadow-md w-[152px]">
+      <div className="size-9 rounded-full bg-zinc-800 flex items-center justify-center text-base shrink-0">👤</div>
       <div>
         <div className="text-sm font-semibold text-zinc-100">{label}</div>
         <div className="text-xs text-zinc-400">{subtitle}</div>
@@ -163,216 +163,6 @@ const nodeTypes: NodeTypes = {
   section: SectionNode,
 }
 
-// ─── Layout ──────────────────────────────────────────────────────────────────
-
-const CARD_W = 152
-const CARD_H = 240
-const X_GAP = 24
-const Y_GAP = 50
-
-const EDGE_STYLE: Record<string, unknown> = { stroke: '#525252', strokeWidth: 2 }
-const EDGE_DASHED: Record<string, unknown> = { ...EDGE_STYLE }
-
-function placeRow(
-  agents: AgentWithStatus[],
-  y: number,
-  nodes: Node[],
-) {
-  const totalW = agents.length * CARD_W + (agents.length - 1) * X_GAP
-  const startX = -totalW / 2
-  agents.forEach((agent, i) => {
-    nodes.push({
-      id: agent.id,
-      type: 'agentCard',
-      position: { x: startX + i * (CARD_W + X_GAP), y },
-      data: { agent },
-    })
-  })
-}
-
-interface GraphInput {
-  agents: AgentWithStatus[]
-  teams: OrgTeam[]
-  displaySettings: AgentDisplaySettingsMap
-}
-
-function buildGraph({ agents, teams, displaySettings }: GraphInput) {
-  const nodes: Node[] = []
-  const edges: Edge[] = []
-  const agentMap = new Map(agents.map((a) => [a.id, a]))
-
-  // Sort teams by order
-  const sortedTeams = [...teams].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-
-  // Build team membership from display settings
-  const teamMembers = new Map<string, AgentWithStatus[]>()
-  const assignedIds = new Set<string>()
-
-  for (const team of sortedTeams) {
-    teamMembers.set(team.id, [])
-  }
-  for (const agent of agents) {
-    const teamId = displaySettings[agent.id]?.teamId
-    if (teamId && teamMembers.has(teamId)) {
-      teamMembers.get(teamId)!.push(agent)
-      assignedIds.add(agent.id)
-    }
-  }
-
-  // Group teams by who they report to
-  const teamsByReporter = new Map<string, OrgTeam[]>()
-  for (const team of sortedTeams) {
-    const list = teamsByReporter.get(team.reportsTo) ?? []
-    list.push(team)
-    teamsByReporter.set(team.reportsTo, list)
-  }
-
-  // Find top-level agents: agents that have teams reporting to them
-  // or agents with no team assignment that aren't in any team
-  const topAgentIds = new Set<string>()
-  for (const team of sortedTeams) {
-    topAgentIds.add(team.reportsTo)
-  }
-
-  // Unassigned agents (not in any team, not a team leader)
-  const unassigned = agents.filter((a) => !assignedIds.has(a.id) && !topAgentIds.has(a.id))
-
-  let y = 0
-
-  // Row 0: Founder (Mark)
-  const founderW = 160
-  nodes.push({
-    id: 'mark',
-    type: 'founder',
-    position: { x: -founderW / 2, y },
-    data: { label: 'Mark', subtitle: 'Founder' },
-  })
-
-  y += 80 + Y_GAP
-
-  // Row 1: Top-level agents (those with teams reporting to them)
-  // Typically just the main agent, but could be multiple
-  const topAgents = agents.filter((a) => topAgentIds.has(a.id))
-  if (topAgents.length > 0) {
-    placeRow(topAgents, y, nodes)
-    for (const agent of topAgents) {
-      assignedIds.add(agent.id)
-      edges.push({
-        id: `mark->${agent.id}`,
-        source: 'mark',
-        target: agent.id,
-        type: 'smoothstep',
-        style: EDGE_STYLE,
-      })
-    }
-    y += CARD_H + Y_GAP
-  }
-
-  // Render each team: section header → member cards
-  // Collect all teams that need rendering, grouped side-by-side when they share a reporter
-  const renderedTeams = new Set<string>()
-
-  for (const topAgent of topAgents) {
-    const teamsForAgent = teamsByReporter.get(topAgent.id) ?? []
-    if (teamsForAgent.length === 0) continue
-
-    // Calculate total width of all teams side by side
-    const teamWidths: number[] = []
-    const teamMembersList: AgentWithStatus[][] = []
-    for (const team of teamsForAgent) {
-      const members = teamMembers.get(team.id) ?? []
-      teamMembersList.push(members)
-      const w = Math.max(1, members.length) * CARD_W + Math.max(0, members.length - 1) * X_GAP
-      teamWidths.push(w)
-      renderedTeams.add(team.id)
-    }
-
-    const TEAM_GAP = 80
-    const totalTeamWidth = teamWidths.reduce((a, b) => a + b, 0) + (teamsForAgent.length - 1) * TEAM_GAP
-    let teamX = -totalTeamWidth / 2
-
-    // Section headers
-    const sectionY = y
-    for (let t = 0; t < teamsForAgent.length; t++) {
-      const team = teamsForAgent[t]
-      const sectionW = 200
-      const centerX = teamX + teamWidths[t] / 2
-      nodes.push({
-        id: `section-${team.id}`,
-        type: 'section',
-        position: { x: centerX - sectionW / 2, y: sectionY },
-        data: { label: team.label },
-      })
-      edges.push({
-        id: `${topAgent.id}->section-${team.id}`,
-        source: topAgent.id,
-        target: `section-${team.id}`,
-        type: 'smoothstep',
-        style: EDGE_STYLE,
-      })
-      teamX += teamWidths[t] + TEAM_GAP
-    }
-
-    y += 30 + Y_GAP
-
-    // Member cards
-    teamX = -totalTeamWidth / 2
-    for (let t = 0; t < teamsForAgent.length; t++) {
-      const team = teamsForAgent[t]
-      const members = teamMembersList[t]
-      const memberStartX = teamX
-
-      members.forEach((agent, i) => {
-        const x = memberStartX + i * (CARD_W + X_GAP)
-        nodes.push({
-          id: agent.id,
-          type: 'agentCard',
-          position: { x, y },
-          data: { agent },
-        })
-        edges.push({
-          id: `section-${team.id}->${agent.id}`,
-          source: `section-${team.id}`,
-          target: agent.id,
-          type: 'smoothstep',
-          style: EDGE_DASHED,
-        })
-      })
-
-      teamX += teamWidths[t] + TEAM_GAP
-    }
-
-    if (teamsForAgent.some((_, t) => teamMembersList[t].length > 0)) {
-      y += CARD_H + Y_GAP
-    }
-  }
-
-  // Unassigned agents
-  if (unassigned.length > 0) {
-    const sectionW = 200
-    nodes.push({
-      id: 'section-unassigned',
-      type: 'section',
-      position: { x: -sectionW / 2, y },
-      data: { label: 'Unassigned' },
-    })
-    y += 30 + Y_GAP
-
-    placeRow(unassigned, y, nodes)
-    for (const agent of unassigned) {
-      edges.push({
-        id: `unassigned->${agent.id}`,
-        source: 'section-unassigned',
-        target: agent.id,
-        type: 'smoothstep',
-        style: EDGE_DASHED,
-      })
-    }
-  }
-
-  return { nodes, edges: edges.map((e) => ({ ...e, animated: true })) }
-}
-
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function TeamGrid() {
@@ -380,6 +170,7 @@ export function TeamGrid() {
   const agentsWithStatus = useAgentStore((s) => s.agentsWithStatus)
   const teams = useAgentStore((s) => s.teams)
   const displaySettings = useAgentStore((s) => s.displaySettings)
+  const mainAgentId = useMainAgentId()
   const loaded = useAgentStore((s) => s.loaded)
   const reload = useAgentStore((s) => s.load)
   const [showCreate, setShowCreate] = useState(false)
@@ -397,8 +188,10 @@ export function TeamGrid() {
   )
 
   const { nodes, edges } = useMemo(
-    () => loaded ? buildGraph({ agents: agentsWithStatus, teams, displaySettings }) : { nodes: [], edges: [] },
-    [agentsWithStatus, teams, displaySettings, loaded],
+    () => loaded
+      ? buildGraph({ agents: agentsWithStatus, teams, displaySettings, mainAgentId })
+      : { nodes: [], edges: [] },
+    [agentsWithStatus, teams, displaySettings, mainAgentId, loaded],
   )
 
   // Step 1: form submits → stash data and show confirmation dialog

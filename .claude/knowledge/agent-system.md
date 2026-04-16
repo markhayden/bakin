@@ -47,7 +47,22 @@ Agent models are changed via the models plugin API, not direct OpenClaw writes:
 - The models plugin writes to `{OPENCLAW_HOME}/openclaw.json` and fires the `models.configChanged` hook when agent effective model changes
 
 ### Agent IDs
-Bakin uses OpenClaw's canonical agent ids verbatim — no translation layer. The orchestrator is `main`; subagents keep whatever ids OpenClaw assigns. Display names (e.g. "Roscoe", "Crab") come from `identity.name` in `openclaw.json` at render time and never leak into storage keys. Resolution helpers: `getMainAgentId()` and `getMainAgentName()` in `packages/core/src/main-agent.ts`.
+Bakin uses OpenClaw's canonical agent ids verbatim — no translation layer. The orchestrator id is the literal string `"main"` on **every** install; there is no detection heuristic, no settings override, no fallback. Subagents keep whatever ids OpenClaw assigns. Display names (e.g. "Roscoe", "Crab") come from `identity.name` in `openclaw.json` at render time and never leak into storage keys.
+
+Resolution helpers in `packages/core/src/main-agent.ts`:
+- `getMainAgentId(): string` — returns `"main"` if the entry exists, throws otherwise (with a pointer to `bakin check openclaw`)
+- `tryGetMainAgentId(): string | null` — non-throwing variant for UI/degraded paths
+- `getMainAgentName(): string` — reads `identity.name` on the `main` entry, falls back to `"Main"`
+
+All three call through `packages/core/src/openclaw-config.ts`, the single mtime-cached reader for `openclaw.json`. Live edits (e.g. renaming `identity.name`) are picked up on the next read without a restart. Callers that need the raw roster use `getAgentIds()` or `findAgentById(id)` from the same module — **never** `BakinSettings.agents` (that field no longer exists).
+
+### Roster validation and dedupe
+`plugins/team/lib/openclaw-adapter.ts` validates the roster on every read:
+- If no entry has `id: "main"`, `listAgents()` returns `[]` and logs an error. The UI then renders an empty team rather than a partial/broken pyramid.
+- Duplicate ids → first-wins, error logged with the discarded entry.
+- Duplicate **resolved** workspaces (explicit `workspace` field, falling back to `defaults.workspace`) → first-wins, error logged.
+
+The adapter is **read-only** — it never writes back to `openclaw.json` to "fix" violations. Repairs are the user's job; `bakin check openclaw` reports the exact violations (see `src/core/onboarding/openclaw.ts`).
 
 ## Agent Communication
 
@@ -183,16 +198,20 @@ Monitors agent and MCP server health:
 
 | File | Purpose |
 |------|---------|
-| `plugins/team/lib/openclaw-adapter.ts` | Reads/writes OpenClaw filesystem for agent data |
+| `packages/core/src/openclaw-config.ts` | Single mtime-cached reader for `openclaw.json`. Exports `readOpenClawConfig`, `getAgentList`, `getAgentIds`, `findAgentById`, `resetOpenClawConfigCache` |
+| `packages/core/src/main-agent.ts` | Canonical `"main"` resolver: `getMainAgentId`, `tryGetMainAgentId`, `getMainAgentName` |
+| `plugins/team/lib/openclaw-adapter.ts` | Read-only adapter over OpenClaw: validation, dedupe, merges Bakin-owned display data |
+| `plugins/team/lib/build-graph.ts` | Pure pyramid-graph builder — root derived from `mainAgentId`, `reportsTo ?? mainAgentId` resolution, unknown-id fallback |
 | `plugins/team/hooks/use-agent-store.ts` | Client-side Zustand store for agent data |
-| `plugins/team/index.ts` | Team plugin server: routes, hooks, exec tools |
+| `plugins/team/index.ts` | Team plugin server: routes, hooks, exec tools. Normalizes `reportsTo === mainAgentId → null` on write; degrades unknown `reportsTo` → null on read |
 | `src/core/agents.ts` | Agent status resolution and communication |
-| `src/core/dispatch.ts` | Task dispatch engine |
+| `src/core/dispatch.ts` | Task dispatch engine. Roster from `getAgentIds()` in openclaw-config |
 | `src/core/mcp-server.ts` | MCP tool server |
 | `src/core/openclaw-client.ts` | OpenClaw HTTP gateway client |
 | `src/core/task-service.ts` | Task mutations with side effects |
 | `src/core/audit.ts` | Audit logging |
 | `src/core/sse.ts` | SSE client management |
 | `src/core/watchdog.ts` | Agent health monitoring |
-| `src/core/settings.ts` | BakinSettings (agents list, dispatch config, etc.) |
+| `src/core/onboarding/openclaw.ts` | Doctor check — validates missing `main`, duplicate ids, duplicate workspaces. Reports only, never auto-fixes |
+| `src/core/settings.ts` | BakinSettings (dispatch/watchdog/antfly/etc. config). **Does not** contain the agent roster |
 | `scripts/lib/log-progress.ts` | Structured activity logging exec tool |

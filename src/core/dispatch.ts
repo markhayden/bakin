@@ -12,6 +12,7 @@ import * as openclaw from './openclaw-client'
 import { isStale } from '../lib/format'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { getMainAgentId } from '@bakin/core/main-agent'
+import { getAgentIds } from '@bakin/core/openclaw-config'
 
 const log = createLogger('dispatch')
 const hooks = () => getHookRegistry()
@@ -172,7 +173,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         if (Date.now() - failure.lastAttempt < settings.dispatch.failureCooldownMs) continue
       }
 
-      if (task.agent && !settings.agents.includes(task.agent)) continue
+      if (task.agent && !getAgentIds().includes(task.agent)) continue
 
       // Workflow-aware dispatch path
       const taskWithWorkflow = task as typeof task & { workflowId?: string }
@@ -250,7 +251,7 @@ export async function dispatchSingleTask(
       return
     }
 
-    if (task.agent && !settings.agents.includes(task.agent)) {
+    if (task.agent && !getAgentIds().includes(task.agent)) {
       log.warn('dispatchSingleTask: agent not in allowed list', { taskId, agent: task.agent })
       return
     }
