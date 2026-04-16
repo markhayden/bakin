@@ -16,7 +16,10 @@ import { handleRestore } from './routes/restore'
 import { handlePermanentDelete } from './routes/permanent-delete'
 import { handleEmptyTrash } from './routes/empty-trash'
 import { handleLink } from './routes/link'
+import { handleRetype } from './routes/retype'
+import { handleContent } from './routes/content'
 import { relinkAsset } from './lib/relink'
+import { retypeAsset } from './lib/retype'
 import { buildIndex, upsertAsset, removeAsset, detectVariant, listAssets } from './lib/asset-index'
 import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { ASSET_TYPES } from './lib/constants'
@@ -365,6 +368,39 @@ const assetsPlugin: BakinPlugin = {
       },
     })
 
+    // PATCH /retype — change asset type
+    ctx.registerRoute({
+      path: '/retype',
+      method: 'PATCH',
+      description: 'Change asset type classification',
+      handler: async (req: Request) => {
+        const res = await handleRetype(req)
+        const data = await res.clone().json()
+        if (data.ok) {
+          ctx.activity.audit('asset.retyped', 'user', { oldPath: data.oldPath, newPath: data.newPath })
+          ctx.activity.log('user', `Retyped asset to ${data.newPath}`)
+          if (data.oldPath) ctx.search.remove(data.oldPath).catch(() => {})
+          if (data.newPath) indexAsset(data.newPath).catch(() => {})
+        }
+        return res
+      },
+    })
+
+    // PUT /content — update text content of an editable asset
+    ctx.registerRoute({
+      path: '/content',
+      method: 'PUT',
+      description: 'Update text content of an editable asset',
+      handler: async (req: Request) => {
+        const res = await handleContent(req)
+        try {
+          const data = await res.clone().json()
+          if (data.ok && data.path) indexAsset(data.path as string).catch(() => {})
+        } catch { /* best-effort reindex */ }
+        return res
+      },
+    })
+
     // GET /trash — list trashed assets
     ctx.registerRoute({ path: '/trash', method: 'GET', description: 'List trashed assets', handler: handleListTrash })
 
@@ -418,6 +454,20 @@ const assetsPlugin: BakinPlugin = {
     })
 
     // ─── MCP Exec Tools ────────────────────────────────────────────────
+
+    const TYPE_RUBRIC = [
+      'Asset type — determines how the asset is organized and displayed:',
+      '- text: Written content — articles, summaries, copy, notes',
+      '- research: Research materials, analysis, reference docs, competitive intel',
+      '- plans: Strategic plans, roadmaps, workflows, project specs',
+      '- images: Visual assets — photos, illustrations, graphics',
+      '- video: Video files — walkthroughs, demos, reels',
+      '- audio: Audio files — podcasts, recordings, music',
+      '- data: Structured data — JSON, CSV, XML exports',
+      '- other: Anything that doesn\'t fit above',
+      '',
+      'When unsure: if it informs future decisions, use research. If it\'s a deliverable, use text. If it describes what to do, use plans.',
+    ].join('\n')
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_list',
@@ -473,9 +523,9 @@ const assetsPlugin: BakinPlugin = {
       parameters: {
         filePath: z.string().describe('Absolute path to the source file to save'),
         taskId: z.string().describe('Task ID — used for directory organization'),
-        type: z.enum(ASSET_TYPES).describe('Asset type: text, images, video, audio, plans, data, or other'),
-        description: z.string().optional().describe('Human-readable description of the asset'),
-        tags: z.array(z.string()).optional().describe('Tags for filtering and search'),
+        type: z.enum(ASSET_TYPES).describe(TYPE_RUBRIC),
+        description: z.string().optional().describe('One-sentence summary visible in the asset grid and search. Be specific — "Q2 blog hero image" not "an image".'),
+        tags: z.array(z.string()).optional().describe('Lowercase hyphenated tags for filtering. Use domain tags (social, blog), format tags (draft, final), and project tags.'),
         tool: z.string().optional().describe('Tool used to generate (e.g., "dall-e-3", "nano-banana-pro")'),
         slug: z.string().optional().describe('Custom filename slug. Auto-derived from source filename if omitted.'),
       },
@@ -696,6 +746,53 @@ const assetsPlugin: BakinPlugin = {
 
         const healthy = total - issues.filter(i => !i.issue.startsWith('orphaned') && !i.fixed).length
         return { ok: true, summary: { total, healthy, issues: issues.length, fixed }, issues }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_retype',
+      label: 'Retyped an asset',
+      activityDuplicate: true,
+      description: 'Change an asset\'s type classification. Physically moves the file to the new type directory and updates the search index.',
+      parameters: {
+        path: z.string().describe('Asset path relative to content dir (e.g. "assets/text/task123/file.md")'),
+        type: z.enum(ASSET_TYPES).describe(TYPE_RUBRIC),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const result = retypeAsset({
+          assetPath: params.path as string,
+          newType: params.type as typeof ASSET_TYPES[number],
+        })
+        if (result.ok) {
+          ctx.activity.audit('asset.retyped', agent, { oldPath: result.oldPath, newPath: result.newPath })
+          if (result.oldPath) ctx.search.remove(result.oldPath).catch(() => {})
+          if (result.newPath) indexAsset(result.newPath).catch(() => {})
+        }
+        return result
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_update_content',
+      label: 'Updated asset content',
+      description: 'Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file.',
+      parameters: {
+        path: z.string().describe('Asset path relative to content dir (e.g. "assets/text/task123/doc.md")'),
+        content: z.string().describe('New file content (replaces entire file)'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const req = new Request('http://localhost/api/plugins/assets/content', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: params.path, content: params.content }),
+        })
+        const res = await handleContent(req)
+        const data = await res.json()
+        if (data.ok) {
+          ctx.activity.audit('asset.content_updated', agent, { path: params.path })
+          if (data.path) indexAsset(data.path as string).catch(() => {})
+        }
+        return data
       },
     })
 
