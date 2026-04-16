@@ -115,7 +115,7 @@ vi.mock('@bakin/core/openclaw-config', () => ({
 // Import after mocks are declared
 // ---------------------------------------------------------------------------
 
-import { listAgents, addAgent, openclawExec, synthesizeIdentityMd } from '../../../plugins/team/lib/openclaw-adapter'
+import { listAgents, addAgent, removeAgent, removeFromAllowLists, openclawExec, synthesizeIdentityMd } from '../../../plugins/team/lib/openclaw-adapter'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -456,5 +456,124 @@ describe('team/openclaw-adapter · addAgent', () => {
 
     expect(result.id).toBe('ret-test')
     expect(result.workspace).toContain('workspaces/ret-test')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// removeAgent (async CLI adapter)
+// ---------------------------------------------------------------------------
+
+describe('team/openclaw-adapter · removeAgent', () => {
+  beforeEach(() => {
+    execFileMock.mockClear()
+    loggerMock.info.mockClear()
+    loggerMock.error.mockClear()
+    readOpenClawConfigMock.mockReset()
+    resetOpenClawConfigCacheMock.mockClear()
+    execFileMock.mockImplementation((_cmd: string, _args: string[], cb: (err: Error | null, result: { stdout: string; stderr: string }) => void) => {
+      cb(null, { stdout: '{}', stderr: '' })
+    })
+  })
+
+  it('shells out to openclaw agents delete with correct args', async () => {
+    setConfig({ agents: { list: [{ id: 'main' }, { id: 'pixel' }] } })
+
+    await removeAgent('pixel')
+
+    expect(execFileMock).toHaveBeenCalledTimes(1)
+    const [bin, args] = execFileMock.mock.calls[0]
+    expect(bin).toBe('/usr/bin/openclaw')
+    expect(args).toEqual(['agents', 'delete', 'pixel', '--force', '--json'])
+  })
+
+  it('returns true on success', async () => {
+    setConfig({ agents: { list: [{ id: 'main' }, { id: 'pixel' }] } })
+    const result = await removeAgent('pixel')
+    expect(result).toBe(true)
+  })
+
+  it('returns false when agent does not exist in roster', async () => {
+    setConfig({ agents: { list: [{ id: 'main' }] } })
+    const result = await removeAgent('nonexistent')
+    expect(result).toBe(false)
+    expect(execFileMock).not.toHaveBeenCalled()
+  })
+
+  it('returns false when CLI fails', async () => {
+    setConfig({ agents: { list: [{ id: 'main' }, { id: 'pixel' }] } })
+    execFileMock.mockImplementation((_cmd: string, _args: string[], cb: (err: Error | null) => void) => {
+      cb(new Error('CLI failed'))
+    })
+
+    const result = await removeAgent('pixel')
+    expect(result).toBe(false)
+    expect(loggerMock.error).toHaveBeenCalled()
+  })
+
+  it('busts the config cache after deletion', async () => {
+    setConfig({ agents: { list: [{ id: 'main' }, { id: 'pixel' }] } })
+    await removeAgent('pixel')
+    expect(resetOpenClawConfigCacheMock).toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// removeFromAllowLists
+// ---------------------------------------------------------------------------
+
+describe('team/openclaw-adapter · removeFromAllowLists', () => {
+  beforeEach(() => {
+    loggerMock.info.mockClear()
+    readOpenClawConfigMock.mockReset()
+    resetOpenClawConfigCacheMock.mockClear()
+    // Ensure the openclaw.json directory exists for writeFileSync
+    mkdirSync(join(testDir, 'openclaw'), { recursive: true })
+  })
+
+  it('removes the agent from all allowAgents lists', () => {
+    setConfig({
+      agents: {
+        list: [
+          { id: 'main', subagents: { allowAgents: ['pixel', 'patch', 'basil'] } },
+          { id: 'basil', subagents: { allowAgents: ['pixel', 'rolo'] } },
+          { id: 'patch' },
+        ],
+      },
+    })
+
+    removeFromAllowLists('pixel')
+
+    // Verify the written JSON
+    const written = JSON.parse(readFileSync(join(testDir, 'openclaw', 'openclaw.json'), 'utf-8'))
+    expect(written.agents.list[0].subagents.allowAgents).toEqual(['patch', 'basil'])
+    expect(written.agents.list[1].subagents.allowAgents).toEqual(['rolo'])
+  })
+
+  it('does nothing when agent is not in any allow list', () => {
+    setConfig({
+      agents: {
+        list: [
+          { id: 'main', subagents: { allowAgents: ['pixel'] } },
+        ],
+      },
+    })
+
+    removeFromAllowLists('nonexistent')
+
+    expect(resetOpenClawConfigCacheMock).not.toHaveBeenCalled()
+  })
+
+  it('handles agents with no subagents field gracefully', () => {
+    setConfig({
+      agents: {
+        list: [
+          { id: 'main' },
+          { id: 'pixel' },
+        ],
+      },
+    })
+
+    removeFromAllowLists('pixel')
+    expect(resetOpenClawConfigCacheMock).not.toHaveBeenCalled()
   })
 })
