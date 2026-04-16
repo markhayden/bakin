@@ -80,7 +80,7 @@ export interface AssetVariantMeta {
 export interface AssetMeta {
   path: string
   filename: string
-  type: 'text' | 'images' | 'video' | 'audio' | 'plans' | 'data' | 'other'
+  type: 'text' | 'images' | 'video' | 'audio' | 'plans' | 'research' | 'data' | 'other'
   mimeType: string
   size: number
   mtimeMs?: number
