@@ -70,6 +70,13 @@ function AssetRenderer({ asset }: { asset: AssetMeta }) {
     case 'data':
       return <CodeRenderer fileUrl={fileUrl} />
 
+    case 'pdf':
+      return (
+        <div className="bg-zinc-950 rounded-lg h-full overflow-hidden">
+          <embed src={fileUrl} type="application/pdf" className="w-full h-full" />
+        </div>
+      )
+
     default:
       return (
         <div className="bg-zinc-900 rounded-lg p-8 flex flex-col items-center gap-4 text-center">
@@ -169,10 +176,19 @@ export function AssetDetailModal({ assetPath, onClose }: { assetPath: string; on
       .catch(() => setAsset(null))
   }, [assetPath])
 
+  const handlePathChange = async (newPath: string) => {
+    try {
+      const res = await fetch(`/api/plugins/assets/?path=${encodeURIComponent(newPath)}`)
+      const data = res.ok ? await res.json() : { assets: [] }
+      if (data.assets?.[0]) setAsset(data.assets[0])
+    } catch (err) { console.error('Failed to fetch retyped asset', err) }
+  }
+
   return (
     <AssetDetail
       asset={asset}
       onClose={onClose}
+      onPathChange={handlePathChange}
       onDelete={async (path) => {
         await fetch(`/api/plugins/assets?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
         onClose()
@@ -225,7 +241,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
         onRelink?.()
         onClose()
       }
-    } catch { /* ignore */ }
+    } catch (err) { console.error('Failed to relink asset', err) }
     finally { setRelinking(false) }
   }
 
@@ -249,16 +265,18 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
         }
         onRelink?.()
       }
-    } catch { /* ignore */ }
+    } catch (err) { console.error('Failed to retype asset', err) }
     finally { retypingRef.current = false }
   }
 
   const handleStartEdit = async () => {
     if (!displayAsset) return
-    const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(displayAsset.path)}`
-    const content = await fetch(fileUrl).then(r => r.text())
-    setDraftContent(content)
-    setEditing(true)
+    try {
+      const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(displayAsset.path)}`
+      const content = await fetch(fileUrl).then(r => r.text())
+      setDraftContent(content)
+      setEditing(true)
+    } catch (err) { console.error('Failed to load content for editing', err) }
   }
 
   const handleSave = async () => {
@@ -274,7 +292,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
         setEditing(false)
         setContentRefreshKey(k => k + 1)
       }
-    } catch { /* ignore */ }
+    } catch (err) { console.error('Failed to save asset content', err) }
     finally { setSaving(false) }
   }
 
