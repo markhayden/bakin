@@ -22,6 +22,7 @@ interface AssetDetailProps {
   onClose: () => void
   onDelete: (path: string) => void
   onRelink?: () => void
+  onPathChange?: (newPath: string) => void
 }
 
 function AssetRenderer({ asset }: { asset: AssetMeta }) {
@@ -188,7 +189,7 @@ function mimeToFormat(mime: string): 'markdown' | 'yaml' | 'json' | 'text' {
   return 'text'
 }
 
-export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAssets }: AssetDetailProps & { showOpenInAssets?: boolean }) {
+export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, showOpenInAssets }: AssetDetailProps & { showOpenInAssets?: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [activeVariantPath, setActiveVariantPath] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState(false)
@@ -203,7 +204,11 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
 
   const displayAsset = localAsset ?? asset
 
-  useEffect(() => { if (!retypingRef.current) setLocalAsset(null) }, [asset?.path])
+  useEffect(() => {
+    if (asset && localAsset && asset.path !== localAsset.path) {
+      setLocalAsset(null)
+    }
+  }, [asset?.path])
 
   const handleRelink = async (taskId: string | null) => {
     if (!displayAsset) return
@@ -236,6 +241,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
       if (res.ok) {
         const data = await res.json()
         if (data.newPath) {
+          onPathChange?.(data.newPath)
           const listRes = await fetch(`/api/plugins/assets/?path=${encodeURIComponent(data.newPath)}`)
           const listData = await listRes.json()
           if (listData.assets?.[0]) setLocalAsset(listData.assets[0])
