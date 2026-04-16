@@ -208,6 +208,7 @@ export function AssetsPage() {
         <AssetDetail
           asset={selectedAsset}
           onClose={() => setAssetPath('')}
+          onPathChange={setAssetPath}
           onDelete={async (path) => {
             const ok = await deleteAsset(path)
             if (ok) setAssetPath('')
