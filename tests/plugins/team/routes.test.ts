@@ -152,6 +152,9 @@ vi.mock('@bakin/team/lib/openclaw-adapter', () => ({
   getOpenClawConfig: vi.fn(() => ({ agents: { list: [] } })),
   openclawExec: vi.fn(async () => '{}'),
   synthesizeIdentityMd: vi.fn(() => '# IDENTITY.md\n'),
+  addToAllowLists: vi.fn(),
+  setSubagentPermissions: vi.fn(),
+  updateAgentIdentity: vi.fn(async () => ['name', 'role']),
 }))
 
 // The team plugin's relative import path inside the plugin uses './lib/openclaw-adapter'.
@@ -189,6 +192,9 @@ vi.mock('../../../plugins/team/lib/openclaw-adapter', () => ({
   getOpenClawConfig: vi.fn(() => ({ agents: { list: [] } })),
   openclawExec: vi.fn(async () => '{}'),
   synthesizeIdentityMd: vi.fn(() => '# IDENTITY.md\n'),
+  addToAllowLists: vi.fn(),
+  setSubagentPermissions: vi.fn(),
+  updateAgentIdentity: vi.fn(async () => ['name', 'role']),
 }))
 
 // ---------------------------------------------------------------------------
@@ -462,5 +468,215 @@ describe('team plugin — reportsTo graceful degradation on read', () => {
     expect(warnCalls.length).toBe(2)
     const teamIds = warnCalls.map((c) => (c[1] as { teamId: string }).teamId).sort()
     expect(teamIds).toEqual(['teamA', 'teamB'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST / — enhanced with dispatchable + teamId
+// ---------------------------------------------------------------------------
+
+describe('team plugin — POST / (create agent with new fields)', () => {
+  let activated: ActivatedPlugin
+  let adapter: Record<string, ReturnType<typeof vi.fn>>
+
+  beforeAll(async () => {
+    activated = await activatePlugin(teamPlugin, testDir)
+  })
+
+  beforeEach(async () => {
+    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof vi.fn>>
+    adapter.addAgent.mockClear()
+    adapter.addToAllowLists.mockClear()
+  })
+
+  it('passes role, vibe, primaryFunction, defaultMode, tools to addAgent', async () => {
+    const route = findRoute(activated.routes, 'POST', '/')!
+    const { status } = await callRoute(route, activated.ctx, {
+      body: {
+        id: 'explorer',
+        name: 'Explorer',
+        emoji: '🔍',
+        role: 'Research Agent',
+        vibe: 'Curious and thorough',
+        primaryFunction: 'Multi-source research',
+        defaultMode: 'Research mode',
+        tools: '# TOOLS.md\n\nUse web search first.',
+      },
+    })
+    expect(status).toBe(200)
+    expect(adapter.addAgent).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'explorer',
+      name: 'Explorer',
+      role: 'Research Agent',
+      vibe: 'Curious and thorough',
+      primaryFunction: 'Multi-source research',
+      defaultMode: 'Research mode',
+      tools: '# TOOLS.md\n\nUse web search first.',
+    }))
+  })
+
+  it('calls addToAllowLists with "main" when no dispatchable provided', async () => {
+    const route = findRoute(activated.routes, 'POST', '/')!
+    await callRoute(route, activated.ctx, {
+      body: { id: 'trainer', name: 'Trainer' },
+    })
+    expect(adapter.addToAllowLists).toHaveBeenCalledWith('trainer', 'main')
+  })
+
+  it('calls addToAllowLists with "all" when dispatchable="all"', async () => {
+    const route = findRoute(activated.routes, 'POST', '/')!
+    await callRoute(route, activated.ctx, {
+      body: { id: 'trainer', name: 'Trainer', dispatchable: 'all' },
+    })
+    expect(adapter.addToAllowLists).toHaveBeenCalledWith('trainer', 'all')
+  })
+
+  it('calls addToAllowLists with specific list when dispatchable is array', async () => {
+    const route = findRoute(activated.routes, 'POST', '/')!
+    await callRoute(route, activated.ctx, {
+      body: { id: 'trainer', name: 'Trainer', dispatchable: ['chef', 'main'] },
+    })
+    expect(adapter.addToAllowLists).toHaveBeenCalledWith('trainer', ['chef', 'main'])
+  })
+
+  it('writes teamId to display settings when provided', async () => {
+    const route = findRoute(activated.routes, 'POST', '/')!
+    const teamJsonPath = join(testDir, 'plugin-settings', 'team.json')
+    mkdirSync(join(testDir, 'plugin-settings'), { recursive: true })
+    writeFileSync(teamJsonPath, JSON.stringify({ displaySettings: {}, teams: [] }))
+
+    const { status } = await callRoute(route, activated.ctx, {
+      body: { id: 'coach', name: 'Coach', teamId: 'builders' },
+    })
+    expect(status).toBe(200)
+    const saved = JSON.parse(readFileSync(teamJsonPath, 'utf-8'))
+    expect(saved.displaySettings.coach?.teamId).toBe('builders')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// DELETE /:agentId — with allowlist cleanup
+// ---------------------------------------------------------------------------
+
+describe('team plugin — DELETE /:agentId (allowlist cleanup)', () => {
+  let activated: ActivatedPlugin
+  let adapter: Record<string, ReturnType<typeof vi.fn>>
+
+  beforeAll(async () => {
+    activated = await activatePlugin(teamPlugin, testDir)
+  })
+
+  beforeEach(async () => {
+    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof vi.fn>>
+    adapter.removeAgent.mockClear()
+    adapter.removeFromAllowLists.mockClear()
+  })
+
+  it('calls removeFromAllowLists after successful deletion', async () => {
+    const route = findRoute(activated.routes, 'DELETE', '/:agentId')!
+    const { status } = await callRoute(route, activated.ctx, {
+      searchParams: { agentId: 'chef' },
+    })
+    expect(status).toBe(200)
+    expect(adapter.removeAgent).toHaveBeenCalledWith('chef')
+    expect(adapter.removeFromAllowLists).toHaveBeenCalledWith('chef')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PUT /:agentId/identity
+// ---------------------------------------------------------------------------
+
+describe('team plugin — PUT /:agentId/identity', () => {
+  let activated: ActivatedPlugin
+  let adapter: Record<string, ReturnType<typeof vi.fn>>
+
+  beforeAll(async () => {
+    activated = await activatePlugin(teamPlugin, testDir)
+  })
+
+  beforeEach(async () => {
+    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof vi.fn>>
+    adapter.updateAgentIdentity.mockClear()
+    adapter.updateAgentIdentity.mockResolvedValue(['name', 'role'])
+  })
+
+  it('calls updateAgentIdentity with provided fields', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/:agentId/identity')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      searchParams: { agentId: 'chef' },
+      body: { name: 'Chef v2', role: 'Head Chef' },
+    })
+    expect(status).toBe(200)
+    expect((body as { ok: boolean }).ok).toBe(true)
+    expect((body as { updated: string[] }).updated).toEqual(['name', 'role'])
+    expect(adapter.updateAgentIdentity).toHaveBeenCalledWith('chef', expect.objectContaining({
+      name: 'Chef v2',
+      role: 'Head Chef',
+    }))
+  })
+
+  it('returns 404 when agent not found', async () => {
+    adapter.updateAgentIdentity.mockRejectedValue(new Error('Agent "ghost" not found in roster'))
+    const route = findRoute(activated.routes, 'PUT', '/:agentId/identity')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      searchParams: { agentId: 'ghost' },
+      body: { name: 'Ghost' },
+    })
+    expect(status).toBe(404)
+    expect((body as { error: string }).error).toMatch(/not found/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PUT /:agentId/permissions
+// ---------------------------------------------------------------------------
+
+describe('team plugin — PUT /:agentId/permissions', () => {
+  let activated: ActivatedPlugin
+  let adapter: Record<string, ReturnType<typeof vi.fn>>
+
+  beforeAll(async () => {
+    activated = await activatePlugin(teamPlugin, testDir)
+  })
+
+  beforeEach(async () => {
+    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof vi.fn>>
+    adapter.setSubagentPermissions.mockClear()
+    rosterAgents.current = [
+      { id: 'main', name: 'Main', emoji: '🤖', role: 'Orchestrator', headshot: '' },
+      { id: 'chef', name: 'Chef', emoji: '🌿', role: 'Cook', headshot: '' },
+    ]
+  })
+
+  it('updates permissions for valid agent IDs', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/:agentId/permissions')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      searchParams: { agentId: 'main' },
+      body: { allowAgents: ['chef'] },
+    })
+    expect(status).toBe(200)
+    expect((body as { ok: boolean }).ok).toBe(true)
+    expect(adapter.setSubagentPermissions).toHaveBeenCalledWith('main', ['chef'])
+  })
+
+  it('returns 400 when allowAgents is not an array', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/:agentId/permissions')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      searchParams: { agentId: 'main' },
+      body: { allowAgents: 'chef' },
+    })
+    expect(status).toBe(400)
+    expect((body as { error: string }).error).toMatch(/string array/)
+  })
+
+  it('returns 400 when allowAgents contains unknown IDs', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/:agentId/permissions')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      searchParams: { agentId: 'main' },
+      body: { allowAgents: ['chef', 'ghost'] },
+    })
+    expect(status).toBe(400)
+    expect((body as { error: string }).error).toMatch(/ghost/)
   })
 })

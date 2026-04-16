@@ -460,6 +460,22 @@ const teamPlugin: BakinPlugin = {
             tools: body.tools as string | undefined,
           })
 
+          // Handle dispatch permissions
+          const dispatchable = body.dispatchable as string | string[] | undefined
+          if (dispatchable) {
+            adapter.addToAllowLists(id, dispatchable as 'all' | 'main' | string[])
+          } else {
+            adapter.addToAllowLists(id, 'main')
+          }
+
+          // Handle team assignment
+          const teamId = body.teamId as string | undefined
+          if (teamId) {
+            const ds = readDisplaySettings()
+            ds[id] = { ...ds[id], teamId }
+            writeDisplaySettings(ds)
+          }
+
           ctx.activity.audit('agent.created', 'system', { agent: id, name: body.name as string })
           indexAgent(id, { id, name: body.name as string }, body.model as string || '', 'offline')
 
@@ -537,6 +553,78 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ ok: true, id: agentId })
         } catch (err) {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // PUT /:agentId/identity — Update agent identity fields
+    ctx.registerRoute({
+      path: '/:agentId/identity',
+      method: 'PUT',
+      description: 'Update agent identity fields and persona files',
+      handler: async (req: Request) => {
+        try {
+          const url = new URL(req.url)
+          const agentId = url.searchParams.get('agentId')
+          if (!agentId) return Response.json({ error: 'agentId is required' }, { status: 400 })
+
+          const body = await req.json() as Record<string, unknown>
+          const updated = await adapter.updateAgentIdentity(agentId, {
+            name: body.name as string | undefined,
+            emoji: body.emoji as string | undefined,
+            role: body.role as string | undefined,
+            vibe: body.vibe as string | undefined,
+            primaryFunction: body.primaryFunction as string | undefined,
+            defaultMode: body.defaultMode as string | undefined,
+            soul: body.soul as string | undefined,
+            tools: body.tools as string | undefined,
+          })
+
+          ctx.activity.audit('agent.identity_updated', 'system', { agent: agentId, updated })
+          resetSettingsCache()
+
+          return Response.json({ ok: true, id: agentId, updated })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          const status = msg.includes('not found') ? 404 : 500
+          return Response.json({ error: msg }, { status })
+        }
+      },
+    })
+
+    // PUT /:agentId/permissions — Update dispatch permissions
+    ctx.registerRoute({
+      path: '/:agentId/permissions',
+      method: 'PUT',
+      description: 'Update agent dispatch permissions (subagents.allowAgents)',
+      handler: async (req: Request) => {
+        try {
+          const url = new URL(req.url)
+          const agentId = url.searchParams.get('agentId')
+          if (!agentId) return Response.json({ error: 'agentId is required' }, { status: 400 })
+
+          const body = await req.json() as Record<string, unknown>
+          const allowAgents = body.allowAgents as string[]
+          if (!Array.isArray(allowAgents)) {
+            return Response.json({ error: 'allowAgents must be a string array' }, { status: 400 })
+          }
+
+          // Validate all target IDs exist
+          const ids = adapter.getAgentIds()
+          const invalid = allowAgents.filter((id) => !ids.includes(id))
+          if (invalid.length > 0) {
+            return Response.json({ error: `Unknown agent IDs: ${invalid.join(', ')}` }, { status: 400 })
+          }
+
+          adapter.setSubagentPermissions(agentId, allowAgents)
+          ctx.activity.audit('agent.permissions_updated', 'system', { agent: agentId, allowAgents })
+          resetSettingsCache()
+
+          return Response.json({ ok: true, agentId, allowAgents })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          const status = msg.includes('not found') ? 404 : msg.includes('cannot dispatch') ? 400 : 500
+          return Response.json({ error: msg }, { status })
         }
       },
     })
