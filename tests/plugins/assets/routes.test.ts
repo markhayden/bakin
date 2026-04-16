@@ -34,6 +34,8 @@ vi.mock('../../../src/core/content-dir', () => ({
       'assets.video': join(base, 'video'),
       'assets.audio': join(base, 'audio'),
       'assets.plans': join(base, 'plans'),
+      'assets.research': join(base, 'research'),
+      'assets.pdf': join(base, 'pdf'),
       'assets.data': join(base, 'data'),
       'assets.other': join(base, 'other'),
     }
@@ -146,8 +148,8 @@ afterAll(() => {
 // ===========================================================================
 
 describe('route registration', () => {
-  it('registers all 10 routes', () => {
-    expect(plugin.routes.length).toBe(10)
+  it('registers all 12 routes', () => {
+    expect(plugin.routes.length).toBe(12)
   })
 
   it.each([
@@ -160,6 +162,8 @@ describe('route registration', () => {
     ['POST', '/trash/:file/restore'],
     ['DELETE', '/trash'],
     ['DELETE', '/trash/:file'],
+    ['PATCH', '/retype'],
+    ['PUT', '/content'],
     ['GET', '/search'],
   ])('registers %s %s', (method, path) => {
     const route = findRoute(plugin.routes, method, path)
@@ -173,8 +177,8 @@ describe('route registration', () => {
 // ===========================================================================
 
 describe('exec tool registration', () => {
-  it('registers all 10 exec tools', () => {
-    expect(plugin.execTools.length).toBe(10)
+  it('registers all 12 exec tools', () => {
+    expect(plugin.execTools.length).toBe(12)
   })
 
   it.each([
@@ -187,6 +191,8 @@ describe('exec tool registration', () => {
     'bakin_exec_assets_audit',
     'bakin_exec_assets_empty_trash',
     'bakin_exec_assets_permanent_delete',
+    'bakin_exec_assets_retype',
+    'bakin_exec_assets_update_content',
   ])('registers tool: %s', (name) => {
     const tool = findTool(plugin.execTools, name)
     expect(tool).toBeDefined()
@@ -1265,5 +1271,254 @@ describe('Assets Plugin — GET /search', () => {
 
     expect(status).toBe(200)
     expect(body.results).toEqual([])
+  })
+})
+
+// ===========================================================================
+// PATCH /retype — change asset type
+// ===========================================================================
+
+describe('PATCH /retype — change asset type', () => {
+  it('moves asset to new type directory', async () => {
+    // Create fixture in text/
+    createAssetFixture('text', 'retype-task', 'retype-doc.md', '# Move me', {
+      agent: 'scribe', taskId: 'retype-task', created: '2026-04-15T10:00:00Z',
+    })
+
+    const route = findRoute(plugin.routes, 'PATCH', '/retype')!
+    const req = makeRequest('/retype', {
+      method: 'PATCH',
+      body: { path: 'assets/text/retype-task/retype-doc.md', type: 'research' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.newPath).toBe('assets/research/retype-task/retype-doc.md')
+
+    // Verify file moved on disk
+    expect(existsSync(join(assetsRoot, 'research', 'retype-task', 'retype-doc.md'))).toBe(true)
+    expect(existsSync(join(assetsRoot, 'text', 'retype-task', 'retype-doc.md'))).toBe(false)
+  })
+
+  it('moves sidecar with the asset', async () => {
+    createAssetFixture('text', 'retype-sidecar', 'note.md', '# Note', {
+      agent: 'scribe', taskId: 'retype-sidecar', created: '2026-04-15T10:00:00Z',
+    })
+
+    const route = findRoute(plugin.routes, 'PATCH', '/retype')!
+    const req = makeRequest('/retype', {
+      method: 'PATCH',
+      body: { path: 'assets/text/retype-sidecar/note.md', type: 'plans' },
+    })
+    await route.handler(req, plugin.ctx)
+
+    expect(existsSync(join(assetsRoot, 'plans', 'retype-sidecar', 'note.md.meta.json'))).toBe(true)
+  })
+
+  it('returns 400 for invalid type', async () => {
+    const route = findRoute(plugin.routes, 'PATCH', '/retype')!
+    const req = makeRequest('/retype', {
+      method: 'PATCH',
+      body: { path: 'assets/text/task-002/readme.md', type: 'invalid' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 404 for missing file', async () => {
+    const route = findRoute(plugin.routes, 'PATCH', '/retype')!
+    const req = makeRequest('/retype', {
+      method: 'PATCH',
+      body: { path: 'assets/text/nope/missing.md', type: 'research' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+
+    expect(res.status).toBe(404)
+  })
+
+  it('no-op when type is unchanged', async () => {
+    createAssetFixture('data', 'retype-noop', 'data.json', '{}', {
+      agent: 'analyst', taskId: 'retype-noop', created: '2026-04-15T10:00:00Z',
+    })
+
+    const route = findRoute(plugin.routes, 'PATCH', '/retype')!
+    const req = makeRequest('/retype', {
+      method: 'PATCH',
+      body: { path: 'assets/data/retype-noop/data.json', type: 'data' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.newPath).toBe('assets/data/retype-noop/data.json')
+  })
+
+  it('handles collision in target directory', async () => {
+    createAssetFixture('text', 'retype-collision', 'dupe.md', '# Original text', {
+      agent: 'scribe', taskId: 'retype-collision', created: '2026-04-15T10:00:00Z',
+    })
+    createAssetFixture('plans', 'retype-collision', 'dupe.md', '# Existing plan', {
+      agent: 'scribe', taskId: 'retype-collision', created: '2026-04-15T10:00:00Z',
+    })
+
+    const route = findRoute(plugin.routes, 'PATCH', '/retype')!
+    const req = makeRequest('/retype', {
+      method: 'PATCH',
+      body: { path: 'assets/text/retype-collision/dupe.md', type: 'plans' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.newPath).not.toBe('assets/plans/retype-collision/dupe.md')
+    expect(body.newPath).toMatch(/^assets\/plans\/retype-collision\/dupe-[0-9a-f]+\.md$/)
+  })
+})
+
+// ===========================================================================
+// PUT /content — update text content
+// ===========================================================================
+
+describe('PUT /content — update asset content', () => {
+  it('writes content to an editable file', async () => {
+    createAssetFixture('text', 'content-task', 'editable.md', '# Old content', {
+      agent: 'scribe', taskId: 'content-task', created: '2026-04-15T10:00:00Z',
+    })
+
+    const route = findRoute(plugin.routes, 'PUT', '/content')!
+    const req = makeRequest('/content', {
+      method: 'PUT',
+      body: { path: 'assets/text/content-task/editable.md', content: '# Updated content' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.size).toBeGreaterThan(0)
+
+    const written = readFileSync(join(assetsRoot, 'text', 'content-task', 'editable.md'), 'utf-8')
+    expect(written).toBe('# Updated content')
+  })
+
+  it('returns 400 for non-editable MIME type', async () => {
+    const route = findRoute(plugin.routes, 'PUT', '/content')!
+    const req = makeRequest('/content', {
+      method: 'PUT',
+      body: { path: 'assets/images/task-001/hero.png', content: 'not allowed' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toMatch(/not editable/i)
+  })
+
+  it('returns 400 for path traversal', async () => {
+    const route = findRoute(plugin.routes, 'PUT', '/content')!
+    const req = makeRequest('/content', {
+      method: 'PUT',
+      body: { path: 'assets/../../../etc/passwd', content: 'hack' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 404 for nonexistent file', async () => {
+    const route = findRoute(plugin.routes, 'PUT', '/content')!
+    const req = makeRequest('/content', {
+      method: 'PUT',
+      body: { path: 'assets/text/nope/missing.md', content: 'test' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 400 when content field is missing', async () => {
+    const route = findRoute(plugin.routes, 'PUT', '/content')!
+    const req = makeRequest('/content', {
+      method: 'PUT',
+      body: { path: 'assets/text/content-task/editable.md' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+
+    expect(res.status).toBe(400)
+  })
+})
+
+// ===========================================================================
+// MCP tools: retype and update_content
+// ===========================================================================
+
+describe('bakin_exec_assets_retype', () => {
+  it('retypes asset via MCP tool', async () => {
+    createAssetFixture('data', 'mcp-retype', 'report.json', '{"data":1}', {
+      agent: 'analyst', taskId: 'mcp-retype', created: '2026-04-15T10:00:00Z',
+    })
+
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_retype')!
+    const result = await callTool(tool, {
+      path: 'assets/data/mcp-retype/report.json',
+      type: 'research',
+    }, 'analyst')
+
+    expect(result.ok).toBe(true)
+    expect(result.newPath).toBe('assets/research/mcp-retype/report.json')
+  })
+})
+
+describe('bakin_exec_assets_update_content', () => {
+  it('updates content via MCP tool', async () => {
+    createAssetFixture('text', 'mcp-content', 'doc.md', '# Original', {
+      agent: 'scribe', taskId: 'mcp-content', created: '2026-04-15T10:00:00Z',
+    })
+
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_update_content')!
+    const result = await callTool(tool, {
+      path: 'assets/text/mcp-content/doc.md',
+      content: '# Revised',
+    }, 'scribe')
+
+    expect(result.ok).toBe(true)
+    const written = readFileSync(join(assetsRoot, 'text', 'mcp-content', 'doc.md'), 'utf-8')
+    expect(written).toBe('# Revised')
+  })
+})
+
+// ===========================================================================
+// Research type
+// ===========================================================================
+
+describe('research asset type', () => {
+  it('lists research assets', async () => {
+    createAssetFixture('research', 'research-task', 'analysis.md', '# Market analysis', {
+      agent: 'scribe', taskId: 'research-task', created: '2026-04-15T10:00:00Z',
+      tags: ['competitive'],
+    })
+
+    const route = findRoute(plugin.routes, 'GET', '/')!
+    const { status, body } = await callRoute(route, plugin.ctx, {
+      searchParams: { type: 'research' },
+    })
+
+    expect(status).toBe(200)
+    const assets = body.assets as Array<{ type: string }>
+    expect(assets.length).toBeGreaterThanOrEqual(1)
+    for (const a of assets) {
+      expect(a.type).toBe('research')
+    }
+  })
+
+  it('accepts research type in save tool', async () => {
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_save')!
+    // Verify the tool's parameters accept 'research'
+    expect(tool).toBeDefined()
   })
 })

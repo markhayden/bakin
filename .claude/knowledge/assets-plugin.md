@@ -19,7 +19,7 @@ Without a centralized asset system, agent-created files are scattered across tas
 
 ```
 ~/.bakin/assets/
-  {type}/                     # text, images, video, audio, plans, data, other
+  {type}/                     # text, images, video, audio, plans, research, pdf, data, other
     {taskId}/                 # Task directory (or _unlinked, library)
       YYYYMMDD-{slug}.{ext}  # Primary asset (date-prefixed, slugified)
       YYYYMMDD-{slug}.{ext}.meta.json   # Sidecar metadata
@@ -69,6 +69,8 @@ All under `/api/plugins/assets/`:
 | `/trash/:file` | DELETE | — | Permanently removes trashed item |
 | `/trash` | DELETE | — | Bulk delete all trash |
 | `/link` | PATCH | JSON: `path`, `taskId` (string \| null) | Relink asset to different task or unlink (null → `_unlinked`) |
+| `/retype` | PATCH | JSON: `path`, `type` (AssetType) | Change asset type — physically moves file to new type directory |
+| `/content` | PUT | JSON: `path`, `content` (string) | Update text content of an editable asset (text MIME types only) |
 
 Alternative file serving at `/api/assets/[...path]` supports range requests (video seeking).
 
@@ -117,6 +119,8 @@ Page size persisted in `localStorage` key `assets-page-size` (default: 24).
 - Accepts `assetPath` prop, fetches metadata from `/api/plugins/assets/list?path=...`
 - Renders full preview + metadata sidebar
 - Usable from any context without the full assets page
+- **Type selector**: dropdown in the header to retype assets (physically moves file via `PATCH /retype`)
+- **Inline editing**: Edit/Save/Cancel buttons for text-based assets. Uses shared `MarkdownEditor` from `src/components/markdown-editor.tsx`. Editable MIME types determined by `isEditableMimeType()` from `lib/constants.ts`
 
 ### Cross-Plugin Hooks
 Registered in `plugins/assets/index.ts` via `ctx.hooks.register()`:
@@ -144,7 +148,10 @@ plugins/assets/
   lib/constants.ts            — Asset types, extensions, MIME mapping
   lib/trash.ts                — Trash operations
   lib/relink.ts               — Relink/unlink assets between tasks
+  lib/retype.ts               — Retype assets between type directories
   routes/link.ts              — PATCH /link handler
+  routes/retype.ts            — PATCH /retype handler
+  routes/content.ts           — PUT /content handler (inline text editing)
 
 src/components/assets/
   assets-page.tsx             — Main page with URL state, pagination, sorting
@@ -163,6 +170,33 @@ src/hooks/use-assets.ts       — Data fetching + SSE live updates
 scripts/lib/save-asset.ts     — MCP tool for standardized asset saving
 scripts/lib/audit-assets.ts   — Audit tool with thumbnail generation
 ```
+
+## MCP Exec Tools
+
+| Tool | Description |
+|------|-------------|
+| `bakin_exec_assets_list` | List assets with optional type filter |
+| `bakin_exec_assets_get` | Retrieve sidecar metadata by path |
+| `bakin_exec_assets_save` | Save agent-created file with naming conventions and sidecar |
+| `bakin_exec_assets_delete` | Soft-delete to trash |
+| `bakin_exec_assets_link` | Move between task directories, update sidecar |
+| `bakin_exec_assets_retype` | Change asset type — physically moves file to new type directory |
+| `bakin_exec_assets_update_content` | Update text content of editable assets (text MIME types only) |
+| `bakin_exec_assets_list_trash` | List trash with expiry info |
+| `bakin_exec_assets_restore` | Restore from trash |
+| `bakin_exec_assets_audit` | Health check: missing thumbnails, invalid sidecars, orphaned files |
+| `bakin_exec_assets_empty_trash` | Permanently delete all trash |
+| `bakin_exec_assets_permanent_delete` | Permanently delete specific trashed item |
+
+The `save` and `retype` tools include a categorization rubric in their `type` parameter description to guide agents on when to use each type (text vs research vs plans, etc.).
+
+## Editable Asset Types
+
+`isEditableMimeType()` from `lib/constants.ts` identifies MIME types that support inline content editing via `PUT /content`:
+
+`text/markdown`, `text/plain`, `application/rtf`, `text/yaml`, `application/yaml`, `application/json`, `text/csv`, `text/tab-separated-values`, `application/xml`
+
+Binary types (images, video, audio, PDF) are not editable.
 
 ## Manual Upload & Clipboard Paste
 

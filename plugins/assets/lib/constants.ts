@@ -2,7 +2,7 @@
  * Asset type constants and MIME type mappings.
  */
 
-export const ASSET_TYPES = ['text', 'images', 'video', 'audio', 'plans', 'data', 'other'] as const
+export const ASSET_TYPES = ['text', 'images', 'video', 'audio', 'plans', 'research', 'pdf', 'data', 'other'] as const
 export type AssetType = typeof ASSET_TYPES[number]
 
 export const SPECIAL_DIRS = ['_unlinked', 'library', '.trash'] as const
@@ -38,7 +38,7 @@ export const EXTENSION_TO_TYPE: Record<string, AssetType> = {
   '.yaml': 'plans',
   '.yml': 'plans',
   // Documents
-  '.pdf': 'other',
+  '.pdf': 'pdf',
   // Data
   '.json': 'data',
   '.csv': 'data',
@@ -93,4 +93,20 @@ export function getAssetType(filename: string): AssetType {
 export function getMimeType(filename: string): string {
   const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase()
   return EXTENSION_TO_MIME[ext] || 'application/octet-stream'
+}
+
+const EDITABLE_MIMES = new Set([
+  'text/markdown',
+  'text/plain',
+  'application/rtf',
+  'text/yaml',
+  'application/yaml',
+  'application/json',
+  'text/csv',
+  'text/tab-separated-values',
+  'application/xml',
+])
+
+export function isEditableMimeType(mime: string): boolean {
+  return EDITABLE_MIMES.has(mime)
 }

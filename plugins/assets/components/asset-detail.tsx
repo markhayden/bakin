@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { MarkdownContent } from '@/components/markdown-content'
+import { MarkdownEditor } from '@/components/markdown-editor'
+import { ASSET_TYPES, isEditableMimeType } from '../lib/constants'
 import { Trash2, ExternalLink, Download, Clock, User, Wrench, Tag, Layers, Eye, Pencil, Check, X, Unlink } from 'lucide-react'
 import { formatSize } from '@/lib/format'
 import { DeleteAssetDialog } from './delete-asset-dialog'
@@ -19,6 +22,7 @@ interface AssetDetailProps {
   onClose: () => void
   onDelete: (path: string) => void
   onRelink?: () => void
+  onPathChange?: (newPath: string) => void
 }
 
 function AssetRenderer({ asset }: { asset: AssetMeta }) {
@@ -60,10 +64,18 @@ function AssetRenderer({ asset }: { asset: AssetMeta }) {
 
     case 'text':
     case 'plans':
+    case 'research':
       return <TextRenderer fileUrl={fileUrl} mimeType={asset.mimeType} />
 
     case 'data':
       return <CodeRenderer fileUrl={fileUrl} />
+
+    case 'pdf':
+      return (
+        <div className="bg-zinc-950 rounded-lg h-full overflow-hidden">
+          <embed src={fileUrl} type="application/pdf" className="w-full h-full" />
+        </div>
+      )
 
     default:
       return (
@@ -164,10 +176,19 @@ export function AssetDetailModal({ assetPath, onClose }: { assetPath: string; on
       .catch(() => setAsset(null))
   }, [assetPath])
 
+  const handlePathChange = async (newPath: string) => {
+    try {
+      const res = await fetch(`/api/plugins/assets/?path=${encodeURIComponent(newPath)}`)
+      const data = res.ok ? await res.json() : { assets: [] }
+      if (data.assets?.[0]) setAsset(data.assets[0])
+    } catch (err) { console.error('Failed to fetch retyped asset', err) }
+  }
+
   return (
     <AssetDetail
       asset={asset}
       onClose={onClose}
+      onPathChange={handlePathChange}
       onDelete={async (path) => {
         await fetch(`/api/plugins/assets?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
         onClose()
@@ -177,54 +198,134 @@ export function AssetDetailModal({ assetPath, onClose }: { assetPath: string; on
   )
 }
 
-export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAssets }: AssetDetailProps & { showOpenInAssets?: boolean }) {
+function mimeToFormat(mime: string): 'markdown' | 'yaml' | 'json' | 'text' {
+  if (mime === 'text/markdown') return 'markdown'
+  if (mime === 'text/yaml' || mime === 'application/yaml') return 'yaml'
+  if (mime === 'application/json') return 'json'
+  return 'text'
+}
+
+export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, showOpenInAssets }: AssetDetailProps & { showOpenInAssets?: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [activeVariantPath, setActiveVariantPath] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState(false)
   const [newTaskId, setNewTaskId] = useState('')
   const [relinking, setRelinking] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draftContent, setDraftContent] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [contentRefreshKey, setContentRefreshKey] = useState(0)
+  const [localAsset, setLocalAsset] = useState<AssetMeta | null>(null)
+  const retypingRef = useRef(false)
+
+  const displayAsset = localAsset ?? asset
+
+  useEffect(() => {
+    if (asset && localAsset && asset.path !== localAsset.path) {
+      setLocalAsset(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asset?.path])
 
   const handleRelink = async (taskId: string | null) => {
-    if (!asset) return
+    if (!displayAsset) return
     setRelinking(true)
     try {
       const res = await fetch('/api/plugins/assets/link', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: asset.path, taskId }),
+        body: JSON.stringify({ path: displayAsset.path, taskId }),
       })
       if (res.ok) {
         setEditingTask(false)
         onRelink?.()
         onClose()
       }
-    } catch { /* ignore */ }
+    } catch (err) { console.error('Failed to relink asset', err) }
     finally { setRelinking(false) }
   }
 
-  if (!asset) return null
+  const handleRetype = async (newType: string) => {
+    if (!displayAsset || newType === displayAsset.type) return
+    retypingRef.current = true
+    setLocalAsset(displayAsset)
+    try {
+      const res = await fetch('/api/plugins/assets/retype', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: displayAsset.path, type: newType }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.newPath) {
+          onPathChange?.(data.newPath)
+          const listRes = await fetch(`/api/plugins/assets/?path=${encodeURIComponent(data.newPath)}`)
+          const listData = await listRes.json()
+          if (listData.assets?.[0]) setLocalAsset(listData.assets[0])
+        }
+        onRelink?.()
+      }
+    } catch (err) { console.error('Failed to retype asset', err) }
+    finally { retypingRef.current = false }
+  }
+
+  const handleStartEdit = async () => {
+    if (!displayAsset) return
+    try {
+      const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(displayAsset.path)}`
+      const content = await fetch(fileUrl).then(r => r.text())
+      setDraftContent(content)
+      setEditing(true)
+    } catch (err) { console.error('Failed to load content for editing', err) }
+  }
+
+  const handleSave = async () => {
+    if (!displayAsset) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/plugins/assets/content', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: displayAsset.path, content: draftContent }),
+      })
+      if (res.ok) {
+        setEditing(false)
+        setContentRefreshKey(k => k + 1)
+      }
+    } catch (err) { console.error('Failed to save asset content', err) }
+    finally { setSaving(false) }
+  }
+
+  if (!displayAsset) return null
 
   // Build the asset to preview — either the primary or the active variant
   const previewAsset: AssetMeta = activeVariantPath
     ? (() => {
-        const v = asset.variants?.find(v => v.path === activeVariantPath)
-        if (!v) return asset
-        return { ...asset, path: v.path, filename: v.filename, size: v.size, mimeType: v.mimeType }
+        const v = displayAsset.variants?.find(v => v.path === activeVariantPath)
+        if (!v) return displayAsset
+        return { ...displayAsset, path: v.path, filename: v.filename, size: v.size, mimeType: v.mimeType }
       })()
-    : asset
+    : displayAsset
 
-  const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}&v=${asset.mtimeMs || ''}`
+  const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(displayAsset.path)}&v=${displayAsset.mtimeMs || ''}`
 
   return (
     <>
-    <Dialog open={!!asset} onOpenChange={() => { onClose(); setConfirmDelete(false); setActiveVariantPath(null) }}>
+    <Dialog open={!!displayAsset} onOpenChange={() => { if (retypingRef.current) return; setLocalAsset(null); onClose(); setConfirmDelete(false); setActiveVariantPath(null); setEditing(false) }}>
       <DialogContent className="bg-card border-border !max-w-[calc(100vw-2rem)] !w-full h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
-            <span>{activeVariantPath ? `${asset.filename} (${asset.variants?.find(v => v.path === activeVariantPath)?.role ?? 'variant'})` : asset.filename}</span>
-            <Badge variant="outline" className="text-[10px] h-4">
-              {asset.type}
-            </Badge>
+            <span>{activeVariantPath ? `${displayAsset.filename} (${displayAsset.variants?.find(v => v.path === activeVariantPath)?.role ?? 'variant'})` : displayAsset.filename}</span>
+            <Select value={displayAsset.type} onValueChange={(v) => v && handleRetype(v)}>
+              <SelectTrigger size="sm" className="h-5 text-[10px] gap-1 px-1.5 py-0 border-border/50 w-auto">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ASSET_TYPES.map(t => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {activeVariantPath && (
               <button
                 onClick={() => setActiveVariantPath(null)}
@@ -238,8 +339,50 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
 
         <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
           {/* Main content area */}
-          <div className="flex-1 min-w-0 min-h-0">
-            <AssetRenderer asset={previewAsset} />
+          <div className="flex-1 min-w-0 min-h-0 relative">
+            {editing ? (
+              <MarkdownEditor
+                content={draftContent}
+                editing={true}
+                onChange={setDraftContent}
+                format={mimeToFormat(previewAsset.mimeType)}
+                minHeight="100%"
+                className="h-full"
+              />
+            ) : (
+              <AssetRenderer asset={previewAsset} key={contentRefreshKey} />
+            )}
+            {isEditableMimeType(displayAsset.mimeType) && !activeVariantPath && (
+              <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                {editing ? (
+                  <>
+                    <button
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="size-8 rounded-full bg-green-600/90 hover:bg-green-500 text-white flex items-center justify-center transition-colors shadow-lg backdrop-blur-sm disabled:opacity-50"
+                      title="Save"
+                    >
+                      <Check className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => setEditing(false)}
+                      className="size-8 rounded-full bg-zinc-700/90 hover:bg-zinc-600 text-zinc-300 flex items-center justify-center transition-colors shadow-lg backdrop-blur-sm"
+                      title="Cancel"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={handleStartEdit}
+                    className="size-8 rounded-full bg-zinc-700/90 hover:bg-zinc-600 text-zinc-300 hover:text-white flex items-center justify-center transition-colors shadow-lg backdrop-blur-sm"
+                    title="Edit content"
+                  >
+                    <Pencil className="size-4" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Sidebar info */}
@@ -248,7 +391,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
             <div className="flex items-center gap-1.5">
               <User className="size-3 text-muted-foreground" />
               <span className="text-muted-foreground">Agent:</span>
-              <span className="text-foreground">{asset.metadata.agent}</span>
+              <span className="text-foreground">{displayAsset.metadata.agent}</span>
             </div>
 
             {/* Created */}
@@ -256,16 +399,16 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
               <Clock className="size-3 text-muted-foreground" />
               <span className="text-muted-foreground">Created:</span>
               <span className="text-foreground">
-                {new Date(asset.metadata.created).toLocaleString()}
+                {new Date(displayAsset.metadata.created).toLocaleString()}
               </span>
             </div>
 
             {/* Tool */}
-            {asset.metadata.tool && (
+            {displayAsset.metadata.tool && (
               <div className="flex items-center gap-1.5">
                 <Wrench className="size-3 text-muted-foreground" />
                 <span className="text-muted-foreground">Tool:</span>
-                <span className="text-foreground">{asset.metadata.tool}</span>
+                <span className="text-foreground">{displayAsset.metadata.tool}</span>
               </div>
             )}
 
@@ -295,15 +438,15 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
                     <X className="size-3" />
                   </button>
                 </div>
-              ) : asset.metadata.taskId ? (
+              ) : displayAsset.metadata.taskId ? (
                 <>
                   <a
-                    href={`/tasks?taskId=${asset.metadata.taskId}`}
+                    href={`/tasks?taskId=${displayAsset.metadata.taskId}`}
                     className="text-blue-400 hover:text-blue-300"
                   >
-                    {asset.metadata.taskId.slice(0, 8)}...
+                    {displayAsset.metadata.taskId.slice(0, 8)}...
                   </a>
-                  <button onClick={() => { setNewTaskId(asset.metadata.taskId || ''); setEditingTask(true) }} className="text-muted-foreground hover:text-foreground" title="Edit task link">
+                  <button onClick={() => { setNewTaskId(displayAsset.metadata.taskId || ''); setEditingTask(true) }} className="text-muted-foreground hover:text-foreground" title="Edit task link">
                     <Pencil className="size-3" />
                   </button>
                   <button onClick={() => handleRelink(null)} className="text-muted-foreground hover:text-red-400" title="Unlink from task">
@@ -322,18 +465,18 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
 
             {/* Size */}
             <div className="text-muted-foreground">
-              {formatSize(asset.size)} &middot; {asset.mimeType}
+              {formatSize(displayAsset.size)} &middot; {displayAsset.mimeType}
             </div>
 
             {/* Tags */}
-            {asset.metadata.tags && asset.metadata.tags.length > 0 && (
+            {displayAsset.metadata.tags && displayAsset.metadata.tags.length > 0 && (
               <div>
                 <div className="flex items-center gap-1 mb-1.5">
                   <Tag className="size-3 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Tags</span>
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {asset.metadata.tags.map(tag => (
+                  {displayAsset.metadata.tags.map(tag => (
                     <Badge key={tag} variant="secondary" className="text-[10px]">
                       {tag}
                     </Badge>
@@ -343,14 +486,14 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
             )}
 
             {/* Variants */}
-            {asset.variants && asset.variants.length > 0 && (
+            {displayAsset.variants && displayAsset.variants.length > 0 && (
               <div className="border-t border-border pt-3 mt-1">
                 <div className="flex items-center gap-1 mb-1.5">
                   <Layers className="size-3 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Variants</span>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  {asset.variants.map(v => (
+                  {displayAsset.variants.map(v => (
                     <div key={v.path} className={`flex items-center justify-between text-xs rounded-md px-1.5 py-1 -mx-1.5 transition-colors ${activeVariantPath === v.path ? 'bg-accent/10' : 'hover:bg-muted/30'}`}>
                       <button
                         onClick={() => setActiveVariantPath(activeVariantPath === v.path ? null : v.path)}
@@ -377,9 +520,9 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
             )}
 
             {/* Description */}
-            {asset.metadata.description && (
+            {displayAsset.metadata.description && (
               <div className="text-xs text-muted-foreground border-t border-border pt-3 mt-1">
-                {asset.metadata.description}
+                {displayAsset.metadata.description}
               </div>
             )}
 
@@ -387,7 +530,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
             <div className="border-t border-border pt-3 mt-auto flex flex-col gap-2">
               {showOpenInAssets && (
                 <a
-                  href={`/assets?asset=${encodeURIComponent(asset.path)}`}
+                  href={`/assets?asset=${encodeURIComponent(displayAsset.path)}`}
                   className="flex items-center justify-center gap-1.5 text-xs text-foreground bg-zinc-800 hover:bg-zinc-700 rounded-md px-3 py-1.5 transition-colors"
                 >
                   <ExternalLink className="size-3.5" />
@@ -397,7 +540,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
 
               <a
                 href={fileUrl}
-                download={asset.filename}
+                download={displayAsset.filename}
                 className="flex items-center justify-center gap-1.5 text-xs text-foreground bg-zinc-800 hover:bg-zinc-700 rounded-md px-3 py-1.5 transition-colors"
               >
                 <Download className="size-3.5" />
@@ -419,8 +562,8 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
 
     <DeleteAssetDialog
       open={confirmDelete}
-      filename={asset.filename}
-      onConfirm={() => { setConfirmDelete(false); onDelete(asset.path) }}
+      filename={displayAsset.filename}
+      onConfirm={() => { setConfirmDelete(false); onDelete(displayAsset.path) }}
       onCancel={() => setConfirmDelete(false)}
     />
     </>
