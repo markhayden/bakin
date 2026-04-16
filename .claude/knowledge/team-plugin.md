@@ -27,7 +27,7 @@ The orchestrator id is always the literal string `"main"` on every OpenClaw inst
 4. Merges heartbeats from `~/.bakin/heartbeats/{id}.json`.
 5. Returns `AgentWithStatus[]`.
 
-The adapter is **read-only**. It never writes back to `openclaw.json`. User-initiated agent CRUD goes through the separate `addAgent`/`removeAgent` paths which write via the OpenClaw gateway, not the filesystem.
+The adapter's **read** path (`listAgents`, `getAgentProfile`, etc.) never writes to `openclaw.json`. Agent lifecycle **writes** (`addAgent`, `removeAgent`, `updateAgentIdentity`) shell out to the OpenClaw CLI (`openclaw agents add/delete/set-identity`) via the `openclawExec()` helper. The only remaining direct `openclaw.json` write is `setSubagentPermissions()` — isolated because no CLI command exists for it yet.
 
 ## Pyramid Builder: build-graph.ts
 
@@ -79,6 +79,43 @@ Read path degrades too: in the GET / handler, `degradeUnknownReportsTo()` rewrit
 
 `OrgTeam.reportsTo` in `plugins/team/types.ts` is typed `string | null` to match.
 
+## CLI Adapter Layer
+
+`plugins/team/lib/openclaw-adapter.ts` wraps OpenClaw CLI commands for agent lifecycle operations. The shared `openclawExec(args)` helper resolves the binary via `settings.openclaw.binaryPath` and uses `execFileAsync`.
+
+### Write operations (shell out to CLI)
+- `addAgent(input)` → `openclaw agents add` + `openclaw agents set-identity`, writes IDENTITY.md/SOUL.md/TOOLS.md
+- `removeAgent(agentId)` → `openclaw agents delete --force --json`
+- `updateAgentIdentity(agentId, fields)` → `openclaw agents set-identity` for name/emoji, re-synthesizes IDENTITY.md
+
+### Dispatch permission helpers (direct openclaw.json write)
+- `setSubagentPermissions(agentId, allowAgents)` — replaces `subagents.allowAgents` on one agent
+- `addToAllowLists(newAgentId, dispatchable)` — adds a new agent to relevant `allowAgents` lists (`"main"`, `"all"`, or specific agents)
+- `removeFromAllowLists(agentId)` — removes an agent from all `allowAgents` lists (called on delete)
+
+### IDENTITY.md
+Structured identity fields are synthesized into `IDENTITY.md` via `synthesizeIdentityMd()`. Fields: Name, Role, Emoji, Vibe, Primary Function, Default Mode. Only non-empty fields are included. `parseIdentityMd()` reads them back for merge-on-update.
+
+## REST Routes (Lifecycle)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/` | Create agent (accepts role, vibe, primaryFunction, defaultMode, tools, teamId, dispatchable) |
+| DELETE | `/:agentId` | Delete agent + clean up dispatch permissions |
+| PUT | `/:agentId/identity` | Update identity fields and/or SOUL.md/TOOLS.md |
+| PUT | `/:agentId/permissions` | Update dispatch permissions (allowAgents) |
+
+## MCP Exec Tools (Lifecycle)
+
+| Tool | Purpose |
+|------|---------|
+| `bakin_exec_team_create_agent` | Full agent creation: OpenClaw registration, persona files, dispatch permissions, team assignment |
+| `bakin_exec_team_update_identity` | Update identity fields and workspace files |
+| `bakin_exec_team_delete_agent` | Delete agent with safety guard (confirm=true required) |
+| `bakin_exec_team_set_permissions` | Update which agents a given agent can dispatch to |
+
+The REST routes and MCP tools share the same adapter layer underneath. UI uses REST; agents use MCP tools.
+
 ## Client Store
 
 `plugins/team/hooks/use-agent-store.ts` — single Zustand store loaded on app init. Exposes:
@@ -96,13 +133,15 @@ Components never compute "who is the main agent" themselves — always read it f
 | main-agent canonical resolver | `tests/core/main-agent.test.ts` |
 | Adapter validation + dedupe | `tests/plugins/team/openclaw-adapter.test.ts` |
 | Pyramid graph builder | `tests/plugins/team/build-graph.test.ts` |
-| Write normalization + read degradation | `tests/plugins/team/routes.test.ts` |
+| Write normalization + read degradation + lifecycle routes | `tests/plugins/team/routes.test.ts` |
+| Agent lifecycle MCP exec tools | `tests/plugins/team/exec-tools.test.ts` |
 | Doctor integrity check | `tests/core/onboarding/openclaw.test.ts` |
 
 ## Common Pitfalls
 
 - **Don't add settings.agents back.** The field was deleted for a reason — having two sources of truth caused the original "duplicate roscoe + main" bug on production.
 - **Don't cache openclaw.json in a new spot.** `openclaw-config.ts` is the single reader. Add helpers there; don't re-stat from another module.
-- **Don't write to openclaw.json from validation code.** The adapter is read-only. Integrity problems are the user's job to fix — surface them via the doctor, don't auto-heal.
+- **Don't write to openclaw.json for agent add/delete.** Use the CLI adapter (`openclawExec`). The only approved direct write is `setSubagentPermissions()` for dispatch permissions.
+- **Don't write to openclaw.json from validation code.** Integrity problems are the user's job to fix — surface them via the doctor, don't auto-heal.
 - **Don't hard-code the main agent's display name** (e.g. "Roscoe"). It varies per install. Always resolve via `getMainAgentName()` server-side or `useMainAgentId()` + `useAgent(id)` client-side.
 - **Don't skip the test mocks.** `tests/plugins/team/*` must mock `@bakin/core/openclaw-config`, `@bakin/core/openclaw-home`, and `src/core/content-dir` — leaking into `~/.openclaw/` has caused real incidents.

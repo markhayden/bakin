@@ -64,6 +64,16 @@ All three call through `packages/core/src/openclaw-config.ts`, the single mtime-
 
 The adapter is **read-only** — it never writes back to `openclaw.json` to "fix" violations. Repairs are the user's job; `bakin check openclaw` reports the exact violations (see `src/core/onboarding/openclaw.ts`).
 
+## Dispatch Permissions
+
+Each agent's `subagents.allowAgents` in `openclaw.json` controls which other agents it can dispatch tasks to. Managed via the team plugin's adapter layer:
+
+- **On create:** `addToAllowLists(newId, dispatchable)` — `"main"` (default) adds to main only; `"all"` adds to every agent with an existing list; `string[]` adds to specific agents plus always main.
+- **On delete:** `removeFromAllowLists(agentId)` — removes from all agents' lists.
+- **Direct edit:** `setSubagentPermissions(agentId, allowAgents)` — full replacement of one agent's list.
+
+Self-referencing (agent dispatching to itself) is rejected at both the MCP tool and REST route level.
+
 ## Agent Communication
 
 ### OpenClaw Gateway (`src/core/openclaw-client.ts`)
@@ -134,14 +144,14 @@ Agents interact with Bakin through MCP tools served by `src/core/mcp-server.ts`:
 | schedule plugin | 10 | `ctx.registerExecTool()` | `bakin_exec_schedule_list`, `bakin_exec_schedule_fire` |
 | messaging plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_messaging_list`, `bakin_exec_messaging_create`, `bakin_exec_messaging_session_list` |
 | projects plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_projects_list`, `bakin_exec_projects_create` |
-| team plugin | 8 | `ctx.registerExecTool()` | `bakin_exec_team_list`, `bakin_exec_team_org`, `bakin_exec_team_members`, `bakin_exec_team_my_team` |
+| team plugin | 12 | `ctx.registerExecTool()` | `bakin_exec_team_list`, `bakin_exec_team_org`, `bakin_exec_team_create_agent`, `bakin_exec_team_delete_agent`, `bakin_exec_team_update_identity`, `bakin_exec_team_set_permissions` |
 | scripts/lib/log-progress.ts | 1 | `addExecTool()` | `bakin_exec_log` |
 | scripts/lib/generate-image.ts | 1 | `addExecTool()` | `bakin_exec_gen_image` (Gemini generation or raw file import via `filePath` param) |
 | scripts/lib/post-discord.ts | 1 | `addExecTool()` | `bakin_exec_post_discord` |
 | scripts/lib/get-paths.ts | 1 | `addExecTool()` | `bakin_exec_get_paths` |
 | scripts/lib/heartbeat.ts | 1 | `addExecTool()` | `bakin_exec_heartbeat` |
 
-**Total:** 75 exec tools (70 plugin + 5 script). Naming: `bakin_exec_{pluginId}_{action}`.
+**Total:** 79 exec tools (74 plugin + 5 script). Naming: `bakin_exec_{pluginId}_{action}`.
 
 ### Agent identity
 MCP sessions bind agent identity via `?agent=basil` query param at connection time. All tool calls carry the agent ID for audit attribution.
