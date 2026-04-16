@@ -203,7 +203,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
 
   const displayAsset = localAsset ?? asset
 
-  useEffect(() => { setLocalAsset(null) }, [asset?.path])
+  useEffect(() => { if (!retypingRef.current) setLocalAsset(null) }, [asset?.path])
 
   const handleRelink = async (taskId: string | null) => {
     if (!displayAsset) return
@@ -226,6 +226,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
   const handleRetype = async (newType: string) => {
     if (!displayAsset || newType === displayAsset.type) return
     retypingRef.current = true
+    setLocalAsset(displayAsset)
     try {
       const res = await fetch('/api/plugins/assets/retype', {
         method: 'PATCH',
