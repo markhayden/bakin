@@ -401,37 +401,51 @@ export async function addAgent(input: CreateAgentInput): Promise<{ id: string; w
 }
 
 /**
- * Remove an agent from openclaw.json and move workspace to trash.
- * Workspace is moved to ~/.openclaw/.trash/{id}__deleted-{timestamp}/
- * so it can be recovered if needed.
+ * Remove an agent via the OpenClaw CLI.
+ * The CLI handles workspace-to-trash move natively.
  */
-export function removeAgent(agentId: string): boolean {
+export async function removeAgent(agentId: string): Promise<boolean> {
   const config = getOpenClawConfig()
-  if (!config.agents?.list) return false
+  if (!config.agents?.list?.some((a) => a.id === agentId)) return false
 
-  const before = config.agents.list.length
-  config.agents.list = config.agents.list.filter((a) => a.id !== agentId)
-  if (config.agents.list.length === before) return false
+  try {
+    await openclawExec(['agents', 'delete', agentId, '--force', '--json'])
+  } catch (err) {
+    log.error('Failed to delete agent via CLI', { id: agentId, error: err instanceof Error ? err.message : String(err) })
+    return false
+  }
 
-  writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
   resetOpenClawConfigCache()
-  log.info('Removed agent from openclaw.json', { id: agentId })
+  log.info('Removed agent via CLI', { id: agentId })
+  return true
+}
 
-  // Move workspace to trash
-  const wsPath = join(OPENCLAW_ROOT, 'workspaces', agentId)
-  if (existsSync(wsPath)) {
-    const trashDir = join(OPENCLAW_ROOT, '.trash')
-    if (!existsSync(trashDir)) mkdirSync(trashDir, { recursive: true })
-    const trashName = `${agentId}__deleted-${Date.now()}`
-    try {
-      renameSync(wsPath, join(trashDir, trashName))
-      log.info('Workspace moved to trash', { id: agentId, trashName })
-    } catch (err) {
-      log.warn('Failed to move workspace to trash', { id: agentId, error: err instanceof Error ? err.message : String(err) })
+// ─── Subagent Allow List Management ─────────────────────────────────────────
+
+/**
+ * Remove an agent from ALL agents' subagents.allowAgents lists.
+ * Called on agent deletion to clean up stale references.
+ */
+export function removeFromAllowLists(agentId: string): void {
+  const config = getOpenClawConfig()
+  if (!config.agents?.list) return
+
+  let modified = false
+  for (const agent of config.agents.list) {
+    const allow = agent.subagents?.allowAgents
+    if (!allow) continue
+    const idx = allow.indexOf(agentId)
+    if (idx !== -1) {
+      allow.splice(idx, 1)
+      modified = true
     }
   }
 
-  return true
+  if (modified) {
+    writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
+    resetOpenClawConfigCache()
+    log.info('Removed agent from allow lists', { agentId })
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

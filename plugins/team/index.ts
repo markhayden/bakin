@@ -506,10 +506,13 @@ const teamPlugin: BakinPlugin = {
             return Response.json({ error: 'Cannot delete the main orchestrator agent' }, { status: 403 })
           }
 
-          const removed = adapter.removeAgent(agentId)
+          const removed = await adapter.removeAgent(agentId)
           if (!removed) {
             return Response.json({ error: `Agent "${agentId}" not found` }, { status: 404 })
           }
+
+          // Clean up dispatch permissions across all agents
+          adapter.removeFromAllowLists(agentId)
 
           // Clean up display settings
           const ds = readDisplaySettings()
