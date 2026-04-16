@@ -70,6 +70,12 @@ vi.mock('../../src/core/main-agent', () => ({
   getMainAgentId: () => 'orchestrator',
 }))
 
+// Pin openclaw home under testDir so nothing reads real ~/.openclaw.
+vi.mock('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, '.openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
+}))
+
 import { clearUsage, getUsageFeed } from '../../src/core/usage'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 
@@ -133,9 +139,15 @@ describe('T2.3 agent usage wiring', () => {
     // Stub settings before importing dispatch.
     vi.doMock('../../src/core/settings', () => ({
       getSettings: () => ({
-        agents: ['alice'],
         dispatch: { maxRetries: 3, failureCooldownMs: 1000, maxDispatched: 200 },
       }),
+    }))
+    // Dispatch now derives the agent roster from openclaw-config (T2).
+    vi.doMock('@bakin/core/openclaw-config', () => ({
+      getAgentIds: () => ['alice'],
+      findAgentById: (id: string) => (id === 'alice' ? { id: 'alice' } : null),
+      readOpenClawConfig: () => ({ agents: [{ id: 'alice' }] }),
+      resetOpenClawConfigCache: () => {},
     }))
     // Stub taskboard lib used via dynamic import inside dispatch.
     vi.doMock('../../src/lib/taskboard', () => ({

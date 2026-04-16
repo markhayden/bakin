@@ -12,10 +12,18 @@ vi.mock('../../src/core/logger', () => ({
   }),
 }))
 
-vi.mock('../../src/core/settings', () => ({
-  getSettings: vi.fn().mockReturnValue({
-    agents: ['main', 'pixel', 'trainer'],
-  }),
+vi.mock('@bakin/core/openclaw-config', () => ({
+  getAgentIds: vi.fn().mockReturnValue(['main', 'pixel', 'trainer']),
+}))
+
+vi.mock('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => '/tmp/mcporter-test-openclaw',
+  getOpenClawPath: (...parts: string[]) => ['/tmp/mcporter-test-openclaw', ...parts].join('/'),
+}))
+
+vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: () => '/tmp/mcporter-test-bakin',
+  getBakinPaths: () => ({ root: '/tmp/mcporter-test-bakin' }),
 }))
 
 vi.mock('child_process', () => ({

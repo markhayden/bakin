@@ -46,31 +46,19 @@ vi.mock('../../src/core/content-dir', () => ({
 vi.unmock('../../packages/core/src/main-agent')
 vi.unmock('@bakin/core/main-agent')
 
-vi.mock('../../packages/core/src/settings', () => ({
-  getSettings: vi.fn().mockReturnValue({}),
-}))
-
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>()
   return { ...actual, readFileSync: vi.fn(), statSync: vi.fn() }
 })
 
-import { getSettings } from '../../packages/core/src/settings'
 import { readFileSync, statSync } from 'fs'
 
 let getMainAgentId: typeof import('../../packages/core/src/main-agent').getMainAgentId
+let tryGetMainAgentId: typeof import('../../packages/core/src/main-agent').tryGetMainAgentId
 let getMainAgentName: typeof import('../../packages/core/src/main-agent').getMainAgentName
 
-const WS = '/tmp/openclaw/workspace'
-
-function openclawConfig(overrides: Record<string, unknown> = {}): string {
-  return JSON.stringify({
-    agents: {
-      defaults: { workspace: WS },
-      list: [],
-      ...overrides,
-    },
-  })
+function openclawConfig(list: Array<Record<string, unknown>>): string {
+  return JSON.stringify({ agents: { list } })
 }
 
 function mockOpenclawFile(mtimeMs: number, content: string): void {
@@ -82,159 +70,113 @@ describe('main-agent', () => {
   beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
-    vi.mocked(getSettings).mockReturnValue({} as any)
     vi.mocked(readFileSync).mockImplementation(() => { throw new Error('ENOENT') })
     vi.mocked(statSync).mockImplementation(() => { throw new Error('ENOENT') })
 
     const mod = await import('../../packages/core/src/main-agent')
     getMainAgentId = mod.getMainAgentId
+    tryGetMainAgentId = mod.tryGetMainAgentId
     getMainAgentName = mod.getMainAgentName
   })
 
   describe('getMainAgentId', () => {
-    it('returns mainAgentId from settings when set', () => {
-      vi.mocked(getSettings).mockReturnValue({ mainAgentId: 'custom' } as any)
-      expect(getMainAgentId()).toBe('custom')
-    })
-
-    it('detects orchestrator from OpenClaw when its workspace equals agents.defaults.workspace', () => {
-      mockOpenclawFile(1000, openclawConfig({
-        list: [
-          { id: 'pixel', workspace: '/tmp/openclaw/workspaces/pixel' },
-          { id: 'main-operator', workspace: WS, identity: { name: 'Main Operator' } },
-          { id: 'patch', workspace: '/tmp/openclaw/workspaces/patch' },
-        ],
-      }))
-      expect(getMainAgentId()).toBe('main-operator')
-    })
-
-    it('detects orchestrator when openclaw uses `main` as the id', () => {
-      mockOpenclawFile(1000, openclawConfig({
-        list: [
-          { id: 'main', workspace: WS },
-          { id: 'pixel', workspace: '/tmp/openclaw/workspaces/pixel' },
-        ],
-      }))
+    it('returns "main" when openclaw.json has an agent with id "main"', () => {
+      mockOpenclawFile(1000, openclawConfig([
+        { id: 'main', identity: { name: 'Main Operator' } },
+        { id: 'patch', workspace: '/tmp/ws/patch' },
+      ]))
       expect(getMainAgentId()).toBe('main')
     })
 
-    it('falls back to agent with populated subagents allowlist when workspace match is absent', () => {
-      mockOpenclawFile(1000, openclawConfig({
-        list: [
-          { id: 'alpha', subagents: { allowAgents: ['x', 'y', 'z'] } },
-          { id: 'x', workspace: '/tmp/openclaw/workspaces/x' },
-        ],
-      }))
-      expect(getMainAgentId()).toBe('alpha')
+    it('throws a clear error when openclaw.json has no "main" entry', () => {
+      mockOpenclawFile(1000, openclawConfig([
+        { id: 'pixel', workspace: '/tmp/ws/pixel' },
+        { id: 'patch', workspace: '/tmp/ws/patch' },
+      ]))
+      expect(() => getMainAgentId()).toThrow(/openclaw\.json has no agent with id 'main'/)
+      expect(() => getMainAgentId()).toThrow(/bakin check openclaw/)
     })
 
-    it('throws when settings has no mainAgentId and OpenClaw config is unreadable', () => {
-      vi.mocked(statSync).mockImplementation(() => { throw new Error('ENOENT') })
-      expect(() => getMainAgentId()).toThrow(/main agent/i)
+    it('throws when openclaw.json is missing entirely', () => {
+      expect(() => getMainAgentId()).toThrow(/openclaw\.json has no agent with id 'main'/)
+    })
+  })
+
+  describe('tryGetMainAgentId', () => {
+    it('returns "main" in the happy case', () => {
+      mockOpenclawFile(1000, openclawConfig([
+        { id: 'main', identity: { name: 'Main Operator' } },
+      ]))
+      expect(tryGetMainAgentId()).toBe('main')
     })
 
-    it('throws when OpenClaw config has no matching orchestrator', () => {
-      mockOpenclawFile(1000, openclawConfig({
-        list: [
-          { id: 'pixel', workspace: '/tmp/openclaw/workspaces/pixel' },
-          { id: 'patch', workspace: '/tmp/openclaw/workspaces/patch' },
-        ],
-      }))
-      expect(() => getMainAgentId()).toThrow(/main agent/i)
+    it('returns null when openclaw.json has no "main" entry', () => {
+      mockOpenclawFile(1000, openclawConfig([
+        { id: 'pixel', workspace: '/tmp/ws/pixel' },
+      ]))
+      expect(tryGetMainAgentId()).toBeNull()
     })
 
-    it('prefers settings.mainAgentId over OpenClaw detection', () => {
-      vi.mocked(getSettings).mockReturnValue({ mainAgentId: 'chief' } as any)
-      mockOpenclawFile(1000, openclawConfig({
-        list: [{ id: 'main-operator', workspace: WS }],
-      }))
-      expect(getMainAgentId()).toBe('chief')
-    })
-
-    it('ignores empty-string mainAgentId in settings', () => {
-      vi.mocked(getSettings).mockReturnValue({ mainAgentId: '' } as any)
-      mockOpenclawFile(1000, openclawConfig({
-        list: [{ id: 'main-operator', workspace: WS }],
-      }))
-      expect(getMainAgentId()).toBe('main-operator')
+    it('returns null when openclaw.json is missing', () => {
+      expect(tryGetMainAgentId()).toBeNull()
     })
   })
 
   describe('getMainAgentName', () => {
-    it('returns identity.name when set on the resolved agent', () => {
-      mockOpenclawFile(1000, openclawConfig({
-        list: [{ id: 'main-operator', workspace: WS, identity: { name: 'Main Operator' } }],
-      }))
+    it('returns identity.name when set on the main entry', () => {
+      mockOpenclawFile(1000, openclawConfig([
+        { id: 'main', identity: { name: 'Main Operator' } },
+      ]))
       expect(getMainAgentName()).toBe('Main Operator')
     })
 
-    it('falls back to title-cased id when identity.name is missing', () => {
-      mockOpenclawFile(1000, openclawConfig({
-        list: [{ id: 'boss', workspace: WS }],
-      }))
-      expect(getMainAgentName()).toBe('Boss')
+    it('returns "Main" when identity.name is absent', () => {
+      mockOpenclawFile(1000, openclawConfig([
+        { id: 'main' },
+      ]))
+      expect(getMainAgentName()).toBe('Main')
     })
 
-    it('propagates throw from getMainAgentId when nothing resolves', () => {
-      vi.mocked(statSync).mockImplementation(() => { throw new Error('ENOENT') })
-      expect(() => getMainAgentName()).toThrow(/main agent/i)
+    it('returns "Main" when identity.name is a blank string', () => {
+      mockOpenclawFile(1000, openclawConfig([
+        { id: 'main', identity: { name: '   ' } },
+      ]))
+      expect(getMainAgentName()).toBe('Main')
     })
 
-    it('uses settings.mainAgentId to locate the matching agent entry', () => {
-      vi.mocked(getSettings).mockReturnValue({ mainAgentId: 'orchestrator' } as any)
-      mockOpenclawFile(1000, openclawConfig({
-        list: [
-          { id: 'main-operator', workspace: WS, identity: { name: 'Wrong' } },
-          { id: 'orchestrator', identity: { name: 'Captain' } },
-        ],
-      }))
-      expect(getMainAgentName()).toBe('Captain')
+    it('returns "Main" when openclaw.json has no main entry', () => {
+      // getMainAgentName degrades gracefully rather than throwing — it has no
+      // agent to pull a name from, so the static fallback applies.
+      mockOpenclawFile(1000, openclawConfig([
+        { id: 'pixel', workspace: '/tmp/ws/pixel' },
+      ]))
+      expect(getMainAgentName()).toBe('Main')
     })
   })
 
-  describe('mtime-cached config reads', () => {
-    it('reuses parsed config across calls when mtime is unchanged', () => {
-      mockOpenclawFile(1000, openclawConfig({
-        list: [{ id: 'boss', workspace: WS }],
-      }))
-      expect(getMainAgentId()).toBe('boss')
-      expect(getMainAgentId()).toBe('boss')
-      expect(getMainAgentId()).toBe('boss')
-      // One parse, three stats — stat is the only per-call cost.
-      expect(readFileSync).toHaveBeenCalledTimes(1)
-      expect(statSync).toHaveBeenCalledTimes(3)
+  describe('live openclaw.json edits', () => {
+    it('picks up a rename of identity.name without a restart (mtime change)', () => {
+      mockOpenclawFile(1000, openclawConfig([
+        { id: 'main', identity: { name: 'Main Operator' } },
+      ]))
+      expect(getMainAgentName()).toBe('Main Operator')
+
+      mockOpenclawFile(2000, openclawConfig([
+        { id: 'main', identity: { name: 'Captain' } },
+      ]))
+      expect(getMainAgentName()).toBe('Captain')
     })
 
-    it('re-reads when mtime changes (live rename recovery)', () => {
-      mockOpenclawFile(1000, openclawConfig({
-        list: [{ id: 'old-name', workspace: WS }],
-      }))
-      expect(getMainAgentId()).toBe('old-name')
+    it('picks up a removal of the "main" entry (mtime change)', () => {
+      mockOpenclawFile(1000, openclawConfig([
+        { id: 'main', identity: { name: 'Main Operator' } },
+      ]))
+      expect(getMainAgentId()).toBe('main')
 
-      mockOpenclawFile(2000, openclawConfig({
-        list: [{ id: 'new-name', workspace: WS }],
-      }))
-      expect(getMainAgentId()).toBe('new-name')
-      expect(readFileSync).toHaveBeenCalledTimes(2)
-    })
-
-    it('recovers when openclaw.json becomes available after being missing', () => {
-      expect(() => getMainAgentId()).toThrow(/main agent/i)
-
-      mockOpenclawFile(1000, openclawConfig({
-        list: [{ id: 'boss', workspace: WS }],
-      }))
-      expect(getMainAgentId()).toBe('boss')
-    })
-
-    it('does not cache a stale config across consecutive getMainAgentId + getMainAgentName calls', () => {
-      mockOpenclawFile(1000, openclawConfig({
-        list: [{ id: 'boss', workspace: WS, identity: { name: 'Boss Man' } }],
-      }))
-      expect(getMainAgentId()).toBe('boss')
-      expect(getMainAgentName()).toBe('Boss Man')
-      // Both helpers share the same cache — only one parse total.
-      expect(readFileSync).toHaveBeenCalledTimes(1)
+      mockOpenclawFile(2000, openclawConfig([
+        { id: 'pixel', workspace: '/tmp/ws/pixel' },
+      ]))
+      expect(() => getMainAgentId()).toThrow(/openclaw\.json has no agent with id 'main'/)
     })
   })
 })

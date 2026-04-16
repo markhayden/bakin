@@ -46,12 +46,24 @@ vi.mock('@/core/content-dir', () => ({
 // Mock settings
 vi.mock('@/core/settings', () => ({
   getSettings: vi.fn(() => ({
-    agents: ['main', 'patch', 'pixel'],
     antfly: { enabled: false },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
     openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
     service: { enabled: false },
   })),
+}))
+
+// Mock openclaw-config — owns the authoritative agent roster after T2
+vi.mock('@bakin/core/openclaw-config', () => ({
+  getAgentIds: vi.fn(() => ['main', 'patch', 'pixel']),
+  findAgentById: vi.fn((id: string) => (['main', 'patch', 'pixel'].includes(id) ? { id } : null)),
+  readOpenClawConfig: vi.fn(() => ({ agents: [{ id: 'main' }, { id: 'patch' }, { id: 'pixel' }] })),
+  resetOpenClawConfigCache: vi.fn(),
+}))
+
+vi.mock('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => '/tmp/doctor-test-openclaw',
+  getOpenClawPath: (...parts: string[]) => ['/tmp/doctor-test-openclaw', ...parts].join('/'),
 }))
 
 // Mock openclaw-client
@@ -179,7 +191,6 @@ describe('doctor', () => {
       // Override settings to enable autoFix
       const { getSettings } = await import('@/core/settings')
       vi.mocked(getSettings).mockReturnValue({
-        agents: ['main', 'patch', 'pixel'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: true },
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -239,7 +250,6 @@ describe('doctor', () => {
       const { getSettings } = await import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
       settings.mockReturnValueOnce({
-        agents: [],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -259,7 +269,6 @@ describe('doctor', () => {
       const { getSettings } = await import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
       settings.mockReturnValueOnce({
-        agents: ['main'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -278,7 +287,6 @@ describe('doctor', () => {
       const { getSettings } = await import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
       settings.mockReturnValueOnce({
-        agents: ['main'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
