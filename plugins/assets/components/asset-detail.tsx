@@ -8,7 +8,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { MarkdownContent } from '@/components/markdown-content'
+import { MarkdownEditor } from '@/components/markdown-editor'
+import { ASSET_TYPES, isEditableMimeType } from '../lib/constants'
 import { Trash2, ExternalLink, Download, Clock, User, Wrench, Tag, Layers, Eye, Pencil, Check, X, Unlink } from 'lucide-react'
 import { formatSize } from '@/lib/format'
 import { DeleteAssetDialog } from './delete-asset-dialog'
@@ -60,6 +63,7 @@ function AssetRenderer({ asset }: { asset: AssetMeta }) {
 
     case 'text':
     case 'plans':
+    case 'research':
       return <TextRenderer fileUrl={fileUrl} mimeType={asset.mimeType} />
 
     case 'data':
@@ -177,12 +181,23 @@ export function AssetDetailModal({ assetPath, onClose }: { assetPath: string; on
   )
 }
 
+function mimeToFormat(mime: string): 'markdown' | 'yaml' | 'json' | 'text' {
+  if (mime === 'text/markdown') return 'markdown'
+  if (mime === 'text/yaml' || mime === 'application/yaml') return 'yaml'
+  if (mime === 'application/json') return 'json'
+  return 'text'
+}
+
 export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAssets }: AssetDetailProps & { showOpenInAssets?: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [activeVariantPath, setActiveVariantPath] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState(false)
   const [newTaskId, setNewTaskId] = useState('')
   const [relinking, setRelinking] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draftContent, setDraftContent] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [contentRefreshKey, setContentRefreshKey] = useState(0)
 
   const handleRelink = async (taskId: string | null) => {
     if (!asset) return
@@ -202,6 +217,46 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
     finally { setRelinking(false) }
   }
 
+  const handleRetype = async (newType: string) => {
+    if (!asset || newType === asset.type) return
+    try {
+      const res = await fetch('/api/plugins/assets/retype', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: asset.path, type: newType }),
+      })
+      if (res.ok) {
+        onRelink?.()
+        onClose()
+      }
+    } catch { /* ignore */ }
+  }
+
+  const handleStartEdit = async () => {
+    if (!asset) return
+    const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}`
+    const content = await fetch(fileUrl).then(r => r.text())
+    setDraftContent(content)
+    setEditing(true)
+  }
+
+  const handleSave = async () => {
+    if (!asset) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/plugins/assets/content', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: asset.path, content: draftContent }),
+      })
+      if (res.ok) {
+        setEditing(false)
+        setContentRefreshKey(k => k + 1)
+      }
+    } catch { /* ignore */ }
+    finally { setSaving(false) }
+  }
+
   if (!asset) return null
 
   // Build the asset to preview — either the primary or the active variant
@@ -217,14 +272,37 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
 
   return (
     <>
-    <Dialog open={!!asset} onOpenChange={() => { onClose(); setConfirmDelete(false); setActiveVariantPath(null) }}>
+    <Dialog open={!!asset} onOpenChange={() => { onClose(); setConfirmDelete(false); setActiveVariantPath(null); setEditing(false) }}>
       <DialogContent className="bg-card border-border !max-w-[calc(100vw-2rem)] !w-full h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <span>{activeVariantPath ? `${asset.filename} (${asset.variants?.find(v => v.path === activeVariantPath)?.role ?? 'variant'})` : asset.filename}</span>
-            <Badge variant="outline" className="text-[10px] h-4">
-              {asset.type}
-            </Badge>
+            <Select value={asset.type} onValueChange={(v) => v && handleRetype(v)}>
+              <SelectTrigger size="sm" className="h-5 text-[10px] gap-1 px-1.5 py-0 border-border/50 w-auto">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ASSET_TYPES.map(t => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isEditableMimeType(asset.mimeType) && !activeVariantPath && (
+              editing ? (
+                <span className="flex items-center gap-1">
+                  <button onClick={handleSave} disabled={saving} className="text-[10px] text-green-400 hover:text-green-300 flex items-center gap-0.5">
+                    <Check className="size-3" /> Save
+                  </button>
+                  <button onClick={() => setEditing(false)} className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+                    <X className="size-3" /> Cancel
+                  </button>
+                </span>
+              ) : (
+                <button onClick={handleStartEdit} className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-0.5">
+                  <Pencil className="size-3" /> Edit
+                </button>
+              )
+            )}
             {activeVariantPath && (
               <button
                 onClick={() => setActiveVariantPath(null)}
@@ -239,7 +317,18 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
         <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
           {/* Main content area */}
           <div className="flex-1 min-w-0 min-h-0">
-            <AssetRenderer asset={previewAsset} />
+            {editing ? (
+              <MarkdownEditor
+                content={draftContent}
+                editing={true}
+                onChange={setDraftContent}
+                format={mimeToFormat(previewAsset.mimeType)}
+                minHeight="100%"
+                className="h-full"
+              />
+            ) : (
+              <AssetRenderer asset={previewAsset} key={contentRefreshKey} />
+            )}
           </div>
 
           {/* Sidebar info */}
