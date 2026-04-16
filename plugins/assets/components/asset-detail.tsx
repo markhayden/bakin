@@ -208,6 +208,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
     if (asset && localAsset && asset.path !== localAsset.path) {
       setLocalAsset(null)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset?.path])
 
   const handleRelink = async (taskId: string | null) => {

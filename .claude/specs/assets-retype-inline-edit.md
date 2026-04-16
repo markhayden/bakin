@@ -59,11 +59,12 @@ Parameters: `path` (asset path), `type` (target AssetType). Same handler pattern
 
 **UI: Type selector in detail overlay sidebar**
 
-Replace the static `<Badge variant="outline">{asset.type}</Badge>` in the dialog header (`asset-detail.tsx` line 225-227) with an inline `<Select>` dropdown populated with `ASSET_TYPES`. When changed:
-1. Call `PATCH /retype` with new type
-2. On success, trigger `onRelink?.()` callback to refresh parent (asset path changed)
-3. Close the overlay (path is now stale)
-4. The watcher handles Antfly reindex as safety net
+Replace the static `<Badge variant="outline">{asset.type}</Badge>` in the dialog header (`asset-detail.tsx`) with an inline `<Select>` dropdown populated with `ASSET_TYPES`. When changed:
+1. Set optimistic `localAsset` to keep dialog open during the file move
+2. Call `PATCH /retype` with new type
+3. On success, call `onPathChange?.(newPath)` to update the parent's `?asset=` URL param (prevents SSE refetch from closing the dialog when the old path disappears)
+4. Fetch fresh asset data from the new path and update `localAsset`
+5. The watcher handles Antfly reindex as safety net
 
 ### Acceptance Criteria
 
@@ -77,21 +78,22 @@ Replace the static `<Badge variant="outline">{asset.type}</Badge>` in the dialog
 
 ---
 
-## 2. "Research" Asset Type
+## 2. "Research" and "PDF" Asset Types
 
 ### Current State
 
-Seven types: `text`, `images`, `video`, `audio`, `plans`, `data`, `other`. No extension maps to "research" — it's a semantic category. `.md` maps to `text`, `.yaml`/`.yml` map to `plans`.
+Seven types: `text`, `images`, `video`, `audio`, `plans`, `data`, `other`. `.pdf` mapped to `other`.
 
 ### Design
 
-Add `'research'` to `ASSET_TYPES` in `constants.ts`. Position it after `plans` in the array since it's semantically adjacent.
+Add `'research'` and `'pdf'` to `ASSET_TYPES` in `constants.ts`. Final order: `text, images, video, audio, plans, research, pdf, data, other` (9 types).
 
-No extension mappings — research is always a manual categorization (via retype in UI or explicit `type: 'research'` in MCP save tool). This matches how files can be retyped to `plans` even if their extension doesn't auto-map there.
+- **research** — No extension mappings. Always a manual categorization (via retype in UI or explicit `type: 'research'` in MCP save tool). Semantic category for analysis, reference docs, competitive intel.
+- **pdf** — `.pdf` extension auto-maps to `pdf` (previously mapped to `other`). PDF content is extractable for search indexing but not editable via `PUT /content`.
 
 **Files to update:**
 - `plugins/assets/lib/constants.ts` — add to `ASSET_TYPES` array
-- `src/types/index.ts` — add `'research'` to `AssetMeta.type` union literal
+- `src/types/index.ts` — add `'research'` and `'pdf'` to `AssetMeta.type` union literal
 - `plugins/assets/components/asset-detail.tsx` — `AssetRenderer` switch: `research` falls through to `TextRenderer` like `text` and `plans`
 - `.claude/knowledge/assets-plugin.md` — document the new type
 
@@ -127,6 +129,7 @@ Asset type — determines how the asset is organized and displayed:
 - images: Visual assets — photos, illustrations, graphics
 - video: Video files — walkthroughs, demos, reels
 - audio: Audio files — podcasts, recordings, music
+- pdf: PDF documents — reports, whitepapers, manuals
 - data: Structured data — JSON, CSV, XML exports
 - other: Anything that doesn't fit above
 
@@ -317,9 +320,12 @@ This preserves the existing API surface for the project detail page while using 
 
 | File | Change |
 |------|--------|
-| `plugins/assets/lib/constants.ts` | Add `'research'` to `ASSET_TYPES`, add `isEditableMimeType()` |
-| `src/types/index.ts` | Add `'research'` to `AssetMeta.type` union |
-| `plugins/assets/index.ts` | Register new routes, new MCP tools, update tool descriptions |
-| `plugins/assets/components/asset-detail.tsx` | Type selector, edit button/mode, `research` in renderer switch |
+| `plugins/assets/lib/constants.ts` | Add `'research'` and `'pdf'` to `ASSET_TYPES`, map `.pdf` → `pdf`, add `isEditableMimeType()` |
+| `src/types/index.ts` | Add `'research'` and `'pdf'` to `AssetMeta.type` union |
+| `packages/core/src/content-dir.ts` | Add `'assets.research'` and `'assets.pdf'` to `BakinPaths`, `getBakinPaths()`, `initBakinHome()` |
+| `plugins/assets/lib/save-asset.ts` | Remove duplicate `ASSET_TYPES`, import from `./constants` |
+| `plugins/assets/index.ts` | Register new routes, new MCP tools, update tool descriptions with categorization rubric |
+| `plugins/assets/components/asset-detail.tsx` | Type `<Select>`, floating edit buttons, `onPathChange` for retype SSE race, `research`/`pdf` in renderer |
+| `plugins/assets/components/assets-page.tsx` | Wire `onPathChange={setAssetPath}` to `AssetDetail` |
 | `plugins/projects/components/project-editor.tsx` | Refactor to use shared `MarkdownEditor` |
-| `.claude/knowledge/assets-plugin.md` | Document new type, routes, tools, and editable types |
+| `.claude/knowledge/assets-plugin.md` | Document new types, routes, tools, and editable types |
