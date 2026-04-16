@@ -4,7 +4,7 @@ import { getAssetType, getMimeType, ASSET_TYPES, EXTENSION_TO_TYPE } from '@baki
 describe('assets/constants', () => {
   describe('ASSET_TYPES', () => {
     it('contains all expected types', () => {
-      expect(ASSET_TYPES).toEqual(['text', 'images', 'video', 'audio', 'plans', 'research', 'data', 'other'])
+      expect(ASSET_TYPES).toEqual(['text', 'images', 'video', 'audio', 'plans', 'research', 'pdf', 'data', 'other'])
     })
   })
 

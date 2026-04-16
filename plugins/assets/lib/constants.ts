@@ -2,7 +2,7 @@
  * Asset type constants and MIME type mappings.
  */
 
-export const ASSET_TYPES = ['text', 'images', 'video', 'audio', 'plans', 'research', 'data', 'other'] as const
+export const ASSET_TYPES = ['text', 'images', 'video', 'audio', 'plans', 'research', 'pdf', 'data', 'other'] as const
 export type AssetType = typeof ASSET_TYPES[number]
 
 export const SPECIAL_DIRS = ['_unlinked', 'library', '.trash'] as const
@@ -38,7 +38,7 @@ export const EXTENSION_TO_TYPE: Record<string, AssetType> = {
   '.yaml': 'plans',
   '.yml': 'plans',
   // Documents
-  '.pdf': 'other',
+  '.pdf': 'pdf',
   // Data
   '.json': 'data',
   '.csv': 'data',

@@ -19,7 +19,7 @@ Without a centralized asset system, agent-created files are scattered across tas
 
 ```
 ~/.bakin/assets/
-  {type}/                     # text, images, video, audio, plans, research, data, other
+  {type}/                     # text, images, video, audio, plans, research, pdf, data, other
     {taskId}/                 # Task directory (or _unlinked, library)
       YYYYMMDD-{slug}.{ext}  # Primary asset (date-prefixed, slugified)
       YYYYMMDD-{slug}.{ext}.meta.json   # Sidecar metadata
