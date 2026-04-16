@@ -1198,6 +1198,191 @@ const teamPlugin: BakinPlugin = {
         }
       },
     })
+
+    // ─── Agent Lifecycle MCP Exec Tools ──────────────────────────────────
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_team_create_agent',
+      label: 'Created agent',
+      description: 'Create a new agent: registers in OpenClaw, writes persona files, configures dispatch permissions, optionally assigns to a team. Returns next-step instructions.',
+      parameters: {
+        id: z.string().regex(/^[a-z0-9-]+$/).optional().describe('Agent ID (lowercase alphanumeric + hyphens). Auto-derived from name if omitted.'),
+        name: z.string().describe('Display name (e.g. "Jessica Fetcher")'),
+        emoji: z.string().optional().describe('Single emoji (e.g. "🔎")'),
+        role: z.string().optional().describe('One-line role description'),
+        vibe: z.string().optional().describe('Personality vibe'),
+        primaryFunction: z.string().optional().describe('What the agent does'),
+        defaultMode: z.string().optional().describe('How the agent operates by default'),
+        model: z.string().optional().describe('Full provider/model string. Uses default if omitted.'),
+        soul: z.string().optional().describe('Raw markdown for SOUL.md'),
+        tools: z.string().optional().describe('Raw markdown for TOOLS.md'),
+        teamId: z.string().optional().describe('Bakin team to assign the agent to'),
+        dispatchable: z.union([z.literal('all'), z.literal('main'), z.array(z.string())]).optional().describe('Who can dispatch tasks to this agent. Default: "main".'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const name = params.name as string
+        const id = (params.id as string || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''))
+        if (!id) return { ok: false, error: 'Could not derive agent ID from name' }
+        if (id === 'main') return { ok: false, error: 'Cannot use "main" as agent ID' }
+
+        const existingIds = adapter.getAgentIds()
+        if (existingIds.includes(id)) return { ok: false, error: `Agent "${id}" already exists` }
+
+        const result = await adapter.addAgent({
+          id,
+          name,
+          emoji: params.emoji as string | undefined,
+          role: params.role as string | undefined,
+          vibe: params.vibe as string | undefined,
+          primaryFunction: params.primaryFunction as string | undefined,
+          defaultMode: params.defaultMode as string | undefined,
+          model: params.model as string | undefined,
+          soul: params.soul as string | undefined,
+          tools: params.tools as string | undefined,
+        })
+
+        const dispatchable = (params.dispatchable || 'main') as 'all' | 'main' | string[]
+        adapter.addToAllowLists(id, dispatchable)
+
+        const teamId = params.teamId as string | undefined
+        if (teamId) {
+          const ds = readDisplaySettings()
+          ds[id] = { ...ds[id], teamId }
+          writeDisplaySettings(ds)
+        }
+
+        ctx.activity.audit('agent.created', 'system', { agent: id, name })
+        indexAgent(id, { id, name }, params.model as string || '', 'offline')
+        resetSettingsCache()
+        try { syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
+
+        let gatewayRestarted = false
+        try {
+          await restartGateway()
+          gatewayRestarted = true
+          log.info('Gateway restarted after agent creation', { agent: id })
+          try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
+        } catch (err) {
+          log.warn('Failed to restart gateway', { error: err instanceof Error ? err.message : String(err) })
+        }
+
+        return {
+          ok: true,
+          id,
+          workspace: result.workspace,
+          gatewayRestarted,
+          instructions: `Agent created. You can now assign tasks to ${id} via bakin_exec_tasks_create. Consider writing a detailed SOUL.md to define their personality.`,
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_team_update_identity',
+      label: 'Updated agent identity',
+      description: 'Update an existing agent\'s identity fields (name, emoji, role, vibe, etc.) and/or workspace files (SOUL.md, TOOLS.md).',
+      parameters: {
+        agentId: z.string().describe('Target agent ID'),
+        name: z.string().optional().describe('New display name'),
+        emoji: z.string().optional().describe('New emoji'),
+        role: z.string().optional().describe('Updated role'),
+        vibe: z.string().optional().describe('Updated vibe'),
+        primaryFunction: z.string().optional().describe('Updated primary function'),
+        defaultMode: z.string().optional().describe('Updated default mode'),
+        soul: z.string().optional().describe('Replace SOUL.md content'),
+        tools: z.string().optional().describe('Replace TOOLS.md content'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const agentId = params.agentId as string
+        const updated = await adapter.updateAgentIdentity(agentId, {
+          name: params.name as string | undefined,
+          emoji: params.emoji as string | undefined,
+          role: params.role as string | undefined,
+          vibe: params.vibe as string | undefined,
+          primaryFunction: params.primaryFunction as string | undefined,
+          defaultMode: params.defaultMode as string | undefined,
+          soul: params.soul as string | undefined,
+          tools: params.tools as string | undefined,
+        })
+
+        ctx.activity.audit('agent.identity_updated', 'system', { agent: agentId, updated })
+        resetSettingsCache()
+
+        return { ok: true, id: agentId, updated }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_team_delete_agent',
+      label: 'Deleted agent',
+      description: 'Remove an agent from OpenClaw and clean up Bakin state. Requires confirm=true as a safety guard.',
+      parameters: {
+        agentId: z.string().describe('Agent to delete'),
+        confirm: z.boolean().describe('Must be true — safety guard against accidental deletion'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const agentId = params.agentId as string
+        const confirm = params.confirm as boolean
+
+        if (agentId === getMainAgentId()) return { ok: false, error: 'Cannot delete the main orchestrator agent' }
+        if (confirm !== true) return { ok: false, error: 'confirm must be true to delete an agent' }
+
+        const removed = await adapter.removeAgent(agentId)
+        if (!removed) return { ok: false, error: `Agent "${agentId}" not found` }
+
+        adapter.removeFromAllowLists(agentId)
+
+        const ds = readDisplaySettings()
+        if (ds[agentId]) {
+          delete ds[agentId]
+          writeDisplaySettings(ds)
+        }
+
+        ctx.activity.audit('agent.deleted', 'system', { agent: agentId })
+        ctx.search.remove(agentId).catch(() => {})
+        resetSettingsCache()
+        try { syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
+
+        let gatewayRestarted = false
+        try {
+          await restartGateway()
+          gatewayRestarted = true
+          log.info('Gateway restarted after agent deletion', { agent: agentId })
+          try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
+        } catch (err) {
+          log.warn('Failed to restart gateway', { error: err instanceof Error ? err.message : String(err) })
+        }
+
+        return { ok: true, id: agentId, trashed: true, gatewayRestarted }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_team_set_permissions',
+      label: 'Updated permissions',
+      description: 'Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents).',
+      parameters: {
+        agentId: z.string().describe('Agent whose allowAgents to modify'),
+        allowAgents: z.array(z.string()).describe('Full replacement list of agent IDs this agent can dispatch to'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const agentId = params.agentId as string
+        const allowAgents = params.allowAgents as string[]
+
+        const ids = adapter.getAgentIds()
+        if (!ids.includes(agentId)) return { ok: false, error: `Agent "${agentId}" not found in roster` }
+
+        const invalid = allowAgents.filter((id) => !ids.includes(id))
+        if (invalid.length > 0) return { ok: false, error: `Unknown agent IDs: ${invalid.join(', ')}` }
+
+        if (allowAgents.includes(agentId)) return { ok: false, error: `Agent cannot dispatch to itself` }
+
+        adapter.setSubagentPermissions(agentId, allowAgents)
+        ctx.activity.audit('agent.permissions_updated', 'system', { agent: agentId, allowAgents })
+        resetSettingsCache()
+
+        return { ok: true, agentId, allowAgents }
+      },
+    })
   },
 
   async onReady() {
