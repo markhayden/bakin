@@ -463,6 +463,7 @@ const assetsPlugin: BakinPlugin = {
       '- images: Visual assets — photos, illustrations, graphics',
       '- video: Video files — walkthroughs, demos, reels',
       '- audio: Audio files — podcasts, recordings, music',
+      '- pdf: PDF documents — reports, whitepapers, manuals',
       '- data: Structured data — JSON, CSV, XML exports',
       '- other: Anything that doesn\'t fit above',
       '',

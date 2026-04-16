@@ -117,6 +117,7 @@ export interface BakinPaths {
   'assets.audio': string
   'assets.plans': string
   'assets.research': string
+  'assets.pdf': string
   'assets.data': string
   'assets.other': string
   agents: string
@@ -145,6 +146,7 @@ export function getBakinPaths(): BakinPaths {
     'assets.audio': join(assets, 'audio'),
     'assets.plans': join(assets, 'plans'),
     'assets.research': join(assets, 'research'),
+    'assets.pdf': join(assets, 'pdf'),
     'assets.data': join(assets, 'data'),
     'assets.other': join(assets, 'other'),
     agents: join(home, 'agents'),
@@ -169,7 +171,7 @@ export function initBakinHome(targetDir?: string): { created: string[]; seeded: 
   const seeded: string[] = []
 
   // Create full directory structure matching what content/ contains
-  const assetTypes = ['text', 'images', 'video', 'audio', 'plans', 'research', 'data', 'other']
+  const assetTypes = ['text', 'images', 'video', 'audio', 'plans', 'research', 'pdf', 'data', 'other']
   const assetDirs = assetTypes.flatMap(t => [
     join(home, 'assets', t),
     join(home, 'assets', t, '_unlinked'),

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -199,6 +199,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
   const [saving, setSaving] = useState(false)
   const [contentRefreshKey, setContentRefreshKey] = useState(0)
   const [localAsset, setLocalAsset] = useState<AssetMeta | null>(null)
+  const retypingRef = useRef(false)
 
   const displayAsset = localAsset ?? asset
 
@@ -224,6 +225,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
 
   const handleRetype = async (newType: string) => {
     if (!displayAsset || newType === displayAsset.type) return
+    retypingRef.current = true
     try {
       const res = await fetch('/api/plugins/assets/retype', {
         method: 'PATCH',
@@ -240,6 +242,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
         onRelink?.()
       }
     } catch { /* ignore */ }
+    finally { retypingRef.current = false }
   }
 
   const handleStartEdit = async () => {
@@ -282,7 +285,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAsse
 
   return (
     <>
-    <Dialog open={!!displayAsset} onOpenChange={() => { setLocalAsset(null); onClose(); setConfirmDelete(false); setActiveVariantPath(null); setEditing(false) }}>
+    <Dialog open={!!displayAsset} onOpenChange={() => { if (retypingRef.current) return; setLocalAsset(null); onClose(); setConfirmDelete(false); setActiveVariantPath(null); setEditing(false) }}>
       <DialogContent className="bg-card border-border !max-w-[calc(100vw-2rem)] !w-full h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
