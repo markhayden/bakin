@@ -9,6 +9,7 @@ import { getContentDir } from '../../../src/core/content-dir'
 import { readSidecar, createStub, type SidecarMeta } from './sidecar'
 import { getAssetType, getMimeType, ASSET_TYPES, SPECIAL_DIRS } from './constants'
 import type { AssetType } from './constants'
+import { setFilename, unsetFilename, clearResolver } from './resolver'
 
 const log = createLogger('assets:index')
 
@@ -70,6 +71,7 @@ function getAssetsRoot(): string {
  */
 export function buildIndex(): void {
   index.clear()
+  clearResolver()
   const assetsRoot = getAssetsRoot()
 
   if (!existsSync(assetsRoot)) {
@@ -109,6 +111,9 @@ export function buildIndex(): void {
               mtimeMs: stat.mtimeMs,
               metadata: meta,
             })
+            if (!detectVariant(file) && !file.endsWith('.meta.json')) {
+              setFilename(file, relPath)
+            }
             count++
           } catch { /* skip unreadable files */ }
         }
@@ -127,6 +132,10 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
   const fullPath = join(contentDir, relativePath)
 
   if (!existsSync(fullPath)) {
+    const existing = index.get(relativePath)
+    if (existing && !detectVariant(existing.filename) && !existing.filename.endsWith('.meta.json')) {
+      unsetFilename(existing.filename, relativePath)
+    }
     index.delete(relativePath)
     return null
   }
@@ -152,6 +161,9 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
     }
 
     index.set(relativePath, asset)
+    if (!detectVariant(filename) && !filename.endsWith('.meta.json')) {
+      setFilename(filename, relativePath)
+    }
     return asset
   } catch (err) {
     log.warn('Failed to index asset', err, { path: relativePath })
@@ -163,6 +175,10 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
  * Remove an asset from the index.
  */
 export function removeAsset(relativePath: string): void {
+  const existing = index.get(relativePath)
+  if (existing && !detectVariant(existing.filename) && !existing.filename.endsWith('.meta.json')) {
+    unsetFilename(existing.filename, relativePath)
+  }
   index.delete(relativePath)
 }
 
