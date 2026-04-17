@@ -215,18 +215,17 @@ describe('assets/asset-index', () => {
       expect(resolveFilename('hero.png')).toBeNull()
     })
 
-    it('does not register variant filenames in the resolver', () => {
+    it('registers variant filenames in the resolver (they move with primaries)', () => {
       const taskDir = join(assetsRoot, 'images', 'task-abc')
       writeFileSync(join(taskDir, 'hero.thumb.jpg'), 'thumb')
       writeFileSync(join(taskDir, 'hero.thumb.jpg.meta.json'), JSON.stringify({
         agent: 'unknown', taskId: 'task-abc', created: '2026-03-23T10:00:01Z',
       }))
       buildIndex()
-      // Primary is indexed in resolver; variant is not.
       expect(resolveFilename('hero.png')).toBe('assets/images/task-abc/hero.png')
-      expect(resolveFilename('hero.thumb.jpg')).toBeNull()
-      // Resolver size matches primary count (3 primaries in default fixture).
-      expect(resolverSize()).toBe(3)
+      expect(resolveFilename('hero.thumb.jpg')).toBe('assets/images/task-abc/hero.thumb.jpg')
+      // 3 primaries + 1 variant
+      expect(resolverSize()).toBe(4)
     })
   })
 

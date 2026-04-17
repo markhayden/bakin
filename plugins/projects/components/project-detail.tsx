@@ -69,7 +69,7 @@ function AssetThumb({ asset }: { asset: ResolvedAsset }) {
   if (IMAGE_TYPES.has(asset.type) && !asset.missing && !err) {
     return (
       <img
-        src={`/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}`}
+        src={`/api/assets/${encodeURIComponent(asset.filename)}`}
         alt={asset.filename}
         onError={() => setErr(true)}
         className="size-8 rounded object-cover shrink-0 bg-zinc-800"
@@ -88,7 +88,7 @@ function PickerThumb({ asset }: { asset: { path: string; filename: string; type:
   if (IMAGE_TYPES.has(asset.type) && !err) {
     return (
       <img
-        src={`/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}`}
+        src={`/api/assets/${encodeURIComponent(asset.filename)}`}
         alt={asset.filename}
         onError={() => setErr(true)}
         className="size-7 rounded object-cover shrink-0 bg-zinc-800"

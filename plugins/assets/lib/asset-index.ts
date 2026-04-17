@@ -111,7 +111,7 @@ export function buildIndex(): void {
               mtimeMs: stat.mtimeMs,
               metadata: meta,
             })
-            if (!detectVariant(file) && !file.endsWith('.meta.json')) {
+            if (!file.endsWith('.meta.json')) {
               setFilename(file, relPath)
             }
             count++
@@ -133,7 +133,7 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
 
   if (!existsSync(fullPath)) {
     const existing = index.get(relativePath)
-    if (existing && !detectVariant(existing.filename) && !existing.filename.endsWith('.meta.json')) {
+    if (existing && !existing.filename.endsWith('.meta.json')) {
       unsetFilename(existing.filename, relativePath)
     }
     index.delete(relativePath)
@@ -161,7 +161,7 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
     }
 
     index.set(relativePath, asset)
-    if (!detectVariant(filename) && !filename.endsWith('.meta.json')) {
+    if (!filename.endsWith('.meta.json')) {
       setFilename(filename, relativePath)
     }
     return asset
@@ -176,7 +176,7 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
  */
 export function removeAsset(relativePath: string): void {
   const existing = index.get(relativePath)
-  if (existing && !detectVariant(existing.filename) && !existing.filename.endsWith('.meta.json')) {
+  if (existing && !existing.filename.endsWith('.meta.json')) {
     unsetFilename(existing.filename, relativePath)
   }
   index.delete(relativePath)

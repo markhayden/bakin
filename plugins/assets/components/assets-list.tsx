@@ -78,8 +78,8 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
   const iconColor = TYPE_COLORS[asset.type] || 'text-muted-foreground'
   const isImage = asset.type === 'images'
   const thumbnailVariant = asset.variants?.find(v => v.role === 'thumbnail')
-  const previewPath = thumbnailVariant ? thumbnailVariant.path : asset.path
-  const previewUrl = `/api/plugins/assets/file?path=${encodeURIComponent(previewPath)}&v=${asset.mtimeMs || ''}`
+  const previewName = thumbnailVariant ? thumbnailVariant.filename : asset.filename
+  const previewUrl = `/api/assets/${encodeURIComponent(previewName)}?v=${asset.mtimeMs || ''}`
 
   return (
     <>

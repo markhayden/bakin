@@ -26,7 +26,7 @@ interface AssetDetailProps {
 }
 
 function AssetRenderer({ asset }: { asset: AssetMeta }) {
-  const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}&v=${asset.mtimeMs || ''}`
+  const fileUrl = `/api/assets/${encodeURIComponent(asset.filename)}?v=${asset.mtimeMs || ''}`
 
   switch (asset.type) {
     case 'images':
@@ -272,7 +272,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
   const handleStartEdit = async () => {
     if (!displayAsset) return
     try {
-      const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(displayAsset.path)}`
+      const fileUrl = `/api/assets/${encodeURIComponent(displayAsset.filename)}`
       const content = await fetch(fileUrl).then(r => r.text())
       setDraftContent(content)
       setEditing(true)
@@ -307,7 +307,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
       })()
     : displayAsset
 
-  const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(displayAsset.path)}&v=${displayAsset.mtimeMs || ''}`
+  const fileUrl = `/api/assets/${encodeURIComponent(previewAsset.filename)}?v=${displayAsset.mtimeMs || ''}`
 
   return (
     <>
@@ -505,7 +505,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground">{formatSize(v.size)}</span>
                         <a
-                          href={`/api/plugins/assets/file?path=${encodeURIComponent(v.path)}`}
+                          href={`/api/assets/${encodeURIComponent(v.filename)}`}
                           download={v.filename}
                           className="text-blue-400 hover:text-blue-300"
                           onClick={(e) => e.stopPropagation()}

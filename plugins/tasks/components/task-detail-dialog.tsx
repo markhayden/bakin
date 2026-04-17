@@ -45,12 +45,13 @@ function isImagePath(v: unknown): v is string {
 function OutputValue({ value }: { value: unknown }) {
   if (typeof value === 'string') {
     if (isImagePath(value)) {
+      // Accept either a bare filename (filename-as-identity) or a legacy
+      // path — in both cases the resolver route picks the right file.
       const filename = value.split('/').pop() || value
-      const assetRel = value.replace(/^.*?\/assets\//, 'assets/')
       return (
         <div className="mt-0.5">
           <p className="text-xs text-zinc-400 break-all">{filename}</p>
-          <img src={`/api/assets/${assetRel}`} alt={filename} className="mt-1 max-h-48 rounded border border-border object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          <img src={`/api/assets/${encodeURIComponent(filename)}`} alt={filename} className="mt-1 max-h-48 rounded border border-border object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
         </div>
       )
     }
@@ -340,7 +341,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
         try {
           const result = await uploadAsset(file, currentTaskId, 'clipboard')
           if (result.ok) {
-            const ref = `![${result.filename || 'pasted image'}](/api/plugins/assets/file?path=${encodeURIComponent(result.path!)})`
+            const ref = `![${result.filename || 'pasted image'}](/api/assets/${encodeURIComponent(result.filename!)})`
             insertAtCursor(ref)
             window.dispatchEvent(new CustomEvent('bakin:asset-uploaded', { detail: { taskId: currentTaskId } }))
             toast('Image added to task assets', 'success')
@@ -369,7 +370,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
           const file = new File([blob], filename, { type: 'text/markdown' })
           const result = await uploadAsset(file, currentTaskId, 'clipboard')
           if (result.ok) {
-            const ref = `[Attached: ${result.filename} (${lineCount} lines)](/api/plugins/assets/file?path=${encodeURIComponent(result.path!)})`
+            const ref = `[Attached: ${result.filename} (${lineCount} lines)](/api/assets/${encodeURIComponent(result.filename!)})`
             insertAtCursor(ref)
             window.dispatchEvent(new CustomEvent('bakin:asset-uploaded', { detail: { taskId: currentTaskId } }))
             toast(`Text saved as task asset (${lineCount} lines)`, 'success')

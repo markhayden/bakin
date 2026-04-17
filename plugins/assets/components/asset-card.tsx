@@ -55,9 +55,9 @@ export function AssetCard({ asset, onClick, onDelete, scoreInfo }: AssetCardProp
 
   // Prefer thumbnail variant for grid preview (much smaller file size)
   const thumbnailVariant = asset.variants?.find(v => v.role === 'thumbnail')
-  const previewPath = thumbnailVariant ? thumbnailVariant.path : asset.path
-  const previewUrl = `/api/plugins/assets/file?path=${encodeURIComponent(previewPath)}&v=${asset.mtimeMs || ''}`
-  const fullUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}&v=${asset.mtimeMs || ''}`
+  const previewName = thumbnailVariant ? thumbnailVariant.filename : asset.filename
+  const previewUrl = `/api/assets/${encodeURIComponent(previewName)}?v=${asset.mtimeMs || ''}`
+  const fullUrl = `/api/assets/${encodeURIComponent(asset.filename)}?v=${asset.mtimeMs || ''}`
 
   const card = (
     <div
