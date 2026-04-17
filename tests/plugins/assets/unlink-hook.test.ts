@@ -5,10 +5,17 @@
  * Antfly bakin_assets index. The plugin migrated to
  * registerFileBackedContentType with `onUnlink` escape hatch.
  *
- * Three cases under test:
- *   1. Binary delete       → ctx.search.remove called, asset purged from tracker
- *   2. Sidecar-only delete → neither called (binary may still exist)
- *   3. .trash/ delete      → neither called (deletions inside trash are noise)
+ * Under filename-as-identity, search keys are filenames (not paths). The
+ * unlink hook only removes the search doc when the filename is truly gone
+ * from disk — i.e. when the resolver has no remaining entry for it. This
+ * keeps retype/relink watcher events from wiping docs whose files just
+ * moved.
+ *
+ * Cases under test:
+ *   1. Binary delete       → ctx.search.remove(filename) called
+ *   2. Sidecar-only delete → not called (binary may still exist)
+ *   3. .trash/ delete      → not called (trash events are noise)
+ *   4. Filename still exists elsewhere → not called (retype/relink case)
  */
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
@@ -117,7 +124,7 @@ describe('assets plugin — file-backed unlink hook', () => {
     expect(captured.capturedDef!.excludePatterns).toContain('assets/**/.trash/**')
   })
 
-  it('binary delete: calls ctx.search.remove with the asset path', async () => {
+  it('binary delete: calls ctx.search.remove with the filename', async () => {
     const captured = makeCtx()
     // Seed the asset on disk so upsertAsset / removeAsset see real state
     const subdir = join(assetsDir, 'images', 'task-1')
@@ -129,7 +136,44 @@ describe('assets plugin — file-backed unlink hook', () => {
 
     await onUnlink('assets/images/task-1/photo.png')
 
-    expect(captured.removeCalls).toEqual(['assets/images/task-1/photo.png'])
+    expect(captured.removeCalls).toEqual(['photo.png'])
+  })
+
+  it('filename still exists elsewhere: skips ctx.search.remove', async () => {
+    const captured = makeCtx()
+    // Seed the same filename in two different task dirs (simulating the
+    // window during a retype: old location still on disk, new location
+    // already written).
+    const oldDir = join(assetsDir, 'text', 'task-1')
+    const newDir = join(assetsDir, 'research', 'task-1')
+    mkdirSync(oldDir, { recursive: true })
+    mkdirSync(newDir, { recursive: true })
+    writeFileSync(join(oldDir, 'notes-abcdef12.md'), 'old')
+    writeFileSync(join(newDir, 'notes-abcdef12.md'), 'new')
+
+    await assetsPlugin.activate(captured.ctx)
+    const onUnlink = captured.capturedDef!.onUnlink!
+
+    // Unlink fires for the old location, but the filename still maps
+    // (via the collision alternate or primary) to the new location.
+    await onUnlink('assets/text/task-1/notes-abcdef12.md')
+
+    expect(captured.removeCalls).toEqual([])
+  })
+
+  it('variant unlink: never calls ctx.search.remove', async () => {
+    const captured = makeCtx()
+    const subdir = join(assetsDir, 'images', 'task-1')
+    mkdirSync(subdir, { recursive: true })
+    writeFileSync(join(subdir, 'photo.png'), 'fake png bytes')
+    writeFileSync(join(subdir, 'photo.thumb.jpg'), 'thumb bytes')
+
+    await assetsPlugin.activate(captured.ctx)
+    const onUnlink = captured.capturedDef!.onUnlink!
+
+    await onUnlink('assets/images/task-1/photo.thumb.jpg')
+
+    expect(captured.removeCalls).toEqual([])
   })
 
   it('sidecar-only delete: does NOT call ctx.search.remove', async () => {
