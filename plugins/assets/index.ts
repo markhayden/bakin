@@ -25,10 +25,16 @@ import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { ASSET_TYPES } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
 import { saveAsset } from './lib/save-asset'
+import { filenameExists } from './lib/resolver'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { buildAssetFileUrl } from './lib/asset-url'
 import { extractAssetContent } from './lib/content-extractor'
+
+/** Filename is the canonical identity under the filename-as-identity model. */
+function filenameFromRel(relPath: string): string {
+  return relPath.split('/').pop() || ''
+}
 
 const log = createLogger('assets')
 
@@ -121,7 +127,17 @@ const assetsPlugin: BakinPlugin = {
       filePatterns: [
         {
           pattern: 'assets/**/*',
-          fileToId: (rel) => rel.endsWith('.meta.json') ? rel.replace(/\.meta\.json$/, '') : rel,
+          // Under filename-as-identity, the search key IS the filename. The
+          // on-disk path is a view and changes under retype/relink, but the
+          // filename is stable. Variants (.thumb, .opt) never get their own
+          // search doc — they ride with their primary.
+          fileToId: (rel) => {
+            const bare = rel.endsWith('.meta.json') ? rel.replace(/\.meta\.json$/, '') : rel
+            const filename = bare.split('/').pop() || ''
+            if (!filename) return null
+            if (detectVariant(filename)) return null
+            return filename
+          },
           fileToDoc: async () => null, // unused — onSync handles indexing
         },
       ],
@@ -144,8 +160,19 @@ const assetsPlugin: BakinPlugin = {
         // metadata. Only treat binary deletion as removal.
         if (relativePath.endsWith('.meta.json')) return
 
+        const filename = filenameFromRel(relativePath)
+        if (!filename || detectVariant(filename)) {
+          removeAsset(relativePath)
+          return
+        }
+
         removeAsset(relativePath)
-        await ctx.search.remove(relativePath).catch(() => { /* non-blocking */ })
+        // Under filename-as-identity, retype/relink fire unlink on the old
+        // path and add on the new path — the filename survives at another
+        // location. Only remove the search doc when the filename is truly
+        // gone from disk. See resolver P2 in asset-storage-architecture-PLAN.
+        if (filenameExists(filename)) return
+        await ctx.search.remove(filename).catch(() => { /* non-blocking */ })
       },
       reindex: async function* () {
         const contentDir = getContentDir()
@@ -241,18 +268,21 @@ const assetsPlugin: BakinPlugin = {
       }
     }
 
-    /** Index an asset by reading its sidecar metadata */
+    /** Index an asset by reading its sidecar metadata. Keyed by filename. */
     async function indexAsset(relPath: string): Promise<void> {
       try {
         const contentDir = getContentDir()
         const metaPath = join(contentDir, relPath + '.meta.json')
         if (!existsSync(metaPath)) return
+        const filename = filenameFromRel(relPath)
+        if (!filename || detectVariant(filename)) return
         const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
-        const filename = relPath.split('/').pop() || ''
         const parts = relPath.split('/')
         const assetType = parts[1] || 'other'
         const doc = await assetToSearchDoc(raw, filename, assetType, relPath)
-        await ctx.search.index(relPath, doc)
+        // Upsert by filename — retype/relink update doc contents while the
+        // key stays stable, so no remove-then-reindex churn is needed.
+        await ctx.search.index(filename, doc)
       } catch (err) {
         log.warn('Failed to index asset for search', { path: relPath, error: err instanceof Error ? err.message : String(err) })
       }
@@ -284,7 +314,7 @@ const assetsPlugin: BakinPlugin = {
         const fullPath = join(contentDir, asset.path)
         if (softDelete(fullPath, assetsRoot)) {
           removeAsset(asset.path)
-          ctx.search.remove(asset.path).catch(() => {})
+          ctx.search.remove(asset.filename).catch(() => {})
           purged++
         }
       }
@@ -344,7 +374,8 @@ const assetsPlugin: BakinPlugin = {
         if (res.ok) {
           ctx.activity.audit('deleted', 'system')
           ctx.activity.log('system', 'Asset deleted')
-          if (assetPath) ctx.search.remove(assetPath).catch(() => {})
+          const filename = filenameFromRel(assetPath)
+          if (filename) ctx.search.remove(filename).catch(() => {})
         }
         return res
       },
@@ -361,7 +392,9 @@ const assetsPlugin: BakinPlugin = {
         if (data.ok) {
           ctx.activity.audit('asset.relinked', 'user', { oldPath: data.oldPath, newPath: data.newPath })
           ctx.activity.log('user', `Relinked asset to ${data.newPath || '_unlinked'}`)
-          if (data.oldPath) ctx.search.remove(data.oldPath).catch(() => {})
+          // Filename is stable across relink — upsert the doc under the
+          // same key, no remove needed. Watcher unlink on the old path is
+          // a no-op because filenameExists() will still see the filename.
           if (data.newPath) indexAsset(data.newPath).catch(() => {})
         }
         return res
@@ -379,7 +412,7 @@ const assetsPlugin: BakinPlugin = {
         if (data.ok) {
           ctx.activity.audit('asset.retyped', 'user', { oldPath: data.oldPath, newPath: data.newPath })
           ctx.activity.log('user', `Retyped asset to ${data.newPath}`)
-          if (data.oldPath) ctx.search.remove(data.oldPath).catch(() => {})
+          // Filename is stable across retype — see /link for rationale.
           if (data.newPath) indexAsset(data.newPath).catch(() => {})
         }
         return res
@@ -556,7 +589,8 @@ const assetsPlugin: BakinPlugin = {
         const success = softDelete(fullPath, assetsRoot)
         if (!success) return { ok: false, error: 'Failed to delete asset' }
         removeAsset(assetPath)
-        ctx.search.remove(assetPath).catch(() => {})
+        const filename = filenameFromRel(assetPath)
+        if (filename) ctx.search.remove(filename).catch(() => {})
         ctx.activity.audit('asset.deleted', agent, { path: assetPath })
         return { ok: true, trashed: [assetPath] }
       },
@@ -578,7 +612,7 @@ const assetsPlugin: BakinPlugin = {
         })
         if (result.ok) {
           ctx.activity.audit('asset.relinked', agent, { oldPath: result.oldPath, newPath: result.newPath })
-          if (result.oldPath) ctx.search.remove(result.oldPath as string).catch(() => {})
+          // Filename stable across relink — upsert only.
           if (result.newPath) indexAsset(result.newPath as string).catch(() => {})
         }
         return result
@@ -766,7 +800,7 @@ const assetsPlugin: BakinPlugin = {
         })
         if (result.ok) {
           ctx.activity.audit('asset.retyped', agent, { oldPath: result.oldPath, newPath: result.newPath })
-          if (result.oldPath) ctx.search.remove(result.oldPath).catch(() => {})
+          // Filename stable across retype — upsert only.
           if (result.newPath) indexAsset(result.newPath).catch(() => {})
         }
         return result

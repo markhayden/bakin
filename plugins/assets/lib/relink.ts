@@ -7,7 +7,7 @@ import { join, basename, dirname } from 'path'
 import { randomBytes } from 'crypto'
 import { getContentDir } from '../../../src/core/content-dir'
 import { readSidecar, writeSidecar, getSidecarPath } from './sidecar'
-import { removeAsset, detectVariant } from './asset-index'
+import { removeAsset, upsertAsset, detectVariant } from './asset-index'
 import { createLogger } from '../../../src/core/logger'
 
 const log = createLogger('assets:relink')
@@ -113,6 +113,12 @@ export function relinkAsset(params: RelinkParams): RelinkResult {
     meta.taskId = newTaskId // null for unlinked, string for linked
     writeSidecar(newFullPath, meta)
   }
+
+  // Sync the in-memory index (and resolver) to the new location before the
+  // handler indexes the search doc. Without this, the watcher's unlink event
+  // on the old path can fire before its add event on the new path, which
+  // would see an empty resolver and wipe the search doc we just indexed.
+  upsertAsset(newRelPath)
 
   log.info('Asset relinked', { from: assetPath, to: newRelPath, taskId: newTaskId })
   return { ok: true, oldPath: assetPath, newPath: newRelPath }
