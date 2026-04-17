@@ -21,6 +21,7 @@ vi.mock('../../../src/core/logger', () => ({
 }))
 
 import { buildIndex, upsertAsset, removeAsset, listAssets, listGroupedAssets, detectVariant, getAsset, getCount } from '@bakin/assets/lib/asset-index'
+import { resolveFilename, clearResolver, resolverSize } from '@bakin/assets/lib/resolver'
 
 describe('assets/asset-index', () => {
   beforeEach(() => {
@@ -70,6 +71,7 @@ describe('assets/asset-index', () => {
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
+    clearResolver()
   })
 
   describe('buildIndex', () => {
@@ -183,6 +185,48 @@ describe('assets/asset-index', () => {
       removeAsset('assets/images/task-abc/hero.png')
       expect(getCount()).toBe(2)
       expect(getAsset('assets/images/task-abc/hero.png')).toBeUndefined()
+    })
+  })
+
+  describe('filename resolver integration', () => {
+    it('buildIndex populates the filename resolver for primaries', () => {
+      buildIndex()
+      expect(resolveFilename('hero.png')).toBe('assets/images/task-abc/hero.png')
+      expect(resolveFilename('post.md')).toBe('assets/text/task-def/post.md')
+      expect(resolveFilename('intro.mp4')).toBe('assets/video/task-ghi/intro.mp4')
+    })
+
+    it('upsertAsset updates the resolver', () => {
+      buildIndex()
+      const newDir = join(assetsRoot, 'audio', 'task-jkl')
+      mkdirSync(newDir, { recursive: true })
+      writeFileSync(join(newDir, 'voice.mp3'), 'data')
+      writeFileSync(join(newDir, 'voice.mp3.meta.json'), JSON.stringify({
+        agent: 'rolo', taskId: 'task-jkl', created: '2026-03-23T15:00:00Z',
+      }))
+      upsertAsset('assets/audio/task-jkl/voice.mp3')
+      expect(resolveFilename('voice.mp3')).toBe('assets/audio/task-jkl/voice.mp3')
+    })
+
+    it('removeAsset drops the resolver entry', () => {
+      buildIndex()
+      expect(resolveFilename('hero.png')).not.toBeNull()
+      removeAsset('assets/images/task-abc/hero.png')
+      expect(resolveFilename('hero.png')).toBeNull()
+    })
+
+    it('does not register variant filenames in the resolver', () => {
+      const taskDir = join(assetsRoot, 'images', 'task-abc')
+      writeFileSync(join(taskDir, 'hero.thumb.jpg'), 'thumb')
+      writeFileSync(join(taskDir, 'hero.thumb.jpg.meta.json'), JSON.stringify({
+        agent: 'unknown', taskId: 'task-abc', created: '2026-03-23T10:00:01Z',
+      }))
+      buildIndex()
+      // Primary is indexed in resolver; variant is not.
+      expect(resolveFilename('hero.png')).toBe('assets/images/task-abc/hero.png')
+      expect(resolveFilename('hero.thumb.jpg')).toBeNull()
+      // Resolver size matches primary count (3 primaries in default fixture).
+      expect(resolverSize()).toBe(3)
     })
   })
 
