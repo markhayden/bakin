@@ -117,7 +117,7 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
               >
                 {asset.type === 'images' ? (
                   <img
-                    src={`/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}`}
+                    src={`/api/assets/${encodeURIComponent(asset.filename)}`}
                     alt={asset.filename}
                     className="size-8 rounded object-cover shrink-0"
                   />
