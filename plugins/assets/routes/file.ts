@@ -1,23 +1,35 @@
 /**
- * GET /api/plugins/assets/file?path=... — serve an asset file for rendering.
- * Streams the file with correct Content-Type headers.
+ * GET /api/plugins/assets/file — serve an asset file for rendering.
+ * Accepts either `?name={filename}` (resolved via the filename resolver)
+ * or `?path={relativePath}` (legacy, retained until commit F).
  */
 import { existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'
 import { getMimeType } from '../lib/constants'
+import { resolveFilename } from '../lib/resolver'
 
 export async function handleFile(req: Request): Promise<Response> {
   const url = new URL(req.url, 'http://localhost')
-  const assetPath = url.searchParams.get('path')
+  const nameParam = url.searchParams.get('name')
+  const pathParam = url.searchParams.get('path')
 
-  if (!assetPath) {
-    return Response.json({ error: 'path parameter required' }, { status: 400 })
-  }
-
-  // Prevent path traversal
-  if (assetPath.includes('..') || !assetPath.startsWith('assets/')) {
-    return Response.json({ error: 'Invalid path' }, { status: 400 })
+  let assetPath: string | null = null
+  if (nameParam) {
+    if (nameParam.includes('/') || nameParam.includes('..')) {
+      return Response.json({ error: 'Invalid filename' }, { status: 400 })
+    }
+    assetPath = resolveFilename(nameParam)
+    if (!assetPath) {
+      return Response.json({ error: 'Filename not found' }, { status: 404 })
+    }
+  } else if (pathParam) {
+    if (pathParam.includes('..') || !pathParam.startsWith('assets/')) {
+      return Response.json({ error: 'Invalid path' }, { status: 400 })
+    }
+    assetPath = pathParam
+  } else {
+    return Response.json({ error: 'name or path parameter required' }, { status: 400 })
   }
 
   const fullPath = join(getContentDir(), assetPath)

@@ -371,6 +371,39 @@ describe('GET /file — serve asset file', () => {
 
     expect(res.status).toBe(404)
   })
+
+  it('serves a file by filename via ?name= (resolver)', async () => {
+    const route = findRoute(plugin.routes, 'GET', '/file')!
+    const req = makeRequest('/file', {
+      searchParams: { name: 'hero.png' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('image/png')
+    const body = await res.arrayBuffer()
+    expect(new TextDecoder().decode(body)).toBe('png-bytes')
+  })
+
+  it('returns 404 for unknown filename', async () => {
+    const route = findRoute(plugin.routes, 'GET', '/file')!
+    const req = makeRequest('/file', {
+      searchParams: { name: 'does-not-exist.png' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 400 for filename containing a slash', async () => {
+    const route = findRoute(plugin.routes, 'GET', '/file')!
+    const req = makeRequest('/file', {
+      searchParams: { name: 'foo/bar.png' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+
+    expect(res.status).toBe(400)
+  })
 })
 
 // ===========================================================================
