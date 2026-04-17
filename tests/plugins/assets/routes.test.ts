@@ -706,7 +706,7 @@ describe('exec tool: bakin_exec_assets_save', () => {
 
     expect(result.ok).toBe(true)
     expect(result.filename).toBeDefined()
-    expect((result.filename as string)).toMatch(/^\d{8}-saved-hero\.png$/)
+    expect((result.filename as string)).toMatch(/^\d{8}-saved-hero-[0-9a-f]{8}\.png$/)
     expect(result.path).toBeDefined()
     expect(result.metadataPath).toBeDefined()
   })

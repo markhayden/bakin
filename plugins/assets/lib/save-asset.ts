@@ -5,10 +5,11 @@
 import { mkdirSync, copyFileSync, writeFileSync, existsSync } from 'fs'
 import { join, extname, basename } from 'path'
 import { execSync } from 'child_process'
-import { randomBytes } from 'crypto'
 import { getBakinPaths } from '../../../src/core/content-dir'
 import type { AssetSource } from './sidecar'
 import type { AssetType } from './constants'
+import { generateConventionalFilename, slugify as filenameSlugify } from './filename-id'
+import { filenameExists } from './resolver'
 
 export interface SaveAssetParams {
   filePath: string
@@ -32,27 +33,24 @@ export interface SaveAssetResult {
   [key: string]: unknown
 }
 
-function slugify(text: string, maxLength = 60): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, maxLength)
-    .replace(/-$/, '')
-}
-
-function datePrefixedFilename(slug: string, ext: string): string {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const cleanExt = ext.startsWith('.') ? ext.slice(1) : ext
-  return `${date}-${slug}.${cleanExt}`
-}
-
 function getExtension(filePath: string): string {
   const dot = filePath.lastIndexOf('.')
   if (dot === -1 || dot === filePath.length - 1) return ''
   return filePath.slice(dot + 1).toLowerCase()
+}
+
+/**
+ * Build a globally-unique conformant filename. Retries on (extremely
+ * rare) id8 collision against the filename resolver — 2^32 space, so a
+ * single retry is near-certain to succeed.
+ */
+function generateUniqueFilename(slug: string, ext: string): string {
+  for (let i = 0; i < 8; i++) {
+    const candidate = generateConventionalFilename(slug, ext)
+    if (!filenameExists(candidate)) return candidate
+  }
+  // Astronomically unlikely, but surface it rather than loop forever.
+  throw new Error('Failed to generate unique filename after 8 retries')
 }
 
 function generateThumbnail(inputPath: string, outputPath: string, widthPx = 400): string | null {
@@ -80,19 +78,9 @@ export async function saveAsset(params: SaveAssetParams): Promise<SaveAssetResul
   mkdirSync(taskDir, { recursive: true })
 
   const ext = extname(filePath).slice(1) || getExtension(filePath)
-  const fileSlug = slug || slugify(basename(filePath, `.${ext}`))
-  let filename = datePrefixedFilename(fileSlug, ext)
-  let destPath = join(taskDir, filename)
-
-  // Handle duplicate filenames by appending a short random suffix
-  if (existsSync(destPath)) {
-    const suffix = randomBytes(2).toString('hex')
-    const dotIdx = filename.lastIndexOf('.')
-    const stem = dotIdx > 0 ? filename.substring(0, dotIdx) : filename
-    const extPart = dotIdx > 0 ? filename.substring(dotIdx) : ''
-    filename = `${stem}-${suffix}${extPart}`
-    destPath = join(taskDir, filename)
-  }
+  const fileSlug = slug || filenameSlugify(basename(filePath, `.${ext}`))
+  const filename = generateUniqueFilename(fileSlug, ext)
+  const destPath = join(taskDir, filename)
 
   copyFileSync(filePath, destPath)
 
