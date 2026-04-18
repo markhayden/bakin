@@ -4,7 +4,7 @@
  */
 import { execSync } from 'child_process'
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { join, relative } from 'path'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { handleList } from './routes/list'
@@ -179,33 +179,47 @@ const assetsPlugin: BakinPlugin = {
         const assetsRoot = join(contentDir, 'assets')
         if (!existsSync(assetsRoot)) return
 
+        // Walk both the new store/{YYYY-MM}/ layout and the legacy
+        // {type}/{taskId}/ layout. The legacy branch is exercised during the
+        // migration window and by test fixtures; it becomes dead in C8.
+        const dirs: Array<{ dirPath: string; fallbackType: string }> = []
+
+        const storeRoot = join(assetsRoot, 'store')
+        if (existsSync(storeRoot)) {
+          try {
+            for (const month of readdirSync(storeRoot)) {
+              if (month.startsWith('.')) continue
+              const monthDir = join(storeRoot, month)
+              try { if (!statSync(monthDir).isDirectory()) continue } catch { continue }
+              dirs.push({ dirPath: monthDir, fallbackType: 'other' })
+            }
+          } catch { /* skip */ }
+        }
         for (const typeName of ASSET_TYPES) {
           const typeDir = join(assetsRoot, typeName)
           if (!existsSync(typeDir)) continue
-
-          let subdirs: string[]
           try {
-            subdirs = readdirSync(typeDir).filter(d => {
-              if (d.startsWith('.')) return false
-              try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
-            })
-          } catch { continue }
-
-          for (const subdir of subdirs) {
-            const dirPath = join(typeDir, subdir)
-            let files: string[]
-            try { files = readdirSync(dirPath).filter(f => f.endsWith('.meta.json')) } catch { continue }
-
-            for (const metaFile of files) {
-              const metaPath = join(dirPath, metaFile)
-              try {
-                const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
-                const assetFilename = metaFile.replace('.meta.json', '')
-                const key = `assets/${typeName}/${subdir}/${assetFilename}`
-                const doc = await assetToSearchDoc(raw, assetFilename, typeName, key)
-                yield { key, doc }
-              } catch { /* skip unreadable sidecars */ }
+            for (const subdir of readdirSync(typeDir)) {
+              if (subdir.startsWith('.')) continue
+              const dirPath = join(typeDir, subdir)
+              try { if (!statSync(dirPath).isDirectory()) continue } catch { continue }
+              dirs.push({ dirPath, fallbackType: typeName })
             }
+          } catch { /* skip */ }
+        }
+
+        for (const { dirPath, fallbackType } of dirs) {
+          let files: string[]
+          try { files = readdirSync(dirPath).filter(f => f.endsWith('.meta.json')) } catch { continue }
+          for (const metaFile of files) {
+            const metaPath = join(dirPath, metaFile)
+            try {
+              const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
+              const assetFilename = metaFile.replace('.meta.json', '')
+              const key = relative(contentDir, join(dirPath, assetFilename))
+              const doc = await assetToSearchDoc(raw, assetFilename, fallbackType, key)
+              yield { key, doc }
+            } catch { /* skip unreadable sidecars */ }
           }
         }
       },

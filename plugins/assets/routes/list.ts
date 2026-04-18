@@ -8,8 +8,12 @@
  * When grouped=true (default), variants like thumbnails are nested under
  * their primary asset instead of appearing as separate entries.
  */
+import { existsSync } from 'fs'
+import { join } from 'path'
+import { getContentDir } from '../../../src/core/content-dir'
 import { buildIndex, listAssets, listGroupedAssets, getAsset } from '../lib/asset-index'
 import { resolveFilename } from '../lib/resolver'
+import { pathForFilename } from '../lib/path-for-filename'
 
 export async function handleList(req: Request): Promise<Response> {
   const url = new URL(req.url, 'http://localhost')
@@ -25,10 +29,17 @@ export async function handleList(req: Request): Promise<Response> {
   buildIndex()
 
   // Single-asset lookup by filename (preferred — stable under retype/relink)
-  // or by path (legacy view). Filename takes precedence.
-  const path = filename
-    ? resolveFilename(filename) ?? undefined
-    : pathParam
+  // or by path (legacy view). Filename takes precedence. Canonical filenames
+  // derive their path directly; the resolver covers legacy fixtures.
+  let path: string | undefined
+  if (filename) {
+    const derived = pathForFilename(filename)
+    path = derived && existsSync(join(getContentDir(), derived))
+      ? derived
+      : resolveFilename(filename) ?? undefined
+  } else {
+    path = pathParam
+  }
 
   if (path) {
     const asset = getAsset(path)
