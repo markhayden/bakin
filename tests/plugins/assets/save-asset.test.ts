@@ -68,17 +68,19 @@ describe('assets/save-asset', () => {
     expect(result.filename).toMatch(/^\d{8}-hero-[0-9a-f]{8}\.png$/)
   })
 
-  it('writes the asset and sidecar into the type/task dir', async () => {
+  it('writes the asset and sidecar into assets/store/{YYYY-MM}/', async () => {
     const result = await saveFixture()
-    const taskDir = join(assetsRoot, 'images', 'task-abc')
-    const files = readdirSync(taskDir)
+    // YYYY-MM derived from the canonical filename prefix.
+    const ym = result.filename!.slice(0, 4) + '-' + result.filename!.slice(4, 6)
+    const storeDir = join(assetsRoot, 'store', ym)
+    const files = readdirSync(storeDir)
     expect(files).toContain(result.filename!)
     expect(files).toContain(result.filename! + '.meta.json')
   })
 
-  it('returns a relative path under assets/', async () => {
+  it('returns a relative path under assets/store/{YYYY-MM}/', async () => {
     const result = await saveFixture()
-    expect(result.path).toMatch(/^assets\/images\/task-abc\/\d{8}-hero-[0-9a-f]{8}\.png$/)
+    expect(result.path).toMatch(/^assets\/store\/\d{4}-\d{2}\/\d{8}-hero-[0-9a-f]{8}\.png$/)
   })
 
   it('regenerates suffix on resolver collision', async () => {
@@ -97,10 +99,11 @@ describe('assets/save-asset', () => {
     // doesn't reject and that the primary file is correctly named.
     const result = await saveFixture()
     const stem = primaryStem(result.filename!)
-    const taskDir = join(assetsRoot, 'images', 'task-abc')
+    const ym = result.filename!.slice(0, 4) + '-' + result.filename!.slice(4, 6)
+    const storeDir = join(assetsRoot, 'store', ym)
     const thumbName = `${stem}.thumb.jpg`
     // ffmpeg failure is non-fatal; we only assert the stem is correctly derived.
-    if (existsSync(join(taskDir, thumbName))) {
+    if (existsSync(join(storeDir, thumbName))) {
       expect(thumbName.startsWith(stem)).toBe(true)
     }
   })
@@ -141,12 +144,13 @@ describe('assets/save-asset', () => {
     expect(result.error).toContain('Source file not found')
   })
 
-  it('sidecar includes agent, taskId, created', async () => {
+  it('sidecar includes agent, taskId, created, type', async () => {
     const result = await saveFixture()
     const metaPath = join(testDir, result.metadataPath!)
     const meta = JSON.parse(require('fs').readFileSync(metaPath, 'utf-8'))
     expect(meta.agent).toBe('pixel')
     expect(meta.taskId).toBe('task-abc')
+    expect(meta.type).toBe('images')
     expect(typeof meta.created).toBe('string')
   })
 
