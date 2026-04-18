@@ -1,17 +1,22 @@
 /**
- * MemoryIndexer — skeleton.
+ * MemoryIndexer — writes rows into the `bakin_memory` Antfly table.
  *
- * Owns the bakin_memory table's entire write path. Per-tier logic lands in
- * C3 (audit) → C4 (durable) → C5 (daily notes) → C6 (session + turn) →
- * C7 (checkpoint) → C8 (dream). This file stays small and is the single
- * place that orchestrates backfill, incremental append, and watcher events.
+ * Owns the table's entire write path across all tiers. Per-tier logic grows
+ * commit by commit: C3 audit, C4 durable, C5 daily-notes, C6 session+turn,
+ * C7 checkpoint, C8 dream. This file stays as one class so routing from
+ * watcher events to the right tier indexer happens in one place.
  *
- * Dependencies injected by the plugin shell (not imported as modules) so
- * tests can swap in fakes without deep mocking.
+ * Dependencies are injected via `PluginContext` so tests can swap in fakes
+ * without deep mocking.
  */
+import { closeSync, existsSync, openSync, readSync, statSync } from 'fs'
+import { join } from 'path'
+import { getContentDir } from '@bakin/core/content-dir'
 import type { PluginContext } from '../../../src/lib/plugin-types'
 import { createLogger } from '../../../src/core/logger'
-import type { MemoryTier } from './types'
+import type { MemoryRow, MemoryTier } from './types'
+import { parseAuditLine } from './tier-parsers/audit-parser'
+import { getOffset, setOffset } from './offsets'
 
 const log = createLogger('memory:indexer')
 
@@ -27,29 +32,100 @@ export class MemoryIndexer {
     private readonly opts: IndexerOptions = {},
   ) {}
 
-  /**
-   * Full backfill across the selected tiers. Called once on plugin activation.
-   * No-op until per-tier implementations land (C3+).
-   */
   async backfill(tiers: readonly MemoryTier[] = []): Promise<void> {
     log.debug('backfill requested', { tiers, opts: this.opts })
-    // Implemented per tier starting in C3.
+    for (const tier of tiers) {
+      await this.indexTier(tier)
+    }
   }
 
-  /**
-   * Reindex a single tier for a single agent (or all agents when omitted).
-   */
-  async indexTier(tier: MemoryTier, agent?: string): Promise<void> {
-    log.debug('indexTier requested', { tier, agent })
-    // Implemented per tier starting in C3.
+  async indexTier(tier: MemoryTier, _agent?: string): Promise<void> {
+    if (tier === 'audit') {
+      await this.indexAuditTier()
+      return
+    }
+    // C4+ tiers land in subsequent commits.
   }
 
-  /**
-   * Respond to a watcher event (add/change/unlink). Filesystem path routing
-   * to the correct tier lives here so the plugin shell stays dumb.
-   */
   async handleWatcherEvent(path: string, kind: 'add' | 'change' | 'unlink'): Promise<void> {
-    log.debug('watcher event', { path, kind })
-    // Routing table filled in by subsequent commits.
+    const auditPath = this.auditPath()
+    if (path === auditPath) {
+      if (kind === 'unlink') {
+        setOffset(auditPath, 0)
+        return
+      }
+      await this.indexAuditTier()
+      return
+    }
+    // Other tiers add routing here in C4+.
+  }
+
+  // ─── Audit tier (C3) ──────────────────────────────────────────────────────
+
+  private auditPath(): string {
+    return join(getContentDir(), 'audit.jsonl')
+  }
+
+  private async indexAuditTier(): Promise<number> {
+    const file = this.auditPath()
+    if (!existsSync(file)) return 0
+
+    const stats = statSync(file)
+    let offset = getOffset(file)
+
+    if (stats.size < offset) {
+      log.info('audit.jsonl shrank — restarting from offset 0', {
+        previous: offset,
+        current: stats.size,
+      })
+      offset = 0
+    }
+    if (stats.size === offset) return 0
+
+    const bytesToRead = stats.size - offset
+    const buf = Buffer.alloc(bytesToRead)
+    const fd = openSync(file, 'r')
+    try {
+      readSync(fd, buf, 0, bytesToRead, offset)
+    } finally {
+      closeSync(fd)
+    }
+
+    const text = buf.toString('utf-8')
+    const rawLines = text.split('\n')
+    // If the chunk ended mid-line (no trailing newline), keep that fragment
+    // for the next pass — don't parse partial JSON.
+    const trailingIncomplete = text.endsWith('\n') ? '' : (rawLines.pop() ?? '')
+
+    let lineStart = offset
+    let indexed = 0
+    for (const line of rawLines) {
+      const row = parseAuditLine(line, file, lineStart)
+      if (row) {
+        await this.writeRow(row)
+        indexed += 1
+      }
+      lineStart += Buffer.byteLength(line, 'utf-8') + 1 // +1 for the '\n'
+    }
+
+    const newOffset = stats.size - Buffer.byteLength(trailingIncomplete, 'utf-8')
+    setOffset(file, newOffset)
+    return indexed
+  }
+
+  private async writeRow(row: MemoryRow): Promise<void> {
+    const doc: Record<string, unknown> = {
+      tier: row.tier,
+      agent: row.agent,
+      title: row.title,
+      snippet: row.snippet,
+      content: row.content,
+      meta: row.meta,
+      source_backend: row.sourceRef.backend,
+      source_path: row.sourceRef.path,
+      updated_at: row.updatedAt,
+      created_at: row.createdAt,
+    }
+    await this.ctx.search.index(row.id, doc)
   }
 }

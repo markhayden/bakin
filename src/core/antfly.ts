@@ -31,7 +31,6 @@ function setClient(c: AntflyClient | null) { _g.__bakinAntflyClient = c }
 // ---------------------------------------------------------------------------
 export const TABLES = {
   tasks: 'bakin_tasks',
-  audit: 'bakin_audit',
   assets: 'bakin_assets',
   projects: 'bakin_projects',
   workflows: 'bakin_workflows',
@@ -745,23 +744,5 @@ export function hasEmbedderChanged(): boolean {
   const settings = getSettings()
   const current = embedderHash(settings)
   return _g.__bakinAntflyEmbedderHash !== current
-}
-
-/**
- * Index an audit event.
- */
-export async function indexAuditEvent(entry: {
-  ts: string
-  event: string
-  agent: string
-  data: Record<string, unknown>
-}): Promise<void> {
-  await indexDocument(TABLES.audit, `audit-${entry.ts}-${entry.event}`, {
-    content: `[${entry.ts}] ${entry.event} by ${entry.agent}: ${JSON.stringify(entry.data)}`,
-    event: entry.event,
-    agent: entry.agent,
-    created_at: entry.ts,
-    ...entry.data,
-  })
 }
 

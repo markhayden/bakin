@@ -118,11 +118,15 @@ describe('memory plugin shell (C2)', () => {
     }
   })
 
-  it('does NOT register the old /audit, /workspace, or /gateway routes', async () => {
+  it('does NOT register the old /workspace or /gateway routes', async () => {
     const activated = await activatePlugin(memoryPlugin, testDir)
-    expect(findRoute(activated.routes, 'GET', '/audit')).toBeUndefined()
     expect(findRoute(activated.routes, 'GET', '/workspace')).toBeUndefined()
     expect(findRoute(activated.routes, 'GET', '/gateway')).toBeUndefined()
+  })
+
+  it('registers GET /audit (C3 audit tier)', async () => {
+    const activated = await activatePlugin(memoryPlugin, testDir)
+    expect(findRoute(activated.routes, 'GET', '/audit')).toBeDefined()
   })
 
   it('auto-registers GET /search via registerContentType', async () => {

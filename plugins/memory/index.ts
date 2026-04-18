@@ -16,6 +16,7 @@ import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { getContentDir } from '@bakin/core/content-dir'
 import { join } from 'path'
 import { MemoryIndexer } from './lib/indexer'
+import { auditRoute } from './lib/routes/audit'
 
 const log = createLogger('memory')
 
@@ -111,12 +112,15 @@ const memoryPlugin: BakinPlugin = {
       verifyExists: async () => true,
     })
 
-    // ─── Indexer (skeleton — real work ships in C3+) ────────────────────────
+    // ─── Indexer ────────────────────────────────────────────────────────────
     const indexer = new MemoryIndexer(ctx, {
       backfillDays: settings.backfillDays,
       skipSessionOverBytes: settings.skipSessionOverBytes,
       skipResetBackups: settings.skipResetBackups,
     })
+
+    // ─── Routes ─────────────────────────────────────────────────────────────
+    ctx.registerRoute(auditRoute)
 
     // ─── Watcher paths (spec §Watcher paths) ────────────────────────────────
     // The indexer fans these out to per-tier handlers once those land.
@@ -150,8 +154,8 @@ const memoryPlugin: BakinPlugin = {
       void indexer.handleWatcherEvent(String(data.file ?? ''), 'unlink')
     })
 
-    // First-activate backfill runs in the background; indexer no-ops until C3+.
-    void indexer.backfill().catch((err) => {
+    // First-activate backfill runs in the background. Tiers added per commit.
+    void indexer.backfill(['audit']).catch((err) => {
       log.warn('initial backfill failed', { err: err instanceof Error ? err.message : String(err) })
     })
 

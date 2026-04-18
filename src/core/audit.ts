@@ -5,7 +5,6 @@
 import { appendFileSync, mkdirSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { createLogger } from './logger'
-import { indexAuditEvent } from './antfly'
 
 const log = createLogger('audit')
 
@@ -43,8 +42,6 @@ export function appendAudit(
     log.warn('SSE broadcast not available — audit event written to disk only', { event })
   }
 
-  // Index to Antfly (fire-and-forget)
-  indexAuditEvent(entry).catch(() => {
-    // Non-blocking — antfly may be disabled or down
-  })
+  // The memory plugin's indexer picks up audit.jsonl changes via the watcher
+  // and indexes them into the bakin_memory table (tier=audit).
 }

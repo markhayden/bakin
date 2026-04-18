@@ -13,11 +13,14 @@ vi.mock('@/core/logger', () => ({
   }),
 }))
 
-// Mock antfly — we test the integration call, not antfly internals
-const mockIndexAuditEvent = vi.fn().mockResolvedValue(undefined)
-vi.mock('@/core/antfly', () => ({
-  indexAuditEvent: (...args: unknown[]) => mockIndexAuditEvent(...args),
-}))
+// Defensive content-dir redirect — audit.ts takes a contentDir arg, but the
+// isolation rule requires a mock be present so nothing downstream can leak.
+vi.mock('@/core/content-dir', async () => {
+  const { join } = await import('path')
+  const { tmpdir } = await import('os')
+  const base = join(tmpdir(), 'bakin-test-audit-mock')
+  return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
+})
 
 describe('audit', () => {
   let tmpDir: string
@@ -26,7 +29,6 @@ describe('audit', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'bakin-audit-test-'))
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-06-15T12:00:00.000Z'))
-    mockIndexAuditEvent.mockClear()
     // Clear SSE broadcast between tests
     delete (globalThis as any).__bakinBroadcastAudit
   })
@@ -181,49 +183,6 @@ describe('audit', () => {
       const broadcastedEntry = broadcastSpy.mock.calls[0][0]
 
       expect(diskEntry).toEqual(broadcastedEntry)
-    })
-  })
-
-  // -----------------------------------------------------------------------
-  // Antfly indexing
-  // -----------------------------------------------------------------------
-
-  describe('appendAudit — Antfly indexing', () => {
-    it('calls indexAuditEvent with the audit entry', async () => {
-      const { appendAudit } = await import('@/core/audit')
-
-      appendAudit(tmpDir, 'antfly.test', 'patch', { indexed: true })
-
-      expect(mockIndexAuditEvent).toHaveBeenCalledOnce()
-      expect(mockIndexAuditEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ts: '2026-06-15T12:00:00.000Z',
-          event: 'antfly.test',
-          agent: 'patch',
-          data: { indexed: true },
-        }),
-      )
-    })
-
-    it('does not throw when indexAuditEvent rejects', async () => {
-      mockIndexAuditEvent.mockRejectedValueOnce(new Error('antfly down'))
-      const { appendAudit } = await import('@/core/audit')
-
-      // The .catch() in audit.ts swallows the rejection
-      expect(() => {
-        appendAudit(tmpDir, 'antfly.fail', 'patch')
-      }).not.toThrow()
-    })
-
-    it('still writes to disk even when antfly rejects', async () => {
-      mockIndexAuditEvent.mockRejectedValueOnce(new Error('antfly down'))
-      const { appendAudit } = await import('@/core/audit')
-
-      appendAudit(tmpDir, 'disk.always', 'patch', { resilient: true })
-
-      expect(existsSync(join(tmpDir, 'audit.jsonl'))).toBe(true)
-      const entry = JSON.parse(readFileSync(join(tmpDir, 'audit.jsonl'), 'utf-8').trim())
-      expect(entry.event).toBe('disk.always')
     })
   })
 
