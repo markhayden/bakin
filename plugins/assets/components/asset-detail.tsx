@@ -26,7 +26,7 @@ interface AssetDetailProps {
 }
 
 function AssetRenderer({ asset }: { asset: AssetMeta }) {
-  const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(asset.path)}&v=${asset.mtimeMs || ''}`
+  const fileUrl = `/api/assets/${encodeURIComponent(asset.filename)}?v=${asset.mtimeMs || ''}`
 
   switch (asset.type) {
     case 'images':
@@ -165,20 +165,29 @@ function CodeRenderer({ fileUrl }: { fileUrl: string }) {
  * Standalone modal that fetches asset metadata by path and renders AssetDetail.
  * Usable from any context (e.g. task drawer) without needing the full assets page.
  */
-export function AssetDetailModal({ assetPath, onClose }: { assetPath: string; onClose: () => void }) {
+export function AssetDetailModal({ assetPath, filename, onClose }: { assetPath?: string; filename?: string; onClose: () => void }) {
   const [asset, setAsset] = useState<AssetMeta | null>(null)
 
   useEffect(() => {
-    if (!assetPath) { setAsset(null); return }
-    fetch(`/api/plugins/assets/?path=${encodeURIComponent(assetPath)}`)
+    const query = filename
+      ? `filename=${encodeURIComponent(filename)}`
+      : assetPath
+        ? `path=${encodeURIComponent(assetPath)}`
+        : null
+    if (!query) { setAsset(null); return }
+    fetch(`/api/plugins/assets/?${query}`)
       .then(r => r.ok ? r.json() : { assets: [] })
       .then(d => setAsset(d.assets?.[0] ?? null))
       .catch(() => setAsset(null))
-  }, [assetPath])
+  }, [assetPath, filename])
 
   const handlePathChange = async (newPath: string) => {
     try {
-      const res = await fetch(`/api/plugins/assets/?path=${encodeURIComponent(newPath)}`)
+      // After retype, the filename is stable — prefer it if we have one.
+      const query = filename
+        ? `filename=${encodeURIComponent(filename)}`
+        : `path=${encodeURIComponent(newPath)}`
+      const res = await fetch(`/api/plugins/assets/?${query}`)
       const data = res.ok ? await res.json() : { assets: [] }
       if (data.assets?.[0]) setAsset(data.assets[0])
     } catch (err) { console.error('Failed to fetch retyped asset', err) }
@@ -234,7 +243,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
       const res = await fetch('/api/plugins/assets/link', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: displayAsset.path, taskId }),
+        body: JSON.stringify({ filename: displayAsset.filename, taskId }),
       })
       if (res.ok) {
         setEditingTask(false)
@@ -253,16 +262,14 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
       const res = await fetch('/api/plugins/assets/retype', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: displayAsset.path, type: newType }),
+        body: JSON.stringify({ filename: displayAsset.filename, type: newType }),
       })
       if (res.ok) {
-        const data = await res.json()
-        if (data.newPath) {
-          onPathChange?.(data.newPath)
-          const listRes = await fetch(`/api/plugins/assets/?path=${encodeURIComponent(data.newPath)}`)
-          const listData = await listRes.json()
-          if (listData.assets?.[0]) setLocalAsset(listData.assets[0])
-        }
+        // Metadata-only — the on-disk path is unchanged. Refetch the asset
+        // by filename to pick up the updated sidecar fields.
+        const listRes = await fetch(`/api/plugins/assets/?filename=${encodeURIComponent(displayAsset.filename)}`)
+        const listData = await listRes.json()
+        if (listData.assets?.[0]) setLocalAsset(listData.assets[0])
         onRelink?.()
       }
     } catch (err) { console.error('Failed to retype asset', err) }
@@ -272,7 +279,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
   const handleStartEdit = async () => {
     if (!displayAsset) return
     try {
-      const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(displayAsset.path)}`
+      const fileUrl = `/api/assets/${encodeURIComponent(displayAsset.filename)}`
       const content = await fetch(fileUrl).then(r => r.text())
       setDraftContent(content)
       setEditing(true)
@@ -307,7 +314,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
       })()
     : displayAsset
 
-  const fileUrl = `/api/plugins/assets/file?path=${encodeURIComponent(displayAsset.path)}&v=${displayAsset.mtimeMs || ''}`
+  const fileUrl = `/api/assets/${encodeURIComponent(previewAsset.filename)}?v=${displayAsset.mtimeMs || ''}`
 
   return (
     <>
@@ -505,7 +512,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground">{formatSize(v.size)}</span>
                         <a
-                          href={`/api/plugins/assets/file?path=${encodeURIComponent(v.path)}`}
+                          href={`/api/assets/${encodeURIComponent(v.filename)}`}
                           download={v.filename}
                           className="text-blue-400 hover:text-blue-300"
                           onClick={(e) => e.stopPropagation()}

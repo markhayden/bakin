@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { readFileSync, existsSync, statSync } from 'fs'
 import { join, extname } from 'path'
 import { getContentDir } from '@/core/content-dir'
+import { pathForFilename } from '@bakin/assets/lib/path-for-filename'
 
 const CONTENT_DIR = getContentDir()
 
@@ -22,11 +23,21 @@ export async function GET(
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   const { path } = await params
-  const relPath = path.join('/')
 
   // Security: prevent path traversal
-  if (relPath.includes('..')) {
+  if (path.some(seg => seg.includes('..'))) {
     return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
+  }
+
+  // Filename-as-identity: single-segment paths derive their location from
+  // the canonical filename. Multi-segment paths remain supported for
+  // legacy URL forms embedded in historical task descriptions.
+  let relPath: string
+  if (path.length === 1 && !path[0].includes('/')) {
+    const derived = pathForFilename(path[0])
+    relPath = derived ?? join('assets', ...path)
+  } else {
+    relPath = path.join('/')
   }
 
   const fullPath = join(CONTENT_DIR, relPath)

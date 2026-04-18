@@ -21,8 +21,8 @@ export interface CalendarItem {
     caption: string
     imagePrompt?: string
     videoPrompt?: string
-    imagePath?: string
-    videoPath?: string
+    imageFilename?: string
+    videoFilename?: string
     agentNotes?: string
   }
   publishedAt?: string

@@ -8,7 +8,11 @@
  * When grouped=true (default), variants like thumbnails are nested under
  * their primary asset instead of appearing as separate entries.
  */
+import { existsSync } from 'fs'
+import { join } from 'path'
+import { getContentDir } from '../../../src/core/content-dir'
 import { buildIndex, listAssets, listGroupedAssets, getAsset } from '../lib/asset-index'
+import { pathForFilename } from '../lib/path-for-filename'
 
 export async function handleList(req: Request): Promise<Response> {
   const url = new URL(req.url, 'http://localhost')
@@ -18,11 +22,22 @@ export async function handleList(req: Request): Promise<Response> {
   const tag = url.searchParams.get('tag') || undefined
   const includeChildren = url.searchParams.get('includeChildren') === 'true'
   const grouped = url.searchParams.get('grouped') !== 'false'
-  const path = url.searchParams.get('path') || undefined
+  const pathParam = url.searchParams.get('path') || undefined
+  const filename = url.searchParams.get('filename') || undefined
 
   buildIndex()
 
-  // Single-asset lookup by path
+  // Single-asset lookup by filename (preferred — stable under retype/relink)
+  // or by path (legacy view). Filename takes precedence; canonical filenames
+  // derive their path via the pure pathForFilename function.
+  let path: string | undefined
+  if (filename) {
+    const derived = pathForFilename(filename)
+    path = derived && existsSync(join(getContentDir(), derived)) ? derived : undefined
+  } else {
+    path = pathParam
+  }
+
   if (path) {
     const asset = getAsset(path)
     if (!asset) return Response.json({ assets: [], count: 0, total: 0 })

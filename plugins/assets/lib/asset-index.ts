@@ -3,11 +3,11 @@
  * kept up-to-date by the file watcher.
  */
 import { existsSync, readdirSync, statSync } from 'fs'
-import { join, relative, extname } from 'path'
+import { join } from 'path'
 import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
 import { readSidecar, createStub, type SidecarMeta } from './sidecar'
-import { getAssetType, getMimeType, ASSET_TYPES, SPECIAL_DIRS } from './constants'
+import { getAssetType, getMimeType } from './constants'
 import type { AssetType } from './constants'
 
 const log = createLogger('assets:index')
@@ -66,6 +66,33 @@ function getAssetsRoot(): string {
 }
 
 /**
+ * Yield every asset file under `assets/store/{YYYY-MM}/`. Type is not
+ * encoded in the path — callers fall back to extension-derived type until
+ * the sidecar loads.
+ */
+function* walkAssetFiles(assetsRoot: string): Generator<{ relPath: string; fallbackType: AssetType }> {
+  const storeRoot = join(assetsRoot, 'store')
+  if (!existsSync(storeRoot)) return
+
+  let months: string[]
+  try {
+    months = readdirSync(storeRoot).filter(d => {
+      if (d.startsWith('.')) return false
+      try { return statSync(join(storeRoot, d)).isDirectory() } catch { return false }
+    })
+  } catch { return }
+
+  for (const month of months) {
+    const monthDir = join(storeRoot, month)
+    let files: string[]
+    try { files = readdirSync(monthDir).filter(isAssetFile) } catch { continue }
+    for (const file of files) {
+      yield { relPath: `assets/store/${month}/${file}`, fallbackType: getAssetType(file) as AssetType }
+    }
+  }
+}
+
+/**
  * Scan the assets directory and build the full index.
  */
 export function buildIndex(): void {
@@ -78,42 +105,27 @@ export function buildIndex(): void {
   }
 
   let count = 0
-  for (const typeName of ASSET_TYPES) {
-    const typeDir = join(assetsRoot, typeName)
-    if (!existsSync(typeDir)) continue
+  for (const { relPath, fallbackType } of walkAssetFiles(assetsRoot)) {
+    const fullPath = join(assetsRoot, relPath.replace(/^assets\//, ''))
+    try {
+      const stat = statSync(fullPath)
+      if (!stat.isFile()) continue
 
-    const subdirs = readdirSync(typeDir).filter(d => {
-      if (d.startsWith('.')) return false
-      try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
-    })
+      const meta = readSidecar(fullPath) || createStub(fullPath)
+      const effectiveType: AssetType = meta.type ?? fallbackType
+      const filename = relPath.split('/').pop() || ''
 
-    for (const subdir of subdirs) {
-      const dirPath = join(typeDir, subdir)
-      try {
-        const files = readdirSync(dirPath).filter(isAssetFile)
-        for (const file of files) {
-          const fullPath = join(dirPath, file)
-          try {
-            const stat = statSync(fullPath)
-            if (!stat.isFile()) continue
-
-            const relPath = `assets/${typeName}/${subdir}/${file}`
-            const meta = readSidecar(fullPath) || createStub(fullPath)
-
-            index.set(relPath, {
-              path: relPath,
-              filename: file,
-              type: typeName as AssetType,
-              mimeType: getMimeType(file),
-              size: stat.size,
-              mtimeMs: stat.mtimeMs,
-              metadata: meta,
-            })
-            count++
-          } catch { /* skip unreadable files */ }
-        }
-      } catch { /* skip unreadable dirs */ }
-    }
+      index.set(relPath, {
+        path: relPath,
+        filename,
+        type: effectiveType,
+        mimeType: getMimeType(filename),
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        metadata: meta,
+      })
+      count++
+    } catch { /* skip unreadable files */ }
   }
 
   log.info('Asset index built', { count })
@@ -136,15 +148,15 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
     if (!stat.isFile()) return null
 
     const filename = relativePath.split('/').pop() || ''
-    const parts = relativePath.split('/')
-    const typeName = (parts[1] || 'other') as AssetType
+    const fallbackType = getAssetType(filename) as AssetType
 
     const meta = readSidecar(fullPath) || createStub(fullPath)
+    const effectiveType: AssetType = meta.type ?? fallbackType
 
     const asset: IndexedAsset = {
       path: relativePath,
       filename,
-      type: typeName,
+      type: effectiveType,
       mimeType: getMimeType(filename),
       size: stat.size,
       mtimeMs: stat.mtimeMs,

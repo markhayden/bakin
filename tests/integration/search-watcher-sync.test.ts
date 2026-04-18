@@ -265,12 +265,13 @@ describe('integration: search ↔ watcher sync', () => {
     await flushHooks()
     expect(removeCalls.find(c => c.table === 'bakin_assets')).toBeUndefined()
 
-    // Binary delete: must remove from search
+    // Binary delete: must remove from search (keyed by filename under
+    // filename-as-identity)
     handlers.unlink(assetFile)
     await flushHooks()
     expect(removeCalls).toContainEqual({
       table: 'bakin_assets',
-      key: 'assets/images/task-1/photo.png',
+      key: 'photo.png',
     })
   })
 

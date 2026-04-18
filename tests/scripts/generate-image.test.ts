@@ -12,7 +12,8 @@ vi.mock('../../src/core/content-dir', () => ({
   getContentDir: vi.fn(() => '/tmp/bakin-test'),
   getBakinPaths: vi.fn(() => ({
     home: '/tmp/bakin-test',
-    'assets.images': '/tmp/bakin-test/assets/images',
+    assets: '/tmp/bakin-test/assets',
+    'assets.store': '/tmp/bakin-test/assets/store',
   })),
 }))
 

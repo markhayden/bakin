@@ -25,10 +25,16 @@ import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { ASSET_TYPES } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
 import { saveAsset } from './lib/save-asset'
+import { ingestInboxFile, ingestInboxDir } from './lib/ingest-inbox'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { buildAssetFileUrl } from './lib/asset-url'
 import { extractAssetContent } from './lib/content-extractor'
+
+/** Filename is the canonical identity under the filename-as-identity model. */
+function filenameFromRel(relPath: string): string {
+  return relPath.split('/').pop() || ''
+}
 
 const log = createLogger('assets')
 
@@ -121,7 +127,17 @@ const assetsPlugin: BakinPlugin = {
       filePatterns: [
         {
           pattern: 'assets/**/*',
-          fileToId: (rel) => rel.endsWith('.meta.json') ? rel.replace(/\.meta\.json$/, '') : rel,
+          // Under filename-as-identity, the search key IS the filename. The
+          // on-disk path is a view and changes under retype/relink, but the
+          // filename is stable. Variants (.thumb, .opt) never get their own
+          // search doc — they ride with their primary.
+          fileToId: (rel) => {
+            const bare = rel.endsWith('.meta.json') ? rel.replace(/\.meta\.json$/, '') : rel
+            const filename = bare.split('/').pop() || ''
+            if (!filename) return null
+            if (detectVariant(filename)) return null
+            return filename
+          },
           fileToDoc: async () => null, // unused — onSync handles indexing
         },
       ],
@@ -129,6 +145,20 @@ const assetsPlugin: BakinPlugin = {
       onSync: async (relativePath: string) => {
         if (!relativePath.startsWith('assets/')) return
         if (relativePath.includes('.trash/')) return
+
+        // Intercept inbox drops: canonicalize, move to store/, write a stub
+        // sidecar. The subsequent onSync for the destination path does the
+        // normal index/search upsert.
+        if (relativePath.startsWith('assets/inbox/') && !relativePath.endsWith('.meta.json')) {
+          const result = ingestInboxFile(relativePath)
+          if (result.ok) {
+            ctx.activity.log('user', `Ingested "${result.filename}" from inbox`)
+            ctx.activity.audit('asset.ingested', 'user', { filename: result.filename, path: result.path })
+          } else if (result.error) {
+            log.warn('Inbox ingestion failed', { path: relativePath, error: result.error })
+          }
+          return
+        }
 
         const assetPath = relativePath.endsWith('.meta.json')
           ? relativePath.replace(/\.meta\.json$/, '')
@@ -144,41 +174,50 @@ const assetsPlugin: BakinPlugin = {
         // metadata. Only treat binary deletion as removal.
         if (relativePath.endsWith('.meta.json')) return
 
+        const filename = filenameFromRel(relativePath)
+        if (!filename || detectVariant(filename)) {
+          removeAsset(relativePath)
+          return
+        }
+
         removeAsset(relativePath)
-        await ctx.search.remove(relativePath).catch(() => { /* non-blocking */ })
+        // Under filename-as-identity, the path is a pure function of the
+        // filename — retype/relink never move files, so an unlink on the
+        // binary means the asset is truly gone. No filename-existence
+        // check needed.
+        await ctx.search.remove(filename).catch(() => { /* non-blocking */ })
       },
       reindex: async function* () {
         const contentDir = getContentDir()
         const assetsRoot = join(contentDir, 'assets')
-        if (!existsSync(assetsRoot)) return
+        const storeRoot = join(assetsRoot, 'store')
+        if (!existsSync(storeRoot)) return
 
-        for (const typeName of ASSET_TYPES) {
-          const typeDir = join(assetsRoot, typeName)
-          if (!existsSync(typeDir)) continue
+        let months: string[]
+        try {
+          months = readdirSync(storeRoot).filter(m => {
+            if (m.startsWith('.')) return false
+            try { return statSync(join(storeRoot, m)).isDirectory() } catch { return false }
+          })
+        } catch { return }
 
-          let subdirs: string[]
-          try {
-            subdirs = readdirSync(typeDir).filter(d => {
-              if (d.startsWith('.')) return false
-              try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
-            })
-          } catch { continue }
-
-          for (const subdir of subdirs) {
-            const dirPath = join(typeDir, subdir)
-            let files: string[]
-            try { files = readdirSync(dirPath).filter(f => f.endsWith('.meta.json')) } catch { continue }
-
-            for (const metaFile of files) {
-              const metaPath = join(dirPath, metaFile)
-              try {
-                const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
-                const assetFilename = metaFile.replace('.meta.json', '')
-                const key = `assets/${typeName}/${subdir}/${assetFilename}`
-                const doc = await assetToSearchDoc(raw, assetFilename, typeName, key)
-                yield { key, doc }
-              } catch { /* skip unreadable sidecars */ }
-            }
+        for (const month of months) {
+          const monthDir = join(storeRoot, month)
+          let files: string[]
+          try { files = readdirSync(monthDir).filter(f => f.endsWith('.meta.json')) } catch { continue }
+          for (const metaFile of files) {
+            const metaPath = join(monthDir, metaFile)
+            try {
+              const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
+              const assetFilename = metaFile.replace('.meta.json', '')
+              const key = `assets/store/${month}/${assetFilename}`
+              // Type in the sidecar is authoritative; assetToSearchDoc
+              // ignores the directory-derived fallback when meta.type is
+              // present, so the fallback is only a cushion for truly
+              // corrupt sidecars.
+              const doc = await assetToSearchDoc(raw, assetFilename, 'other', key)
+              yield { key, doc }
+            } catch { /* skip unreadable sidecars */ }
           }
         }
       },
@@ -224,7 +263,12 @@ const assetsPlugin: BakinPlugin = {
       // Strip the leading `assets/` to get the path relative to the assets
       // root, which is what buildAssetFileUrl expects.
       const rel = assetRelPath.replace(/^assets\//, '')
-      const image_url = computeImageUrl(rel, filename, assetType)
+      // Sidecar `type` is authoritative; the directory-derived `assetType`
+      // is a fallback for legacy sidecars written before the field existed.
+      const metaType = typeof meta.type === 'string' && meta.type
+        ? (meta.type as string)
+        : assetType
+      const image_url = computeImageUrl(rel, filename, metaType)
       const absPath = join(getContentDir(), assetRelPath)
       const content = await extractAssetContent(absPath, filename)
       return {
@@ -232,7 +276,7 @@ const assetsPlugin: BakinPlugin = {
         tags: Array.isArray(meta.tags) ? (meta.tags as string[]).join(', ') : '',
         agent: (meta.agent as string) || '',
         task_id: (meta.taskId as string) || '',
-        asset_type: assetType,
+        asset_type: metaType,
         file_name: filename,
         tool: (meta.tool as string) || '',
         updated_at: (meta.created as string) || new Date().toISOString(),
@@ -241,18 +285,21 @@ const assetsPlugin: BakinPlugin = {
       }
     }
 
-    /** Index an asset by reading its sidecar metadata */
+    /** Index an asset by reading its sidecar metadata. Keyed by filename. */
     async function indexAsset(relPath: string): Promise<void> {
       try {
         const contentDir = getContentDir()
         const metaPath = join(contentDir, relPath + '.meta.json')
         if (!existsSync(metaPath)) return
+        const filename = filenameFromRel(relPath)
+        if (!filename || detectVariant(filename)) return
         const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
-        const filename = relPath.split('/').pop() || ''
         const parts = relPath.split('/')
         const assetType = parts[1] || 'other'
         const doc = await assetToSearchDoc(raw, filename, assetType, relPath)
-        await ctx.search.index(relPath, doc)
+        // Upsert by filename — retype/relink update doc contents while the
+        // key stays stable, so no remove-then-reindex churn is needed.
+        await ctx.search.index(filename, doc)
       } catch (err) {
         log.warn('Failed to index asset for search', { path: relPath, error: err instanceof Error ? err.message : String(err) })
       }
@@ -284,7 +331,7 @@ const assetsPlugin: BakinPlugin = {
         const fullPath = join(contentDir, asset.path)
         if (softDelete(fullPath, assetsRoot)) {
           removeAsset(asset.path)
-          ctx.search.remove(asset.path).catch(() => {})
+          ctx.search.remove(asset.filename).catch(() => {})
           purged++
         }
       }
@@ -298,6 +345,19 @@ const assetsPlugin: BakinPlugin = {
     ctx.hooks.register('assets.listTrash', (d: Record<string, unknown>) => listTrash(d.assetsRoot as string))
     ctx.hooks.register('assets.restoreAsset', (d: Record<string, unknown>) => restoreAsset(d.trashFilename as string, d.assetsRoot as string))
     ctx.hooks.register('assets.emptyTrash', (d: Record<string, unknown>) => emptyTrash(d.assetsRoot as string))
+
+    // Drain the inbox first — anything a user dropped while the watcher
+    // wasn't running gets canonicalized into store/ before the index is
+    // built, so those assets appear in the first listing.
+    try {
+      const ingested = ingestInboxDir()
+      const succeeded = ingested.filter(r => r.ok)
+      if (succeeded.length > 0) {
+        log.info('Ingested inbox drops on startup', { count: succeeded.length })
+      }
+    } catch (err) {
+      log.warn('Inbox startup scan failed', err)
+    }
 
     // Build the in-memory tracker on startup. (Search index reconcile is
     // owned by registerFileBackedContentType above and runs separately.)
@@ -344,7 +404,8 @@ const assetsPlugin: BakinPlugin = {
         if (res.ok) {
           ctx.activity.audit('deleted', 'system')
           ctx.activity.log('system', 'Asset deleted')
-          if (assetPath) ctx.search.remove(assetPath).catch(() => {})
+          const filename = filenameFromRel(assetPath)
+          if (filename) ctx.search.remove(filename).catch(() => {})
         }
         return res
       },
@@ -359,10 +420,11 @@ const assetsPlugin: BakinPlugin = {
         const res = await handleLink(req)
         const data = await res.clone().json()
         if (data.ok) {
-          ctx.activity.audit('asset.relinked', 'user', { oldPath: data.oldPath, newPath: data.newPath })
-          ctx.activity.log('user', `Relinked asset to ${data.newPath || '_unlinked'}`)
-          if (data.oldPath) ctx.search.remove(data.oldPath).catch(() => {})
-          if (data.newPath) indexAsset(data.newPath).catch(() => {})
+          ctx.activity.audit('asset.relinked', 'user', { filename: data.filename, newTaskId: data.newTaskId })
+          ctx.activity.log('user', `Relinked asset ${data.filename} to ${data.newTaskId ?? '(unlinked)'}`)
+          // Metadata-only — file stays put; just reindex the search doc to
+          // pick up the new taskId under the same filename key.
+          if (data.path) indexAsset(data.path).catch(() => {})
         }
         return res
       },
@@ -377,10 +439,10 @@ const assetsPlugin: BakinPlugin = {
         const res = await handleRetype(req)
         const data = await res.clone().json()
         if (data.ok) {
-          ctx.activity.audit('asset.retyped', 'user', { oldPath: data.oldPath, newPath: data.newPath })
-          ctx.activity.log('user', `Retyped asset to ${data.newPath}`)
-          if (data.oldPath) ctx.search.remove(data.oldPath).catch(() => {})
-          if (data.newPath) indexAsset(data.newPath).catch(() => {})
+          ctx.activity.audit('asset.retyped', 'user', { filename: data.filename, newType: data.newType })
+          ctx.activity.log('user', `Retyped asset ${data.filename} to ${data.newType}`)
+          // Metadata-only — see /link for rationale.
+          if (data.path) indexAsset(data.path).catch(() => {})
         }
         return res
       },
@@ -556,7 +618,8 @@ const assetsPlugin: BakinPlugin = {
         const success = softDelete(fullPath, assetsRoot)
         if (!success) return { ok: false, error: 'Failed to delete asset' }
         removeAsset(assetPath)
-        ctx.search.remove(assetPath).catch(() => {})
+        const filename = filenameFromRel(assetPath)
+        if (filename) ctx.search.remove(filename).catch(() => {})
         ctx.activity.audit('asset.deleted', agent, { path: assetPath })
         return { ok: true, trashed: [assetPath] }
       },
@@ -566,20 +629,19 @@ const assetsPlugin: BakinPlugin = {
       name: 'bakin_exec_assets_link',
       label: 'Linked an asset',
       activityDuplicate: true,
-      description: 'Link an asset to a different task, or unlink it (set taskId to null). Physically moves the file between task directories and updates sidecar metadata.',
+      description: 'Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move.',
       parameters: {
-        path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
+        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
         taskId: z.string().nullable().describe('Target task ID, or null to unlink'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         const result = relinkAsset({
-          assetPath: params.path as string,
+          filename: params.filename as string,
           newTaskId: (params.taskId as string | null) ?? null,
         })
         if (result.ok) {
-          ctx.activity.audit('asset.relinked', agent, { oldPath: result.oldPath, newPath: result.newPath })
-          if (result.oldPath) ctx.search.remove(result.oldPath as string).catch(() => {})
-          if (result.newPath) indexAsset(result.newPath as string).catch(() => {})
+          ctx.activity.audit('asset.relinked', agent, { filename: result.filename, newTaskId: result.newTaskId })
+          if (result.path) indexAsset(result.path as string).catch(() => {})
         }
         return result
       },
@@ -645,104 +707,106 @@ const assetsPlugin: BakinPlugin = {
         let total = 0
         let fixed = 0
 
-        const types = typeFilter ? [typeFilter] : [...ASSET_TYPES]
+        const storeRoot = join(assetsRoot, 'store')
+        if (!existsSync(storeRoot)) {
+          return { ok: true, summary: { total: 0, healthy: 0, issues: 0, fixed: 0 }, issues: [] }
+        }
+
         const isAssetFile = (filename: string) => !filename.endsWith('.meta.json') && !filename.startsWith('.')
 
-        for (const typeName of types) {
-          const typeDir = join(assetsRoot, typeName)
-          if (!existsSync(typeDir)) continue
+        let months: string[]
+        try {
+          months = readdirSync(storeRoot).filter(m => {
+            if (m.startsWith('.')) return false
+            try { return statSync(join(storeRoot, m)).isDirectory() } catch { return false }
+          })
+        } catch { months = [] }
 
-          let subdirs: string[]
-          try {
-            subdirs = readdirSync(typeDir).filter(d => {
-              if (d.startsWith('.')) return false
-              try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
-            })
-          } catch { continue }
+        for (const month of months) {
+          const monthDir = join(storeRoot, month)
+          let files: string[]
+          try { files = readdirSync(monthDir).filter(isAssetFile) } catch { continue }
 
-          for (const subdir of subdirs) {
-            const dirPath = join(typeDir, subdir)
-            let files: string[]
-            try { files = readdirSync(dirPath).filter(isAssetFile) } catch { continue }
-
-            const allFiles = new Set(files)
-            const primaryFiles: string[] = []
-            const variantFiles: string[] = []
-
-            for (const file of files) {
-              if (detectVariant(file)) { variantFiles.push(file) } else { primaryFiles.push(file) }
-            }
-
-            for (const file of primaryFiles) {
-              total++
-              const fullPath = join(dirPath, file)
-              const relPath = `assets/${typeName}/${subdir}/${file}`
-
-              const sidecarPath = getSidecarPath(fullPath)
-              if (!existsSync(sidecarPath)) {
-                if (fix) {
-                  createStub(fullPath)
-                  issues.push({ path: relPath, issue: 'missing-sidecar', fixed: true })
-                  fixed++
-                } else {
-                  issues.push({ path: relPath, issue: 'missing-sidecar', fixed: false })
-                }
-              } else {
-                const sidecarIssues = validateSidecar(sidecarPath)
-                if (sidecarIssues.length > 0) {
-                  issues.push({ path: relPath, issue: `invalid-sidecar: ${sidecarIssues.join('; ')}`, fixed: false })
-                }
-                try {
-                  const raw = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
-                  if (raw.agent === 'unknown') {
-                    issues.push({ path: relPath, issue: 'stub-sidecar', fixed: false })
-                  }
-                } catch { /* already caught by validateSidecar */ }
-              }
-
-              if (typeName === 'images') {
-                const dotIdx = file.lastIndexOf('.')
-                const stem = dotIdx > 0 ? file.substring(0, dotIdx) : file
-                const hasThumb = allFiles.has(`${stem}.thumb.jpg`) || allFiles.has(`${stem}.thumb.jpeg`)
-                if (!hasThumb) {
-                  if (fix) {
-                    const thumbPath = join(dirPath, `${stem}.thumb.jpg`)
-                    if (generateThumbnail(fullPath, thumbPath)) {
-                      issues.push({ path: relPath, issue: 'missing-thumbnail', fixed: true })
-                      fixed++
-                    } else {
-                      issues.push({ path: relPath, issue: 'missing-thumbnail (fix failed)', fixed: false })
-                    }
-                  } else {
-                    issues.push({ path: relPath, issue: 'missing-thumbnail', fixed: false })
-                  }
-                }
-              }
-            }
-
-            for (const file of variantFiles) {
-              const relPath = `assets/${typeName}/${subdir}/${file}`
-              const v = detectVariant(file)
-              if (!v) continue
-              const hasPrimary = primaryFiles.some(p => {
-                const pDot = p.lastIndexOf('.')
-                const pStem = pDot > 0 ? p.substring(0, pDot) : p
-                return pStem === v.baseStem
-              })
-              if (!hasPrimary) issues.push({ path: relPath, issue: 'orphaned-variant', fixed: false })
-            }
-
-            try {
-              const allDirFiles = readdirSync(dirPath)
-              for (const f of allDirFiles) {
-                if (!f.endsWith('.meta.json')) continue
-                const assetName = f.replace('.meta.json', '')
-                if (!allFiles.has(assetName)) {
-                  issues.push({ path: `assets/${typeName}/${subdir}/${f}`, issue: 'orphaned-sidecar', fixed: false })
-                }
-              }
-            } catch { /* skip */ }
+          const allFiles = new Set(files)
+          const primaryFiles: string[] = []
+          const variantFiles: string[] = []
+          for (const file of files) {
+            if (detectVariant(file)) variantFiles.push(file)
+            else primaryFiles.push(file)
           }
+
+          for (const file of primaryFiles) {
+            const fullPath = join(monthDir, file)
+            const relPath = `assets/store/${month}/${file}`
+
+            let sidecarType = 'other'
+            const sidecarPath = getSidecarPath(fullPath)
+            if (!existsSync(sidecarPath)) {
+              if (fix) {
+                createStub(fullPath)
+                issues.push({ path: relPath, issue: 'missing-sidecar', fixed: true })
+                fixed++
+              } else {
+                issues.push({ path: relPath, issue: 'missing-sidecar', fixed: false })
+              }
+            } else {
+              const sidecarIssues = validateSidecar(sidecarPath)
+              if (sidecarIssues.length > 0) {
+                issues.push({ path: relPath, issue: `invalid-sidecar: ${sidecarIssues.join('; ')}`, fixed: false })
+              }
+              try {
+                const raw = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
+                if (typeof raw.type === 'string') sidecarType = raw.type
+                if (raw.agent === 'unknown') {
+                  issues.push({ path: relPath, issue: 'stub-sidecar', fixed: false })
+                }
+              } catch { /* already caught by validateSidecar */ }
+            }
+
+            if (typeFilter && sidecarType !== typeFilter) continue
+            total++
+
+            if (sidecarType === 'images') {
+              const dotIdx = file.lastIndexOf('.')
+              const stem = dotIdx > 0 ? file.substring(0, dotIdx) : file
+              const hasThumb = allFiles.has(`${stem}.thumb.jpg`) || allFiles.has(`${stem}.thumb.jpeg`)
+              if (!hasThumb) {
+                if (fix) {
+                  const thumbPath = join(monthDir, `${stem}.thumb.jpg`)
+                  if (generateThumbnail(fullPath, thumbPath)) {
+                    issues.push({ path: relPath, issue: 'missing-thumbnail', fixed: true })
+                    fixed++
+                  } else {
+                    issues.push({ path: relPath, issue: 'missing-thumbnail (fix failed)', fixed: false })
+                  }
+                } else {
+                  issues.push({ path: relPath, issue: 'missing-thumbnail', fixed: false })
+                }
+              }
+            }
+          }
+
+          for (const file of variantFiles) {
+            const relPath = `assets/store/${month}/${file}`
+            const v = detectVariant(file)
+            if (!v) continue
+            const hasPrimary = primaryFiles.some(p => {
+              const pDot = p.lastIndexOf('.')
+              const pStem = pDot > 0 ? p.substring(0, pDot) : p
+              return pStem === v.baseStem
+            })
+            if (!hasPrimary) issues.push({ path: relPath, issue: 'orphaned-variant', fixed: false })
+          }
+
+          try {
+            for (const f of readdirSync(monthDir)) {
+              if (!f.endsWith('.meta.json')) continue
+              const assetName = f.replace('.meta.json', '')
+              if (!allFiles.has(assetName)) {
+                issues.push({ path: `assets/store/${month}/${f}`, issue: 'orphaned-sidecar', fixed: false })
+              }
+            }
+          } catch { /* skip */ }
         }
 
         const healthy = total - issues.filter(i => !i.issue.startsWith('orphaned') && !i.fixed).length
@@ -754,20 +818,19 @@ const assetsPlugin: BakinPlugin = {
       name: 'bakin_exec_assets_retype',
       label: 'Retyped an asset',
       activityDuplicate: true,
-      description: 'Change an asset\'s type classification. Physically moves the file to the new type directory and updates the search index.',
+      description: 'Change an asset\'s type classification. Sidecar-only edit — no file move.',
       parameters: {
-        path: z.string().describe('Asset path relative to content dir (e.g. "assets/text/task123/file.md")'),
+        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
         type: z.enum(ASSET_TYPES).describe(TYPE_RUBRIC),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         const result = retypeAsset({
-          assetPath: params.path as string,
+          filename: params.filename as string,
           newType: params.type as typeof ASSET_TYPES[number],
         })
         if (result.ok) {
-          ctx.activity.audit('asset.retyped', agent, { oldPath: result.oldPath, newPath: result.newPath })
-          if (result.oldPath) ctx.search.remove(result.oldPath).catch(() => {})
-          if (result.newPath) indexAsset(result.newPath).catch(() => {})
+          ctx.activity.audit('asset.retyped', agent, { filename: result.filename, newType: result.newType })
+          if (result.path) indexAsset(result.path).catch(() => {})
         }
         return result
       },
@@ -835,20 +898,18 @@ const assetsPlugin: BakinPlugin = {
 
   async onReady() {
     const contentDir = getContentDir()
-    const assetsRoot = join(contentDir, 'assets')
-    if (existsSync(assetsRoot)) {
+    const storeRoot = join(contentDir, 'assets', 'store')
+    if (existsSync(storeRoot)) {
       let count = 0
-      for (const type of ASSET_TYPES) {
-        const typeDir = join(assetsRoot, type)
-        if (!existsSync(typeDir)) continue
-        try {
-          const subdirs = readdirSync(typeDir).filter(d => {
-            try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
-          })
-          count += subdirs.length
-        } catch { /* skip */ }
-      }
-      log.info(`Ready — ${count} asset directories across ${ASSET_TYPES.length} types`)
+      try {
+        for (const month of readdirSync(storeRoot)) {
+          if (month.startsWith('.')) continue
+          const monthDir = join(storeRoot, month)
+          try { if (!statSync(monthDir).isDirectory()) continue } catch { continue }
+          count++
+        }
+      } catch { /* skip */ }
+      log.info(`Ready — ${count} month shards under assets/store/`)
     }
   },
 

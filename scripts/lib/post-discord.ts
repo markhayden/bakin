@@ -8,6 +8,8 @@ import { z } from 'zod'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
+import { getContentDir } from '@/core/content-dir'
+import { pathForFilename } from '@bakin/assets/lib/path-for-filename'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
@@ -91,10 +93,24 @@ export interface PostDiscordParams {
   channel: string
   content: string
   agent: string
-  imagePath?: string
-  videoPath?: string
+  imageFilename?: string
+  videoFilename?: string
   embed?: Record<string, unknown>
   taskId?: string
+}
+
+/**
+ * Derive an absolute file path from a canonical asset filename. Returns
+ * null if the filename is non-canonical or the file is missing from disk
+ * — the caller should skip the attachment rather than fall back to a
+ * literal path.
+ */
+function resolveAssetAbsPath(filename: string | undefined): string | null {
+  if (!filename) return null
+  const rel = pathForFilename(filename)
+  if (!rel) return null
+  const abs = join(getContentDir(), rel)
+  return existsSync(abs) ? abs : null
 }
 
 // When BAKIN_DISCORD_TEST_MODE=1 (or "true"), all posts are routed to
@@ -110,7 +126,10 @@ function isTestMode(): boolean {
 export async function postDiscord(params: PostDiscordParams): Promise<ExecToolResult> {
   const requestedChannel = params.channel
   const channel = isTestMode() ? TEST_CHANNEL : requestedChannel
-  const { content, imagePath, videoPath, embed, taskId } = params
+  const { content, imageFilename, videoFilename, embed, taskId } = params
+
+  const imagePath = resolveAssetAbsPath(imageFilename)
+  const videoPath = resolveAssetAbsPath(videoFilename)
 
   const config = loadDiscordConfig()
   if (!config) {
@@ -134,18 +153,19 @@ export async function postDiscord(params: PostDiscordParams): Promise<ExecToolRe
 
   formData.append('payload_json', JSON.stringify(payload))
 
-  // Attach files if provided
+  // Attach files if provided — filename takes precedence; absent or
+  // unresolvable filenames simply omit the attachment (no silent path fallback).
   let fileIndex = 0
   if (imagePath && existsSync(imagePath)) {
     const data = readFileSync(imagePath)
     const blob = new Blob([data])
-    formData.append(`files[${fileIndex}]`, blob, imagePath.split('/').pop() || 'image.png')
+    formData.append(`files[${fileIndex}]`, blob, imageFilename || imagePath.split('/').pop() || 'image.png')
     fileIndex++
   }
   if (videoPath && existsSync(videoPath)) {
     const data = readFileSync(videoPath)
     const blob = new Blob([data])
-    formData.append(`files[${fileIndex}]`, blob, videoPath.split('/').pop() || 'video.mp4')
+    formData.append(`files[${fileIndex}]`, blob, videoFilename || videoPath.split('/').pop() || 'video.mp4')
   }
 
   try {
@@ -190,8 +210,8 @@ addExecTool({
   parameters: {
     channel: z.string().describe('Channel name (e.g., "general") — resolved to ID internally'),
     content: z.string().describe('Message text / caption'),
-    imagePath: z.string().optional().describe('Absolute path to image file to attach'),
-    videoPath: z.string().optional().describe('Absolute path to video file to attach'),
+    imageFilename: z.string().optional().describe('Asset filename (e.g., "20260401-hero-a1b2c3d4.png") — resolved via the assets index. Globally unique, stable across retype/relink.'),
+    videoFilename: z.string().optional().describe('Asset filename (e.g., "20260401-reel-a1b2c3d4.mp4") — resolved via the assets index.'),
     embed: z.record(z.string(), z.unknown()).optional().describe('Discord embed object (title, description, color, fields)'),
     taskId: z.string().optional().describe('Task ID for audit trail'),
   },

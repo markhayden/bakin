@@ -7,6 +7,16 @@ vi.mock('../../scripts/lib/registry', () => ({
   addExecTool: vi.fn(),
 }))
 
+// Under filename-as-identity, the asset path is a pure function of the
+// canonical filename — no resolver to mock. Tests that need attachments
+// materialize the file at `assets/store/{YYYY-MM}/{filename}` so the
+// existsSync check in post-discord passes.
+let mockContentDir = tmpdir()
+vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: () => mockContentDir,
+  getBakinPaths: () => ({ assets: join(mockContentDir, 'assets') }),
+}))
+
 import { postDiscord, _resetChannelCache } from '../../scripts/lib/post-discord'
 
 // Discord channel discovery response for tests
@@ -152,12 +162,20 @@ describe('postDiscord', () => {
     expect(result.error).toContain('network unreachable')
   })
 
-  it('attaches image and video files', async () => {
+  it('attaches image and video files resolved via pathForFilename', async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'discord-test-'))
-    const imgPath = join(tmpDir, 'hero.png')
-    const vidPath = join(tmpDir, 'clip.mp4')
-    writeFileSync(imgPath, 'fake-image')
-    writeFileSync(vidPath, 'fake-video')
+    mockContentDir = tmpDir
+    // pathForFilename('20260401-hero-...png') → 'assets/store/2026-04/...'
+    const imgRel = 'assets/store/2026-04/20260401-hero-a1b2c3d4.png'
+    const vidRel = 'assets/store/2026-04/20260401-clip-e5f6a7b8.mp4'
+    const imgAbs = join(tmpDir, imgRel)
+    const vidAbs = join(tmpDir, vidRel)
+    const { mkdirSync } = await import('fs')
+    const { dirname } = await import('path')
+    mkdirSync(dirname(imgAbs), { recursive: true })
+    mkdirSync(dirname(vidAbs), { recursive: true })
+    writeFileSync(imgAbs, 'fake-image')
+    writeFileSync(vidAbs, 'fake-video')
 
     const mockFetch = mockFetchWithDiscovery({ id: 'msg-att', channel_id: '111111111111' })
 
@@ -165,8 +183,8 @@ describe('postDiscord', () => {
       channel: 'general',
       content: 'Post with attachments',
       agent: 'pixel',
-      imagePath: imgPath,
-      videoPath: vidPath,
+      imageFilename: '20260401-hero-a1b2c3d4.png',
+      videoFilename: '20260401-clip-e5f6a7b8.mp4',
     })
 
     expect(result.ok).toBe(true)
@@ -178,15 +196,16 @@ describe('postDiscord', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('skips nonexistent attachment files', async () => {
+  it('skips attachments when filename resolves to a missing file on disk', async () => {
     mockFetchWithDiscovery({ id: 'msg-skip', channel_id: '111111111111' })
 
     const result = await postDiscord({
       channel: 'general',
       content: 'Post with missing attachments',
       agent: 'pixel',
-      imagePath: '/nonexistent/image.png',
-      videoPath: '/nonexistent/video.mp4',
+      // Canonical filenames, but nothing written to disk under store/.
+      imageFilename: '20260401-ghost-00000000.png',
+      videoFilename: '20260401-ghost-11111111.mp4',
     })
 
     expect(result.ok).toBe(true)

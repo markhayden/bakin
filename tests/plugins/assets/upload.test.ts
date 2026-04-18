@@ -19,15 +19,10 @@ vi.mock('../../../src/core/content-dir', () => ({
   getBakinPaths: () => {
     const base = join(testDir, 'assets')
     return {
-      'assets.text': join(base, 'text'),
-      'assets.images': join(base, 'images'),
-      'assets.video': join(base, 'video'),
-      'assets.audio': join(base, 'audio'),
-      'assets.plans': join(base, 'plans'),
-      'assets.research': join(base, 'research'),
-      'assets.pdf': join(base, 'pdf'),
-      'assets.data': join(base, 'data'),
-      'assets.other': join(base, 'other'),
+      assets: base,
+      'assets.store': join(base, 'store'),
+      'assets.inbox': join(base, 'inbox'),
+      'assets.trash': join(base, '.trash'),
     }
   },
 }))
@@ -100,7 +95,7 @@ describe('POST /upload', () => {
     const { status, body } = await callUpload(form)
     expect(status).toBe(200)
     expect(body.ok).toBe(true)
-    expect(body.path).toMatch(/^assets\/images\/task-upload-1\//)
+    expect(body.path).toMatch(/^assets\/store\/\d{4}-\d{2}\//)
     expect(body.filename).toMatch(/\.png$/)
 
     // Verify sidecar was created with source field
@@ -110,6 +105,7 @@ describe('POST /upload', () => {
     expect(sidecar.agent).toBe('user')
     expect(sidecar.source).toBe('upload')
     expect(sidecar.taskId).toBe('task-upload-1')
+    expect(sidecar.type).toBe('images')
     expect(sidecar.originalFilename).toBe('test-photo.png')
   })
 
@@ -121,7 +117,7 @@ describe('POST /upload', () => {
     const { status, body } = await callUpload(form)
     expect(status).toBe(200)
     expect(body.ok).toBe(true)
-    expect(body.path).toMatch(/^assets\/text\/task-upload-2\//)
+    expect(body.path).toMatch(/^assets\/store\/\d{4}-\d{2}\//)
 
     const metaPath = join(testDir, body.metadataPath as string)
     const sidecar = JSON.parse(readFileSync(metaPath, 'utf-8'))
@@ -129,13 +125,16 @@ describe('POST /upload', () => {
     expect(sidecar.tags).toEqual(['draft', 'notes'])
   })
 
-  it('uses _unlinked when no taskId provided', async () => {
+  it('writes to the store even when no taskId is provided', async () => {
     const form = createFormData(
       [{ name: 'random.txt', content: 'hello', type: 'text/plain' }],
     )
     const { status, body } = await callUpload(form)
     expect(status).toBe(200)
-    expect(body.path).toMatch(/assets\/text\/_unlinked\//)
+    expect(body.path).toMatch(/^assets\/store\/\d{4}-\d{2}\//)
+    // taskId lives in the sidecar — the absence of a task doesn't affect path.
+    const sidecar = JSON.parse(readFileSync(join(testDir, body.metadataPath as string), 'utf-8'))
+    expect(sidecar.taskId === null || sidecar.taskId === '_unlinked').toBe(true)
   })
 
   it('sets source to clipboard when specified', async () => {
@@ -190,6 +189,9 @@ describe('POST /upload', () => {
     )
     const { status, body } = await callUpload(form)
     expect(status).toBe(200)
-    expect(body.path).toMatch(/assets\/pdf\/task-pdf-1\//)
+    expect(body.path).toMatch(/^assets\/store\/\d{4}-\d{2}\//)
+    const sidecar = JSON.parse(readFileSync(join(testDir, body.metadataPath as string), 'utf-8'))
+    expect(sidecar.type).toBe('pdf')
+    expect(sidecar.taskId).toBe('task-pdf-1')
   })
 })
