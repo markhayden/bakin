@@ -12,7 +12,7 @@ A read-only observability dashboard over every OpenClaw memory tier plus Bakin's
 |---|---|---|
 | `session` | OpenClaw gateway `sessions.list` + `agents/*/sessions/sessions.json` fallback | ✅ C6 |
 | `turn` | `agents/*/sessions/<sessionId>.jsonl` | ✅ C6 |
-| `checkpoint` | `agents/*/sessions/*.checkpoint.*.jsonl` | pending (C7) |
+| `checkpoint` | `agents/*/sessions/*.checkpoint.*.jsonl` | ✅ C7 |
 | `daily_note` | `workspace/memory/*.md` | ✅ C5 |
 | `dream` | `workspace/memory/dreaming/**/*.md`, `workspace/memory/.dreams/**/*` | pending (C8) |
 | `durable` | `workspace/*.md` (MEMORY.md, SOUL.md, etc. — canonical bootstrap files) | ✅ C4 |
@@ -55,6 +55,12 @@ plugins/memory/
                             32 KB byte-aware truncation; `rawByteOffset`
                             always populated so the UI can jump back to the
                             source line regardless of truncation.
+      checkpoint-parser.ts ─ (agent, sessionId, checkpointId, filename, body)
+                            → MemoryRow | null. First `type=compaction` event
+                            wins; summary becomes content; trigger derives from
+                            `fromHook` (true→auto, false→manual, absent→unknown);
+                            `tokensAfter` always null (real OpenClaw files never
+                            carry it). Also exports `matchCheckpointFilename`.
     routes/
       audit.ts        ─ GET /audit — tier='audit' facet query + agent/event filters.
       durable.ts      ─ GET /durable?agent=<id> (list), GET /durable/:agent/:basename (render).
@@ -65,6 +71,9 @@ plugins/memory/
                         GET /sessions/:agent/:sessionKey (detail, live re-fetch),
                         GET /sessions/:agent/:sessionKey/turns (Antfly query, tier=turn),
                         GET /turns?agent=<id>&sessionId=<id> (by id form).
+      checkpoints.ts  ─ GET /checkpoints?agent=<id>[&sessionId=<id>] (Antfly, tier=checkpoint),
+                        GET /checkpoints/:agent/:sessionId/:checkpointId (detail via
+                        meta scan — routes never re-parse files).
 ```
 
 ## Invariants
@@ -120,7 +129,13 @@ Lives at `~/.bakin/plugin-settings/memory.json`. Fields:
   - **Watcher routing.** Chokidar `file.change` on `agents/*/sessions/sessions.json` → `matchSessionStorePath` → re-index that agent's sessions. `file.change` on `agents/*/sessions/<id>.jsonl` → `matchSessionJsonlPath` → turn re-index for that session, skipping `*.reset.*.jsonl` backups. `unlink` on a session JSONL resets the offset so a later recreate starts fresh; `unlink` on `sessions.json` is a no-op (the next gateway call will reflect reality).
   - **WS live updates.** `gatewaySubscribe('sessions.subscribe', {})` runs best-effort at activation — each frame kicks off a session re-index. If the WS dial fails, chokidar on `sessions.json` is the safety net (see the three-consistency-paths architecture in `search-system.md`), so a dead gateway just means slightly higher latency, not broken correctness.
   - **Routes.** `GET /sessions[?agent=&kind=]` (gateway-first list, sorted by `updatedAt` desc), `GET /sessions/:agent/:sessionKey` (detail, re-fetches at request time so a freshly-connected UI doesn't lag the roster), `GET /sessions/:agent/:sessionKey/turns` (Antfly query with `tier=turn, agent=…` filters plus the sessionKey as the q-string — `meta` is indexed as text so the query narrows to the session without a dedicated facet), `GET /turns?agent=&sessionId=` (convenience form for callers that only know the session id). `limit` is clamped to `[1, 500]` with default 100.
-- C7 — `feat(memory): checkpoint tier` (pending)
+- C7 — `feat(memory): checkpoint tier` ✅
+  - **Source.** One `<sessionId>.checkpoint.<checkpointId>.jsonl` sibling of a session transcript → one row. The file replays the session header + messages up to the compaction point and ends with one `type=compaction` event. The parser scans lines for the first compaction, ignores the replayed transcript (those rows belong to the turn tier), and treats additional compactions in the same file (rare) as duplicates the first one wins.
+  - **Field surfacing.** `summary` becomes `content` / `snippet` (2 KB cap). `tokensBefore` carried through unchanged; `tokensAfter` always `null` — real OpenClaw files never emit it. `trigger` derives from `fromHook`: `true → 'auto'`, `false → 'manual'`, absent → `'unknown'`. `createdAt` is ISO-parsed from the compaction's `timestamp`, falling back to file mtime if missing or unparseable.
+  - Row ids: `checkpoint:<16-char-sha256(agent|sessionId|checkpointId)>`. Stable across re-indexing; unlink removes the row.
+  - **Adapter additions.** `listCheckpointJsonlFiles(agent)` returns `{agent, sessionId, checkpointId, filename, path, size, mtimeMs}[]`; `checkpointJsonlPath`, `checkpointJsonlStat`, and `matchCheckpointJsonlPath(path)` round out the watcher surface. The existing `listSessionJsonlFiles` already excludes `*.checkpoint.*.jsonl` so session + checkpoint backfills don't double-index the same files.
+  - **Watcher routing.** `file.add` and `file.change` on `agents/*/sessions/*.checkpoint.*.jsonl` route through `matchCheckpointJsonlPath` → `indexCheckpointFile`. `unlink` removes the derived row id directly (no per-file state to forget beyond Antfly's own row). The top-level watch glob (`agents/*/sessions/*.jsonl`) already covers checkpoint files — no new path added.
+  - **Routes.** `GET /checkpoints?agent=<id>[&sessionId=<id>&limit=&offset=]` runs an Antfly query with `{tier: 'checkpoint', agent}` filters and the optional `sessionId` as the q-string (meta is indexed as text, so the query narrows without needing a dedicated facet). `GET /checkpoints/:agent/:sessionId/:checkpointId` does the same query with `q=sessionId checkpointId`, then filters the first 20 results by JSON-parsing each row's `meta` field and matching both ids exactly — malformed meta is tolerated and treated as a non-match. Routes never touch the filesystem; the indexer is the single source of truth.
 - C8 — `feat(memory): dream tier` (pending)
 - C9 — `feat(memory): global search + facets UX` (pending)
 - C10 — `feat(memory): MCP exec tools` (pending)

@@ -233,6 +233,84 @@ export function readCheckpoint(agentId: string, filename: string): string | null
   }
 }
 
+export interface CheckpointJsonlFile {
+  agent: string
+  sessionId: string
+  checkpointId: string
+  filename: string
+  path: string
+  size: number
+  mtimeMs: number
+}
+
+const CHECKPOINT_PARTS_RE = /^([^/.]+)\.checkpoint\.([^/.]+)\.jsonl$/
+
+export function listCheckpointJsonlFiles(agentId: string): CheckpointJsonlFile[] {
+  const dir = agentSessionsDir(agentId)
+  if (!existsSync(dir)) return []
+  const out: CheckpointJsonlFile[] = []
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      const m = CHECKPOINT_PARTS_RE.exec(entry.name)
+      if (!m) continue
+      const p = join(dir, entry.name)
+      let size = 0
+      let mtimeMs = Date.now()
+      try {
+        const st = statSync(p)
+        size = st.size
+        mtimeMs = st.mtimeMs
+      } catch { /* fallback values */ }
+      out.push({
+        agent: agentId,
+        sessionId: m[1],
+        checkpointId: m[2],
+        filename: entry.name,
+        path: p,
+        size,
+        mtimeMs,
+      })
+    }
+  } catch (err) {
+    log.warn('listCheckpointJsonlFiles failed', { agentId, err: err instanceof Error ? err.message : String(err) })
+  }
+  return out
+}
+
+export function checkpointJsonlPath(agentId: string, filename: string): string {
+  return join(agentSessionsDir(agentId), filename)
+}
+
+export function checkpointJsonlStat(path: string): { size: number; mtimeMs: number } | null {
+  if (!existsSync(path)) return null
+  try {
+    const st = statSync(path)
+    return { size: st.size, mtimeMs: st.mtimeMs }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Map a filesystem path back to `{ agent, sessionId, checkpointId, filename }`
+ * if it is a checkpoint file under a recognized agent's sessions dir.
+ */
+export function matchCheckpointJsonlPath(
+  path: string,
+): { agent: string; sessionId: string; checkpointId: string; filename: string } | null {
+  for (const agentId of listAgentIds()) {
+    const dir = agentSessionsDir(agentId)
+    if (!path.startsWith(dir + '/')) continue
+    const rest = path.slice(dir.length + 1)
+    if (rest.includes('/')) continue
+    const m = CHECKPOINT_PARTS_RE.exec(rest)
+    if (!m) continue
+    return { agent: agentId, sessionId: m[1], checkpointId: m[2], filename: rest }
+  }
+  return null
+}
+
 // ─── Daily notes ─────────────────────────────────────────────────────────────
 
 function dailyNotesDir(agentId: string): string {

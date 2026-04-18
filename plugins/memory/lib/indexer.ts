@@ -20,19 +20,24 @@ import { parseDurableFile, rowId as durableRowId } from './tier-parsers/durable-
 import { parseDailyNote, rowId as dailyNoteRowId } from './tier-parsers/daily-note-parser'
 import { parseSession, rowId as sessionRowId } from './tier-parsers/session-parser'
 import { parseTurnLine } from './tier-parsers/turn-parser'
+import { parseCheckpoint, rowId as checkpointRowId } from './tier-parsers/checkpoint-parser'
 import {
   CANONICAL_DURABLE_FILES,
+  checkpointJsonlStat,
   dailyNotePath,
   dailyNoteMtime,
   dailyNoteSize,
   durableFilePath,
   listAgentIds,
+  listCheckpointJsonlFiles,
   listDailyNotes,
   listSessionJsonlFiles,
+  matchCheckpointJsonlPath,
   matchDailyNotePath,
   matchDurablePath,
   matchSessionJsonlPath,
   matchSessionStorePath,
+  readCheckpoint,
   readDailyNote,
   readDurableFile,
   readSessionStore,
@@ -88,7 +93,11 @@ export class MemoryIndexer {
       await this.indexTurnTier()
       return
     }
-    // C7+ tiers land in subsequent commits.
+    if (tier === 'checkpoint') {
+      await this.indexCheckpointTier()
+      return
+    }
+    // C8+ tiers land in subsequent commits.
   }
 
   async handleWatcherEvent(path: string, kind: 'add' | 'change' | 'unlink'): Promise<void> {
@@ -140,7 +149,23 @@ export class MemoryIndexer {
       await this.indexSessionJsonl(sessionJsonl.agent, sessionJsonl.sessionId, path, stat.size)
       return
     }
-    // Other tiers add routing here in C7+.
+
+    const checkpoint = matchCheckpointJsonlPath(path)
+    if (checkpoint) {
+      if (kind === 'unlink') {
+        await this.removeCheckpointFile(checkpoint.agent, checkpoint.sessionId, checkpoint.checkpointId)
+      } else {
+        await this.indexCheckpointFile(
+          checkpoint.agent,
+          checkpoint.sessionId,
+          checkpoint.checkpointId,
+          checkpoint.filename,
+          path,
+        )
+      }
+      return
+    }
+    // Other tiers add routing here in C8+.
   }
 
   // ─── Audit tier (C3) ──────────────────────────────────────────────────────
@@ -441,6 +466,45 @@ export class MemoryIndexer {
 
     const newOffset = stats.size - Buffer.byteLength(trailingIncomplete, 'utf-8')
     setOffset(path, newOffset)
+  }
+
+  // ─── Checkpoint tier (C7) ─────────────────────────────────────────────────
+
+  private async indexCheckpointTier(): Promise<void> {
+    for (const agent of listAgentIds()) {
+      for (const file of listCheckpointJsonlFiles(agent)) {
+        await this.indexCheckpointFile(
+          agent,
+          file.sessionId,
+          file.checkpointId,
+          file.filename,
+          file.path,
+        )
+      }
+    }
+  }
+
+  private async indexCheckpointFile(
+    agent: string,
+    sessionId: string,
+    checkpointId: string,
+    filename: string,
+    path: string,
+  ): Promise<void> {
+    const body = readCheckpoint(agent, filename)
+    if (body === null) return
+    const mtimeMs = checkpointJsonlStat(path)?.mtimeMs ?? Date.now()
+    const row = parseCheckpoint(agent, sessionId, checkpointId, filename, body, path, mtimeMs)
+    if (row === null) return
+    await this.writeRow(row)
+  }
+
+  private async removeCheckpointFile(
+    agent: string,
+    sessionId: string,
+    checkpointId: string,
+  ): Promise<void> {
+    await this.ctx.search.remove(checkpointRowId(agent, sessionId, checkpointId))
   }
 
   // ─── Shared write ─────────────────────────────────────────────────────────
