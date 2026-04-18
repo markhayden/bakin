@@ -251,7 +251,12 @@ const assetsPlugin: BakinPlugin = {
       // Strip the leading `assets/` to get the path relative to the assets
       // root, which is what buildAssetFileUrl expects.
       const rel = assetRelPath.replace(/^assets\//, '')
-      const image_url = computeImageUrl(rel, filename, assetType)
+      // Sidecar `type` is authoritative; the directory-derived `assetType`
+      // is a fallback for legacy sidecars written before the field existed.
+      const metaType = typeof meta.type === 'string' && meta.type
+        ? (meta.type as string)
+        : assetType
+      const image_url = computeImageUrl(rel, filename, metaType)
       const absPath = join(getContentDir(), assetRelPath)
       const content = await extractAssetContent(absPath, filename)
       return {
@@ -259,7 +264,7 @@ const assetsPlugin: BakinPlugin = {
         tags: Array.isArray(meta.tags) ? (meta.tags as string[]).join(', ') : '',
         agent: (meta.agent as string) || '',
         task_id: (meta.taskId as string) || '',
-        asset_type: assetType,
+        asset_type: metaType,
         file_name: filename,
         tool: (meta.tool as string) || '',
         updated_at: (meta.created as string) || new Date().toISOString(),
@@ -390,12 +395,11 @@ const assetsPlugin: BakinPlugin = {
         const res = await handleLink(req)
         const data = await res.clone().json()
         if (data.ok) {
-          ctx.activity.audit('asset.relinked', 'user', { oldPath: data.oldPath, newPath: data.newPath })
-          ctx.activity.log('user', `Relinked asset to ${data.newPath || '_unlinked'}`)
-          // Filename is stable across relink — upsert the doc under the
-          // same key, no remove needed. Watcher unlink on the old path is
-          // a no-op because filenameExists() will still see the filename.
-          if (data.newPath) indexAsset(data.newPath).catch(() => {})
+          ctx.activity.audit('asset.relinked', 'user', { filename: data.filename, newTaskId: data.newTaskId })
+          ctx.activity.log('user', `Relinked asset ${data.filename} to ${data.newTaskId ?? '(unlinked)'}`)
+          // Metadata-only — file stays put; just reindex the search doc to
+          // pick up the new taskId under the same filename key.
+          if (data.path) indexAsset(data.path).catch(() => {})
         }
         return res
       },
@@ -410,10 +414,10 @@ const assetsPlugin: BakinPlugin = {
         const res = await handleRetype(req)
         const data = await res.clone().json()
         if (data.ok) {
-          ctx.activity.audit('asset.retyped', 'user', { oldPath: data.oldPath, newPath: data.newPath })
-          ctx.activity.log('user', `Retyped asset to ${data.newPath}`)
-          // Filename is stable across retype — see /link for rationale.
-          if (data.newPath) indexAsset(data.newPath).catch(() => {})
+          ctx.activity.audit('asset.retyped', 'user', { filename: data.filename, newType: data.newType })
+          ctx.activity.log('user', `Retyped asset ${data.filename} to ${data.newType}`)
+          // Metadata-only — see /link for rationale.
+          if (data.path) indexAsset(data.path).catch(() => {})
         }
         return res
       },
@@ -600,20 +604,19 @@ const assetsPlugin: BakinPlugin = {
       name: 'bakin_exec_assets_link',
       label: 'Linked an asset',
       activityDuplicate: true,
-      description: 'Link an asset to a different task, or unlink it (set taskId to null). Physically moves the file between task directories and updates sidecar metadata.',
+      description: 'Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move.',
       parameters: {
-        path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
+        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
         taskId: z.string().nullable().describe('Target task ID, or null to unlink'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         const result = relinkAsset({
-          assetPath: params.path as string,
+          filename: params.filename as string,
           newTaskId: (params.taskId as string | null) ?? null,
         })
         if (result.ok) {
-          ctx.activity.audit('asset.relinked', agent, { oldPath: result.oldPath, newPath: result.newPath })
-          // Filename stable across relink — upsert only.
-          if (result.newPath) indexAsset(result.newPath as string).catch(() => {})
+          ctx.activity.audit('asset.relinked', agent, { filename: result.filename, newTaskId: result.newTaskId })
+          if (result.path) indexAsset(result.path as string).catch(() => {})
         }
         return result
       },
@@ -788,20 +791,19 @@ const assetsPlugin: BakinPlugin = {
       name: 'bakin_exec_assets_retype',
       label: 'Retyped an asset',
       activityDuplicate: true,
-      description: 'Change an asset\'s type classification. Physically moves the file to the new type directory and updates the search index.',
+      description: 'Change an asset\'s type classification. Sidecar-only edit — no file move.',
       parameters: {
-        path: z.string().describe('Asset path relative to content dir (e.g. "assets/text/task123/file.md")'),
+        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
         type: z.enum(ASSET_TYPES).describe(TYPE_RUBRIC),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         const result = retypeAsset({
-          assetPath: params.path as string,
+          filename: params.filename as string,
           newType: params.type as typeof ASSET_TYPES[number],
         })
         if (result.ok) {
-          ctx.activity.audit('asset.retyped', agent, { oldPath: result.oldPath, newPath: result.newPath })
-          // Filename stable across retype — upsert only.
-          if (result.newPath) indexAsset(result.newPath).catch(() => {})
+          ctx.activity.audit('asset.retyped', agent, { filename: result.filename, newType: result.newType })
+          if (result.path) indexAsset(result.path).catch(() => {})
         }
         return result
       },

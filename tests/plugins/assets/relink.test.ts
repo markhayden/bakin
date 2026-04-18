@@ -1,5 +1,8 @@
 /**
  * Tests for asset relink/unlink — relinkAsset() in plugins/assets/lib/relink.ts.
+ *
+ * Under filename-as-identity, relink is a sidecar-only edit: the file stays
+ * at its on-disk path and only `sidecar.taskId` changes.
  */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs'
@@ -36,6 +39,7 @@ vi.mock('../../../src/core/logger', () => ({
 }))
 
 import { relinkAsset } from '@bakin/assets/lib/relink'
+import { setFilename, clearResolver } from '@bakin/assets/lib/resolver'
 
 beforeAll(() => {
   mkdirSync(testDir, { recursive: true })
@@ -43,6 +47,10 @@ beforeAll(() => {
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
+})
+
+beforeEach(() => {
+  clearResolver()
 })
 
 function createAssetFixture(type: string, taskId: string, filename: string, content = 'test') {
@@ -54,103 +62,71 @@ function createAssetFixture(type: string, taskId: string, filename: string, cont
     agent: 'user',
     taskId,
     created: new Date().toISOString(),
+    type,
   }))
-  return `assets/${type}/${taskId}/${filename}`
+  const rel = `assets/${type}/${taskId}/${filename}`
+  setFilename(filename, rel)
+  return rel
 }
 
-describe('relinkAsset', () => {
-  it('moves asset from one task to another', () => {
-    const path = createAssetFixture('images', 'task-a', '20260404-photo.png')
-    const result = relinkAsset({ assetPath: path, newTaskId: 'task-b' })
+describe('relinkAsset (metadata-only)', () => {
+  it('updates sidecar taskId without moving the file', () => {
+    const rel = createAssetFixture('images', 'task-a', '20260404-photo-a1b2c3d4.png')
+    const result = relinkAsset({ filename: '20260404-photo-a1b2c3d4.png', newTaskId: 'task-b' })
 
     expect(result.ok).toBe(true)
-    expect(result.newPath).toBe('assets/images/task-b/20260404-photo.png')
+    expect(result.filename).toBe('20260404-photo-a1b2c3d4.png')
+    expect(result.newTaskId).toBe('task-b')
+    expect(result.path).toBe(rel)
 
-    // Old file should be gone
-    expect(existsSync(join(testDir, path))).toBe(false)
-    // New file should exist
-    expect(existsSync(join(testDir, result.newPath!))).toBe(true)
-    // Sidecar should exist at new location
-    expect(existsSync(join(testDir, result.newPath! + '.meta.json'))).toBe(true)
+    // File is still at its original location — no move occurred.
+    expect(existsSync(join(testDir, rel))).toBe(true)
+    expect(existsSync(join(testDir, rel + '.meta.json'))).toBe(true)
+
+    // Sidecar taskId was updated.
+    const sidecar = JSON.parse(readFileSync(join(testDir, rel + '.meta.json'), 'utf-8'))
+    expect(sidecar.taskId).toBe('task-b')
   })
 
-  it('unlinks asset to _unlinked directory', () => {
-    const path = createAssetFixture('text', 'task-c', '20260404-notes.md')
-    const result = relinkAsset({ assetPath: path, newTaskId: null })
+  it('unlink sets sidecar taskId to null without moving the file', () => {
+    const rel = createAssetFixture('text', 'task-c', '20260404-notes-deadbeef.md')
+    const result = relinkAsset({ filename: '20260404-notes-deadbeef.md', newTaskId: null })
 
     expect(result.ok).toBe(true)
-    expect(result.newPath).toBe('assets/text/_unlinked/20260404-notes.md')
-    expect(existsSync(join(testDir, result.newPath!))).toBe(true)
+    expect(result.newTaskId).toBeNull()
 
-    // Sidecar should have taskId: null
-    const sidecar = JSON.parse(readFileSync(join(testDir, result.newPath! + '.meta.json'), 'utf-8'))
+    // File stays put.
+    expect(existsSync(join(testDir, rel))).toBe(true)
+    const sidecar = JSON.parse(readFileSync(join(testDir, rel + '.meta.json'), 'utf-8'))
     expect(sidecar.taskId).toBeNull()
   })
 
-  it('updates sidecar taskId after relink', () => {
-    const path = createAssetFixture('images', 'task-d', '20260404-ref.png')
-    const result = relinkAsset({ assetPath: path, newTaskId: 'task-e' })
+  it('is a no-op when relinking to the same task', () => {
+    const rel = createAssetFixture('text', 'task-f', '20260404-same-abcd1234.md')
+    const result = relinkAsset({ filename: '20260404-same-abcd1234.md', newTaskId: 'task-f' })
 
     expect(result.ok).toBe(true)
-    const sidecar = JSON.parse(readFileSync(join(testDir, result.newPath! + '.meta.json'), 'utf-8'))
-    expect(sidecar.taskId).toBe('task-e')
+    expect(result.path).toBe(rel)
+    expect(existsSync(join(testDir, rel))).toBe(true)
   })
 
-  it('returns no-op when relinking to same task', () => {
-    const path = createAssetFixture('text', 'task-f', '20260404-same.md')
-    const result = relinkAsset({ assetPath: path, newTaskId: 'task-f' })
-
-    expect(result.ok).toBe(true)
-    expect(result.newPath).toBe(path)
-    // File should still exist
-    expect(existsSync(join(testDir, path))).toBe(true)
-  })
-
-  it('rejects path traversal', () => {
-    const result = relinkAsset({ assetPath: 'assets/../etc/passwd', newTaskId: 'task-x' })
+  it('rejects taskIds that contain path separators', () => {
+    createAssetFixture('images', 'task-x', '20260404-sep-aaaabbbb.png')
+    const result = relinkAsset({ filename: '20260404-sep-aaaabbbb.png', newTaskId: '../../etc' })
     expect(result.ok).toBe(false)
-    expect(result.error).toContain('..')
+    expect(result.error).toContain('path separators')
   })
 
-  it('rejects invalid path prefix', () => {
-    const result = relinkAsset({ assetPath: 'not-assets/foo/bar/file.png', newTaskId: 'task-x' })
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('must start with assets/')
-  })
-
-  it('returns error for non-existent asset', () => {
-    const result = relinkAsset({ assetPath: 'assets/images/ghost/20260404-nope.png', newTaskId: 'task-x' })
+  it('returns "Asset not found" when the filename is unknown to the resolver', () => {
+    const result = relinkAsset({ filename: '20260404-ghost-ffffffff.png', newTaskId: 'task-x' })
     expect(result.ok).toBe(false)
     expect(result.error).toContain('not found')
   })
 
-  it('handles filename collision in target directory', () => {
-    const path = createAssetFixture('images', 'task-g', '20260404-dup.png')
-    // Pre-create a file at the target location
-    const targetDir = join(testDir, 'assets', 'images', 'task-h')
-    mkdirSync(targetDir, { recursive: true })
-    writeFileSync(join(targetDir, '20260404-dup.png'), 'existing')
-
-    const result = relinkAsset({ assetPath: path, newTaskId: 'task-h' })
-
-    expect(result.ok).toBe(true)
-    // Should have a modified filename (with random suffix)
-    expect(result.newPath).not.toBe('assets/images/task-h/20260404-dup.png')
-    expect(result.newPath).toContain('assets/images/task-h/20260404-dup-')
-    expect(existsSync(join(testDir, result.newPath!))).toBe(true)
-  })
-
-  it('moves variants (.thumb.*) along with the primary file', () => {
-    const path = createAssetFixture('images', 'task-i', '20260404-hero.png')
-    // Create a thumbnail variant
-    const thumbPath = join(testDir, 'assets', 'images', 'task-i', '20260404-hero.thumb.jpg')
-    writeFileSync(thumbPath, 'thumb-data')
-
-    const result = relinkAsset({ assetPath: path, newTaskId: 'task-j' })
-
-    expect(result.ok).toBe(true)
-    // Thumbnail should have moved too
-    expect(existsSync(join(testDir, 'assets', 'images', 'task-j', '20260404-hero.thumb.jpg'))).toBe(true)
-    expect(existsSync(thumbPath)).toBe(false)
+  it('returns "Asset not found" when the file is missing on disk even if registered', () => {
+    setFilename('20260404-stale-12345678.md', 'assets/text/gone/20260404-stale-12345678.md')
+    const result = relinkAsset({ filename: '20260404-stale-12345678.md', newTaskId: 'task-z' })
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('not found')
   })
 })

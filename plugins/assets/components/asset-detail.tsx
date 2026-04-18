@@ -243,7 +243,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
       const res = await fetch('/api/plugins/assets/link', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: displayAsset.path, taskId }),
+        body: JSON.stringify({ filename: displayAsset.filename, taskId }),
       })
       if (res.ok) {
         setEditingTask(false)
@@ -262,16 +262,14 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
       const res = await fetch('/api/plugins/assets/retype', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: displayAsset.path, type: newType }),
+        body: JSON.stringify({ filename: displayAsset.filename, type: newType }),
       })
       if (res.ok) {
-        const data = await res.json()
-        if (data.newPath) {
-          onPathChange?.(data.newPath)
-          const listRes = await fetch(`/api/plugins/assets/?path=${encodeURIComponent(data.newPath)}`)
-          const listData = await listRes.json()
-          if (listData.assets?.[0]) setLocalAsset(listData.assets[0])
-        }
+        // Metadata-only — the on-disk path is unchanged. Refetch the asset
+        // by filename to pick up the updated sidecar fields.
+        const listRes = await fetch(`/api/plugins/assets/?filename=${encodeURIComponent(displayAsset.filename)}`)
+        const listData = await listRes.json()
+        if (listData.assets?.[0]) setLocalAsset(listData.assets[0])
         onRelink?.()
       }
     } catch (err) { console.error('Failed to retype asset', err) }
