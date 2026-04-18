@@ -25,6 +25,15 @@ vi.mock('../../../src/core/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
 }))
 vi.mock('../../../src/core/watcher', () => ({ watchFiles: vi.fn() }))
+// Defensive: prevent matchDurablePath (called in handleWatcherEvent routing)
+// from touching the real ~/.openclaw/ home during audit-tier tests.
+vi.mock('../../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, '.openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
+}))
+vi.mock('../../../src/core/main-agent', () => ({
+  tryGetMainAgentId: () => null,
+}))
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
 import { clearAllOffsets, getOffset } from '../../../plugins/memory/lib/offsets'

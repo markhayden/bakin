@@ -260,3 +260,41 @@ export function readDurableFile(agentId: string, basename: string): string | nul
     return null
   }
 }
+
+export function durableFilePath(agentId: string, basename: string): string {
+  return join(workspacePath(agentId), basename)
+}
+
+export function durableFileMtime(agentId: string, basename: string): number | null {
+  const file = durableFilePath(agentId, basename)
+  if (!existsSync(file)) return null
+  try {
+    return statSync(file).mtimeMs
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Parse a filesystem path and return `{ agent, basename }` if it matches
+ * a canonical durable file under a recognized workspace root. Returns null
+ * otherwise — caller uses null as "not a durable file, ignore".
+ */
+export function matchDurablePath(path: string): { agent: string; basename: string } | null {
+  const agents = listAgentIds()
+  for (const agentId of agents) {
+    for (const basename of CANONICAL_DURABLE_FILES) {
+      if (path === durableFilePath(agentId, basename)) {
+        return { agent: agentId, basename }
+      }
+    }
+  }
+  // Handle the main-agent case where workspacePath() collapses to `workspace/`
+  // and tryGetMainAgentId() may have pointed somewhere different at list time.
+  const mainCandidates = CANONICAL_DURABLE_FILES
+  for (const basename of mainCandidates) {
+    const main = getOpenClawPath('workspace', basename)
+    if (path === main) return { agent: tryGetMainAgentId() ?? 'main', basename }
+  }
+  return null
+}
