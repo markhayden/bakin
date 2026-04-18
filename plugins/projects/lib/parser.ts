@@ -61,7 +61,7 @@ export function parseProject(content: string): Project {
 
   const assets: ProjectAsset[] = Array.isArray(raw.assets)
     ? raw.assets.map((a: Record<string, unknown>) => ({
-        path: String(a.path || ''),
+        filename: String(a.filename || ''),
         label: a.label ? String(a.label) : undefined,
       }))
     : []
@@ -97,7 +97,7 @@ export function serializeProject(project: Project): string {
   // Omit empty assets array
   const cleanAssets = fm.assets.length > 0
     ? fm.assets.map(a => {
-        const item: Record<string, unknown> = { path: a.path }
+        const item: Record<string, unknown> = { filename: a.filename }
         if (a.label) item.label = a.label
         return item
       })

@@ -96,7 +96,7 @@ import projectsPlugin from '../../../plugins/projects'
 /** Create a project markdown file directly on disk for read-only tests. */
 function writeProjectFixture(
   id: string,
-  opts: { title?: string; status?: string; tasks?: Array<{ id: string; title: string; checked: boolean; taskId?: string }>; assets?: Array<{ path: string; label?: string }>; body?: string; owner?: string } = {},
+  opts: { title?: string; status?: string; tasks?: Array<{ id: string; title: string; checked: boolean; taskId?: string }>; assets?: Array<{ filename: string; label?: string }>; body?: string; owner?: string } = {},
 ) {
   const title = opts.title ?? `Project ${id}`
   const status = opts.status ?? 'active'
@@ -541,42 +541,42 @@ describe('Routes', () => {
       expect(route).toBeDefined()
       const { status, body } = await callRoute(route, plugin.ctx, {
         searchParams: { projectId: 'proj-att' },
-        body: { assetPath: 'assets/text/spec.md', label: 'Spec doc' },
+        body: { filename: '20260401-spec-abcdef12.md', label: 'Spec doc' },
       })
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
     })
 
-    it('returns 400 when projectId or assetPath is missing', async () => {
+    it('returns 400 when projectId or filename is missing', async () => {
       const route = findRoute(plugin.routes, 'POST', '/:projectId/assets')!
       const { status } = await callRoute(route, plugin.ctx, {
-        body: { label: 'No path' },
+        body: { label: 'No filename' },
       })
       expect(status).toBe(400)
     })
   })
 
   // -------------------------------------------------------------------------
-  // DELETE /:projectId/assets/:assetPath — detach asset
+  // DELETE /:projectId/assets/:filename — detach asset
   // -------------------------------------------------------------------------
-  describe('DELETE /:projectId/assets/:assetPath — detach asset', () => {
+  describe('DELETE /:projectId/assets/:filename — detach asset', () => {
     it('detaches an asset from a project', async () => {
       writeProjectFixture('proj-det', {
         title: 'Detach Project',
-        assets: [{ path: 'assets/text/spec.md', label: 'Spec' }],
+        assets: [{ filename: '20260401-spec-abcdef12.md', label: 'Spec' }],
       })
 
-      const route = findRoute(plugin.routes, 'DELETE', '/:projectId/assets/:assetPath')!
+      const route = findRoute(plugin.routes, 'DELETE', '/:projectId/assets/:filename')!
       expect(route).toBeDefined()
       const { status, body } = await callRoute(route, plugin.ctx, {
-        searchParams: { projectId: 'proj-det', assetPath: 'assets/text/spec.md' },
+        searchParams: { projectId: 'proj-det', filename: '20260401-spec-abcdef12.md' },
       })
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
     })
 
     it('returns 400 when required params are missing', async () => {
-      const route = findRoute(plugin.routes, 'DELETE', '/:projectId/assets/:assetPath')!
+      const route = findRoute(plugin.routes, 'DELETE', '/:projectId/assets/:filename')!
       const { status } = await callRoute(route, plugin.ctx, {})
       expect(status).toBe(400)
     })
@@ -590,7 +590,7 @@ describe('Routes', () => {
       writeProjectFixture('proj-ask', {
         title: 'Ask Project',
         tasks: [{ id: 't001', title: 'Do stuff', checked: true }],
-        assets: [{ path: 'assets/text/brief.md', label: 'Brief' }],
+        assets: [{ filename: '20260401-brief-abcdef12.md', label: 'Brief' }],
       })
 
       const route = findRoute(plugin.routes, 'POST', '/:projectId/ask')!
@@ -957,7 +957,7 @@ describe('Exec Tools', () => {
       expect(tool).toBeDefined()
       const result = await callTool(tool, {
         projectId: 'proj-aa',
-        assetPath: 'assets/images/logo.png',
+        filename: '20260401-logo-abcdef12.png',
         label: 'Logo',
       })
       expect(result.ok).toBe(true)
@@ -965,7 +965,7 @@ describe('Exec Tools', () => {
 
     it('returns error for non-existent project', async () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_project_attach_asset')!
-      const result = await callTool(tool, { projectId: 'ghost', assetPath: 'assets/x.md' })
+      const result = await callTool(tool, { projectId: 'ghost', filename: '20260401-x-abcdef12.md' })
       expect(result.ok).toBe(false)
       expect(result.error).toMatch(/not found/i)
     })
@@ -978,18 +978,18 @@ describe('Exec Tools', () => {
     it('detaches an asset', async () => {
       writeProjectFixture('proj-da', {
         title: 'Detach Asset',
-        assets: [{ path: 'assets/text/brief.md', label: 'Brief' }],
+        assets: [{ filename: '20260401-brief-abcdef12.md', label: 'Brief' }],
       })
 
       const tool = findTool(plugin.execTools, 'bakin_exec_project_detach_asset')!
       expect(tool).toBeDefined()
-      const result = await callTool(tool, { projectId: 'proj-da', assetPath: 'assets/text/brief.md' })
+      const result = await callTool(tool, { projectId: 'proj-da', filename: '20260401-brief-abcdef12.md' })
       expect(result.ok).toBe(true)
     })
 
     it('returns error for non-existent project', async () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_project_detach_asset')!
-      const result = await callTool(tool, { projectId: 'ghost', assetPath: 'x.md' })
+      const result = await callTool(tool, { projectId: 'ghost', filename: '20260401-x-abcdef12.md' })
       expect(result.ok).toBe(false)
       expect(result.error).toMatch(/not found/i)
     })
@@ -1073,7 +1073,7 @@ describe('Registration', () => {
       { method: 'POST', path: '/:projectId/checklist/:itemId/link' },
       { method: 'POST', path: '/:projectId/checklist/:itemId/promote' },
       { method: 'POST', path: '/:projectId/assets' },
-      { method: 'DELETE', path: '/:projectId/assets/:assetPath' },
+      { method: 'DELETE', path: '/:projectId/assets/:filename' },
       { method: 'POST', path: '/:projectId/ask' },
       { method: 'GET', path: '/search' },
     ]

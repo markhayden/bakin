@@ -13,7 +13,7 @@ export interface ProjectTask {
 }
 
 export interface ProjectAsset {
-  path: string            // relative asset path (e.g., "assets/images/task-abc/photo.jpg")
+  filename: string        // globally-unique asset filename (e.g., "20260327-hero-a1b2c3d4.png")
   label?: string          // optional human label / summary
 }
 

@@ -376,25 +376,25 @@ export function buildDispatchMessage(
 ): string {
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
 
-  // List attached assets for this task by scanning the asset directories
+  // List attached assets by filename (stable identity). Agents open them
+  // via bakin_exec_assets_open — disk paths are a view, not identity.
   let assetsBlock = ''
   try {
     const assetsRoot = join(contentDir, 'assets')
     const assetTypes = ['text', 'images', 'video', 'audio', 'plans', 'data', 'other']
-    const assetPaths: string[] = []
+    const filenames: string[] = []
     for (const type of assetTypes) {
       const taskDir = join(assetsRoot, type, task.id)
       if (existsSync(taskDir)) {
         const files = readdirSync(taskDir).filter(f => !f.endsWith('.meta.json') && !f.startsWith('.'))
         for (const file of files) {
-          // Skip variants (thumbnails, optimized)
           if (file.includes('.thumb.') || file.includes('.opt.')) continue
-          assetPaths.push(join(taskDir, file))
+          filenames.push(file)
         }
       }
     }
-    if (assetPaths.length > 0) {
-      assetsBlock = `\n\n## Attached Assets\nThis task has ${assetPaths.length} linked asset(s). Review them for context before starting:\n${assetPaths.map(p => `- ${p}`).join('\n')}\nFor images, view the file directly. For text/documents, read with cat. Use bakin_exec_assets_get for sidecar metadata.`
+    if (filenames.length > 0) {
+      assetsBlock = `\n\n## Attached Assets\nThis task has ${filenames.length} linked asset(s). Review them for context before starting:\n${filenames.map(f => `- ${f}`).join('\n')}\nCall bakin_exec_assets_open with the filename to read the current content + sidecar metadata. Filenames are stable identity — do not store raw disk paths.`
     }
   } catch { /* assets directory may not exist */ }
 

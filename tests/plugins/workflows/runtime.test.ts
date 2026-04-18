@@ -349,7 +349,7 @@ Write a great caption.
     it('does not advance past group when only one child completes', () => {
       createInstance('task-par1', 'parallel', testDir)
       completeStep('task-par1', 'write-copy', { brief: 'test' }, undefined, testDir)
-      completeStep('task-par1', 'create-image', { image_path: '/img.png' }, undefined, testDir)
+      completeStep('task-par1', 'create-image', { image_filename: '20260401-img-a1b2c3d4.png' }, undefined, testDir)
 
       const instance = loadInstance('task-par1', testDir)
       expect(instance!.currentStepId).toBe('create-assets')
@@ -359,8 +359,8 @@ Write a great caption.
     it('advances past group when all children complete', () => {
       createInstance('task-par2', 'parallel', testDir)
       completeStep('task-par2', 'write-copy', { brief: 'test' }, undefined, testDir)
-      completeStep('task-par2', 'create-image', { image_path: '/img.png' }, undefined, testDir)
-      completeStep('task-par2', 'create-video', { video_path: '/vid.mp4' }, undefined, testDir)
+      completeStep('task-par2', 'create-image', { image_filename: '20260401-img-a1b2c3d4.png' }, undefined, testDir)
+      completeStep('task-par2', 'create-video', { video_filename: '20260401-vid-e5f6a7b8.mp4' }, undefined, testDir)
 
       const instance = loadInstance('task-par2', testDir)
       expect(instance!.currentStepId).toBe('publish')
