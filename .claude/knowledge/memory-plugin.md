@@ -16,7 +16,7 @@ A read-only observability dashboard over every OpenClaw memory tier plus Bakin's
 | `daily_note` | `workspace/memory/*.md` | pending (C5) |
 | `dream` | `workspace/memory/dreaming/**/*.md`, `workspace/memory/.dreams/**/*` | pending (C8) |
 | `durable` | `workspace/*.md` (MEMORY.md, SOUL.md, etc. — canonical bootstrap files) | pending (C4) |
-| `audit` | `~/.bakin/audit.jsonl` | pending (C3) |
+| `audit` | `~/.bakin/audit.jsonl` | ✅ C3 |
 
 ## Module layout
 
@@ -37,6 +37,10 @@ plugins/memory/
     openclaw-adapter.ts ─ Sole module that reads ~/.openclaw/ for the memory plugin.
     openclaw-gateway.ts ─ Native WebSocket RPC client — gatewayCall + gatewaySubscribe.
     openclaw-cli.ts     ─ `openclaw memory status/search --json` wrapper. Nothing else.
+    tier-parsers/
+      audit-parser.ts   ─ Pure line → MemoryRow parser for ~/.bakin/audit.jsonl.
+    routes/
+      audit.ts          ─ GET /audit — tier='audit' facet query + agent/event filters.
 ```
 
 ## Invariants
@@ -63,7 +67,12 @@ Lives at `~/.bakin/plugin-settings/memory.json`. Fields:
 
 - C1 — `feat(memory): foundational modules (types, adapter, gateway, cli, offsets)`
 - C2 — `refactor(memory): rewrite plugin shell, drop bakin_audit, register bakin_memory`
-- C3 — `feat(memory): audit tier indexed into bakin_memory` (pending)
+- C3 — `feat(memory): audit tier indexed into bakin_memory` ✅
+  - Pure watcher pattern: `appendAudit` writes disk + broadcasts SSE, memory plugin's indexer picks up audit.jsonl changes and indexes them incrementally using persisted byte offsets. No cross-module hook between core audit and the memory plugin.
+  - Legacy `bakin_audit` table, `TABLES.audit`, and `indexAuditEvent` removed from `src/core/antfly.ts` with no shim.
+  - Stable row IDs: `audit:<16-char-sha256-of-ts|event|agent>` — re-indexing produces no duplicates.
+  - Truncation handled: `stats.size < persistedOffset` → restart from offset 0.
+  - Trailing incomplete lines (no newline yet) are preserved until the next watcher event.
 - C4 — `feat(memory): durable tier` (pending)
 - C5 — `feat(memory): daily-notes tier` (pending)
 - C6 — `feat(memory): session + turn tiers` (pending)

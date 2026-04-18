@@ -46,6 +46,13 @@ const {
   }
 })
 
+vi.mock('@/core/content-dir', async () => {
+  const { join } = await import('path')
+  const { tmpdir } = await import('os')
+  const base = join(tmpdir(), 'bakin-test-antfly-mock')
+  return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
+})
+
 vi.mock('@/core/settings', () => ({
   getSettings: vi.fn(() => ({
     antfly: {
@@ -120,7 +127,6 @@ describe('antfly', () => {
     expect(typeof antfly.scanTable).toBe('function')
     expect(typeof antfly.rebuildIndexes).toBe('function')
     expect(typeof antfly.hasEmbedderChanged).toBe('function')
-    expect(typeof antfly.indexAuditEvent).toBe('function')
   })
 
   it('should report disabled when settings say so', async () => {
@@ -149,12 +155,16 @@ describe('antfly', () => {
   it('should define correct bakin_ table names', async () => {
     const antfly = await import('@/core/antfly')
     expect(antfly.TABLES.tasks).toBe('bakin_tasks')
-    expect(antfly.TABLES.audit).toBe('bakin_audit')
     expect(antfly.TABLES.assets).toBe('bakin_assets')
     expect(antfly.TABLES.projects).toBe('bakin_projects')
     expect(antfly.TABLES.workflows).toBe('bakin_workflows')
     expect(antfly.TABLES.schedule).toBe('bakin_schedule')
     expect(antfly.TABLES.team).toBe('bakin_team')
+  })
+
+  it('should NOT define a legacy audit table (owned by memory plugin as bakin_memory)', async () => {
+    const antfly = await import('@/core/antfly')
+    expect((antfly.TABLES as Record<string, string>).audit).toBeUndefined()
   })
 
   it('should not have legacy beacon_ table names', async () => {
