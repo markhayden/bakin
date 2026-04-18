@@ -1,0 +1,174 @@
+/**
+ * Tests for plugins/memory/lib/routes/durable.ts — durable tier browser routes.
+ *
+ * Two routes:
+ *   GET /durable?agent=<id>          → list canonical files present for agent
+ *   GET /durable/:agent/:basename    → rendered content of one file
+ *
+ * Both go through openclaw-adapter for disk reads — mocked here.
+ */
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { mkdirSync, rmSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+const testDir = join(tmpdir(), `bakin-test-memory-durable-route-${Date.now()}`)
+
+vi.mock('../../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir }),
+}))
+vi.mock('../../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir }),
+}))
+vi.mock('../../../../src/core/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+}))
+
+// Mock the openclaw-adapter so routes don't touch the real filesystem.
+const {
+  mockReadDurableFile,
+  mockListAgentIds,
+  mockCanonicalFiles,
+} = vi.hoisted(() => ({
+  mockReadDurableFile: vi.fn<(agent: string, basename: string) => string | null>(),
+  mockListAgentIds: vi.fn<() => string[]>(),
+  mockCanonicalFiles: ['SOUL.md', 'MEMORY.md', 'IDENTITY.md'] as const,
+}))
+
+vi.mock('../../../../plugins/memory/lib/openclaw-adapter', () => ({
+  readDurableFile: mockReadDurableFile,
+  listAgentIds: mockListAgentIds,
+  CANONICAL_DURABLE_FILES: mockCanonicalFiles,
+}))
+
+import {
+  durableListRoute,
+  durableDetailRoute,
+} from '../../../../plugins/memory/lib/routes/durable'
+import type { PluginContext } from '../../../../src/lib/plugin-types'
+
+function makeCtx(): PluginContext {
+  return {
+    pluginId: 'memory',
+    storage: {} as PluginContext['storage'],
+    events: {} as PluginContext['events'],
+    registerNav: vi.fn(),
+    registerRoute: vi.fn(),
+    registerSlot: vi.fn(),
+    registerExecTool: vi.fn(),
+    registerSkill: vi.fn(),
+    watchFiles: vi.fn(),
+    getSettings: (() => ({})) as PluginContext['getSettings'],
+    updateSettings: vi.fn(),
+    activity: { log: vi.fn(), audit: vi.fn() },
+    search: {
+      registerContentType: vi.fn(),
+      registerFileBackedContentType: vi.fn(),
+      index: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+      transform: vi.fn(async () => {}),
+      query: vi.fn(),
+    },
+    hooks: {
+      register: vi.fn(() => () => {}),
+      has: vi.fn(() => false),
+      invoke: vi.fn(async () => undefined),
+    },
+  } as unknown as PluginContext
+}
+
+function makeListReq(agent?: string): Request {
+  const url = new URL('http://localhost/durable')
+  if (agent !== undefined) url.searchParams.set('agent', agent)
+  return new Request(url, { method: 'GET' })
+}
+
+function makeDetailReq(agent: string, basename: string): Request {
+  const url = new URL(`http://localhost/durable/${agent}/${basename}`)
+  // Bakin's plugin router extracts :agent/:basename into search params.
+  url.searchParams.set('agent', agent)
+  url.searchParams.set('basename', basename)
+  return new Request(url, { method: 'GET' })
+}
+
+beforeEach(() => {
+  rmSync(testDir, { recursive: true, force: true })
+  mkdirSync(testDir, { recursive: true })
+  mockReadDurableFile.mockReset()
+  mockListAgentIds.mockReset()
+})
+
+afterAll(() => {
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+describe('durableListRoute — shape', () => {
+  it('is a GET /durable route', () => {
+    expect(durableListRoute.method).toBe('GET')
+    expect(durableListRoute.path).toBe('/durable')
+  })
+})
+
+describe('durableListRoute — handler', () => {
+  it('requires ?agent= and returns 400 if missing', async () => {
+    const res = await durableListRoute.handler(makeListReq(), makeCtx())
+    expect(res.status).toBe(400)
+  })
+
+  it('returns only canonical files that exist for the agent', async () => {
+    mockReadDurableFile.mockImplementation((_a, file) =>
+      file === 'SOUL.md' || file === 'MEMORY.md' ? 'body' : null,
+    )
+    const res = await durableListRoute.handler(makeListReq('main'), makeCtx())
+    const body = await res.json() as { files: { name: string }[] }
+    expect(res.status).toBe(200)
+    expect(body.files.map((f) => f.name).sort()).toEqual(['MEMORY.md', 'SOUL.md'])
+  })
+
+  it('returns empty list when no canonical files exist for the agent', async () => {
+    mockReadDurableFile.mockReturnValue(null)
+    const res = await durableListRoute.handler(makeListReq('orphan'), makeCtx())
+    const body = await res.json() as { files: unknown[] }
+    expect(res.status).toBe(200)
+    expect(body.files).toEqual([])
+  })
+})
+
+describe('durableDetailRoute — shape', () => {
+  it('is a GET /durable/:agent/:basename route', () => {
+    expect(durableDetailRoute.method).toBe('GET')
+    expect(durableDetailRoute.path).toBe('/durable/:agent/:basename')
+  })
+})
+
+describe('durableDetailRoute — handler', () => {
+  it('returns 400 if agent or basename is missing', async () => {
+    const url = new URL('http://localhost/durable//')
+    const res = await durableDetailRoute.handler(new Request(url, { method: 'GET' }), makeCtx())
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 404 when file is absent (adapter returns null)', async () => {
+    mockReadDurableFile.mockReturnValue(null)
+    const res = await durableDetailRoute.handler(makeDetailReq('main', 'SOUL.md'), makeCtx())
+    expect(res.status).toBe(404)
+  })
+
+  it('returns { agent, file, content } when file exists', async () => {
+    mockReadDurableFile.mockReturnValue('# hello\nbody')
+    const res = await durableDetailRoute.handler(makeDetailReq('main', 'SOUL.md'), makeCtx())
+    const body = await res.json() as { agent: string; file: string; content: string }
+    expect(res.status).toBe(200)
+    expect(body.agent).toBe('main')
+    expect(body.file).toBe('SOUL.md')
+    expect(body.content).toBe('# hello\nbody')
+  })
+
+  it('rejects non-canonical basenames with 404 (adapter guards, we pass through)', async () => {
+    mockReadDurableFile.mockReturnValue(null)
+    const res = await durableDetailRoute.handler(makeDetailReq('main', 'RANDOM.md'), makeCtx())
+    expect(res.status).toBe(404)
+  })
+})

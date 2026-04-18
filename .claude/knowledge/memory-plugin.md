@@ -15,7 +15,7 @@ A read-only observability dashboard over every OpenClaw memory tier plus Bakin's
 | `checkpoint` | `agents/*/sessions/*.checkpoint.*.jsonl` | pending (C7) |
 | `daily_note` | `workspace/memory/*.md` | pending (C5) |
 | `dream` | `workspace/memory/dreaming/**/*.md`, `workspace/memory/.dreams/**/*` | pending (C8) |
-| `durable` | `workspace/*.md` (MEMORY.md, SOUL.md, etc. — canonical bootstrap files) | pending (C4) |
+| `durable` | `workspace/*.md` (MEMORY.md, SOUL.md, etc. — canonical bootstrap files) | ✅ C4 |
 | `audit` | `~/.bakin/audit.jsonl` | ✅ C3 |
 
 ## Module layout
@@ -39,8 +39,11 @@ plugins/memory/
     openclaw-cli.ts     ─ `openclaw memory status/search --json` wrapper. Nothing else.
     tier-parsers/
       audit-parser.ts   ─ Pure line → MemoryRow parser for ~/.bakin/audit.jsonl.
+      durable-parser.ts ─ H1/H2 chunker for canonical bootstrap files;
+                          one MemoryRow per heading chunk.
     routes/
       audit.ts          ─ GET /audit — tier='audit' facet query + agent/event filters.
+      durable.ts        ─ GET /durable?agent=<id> (list), GET /durable/:agent/:basename (render).
 ```
 
 ## Invariants
@@ -73,7 +76,11 @@ Lives at `~/.bakin/plugin-settings/memory.json`. Fields:
   - Stable row IDs: `audit:<16-char-sha256-of-ts|event|agent>` — re-indexing produces no duplicates.
   - Truncation handled: `stats.size < persistedOffset` → restart from offset 0.
   - Trailing incomplete lines (no newline yet) are preserved until the next watcher event.
-- C4 — `feat(memory): durable tier` (pending)
+- C4 — `feat(memory): durable tier indexed by heading chunk` ✅
+  - Canonical bootstrap files (`SOUL.md`, `MEMORY.md`, `IDENTITY.md`, `USER.md`, `AGENTS.md`, `TOOLS.md`, `BOOTSTRAP.md`, `HEARTBEAT.md`, `DREAMS.md`, `MEMORY-LOG.md`) chunked on H1/H2 boundaries — one row per chunk. H3+ headings stay inside the enclosing H2 body. Files with no headings → single chunk (`headingLevel=0`, `chunkIndex=0`).
+  - Stable row ids: `durable:<16-char-sha256(agent|basename|chunkIndex)>` — chunk count is tracked per file so shrinking a file (e.g. deleting an H1) removes the now-orphan chunk keys on reindex.
+  - Adapter exposes `durableFilePath`, `durableFileMtime`, and `matchDurablePath(path)` so the watcher can map a fs path back to an `(agent, basename)` pair without re-listing agents everywhere.
+  - Routes: `GET /api/plugins/memory/durable?agent=<id>` lists canonical files present for that agent; `GET /api/plugins/memory/durable/:agent/:basename` returns `{ agent, file, content }`. Both delegate to the adapter — no direct `~/.openclaw/` reads in route code.
 - C5 — `feat(memory): daily-notes tier` (pending)
 - C6 — `feat(memory): session + turn tiers` (pending)
 - C7 — `feat(memory): checkpoint tier` (pending)
