@@ -4,7 +4,7 @@
  */
 import { execSync } from 'child_process'
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs'
-import { join, relative } from 'path'
+import { join } from 'path'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { handleList } from './routes/list'
@@ -25,7 +25,6 @@ import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { ASSET_TYPES } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
 import { saveAsset } from './lib/save-asset'
-import { filenameExists } from './lib/resolver'
 import { ingestInboxFile, ingestInboxDir } from './lib/ingest-inbox'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
@@ -182,57 +181,41 @@ const assetsPlugin: BakinPlugin = {
         }
 
         removeAsset(relativePath)
-        // Under filename-as-identity, retype/relink fire unlink on the old
-        // path and add on the new path — the filename survives at another
-        // location. Only remove the search doc when the filename is truly
-        // gone from disk. See resolver P2 in asset-storage-architecture-PLAN.
-        if (filenameExists(filename)) return
+        // Under filename-as-identity, the path is a pure function of the
+        // filename — retype/relink never move files, so an unlink on the
+        // binary means the asset is truly gone. No filename-existence
+        // check needed.
         await ctx.search.remove(filename).catch(() => { /* non-blocking */ })
       },
       reindex: async function* () {
         const contentDir = getContentDir()
         const assetsRoot = join(contentDir, 'assets')
-        if (!existsSync(assetsRoot)) return
-
-        // Walk both the new store/{YYYY-MM}/ layout and the legacy
-        // {type}/{taskId}/ layout. The legacy branch is exercised during the
-        // migration window and by test fixtures; it becomes dead in C8.
-        const dirs: Array<{ dirPath: string; fallbackType: string }> = []
-
         const storeRoot = join(assetsRoot, 'store')
-        if (existsSync(storeRoot)) {
-          try {
-            for (const month of readdirSync(storeRoot)) {
-              if (month.startsWith('.')) continue
-              const monthDir = join(storeRoot, month)
-              try { if (!statSync(monthDir).isDirectory()) continue } catch { continue }
-              dirs.push({ dirPath: monthDir, fallbackType: 'other' })
-            }
-          } catch { /* skip */ }
-        }
-        for (const typeName of ASSET_TYPES) {
-          const typeDir = join(assetsRoot, typeName)
-          if (!existsSync(typeDir)) continue
-          try {
-            for (const subdir of readdirSync(typeDir)) {
-              if (subdir.startsWith('.')) continue
-              const dirPath = join(typeDir, subdir)
-              try { if (!statSync(dirPath).isDirectory()) continue } catch { continue }
-              dirs.push({ dirPath, fallbackType: typeName })
-            }
-          } catch { /* skip */ }
-        }
+        if (!existsSync(storeRoot)) return
 
-        for (const { dirPath, fallbackType } of dirs) {
+        let months: string[]
+        try {
+          months = readdirSync(storeRoot).filter(m => {
+            if (m.startsWith('.')) return false
+            try { return statSync(join(storeRoot, m)).isDirectory() } catch { return false }
+          })
+        } catch { return }
+
+        for (const month of months) {
+          const monthDir = join(storeRoot, month)
           let files: string[]
-          try { files = readdirSync(dirPath).filter(f => f.endsWith('.meta.json')) } catch { continue }
+          try { files = readdirSync(monthDir).filter(f => f.endsWith('.meta.json')) } catch { continue }
           for (const metaFile of files) {
-            const metaPath = join(dirPath, metaFile)
+            const metaPath = join(monthDir, metaFile)
             try {
               const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
               const assetFilename = metaFile.replace('.meta.json', '')
-              const key = relative(contentDir, join(dirPath, assetFilename))
-              const doc = await assetToSearchDoc(raw, assetFilename, fallbackType, key)
+              const key = `assets/store/${month}/${assetFilename}`
+              // Type in the sidecar is authoritative; assetToSearchDoc
+              // ignores the directory-derived fallback when meta.type is
+              // present, so the fallback is only a cushion for truly
+              // corrupt sidecars.
+              const doc = await assetToSearchDoc(raw, assetFilename, 'other', key)
               yield { key, doc }
             } catch { /* skip unreadable sidecars */ }
           }
@@ -724,104 +707,106 @@ const assetsPlugin: BakinPlugin = {
         let total = 0
         let fixed = 0
 
-        const types = typeFilter ? [typeFilter] : [...ASSET_TYPES]
+        const storeRoot = join(assetsRoot, 'store')
+        if (!existsSync(storeRoot)) {
+          return { ok: true, summary: { total: 0, healthy: 0, issues: 0, fixed: 0 }, issues: [] }
+        }
+
         const isAssetFile = (filename: string) => !filename.endsWith('.meta.json') && !filename.startsWith('.')
 
-        for (const typeName of types) {
-          const typeDir = join(assetsRoot, typeName)
-          if (!existsSync(typeDir)) continue
+        let months: string[]
+        try {
+          months = readdirSync(storeRoot).filter(m => {
+            if (m.startsWith('.')) return false
+            try { return statSync(join(storeRoot, m)).isDirectory() } catch { return false }
+          })
+        } catch { months = [] }
 
-          let subdirs: string[]
-          try {
-            subdirs = readdirSync(typeDir).filter(d => {
-              if (d.startsWith('.')) return false
-              try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
-            })
-          } catch { continue }
+        for (const month of months) {
+          const monthDir = join(storeRoot, month)
+          let files: string[]
+          try { files = readdirSync(monthDir).filter(isAssetFile) } catch { continue }
 
-          for (const subdir of subdirs) {
-            const dirPath = join(typeDir, subdir)
-            let files: string[]
-            try { files = readdirSync(dirPath).filter(isAssetFile) } catch { continue }
-
-            const allFiles = new Set(files)
-            const primaryFiles: string[] = []
-            const variantFiles: string[] = []
-
-            for (const file of files) {
-              if (detectVariant(file)) { variantFiles.push(file) } else { primaryFiles.push(file) }
-            }
-
-            for (const file of primaryFiles) {
-              total++
-              const fullPath = join(dirPath, file)
-              const relPath = `assets/${typeName}/${subdir}/${file}`
-
-              const sidecarPath = getSidecarPath(fullPath)
-              if (!existsSync(sidecarPath)) {
-                if (fix) {
-                  createStub(fullPath)
-                  issues.push({ path: relPath, issue: 'missing-sidecar', fixed: true })
-                  fixed++
-                } else {
-                  issues.push({ path: relPath, issue: 'missing-sidecar', fixed: false })
-                }
-              } else {
-                const sidecarIssues = validateSidecar(sidecarPath)
-                if (sidecarIssues.length > 0) {
-                  issues.push({ path: relPath, issue: `invalid-sidecar: ${sidecarIssues.join('; ')}`, fixed: false })
-                }
-                try {
-                  const raw = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
-                  if (raw.agent === 'unknown') {
-                    issues.push({ path: relPath, issue: 'stub-sidecar', fixed: false })
-                  }
-                } catch { /* already caught by validateSidecar */ }
-              }
-
-              if (typeName === 'images') {
-                const dotIdx = file.lastIndexOf('.')
-                const stem = dotIdx > 0 ? file.substring(0, dotIdx) : file
-                const hasThumb = allFiles.has(`${stem}.thumb.jpg`) || allFiles.has(`${stem}.thumb.jpeg`)
-                if (!hasThumb) {
-                  if (fix) {
-                    const thumbPath = join(dirPath, `${stem}.thumb.jpg`)
-                    if (generateThumbnail(fullPath, thumbPath)) {
-                      issues.push({ path: relPath, issue: 'missing-thumbnail', fixed: true })
-                      fixed++
-                    } else {
-                      issues.push({ path: relPath, issue: 'missing-thumbnail (fix failed)', fixed: false })
-                    }
-                  } else {
-                    issues.push({ path: relPath, issue: 'missing-thumbnail', fixed: false })
-                  }
-                }
-              }
-            }
-
-            for (const file of variantFiles) {
-              const relPath = `assets/${typeName}/${subdir}/${file}`
-              const v = detectVariant(file)
-              if (!v) continue
-              const hasPrimary = primaryFiles.some(p => {
-                const pDot = p.lastIndexOf('.')
-                const pStem = pDot > 0 ? p.substring(0, pDot) : p
-                return pStem === v.baseStem
-              })
-              if (!hasPrimary) issues.push({ path: relPath, issue: 'orphaned-variant', fixed: false })
-            }
-
-            try {
-              const allDirFiles = readdirSync(dirPath)
-              for (const f of allDirFiles) {
-                if (!f.endsWith('.meta.json')) continue
-                const assetName = f.replace('.meta.json', '')
-                if (!allFiles.has(assetName)) {
-                  issues.push({ path: `assets/${typeName}/${subdir}/${f}`, issue: 'orphaned-sidecar', fixed: false })
-                }
-              }
-            } catch { /* skip */ }
+          const allFiles = new Set(files)
+          const primaryFiles: string[] = []
+          const variantFiles: string[] = []
+          for (const file of files) {
+            if (detectVariant(file)) variantFiles.push(file)
+            else primaryFiles.push(file)
           }
+
+          for (const file of primaryFiles) {
+            const fullPath = join(monthDir, file)
+            const relPath = `assets/store/${month}/${file}`
+
+            let sidecarType = 'other'
+            const sidecarPath = getSidecarPath(fullPath)
+            if (!existsSync(sidecarPath)) {
+              if (fix) {
+                createStub(fullPath)
+                issues.push({ path: relPath, issue: 'missing-sidecar', fixed: true })
+                fixed++
+              } else {
+                issues.push({ path: relPath, issue: 'missing-sidecar', fixed: false })
+              }
+            } else {
+              const sidecarIssues = validateSidecar(sidecarPath)
+              if (sidecarIssues.length > 0) {
+                issues.push({ path: relPath, issue: `invalid-sidecar: ${sidecarIssues.join('; ')}`, fixed: false })
+              }
+              try {
+                const raw = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
+                if (typeof raw.type === 'string') sidecarType = raw.type
+                if (raw.agent === 'unknown') {
+                  issues.push({ path: relPath, issue: 'stub-sidecar', fixed: false })
+                }
+              } catch { /* already caught by validateSidecar */ }
+            }
+
+            if (typeFilter && sidecarType !== typeFilter) continue
+            total++
+
+            if (sidecarType === 'images') {
+              const dotIdx = file.lastIndexOf('.')
+              const stem = dotIdx > 0 ? file.substring(0, dotIdx) : file
+              const hasThumb = allFiles.has(`${stem}.thumb.jpg`) || allFiles.has(`${stem}.thumb.jpeg`)
+              if (!hasThumb) {
+                if (fix) {
+                  const thumbPath = join(monthDir, `${stem}.thumb.jpg`)
+                  if (generateThumbnail(fullPath, thumbPath)) {
+                    issues.push({ path: relPath, issue: 'missing-thumbnail', fixed: true })
+                    fixed++
+                  } else {
+                    issues.push({ path: relPath, issue: 'missing-thumbnail (fix failed)', fixed: false })
+                  }
+                } else {
+                  issues.push({ path: relPath, issue: 'missing-thumbnail', fixed: false })
+                }
+              }
+            }
+          }
+
+          for (const file of variantFiles) {
+            const relPath = `assets/store/${month}/${file}`
+            const v = detectVariant(file)
+            if (!v) continue
+            const hasPrimary = primaryFiles.some(p => {
+              const pDot = p.lastIndexOf('.')
+              const pStem = pDot > 0 ? p.substring(0, pDot) : p
+              return pStem === v.baseStem
+            })
+            if (!hasPrimary) issues.push({ path: relPath, issue: 'orphaned-variant', fixed: false })
+          }
+
+          try {
+            for (const f of readdirSync(monthDir)) {
+              if (!f.endsWith('.meta.json')) continue
+              const assetName = f.replace('.meta.json', '')
+              if (!allFiles.has(assetName)) {
+                issues.push({ path: `assets/store/${month}/${f}`, issue: 'orphaned-sidecar', fixed: false })
+              }
+            }
+          } catch { /* skip */ }
         }
 
         const healthy = total - issues.filter(i => !i.issue.startsWith('orphaned') && !i.fixed).length
@@ -913,20 +898,18 @@ const assetsPlugin: BakinPlugin = {
 
   async onReady() {
     const contentDir = getContentDir()
-    const assetsRoot = join(contentDir, 'assets')
-    if (existsSync(assetsRoot)) {
+    const storeRoot = join(contentDir, 'assets', 'store')
+    if (existsSync(storeRoot)) {
       let count = 0
-      for (const type of ASSET_TYPES) {
-        const typeDir = join(assetsRoot, type)
-        if (!existsSync(typeDir)) continue
-        try {
-          const subdirs = readdirSync(typeDir).filter(d => {
-            try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
-          })
-          count += subdirs.length
-        } catch { /* skip */ }
-      }
-      log.info(`Ready — ${count} asset directories across ${ASSET_TYPES.length} types`)
+      try {
+        for (const month of readdirSync(storeRoot)) {
+          if (month.startsWith('.')) continue
+          const monthDir = join(storeRoot, month)
+          try { if (!statSync(monthDir).isDirectory()) continue } catch { continue }
+          count++
+        }
+      } catch { /* skip */ }
+      log.info(`Ready — ${count} month shards under assets/store/`)
     }
   },
 

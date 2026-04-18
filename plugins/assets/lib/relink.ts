@@ -10,7 +10,7 @@ import { join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'
 import { readSidecar, writeSidecar, createStub } from './sidecar'
 import { upsertAsset } from './asset-index'
-import { resolveFilename } from './resolver'
+import { pathForFilename } from './path-for-filename'
 import { createLogger } from '../../../src/core/logger'
 
 const log = createLogger('assets:relink')
@@ -39,9 +39,9 @@ export function relinkAsset(params: RelinkParams): RelinkResult {
     return { ok: false, filename, error: 'Invalid taskId: contains path separators' }
   }
 
-  const rel = resolveFilename(filename)
+  const rel = pathForFilename(filename)
   if (!rel) {
-    return { ok: false, filename, error: 'Asset not found' }
+    return { ok: false, filename, error: 'Non-canonical filename' }
   }
 
   const fullPath = join(getContentDir(), rel)

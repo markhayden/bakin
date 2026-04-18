@@ -21,7 +21,6 @@ vi.mock('../../../src/core/logger', () => ({
 }))
 
 import { ingestInboxFile, ingestInboxDir } from '@bakin/assets/lib/ingest-inbox'
-import { clearResolver } from '@bakin/assets/lib/resolver'
 import { isCanonicalFilename, yearMonthFromFilename } from '@bakin/assets/lib/path-for-filename'
 
 function dropIntoInbox(relPath: string, content = 'drop-content'): string {
@@ -34,12 +33,10 @@ function dropIntoInbox(relPath: string, content = 'drop-content'): string {
 describe('assets/ingest-inbox', () => {
   beforeEach(() => {
     mkdirSync(testDir, { recursive: true })
-    clearResolver()
   })
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
-    clearResolver()
   })
 
   describe('ingestInboxFile', () => {

@@ -73,18 +73,20 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
       const caption = item.draft?.caption || item.title
       const target = item.channelTarget || '1483917792745885768'
 
-      // Resolve filename → absolute path via the assets resolver.
+      // Derive filename → absolute path via the pure path function.
       let media: string | undefined
       const mediaFilename = item.draft?.imageFilename || item.draft?.videoFilename
       if (mediaFilename) {
         try {
-          const { resolveFilename } = await import('../assets/lib/resolver')
+          const { pathForFilename } = await import('../assets/lib/path-for-filename')
+          const { existsSync } = await import('fs')
           const { join } = await import('path')
-          const rel = resolveFilename(mediaFilename)
-          if (rel) media = join(getContentDir(), rel)
+          const rel = pathForFilename(mediaFilename)
+          const abs = rel ? join(getContentDir(), rel) : null
+          if (abs && existsSync(abs)) media = abs
           else log.warn('Unknown media filename on approve', { itemId: item.id, filename: mediaFilename })
         } catch (err) {
-          log.warn('Asset resolver unavailable on approve', { err: err instanceof Error ? err.message : String(err) })
+          log.warn('Asset path resolver unavailable on approve', { err: err instanceof Error ? err.message : String(err) })
         }
       }
 

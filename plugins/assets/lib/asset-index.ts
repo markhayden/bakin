@@ -3,14 +3,12 @@
  * kept up-to-date by the file watcher.
  */
 import { existsSync, readdirSync, statSync } from 'fs'
-import { join, relative, extname } from 'path'
+import { join } from 'path'
 import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
 import { readSidecar, createStub, type SidecarMeta } from './sidecar'
-import { getAssetType, getMimeType, ASSET_TYPES, SPECIAL_DIRS } from './constants'
+import { getAssetType, getMimeType } from './constants'
 import type { AssetType } from './constants'
-import { setFilename, unsetFilename, clearResolver } from './resolver'
-import { yearMonthFromFilename } from './path-for-filename'
 
 const log = createLogger('assets:index')
 
@@ -68,55 +66,28 @@ function getAssetsRoot(): string {
 }
 
 /**
- * Yield every asset file under `assets/`, walking both the new
- * `store/{YYYY-MM}/` layout and the legacy `{type}/{taskId}/` layout.
- *
- * The legacy branch is exercised during the migration window and by
- * tests that seed fixtures in the old shape. Post-migration (C6/C7) it
- * becomes a no-op and is dropped in C8.
+ * Yield every asset file under `assets/store/{YYYY-MM}/`. Type is not
+ * encoded in the path — callers fall back to extension-derived type until
+ * the sidecar loads.
  */
 function* walkAssetFiles(assetsRoot: string): Generator<{ relPath: string; fallbackType: AssetType }> {
-  // New layout: assets/store/{YYYY-MM}/{file}
   const storeRoot = join(assetsRoot, 'store')
-  if (existsSync(storeRoot)) {
-    let months: string[]
-    try {
-      months = readdirSync(storeRoot).filter(d => {
-        if (d.startsWith('.')) return false
-        try { return statSync(join(storeRoot, d)).isDirectory() } catch { return false }
-      })
-    } catch { months = [] }
+  if (!existsSync(storeRoot)) return
 
-    for (const month of months) {
-      const monthDir = join(storeRoot, month)
-      let files: string[]
-      try { files = readdirSync(monthDir).filter(isAssetFile) } catch { continue }
-      for (const file of files) {
-        // Type isn't encoded in the path — fall back to extension-derived type
-        // for callers that need a default before the sidecar loads.
-        yield { relPath: `assets/store/${month}/${file}`, fallbackType: getAssetType(file) as AssetType }
-      }
-    }
-  }
+  let months: string[]
+  try {
+    months = readdirSync(storeRoot).filter(d => {
+      if (d.startsWith('.')) return false
+      try { return statSync(join(storeRoot, d)).isDirectory() } catch { return false }
+    })
+  } catch { return }
 
-  // Legacy layout: assets/{type}/{taskId}/{file}
-  for (const typeName of ASSET_TYPES) {
-    const typeDir = join(assetsRoot, typeName)
-    if (!existsSync(typeDir)) continue
-    let subdirs: string[]
-    try {
-      subdirs = readdirSync(typeDir).filter(d => {
-        if (d.startsWith('.')) return false
-        try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
-      })
-    } catch { continue }
-    for (const subdir of subdirs) {
-      const dirPath = join(typeDir, subdir)
-      let files: string[]
-      try { files = readdirSync(dirPath).filter(isAssetFile) } catch { continue }
-      for (const file of files) {
-        yield { relPath: `assets/${typeName}/${subdir}/${file}`, fallbackType: typeName as AssetType }
-      }
+  for (const month of months) {
+    const monthDir = join(storeRoot, month)
+    let files: string[]
+    try { files = readdirSync(monthDir).filter(isAssetFile) } catch { continue }
+    for (const file of files) {
+      yield { relPath: `assets/store/${month}/${file}`, fallbackType: getAssetType(file) as AssetType }
     }
   }
 }
@@ -126,7 +97,6 @@ function* walkAssetFiles(assetsRoot: string): Generator<{ relPath: string; fallb
  */
 export function buildIndex(): void {
   index.clear()
-  clearResolver()
   const assetsRoot = getAssetsRoot()
 
   if (!existsSync(assetsRoot)) {
@@ -154,9 +124,6 @@ export function buildIndex(): void {
         mtimeMs: stat.mtimeMs,
         metadata: meta,
       })
-      if (!filename.endsWith('.meta.json')) {
-        setFilename(filename, relPath)
-      }
       count++
     } catch { /* skip unreadable files */ }
   }
@@ -172,10 +139,6 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
   const fullPath = join(contentDir, relativePath)
 
   if (!existsSync(fullPath)) {
-    const existing = index.get(relativePath)
-    if (existing && !existing.filename.endsWith('.meta.json')) {
-      unsetFilename(existing.filename, relativePath)
-    }
     index.delete(relativePath)
     return null
   }
@@ -185,17 +148,10 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
     if (!stat.isFile()) return null
 
     const filename = relativePath.split('/').pop() || ''
-    const parts = relativePath.split('/')
-    // Legacy layout encodes the type in parts[1]; the store/ layout uses
-    // literal "store" and carries the type in the sidecar instead. Fall back
-    // to an extension-derived type so records without a sidecar still get
-    // something sensible.
-    const pathTypeName: AssetType = parts[1] === 'store'
-      ? (getAssetType(filename) as AssetType)
-      : ((parts[1] || 'other') as AssetType)
+    const fallbackType = getAssetType(filename) as AssetType
 
     const meta = readSidecar(fullPath) || createStub(fullPath)
-    const effectiveType: AssetType = meta.type ?? pathTypeName
+    const effectiveType: AssetType = meta.type ?? fallbackType
 
     const asset: IndexedAsset = {
       path: relativePath,
@@ -208,9 +164,6 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
     }
 
     index.set(relativePath, asset)
-    if (!filename.endsWith('.meta.json')) {
-      setFilename(filename, relativePath)
-    }
     return asset
   } catch (err) {
     log.warn('Failed to index asset', err, { path: relativePath })
@@ -222,10 +175,6 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
  * Remove an asset from the index.
  */
 export function removeAsset(relativePath: string): void {
-  const existing = index.get(relativePath)
-  if (existing && !existing.filename.endsWith('.meta.json')) {
-    unsetFilename(existing.filename, relativePath)
-  }
   index.delete(relativePath)
 }
 

@@ -2,10 +2,11 @@
  * Soft-delete (trash) management for assets.
  */
 import { existsSync, mkdirSync, renameSync, readdirSync, readFileSync, statSync, rmSync } from 'fs'
-import { join, dirname, basename } from 'path'
+import { join, basename } from 'path'
 import { createLogger } from '../../../src/core/logger'
 import { getSidecarPath, type SidecarMeta } from './sidecar'
 import { getAssetType, getMimeType } from './constants'
+import { pathForFilename } from './path-for-filename'
 
 const log = createLogger('assets:trash')
 
@@ -157,9 +158,10 @@ export function listTrash(assetsRoot: string): TrashedAsset[] {
 }
 
 /**
- * Restore a trashed asset back to its original location.
- * Infers the target directory from the sidecar's taskId + asset type.
- * Returns the restored relative path (e.g. assets/images/abc123/photo.png) or null on failure.
+ * Restore a trashed asset back to the store.
+ * Under filename-as-identity, the destination is a pure function of the
+ * original canonical filename (`assets/store/{YYYY-MM}/{filename}`).
+ * Returns the restored relative path or null on failure.
  */
 export function restoreAsset(trashFilename: string, assetsRoot: string): string | null {
   const trashDir = join(assetsRoot, '.trash')
@@ -176,20 +178,17 @@ export function restoreAsset(trashFilename: string, assetsRoot: string): string 
     return null
   }
 
-  // Determine restore target from sidecar metadata
-  const type = getAssetType(parsed.originalFilename)
-  let taskId = '_unlinked'
-
-  const sidecarTrashPath = join(trashDir, `${trashFilename}.meta.json`)
-  if (existsSync(sidecarTrashPath)) {
-    try {
-      const meta = JSON.parse(readFileSync(sidecarTrashPath, 'utf-8'))
-      if (meta.taskId) taskId = meta.taskId
-    } catch { /* use _unlinked */ }
+  const rel = pathForFilename(parsed.originalFilename)
+  if (!rel) {
+    log.warn('Non-canonical original filename — cannot restore', { trashFilename, originalFilename: parsed.originalFilename })
+    return null
   }
 
-  const targetDir = join(assetsRoot, type, taskId)
-  const targetPath = join(targetDir, parsed.originalFilename)
+  // rel is `assets/store/{YYYY-MM}/{filename}` — strip the leading
+  // `assets/` to get the path relative to assetsRoot.
+  const targetPath = join(assetsRoot, rel.replace(/^assets\//, ''))
+  const targetDir = join(targetPath, '..')
+  const sidecarTrashPath = join(trashDir, `${trashFilename}.meta.json`)
 
   try {
     if (!existsSync(targetDir)) {
@@ -203,10 +202,8 @@ export function restoreAsset(trashFilename: string, assetsRoot: string): string 
       renameSync(sidecarTrashPath, `${targetPath}.meta.json`)
     }
 
-    const contentDir = dirname(assetsRoot)
-    const restoredRelPath = `assets/${type}/${taskId}/${parsed.originalFilename}`
-    log.info('Asset restored from trash', { trashFilename, restoredPath: restoredRelPath })
-    return restoredRelPath
+    log.info('Asset restored from trash', { trashFilename, restoredPath: rel })
+    return rel
   } catch (err) {
     log.error('Failed to restore asset', err, { trashFilename })
     return null

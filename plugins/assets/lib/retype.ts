@@ -10,7 +10,7 @@ import { join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'
 import { readSidecar, writeSidecar, createStub } from './sidecar'
 import { upsertAsset } from './asset-index'
-import { resolveFilename } from './resolver'
+import { pathForFilename } from './path-for-filename'
 import { ASSET_TYPES, type AssetType } from './constants'
 import { createLogger } from '../../../src/core/logger'
 
@@ -40,9 +40,9 @@ export function retypeAsset(params: RetypeParams): RetypeResult {
     return { ok: false, filename, error: `Invalid type: ${newType}` }
   }
 
-  const rel = resolveFilename(filename)
+  const rel = pathForFilename(filename)
   if (!rel) {
-    return { ok: false, filename, error: 'Asset not found' }
+    return { ok: false, filename, error: 'Non-canonical filename' }
   }
 
   const fullPath = join(getContentDir(), rel)

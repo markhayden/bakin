@@ -34,17 +34,14 @@ vi.mock('../../../src/core/logger', () => ({
 
 import { saveAsset } from '@bakin/assets/lib/save-asset'
 import { isConventional, primaryStem } from '@bakin/assets/lib/filename-id'
-import { setFilename, clearResolver, resolveFilename } from '@bakin/assets/lib/resolver'
 
 describe('assets/save-asset', () => {
   beforeEach(() => {
     mkdirSync(testDir, { recursive: true })
-    clearResolver()
   })
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
-    clearResolver()
   })
 
   async function saveFixture(content = 'fake-data', origName = 'my-hero.png') {
@@ -83,10 +80,7 @@ describe('assets/save-asset', () => {
     expect(result.path).toMatch(/^assets\/store\/\d{4}-\d{2}\/\d{8}-hero-[0-9a-f]{8}\.png$/)
   })
 
-  it('regenerates suffix on resolver collision', async () => {
-    // Pre-populate resolver with a filename that would otherwise be generated.
-    // To deterministically force a collision, stub the id8 generator via
-    // two consecutive saves with the same slug and verify both filenames differ.
+  it('regenerates suffix so two same-slug saves get distinct filenames', async () => {
     const r1 = await saveFixture('first')
     const r2 = await saveFixture('second')
     expect(r1.filename).not.toBe(r2.filename)
@@ -154,12 +148,9 @@ describe('assets/save-asset', () => {
     expect(typeof meta.created).toBe('string')
   })
 
-  it('does not collide with a pre-existing conventional filename in resolver', async () => {
-    // Simulate: another asset is already using a specific conventional name.
-    // Because id8 is random and the resolver is consulted, saveAsset must
-    // not produce a colliding name.
-    // We can't deterministically force the same suffix, but we can verify
-    // that when saving N assets with the same slug, all filenames are unique.
+  it('produces unique filenames across many same-slug saves', async () => {
+    // Ten consecutive same-slug saves must all collide-check against disk
+    // and regenerate the id8 suffix whenever a file is already present.
     const filenames = new Set<string>()
     for (let i = 0; i < 10; i++) {
       const r = await saveFixture('data-' + i)
