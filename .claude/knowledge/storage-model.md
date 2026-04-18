@@ -25,13 +25,9 @@ Returns a `BakinPaths` object with absolute paths:
 | `messaging` | `messaging.json` | Messaging / content calendar events |
 | `audit` | `audit.jsonl` | Append-only audit trail |
 | `assets` | `assets/` | Asset root |
-| `assets.text` | `assets/text/` | Text content |
-| `assets.images` | `assets/images/` | Image files |
-| `assets.video` | `assets/video/` | Video files |
-| `assets.audio` | `assets/audio/` | Audio files |
-| `assets.plans` | `assets/plans/` | Plan documents |
-| `assets.data` | `assets/data/` | Data files |
-| `assets.other` | `assets/other/` | Uncategorized |
+| `assets.store` | `assets/store/` | Canonical asset store (flat, sharded by month) |
+| `assets.inbox` | `assets/inbox/` | Drop-zone for manually-placed files awaiting ingestion |
+| `assets.trash` | `assets/.trash/` | Soft-deleted assets with 7-day TTL |
 | `personas` | `team/personas/` | Agent persona files |
 | `team` | `team/` | Team directory |
 | `heartbeats` | `heartbeats/` | Agent heartbeat JSON files |
@@ -41,8 +37,8 @@ Returns a `BakinPaths` object with absolute paths:
 | `settings` | `settings.json` | Runtime settings |
 
 ### Initialization (`initBakinHome()`)
-Called by `bakin init` or first run. Creates full directory structure including:
-- All asset type directories with `_unlinked/` and `library/` subdirs
+Called by `bakin init` or first run. Creates the directory structure:
+- `assets/`, `assets/store/`, `assets/inbox/`, `assets/.trash/` (month shards under `store/` are created on-demand by `saveAsset`)
 - `heartbeats/`, `inbox/`, `plugins/`, `projects/`, `team/personas/`
 - `workflows/definitions/`, `workflows/skills/`, `workflows/instances/`
 - Seeds workflow skill files and definitions from plugin defaults
@@ -65,7 +61,7 @@ interface StorageAdapter {
 Provided to plugins via `PluginContext.storage`. Each plugin reads/writes to namespaced paths by convention (not enforced):
 - Tasks plugin: SQLite (`{OPENCLAW_HOME}/flows/registry.sqlite`, via `flow-store.ts`)
 - Projects plugin: `projects/*.md`
-- Assets plugin: `assets/{type}/{taskId}/`
+- Assets plugin: `assets/store/{YYYY-MM}/{filename}` — filename-as-identity; sharded by month, flat inside the shard. See `.claude/knowledge/assets-plugin.md` for the storage model.
 - Schedule plugin: `schedule/`
 - Memory plugin: `MEMORY-LOG.md`
 
@@ -98,11 +94,11 @@ Free-form markdown content...
 Parsed by `plugins/projects/lib/parser.ts`. Checklist items can link to tasks via `[[task:id]]`.
 
 ### Sidecar metadata pattern
-Content files have optional `.meta.json` sidecars:
+Content files have optional `.meta.json` sidecars colocated alongside the file:
 ```
-assets/text/task-abc123/
-  spec.md              ← content
-  spec.meta.json       ← metadata sidecar
+assets/store/2026-03/
+  20260328-spec-a1b2c3d4.md              ← content
+  20260328-spec-a1b2c3d4.md.meta.json    ← metadata sidecar
 ```
 
 Sidecar contains:
@@ -116,6 +112,8 @@ Sidecar contains:
   "title": "Spring Salad Recipe"
 }
 ```
+
+For assets, `type` and `taskId` live in the sidecar, not in the path. Retype and relink are metadata-only — the file never moves. See `.claude/knowledge/assets-plugin.md`.
 
 ### Heartbeat files (`heartbeats/{agentId}.json`)
 ```json
