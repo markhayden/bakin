@@ -18,6 +18,8 @@ import type { MemoryRow, MemoryTier } from './types'
 import { parseAuditLine } from './tier-parsers/audit-parser'
 import { parseDurableFile, rowId as durableRowId } from './tier-parsers/durable-parser'
 import { parseDailyNote, rowId as dailyNoteRowId } from './tier-parsers/daily-note-parser'
+import { parseSession, rowId as sessionRowId } from './tier-parsers/session-parser'
+import { parseTurnLine } from './tier-parsers/turn-parser'
 import {
   CANONICAL_DURABLE_FILES,
   dailyNotePath,
@@ -26,12 +28,23 @@ import {
   durableFilePath,
   listAgentIds,
   listDailyNotes,
+  listSessionJsonlFiles,
   matchDailyNotePath,
   matchDurablePath,
+  matchSessionJsonlPath,
+  matchSessionStorePath,
   readDailyNote,
   readDurableFile,
+  readSessionStore,
+  sessionJsonlStat,
+  sessionStorePath,
 } from './openclaw-adapter'
+import { gatewayCall } from './openclaw-gateway'
 import { getOffset, setOffset } from './offsets'
+
+const DEFAULT_SKIP_SESSION_BYTES = 10 * 1024 * 1024
+const HEAD_CHUNK_BYTES = 4 * 1024 * 1024
+const HEAD_CHUNK_MAX_ROWS = 2000
 
 const log = createLogger('memory:indexer')
 
@@ -67,7 +80,15 @@ export class MemoryIndexer {
       await this.indexDailyNoteTier()
       return
     }
-    // C6+ tiers land in subsequent commits.
+    if (tier === 'session') {
+      await this.indexSessionTier()
+      return
+    }
+    if (tier === 'turn') {
+      await this.indexTurnTier()
+      return
+    }
+    // C7+ tiers land in subsequent commits.
   }
 
   async handleWatcherEvent(path: string, kind: 'add' | 'change' | 'unlink'): Promise<void> {
@@ -100,7 +121,26 @@ export class MemoryIndexer {
       }
       return
     }
-    // Other tiers add routing here in C6+.
+
+    const sessionStore = matchSessionStorePath(path)
+    if (sessionStore) {
+      if (kind !== 'unlink') await this.indexSessionsForAgent(sessionStore.agent)
+      return
+    }
+
+    const sessionJsonl = matchSessionJsonlPath(path)
+    if (sessionJsonl) {
+      if (sessionJsonl.isReset) return
+      if (kind === 'unlink') {
+        setOffset(path, 0)
+        return
+      }
+      const stat = sessionJsonlStat(path)
+      if (!stat) return
+      await this.indexSessionJsonl(sessionJsonl.agent, sessionJsonl.sessionId, path, stat.size)
+      return
+    }
+    // Other tiers add routing here in C7+.
   }
 
   // ─── Audit tier (C3) ──────────────────────────────────────────────────────
@@ -229,6 +269,178 @@ export class MemoryIndexer {
 
   private async removeDailyNote(agent: string, filename: string): Promise<void> {
     await this.ctx.search.remove(dailyNoteRowId(agent, filename))
+  }
+
+  // ─── Session tier (C6) ────────────────────────────────────────────────────
+
+  private readonly lastSessionKeys = new Map<string, Set<string>>()
+
+  private async indexSessionTier(): Promise<void> {
+    for (const agent of listAgentIds()) {
+      await this.indexSessionsForAgent(agent)
+    }
+  }
+
+  private async indexSessionsForAgent(agent: string): Promise<void> {
+    const raw = await this.loadSessionMap(agent)
+    if (raw === null) return
+
+    const cutoff = this.backfillCutoffMs()
+    const srcPath = sessionStorePath(agent)
+    const seen = new Set<string>()
+
+    for (const [key, value] of Object.entries(raw)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+      const s = value as Record<string, unknown>
+      const updatedAt = typeof s.updatedAt === 'number' ? s.updatedAt : null
+      if (cutoff !== null && updatedAt !== null && updatedAt < cutoff) continue
+      const row = parseSession(agent, key, value, srcPath)
+      if (row) {
+        await this.writeRow(row)
+        seen.add(key)
+      }
+    }
+
+    const prev = this.lastSessionKeys.get(agent) ?? new Set<string>()
+    for (const prevKey of prev) {
+      if (!seen.has(prevKey)) {
+        await this.ctx.search.remove(sessionRowId(agent, prevKey))
+      }
+    }
+    this.lastSessionKeys.set(agent, seen)
+  }
+
+  private async loadSessionMap(agent: string): Promise<Record<string, unknown> | null> {
+    try {
+      const resp = await gatewayCall<unknown>('sessions.list', { agentId: agent })
+      const map = this.extractSessionMap(resp)
+      if (map) return map
+    } catch (err) {
+      log.debug('session gateway failed, falling back to FS', {
+        agent,
+        err: err instanceof Error ? err.message : String(err),
+      })
+    }
+    const fs = readSessionStore(agent)
+    if (!fs || typeof fs !== 'object' || Array.isArray(fs)) return null
+    return fs as Record<string, unknown>
+  }
+
+  private extractSessionMap(resp: unknown): Record<string, unknown> | null {
+    if (!resp || typeof resp !== 'object' || Array.isArray(resp)) return null
+    const r = resp as Record<string, unknown>
+    const nested = r.sessions
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      return nested as Record<string, unknown>
+    }
+    return r
+  }
+
+  private backfillCutoffMs(): number | null {
+    const days = this.opts.backfillDays
+    if (typeof days !== 'number' || days <= 0) return null
+    return Date.now() - days * 86_400_000
+  }
+
+  // ─── Turn tier (C6) ───────────────────────────────────────────────────────
+
+  private async indexTurnTier(): Promise<void> {
+    for (const agent of listAgentIds()) {
+      for (const file of listSessionJsonlFiles(agent)) {
+        if (file.isReset) continue
+        await this.indexSessionJsonl(agent, file.sessionId, file.path, file.size)
+      }
+    }
+  }
+
+  private async indexSessionJsonl(
+    agent: string,
+    sessionId: string,
+    path: string,
+    reportedSize: number,
+  ): Promise<void> {
+    if (!existsSync(path)) return
+    const sessionKey = `agent:${agent}:${sessionId}`
+    const threshold = this.opts.skipSessionOverBytes ?? DEFAULT_SKIP_SESSION_BYTES
+    if (reportedSize > threshold) {
+      await this.indexSessionJsonlHead(agent, sessionId, sessionKey, path)
+      return
+    }
+    await this.indexSessionJsonlIncremental(agent, sessionId, sessionKey, path)
+  }
+
+  private async indexSessionJsonlHead(
+    agent: string,
+    sessionId: string,
+    sessionKey: string,
+    path: string,
+  ): Promise<void> {
+    const realSize = statSync(path).size
+    const readBytes = Math.min(realSize, HEAD_CHUNK_BYTES)
+    const buf = Buffer.alloc(readBytes)
+    const fd = openSync(path, 'r')
+    try {
+      readSync(fd, buf, 0, readBytes, 0)
+    } finally {
+      closeSync(fd)
+    }
+    const text = buf.toString('utf-8')
+    const rawLines = text.split('\n')
+    if (!text.endsWith('\n')) rawLines.pop()
+
+    let lineStart = 0
+    let indexed = 0
+    for (const line of rawLines) {
+      if (indexed >= HEAD_CHUNK_MAX_ROWS) break
+      const row = parseTurnLine(agent, sessionId, sessionKey, line, lineStart)
+      if (row) {
+        await this.writeRow(row)
+        indexed += 1
+      }
+      lineStart += Buffer.byteLength(line, 'utf-8') + 1
+    }
+    log.info('session jsonl oversize — indexed head-only', { agent, sessionId, indexed })
+  }
+
+  private async indexSessionJsonlIncremental(
+    agent: string,
+    sessionId: string,
+    sessionKey: string,
+    path: string,
+  ): Promise<void> {
+    const stats = statSync(path)
+    let offset = getOffset(path)
+    if (stats.size < offset) {
+      log.info('session jsonl shrank — restarting from offset 0', {
+        path,
+        previous: offset,
+        current: stats.size,
+      })
+      offset = 0
+    }
+    if (stats.size === offset) return
+
+    const bytesToRead = stats.size - offset
+    const buf = Buffer.alloc(bytesToRead)
+    const fd = openSync(path, 'r')
+    try {
+      readSync(fd, buf, 0, bytesToRead, offset)
+    } finally {
+      closeSync(fd)
+    }
+    const text = buf.toString('utf-8')
+    const rawLines = text.split('\n')
+    const trailingIncomplete = text.endsWith('\n') ? '' : (rawLines.pop() ?? '')
+
+    let lineStart = offset
+    for (const line of rawLines) {
+      const row = parseTurnLine(agent, sessionId, sessionKey, line, lineStart)
+      if (row) await this.writeRow(row)
+      lineStart += Buffer.byteLength(line, 'utf-8') + 1
+    }
+
+    const newOffset = stats.size - Buffer.byteLength(trailingIncomplete, 'utf-8')
+    setOffset(path, newOffset)
   }
 
   // ─── Shared write ─────────────────────────────────────────────────────────

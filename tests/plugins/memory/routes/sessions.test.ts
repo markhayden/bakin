@@ -1,0 +1,308 @@
+/**
+ * Tests for plugins/memory/lib/routes/sessions.ts — session + turn tier HTTP surface.
+ *
+ * Four routes:
+ *   GET /sessions                              — list sessions for an agent
+ *   GET /sessions/:agent/:sessionKey           — one session detail
+ *   GET /sessions/:agent/:sessionKey/turns     — turns indexed for that session
+ *   GET /turns                                 — turns by (agent, sessionId)
+ *
+ * Data flow mirrors the indexer:
+ *   - Session list/detail: gatewayCall('sessions.list') first, FS fallback
+ *   - Turn list: ctx.search.query against the indexed `bakin_memory` table
+ *
+ * Both openclaw-adapter and openclaw-gateway are mocked so these tests never
+ * touch ~/.openclaw/ or open a real WebSocket.
+ */
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { mkdirSync, rmSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+const testDir = join(tmpdir(), `bakin-test-memory-sessions-route-${Date.now()}`)
+
+vi.mock('../../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir }),
+}))
+vi.mock('../../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir }),
+}))
+vi.mock('../../../../src/core/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+}))
+vi.mock('../../../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, '.openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
+}))
+
+const {
+  mockReadSessionStore,
+  mockGatewayCall,
+} = vi.hoisted(() => ({
+  mockReadSessionStore: vi.fn<(agent: string) => unknown>(),
+  mockGatewayCall: vi.fn<(method: string, params: unknown) => Promise<unknown>>(),
+}))
+
+vi.mock('../../../../plugins/memory/lib/openclaw-adapter', () => ({
+  readSessionStore: mockReadSessionStore,
+  sessionStorePath: (agent: string) => `/fake/${agent}/sessions.json`,
+}))
+
+vi.mock('../../../../plugins/memory/lib/openclaw-gateway', () => ({
+  gatewayCall: mockGatewayCall,
+}))
+
+import {
+  sessionsListRoute,
+  sessionDetailRoute,
+  sessionTurnsRoute,
+  turnsListRoute,
+} from '../../../../plugins/memory/lib/routes/sessions'
+import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+
+interface CtxHarness {
+  ctx: PluginContext
+  queryCalls: Array<Parameters<PluginContext['search']['query']>[0]>
+  queryImpl: (result: SearchResponse) => void
+}
+
+function makeCtx(): CtxHarness {
+  const queryCalls: CtxHarness['queryCalls'] = []
+  let queryResponse: SearchResponse = {
+    results: [],
+    meta: { query: '', total: 0, took_ms: 0, source: 'fallback' },
+  }
+  const ctx = {
+    pluginId: 'memory',
+    storage: {} as PluginContext['storage'],
+    events: {} as PluginContext['events'],
+    registerNav: vi.fn(),
+    registerRoute: vi.fn(),
+    registerSlot: vi.fn(),
+    registerExecTool: vi.fn(),
+    registerSkill: vi.fn(),
+    watchFiles: vi.fn(),
+    getSettings: (() => ({})) as PluginContext['getSettings'],
+    updateSettings: vi.fn(),
+    activity: { log: vi.fn(), audit: vi.fn() },
+    search: {
+      registerContentType: vi.fn(),
+      registerFileBackedContentType: vi.fn(),
+      index: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+      transform: vi.fn(async () => {}),
+      query: vi.fn(async (p) => {
+        queryCalls.push(p)
+        return queryResponse
+      }),
+    },
+    hooks: {
+      register: vi.fn(() => () => {}),
+      has: vi.fn(() => false),
+      invoke: vi.fn(async () => undefined),
+    },
+  } as unknown as PluginContext
+  return {
+    ctx,
+    queryCalls,
+    queryImpl: (r) => { queryResponse = r },
+  }
+}
+
+function req(path: string, params: Record<string, string>): Request {
+  const url = new URL(`http://localhost${path}`)
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
+  return new Request(url, { method: 'GET' })
+}
+
+function session(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    sessionId: 'sid-1',
+    updatedAt: Date.now(),
+    inputTokens: 10,
+    outputTokens: 5,
+    totalTokens: 15,
+    model: 'claude-opus-4-7',
+    modelProvider: 'anthropic',
+    ...overrides,
+  }
+}
+
+beforeEach(() => {
+  rmSync(testDir, { recursive: true, force: true })
+  mkdirSync(testDir, { recursive: true })
+  mockReadSessionStore.mockReset()
+  mockGatewayCall.mockReset()
+})
+
+afterAll(() => {
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+// ─── sessionsListRoute ────────────────────────────────────────────────────
+
+describe('sessionsListRoute — shape', () => {
+  it('is a GET /sessions route', () => {
+    expect(sessionsListRoute.method).toBe('GET')
+    expect(sessionsListRoute.path).toBe('/sessions')
+  })
+})
+
+describe('sessionsListRoute — handler', () => {
+  it('returns 400 when agent is missing', async () => {
+    const { ctx } = makeCtx()
+    const res = await sessionsListRoute.handler(req('/sessions', {}), ctx)
+    expect(res.status).toBe(400)
+  })
+
+  it('lists sessions from the gateway sorted by updatedAt desc', async () => {
+    mockGatewayCall.mockResolvedValue({
+      sessions: {
+        'agent:basil:main': session({ updatedAt: 1000 }),
+        'agent:basil:openai:xyz': session({ updatedAt: 2000 }),
+      },
+    })
+    const { ctx } = makeCtx()
+    const res = await sessionsListRoute.handler(req('/sessions', { agent: 'basil' }), ctx)
+    const body = await res.json() as { sessions: Array<Record<string, unknown>> }
+    expect(res.status).toBe(200)
+    expect(body.sessions.map((s) => s.sessionKey)).toEqual([
+      'agent:basil:openai:xyz',
+      'agent:basil:main',
+    ])
+    expect(body.sessions[0].kind).toBe('openai')
+    expect(body.sessions[1].kind).toBe('main')
+  })
+
+  it('falls back to FS when gateway rejects', async () => {
+    mockGatewayCall.mockRejectedValue(new Error('down'))
+    mockReadSessionStore.mockReturnValue({ 'agent:basil:main': session() })
+    const { ctx } = makeCtx()
+    const res = await sessionsListRoute.handler(req('/sessions', { agent: 'basil' }), ctx)
+    const body = await res.json() as { sessions: unknown[] }
+    expect(body.sessions).toHaveLength(1)
+  })
+
+  it('filters by kind query param', async () => {
+    mockGatewayCall.mockResolvedValue({
+      'agent:basil:main': session({ sessionId: 'a' }),
+      'agent:basil:openai:xyz': session({ sessionId: 'b' }),
+      'agent:basil:discord:42': session({ sessionId: 'c' }),
+    })
+    const { ctx } = makeCtx()
+    const res = await sessionsListRoute.handler(
+      req('/sessions', { agent: 'basil', kind: 'openai' }),
+      ctx,
+    )
+    const body = await res.json() as { sessions: Array<Record<string, unknown>> }
+    expect(body.sessions).toHaveLength(1)
+    expect(body.sessions[0].sessionKey).toBe('agent:basil:openai:xyz')
+  })
+
+  it('returns empty when neither gateway nor FS has data', async () => {
+    mockGatewayCall.mockRejectedValue(new Error('down'))
+    mockReadSessionStore.mockReturnValue(null)
+    const { ctx } = makeCtx()
+    const res = await sessionsListRoute.handler(req('/sessions', { agent: 'orphan' }), ctx)
+    const body = await res.json() as { sessions: unknown[] }
+    expect(body.sessions).toEqual([])
+  })
+})
+
+// ─── sessionDetailRoute ────────────────────────────────────────────────────
+
+describe('sessionDetailRoute — handler', () => {
+  it('is a GET /sessions/:agent/:sessionKey route', () => {
+    expect(sessionDetailRoute.path).toBe('/sessions/:agent/:sessionKey')
+  })
+
+  it('returns 400 when either param missing', async () => {
+    const { ctx } = makeCtx()
+    const res = await sessionDetailRoute.handler(req('/sessions/basil', { agent: 'basil' }), ctx)
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 404 for unknown session key', async () => {
+    mockGatewayCall.mockResolvedValue({ 'agent:basil:main': session() })
+    const { ctx } = makeCtx()
+    const res = await sessionDetailRoute.handler(
+      req('/sessions/basil/missing', { agent: 'basil', sessionKey: 'agent:basil:missing' }),
+      ctx,
+    )
+    expect(res.status).toBe(404)
+  })
+
+  it('returns the session with kind extracted', async () => {
+    mockGatewayCall.mockResolvedValue({ 'agent:basil:main': session({ sessionId: 'x' }) })
+    const { ctx } = makeCtx()
+    const res = await sessionDetailRoute.handler(
+      req('/sessions/basil/main', { agent: 'basil', sessionKey: 'agent:basil:main' }),
+      ctx,
+    )
+    const body = await res.json() as Record<string, unknown>
+    expect(res.status).toBe(200)
+    expect(body.kind).toBe('main')
+    expect(body.sessionId).toBe('x')
+  })
+})
+
+// ─── sessionTurnsRoute + turnsListRoute ────────────────────────────────────
+
+describe('sessionTurnsRoute — handler', () => {
+  it('queries Antfly with tier=turn filter scoped by sessionKey', async () => {
+    const h = makeCtx()
+    h.queryImpl({
+      results: [{ id: 'turn:abc', table: 'bakin_memory', score: 0.5, fields: { title: 'hi' } }],
+      meta: { query: 'agent:basil:main', total: 1, took_ms: 1, source: 'antfly' },
+    })
+    const res = await sessionTurnsRoute.handler(
+      req('/sessions/basil/main/turns', {
+        agent: 'basil',
+        sessionKey: 'agent:basil:main',
+        limit: '50',
+      }),
+      h.ctx,
+    )
+    const body = await res.json() as { turns: Array<Record<string, unknown>>; total: number }
+    expect(res.status).toBe(200)
+    expect(body.total).toBe(1)
+    expect(body.turns).toHaveLength(1)
+    expect(h.queryCalls[0].filters).toEqual({ tier: 'turn', agent: 'basil' })
+    expect(h.queryCalls[0].q).toBe('agent:basil:main')
+    expect(h.queryCalls[0].limit).toBe(50)
+  })
+
+  it('honors eventType filter and clamps excessive limits', async () => {
+    const h = makeCtx()
+    await sessionTurnsRoute.handler(
+      req('/sessions/basil/main/turns', {
+        agent: 'basil',
+        sessionKey: 'agent:basil:main',
+        eventType: 'tool_call',
+        limit: '99999',
+      }),
+      h.ctx,
+    )
+    expect(h.queryCalls[0].filters?.eventType).toBe('tool_call')
+    expect(h.queryCalls[0].limit).toBe(100) // clamps to default when out-of-range
+  })
+})
+
+describe('turnsListRoute — handler', () => {
+  it('queries by (agent, sessionId) — note sessionId not key', async () => {
+    const h = makeCtx()
+    await turnsListRoute.handler(
+      req('/turns', { agent: 'basil', sessionId: 'sess-a' }),
+      h.ctx,
+    )
+    expect(h.queryCalls[0].filters).toEqual({ tier: 'turn', agent: 'basil' })
+  })
+
+  it('returns 400 when agent or sessionId missing', async () => {
+    const { ctx } = makeCtx()
+    const res = await turnsListRoute.handler(req('/turns', { agent: 'basil' }), ctx)
+    expect(res.status).toBe(400)
+  })
+})
