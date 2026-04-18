@@ -1,7 +1,5 @@
-'use client'
-
-import { MemoryTabs } from '@bakin/memory/components/memory-tabs'
+import { MemoryShell } from '@bakin/memory/components/memory-shell'
 
 export default function MemoryPage() {
-  return <div className="p-6 flex flex-col flex-1"><MemoryTabs /></div>
+  return <MemoryShell />
 }

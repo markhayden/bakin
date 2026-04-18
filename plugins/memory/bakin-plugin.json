@@ -1,9 +1,9 @@
 {
   "id": "memory",
   "name": "Memory",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "bakin": ">=1.0.0",
-  "description": "Agent workspace viewer, audit log browser, and gateway log parser",
+  "description": "Observability dashboard over every OpenClaw memory tier plus Bakin's audit log",
   "entry": {
     "server": "index.ts"
   },
@@ -11,5 +11,5 @@
   "secrets": [],
   "tests": "tests/",
   "dependencies": [],
-  "permissions": ["storage.read", "events.emit"]
+  "permissions": ["storage.read", "events.emit", "openclaw.read"]
 }

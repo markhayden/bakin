@@ -1,18 +1,13 @@
-export interface AuditEntry {
-  ts: string
-  event: string
-  agent: string
-  data: Record<string, unknown>
-}
-
-export interface GatewayLogEntry {
-  timestamp: string
-  level: string
-  message: string
-  raw: string
-}
-
-export interface AgentWorkspace {
-  files: Record<string, string>
-  memoryFiles: Record<string, string>
-}
+export type {
+  MemoryTier,
+  MemoryRow,
+  SourceRef,
+  SessionMeta,
+  TurnMeta,
+  CheckpointMeta,
+  DailyNoteMeta,
+  DreamMeta,
+  DurableMeta,
+  AuditMeta,
+} from './lib/types'
+export { MEMORY_TIERS } from './lib/types'
