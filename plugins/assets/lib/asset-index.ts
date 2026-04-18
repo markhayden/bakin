@@ -10,6 +10,7 @@ import { readSidecar, createStub, type SidecarMeta } from './sidecar'
 import { getAssetType, getMimeType, ASSET_TYPES, SPECIAL_DIRS } from './constants'
 import type { AssetType } from './constants'
 import { setFilename, unsetFilename, clearResolver } from './resolver'
+import { yearMonthFromFilename } from './path-for-filename'
 
 const log = createLogger('assets:index')
 
@@ -67,6 +68,60 @@ function getAssetsRoot(): string {
 }
 
 /**
+ * Yield every asset file under `assets/`, walking both the new
+ * `store/{YYYY-MM}/` layout and the legacy `{type}/{taskId}/` layout.
+ *
+ * The legacy branch is exercised during the migration window and by
+ * tests that seed fixtures in the old shape. Post-migration (C6/C7) it
+ * becomes a no-op and is dropped in C8.
+ */
+function* walkAssetFiles(assetsRoot: string): Generator<{ relPath: string; fallbackType: AssetType }> {
+  // New layout: assets/store/{YYYY-MM}/{file}
+  const storeRoot = join(assetsRoot, 'store')
+  if (existsSync(storeRoot)) {
+    let months: string[]
+    try {
+      months = readdirSync(storeRoot).filter(d => {
+        if (d.startsWith('.')) return false
+        try { return statSync(join(storeRoot, d)).isDirectory() } catch { return false }
+      })
+    } catch { months = [] }
+
+    for (const month of months) {
+      const monthDir = join(storeRoot, month)
+      let files: string[]
+      try { files = readdirSync(monthDir).filter(isAssetFile) } catch { continue }
+      for (const file of files) {
+        // Type isn't encoded in the path — fall back to extension-derived type
+        // for callers that need a default before the sidecar loads.
+        yield { relPath: `assets/store/${month}/${file}`, fallbackType: getAssetType(file) as AssetType }
+      }
+    }
+  }
+
+  // Legacy layout: assets/{type}/{taskId}/{file}
+  for (const typeName of ASSET_TYPES) {
+    const typeDir = join(assetsRoot, typeName)
+    if (!existsSync(typeDir)) continue
+    let subdirs: string[]
+    try {
+      subdirs = readdirSync(typeDir).filter(d => {
+        if (d.startsWith('.')) return false
+        try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
+      })
+    } catch { continue }
+    for (const subdir of subdirs) {
+      const dirPath = join(typeDir, subdir)
+      let files: string[]
+      try { files = readdirSync(dirPath).filter(isAssetFile) } catch { continue }
+      for (const file of files) {
+        yield { relPath: `assets/${typeName}/${subdir}/${file}`, fallbackType: typeName as AssetType }
+      }
+    }
+  }
+}
+
+/**
  * Scan the assets directory and build the full index.
  */
 export function buildIndex(): void {
@@ -80,46 +135,30 @@ export function buildIndex(): void {
   }
 
   let count = 0
-  for (const typeName of ASSET_TYPES) {
-    const typeDir = join(assetsRoot, typeName)
-    if (!existsSync(typeDir)) continue
+  for (const { relPath, fallbackType } of walkAssetFiles(assetsRoot)) {
+    const fullPath = join(assetsRoot, relPath.replace(/^assets\//, ''))
+    try {
+      const stat = statSync(fullPath)
+      if (!stat.isFile()) continue
 
-    const subdirs = readdirSync(typeDir).filter(d => {
-      if (d.startsWith('.')) return false
-      try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
-    })
+      const meta = readSidecar(fullPath) || createStub(fullPath)
+      const effectiveType: AssetType = meta.type ?? fallbackType
+      const filename = relPath.split('/').pop() || ''
 
-    for (const subdir of subdirs) {
-      const dirPath = join(typeDir, subdir)
-      try {
-        const files = readdirSync(dirPath).filter(isAssetFile)
-        for (const file of files) {
-          const fullPath = join(dirPath, file)
-          try {
-            const stat = statSync(fullPath)
-            if (!stat.isFile()) continue
-
-            const relPath = `assets/${typeName}/${subdir}/${file}`
-            const meta = readSidecar(fullPath) || createStub(fullPath)
-            const effectiveType: AssetType = meta.type ?? (typeName as AssetType)
-
-            index.set(relPath, {
-              path: relPath,
-              filename: file,
-              type: effectiveType,
-              mimeType: getMimeType(file),
-              size: stat.size,
-              mtimeMs: stat.mtimeMs,
-              metadata: meta,
-            })
-            if (!file.endsWith('.meta.json')) {
-              setFilename(file, relPath)
-            }
-            count++
-          } catch { /* skip unreadable files */ }
-        }
-      } catch { /* skip unreadable dirs */ }
-    }
+      index.set(relPath, {
+        path: relPath,
+        filename,
+        type: effectiveType,
+        mimeType: getMimeType(filename),
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        metadata: meta,
+      })
+      if (!filename.endsWith('.meta.json')) {
+        setFilename(filename, relPath)
+      }
+      count++
+    } catch { /* skip unreadable files */ }
   }
 
   log.info('Asset index built', { count })
@@ -147,7 +186,13 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
 
     const filename = relativePath.split('/').pop() || ''
     const parts = relativePath.split('/')
-    const pathTypeName = (parts[1] || 'other') as AssetType
+    // Legacy layout encodes the type in parts[1]; the store/ layout uses
+    // literal "store" and carries the type in the sidecar instead. Fall back
+    // to an extension-derived type so records without a sidecar still get
+    // something sensible.
+    const pathTypeName: AssetType = parts[1] === 'store'
+      ? (getAssetType(filename) as AssetType)
+      : ((parts[1] || 'other') as AssetType)
 
     const meta = readSidecar(fullPath) || createStub(fullPath)
     const effectiveType: AssetType = meta.type ?? pathTypeName
