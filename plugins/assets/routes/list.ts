@@ -9,6 +9,7 @@
  * their primary asset instead of appearing as separate entries.
  */
 import { buildIndex, listAssets, listGroupedAssets, getAsset } from '../lib/asset-index'
+import { resolveFilename } from '../lib/resolver'
 
 export async function handleList(req: Request): Promise<Response> {
   const url = new URL(req.url, 'http://localhost')
@@ -18,11 +19,17 @@ export async function handleList(req: Request): Promise<Response> {
   const tag = url.searchParams.get('tag') || undefined
   const includeChildren = url.searchParams.get('includeChildren') === 'true'
   const grouped = url.searchParams.get('grouped') !== 'false'
-  const path = url.searchParams.get('path') || undefined
+  const pathParam = url.searchParams.get('path') || undefined
+  const filename = url.searchParams.get('filename') || undefined
 
   buildIndex()
 
-  // Single-asset lookup by path
+  // Single-asset lookup by filename (preferred — stable under retype/relink)
+  // or by path (legacy view). Filename takes precedence.
+  const path = filename
+    ? resolveFilename(filename) ?? undefined
+    : pathParam
+
   if (path) {
     const asset = getAsset(path)
     if (!asset) return Response.json({ assets: [], count: 0, total: 0 })

@@ -3,11 +3,12 @@ name: Generate Image
 output_schema:
   type: object
   required:
-    - image_path
+    - image_filename
     - alt_text
   properties:
-    image_path:
+    image_filename:
       type: string
+      description: "Globally-unique asset filename (e.g., 20260401-hero-a1b2c3d4.png). Stable identity across retype/relink — do NOT emit a directory path."
     alt_text:
       type: string
     prompt_used:
@@ -21,7 +22,7 @@ Generate a hero image for the content post based on the copy brief.
 1. Read the caption and body from the previous step's output
 2. Create an image prompt that captures the essence of the post
 3. Generate the image using available tools
-4. Save to the assets directory
+4. Save to the assets directory — the save tool returns the `filename` field; emit that (not the full path)
 5. Write descriptive alt text for accessibility
 
 ## Size & Format Defaults

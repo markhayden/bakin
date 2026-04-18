@@ -165,20 +165,29 @@ function CodeRenderer({ fileUrl }: { fileUrl: string }) {
  * Standalone modal that fetches asset metadata by path and renders AssetDetail.
  * Usable from any context (e.g. task drawer) without needing the full assets page.
  */
-export function AssetDetailModal({ assetPath, onClose }: { assetPath: string; onClose: () => void }) {
+export function AssetDetailModal({ assetPath, filename, onClose }: { assetPath?: string; filename?: string; onClose: () => void }) {
   const [asset, setAsset] = useState<AssetMeta | null>(null)
 
   useEffect(() => {
-    if (!assetPath) { setAsset(null); return }
-    fetch(`/api/plugins/assets/?path=${encodeURIComponent(assetPath)}`)
+    const query = filename
+      ? `filename=${encodeURIComponent(filename)}`
+      : assetPath
+        ? `path=${encodeURIComponent(assetPath)}`
+        : null
+    if (!query) { setAsset(null); return }
+    fetch(`/api/plugins/assets/?${query}`)
       .then(r => r.ok ? r.json() : { assets: [] })
       .then(d => setAsset(d.assets?.[0] ?? null))
       .catch(() => setAsset(null))
-  }, [assetPath])
+  }, [assetPath, filename])
 
   const handlePathChange = async (newPath: string) => {
     try {
-      const res = await fetch(`/api/plugins/assets/?path=${encodeURIComponent(newPath)}`)
+      // After retype, the filename is stable — prefer it if we have one.
+      const query = filename
+        ? `filename=${encodeURIComponent(filename)}`
+        : `path=${encodeURIComponent(newPath)}`
+      const res = await fetch(`/api/plugins/assets/?${query}`)
       const data = res.ok ? await res.json() : { assets: [] }
       if (data.assets?.[0]) setAsset(data.assets[0])
     } catch (err) { console.error('Failed to fetch retyped asset', err) }

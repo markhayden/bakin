@@ -290,45 +290,45 @@ export async function linkChecklistItem(projectId: string, taskItemId: string, b
 // Asset operations
 // ---------------------------------------------------------------------------
 
-export async function attachAsset(projectId: string, assetPath: string, label?: string): Promise<void> {
+export async function attachAsset(projectId: string, filename: string, label?: string): Promise<void> {
   return withProjectLock(() => {
     const project = readProject(projectId)
     if (!project) throw new Error(`Project not found: ${projectId}`)
 
     // Prevent duplicates
-    if (project.assets.some(a => a.path === assetPath)) return
+    if (project.assets.some(a => a.filename === filename)) return
 
-    project.assets.push({ path: assetPath, label })
+    project.assets.push({ filename, label })
     project.updated = new Date().toISOString()
     writeProject(project)
 
-    broadcast({ type: 'project.asset_changed', projectId, action: 'attach', assetPath })
+    broadcast({ type: 'project.asset_changed', projectId, action: 'attach', filename })
   })
 }
 
-export async function detachAsset(projectId: string, assetPath: string): Promise<void> {
+export async function detachAsset(projectId: string, filename: string): Promise<void> {
   return withProjectLock(() => {
     const project = readProject(projectId)
     if (!project) throw new Error(`Project not found: ${projectId}`)
 
-    const idx = project.assets.findIndex(a => a.path === assetPath)
+    const idx = project.assets.findIndex(a => a.filename === filename)
     if (idx === -1) return
 
     project.assets.splice(idx, 1)
     project.updated = new Date().toISOString()
     writeProject(project)
 
-    broadcast({ type: 'project.asset_changed', projectId, action: 'detach', assetPath })
+    broadcast({ type: 'project.asset_changed', projectId, action: 'detach', filename })
   })
 }
 
-export async function updateAssetLabel(projectId: string, assetPath: string, label: string): Promise<void> {
+export async function updateAssetLabel(projectId: string, filename: string, label: string): Promise<void> {
   return withProjectLock(() => {
     const project = readProject(projectId)
     if (!project) throw new Error(`Project not found: ${projectId}`)
 
-    const asset = project.assets.find(a => a.path === assetPath)
-    if (!asset) throw new Error(`Asset not attached: ${assetPath}`)
+    const asset = project.assets.find(a => a.filename === filename)
+    if (!asset) throw new Error(`Asset not attached: ${filename}`)
 
     asset.label = label || undefined
     project.updated = new Date().toISOString()
@@ -415,9 +415,8 @@ export async function autoUnlinkTask(boardTaskId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export interface ResolvedAsset {
-  path: string
-  label?: string
   filename: string
+  label?: string
   type: string
   description?: string
   tags?: string[]
@@ -442,17 +441,21 @@ export function resolveLinkedTaskStatuses(project: Project): Project & { resolve
     if (!found) resolved[item.taskId] = null
   }
 
-  // Resolve asset summaries (lightweight — no full content)
+  // Resolve asset summaries (lightweight — no full content).
+  // Stored: just the filename. At render time: resolve filename → current
+  // relative path via the assets plugin's filename resolver, then read the
+  // indexed metadata.
   let resolvedAssets: ResolvedAsset[] = []
   try {
     const { getAsset } = require('../../assets/lib/asset-index')
+    const { resolveFilename } = require('../../assets/lib/resolver')
     resolvedAssets = project.assets.map(a => {
-      const indexed = getAsset(a.path)
-      if (!indexed) return { path: a.path, label: a.label, filename: a.path.split('/').pop() || a.path, type: 'unknown', missing: true }
+      const resolvedPath = resolveFilename(a.filename)
+      const indexed = resolvedPath ? getAsset(resolvedPath) : null
+      if (!indexed) return { filename: a.filename, label: a.label, type: 'unknown', missing: true }
       return {
-        path: a.path,
+        filename: a.filename,
         label: a.label,
-        filename: indexed.filename,
         type: indexed.type,
         description: indexed.metadata?.description,
         tags: indexed.metadata?.tags,
@@ -461,9 +464,8 @@ export function resolveLinkedTaskStatuses(project: Project): Project & { resolve
   } catch {
     // Assets plugin may not be loaded
     resolvedAssets = project.assets.map(a => ({
-      path: a.path,
+      filename: a.filename,
       label: a.label,
-      filename: a.path.split('/').pop() || a.path,
       type: 'unknown',
     }))
   }

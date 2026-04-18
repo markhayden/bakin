@@ -540,22 +540,22 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
                 </div>
               )}
 
-              {item.draft.imagePath && (
+              {item.draft.imageFilename && (
                 <div>
                   <h4 className="text-xs text-muted-foreground mb-1">Image</h4>
                   <img
-                    src={`/api/assets/${item.draft.imagePath}`}
+                    src={`/api/assets/${encodeURIComponent(item.draft.imageFilename)}`}
                     alt="Draft"
                     className="rounded-lg max-h-64 object-cover"
                   />
                 </div>
               )}
 
-              {item.draft.videoPath && (
+              {item.draft.videoFilename && (
                 <div>
                   <h4 className="text-xs text-muted-foreground mb-1">Video</h4>
                   <video
-                    src={`/api/assets/${item.draft.videoPath}`}
+                    src={`/api/assets/${encodeURIComponent(item.draft.videoFilename)}`}
                     controls
                     className="rounded-lg max-h-64"
                   />

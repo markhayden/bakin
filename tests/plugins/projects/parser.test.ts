@@ -48,9 +48,9 @@ tasks:
     description: "Some details"
     checked: false
 assets:
-  - path: images/logo.png
+  - filename: "20260401-logo-a1b2c3d4.png"
     label: "Logo"
-  - path: docs/spec.pdf
+  - filename: "20260401-spec-e5f6a7b8.pdf"
 ---
 
 # Test Project
@@ -160,8 +160,8 @@ describe('parseProject', () => {
   it('parses assets', () => {
     const project = parseProject(SAMPLE_PROJECT)
     expect(project.assets).toHaveLength(2)
-    expect(project.assets[0]).toEqual({ path: 'images/logo.png', label: 'Logo' })
-    expect(project.assets[1]).toEqual({ path: 'docs/spec.pdf', label: undefined })
+    expect(project.assets[0]).toEqual({ filename: '20260401-logo-a1b2c3d4.png', label: 'Logo' })
+    expect(project.assets[1]).toEqual({ filename: '20260401-spec-e5f6a7b8.pdf', label: undefined })
   })
 
   it('handles missing tasks and assets', () => {
