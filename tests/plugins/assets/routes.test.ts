@@ -62,6 +62,7 @@ vi.mock('../../../src/core/openclaw-client', () => ({
 
 // Import the plugin after mocks are set up
 import assetsPlugin from '@bakin/assets'
+import { upsertAsset } from '@bakin/assets/lib/asset-index'
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -1001,46 +1002,53 @@ describe('exec tool: bakin_exec_assets_audit', () => {
 describe('PATCH /link — relink/unlink asset', () => {
   it('relinks asset from one task to another', async () => {
     createAssetFixture('images', 'link-src', 'relink-test.png', 'img-data', {
-      agent: 'pixel', taskId: 'link-src', created: '2026-04-05T00:00:00Z',
+      agent: 'pixel', taskId: 'link-src', created: '2026-04-05T00:00:00Z', type: 'images',
     })
+    upsertAsset('assets/images/link-src/relink-test.png')
 
     const route = findRoute(plugin.routes, 'PATCH', '/link')!
     const req = makeRequest('/link', {
       method: 'PATCH',
-      body: { path: 'assets/images/link-src/relink-test.png', taskId: 'link-dest' },
+      body: { filename: 'relink-test.png', taskId: 'link-dest' },
     })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.ok).toBe(true)
-    expect(body.newPath).toBe('assets/images/link-dest/relink-test.png')
-    expect(existsSync(join(assetsRoot, 'images', 'link-dest', 'relink-test.png'))).toBe(true)
-    expect(existsSync(join(assetsRoot, 'images', 'link-src', 'relink-test.png'))).toBe(false)
+    expect(body.filename).toBe('relink-test.png')
+    expect(body.newTaskId).toBe('link-dest')
+    // Metadata-only — file stays put, no new directory.
+    expect(body.path).toBe('assets/images/link-src/relink-test.png')
+    expect(existsSync(join(assetsRoot, 'images', 'link-src', 'relink-test.png'))).toBe(true)
+    const sidecar = JSON.parse(readFileSync(join(assetsRoot, 'images', 'link-src', 'relink-test.png.meta.json'), 'utf-8'))
+    expect(sidecar.taskId).toBe('link-dest')
   })
 
-  it('unlinks asset to _unlinked', async () => {
+  it('unlinks asset (taskId → null) without moving the file', async () => {
     createAssetFixture('text', 'link-unl', 'unlink-test.md', '# test', {
-      agent: 'user', taskId: 'link-unl', created: '2026-04-05T00:00:00Z',
+      agent: 'user', taskId: 'link-unl', created: '2026-04-05T00:00:00Z', type: 'text',
     })
+    upsertAsset('assets/text/link-unl/unlink-test.md')
 
     const route = findRoute(plugin.routes, 'PATCH', '/link')!
     const req = makeRequest('/link', {
       method: 'PATCH',
-      body: { path: 'assets/text/link-unl/unlink-test.md', taskId: null },
+      body: { filename: 'unlink-test.md', taskId: null },
     })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.ok).toBe(true)
-    expect(body.newPath).toContain('_unlinked')
-    // Sidecar should have null taskId
-    const sidecar = JSON.parse(readFileSync(join(assetsRoot, 'text', '_unlinked', 'unlink-test.md.meta.json'), 'utf-8'))
+    expect(body.newTaskId).toBeNull()
+    // File stays at its original location.
+    expect(existsSync(join(assetsRoot, 'text', 'link-unl', 'unlink-test.md'))).toBe(true)
+    const sidecar = JSON.parse(readFileSync(join(assetsRoot, 'text', 'link-unl', 'unlink-test.md.meta.json'), 'utf-8'))
     expect(sidecar.taskId).toBeNull()
   })
 
-  it('returns 400 for missing path', async () => {
+  it('returns 400 for missing filename', async () => {
     const route = findRoute(plugin.routes, 'PATCH', '/link')!
     const req = makeRequest('/link', {
       method: 'PATCH',
@@ -1050,34 +1058,25 @@ describe('PATCH /link — relink/unlink asset', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 404 for non-existent asset', async () => {
+  it('returns 404 for unknown filename', async () => {
     const route = findRoute(plugin.routes, 'PATCH', '/link')!
     const req = makeRequest('/link', {
       method: 'PATCH',
-      body: { path: 'assets/images/ghost/nope.png', taskId: 'x' },
+      body: { filename: 'ghost-nothing.png', taskId: 'x' },
     })
     const res = await route.handler(req, plugin.ctx)
     expect(res.status).toBe(404)
   })
 
-  it('returns 400 for path traversal', async () => {
-    const route = findRoute(plugin.routes, 'PATCH', '/link')!
-    const req = makeRequest('/link', {
-      method: 'PATCH',
-      body: { path: 'assets/../etc/passwd', taskId: 'x' },
-    })
-    const res = await route.handler(req, plugin.ctx)
-    expect(res.status).toBe(400)
-  })
-
   it('returns 400 for taskId with path separators', async () => {
     createAssetFixture('images', 'link-sec', 'sec-test.png', 'data', {
-      agent: 'user', taskId: 'link-sec', created: '2026-04-05T00:00:00Z',
+      agent: 'user', taskId: 'link-sec', created: '2026-04-05T00:00:00Z', type: 'images',
     })
+    upsertAsset('assets/images/link-sec/sec-test.png')
     const route = findRoute(plugin.routes, 'PATCH', '/link')!
     const req = makeRequest('/link', {
       method: 'PATCH',
-      body: { path: 'assets/images/link-sec/sec-test.png', taskId: '../../etc' },
+      body: { filename: 'sec-test.png', taskId: '../../etc' },
     })
     const res = await route.handler(req, plugin.ctx)
     expect(res.status).toBe(400)
@@ -1089,33 +1088,44 @@ describe('PATCH /link — relink/unlink asset', () => {
 // ===========================================================================
 
 describe('exec tool: bakin_exec_assets_link', () => {
-  it('relinks asset via MCP tool', async () => {
+  it('relinks asset via MCP tool (metadata-only)', async () => {
     createAssetFixture('images', 'tool-src', 'tool-link.png', 'img-data', {
-      agent: 'pixel', taskId: 'tool-src', created: '2026-04-05T00:00:00Z',
+      agent: 'pixel', taskId: 'tool-src', created: '2026-04-05T00:00:00Z', type: 'images',
     })
+    upsertAsset('assets/images/tool-src/tool-link.png')
 
     const tool = findTool(plugin.execTools, 'bakin_exec_assets_link')!
-    const result = await callTool(tool, { path: 'assets/images/tool-src/tool-link.png', taskId: 'tool-dest' }, 'pixel')
+    const result = await callTool(tool, { filename: 'tool-link.png', taskId: 'tool-dest' }, 'pixel')
 
     expect(result.ok).toBe(true)
-    expect(result.newPath).toBe('assets/images/tool-dest/tool-link.png')
+    expect(result.filename).toBe('tool-link.png')
+    expect(result.newTaskId).toBe('tool-dest')
+    // File stays at its original on-disk path.
+    expect(result.path).toBe('assets/images/tool-src/tool-link.png')
+    expect(existsSync(join(assetsRoot, 'images', 'tool-src', 'tool-link.png'))).toBe(true)
+    const sidecar = JSON.parse(readFileSync(join(assetsRoot, 'images', 'tool-src', 'tool-link.png.meta.json'), 'utf-8'))
+    expect(sidecar.taskId).toBe('tool-dest')
   })
 
-  it('unlinks asset via MCP tool', async () => {
+  it('unlinks asset via MCP tool (taskId → null)', async () => {
     createAssetFixture('text', 'tool-unl', 'tool-unlink.md', '# hi', {
-      agent: 'user', taskId: 'tool-unl', created: '2026-04-05T00:00:00Z',
+      agent: 'user', taskId: 'tool-unl', created: '2026-04-05T00:00:00Z', type: 'text',
     })
+    upsertAsset('assets/text/tool-unl/tool-unlink.md')
 
     const tool = findTool(plugin.execTools, 'bakin_exec_assets_link')!
-    const result = await callTool(tool, { path: 'assets/text/tool-unl/tool-unlink.md', taskId: null }, 'pixel')
+    const result = await callTool(tool, { filename: 'tool-unlink.md', taskId: null }, 'pixel')
 
     expect(result.ok).toBe(true)
-    expect(result.newPath).toContain('_unlinked')
+    expect(result.newTaskId).toBeNull()
+    expect(result.path).toBe('assets/text/tool-unl/tool-unlink.md')
+    const sidecar = JSON.parse(readFileSync(join(assetsRoot, 'text', 'tool-unl', 'tool-unlink.md.meta.json'), 'utf-8'))
+    expect(sidecar.taskId).toBeNull()
   })
 
-  it('returns error for invalid path', async () => {
+  it('returns error for unknown filename', async () => {
     const tool = findTool(plugin.execTools, 'bakin_exec_assets_link')!
-    const result = await callTool(tool, { path: 'assets/images/ghost/nope.png', taskId: 'x' }, 'pixel')
+    const result = await callTool(tool, { filename: 'ghost-nonexistent.png', taskId: 'x' }, 'pixel')
 
     expect(result.ok).toBe(false)
     expect(result.error).toContain('not found')
@@ -1312,60 +1322,77 @@ describe('Assets Plugin — GET /search', () => {
 // ===========================================================================
 
 describe('PATCH /retype — change asset type', () => {
-  it('moves asset to new type directory', async () => {
-    // Create fixture in text/
-    createAssetFixture('text', 'retype-task', 'retype-doc.md', '# Move me', {
-      agent: 'scribe', taskId: 'retype-task', created: '2026-04-15T10:00:00Z',
+  it('updates sidecar type without moving the file', async () => {
+    createAssetFixture('text', 'retype-task', 'retype-doc.md', '# Stay put', {
+      agent: 'scribe', taskId: 'retype-task', created: '2026-04-15T10:00:00Z', type: 'text',
     })
+    upsertAsset('assets/text/retype-task/retype-doc.md')
 
     const route = findRoute(plugin.routes, 'PATCH', '/retype')!
     const req = makeRequest('/retype', {
       method: 'PATCH',
-      body: { path: 'assets/text/retype-task/retype-doc.md', type: 'research' },
+      body: { filename: 'retype-doc.md', type: 'research' },
     })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.ok).toBe(true)
-    expect(body.newPath).toBe('assets/research/retype-task/retype-doc.md')
-
-    // Verify file moved on disk
-    expect(existsSync(join(assetsRoot, 'research', 'retype-task', 'retype-doc.md'))).toBe(true)
-    expect(existsSync(join(assetsRoot, 'text', 'retype-task', 'retype-doc.md'))).toBe(false)
+    expect(body.filename).toBe('retype-doc.md')
+    expect(body.newType).toBe('research')
+    // Metadata-only — on-disk location is stable.
+    expect(body.path).toBe('assets/text/retype-task/retype-doc.md')
+    expect(existsSync(join(assetsRoot, 'text', 'retype-task', 'retype-doc.md'))).toBe(true)
+    expect(existsSync(join(assetsRoot, 'research', 'retype-task', 'retype-doc.md'))).toBe(false)
   })
 
-  it('moves sidecar with the asset', async () => {
+  it('persists the new type in the sidecar in place', async () => {
     createAssetFixture('text', 'retype-sidecar', 'note.md', '# Note', {
-      agent: 'scribe', taskId: 'retype-sidecar', created: '2026-04-15T10:00:00Z',
+      agent: 'scribe', taskId: 'retype-sidecar', created: '2026-04-15T10:00:00Z', type: 'text',
     })
+    upsertAsset('assets/text/retype-sidecar/note.md')
 
     const route = findRoute(plugin.routes, 'PATCH', '/retype')!
     const req = makeRequest('/retype', {
       method: 'PATCH',
-      body: { path: 'assets/text/retype-sidecar/note.md', type: 'plans' },
+      body: { filename: 'note.md', type: 'plans' },
     })
     await route.handler(req, plugin.ctx)
 
-    expect(existsSync(join(assetsRoot, 'plans', 'retype-sidecar', 'note.md.meta.json'))).toBe(true)
+    // Sidecar stays at its original location with updated type field.
+    const sidecarPath = join(assetsRoot, 'text', 'retype-sidecar', 'note.md.meta.json')
+    expect(existsSync(sidecarPath)).toBe(true)
+    const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
+    expect(sidecar.type).toBe('plans')
   })
 
   it('returns 400 for invalid type', async () => {
     const route = findRoute(plugin.routes, 'PATCH', '/retype')!
     const req = makeRequest('/retype', {
       method: 'PATCH',
-      body: { path: 'assets/text/task-002/readme.md', type: 'invalid' },
+      body: { filename: 'readme.md', type: 'invalid' },
     })
     const res = await route.handler(req, plugin.ctx)
 
     expect(res.status).toBe(400)
   })
 
-  it('returns 404 for missing file', async () => {
+  it('returns 400 for missing filename', async () => {
     const route = findRoute(plugin.routes, 'PATCH', '/retype')!
     const req = makeRequest('/retype', {
       method: 'PATCH',
-      body: { path: 'assets/text/nope/missing.md', type: 'research' },
+      body: { type: 'research' },
+    })
+    const res = await route.handler(req, plugin.ctx)
+
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 404 for unknown filename', async () => {
+    const route = findRoute(plugin.routes, 'PATCH', '/retype')!
+    const req = makeRequest('/retype', {
+      method: 'PATCH',
+      body: { filename: 'ghost-unknown.md', type: 'research' },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -1374,42 +1401,22 @@ describe('PATCH /retype — change asset type', () => {
 
   it('no-op when type is unchanged', async () => {
     createAssetFixture('data', 'retype-noop', 'data.json', '{}', {
-      agent: 'analyst', taskId: 'retype-noop', created: '2026-04-15T10:00:00Z',
+      agent: 'analyst', taskId: 'retype-noop', created: '2026-04-15T10:00:00Z', type: 'data',
     })
+    upsertAsset('assets/data/retype-noop/data.json')
 
     const route = findRoute(plugin.routes, 'PATCH', '/retype')!
     const req = makeRequest('/retype', {
       method: 'PATCH',
-      body: { path: 'assets/data/retype-noop/data.json', type: 'data' },
+      body: { filename: 'data.json', type: 'data' },
     })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.ok).toBe(true)
-    expect(body.newPath).toBe('assets/data/retype-noop/data.json')
-  })
-
-  it('handles collision in target directory', async () => {
-    createAssetFixture('text', 'retype-collision', 'dupe.md', '# Original text', {
-      agent: 'scribe', taskId: 'retype-collision', created: '2026-04-15T10:00:00Z',
-    })
-    createAssetFixture('plans', 'retype-collision', 'dupe.md', '# Existing plan', {
-      agent: 'scribe', taskId: 'retype-collision', created: '2026-04-15T10:00:00Z',
-    })
-
-    const route = findRoute(plugin.routes, 'PATCH', '/retype')!
-    const req = makeRequest('/retype', {
-      method: 'PATCH',
-      body: { path: 'assets/text/retype-collision/dupe.md', type: 'plans' },
-    })
-    const res = await route.handler(req, plugin.ctx)
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body.ok).toBe(true)
-    expect(body.newPath).not.toBe('assets/plans/retype-collision/dupe.md')
-    expect(body.newPath).toMatch(/^assets\/plans\/retype-collision\/dupe-[0-9a-f]+\.md$/)
+    expect(body.path).toBe('assets/data/retype-noop/data.json')
+    expect(body.newType).toBe('data')
   })
 })
 
@@ -1491,19 +1498,25 @@ describe('PUT /content — update asset content', () => {
 // ===========================================================================
 
 describe('bakin_exec_assets_retype', () => {
-  it('retypes asset via MCP tool', async () => {
+  it('retypes asset via MCP tool (metadata-only)', async () => {
     createAssetFixture('data', 'mcp-retype', 'report.json', '{"data":1}', {
-      agent: 'analyst', taskId: 'mcp-retype', created: '2026-04-15T10:00:00Z',
+      agent: 'analyst', taskId: 'mcp-retype', created: '2026-04-15T10:00:00Z', type: 'data',
     })
+    upsertAsset('assets/data/mcp-retype/report.json')
 
     const tool = findTool(plugin.execTools, 'bakin_exec_assets_retype')!
     const result = await callTool(tool, {
-      path: 'assets/data/mcp-retype/report.json',
+      filename: 'report.json',
       type: 'research',
     }, 'analyst')
 
     expect(result.ok).toBe(true)
-    expect(result.newPath).toBe('assets/research/mcp-retype/report.json')
+    expect(result.filename).toBe('report.json')
+    expect(result.newType).toBe('research')
+    // File stays put; sidecar carries the new type.
+    expect(result.path).toBe('assets/data/mcp-retype/report.json')
+    const sidecar = JSON.parse(readFileSync(join(assetsRoot, 'data', 'mcp-retype', 'report.json.meta.json'), 'utf-8'))
+    expect(sidecar.type).toBe('research')
   })
 })
 

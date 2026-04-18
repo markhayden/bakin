@@ -101,11 +101,12 @@ export function buildIndex(): void {
 
             const relPath = `assets/${typeName}/${subdir}/${file}`
             const meta = readSidecar(fullPath) || createStub(fullPath)
+            const effectiveType: AssetType = meta.type ?? (typeName as AssetType)
 
             index.set(relPath, {
               path: relPath,
               filename: file,
-              type: typeName as AssetType,
+              type: effectiveType,
               mimeType: getMimeType(file),
               size: stat.size,
               mtimeMs: stat.mtimeMs,
@@ -146,14 +147,15 @@ export function upsertAsset(relativePath: string): IndexedAsset | null {
 
     const filename = relativePath.split('/').pop() || ''
     const parts = relativePath.split('/')
-    const typeName = (parts[1] || 'other') as AssetType
+    const pathTypeName = (parts[1] || 'other') as AssetType
 
     const meta = readSidecar(fullPath) || createStub(fullPath)
+    const effectiveType: AssetType = meta.type ?? pathTypeName
 
     const asset: IndexedAsset = {
       path: relativePath,
       filename,
-      type: typeName,
+      type: effectiveType,
       mimeType: getMimeType(filename),
       size: stat.size,
       mtimeMs: stat.mtimeMs,

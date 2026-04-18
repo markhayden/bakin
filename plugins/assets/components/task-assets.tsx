@@ -73,12 +73,12 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
     return () => window.removeEventListener('bakin:asset-uploaded', handler)
   }, [taskId, fetchAssets])
 
-  const handleUnlink = async (path: string) => {
+  const handleUnlink = async (filename: string) => {
     try {
       const res = await fetch('/api/plugins/assets/link', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, taskId: null }),
+        body: JSON.stringify({ filename, taskId: null }),
       })
       if (res.ok) fetchAssets()
     } catch { /* ignore */ }
@@ -135,7 +135,7 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
               </button>
               {!readOnly && (
                 <button
-                  onClick={() => handleUnlink(asset.path)}
+                  onClick={() => handleUnlink(asset.filename)}
                   className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground shrink-0 p-1 transition-opacity"
                   title="Remove from task"
                 >

@@ -2,20 +2,14 @@
  * Retype/relink preserve search index under filename-as-identity.
  *
  * The key invariant:
- *   retyping or relinking an asset MUST NOT leave the search index empty
- *   for that filename, even momentarily. The search doc key is the
- *   filename, which is stable across both operations — so the mutation
- *   is an upsert, not a remove-then-reindex.
- *
- * Watcher unlink events for the old path are tolerated by the onUnlink
- * hook: if the filename still exists in the resolver (at the new path),
- * the hook skips `search.remove`. Covered in unlink-hook.test.ts.
- *
- * This suite focuses on the retype/relink handlers themselves: they
- * should NOT call `search.remove(oldPath)` because the key didn't change.
+ *   retyping or relinking an asset MUST reindex the search doc under the
+ *   stable filename key without calling `search.remove`. Under
+ *   metadata-only retype/relink, the on-disk path does not move — only
+ *   the sidecar is rewritten — so the filename key stays valid and the
+ *   doc is updated in place.
  */
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { PluginContext, FileBackedContentTypeDefinition, APIRoute } from '../../../src/lib/plugin-types'
@@ -133,6 +127,7 @@ function seedAsset(type: string, taskId: string, filename: string, contents = 'b
     description: 'seed',
     tags: [],
     tool: 'vitest',
+    type,
   }
   writeFileSync(full + '.meta.json', JSON.stringify(sidecar, null, 2))
   return `assets/${type}/${taskId}/${filename}`
@@ -144,9 +139,9 @@ describe('retype handler preserves search index', () => {
     mkdirSync(assetsDir, { recursive: true })
   })
 
-  it('retype upserts under the filename key without removing first', async () => {
+  it('retype is a sidecar-only edit; search doc reindexed under filename key', async () => {
     const captured = makeCtx()
-    seedAsset('text', 'task-1', 'notes-abcdef12.md', '# notes')
+    const rel = seedAsset('text', 'task-1', 'notes-abcdef12.md', '# notes')
 
     await assetsPlugin.activate(captured.ctx)
     captured.indexCalls.length = 0
@@ -156,22 +151,30 @@ describe('retype handler preserves search index', () => {
     const res = await handler(new Request('http://localhost/api/plugins/assets/retype', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: 'assets/text/task-1/notes-abcdef12.md', type: 'research' }),
+      body: JSON.stringify({ filename: 'notes-abcdef12.md', type: 'research' }),
     }), captured.ctx)
 
     const data = await res.json()
     expect(data.ok).toBe(true)
-    expect(data.newPath).toBe('assets/research/task-1/notes-abcdef12.md')
+    expect(data.filename).toBe('notes-abcdef12.md')
+    expect(data.newType).toBe('research')
+    expect(data.path).toBe(rel)
+
+    // File did NOT move — sidecar-only edit.
+    expect(existsSync(join(testDir, rel))).toBe(true)
+    expect(existsSync(join(testDir, rel + '.meta.json'))).toBe(true)
+    const sidecar = JSON.parse(readFileSync(join(testDir, rel + '.meta.json'), 'utf-8'))
+    expect(sidecar.type).toBe('research')
 
     // Give the best-effort reindex a tick to settle.
     await new Promise(r => setTimeout(r, 10))
 
-    // The filename-keyed upsert must have fired, with updated asset_type.
+    // The filename-keyed upsert must have fired with updated asset_type.
     const reindexed = captured.indexCalls.find(c => c.key === 'notes-abcdef12.md')
     expect(reindexed, 'expected index upsert under filename key').toBeTruthy()
     expect(reindexed!.doc.asset_type).toBe('research')
 
-    // CRITICAL: no remove call for old path or filename — the key is stable.
+    // CRITICAL: no remove call — the key is stable.
     expect(captured.removeCalls).toEqual([])
   })
 })
@@ -182,9 +185,9 @@ describe('relink handler preserves search index', () => {
     mkdirSync(assetsDir, { recursive: true })
   })
 
-  it('relink upserts under the filename key without removing first', async () => {
+  it('relink is a sidecar-only edit; search doc reindexed under filename key', async () => {
     const captured = makeCtx()
-    seedAsset('images', 'task-1', 'hero-12345678.png', 'png-bytes')
+    const rel = seedAsset('images', 'task-1', 'hero-12345678.png', 'png-bytes')
 
     await assetsPlugin.activate(captured.ctx)
     captured.indexCalls.length = 0
@@ -194,12 +197,19 @@ describe('relink handler preserves search index', () => {
     const res = await handler(new Request('http://localhost/api/plugins/assets/link', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: 'assets/images/task-1/hero-12345678.png', taskId: 'task-2' }),
+      body: JSON.stringify({ filename: 'hero-12345678.png', taskId: 'task-2' }),
     }), captured.ctx)
 
     const data = await res.json()
     expect(data.ok).toBe(true)
-    expect(data.newPath).toBe('assets/images/task-2/hero-12345678.png')
+    expect(data.filename).toBe('hero-12345678.png')
+    expect(data.newTaskId).toBe('task-2')
+    expect(data.path).toBe(rel)
+
+    // File did NOT move.
+    expect(existsSync(join(testDir, rel))).toBe(true)
+    const sidecar = JSON.parse(readFileSync(join(testDir, rel + '.meta.json'), 'utf-8'))
+    expect(sidecar.taskId).toBe('task-2')
 
     await new Promise(r => setTimeout(r, 50))
 
