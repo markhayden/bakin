@@ -18,6 +18,11 @@ import { join } from 'path'
 import { MemoryIndexer } from './lib/indexer'
 import { auditRoute } from './lib/routes/audit'
 import { durableListRoute, durableDetailRoute } from './lib/routes/durable'
+import {
+  dailyNotesListRoute,
+  dailyNotesDetailRoute,
+  dailyNotesCompareSearchRoute,
+} from './lib/routes/daily-notes'
 
 const log = createLogger('memory')
 
@@ -124,6 +129,9 @@ const memoryPlugin: BakinPlugin = {
     ctx.registerRoute(auditRoute)
     ctx.registerRoute(durableListRoute)
     ctx.registerRoute(durableDetailRoute)
+    ctx.registerRoute(dailyNotesListRoute)
+    ctx.registerRoute(dailyNotesDetailRoute)
+    ctx.registerRoute(dailyNotesCompareSearchRoute)
 
     // ─── Watcher paths (spec §Watcher paths) ────────────────────────────────
     // The indexer fans these out to per-tier handlers once those land.
@@ -158,7 +166,7 @@ const memoryPlugin: BakinPlugin = {
     })
 
     // First-activate backfill runs in the background. Tiers added per commit.
-    void indexer.backfill(['audit', 'durable']).catch((err) => {
+    void indexer.backfill(['audit', 'durable', 'daily_note']).catch((err) => {
       log.warn('initial backfill failed', { err: err instanceof Error ? err.message : String(err) })
     })
 

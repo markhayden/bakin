@@ -161,6 +161,56 @@ export function readDailyNote(agentId: string, filename: string): string | null 
   }
 }
 
+export function dailyNotePath(agentId: string, filename: string): string {
+  return join(dailyNotesDir(agentId), filename)
+}
+
+export function dailyNoteMtime(agentId: string, filename: string): number | null {
+  const file = dailyNotePath(agentId, filename)
+  if (!existsSync(file)) return null
+  try {
+    return statSync(file).mtimeMs
+  } catch {
+    return null
+  }
+}
+
+export function dailyNoteSize(agentId: string, filename: string): number {
+  const file = dailyNotePath(agentId, filename)
+  if (!existsSync(file)) return 0
+  try {
+    return statSync(file).size
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Map a filesystem path back to `{ agent, filename }` if it is inside a
+ * workspace's `memory/` folder (and is a direct `*.md`, not a subdirectory
+ * like `memory/.dreams/` or `memory/dreaming/`). Returns null otherwise.
+ */
+export function matchDailyNotePath(path: string): { agent: string; filename: string } | null {
+  for (const agentId of listAgentIds()) {
+    const dir = dailyNotesDir(agentId)
+    if (path.startsWith(dir + '/')) {
+      const rest = path.slice(dir.length + 1)
+      if (!rest.includes('/') && rest.endsWith('.md')) {
+        return { agent: agentId, filename: rest }
+      }
+    }
+  }
+  // Also consider the main-agent case where workspacePath collapses.
+  const mainDir = getOpenClawPath('workspace', 'memory')
+  if (path.startsWith(mainDir + '/')) {
+    const rest = path.slice(mainDir.length + 1)
+    if (!rest.includes('/') && rest.endsWith('.md')) {
+      return { agent: tryGetMainAgentId() ?? 'main', filename: rest }
+    }
+  }
+  return null
+}
+
 // ─── Dream artifacts ─────────────────────────────────────────────────────────
 
 function dreamDir(agentId: string): string {

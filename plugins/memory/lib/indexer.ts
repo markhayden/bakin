@@ -17,11 +17,18 @@ import { createLogger } from '../../../src/core/logger'
 import type { MemoryRow, MemoryTier } from './types'
 import { parseAuditLine } from './tier-parsers/audit-parser'
 import { parseDurableFile, rowId as durableRowId } from './tier-parsers/durable-parser'
+import { parseDailyNote, rowId as dailyNoteRowId } from './tier-parsers/daily-note-parser'
 import {
   CANONICAL_DURABLE_FILES,
+  dailyNotePath,
+  dailyNoteMtime,
+  dailyNoteSize,
   durableFilePath,
   listAgentIds,
+  listDailyNotes,
+  matchDailyNotePath,
   matchDurablePath,
+  readDailyNote,
   readDurableFile,
 } from './openclaw-adapter'
 import { getOffset, setOffset } from './offsets'
@@ -56,7 +63,11 @@ export class MemoryIndexer {
       await this.indexDurableTier()
       return
     }
-    // C5+ tiers land in subsequent commits.
+    if (tier === 'daily_note') {
+      await this.indexDailyNoteTier()
+      return
+    }
+    // C6+ tiers land in subsequent commits.
   }
 
   async handleWatcherEvent(path: string, kind: 'add' | 'change' | 'unlink'): Promise<void> {
@@ -70,16 +81,26 @@ export class MemoryIndexer {
       return
     }
 
-    const match = matchDurablePath(path)
-    if (match) {
+    const durable = matchDurablePath(path)
+    if (durable) {
       if (kind === 'unlink') {
-        await this.removeDurableFile(match.agent, match.basename)
+        await this.removeDurableFile(durable.agent, durable.basename)
       } else {
-        await this.indexDurableFile(match.agent, match.basename)
+        await this.indexDurableFile(durable.agent, durable.basename)
       }
       return
     }
-    // Other tiers add routing here in C5+.
+
+    const daily = matchDailyNotePath(path)
+    if (daily) {
+      if (kind === 'unlink') {
+        await this.removeDailyNote(daily.agent, daily.filename)
+      } else {
+        await this.indexDailyNote(daily.agent, daily.filename)
+      }
+      return
+    }
+    // Other tiers add routing here in C6+.
   }
 
   // ─── Audit tier (C3) ──────────────────────────────────────────────────────
@@ -182,6 +203,32 @@ export class MemoryIndexer {
       await this.ctx.search.remove(durableRowId(agent, basename, i))
     }
     this.lastDurableChunkCount.delete(this.durableKey(agent, basename))
+  }
+
+  // ─── Daily-note tier (C5) ─────────────────────────────────────────────────
+
+  private async indexDailyNoteTier(): Promise<void> {
+    for (const agent of listAgentIds()) {
+      for (const filename of listDailyNotes(agent)) {
+        await this.indexDailyNote(agent, filename)
+      }
+    }
+  }
+
+  private async indexDailyNote(agent: string, filename: string): Promise<void> {
+    const body = readDailyNote(agent, filename)
+    if (body === null) return
+    const path = dailyNotePath(agent, filename)
+    const mtimeMs = dailyNoteMtime(agent, filename) ?? Date.now()
+    const sizeBytes = dailyNoteSize(agent, filename)
+
+    const row = parseDailyNote(agent, filename, body, path, mtimeMs, sizeBytes)
+    if (row === null) return
+    await this.writeRow(row)
+  }
+
+  private async removeDailyNote(agent: string, filename: string): Promise<void> {
+    await this.ctx.search.remove(dailyNoteRowId(agent, filename))
   }
 
   // ─── Shared write ─────────────────────────────────────────────────────────

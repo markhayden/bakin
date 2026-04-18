@@ -48,6 +48,14 @@ vi.mock('../../../plugins/memory/lib/openclaw-adapter', () => ({
   durableFilePath: mockDurableFilePath,
   matchDurablePath: mockMatchDurablePath,
   CANONICAL_DURABLE_FILES: mockCanonicalFiles,
+  // daily-note tier (C5) — stubbed so handleWatcherEvent's fallthrough match
+  // doesn't blow up in this tier's isolated tests.
+  listDailyNotes: vi.fn(() => []),
+  readDailyNote: vi.fn(() => null),
+  dailyNotePath: vi.fn(() => ''),
+  dailyNoteMtime: vi.fn(() => null),
+  dailyNoteSize: vi.fn(() => 0),
+  matchDailyNotePath: vi.fn(() => null),
 }))
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
