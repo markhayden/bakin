@@ -13,7 +13,7 @@ A read-only observability dashboard over every OpenClaw memory tier plus Bakin's
 | `session` | OpenClaw gateway `sessions.list` + `agents/*/sessions/sessions.json` fallback | pending (C6) |
 | `turn` | `agents/*/sessions/<sessionId>.jsonl` | pending (C6) |
 | `checkpoint` | `agents/*/sessions/*.checkpoint.*.jsonl` | pending (C7) |
-| `daily_note` | `workspace/memory/*.md` | pending (C5) |
+| `daily_note` | `workspace/memory/*.md` | ✅ C5 |
 | `dream` | `workspace/memory/dreaming/**/*.md`, `workspace/memory/.dreams/**/*` | pending (C8) |
 | `durable` | `workspace/*.md` (MEMORY.md, SOUL.md, etc. — canonical bootstrap files) | ✅ C4 |
 | `audit` | `~/.bakin/audit.jsonl` | ✅ C3 |
@@ -38,12 +38,17 @@ plugins/memory/
     openclaw-gateway.ts ─ Native WebSocket RPC client — gatewayCall + gatewaySubscribe.
     openclaw-cli.ts     ─ `openclaw memory status/search --json` wrapper. Nothing else.
     tier-parsers/
-      audit-parser.ts   ─ Pure line → MemoryRow parser for ~/.bakin/audit.jsonl.
-      durable-parser.ts ─ H1/H2 chunker for canonical bootstrap files;
-                          one MemoryRow per heading chunk.
+      audit-parser.ts     ─ Pure line → MemoryRow parser for ~/.bakin/audit.jsonl.
+      durable-parser.ts   ─ H1/H2 chunker for canonical bootstrap files;
+                            one MemoryRow per heading chunk.
+      daily-note-parser.ts ─ Whole-file → MemoryRow; filename must match
+                            /^(\d{4}-\d{2}-\d{2})([-.].*)?\.md$/ — invalid names return null.
     routes/
-      audit.ts          ─ GET /audit — tier='audit' facet query + agent/event filters.
-      durable.ts        ─ GET /durable?agent=<id> (list), GET /durable/:agent/:basename (render).
+      audit.ts        ─ GET /audit — tier='audit' facet query + agent/event filters.
+      durable.ts      ─ GET /durable?agent=<id> (list), GET /durable/:agent/:basename (render).
+      daily-notes.ts  ─ GET /daily-notes?agent=<id> (sorted by date desc),
+                        GET /daily-notes/:agent/:filename (render),
+                        POST /daily-notes/compare-search (Antfly vs LanceDB side-by-side).
 ```
 
 ## Invariants
@@ -81,7 +86,12 @@ Lives at `~/.bakin/plugin-settings/memory.json`. Fields:
   - Stable row ids: `durable:<16-char-sha256(agent|basename|chunkIndex)>` — chunk count is tracked per file so shrinking a file (e.g. deleting an H1) removes the now-orphan chunk keys on reindex.
   - Adapter exposes `durableFilePath`, `durableFileMtime`, and `matchDurablePath(path)` so the watcher can map a fs path back to an `(agent, basename)` pair without re-listing agents everywhere.
   - Routes: `GET /api/plugins/memory/durable?agent=<id>` lists canonical files present for that agent; `GET /api/plugins/memory/durable/:agent/:basename` returns `{ agent, file, content }`. Both delegate to the adapter — no direct `~/.openclaw/` reads in route code.
-- C5 — `feat(memory): daily-notes tier` (pending)
+- C5 — `feat(memory): daily-notes tier with LanceDB/Antfly comparison toggle` ✅
+  - One row per `workspace/memory/YYYY-MM-DD*.md` file — no chunking. OpenClaw's own LanceDB index already treats daily notes as whole documents, and they tend to be short-form; splitting them would just fragment recall.
+  - Stable row ids: `daily_note:<16-char-sha256(agent|filename)>`. Filename validation via `/^(\d{4}-\d{2}-\d{2})([-.].*)?\.md$/` — `random.md` or `notes.md` return null from the parser and are skipped.
+  - Adapter extended with `dailyNotePath`, `dailyNoteMtime`, `dailyNoteSize`, and `matchDailyNotePath(path)`. The matcher handles both `workspaces/<agent>/memory/` and the main-agent collapsed `workspace/memory/` layout, and excludes subdirectories like `memory/.dreams/` and `memory/dreaming/`.
+  - `POST /daily-notes/compare-search` is the whole point of this tier: it runs the same query against both substrates in parallel and returns `{ antfly, lancedb, lancedbStatus, lancedbError? }` so the UI (lands in C9) can show a diff. `lancedbStatus` is `'ok' | 'no_index_or_no_match' | 'error'` — the UI treats the last two as non-fatal since OpenClaw's index may not be populated.
+  - LanceDB side shells out via `openclaw memory search --json` through `openclaw-cli.ts`; Antfly side reuses the plugin's unified `bakin_memory` query with `{ tier: 'daily_note' }` filter.
 - C6 — `feat(memory): session + turn tiers` (pending)
 - C7 — `feat(memory): checkpoint tier` (pending)
 - C8 — `feat(memory): dream tier` (pending)
