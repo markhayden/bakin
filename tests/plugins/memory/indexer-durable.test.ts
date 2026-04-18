@@ -56,6 +56,18 @@ vi.mock('../../../plugins/memory/lib/openclaw-adapter', () => ({
   dailyNoteMtime: vi.fn(() => null),
   dailyNoteSize: vi.fn(() => 0),
   matchDailyNotePath: vi.fn(() => null),
+  // session + turn tiers (C6) — same rationale.
+  readSessionStore: vi.fn(() => null),
+  sessionStorePath: vi.fn(() => ''),
+  matchSessionStorePath: vi.fn(() => null),
+  listSessionJsonlFiles: vi.fn(() => []),
+  sessionJsonlPath: vi.fn(() => ''),
+  sessionJsonlStat: vi.fn(() => null),
+  matchSessionJsonlPath: vi.fn(() => null),
+}))
+
+vi.mock('../../../plugins/memory/lib/openclaw-gateway', () => ({
+  gatewayCall: vi.fn(() => Promise.reject(new Error('gateway unused'))),
 }))
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'

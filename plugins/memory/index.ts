@@ -16,6 +16,7 @@ import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { getContentDir } from '@bakin/core/content-dir'
 import { join } from 'path'
 import { MemoryIndexer } from './lib/indexer'
+import { gatewaySubscribe } from './lib/openclaw-gateway'
 import { auditRoute } from './lib/routes/audit'
 import { durableListRoute, durableDetailRoute } from './lib/routes/durable'
 import {
@@ -23,6 +24,12 @@ import {
   dailyNotesDetailRoute,
   dailyNotesCompareSearchRoute,
 } from './lib/routes/daily-notes'
+import {
+  sessionsListRoute,
+  sessionDetailRoute,
+  sessionTurnsRoute,
+  turnsListRoute,
+} from './lib/routes/sessions'
 
 const log = createLogger('memory')
 
@@ -132,6 +139,10 @@ const memoryPlugin: BakinPlugin = {
     ctx.registerRoute(dailyNotesListRoute)
     ctx.registerRoute(dailyNotesDetailRoute)
     ctx.registerRoute(dailyNotesCompareSearchRoute)
+    ctx.registerRoute(sessionsListRoute)
+    ctx.registerRoute(sessionDetailRoute)
+    ctx.registerRoute(sessionTurnsRoute)
+    ctx.registerRoute(turnsListRoute)
 
     // ─── Watcher paths (spec §Watcher paths) ────────────────────────────────
     // The indexer fans these out to per-tier handlers once those land.
@@ -166,8 +177,23 @@ const memoryPlugin: BakinPlugin = {
     })
 
     // First-activate backfill runs in the background. Tiers added per commit.
-    void indexer.backfill(['audit', 'durable', 'daily_note']).catch((err) => {
-      log.warn('initial backfill failed', { err: err instanceof Error ? err.message : String(err) })
+    void indexer
+      .backfill(['audit', 'durable', 'daily_note', 'session', 'turn'])
+      .catch((err) => {
+        log.warn('initial backfill failed', { err: err instanceof Error ? err.message : String(err) })
+      })
+
+    // WS live updates for sessions — best-effort. Chokidar on sessions.json
+    // is the safety net (see §Consistency paths in the knowledge doc), so a
+    // dead gateway just means slightly higher latency, not broken correctness.
+    void gatewaySubscribe('sessions.subscribe', {}, () => {
+      void indexer.indexTier('session').catch((err) => {
+        log.warn('session live re-index failed', { err: err instanceof Error ? err.message : String(err) })
+      })
+    }).catch((err) => {
+      log.info('sessions WS subscribe unavailable; relying on chokidar', {
+        err: err instanceof Error ? err.message : String(err),
+      })
     })
 
     log.info('memory plugin activated', {

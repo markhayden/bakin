@@ -71,6 +71,109 @@ export function readSessionStore(agentId: string): unknown {
   }
 }
 
+export function sessionStorePath(agentId: string): string {
+  return join(agentSessionsDir(agentId), 'sessions.json')
+}
+
+/**
+ * Map a filesystem path back to `{ agent }` if it is the sessions.json
+ * store for a recognized agent. Returns null otherwise.
+ */
+export function matchSessionStorePath(path: string): { agent: string } | null {
+  for (const agentId of listAgentIds()) {
+    if (path === sessionStorePath(agentId)) return { agent: agentId }
+  }
+  return null
+}
+
+// ─── Session JSONL transcripts ───────────────────────────────────────────────
+
+const SESSION_JSONL_RE = /^([^/.]+)\.jsonl$/
+const SESSION_RESET_RE = /\.reset(?:\.|-)/
+
+export interface SessionJsonlFile {
+  agent: string
+  sessionId: string
+  sessionKey: string
+  path: string
+  size: number
+  mtimeMs: number
+  isReset: boolean
+}
+
+export function listSessionJsonlFiles(agentId: string): SessionJsonlFile[] {
+  const dir = agentSessionsDir(agentId)
+  if (!existsSync(dir)) return []
+  const out: SessionJsonlFile[] = []
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      if (!entry.name.endsWith('.jsonl')) continue
+      if (CHECKPOINT_RE.test(entry.name)) continue
+      const isReset = SESSION_RESET_RE.test(entry.name)
+      const m = SESSION_JSONL_RE.exec(entry.name)
+      if (!m) continue
+      const sessionId = m[1]
+      const p = join(dir, entry.name)
+      let size = 0
+      let mtimeMs = Date.now()
+      try {
+        const st = statSync(p)
+        size = st.size
+        mtimeMs = st.mtimeMs
+      } catch { /* fallback values */ }
+      out.push({
+        agent: agentId,
+        sessionId,
+        sessionKey: `agent:${agentId}:${sessionId}`,
+        path: p,
+        size,
+        mtimeMs,
+        isReset,
+      })
+    }
+  } catch (err) {
+    log.warn('listSessionJsonlFiles failed', { agentId, err: err instanceof Error ? err.message : String(err) })
+  }
+  return out
+}
+
+export function sessionJsonlPath(agentId: string, sessionId: string): string {
+  return join(agentSessionsDir(agentId), `${sessionId}.jsonl`)
+}
+
+export function sessionJsonlStat(path: string): { size: number; mtimeMs: number } | null {
+  if (!existsSync(path)) return null
+  try {
+    const st = statSync(path)
+    return { size: st.size, mtimeMs: st.mtimeMs }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Map a filesystem path back to `{ agent, sessionId, isReset }` if it is a
+ * session JSONL under a recognized agent. Excludes `.checkpoint.*.jsonl`
+ * (those belong to the checkpoint tier, indexed in C7).
+ */
+export function matchSessionJsonlPath(
+  path: string,
+): { agent: string; sessionId: string; isReset: boolean } | null {
+  for (const agentId of listAgentIds()) {
+    const dir = agentSessionsDir(agentId)
+    if (!path.startsWith(dir + '/')) continue
+    const rest = path.slice(dir.length + 1)
+    if (rest.includes('/')) continue
+    if (!rest.endsWith('.jsonl')) continue
+    if (CHECKPOINT_RE.test(rest)) return null
+    const m = SESSION_JSONL_RE.exec(rest)
+    if (!m) continue
+    return { agent: agentId, sessionId: m[1], isReset: SESSION_RESET_RE.test(rest) }
+  }
+  return null
+}
+
 // ─── Transcript streaming ────────────────────────────────────────────────────
 
 export interface ReadTranscriptOptions {
