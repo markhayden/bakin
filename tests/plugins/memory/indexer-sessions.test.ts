@@ -70,6 +70,12 @@ vi.mock('../../../plugins/memory/lib/openclaw-adapter', () => ({
   sessionJsonlPath: vi.fn(() => ''),
   sessionJsonlStat: vi.fn(() => null),
   matchSessionJsonlPath: vi.fn(() => null),
+  // checkpoint tier (C7) — stubbed so handleWatcherEvent fallthrough doesn't blow up.
+  listCheckpointJsonlFiles: vi.fn(() => []),
+  readCheckpoint: vi.fn(() => null),
+  checkpointJsonlPath: vi.fn(() => ''),
+  checkpointJsonlStat: vi.fn(() => null),
+  matchCheckpointJsonlPath: vi.fn(() => null),
 }))
 
 vi.mock('../../../plugins/memory/lib/openclaw-gateway', () => ({

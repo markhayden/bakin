@@ -30,6 +30,7 @@ import {
   sessionTurnsRoute,
   turnsListRoute,
 } from './lib/routes/sessions'
+import { checkpointsListRoute, checkpointDetailRoute } from './lib/routes/checkpoints'
 
 const log = createLogger('memory')
 
@@ -143,6 +144,8 @@ const memoryPlugin: BakinPlugin = {
     ctx.registerRoute(sessionDetailRoute)
     ctx.registerRoute(sessionTurnsRoute)
     ctx.registerRoute(turnsListRoute)
+    ctx.registerRoute(checkpointsListRoute)
+    ctx.registerRoute(checkpointDetailRoute)
 
     // ─── Watcher paths (spec §Watcher paths) ────────────────────────────────
     // The indexer fans these out to per-tier handlers once those land.
@@ -178,7 +181,7 @@ const memoryPlugin: BakinPlugin = {
 
     // First-activate backfill runs in the background. Tiers added per commit.
     void indexer
-      .backfill(['audit', 'durable', 'daily_note', 'session', 'turn'])
+      .backfill(['audit', 'durable', 'daily_note', 'session', 'turn', 'checkpoint'])
       .catch((err) => {
         log.warn('initial backfill failed', { err: err instanceof Error ? err.message : String(err) })
       })

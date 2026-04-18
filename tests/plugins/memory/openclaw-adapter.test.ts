@@ -37,6 +37,10 @@ import {
   readTranscript,
   listCheckpoints,
   readCheckpoint,
+  listCheckpointJsonlFiles,
+  checkpointJsonlPath,
+  checkpointJsonlStat,
+  matchCheckpointJsonlPath,
   listDailyNotes,
   readDailyNote,
   listDreamArtifacts,
@@ -178,6 +182,70 @@ describe('readCheckpoint', () => {
     seedAgent('main')
     writeFile('agents/main/sessions/sess-1.checkpoint.cp-a.jsonl', 'line1\nline2')
     expect(readCheckpoint('main', 'sess-1.checkpoint.cp-a.jsonl')).toBe('line1\nline2')
+  })
+})
+
+// ─── listCheckpointJsonlFiles / path / stat / match ──────────────────────────
+
+describe('listCheckpointJsonlFiles', () => {
+  it('returns [] when sessions dir is missing', () => {
+    expect(listCheckpointJsonlFiles('main')).toEqual([])
+  })
+
+  it('enumerates checkpoint files with parsed ids + size + mtime', () => {
+    seedAgent('main')
+    writeFile('agents/main/sessions/sess-1.jsonl', 'x')
+    writeFile('agents/main/sessions/sess-1.checkpoint.cp-a.jsonl', 'abc')
+    writeFile('agents/main/sessions/sess-2.checkpoint.cp-b.jsonl', 'de')
+    const files = listCheckpointJsonlFiles('main').sort((a, b) => a.filename.localeCompare(b.filename))
+    expect(files).toHaveLength(2)
+    expect(files[0].sessionId).toBe('sess-1')
+    expect(files[0].checkpointId).toBe('cp-a')
+    expect(files[0].size).toBe(3)
+    expect(files[0].path.endsWith('sess-1.checkpoint.cp-a.jsonl')).toBe(true)
+    expect(typeof files[0].mtimeMs).toBe('number')
+    expect(files[1].sessionId).toBe('sess-2')
+  })
+})
+
+describe('checkpointJsonlPath + checkpointJsonlStat', () => {
+  it('joins the agent sessions dir with the filename', () => {
+    const p = checkpointJsonlPath('main', 'sess-1.checkpoint.cp-a.jsonl')
+    expect(p.endsWith('agents/main/sessions/sess-1.checkpoint.cp-a.jsonl')).toBe(true)
+  })
+
+  it('returns null for a missing file, stat for a present one', () => {
+    expect(checkpointJsonlStat('/does/not/exist.jsonl')).toBeNull()
+    seedAgent('main')
+    writeFile('agents/main/sessions/sess-1.checkpoint.cp-a.jsonl', 'hi')
+    const p = checkpointJsonlPath('main', 'sess-1.checkpoint.cp-a.jsonl')
+    const st = checkpointJsonlStat(p)
+    expect(st).not.toBeNull()
+    expect(st!.size).toBe(2)
+  })
+})
+
+describe('matchCheckpointJsonlPath', () => {
+  it('returns null for unrelated paths', () => {
+    seedAgent('main')
+    expect(matchCheckpointJsonlPath('/not/under/openclaw.jsonl')).toBeNull()
+  })
+
+  it('returns {agent, sessionId, checkpointId, filename} for a valid checkpoint path', () => {
+    seedAgent('main')
+    const p = checkpointJsonlPath('main', 'sess-1.checkpoint.cp-a.jsonl')
+    expect(matchCheckpointJsonlPath(p)).toEqual({
+      agent: 'main',
+      sessionId: 'sess-1',
+      checkpointId: 'cp-a',
+      filename: 'sess-1.checkpoint.cp-a.jsonl',
+    })
+  })
+
+  it('rejects plain session jsonl (non-checkpoint) paths', () => {
+    seedAgent('main')
+    const p = join(openclawDir, 'agents', 'main', 'sessions', 'sess-1.jsonl')
+    expect(matchCheckpointJsonlPath(p)).toBeNull()
   })
 })
 
