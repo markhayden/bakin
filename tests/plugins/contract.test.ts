@@ -106,6 +106,21 @@ function createMockContext(pluginId: string): {
   const storage = new MarkdownStorageAdapter(TEST_DIR)
   const events = new BakinEventBus(() => {})
 
+  // Mirror production: registerContentType auto-registers GET /search on the
+  // plugin's router. Without this, a plugin whose only public route is the
+  // free /search trips the "activate registers at least one route" contract.
+  let searchRouteRegistered = false
+  const maybeAutoRegisterSearchRoute = () => {
+    if (searchRouteRegistered) return
+    searchRouteRegistered = true
+    routes.push({
+      path: '/search',
+      method: 'GET',
+      description: `Search ${pluginId}`,
+      handler: async () => Response.json({ results: [] }),
+    })
+  }
+
   const ctx: PluginContext = {
     storage,
     events,
@@ -123,8 +138,8 @@ function createMockContext(pluginId: string): {
       audit: () => {},
     },
     search: {
-      registerContentType: () => {},
-      registerFileBackedContentType: () => {},
+      registerContentType: () => maybeAutoRegisterSearchRoute(),
+      registerFileBackedContentType: () => maybeAutoRegisterSearchRoute(),
       index: async () => {},
       remove: async () => {},
       transform: async () => {},
