@@ -16,15 +16,10 @@ vi.mock('../../../src/core/content-dir', () => ({
   getBakinPaths: () => {
     const base = join(testDir, 'assets')
     return {
-      'assets.text': join(base, 'text'),
-      'assets.images': join(base, 'images'),
-      'assets.video': join(base, 'video'),
-      'assets.audio': join(base, 'audio'),
-      'assets.plans': join(base, 'plans'),
-      'assets.research': join(base, 'research'),
-      'assets.pdf': join(base, 'pdf'),
-      'assets.data': join(base, 'data'),
-      'assets.other': join(base, 'other'),
+      assets: base,
+      'assets.store': join(base, 'store'),
+      'assets.inbox': join(base, 'inbox'),
+      'assets.trash': join(base, '.trash'),
     }
   },
 }))

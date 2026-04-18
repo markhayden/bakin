@@ -111,15 +111,9 @@ export interface BakinPaths {
   messaging: string
   audit: string
   assets: string
-  'assets.text': string
-  'assets.images': string
-  'assets.video': string
-  'assets.audio': string
-  'assets.plans': string
-  'assets.research': string
-  'assets.pdf': string
-  'assets.data': string
-  'assets.other': string
+  'assets.store': string
+  'assets.inbox': string
+  'assets.trash': string
   agents: string
   personas: string
   team: string
@@ -140,15 +134,9 @@ export function getBakinPaths(): BakinPaths {
     messaging: join(home, 'messaging.json'),
     audit: join(home, 'audit.jsonl'),
     assets,
-    'assets.text': join(assets, 'text'),
-    'assets.images': join(assets, 'images'),
-    'assets.video': join(assets, 'video'),
-    'assets.audio': join(assets, 'audio'),
-    'assets.plans': join(assets, 'plans'),
-    'assets.research': join(assets, 'research'),
-    'assets.pdf': join(assets, 'pdf'),
-    'assets.data': join(assets, 'data'),
-    'assets.other': join(assets, 'other'),
+    'assets.store': join(assets, 'store'),
+    'assets.inbox': join(assets, 'inbox'),
+    'assets.trash': join(assets, '.trash'),
     agents: join(home, 'agents'),
     personas: join(home, 'team', 'personas'),
     team: join(home, 'team'),
@@ -170,19 +158,16 @@ export function initBakinHome(targetDir?: string): { created: string[]; seeded: 
   const created: string[] = []
   const seeded: string[] = []
 
-  // Create full directory structure matching what content/ contains
-  const assetTypes = ['text', 'images', 'video', 'audio', 'plans', 'research', 'pdf', 'data', 'other']
-  const assetDirs = assetTypes.flatMap(t => [
-    join(home, 'assets', t),
-    join(home, 'assets', t, '_unlinked'),
-    join(home, 'assets', t, 'library'),
-  ])
-
+  // Under filename-as-identity, asset storage is flat under
+  // assets/store/{YYYY-MM}/ — month shards are created on-demand by
+  // saveAsset, so initBakinHome only seeds the parent roots and the
+  // inbox + trash siblings.
   const dirs = [
     home,
     join(home, 'assets'),
+    join(home, 'assets', 'store'),
+    join(home, 'assets', 'inbox'),
     join(home, 'assets', '.trash'),
-    ...assetDirs,
     join(home, 'agents'),
     join(home, 'heartbeats'),
     join(home, 'inbox'),

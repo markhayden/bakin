@@ -21,9 +21,8 @@ function requiredDirs(): string[] {
   return [
     paths.home,
     paths.assets,
-    paths['assets.text'],
-    paths['assets.images'],
-    paths['assets.other'],
+    paths['assets.store'],
+    paths['assets.inbox'],
     paths.agents,
     paths.heartbeats,
     paths.projects,
