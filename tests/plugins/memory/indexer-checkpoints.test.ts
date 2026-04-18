@@ -100,6 +100,13 @@ vi.mock('../../../plugins/memory/lib/openclaw-adapter', () => ({
   sessionJsonlPath: vi.fn(() => ''),
   sessionJsonlStat: vi.fn(() => null),
   matchSessionJsonlPath: vi.fn(() => null),
+  // dream tier (C8) — stubs so handleWatcherEvent fallthrough doesn't blow up.
+  listPhaseDocs: vi.fn(() => []),
+  listDreamSignalFiles: vi.fn(() => []),
+  readPhaseDoc: vi.fn(() => null),
+  readDreamSignal: vi.fn(() => null),
+  matchPhaseDocPath: vi.fn(() => null),
+  matchDreamSignalPath: vi.fn(() => null),
 }))
 
 vi.mock('../../../plugins/memory/lib/openclaw-gateway', () => ({
