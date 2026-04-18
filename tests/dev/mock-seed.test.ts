@@ -109,7 +109,7 @@ describe('mock seed', () => {
     expect(copy.stepStates['draft-copy'].output.body).toContain('## Trail Notes')
 
     expect(image.status).toBe('pending_approval')
-    expect(image.stepStates['recommend-image'].output.image_path).toContain('/assets/images/task-rv-003/')
+    expect(image.stepStates['recommend-image'].output.image_filename).toMatch(/\.\w+$/)
     expect(image.stepStates['recommend-image'].output.recommendation_markdown).toContain('### Why this direction works')
 
     expect(bundle.status).toBe('pending_approval')

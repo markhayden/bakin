@@ -137,7 +137,7 @@ curl -s http://localhost:3737/api/docs
 
 **NEVER hardcode or construct filesystem paths.** Always use `bakin_get_paths` to discover where files live.
 
-Available path keys: `home`, `memoryLog`, `calendar`, `audit`, `assets`, `assets.text`, `assets.images`, `assets.video`, `assets.audio`, `assets.plans`, `assets.data`, `assets.other`, `personas`, `team`, `heartbeats`, `inbox`, `projects`, `workflows`, `settings`.
+Available path keys: `home`, `memoryLog`, `calendar`, `audit`, `assets`, `assets.store`, `assets.inbox`, `assets.trash`, `personas`, `team`, `heartbeats`, `inbox`, `projects`, `workflows`, `settings`.
 
 ### Querying Assets
 

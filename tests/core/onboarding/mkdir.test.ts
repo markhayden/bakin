@@ -30,13 +30,9 @@ vi.mock('../../../src/core/content-dir', async () => {
         messaging: join(home, 'messaging.json'),
         audit: join(home, 'audit.jsonl'),
         assets,
-        'assets.text': join(assets, 'text'),
-        'assets.images': join(assets, 'images'),
-        'assets.video': join(assets, 'video'),
-        'assets.audio': join(assets, 'audio'),
-        'assets.plans': join(assets, 'plans'),
-        'assets.data': join(assets, 'data'),
-        'assets.other': join(assets, 'other'),
+        'assets.store': join(assets, 'store'),
+        'assets.inbox': join(assets, 'inbox'),
+        'assets.trash': join(assets, '.trash'),
         agents: join(home, 'agents'),
         personas: join(home, 'team', 'personas'),
         team: join(home, 'team'),
@@ -127,7 +123,8 @@ describe('onboarding mkdir component', () => {
       const result = await mkdirComponent.install(opts)
       expect(result.status).toBe('installed')
       expect(result.durationMs).toBeGreaterThanOrEqual(0)
-      expect(existsSync(join(testDir, 'assets', 'text'))).toBe(true)
+      expect(existsSync(join(testDir, 'assets', 'store'))).toBe(true)
+      expect(existsSync(join(testDir, 'assets', 'inbox'))).toBe(true)
       expect(existsSync(join(testDir, 'agents'))).toBe(true)
       expect(existsSync(join(testDir, 'heartbeats'))).toBe(true)
       expect(existsSync(join(testDir, 'settings.json'))).toBe(true)

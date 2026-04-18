@@ -362,17 +362,17 @@ describe('attachAsset / detachAsset', () => {
   it('attaches and detaches assets', async () => {
     const { id } = await createProject({ title: 'P' })
 
-    await attachAsset(id, 'images/logo.png', 'Logo')
+    await attachAsset(id, '20260401-logo-a1b2c3d4.png', 'Logo')
     let project = readProject(id)
     expect(project!.assets).toHaveLength(1)
-    expect(project!.assets[0]).toEqual({ path: 'images/logo.png', label: 'Logo' })
+    expect(project!.assets[0]).toEqual({ filename: '20260401-logo-a1b2c3d4.png', label: 'Logo' })
 
     // Duplicate attach is ignored
-    await attachAsset(id, 'images/logo.png')
+    await attachAsset(id, '20260401-logo-a1b2c3d4.png')
     project = readProject(id)
     expect(project!.assets).toHaveLength(1)
 
-    await detachAsset(id, 'images/logo.png')
+    await detachAsset(id, '20260401-logo-a1b2c3d4.png')
     project = readProject(id)
     expect(project!.assets).toHaveLength(0)
   })

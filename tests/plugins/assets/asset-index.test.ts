@@ -3,9 +3,9 @@ import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-// Mock content-dir before importing asset-index
 const testDir = join(tmpdir(), `bakin-test-index-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
+const storeRoot = join(assetsRoot, 'store')
 
 vi.mock('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -22,46 +22,47 @@ vi.mock('../../../src/core/logger', () => ({
 
 import { buildIndex, upsertAsset, removeAsset, listAssets, listGroupedAssets, detectVariant, getAsset, getCount } from '@bakin/assets/lib/asset-index'
 
+// Canonical filenames under the filename-as-identity layout. The YYYYMMDD
+// prefix determines the shard month; store/ layout puts every asset under
+// assets/store/{YYYY-MM}/ regardless of type.
+const HERO = '20260323-hero-aaaaaaaa.png'
+const POST = '20260323-post-bbbbbbbb.md'
+const INTRO = '20260323-intro-cccccccc.mp4'
+const HERO_THUMB = '20260323-hero-aaaaaaaa.thumb.jpg'
+const MONTH = '2026-03'
+
 describe('assets/asset-index', () => {
   beforeEach(() => {
-    // Create test directory structure
-    const types = ['text', 'images', 'video', 'audio', 'plans', 'data', 'other']
-    for (const t of types) {
-      mkdirSync(join(assetsRoot, t, '_unlinked'), { recursive: true })
-      mkdirSync(join(assetsRoot, t, 'library'), { recursive: true })
-    }
+    const monthDir = join(storeRoot, MONTH)
+    mkdirSync(monthDir, { recursive: true })
 
-    // Create test assets
-    const taskDir = join(assetsRoot, 'images', 'task-abc')
-    mkdirSync(taskDir, { recursive: true })
-    writeFileSync(join(taskDir, 'hero.png'), 'fake-png')
-    writeFileSync(join(taskDir, 'hero.png.meta.json'), JSON.stringify({
+    writeFileSync(join(monthDir, HERO), 'fake-png')
+    writeFileSync(join(monthDir, `${HERO}.meta.json`), JSON.stringify({
       agent: 'pixel',
       taskId: 'task-abc',
       created: '2026-03-23T10:00:00Z',
+      type: 'images',
       tool: 'dall-e-3',
       description: 'Hero image',
       tags: ['hero', 'blog'],
     }))
 
-    const textDir = join(assetsRoot, 'text', 'task-def')
-    mkdirSync(textDir, { recursive: true })
-    writeFileSync(join(textDir, 'post.md'), '# My Post')
-    writeFileSync(join(textDir, 'post.md.meta.json'), JSON.stringify({
+    writeFileSync(join(monthDir, POST), '# My Post')
+    writeFileSync(join(monthDir, `${POST}.meta.json`), JSON.stringify({
       agent: 'chef',
       taskId: 'task-def',
       created: '2026-03-23T12:00:00Z',
+      type: 'text',
       description: 'Blog post draft',
       tags: ['blog', 'draft'],
     }))
 
-    const videoDir = join(assetsRoot, 'video', 'task-ghi')
-    mkdirSync(videoDir, { recursive: true })
-    writeFileSync(join(videoDir, 'intro.mp4'), 'fake-video')
-    writeFileSync(join(videoDir, 'intro.mp4.meta.json'), JSON.stringify({
+    writeFileSync(join(monthDir, INTRO), 'fake-video')
+    writeFileSync(join(monthDir, `${INTRO}.meta.json`), JSON.stringify({
       agent: 'rolo',
       taskId: 'task-ghi',
       created: '2026-03-23T08:00:00Z',
+      type: 'video',
       tool: 'runway',
       description: 'Intro clip',
       tags: ['intro'],
@@ -84,7 +85,6 @@ describe('assets/asset-index', () => {
       buildIndex()
       const all = listAssets()
       expect(all).toHaveLength(3)
-      // Most recent first
       expect(all[0].metadata.agent).toBe('chef') // 12:00
       expect(all[1].metadata.agent).toBe('pixel') // 10:00
       expect(all[2].metadata.agent).toBe('rolo')  // 08:00
@@ -94,7 +94,7 @@ describe('assets/asset-index', () => {
       buildIndex()
       const images = listAssets({ type: 'images' })
       expect(images).toHaveLength(1)
-      expect(images[0].filename).toBe('hero.png')
+      expect(images[0].filename).toBe(HERO)
     })
 
     it('filters by agent', () => {
@@ -108,13 +108,13 @@ describe('assets/asset-index', () => {
       buildIndex()
       const taskAssets = listAssets({ taskId: 'task-def' })
       expect(taskAssets).toHaveLength(1)
-      expect(taskAssets[0].filename).toBe('post.md')
+      expect(taskAssets[0].filename).toBe(POST)
     })
 
     it('filters by tag', () => {
       buildIndex()
       const blogAssets = listAssets({ tag: 'blog' })
-      expect(blogAssets).toHaveLength(2) // hero.png and post.md both tagged 'blog'
+      expect(blogAssets).toHaveLength(2)
     })
 
     it('returns empty for non-matching filter', () => {
@@ -128,16 +128,16 @@ describe('assets/asset-index', () => {
   describe('getAsset', () => {
     it('retrieves a specific asset by path', () => {
       buildIndex()
-      const asset = getAsset('assets/images/task-abc/hero.png')
+      const asset = getAsset(`assets/store/${MONTH}/${HERO}`)
       expect(asset).toBeDefined()
-      expect(asset!.filename).toBe('hero.png')
+      expect(asset!.filename).toBe(HERO)
       expect(asset!.type).toBe('images')
       expect(asset!.mimeType).toBe('image/png')
     })
 
     it('returns undefined for nonexistent path', () => {
       buildIndex()
-      expect(getAsset('assets/images/nope/nope.png')).toBeUndefined()
+      expect(getAsset(`assets/store/${MONTH}/nope.png`)).toBeUndefined()
     })
   })
 
@@ -146,32 +146,32 @@ describe('assets/asset-index', () => {
       buildIndex()
       expect(getCount()).toBe(3)
 
-      // Add a new asset
-      const newDir = join(assetsRoot, 'audio', 'task-jkl')
-      mkdirSync(newDir, { recursive: true })
-      writeFileSync(join(newDir, 'voice.mp3'), 'audio-data')
-      writeFileSync(join(newDir, 'voice.mp3.meta.json'), JSON.stringify({
+      const voice = '20260323-voice-dddddddd.mp3'
+      const monthDir = join(storeRoot, MONTH)
+      writeFileSync(join(monthDir, voice), 'audio-data')
+      writeFileSync(join(monthDir, `${voice}.meta.json`), JSON.stringify({
         agent: 'rolo',
         taskId: 'task-jkl',
         created: '2026-03-23T15:00:00Z',
+        type: 'audio',
       }))
 
-      const asset = upsertAsset('assets/audio/task-jkl/voice.mp3')
+      const asset = upsertAsset(`assets/store/${MONTH}/${voice}`)
       expect(asset).not.toBeNull()
-      expect(asset!.filename).toBe('voice.mp3')
+      expect(asset!.filename).toBe(voice)
       expect(getCount()).toBe(4)
     })
 
     it('creates a stub sidecar if none exists', () => {
       buildIndex()
-      const newDir = join(assetsRoot, 'images', 'task-xyz')
-      mkdirSync(newDir, { recursive: true })
-      writeFileSync(join(newDir, 'orphan.png'), 'data')
+      const orphan = '20260323-orphan-eeeeeeee.png'
+      const monthDir = join(storeRoot, MONTH)
+      writeFileSync(join(monthDir, orphan), 'data')
 
-      const asset = upsertAsset('assets/images/task-xyz/orphan.png')
+      const asset = upsertAsset(`assets/store/${MONTH}/${orphan}`)
       expect(asset).not.toBeNull()
       expect(asset!.metadata.agent).toBe('unknown')
-      expect(existsSync(join(newDir, 'orphan.png.meta.json'))).toBe(true)
+      expect(existsSync(join(monthDir, `${orphan}.meta.json`))).toBe(true)
     })
   })
 
@@ -180,9 +180,9 @@ describe('assets/asset-index', () => {
       buildIndex()
       expect(getCount()).toBe(3)
 
-      removeAsset('assets/images/task-abc/hero.png')
+      removeAsset(`assets/store/${MONTH}/${HERO}`)
       expect(getCount()).toBe(2)
-      expect(getAsset('assets/images/task-abc/hero.png')).toBeUndefined()
+      expect(getAsset(`assets/store/${MONTH}/${HERO}`)).toBeUndefined()
     })
   })
 
@@ -214,23 +214,23 @@ describe('assets/asset-index', () => {
 
   describe('listGroupedAssets', () => {
     it('groups thumbnail variants under their primary', () => {
-      // Add a thumbnail for the existing hero.png
-      const taskDir = join(assetsRoot, 'images', 'task-abc')
-      writeFileSync(join(taskDir, 'hero.thumb.jpg'), 'thumb-data')
-      writeFileSync(join(taskDir, 'hero.thumb.jpg.meta.json'), JSON.stringify({
+      const monthDir = join(storeRoot, MONTH)
+      writeFileSync(join(monthDir, HERO_THUMB), 'thumb-data')
+      writeFileSync(join(monthDir, `${HERO_THUMB}.meta.json`), JSON.stringify({
         agent: 'unknown',
         taskId: 'task-abc',
         created: '2026-03-23T10:00:01Z',
+        type: 'images',
       }))
 
       buildIndex()
       const groups = listGroupedAssets({ type: 'images' })
 
       expect(groups).toHaveLength(1)
-      expect(groups[0].primary.filename).toBe('hero.png')
+      expect(groups[0].primary.filename).toBe(HERO)
       expect(groups[0].variants).toHaveLength(1)
       expect(groups[0].variants[0].role).toBe('thumbnail')
-      expect(groups[0].variants[0].asset.filename).toBe('hero.thumb.jpg')
+      expect(groups[0].variants[0].asset.filename).toBe(HERO_THUMB)
     })
 
     it('returns assets without variants as groups with empty variants array', () => {
@@ -238,24 +238,22 @@ describe('assets/asset-index', () => {
       const groups = listGroupedAssets({ type: 'text' })
 
       expect(groups).toHaveLength(1)
-      expect(groups[0].primary.filename).toBe('post.md')
+      expect(groups[0].primary.filename).toBe(POST)
       expect(groups[0].variants).toHaveLength(0)
     })
 
     it('does not include variant files as separate primary entries', () => {
-      const taskDir = join(assetsRoot, 'images', 'task-abc')
-      writeFileSync(join(taskDir, 'hero.thumb.jpg'), 'thumb-data')
+      const monthDir = join(storeRoot, MONTH)
+      writeFileSync(join(monthDir, HERO_THUMB), 'thumb-data')
 
       buildIndex()
 
-      // Flat list includes both
       const flat = listAssets({ type: 'images' })
       expect(flat).toHaveLength(2)
 
-      // Grouped list shows only the primary
       const groups = listGroupedAssets({ type: 'images' })
       expect(groups).toHaveLength(1)
-      expect(groups[0].primary.filename).toBe('hero.png')
+      expect(groups[0].primary.filename).toBe(HERO)
     })
 
     it('respects filters when grouping', () => {
@@ -266,27 +264,26 @@ describe('assets/asset-index', () => {
       expect(groups[0].primary.metadata.agent).toBe('pixel')
     })
 
-    it('handles multiple assets with thumbnails in different task dirs', () => {
-      // Add another image in a different task dir
-      const task2Dir = join(assetsRoot, 'images', 'task-zzz')
-      mkdirSync(task2Dir, { recursive: true })
-      writeFileSync(join(task2Dir, 'banner.png'), 'banner-data')
-      writeFileSync(join(task2Dir, 'banner.png.meta.json'), JSON.stringify({
+    it('handles multiple assets with thumbnails', () => {
+      const monthDir = join(storeRoot, MONTH)
+      const banner = '20260323-banner-ffffffff.png'
+      const bannerThumb = '20260323-banner-ffffffff.thumb.jpg'
+
+      writeFileSync(join(monthDir, banner), 'banner-data')
+      writeFileSync(join(monthDir, `${banner}.meta.json`), JSON.stringify({
         agent: 'pixel',
         taskId: 'task-zzz',
         created: '2026-03-23T14:00:00Z',
+        type: 'images',
       }))
-      writeFileSync(join(task2Dir, 'banner.thumb.jpg'), 'thumb-data')
+      writeFileSync(join(monthDir, bannerThumb), 'thumb-data')
 
-      // And a thumbnail for hero
-      const taskDir = join(assetsRoot, 'images', 'task-abc')
-      writeFileSync(join(taskDir, 'hero.thumb.jpg'), 'thumb-data')
+      writeFileSync(join(monthDir, HERO_THUMB), 'thumb-data')
 
       buildIndex()
       const groups = listGroupedAssets({ type: 'images' })
 
       expect(groups).toHaveLength(2)
-      // Each should have exactly one thumbnail variant
       for (const g of groups) {
         expect(g.variants).toHaveLength(1)
         expect(g.variants[0].role).toBe('thumbnail')

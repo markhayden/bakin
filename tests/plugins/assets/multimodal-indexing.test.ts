@@ -20,6 +20,15 @@ import type {
 const testDir = join(tmpdir(), `bakin-test-multimodal-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
+// Canonical filenames for the four test assets. The YYYYMMDD prefix
+// determines the month shard under assets/store/{YYYY-MM}/.
+const MONTH = '2026-04'
+const STORE_DIR = join(assetsRoot, 'store', MONTH)
+const PDF_FILENAME = '20260411-wyoming-bbbbbbbb.pdf'
+const IMG_FILENAME = '20260411-diagram-aaaaaaaa.png'
+const SVG_FILENAME = '20260411-icon-cccccccc.svg'
+const MD_FILENAME = '20260411-notes-dddddddd.md'
+
 // ---------------------------------------------------------------------------
 // Mocks (must be defined before importing the plugin)
 // ---------------------------------------------------------------------------
@@ -29,15 +38,6 @@ vi.mock('../../../src/core/content-dir', () => ({
   getBakinPaths: () => ({
     home: testDir,
     assets: assetsRoot,
-    'assets.text': join(assetsRoot, 'text'),
-    'assets.images': join(assetsRoot, 'images'),
-    'assets.video': join(assetsRoot, 'video'),
-    'assets.audio': join(assetsRoot, 'audio'),
-    'assets.plans': join(assetsRoot, 'plans'),
-    'assets.research': join(assetsRoot, 'research'),
-    'assets.pdf': join(assetsRoot, 'pdf'),
-    'assets.data': join(assetsRoot, 'data'),
-    'assets.other': join(assetsRoot, 'other'),
   }),
 }))
 
@@ -74,44 +74,45 @@ import assetsPlugin from '@bakin/assets'
 
 function setupFixtures() {
   if (existsSync(testDir)) rmSync(testDir, { recursive: true })
-  mkdirSync(join(assetsRoot, 'other', 'task-1'), { recursive: true })
-  mkdirSync(join(assetsRoot, 'images', 'task-1'), { recursive: true })
-  mkdirSync(join(assetsRoot, 'text', 'task-1'), { recursive: true })
+  mkdirSync(STORE_DIR, { recursive: true })
 
   // PDF asset (mocked pdf-parse returns synthetic content)
-  writeFileSync(join(assetsRoot, 'other', 'task-1', 'wyoming.pdf'), 'fake-pdf-bytes')
+  writeFileSync(join(STORE_DIR, PDF_FILENAME), 'fake-pdf-bytes')
   writeFileSync(
-    join(assetsRoot, 'other', 'task-1', 'wyoming.pdf.meta.json'),
+    join(STORE_DIR, `${PDF_FILENAME}.meta.json`),
     JSON.stringify({
       agent: 'main',
       taskId: 'task-1',
       created: '2026-04-11T00:00:00.000Z',
+      type: 'other',
       description: 'Wyoming LLC operating agreement',
       tags: ['legal', 'llc'],
     }),
   )
 
   // Raster image asset
-  writeFileSync(join(assetsRoot, 'images', 'task-1', 'diagram.png'), 'png-bytes')
+  writeFileSync(join(STORE_DIR, IMG_FILENAME), 'png-bytes')
   writeFileSync(
-    join(assetsRoot, 'images', 'task-1', 'diagram.png.meta.json'),
+    join(STORE_DIR, `${IMG_FILENAME}.meta.json`),
     JSON.stringify({
       agent: 'main',
       taskId: 'task-1',
       created: '2026-04-11T00:00:00.000Z',
+      type: 'images',
       description: 'Kafka pipeline diagram',
       tags: ['architecture'],
     }),
   )
 
   // SVG asset — vector, should be excluded from image_url
-  writeFileSync(join(assetsRoot, 'images', 'task-1', 'icon.svg'), '<svg/>')
+  writeFileSync(join(STORE_DIR, SVG_FILENAME), '<svg/>')
   writeFileSync(
-    join(assetsRoot, 'images', 'task-1', 'icon.svg.meta.json'),
+    join(STORE_DIR, `${SVG_FILENAME}.meta.json`),
     JSON.stringify({
       agent: 'main',
       taskId: 'task-1',
       created: '2026-04-11T00:00:00.000Z',
+      type: 'images',
       description: 'Vector icon',
       tags: ['ui'],
     }),
@@ -119,15 +120,16 @@ function setupFixtures() {
 
   // Markdown asset with body content that should be extracted into `content`
   writeFileSync(
-    join(assetsRoot, 'text', 'task-1', 'notes.md'),
+    join(STORE_DIR, MD_FILENAME),
     '# Meeting Notes\n\nautolyse banneton sourdough bulk fermentation',
   )
   writeFileSync(
-    join(assetsRoot, 'text', 'task-1', 'notes.md.meta.json'),
+    join(STORE_DIR, `${MD_FILENAME}.meta.json`),
     JSON.stringify({
       agent: 'main',
       taskId: 'task-1',
       created: '2026-04-11T00:00:00.000Z',
+      type: 'text',
       description: 'Meeting notes',
       tags: [],
     }),
@@ -206,7 +208,7 @@ describe('assets multimodal indexing', () => {
       docs[key] = doc as Record<string, unknown>
     }
 
-    const mdDoc = docs['assets/text/task-1/notes.md']
+    const mdDoc = docs[`assets/store/${MONTH}/${MD_FILENAME}`]
     expect(mdDoc).toBeDefined()
     expect(mdDoc.content).toContain('autolyse')
     expect(mdDoc.content).toContain('banneton')
@@ -221,7 +223,7 @@ describe('assets multimodal indexing', () => {
       docs[key] = doc as Record<string, unknown>
     }
 
-    const pdfDoc = docs['assets/other/task-1/wyoming.pdf']
+    const pdfDoc = docs[`assets/store/${MONTH}/${PDF_FILENAME}`]
     expect(pdfDoc).toBeDefined()
     // The mocked pdf-parse returns synthetic content — presence proves the
     // extractor was called, not just that metadata was copied.
@@ -237,9 +239,9 @@ describe('assets multimodal indexing', () => {
       docs[key] = doc as Record<string, unknown>
     }
 
-    const imageDoc = docs['assets/images/task-1/diagram.png']
+    const imageDoc = docs[`assets/store/${MONTH}/${IMG_FILENAME}`]
     expect(imageDoc).toBeDefined()
-    const expectedAbsPath = join(assetsRoot, 'images', 'task-1', 'diagram.png')
+    const expectedAbsPath = join(STORE_DIR, IMG_FILENAME)
     expect(imageDoc.image_url).toBe(`file://${expectedAbsPath}`)
     // Images are not text-extractable — content stays empty, CLIP handles
     // the pixel data through the visual index template.
@@ -254,7 +256,7 @@ describe('assets multimodal indexing', () => {
       docs[key] = doc as Record<string, unknown>
     }
 
-    const svgDoc = docs['assets/images/task-1/icon.svg']
+    const svgDoc = docs[`assets/store/${MONTH}/${SVG_FILENAME}`]
     expect(svgDoc).toBeDefined()
     expect(svgDoc.image_url).toBe('')
     expect(svgDoc.content).toBe('')
@@ -270,12 +272,12 @@ describe('assets multimodal indexing', () => {
       docs[key] = doc as Record<string, unknown>
     }
 
-    const pdfDoc = docs['assets/other/task-1/wyoming.pdf']
+    const pdfDoc = docs[`assets/store/${MONTH}/${PDF_FILENAME}`]
     expect(pdfDoc.description).toBe('Wyoming LLC operating agreement')
     expect(pdfDoc.tags).toBe('legal, llc')
     expect(pdfDoc.agent).toBe('main')
     expect(pdfDoc.task_id).toBe('task-1')
     expect(pdfDoc.asset_type).toBe('other')
-    expect(pdfDoc.file_name).toBe('wyoming.pdf')
+    expect(pdfDoc.file_name).toBe(PDF_FILENAME)
   })
 })

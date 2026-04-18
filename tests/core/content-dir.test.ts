@@ -82,18 +82,11 @@ describe('initBakinHome', () => {
     // Verify settings.json was created at root  subdir
     expect(existsSync(join(testDir, 'settings.json'))).toBe(true)
 
-    // Verify asset directories
+    // Verify asset directories — flat under filename-as-identity.
     expect(existsSync(join(testDir, 'assets'))).toBe(true)
     expect(existsSync(join(testDir, 'assets', '.trash'))).toBe(true)
-    expect(existsSync(join(testDir, 'assets', 'images'))).toBe(true)
-    expect(existsSync(join(testDir, 'assets', 'images', '_unlinked'))).toBe(true)
-    expect(existsSync(join(testDir, 'assets', 'images', 'library'))).toBe(true)
-    expect(existsSync(join(testDir, 'assets', 'text'))).toBe(true)
-    expect(existsSync(join(testDir, 'assets', 'video'))).toBe(true)
-    expect(existsSync(join(testDir, 'assets', 'audio'))).toBe(true)
-    expect(existsSync(join(testDir, 'assets', 'plans'))).toBe(true)
-    expect(existsSync(join(testDir, 'assets', 'data'))).toBe(true)
-    expect(existsSync(join(testDir, 'assets', 'other'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', 'store'))).toBe(true)
+    expect(existsSync(join(testDir, 'assets', 'inbox'))).toBe(true)
 
     // Verify other directories
     expect(existsSync(join(testDir, 'projects'))).toBe(true)

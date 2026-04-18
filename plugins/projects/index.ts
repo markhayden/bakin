@@ -323,31 +323,31 @@ const projectsPlugin: BakinPlugin = {
     // POST /:projectId/assets — attach asset
     const attachHandler = async (req: Request) => {
       const url = new URL(req.url, 'http://localhost')
-      const body = await readBody<{ projectId?: string; assetPath: string; label?: string }>(req)
+      const body = await readBody<{ projectId?: string; filename?: string; label?: string }>(req)
       const projectId = url.searchParams.get('projectId') || body.projectId
-      if (!projectId || !body.assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
-      await attachAsset(projectId, body.assetPath, body.label)
-      ctx.activity.audit('asset.attached', 'system', { projectId, assetPath: body.assetPath })
+      if (!projectId || !body.filename) return json({ error: 'Missing projectId or filename' }, 400)
+      await attachAsset(projectId, body.filename, body.label)
+      ctx.activity.audit('asset.attached', 'system', { projectId, filename: body.filename })
       ctx.activity.log('system', 'Attached asset to project', { taskId: projectId })
       indexProject(projectId).catch(() => {})
       return json({ ok: true })
     }
     ctx.registerRoute({ path: '/:projectId/assets', method: 'POST', description: 'Attach asset', handler: attachHandler })
 
-    // DELETE /:projectId/assets/:assetPath — detach asset
+    // DELETE /:projectId/assets/:filename — detach asset
     const detachHandler = async (req: Request) => {
       const url = new URL(req.url, 'http://localhost')
-      const body = await readBody<{ projectId?: string; assetPath?: string }>(req).catch(() => ({} as { projectId?: string; assetPath?: string }))
+      const body = await readBody<{ projectId?: string; filename?: string }>(req).catch(() => ({} as { projectId?: string; filename?: string }))
       const projectId = url.searchParams.get('projectId') || body.projectId
-      const assetPath = url.searchParams.get('assetPath') || body.assetPath
-      if (!projectId || !assetPath) return json({ error: 'Missing projectId or assetPath' }, 400)
-      await detachAsset(projectId, assetPath)
-      ctx.activity.audit('asset.detached', 'system', { projectId, assetPath })
+      const filename = url.searchParams.get('filename') || body.filename
+      if (!projectId || !filename) return json({ error: 'Missing projectId or filename' }, 400)
+      await detachAsset(projectId, filename)
+      ctx.activity.audit('asset.detached', 'system', { projectId, filename })
       ctx.activity.log('system', 'Detached asset from project', { taskId: projectId })
       indexProject(projectId).catch(() => {})
       return json({ ok: true })
     }
-    ctx.registerRoute({ path: '/:projectId/assets/:assetPath', method: 'DELETE', description: 'Detach asset', handler: detachHandler })
+    ctx.registerRoute({ path: '/:projectId/assets/:filename', method: 'DELETE', description: 'Detach asset', handler: detachHandler })
 
     // POST /:projectId/ask — agent brainstorm
     ctx.registerRoute({ path: '/:projectId/ask', method: 'POST', description: 'Ask agent about project', handler: async (req: Request) => {
@@ -362,7 +362,7 @@ const projectsPlugin: BakinPlugin = {
         if (!project) return json({ error: 'Project not found' }, 404)
 
         const assetLines = project.assets.length > 0
-          ? ['', 'Attached assets (summaries — use asset tools to read full content if needed):', ...project.assets.map(a => `- ${a.path}${a.label ? ` — ${a.label}` : ''}`)]
+          ? ['', 'Attached assets (summaries — use asset tools to read full content if needed):', ...project.assets.map(a => `- ${a.filename}${a.label ? ` — ${a.label}` : ''}`)]
           : []
 
         // Build conversation history section
@@ -610,15 +610,15 @@ const projectsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_project_attach_asset',
       label: 'Attached asset to project',
-      description: 'Attach an existing asset to a project. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed.',
+      description: 'Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed.',
       parameters: {
         projectId: z.string().describe('Project ID'),
-        assetPath: z.string().describe('Relative asset path (e.g., "assets/text/task-abc/spec.md")'),
+        filename: z.string().describe('Asset filename (e.g., "20260327-hero-a1b2c3d4.png") — globally unique, stable across retype/relink'),
         label: z.string().optional().describe('Human-readable label or summary of what this asset contains'),
       },
       handler: async (params: Record<string, unknown>) => {
         try {
-          await attachAsset(params.projectId as string, params.assetPath as string, params.label as string | undefined)
+          await attachAsset(params.projectId as string, params.filename as string, params.label as string | undefined)
           indexProject(params.projectId as string).catch(() => {})
           return { ok: true }
         } catch (err: unknown) {
@@ -630,14 +630,14 @@ const projectsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_project_detach_asset',
       label: 'Detached asset from project',
-      description: 'Remove an asset reference from a project. Does not delete the asset itself.',
+      description: 'Remove an asset reference from a project by filename. Does not delete the asset itself.',
       parameters: {
         projectId: z.string().describe('Project ID'),
-        assetPath: z.string().describe('Asset path to detach'),
+        filename: z.string().describe('Asset filename to detach'),
       },
       handler: async (params: Record<string, unknown>) => {
         try {
-          await detachAsset(params.projectId as string, params.assetPath as string)
+          await detachAsset(params.projectId as string, params.filename as string)
           indexProject(params.projectId as string).catch(() => {})
           return { ok: true }
         } catch (err: unknown) {
@@ -712,7 +712,7 @@ const projectsPlugin: BakinPlugin = {
         if (!project) return { ok: false, error: `Project not found: ${projectId}` }
 
         const assetLines = project.assets.length > 0
-          ? ['', 'Attached assets (summaries — use asset tools to read full content if needed):', ...project.assets.map(a => `- ${a.path}${a.label ? ` — ${a.label}` : ''}`)]
+          ? ['', 'Attached assets (summaries — use asset tools to read full content if needed):', ...project.assets.map(a => `- ${a.filename}${a.label ? ` — ${a.label}` : ''}`)]
           : []
 
         const context = [

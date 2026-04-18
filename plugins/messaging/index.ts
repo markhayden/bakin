@@ -42,26 +42,6 @@ import type { PlanningSession } from './types'
 
 const log = createLogger('messaging')
 
-async function normalizeAssetPath(absPath: string | undefined): Promise<string | undefined> {
-  if (!absPath) return undefined
-  if (!absPath.startsWith('/')) return absPath // already relative
-
-  const { basename, join } = await import('path')
-  const { existsSync, copyFileSync, mkdirSync } = await import('fs')
-
-  const filename = basename(absPath)
-  const CONTENT_DIR = getContentDir()
-  const assetsDir = join(CONTENT_DIR, 'assets')
-  const targetPath = join(assetsDir, filename)
-
-  if (existsSync(absPath) && !existsSync(targetPath)) {
-    mkdirSync(assetsDir, { recursive: true })
-    copyFileSync(absPath, targetPath)
-  }
-
-  return `assets/${filename}`
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -90,22 +70,24 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
 
     // Post to Discord via HTTP (openclaw-client)
     try {
-      const { join } = await import('path')
-      const CONTENT_DIR = getContentDir()
-
       const caption = item.draft?.caption || item.title
       const target = item.channelTarget || '1483917792745885768'
 
+      // Derive filename → absolute path via the pure path function.
       let media: string | undefined
-      if (item.draft?.imagePath) {
-        media = item.draft.imagePath.startsWith('/')
-          ? item.draft.imagePath
-          : join(CONTENT_DIR, item.draft.imagePath)
-      }
-      if (item.draft?.videoPath) {
-        media = item.draft.videoPath.startsWith('/')
-          ? item.draft.videoPath
-          : join(CONTENT_DIR, item.draft.videoPath)
+      const mediaFilename = item.draft?.imageFilename || item.draft?.videoFilename
+      if (mediaFilename) {
+        try {
+          const { pathForFilename } = await import('../assets/lib/path-for-filename')
+          const { existsSync } = await import('fs')
+          const { join } = await import('path')
+          const rel = pathForFilename(mediaFilename)
+          const abs = rel ? join(getContentDir(), rel) : null
+          if (abs && existsSync(abs)) media = abs
+          else log.warn('Unknown media filename on approve', { itemId: item.id, filename: mediaFilename })
+        } catch (err) {
+          log.warn('Asset path resolver unavailable on approve', { err: err instanceof Error ? err.message : String(err) })
+        }
       }
 
       await sendChannelMessage('discord', `channel:${target}`, caption, media)
@@ -297,14 +279,6 @@ const messagingPlugin: BakinPlugin = {
       if (!id) return json({ error: 'id required' }, 400)
 
       try {
-        if (body.draft && typeof body.draft === 'object') {
-          const draft = body.draft as Record<string, unknown>
-          if (draft.imagePath) draft.imagePath = await normalizeAssetPath(draft.imagePath as string)
-          if (draft.videoPath) draft.videoPath = await normalizeAssetPath(draft.videoPath as string)
-        }
-        if (body.imagePath) body.imagePath = await normalizeAssetPath(body.imagePath as string)
-        if (body.videoPath) body.videoPath = await normalizeAssetPath(body.videoPath as string)
-
         const item = updateItem(id, body as Partial<CalendarItem>)
         ctx.activity.audit('item.updated', 'system')
         ctx.activity.log('system', `Updated messaging item "${item.title}"`)
