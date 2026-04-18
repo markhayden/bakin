@@ -442,15 +442,14 @@ export function resolveLinkedTaskStatuses(project: Project): Project & { resolve
   }
 
   // Resolve asset summaries (lightweight — no full content).
-  // Stored: just the filename. At render time: resolve filename → current
-  // relative path via the assets plugin's filename resolver, then read the
-  // indexed metadata.
+  // Stored: just the filename. At render time: derive the path from the
+  // filename (pure function) and read indexed metadata.
   let resolvedAssets: ResolvedAsset[] = []
   try {
     const { getAsset } = require('../../assets/lib/asset-index')
-    const { resolveFilename } = require('../../assets/lib/resolver')
+    const { pathForFilename } = require('../../assets/lib/path-for-filename')
     resolvedAssets = project.assets.map(a => {
-      const resolvedPath = resolveFilename(a.filename)
+      const resolvedPath = pathForFilename(a.filename)
       const indexed = resolvedPath ? getAsset(resolvedPath) : null
       if (!indexed) return { filename: a.filename, label: a.label, type: 'unknown', missing: true }
       return {

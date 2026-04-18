@@ -19,8 +19,7 @@ import { basename, dirname, extname, join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'
 import { ASSET_TYPES, type AssetType } from './constants'
 import { generateConventionalFilename, slugify } from './filename-id'
-import { filenameExists } from './resolver'
-import { relPathForFilename, yearMonthFromFilename } from './path-for-filename'
+import { pathForFilename, relPathForFilename, yearMonthFromFilename } from './path-for-filename'
 
 export interface IngestResult {
   ok: boolean
@@ -47,9 +46,11 @@ function typeFromInboxPath(inboxRelPath: string): AssetType {
 }
 
 function generateUniqueFilename(slug: string, ext: string): string {
+  const contentDir = getContentDir()
   for (let i = 0; i < 8; i++) {
     const candidate = generateConventionalFilename(slug, ext)
-    if (!filenameExists(candidate)) return candidate
+    const rel = pathForFilename(candidate)
+    if (rel && !existsSync(join(contentDir, rel))) return candidate
   }
   throw new Error('Failed to generate unique filename after 8 retries')
 }

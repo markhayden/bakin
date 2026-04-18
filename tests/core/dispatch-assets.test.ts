@@ -9,6 +9,11 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-dispatch-assets-${Date.now()}`)
 
+vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ assets: join(testDir, 'assets') }),
+}))
+
 vi.mock('../../src/core/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
@@ -47,17 +52,23 @@ import { buildDispatchMessage } from '../../src/core/dispatch'
 beforeAll(() => {
   mkdirSync(testDir, { recursive: true })
 
-  // Create asset fixtures for task-1
-  const imgDir = join(testDir, 'assets', 'images', 'task-1')
-  mkdirSync(imgDir, { recursive: true })
-  writeFileSync(join(imgDir, '20260404-reference.png'), 'fake-png')
-  writeFileSync(join(imgDir, '20260404-reference.png.meta.json'), '{}')
-  writeFileSync(join(imgDir, '20260404-reference.thumb.jpg'), 'fake-thumb') // variant, should be excluded
+  // Under filename-as-identity, every asset lives under
+  // assets/store/{YYYY-MM}/ and the task link lives only in the sidecar.
+  const shardDir = join(testDir, 'assets', 'store', '2026-04')
+  mkdirSync(shardDir, { recursive: true })
 
-  const txtDir = join(testDir, 'assets', 'text', 'task-1')
-  mkdirSync(txtDir, { recursive: true })
-  writeFileSync(join(txtDir, '20260404-brief.md'), '# Brief')
-  writeFileSync(join(txtDir, '20260404-brief.md.meta.json'), '{}')
+  const img = '20260404-reference-aaaa1111.png'
+  writeFileSync(join(shardDir, img), 'fake-png')
+  writeFileSync(join(shardDir, `${img}.meta.json`), JSON.stringify({ taskId: 'task-1', type: 'images' }))
+
+  // Variant — shares the primary's base stem but has its own sidecar.
+  // dispatch.ts filters these out explicitly.
+  writeFileSync(join(shardDir, '20260404-reference-aaaa1111.thumb.jpg'), 'fake-thumb')
+  writeFileSync(join(shardDir, '20260404-reference-aaaa1111.thumb.jpg.meta.json'), JSON.stringify({ taskId: 'task-1', type: 'images' }))
+
+  const brief = '20260404-brief-bbbb2222.md'
+  writeFileSync(join(shardDir, brief), '# Brief')
+  writeFileSync(join(shardDir, `${brief}.meta.json`), JSON.stringify({ taskId: 'task-1', type: 'text' }))
 })
 
 afterAll(() => {
@@ -74,9 +85,10 @@ describe('buildDispatchMessage — attached assets', () => {
     }
     const msg = buildDispatchMessage(task, 'pixel', testDir, 3737)
     expect(msg).toContain('## Attached Assets')
-    expect(msg).toContain('20260404-reference.png')
-    expect(msg).toContain('20260404-brief.md')
-    expect(msg).toContain('bakin_exec_assets_get')
+    expect(msg).toContain('20260404-reference-aaaa1111.png')
+    expect(msg).toContain('20260404-brief-bbbb2222.md')
+    // Agents open attached assets via bakin_exec_assets_open (filename-as-identity).
+    expect(msg).toContain('bakin_exec_assets_open')
     // Should NOT include variants
     expect(msg).not.toContain('.thumb.')
     // Should NOT include .meta.json files

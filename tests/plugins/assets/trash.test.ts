@@ -1,11 +1,22 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdirSync, rmSync, existsSync, writeFileSync, readFileSync, readdirSync, utimesSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+
+const testDir = join(tmpdir(), `bakin-test-trash-${Date.now()}`)
+
+vi.mock('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+}))
+
+vi.mock('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+}))
+
 import { softDelete, cleanTrash, listTrash, restoreAsset, permanentDelete, emptyTrash, parseTrashName } from '@bakin/assets/lib/trash'
 
 describe('assets/trash', () => {
-  const testDir = join(tmpdir(), `bakin-test-trash-${Date.now()}`)
   const assetsRoot = join(testDir, 'assets')
   const imagesDir = join(assetsRoot, 'images', 'task123')
 
@@ -164,10 +175,11 @@ describe('assets/trash', () => {
   })
 
   describe('restoreAsset', () => {
-    it('moves file and sidecar back to original location', () => {
+    it('moves file and sidecar back to the store shard derived from the filename', () => {
       const trashDir = join(assetsRoot, '.trash')
       const ts = Date.now()
-      const trashFilename = `hero.png__deleted-${ts}`
+      const canonical = '20260320-hero-aaaaaaaa.png'
+      const trashFilename = `${canonical}__deleted-${ts}`
       writeFileSync(join(trashDir, trashFilename), 'image-data')
       writeFileSync(join(trashDir, `${trashFilename}.meta.json`), JSON.stringify({
         agent: 'pixel',
@@ -177,22 +189,36 @@ describe('assets/trash', () => {
 
       const result = restoreAsset(trashFilename, assetsRoot)
 
-      expect(result).toBe('assets/images/task-xyz/hero.png')
-      expect(existsSync(join(assetsRoot, 'images', 'task-xyz', 'hero.png'))).toBe(true)
-      expect(existsSync(join(assetsRoot, 'images', 'task-xyz', 'hero.png.meta.json'))).toBe(true)
+      // Under filename-as-identity, restore ignores sidecar taskId and
+      // places the file at the shard implied by the canonical filename.
+      expect(result).toBe(`assets/store/2026-03/${canonical}`)
+      expect(existsSync(join(assetsRoot, 'store', '2026-03', canonical))).toBe(true)
+      expect(existsSync(join(assetsRoot, 'store', '2026-03', `${canonical}.meta.json`))).toBe(true)
       expect(existsSync(join(trashDir, trashFilename))).toBe(false)
     })
 
-    it('restores to _unlinked when no taskId in sidecar', () => {
+    it('restores even when the sidecar has no taskId — shard is derived from the filename', () => {
       const trashDir = join(assetsRoot, '.trash')
       const ts = Date.now()
-      const trashFilename = `doc.md__deleted-${ts}`
+      const canonical = '20260320-doc-bbbbbbbb.md'
+      const trashFilename = `${canonical}__deleted-${ts}`
       writeFileSync(join(trashDir, trashFilename), 'text-data')
 
       const result = restoreAsset(trashFilename, assetsRoot)
 
-      expect(result).toBe('assets/text/_unlinked/doc.md')
-      expect(existsSync(join(assetsRoot, 'text', '_unlinked', 'doc.md'))).toBe(true)
+      expect(result).toBe(`assets/store/2026-03/${canonical}`)
+      expect(existsSync(join(assetsRoot, 'store', '2026-03', canonical))).toBe(true)
+    })
+
+    it('returns null when the original filename is non-canonical', () => {
+      const trashDir = join(assetsRoot, '.trash')
+      const ts = Date.now()
+      const trashFilename = `hero.png__deleted-${ts}`
+      writeFileSync(join(trashDir, trashFilename), 'image-data')
+
+      const result = restoreAsset(trashFilename, assetsRoot)
+
+      expect(result).toBeNull()
     })
 
     it('returns null for nonexistent trash item', () => {

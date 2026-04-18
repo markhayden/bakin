@@ -12,20 +12,7 @@ const assetsRoot = join(testDir, 'assets')
 
 vi.mock('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => {
-    const base = join(testDir, 'assets')
-    return {
-      'assets.text': join(base, 'text'),
-      'assets.images': join(base, 'images'),
-      'assets.video': join(base, 'video'),
-      'assets.audio': join(base, 'audio'),
-      'assets.plans': join(base, 'plans'),
-      'assets.research': join(base, 'research'),
-      'assets.pdf': join(base, 'pdf'),
-      'assets.data': join(base, 'data'),
-      'assets.other': join(base, 'other'),
-    }
-  },
+  getBakinPaths: () => ({ assets: join(testDir, 'assets') }),
 }))
 
 vi.mock('../../../src/core/logger', () => ({
@@ -67,7 +54,10 @@ function createAsset(
   filename: string,
   source: string,
 ): string {
-  const dir = join(assetsRoot, type, taskId)
+  // Filename must be canonical (YYYYMMDD-slug-id8.ext) — the date prefix
+  // determines the month shard under assets/store/{YYYY-MM}/.
+  const ym = `${filename.slice(0, 4)}-${filename.slice(4, 6)}`
+  const dir = join(assetsRoot, 'store', ym)
   mkdirSync(dir, { recursive: true })
   const filePath = join(dir, filename)
   writeFileSync(filePath, 'test-content')
@@ -75,6 +65,7 @@ function createAsset(
     agent: 'user',
     taskId,
     created: new Date().toISOString(),
+    type,
     source,
   }))
   // Also need trash directory
@@ -88,14 +79,15 @@ describe('clipboard purge hook', () => {
   })
 
   it('does nothing when purgeClipboardOnComplete is disabled', async () => {
-    createAsset('images', 'task-purge-1', '20260404-clip.png', 'clipboard')
+    const filename = '20260404-clip-aaaaaaaa.png'
+    createAsset('images', 'task-purge-1', filename, 'clipboard')
     plugin.ctx.getSettings = (() => ({ purgeClipboardOnComplete: false })) as typeof plugin.ctx.getSettings
 
     const result = await purgeHandler!({ taskId: 'task-purge-1' })
     expect(result).toEqual({ purged: 0 })
 
     // File should still exist
-    expect(existsSync(join(assetsRoot, 'images', 'task-purge-1', '20260404-clip.png'))).toBe(true)
+    expect(existsSync(join(assetsRoot, 'store', '2026-04', filename))).toBe(true)
   })
 
   it('does nothing when no taskId provided', async () => {
@@ -106,7 +98,8 @@ describe('clipboard purge hook', () => {
 
   it('purges clipboard assets when enabled', async () => {
     const taskId = 'task-purge-2'
-    createAsset('images', taskId, '20260404-pasted.png', 'clipboard')
+    const filename = '20260404-pasted-bbbbbbbb.png'
+    createAsset('images', taskId, filename, 'clipboard')
     buildIndex() // Rebuild index to pick up the new file
     plugin.ctx.getSettings = (() => ({ purgeClipboardOnComplete: true })) as typeof plugin.ctx.getSettings
 
@@ -116,8 +109,10 @@ describe('clipboard purge hook', () => {
 
   it('preserves non-clipboard assets', async () => {
     const taskId = 'task-purge-3'
-    createAsset('images', taskId, '20260404-agent-made.png', 'agent')
-    createAsset('images', taskId, '20260404-uploaded.jpg', 'upload')
+    const agentFile = '20260404-agent-cccccccc.png'
+    const uploadFile = '20260404-upload-dddddddd.jpg'
+    createAsset('images', taskId, agentFile, 'agent')
+    createAsset('images', taskId, uploadFile, 'upload')
     buildIndex() // Rebuild index to pick up the new files
     plugin.ctx.getSettings = (() => ({ purgeClipboardOnComplete: true })) as typeof plugin.ctx.getSettings
 
@@ -125,7 +120,7 @@ describe('clipboard purge hook', () => {
     expect(result.purged).toBe(0)
 
     // Files should still exist
-    expect(existsSync(join(assetsRoot, 'images', taskId, '20260404-agent-made.png'))).toBe(true)
-    expect(existsSync(join(assetsRoot, 'images', taskId, '20260404-uploaded.jpg'))).toBe(true)
+    expect(existsSync(join(assetsRoot, 'store', '2026-04', agentFile))).toBe(true)
+    expect(existsSync(join(assetsRoot, 'store', '2026-04', uploadFile))).toBe(true)
   })
 })

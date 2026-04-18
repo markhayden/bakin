@@ -378,18 +378,26 @@ export function buildDispatchMessage(
 
   // List attached assets by filename (stable identity). Agents open them
   // via bakin_exec_assets_open — disk paths are a view, not identity.
+  // Under filename-as-identity, every asset lives under
+  // assets/store/{YYYY-MM}/; the sidecar's taskId is the link.
   let assetsBlock = ''
   try {
-    const assetsRoot = join(contentDir, 'assets')
-    const assetTypes = ['text', 'images', 'video', 'audio', 'plans', 'data', 'other']
+    const storeRoot = join(contentDir, 'assets', 'store')
     const filenames: string[] = []
-    for (const type of assetTypes) {
-      const taskDir = join(assetsRoot, type, task.id)
-      if (existsSync(taskDir)) {
-        const files = readdirSync(taskDir).filter(f => !f.endsWith('.meta.json') && !f.startsWith('.'))
-        for (const file of files) {
-          if (file.includes('.thumb.') || file.includes('.opt.')) continue
-          filenames.push(file)
+    if (existsSync(storeRoot)) {
+      for (const month of readdirSync(storeRoot)) {
+        if (month.startsWith('.')) continue
+        const monthDir = join(storeRoot, month)
+        let metas: string[]
+        try { metas = readdirSync(monthDir).filter(f => f.endsWith('.meta.json')) } catch { continue }
+        for (const metaFile of metas) {
+          try {
+            const meta = JSON.parse(readFileSync(join(monthDir, metaFile), 'utf-8'))
+            if (meta.taskId !== task.id) continue
+            const assetFilename = metaFile.replace(/\.meta\.json$/, '')
+            if (assetFilename.includes('.thumb.') || assetFilename.includes('.opt.')) continue
+            filenames.push(assetFilename)
+          } catch { /* skip unreadable sidecars */ }
         }
       }
     }

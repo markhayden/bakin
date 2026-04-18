@@ -12,7 +12,6 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'
 import { buildIndex, listAssets, listGroupedAssets, getAsset } from '../lib/asset-index'
-import { resolveFilename } from '../lib/resolver'
 import { pathForFilename } from '../lib/path-for-filename'
 
 export async function handleList(req: Request): Promise<Response> {
@@ -29,14 +28,12 @@ export async function handleList(req: Request): Promise<Response> {
   buildIndex()
 
   // Single-asset lookup by filename (preferred — stable under retype/relink)
-  // or by path (legacy view). Filename takes precedence. Canonical filenames
-  // derive their path directly; the resolver covers legacy fixtures.
+  // or by path (legacy view). Filename takes precedence; canonical filenames
+  // derive their path via the pure pathForFilename function.
   let path: string | undefined
   if (filename) {
     const derived = pathForFilename(filename)
-    path = derived && existsSync(join(getContentDir(), derived))
-      ? derived
-      : resolveFilename(filename) ?? undefined
+    path = derived && existsSync(join(getContentDir(), derived)) ? derived : undefined
   } else {
     path = pathParam
   }

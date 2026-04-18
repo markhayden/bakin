@@ -7,7 +7,6 @@ import { existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'
 import { getMimeType } from '../lib/constants'
-import { resolveFilename } from '../lib/resolver'
 import { pathForFilename } from '../lib/path-for-filename'
 
 export async function handleFile(req: Request): Promise<Response> {
@@ -20,12 +19,8 @@ export async function handleFile(req: Request): Promise<Response> {
     if (nameParam.includes('/') || nameParam.includes('..')) {
       return Response.json({ error: 'Invalid filename' }, { status: 400 })
     }
-    // Canonical filenames resolve to store/ via the pure path function; the
-    // resolver covers legacy fixtures and any pre-migration residue.
     const derived = pathForFilename(nameParam)
-    assetPath = derived && existsSync(join(getContentDir(), derived))
-      ? derived
-      : resolveFilename(nameParam)
+    assetPath = derived && existsSync(join(getContentDir(), derived)) ? derived : null
     if (!assetPath) {
       return Response.json({ error: 'Filename not found' }, { status: 404 })
     }

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { readFileSync, existsSync, statSync } from 'fs'
 import { join, extname } from 'path'
 import { getContentDir } from '@/core/content-dir'
-import { resolveFilename } from '@bakin/assets/lib/resolver'
+import { pathForFilename } from '@bakin/assets/lib/path-for-filename'
 
 const CONTENT_DIR = getContentDir()
 
@@ -29,17 +29,13 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
   }
 
-  // Filename-as-identity: single-segment paths resolve through the filename
-  // resolver. Multi-segment paths remain supported until commit F (legacy
-  // URL forms embedded in historical task descriptions).
+  // Filename-as-identity: single-segment paths derive their location from
+  // the canonical filename. Multi-segment paths remain supported for
+  // legacy URL forms embedded in historical task descriptions.
   let relPath: string
   if (path.length === 1 && !path[0].includes('/')) {
-    const resolved = resolveFilename(path[0])
-    if (resolved) {
-      relPath = resolved
-    } else {
-      relPath = join('assets', ...path) // fall back so legacy "/api/assets/type/task/file" still works
-    }
+    const derived = pathForFilename(path[0])
+    relPath = derived ?? join('assets', ...path)
   } else {
     relPath = path.join('/')
   }

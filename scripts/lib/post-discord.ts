@@ -9,7 +9,7 @@ import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { getContentDir } from '@/core/content-dir'
-import { resolveFilename } from '@bakin/assets/lib/resolver'
+import { pathForFilename } from '@bakin/assets/lib/path-for-filename'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
@@ -100,15 +100,17 @@ export interface PostDiscordParams {
 }
 
 /**
- * Resolve an asset filename to an absolute file path via the filename
- * resolver. Returns null if the filename isn't registered — the caller
- * should skip the attachment rather than fall back to a literal path.
+ * Derive an absolute file path from a canonical asset filename. Returns
+ * null if the filename is non-canonical or the file is missing from disk
+ * — the caller should skip the attachment rather than fall back to a
+ * literal path.
  */
 function resolveAssetAbsPath(filename: string | undefined): string | null {
   if (!filename) return null
-  const rel = resolveFilename(filename)
+  const rel = pathForFilename(filename)
   if (!rel) return null
-  return join(getContentDir(), rel)
+  const abs = join(getContentDir(), rel)
+  return existsSync(abs) ? abs : null
 }
 
 // When BAKIN_DISCORD_TEST_MODE=1 (or "true"), all posts are routed to

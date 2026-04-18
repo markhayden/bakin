@@ -115,7 +115,10 @@ function makeCtx(): Captured {
 }
 
 function seedAsset(type: string, taskId: string, filename: string, contents = 'bytes'): string {
-  const dir = join(assetsDir, type, taskId)
+  // Filename must be canonical (YYYYMMDD-slug-id8.ext) — the date prefix
+  // determines the month shard under assets/store/{YYYY-MM}/.
+  const ym = `${filename.slice(0, 4)}-${filename.slice(4, 6)}`
+  const dir = join(assetsDir, 'store', ym)
   mkdirSync(dir, { recursive: true })
   const full = join(dir, filename)
   writeFileSync(full, contents)
@@ -130,7 +133,7 @@ function seedAsset(type: string, taskId: string, filename: string, contents = 'b
     type,
   }
   writeFileSync(full + '.meta.json', JSON.stringify(sidecar, null, 2))
-  return `assets/${type}/${taskId}/${filename}`
+  return `assets/store/${ym}/${filename}`
 }
 
 describe('retype handler preserves search index', () => {
@@ -141,7 +144,8 @@ describe('retype handler preserves search index', () => {
 
   it('retype is a sidecar-only edit; search doc reindexed under filename key', async () => {
     const captured = makeCtx()
-    const rel = seedAsset('text', 'task-1', 'notes-abcdef12.md', '# notes')
+    const filename = '20260404-notes-abcdef12.md'
+    const rel = seedAsset('text', 'task-1', filename, '# notes')
 
     await assetsPlugin.activate(captured.ctx)
     captured.indexCalls.length = 0
@@ -151,12 +155,12 @@ describe('retype handler preserves search index', () => {
     const res = await handler(new Request('http://localhost/api/plugins/assets/retype', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: 'notes-abcdef12.md', type: 'research' }),
+      body: JSON.stringify({ filename, type: 'research' }),
     }), captured.ctx)
 
     const data = await res.json()
     expect(data.ok).toBe(true)
-    expect(data.filename).toBe('notes-abcdef12.md')
+    expect(data.filename).toBe(filename)
     expect(data.newType).toBe('research')
     expect(data.path).toBe(rel)
 
@@ -169,8 +173,7 @@ describe('retype handler preserves search index', () => {
     // Give the best-effort reindex a tick to settle.
     await new Promise(r => setTimeout(r, 10))
 
-    // The filename-keyed upsert must have fired with updated asset_type.
-    const reindexed = captured.indexCalls.find(c => c.key === 'notes-abcdef12.md')
+    const reindexed = captured.indexCalls.find(c => c.key === filename)
     expect(reindexed, 'expected index upsert under filename key').toBeTruthy()
     expect(reindexed!.doc.asset_type).toBe('research')
 
@@ -187,7 +190,8 @@ describe('relink handler preserves search index', () => {
 
   it('relink is a sidecar-only edit; search doc reindexed under filename key', async () => {
     const captured = makeCtx()
-    const rel = seedAsset('images', 'task-1', 'hero-12345678.png', 'png-bytes')
+    const filename = '20260404-hero-12345678.png'
+    const rel = seedAsset('images', 'task-1', filename, 'png-bytes')
 
     await assetsPlugin.activate(captured.ctx)
     captured.indexCalls.length = 0
@@ -197,12 +201,12 @@ describe('relink handler preserves search index', () => {
     const res = await handler(new Request('http://localhost/api/plugins/assets/link', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: 'hero-12345678.png', taskId: 'task-2' }),
+      body: JSON.stringify({ filename, taskId: 'task-2' }),
     }), captured.ctx)
 
     const data = await res.json()
     expect(data.ok).toBe(true)
-    expect(data.filename).toBe('hero-12345678.png')
+    expect(data.filename).toBe(filename)
     expect(data.newTaskId).toBe('task-2')
     expect(data.path).toBe(rel)
 
@@ -213,7 +217,7 @@ describe('relink handler preserves search index', () => {
 
     await new Promise(r => setTimeout(r, 50))
 
-    const reindexed = captured.indexCalls.find(c => c.key === 'hero-12345678.png')
+    const reindexed = captured.indexCalls.find(c => c.key === filename)
     expect(reindexed, 'expected index upsert under filename key').toBeTruthy()
     expect(reindexed!.doc.task_id).toBe('task-2')
 
