@@ -26,6 +26,7 @@ import { ASSET_TYPES } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
 import { saveAsset } from './lib/save-asset'
 import { filenameExists } from './lib/resolver'
+import { ingestInboxFile, ingestInboxDir } from './lib/ingest-inbox'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { buildAssetFileUrl } from './lib/asset-url'
@@ -145,6 +146,20 @@ const assetsPlugin: BakinPlugin = {
       onSync: async (relativePath: string) => {
         if (!relativePath.startsWith('assets/')) return
         if (relativePath.includes('.trash/')) return
+
+        // Intercept inbox drops: canonicalize, move to store/, write a stub
+        // sidecar. The subsequent onSync for the destination path does the
+        // normal index/search upsert.
+        if (relativePath.startsWith('assets/inbox/') && !relativePath.endsWith('.meta.json')) {
+          const result = ingestInboxFile(relativePath)
+          if (result.ok) {
+            ctx.activity.log('user', `Ingested "${result.filename}" from inbox`)
+            ctx.activity.audit('asset.ingested', 'user', { filename: result.filename, path: result.path })
+          } else if (result.error) {
+            log.warn('Inbox ingestion failed', { path: relativePath, error: result.error })
+          }
+          return
+        }
 
         const assetPath = relativePath.endsWith('.meta.json')
           ? relativePath.replace(/\.meta\.json$/, '')
@@ -347,6 +362,19 @@ const assetsPlugin: BakinPlugin = {
     ctx.hooks.register('assets.listTrash', (d: Record<string, unknown>) => listTrash(d.assetsRoot as string))
     ctx.hooks.register('assets.restoreAsset', (d: Record<string, unknown>) => restoreAsset(d.trashFilename as string, d.assetsRoot as string))
     ctx.hooks.register('assets.emptyTrash', (d: Record<string, unknown>) => emptyTrash(d.assetsRoot as string))
+
+    // Drain the inbox first — anything a user dropped while the watcher
+    // wasn't running gets canonicalized into store/ before the index is
+    // built, so those assets appear in the first listing.
+    try {
+      const ingested = ingestInboxDir()
+      const succeeded = ingested.filter(r => r.ok)
+      if (succeeded.length > 0) {
+        log.info('Ingested inbox drops on startup', { count: succeeded.length })
+      }
+    } catch (err) {
+      log.warn('Inbox startup scan failed', err)
+    }
 
     // Build the in-memory tracker on startup. (Search index reconcile is
     // owned by registerFileBackedContentType above and runs separately.)
