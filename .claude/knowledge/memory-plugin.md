@@ -14,7 +14,7 @@ A read-only observability dashboard over every OpenClaw memory tier plus Bakin's
 | `turn` | `agents/*/sessions/<sessionId>.jsonl` | ✅ C6 |
 | `checkpoint` | `agents/*/sessions/*.checkpoint.*.jsonl` | ✅ C7 |
 | `daily_note` | `workspace/memory/*.md` | ✅ C5 |
-| `dream` | `workspace/memory/dreaming/**/*.md`, `workspace/memory/.dreams/**/*` | pending (C8) |
+| `dream` | `workspace/memory/dreaming/**/*.md`, `workspace/memory/.dreams/**/*` | ✅ C8 |
 | `durable` | `workspace/*.md` (MEMORY.md, SOUL.md, etc. — canonical bootstrap files) | ✅ C4 |
 | `audit` | `~/.bakin/audit.jsonl` | ✅ C3 |
 
@@ -61,6 +61,13 @@ plugins/memory/
                             `fromHook` (true→auto, false→manual, absent→unknown);
                             `tokensAfter` always null (real OpenClaw files never
                             carry it). Also exports `matchCheckpointFilename`.
+      dream-parser.ts     ─ Five artifact types from DreamArtifactTypeSchema
+                            (phase_doc, short_term_recall, phase_signals,
+                            events_log, session_corpus). `parsePhaseDoc` requires
+                            YYYY-MM-DD filename; `parseDreamSignal` classifies via
+                            `classifyDreamSignal(relPath)`. Dormant (empty) bodies
+                            still emit rows so the UI can show friendly copy
+                            instead of a mysterious absence. 2 KB snippet cap.
     routes/
       audit.ts        ─ GET /audit — tier='audit' facet query + agent/event filters.
       durable.ts      ─ GET /durable?agent=<id> (list), GET /durable/:agent/:basename (render).
@@ -74,6 +81,11 @@ plugins/memory/
       checkpoints.ts  ─ GET /checkpoints?agent=<id>[&sessionId=<id>] (Antfly, tier=checkpoint),
                         GET /checkpoints/:agent/:sessionId/:checkpointId (detail via
                         meta scan — routes never re-parse files).
+      dreams.ts       ─ GET /dreams?agent=<id>[&phase=&date=&artifactType=] (Antfly,
+                        tier=dream, post-filters by phase/date/artifactType),
+                        GET /dreams/:agent/:artifactType[?phase=&date=] (detail via
+                        meta scan — phase_doc needs phase+date, session_corpus
+                        needs date, others identified by artifactType alone).
 ```
 
 ## Invariants
@@ -136,7 +148,13 @@ Lives at `~/.bakin/plugin-settings/memory.json`. Fields:
   - **Adapter additions.** `listCheckpointJsonlFiles(agent)` returns `{agent, sessionId, checkpointId, filename, path, size, mtimeMs}[]`; `checkpointJsonlPath`, `checkpointJsonlStat`, and `matchCheckpointJsonlPath(path)` round out the watcher surface. The existing `listSessionJsonlFiles` already excludes `*.checkpoint.*.jsonl` so session + checkpoint backfills don't double-index the same files.
   - **Watcher routing.** `file.add` and `file.change` on `agents/*/sessions/*.checkpoint.*.jsonl` route through `matchCheckpointJsonlPath` → `indexCheckpointFile`. `unlink` removes the derived row id directly (no per-file state to forget beyond Antfly's own row). The top-level watch glob (`agents/*/sessions/*.jsonl`) already covers checkpoint files — no new path added.
   - **Routes.** `GET /checkpoints?agent=<id>[&sessionId=<id>&limit=&offset=]` runs an Antfly query with `{tier: 'checkpoint', agent}` filters and the optional `sessionId` as the q-string (meta is indexed as text, so the query narrows without needing a dedicated facet). `GET /checkpoints/:agent/:sessionId/:checkpointId` does the same query with `q=sessionId checkpointId`, then filters the first 20 results by JSON-parsing each row's `meta` field and matching both ids exactly — malformed meta is tolerated and treated as a non-match. Routes never touch the filesystem; the indexer is the single source of truth.
-- C8 — `feat(memory): dream tier` (pending)
+- C8 — `feat(memory): dream tier` ✅
+  - **Source.** Five artifact types (`DreamArtifactTypeSchema`): `phase_doc` (one per `workspace/memory/dreaming/<phase>/<YYYY-MM-DD>.md`), `short_term_recall` (`.dreams/short-term-recall.json`), `phase_signals` (`.dreams/phase-signals.json`), `events_log` (`.dreams/events.jsonl`), `session_corpus` (`.dreams/session-corpus/<YYYY-MM-DD>.{md,txt}`). One `MemoryRow` per file — no chunking.
+  - **Dormant state is real.** On a fresh OpenClaw install `short-term-recall.json` and `events.jsonl` exist but are empty. The parser still emits rows with empty content so the UI can show "dormant" copy rather than a mysterious absence. Phase docs whose filename lacks a YYYY-MM-DD prefix are rejected (not dormant — they're just bad names).
+  - Row ids: `dream:<16-char-sha256(agent|artifactType|key)>` where `key` is `<phase>|<date>` for `phase_doc`, the date for `session_corpus`, and the `artifactType` itself for the three no-key signals. Unlink derives the same id and removes it.
+  - **Adapter additions.** `listPhaseDocs(agent)` walks `workspace/memory/dreaming/<phase>/*.md`; `listDreamSignalFiles(agent)` enumerates `.dreams/` flat files plus a single-level `session-corpus/` subdir (no deeper recursion). `readPhaseDoc(agent, phase, filename)` and `readDreamSignal(agent, relPath)` both block path traversal. `matchPhaseDocPath(path)` and `matchDreamSignalPath(path)` round-trip filesystem paths back to `(agent, phase, filename)` or `(agent, relPath)` for watcher routing, handling both the collapsed main-agent workspace and per-agent `workspaces/<id>/` layouts.
+  - **Watcher routing.** `file.add` / `file.change` on a phase doc path → `indexPhaseDoc`; on a signal file path → `indexDreamSignal`. `unlink` derives the row id from the filename (for phase docs, the `YYYY-MM-DD` prefix) or from `classifyDreamSignal(relPath)` and removes it. The existing watch glob (`workspace/memory/**/*`, `workspaces/*/memory/**/*`) already covers both path shapes.
+  - **Routes.** `GET /dreams?agent=<id>[&phase=&date=&artifactType=]` runs an Antfly query with `{tier: 'dream', agent}` filters, passes the phase/date/artifactType terms as the q-string for BM25 scoring, then post-filters the results by JSON-parsing each row's `meta`. `GET /dreams/:agent/:artifactType[?phase=&date=]` does the same query narrowed by the artifactType term and finds the first row whose meta matches all provided fields. Malformed meta is tolerated as a non-match. Routes never touch the filesystem; the indexer is the single source of truth.
 - C9 — `feat(memory): global search + facets UX` (pending)
 - C10 — `feat(memory): MCP exec tools` (pending)
 - C11 — `docs(memory): final knowledge pass + CLAUDE/README` (pending)

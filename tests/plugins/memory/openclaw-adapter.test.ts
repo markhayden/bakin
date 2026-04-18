@@ -45,6 +45,12 @@ import {
   readDailyNote,
   listDreamArtifacts,
   readDreamArtifact,
+  listPhaseDocs,
+  listDreamSignalFiles,
+  readPhaseDoc,
+  readDreamSignal,
+  matchPhaseDocPath,
+  matchDreamSignalPath,
   readDurableFile,
   CANONICAL_DURABLE_FILES,
 } from '../../../plugins/memory/lib/openclaw-adapter'
@@ -333,6 +339,97 @@ describe('readDreamArtifact', () => {
 
   it('blocks path traversal', () => {
     expect(readDreamArtifact('main', 'signal', '../../../etc/passwd')).toBeNull()
+  })
+})
+
+// ─── Dream v2 helpers (listPhaseDocs / listDreamSignalFiles / readers / match) ──
+
+describe('listPhaseDocs', () => {
+  it('returns [] when dreaming dir is missing', () => {
+    seedAgent('main')
+    expect(listPhaseDocs('main')).toEqual([])
+  })
+
+  it('enumerates <phase>/<date>.md files across phases', () => {
+    seedAgent('main')
+    writeFile('workspace/memory/dreaming/light/2026-04-17.md', '# a')
+    writeFile('workspace/memory/dreaming/rem/2026-04-16.md', '# b')
+    writeFile('workspace/memory/dreaming/rem/notes.txt', 'not markdown')
+    const entries = listPhaseDocs('main').map((e) => `${e.phase}/${e.filename}`).sort()
+    expect(entries).toEqual(['light/2026-04-17.md', 'rem/2026-04-16.md'])
+  })
+})
+
+describe('listDreamSignalFiles', () => {
+  it('returns [] when .dreams dir is missing', () => {
+    seedAgent('main')
+    expect(listDreamSignalFiles('main')).toEqual([])
+  })
+
+  it('lists flat files and session-corpus/* entries', () => {
+    seedAgent('main')
+    writeFile('workspace/memory/.dreams/short-term-recall.json', '{}')
+    writeFile('workspace/memory/.dreams/phase-signals.json', '{}')
+    writeFile('workspace/memory/.dreams/events.jsonl', '')
+    writeFile('workspace/memory/.dreams/session-corpus/2026-04-17.md', '# x')
+    const paths = listDreamSignalFiles('main').map((e) => e.relPath).sort()
+    expect(paths).toEqual([
+      'events.jsonl',
+      'phase-signals.json',
+      'session-corpus/2026-04-17.md',
+      'short-term-recall.json',
+    ])
+  })
+})
+
+describe('readPhaseDoc / readDreamSignal', () => {
+  it('reads phase doc body', () => {
+    writeFile('workspace/memory/dreaming/light/2026-04-17.md', '# dream')
+    expect(readPhaseDoc('main', 'light', '2026-04-17.md')).toBe('# dream')
+  })
+
+  it('rejects unsafe phase / filename', () => {
+    expect(readPhaseDoc('main', '..', 'x.md')).toBeNull()
+    expect(readPhaseDoc('main', 'light', '../x.md')).toBeNull()
+    expect(readPhaseDoc('main', 'light', 'notmd.json')).toBeNull()
+  })
+
+  it('reads flat signal body and session-corpus body', () => {
+    writeFile('workspace/memory/.dreams/short-term-recall.json', '{"r":[]}')
+    writeFile('workspace/memory/.dreams/session-corpus/2026-04-17.md', '# body')
+    expect(readDreamSignal('main', 'short-term-recall.json')).toBe('{"r":[]}')
+    expect(readDreamSignal('main', 'session-corpus/2026-04-17.md')).toBe('# body')
+  })
+
+  it('blocks traversal on dream signal reads', () => {
+    expect(readDreamSignal('main', '../../etc/passwd')).toBeNull()
+  })
+})
+
+describe('matchPhaseDocPath', () => {
+  it('matches <agent>/memory/dreaming/<phase>/<date>.md for the main agent (collapsed workspace)', () => {
+    const p = join(openclawDir, 'workspace', 'memory', 'dreaming', 'light', '2026-04-17.md')
+    expect(matchPhaseDocPath(p)).toEqual({ agent: 'main', phase: 'light', filename: '2026-04-17.md' })
+  })
+
+  it('rejects unrelated paths', () => {
+    expect(matchPhaseDocPath('/nope/x.md')).toBeNull()
+  })
+})
+
+describe('matchDreamSignalPath', () => {
+  it('matches .dreams/<file> under the main-agent workspace', () => {
+    const p = join(openclawDir, 'workspace', 'memory', '.dreams', 'short-term-recall.json')
+    expect(matchDreamSignalPath(p)).toEqual({ agent: 'main', relPath: 'short-term-recall.json' })
+  })
+
+  it('matches .dreams/session-corpus/<file>', () => {
+    const p = join(openclawDir, 'workspace', 'memory', '.dreams', 'session-corpus', '2026-04-17.md')
+    expect(matchDreamSignalPath(p)).toEqual({ agent: 'main', relPath: 'session-corpus/2026-04-17.md' })
+  })
+
+  it('rejects unrelated paths', () => {
+    expect(matchDreamSignalPath('/nope/x.json')).toBeNull()
   })
 })
 

@@ -461,6 +461,164 @@ export function readDreamArtifact(agentId: string, kind: DreamArtifactKind, relP
   }
 }
 
+export interface PhaseDocFile {
+  agent: string
+  phase: string
+  filename: string
+  path: string
+  mtimeMs: number
+}
+
+export interface DreamSignalFile {
+  agent: string
+  relPath: string
+  path: string
+  mtimeMs: number
+}
+
+export function listPhaseDocs(agentId: string): PhaseDocFile[] {
+  const root = dreamingDir(agentId)
+  if (!existsSync(root)) return []
+  const out: PhaseDocFile[] = []
+  try {
+    for (const phaseEntry of readdirSync(root, { withFileTypes: true })) {
+      if (!phaseEntry.isDirectory()) continue
+      const phaseDir = join(root, phaseEntry.name)
+      try {
+        for (const f of readdirSync(phaseDir, { withFileTypes: true })) {
+          if (!f.isFile() || !f.name.endsWith('.md')) continue
+          const p = join(phaseDir, f.name)
+          let mtimeMs = Date.now()
+          try { mtimeMs = statSync(p).mtimeMs } catch { /* fallback */ }
+          out.push({ agent: agentId, phase: phaseEntry.name, filename: f.name, path: p, mtimeMs })
+        }
+      } catch { /* skip */ }
+    }
+  } catch (err) {
+    log.warn('listPhaseDocs failed', { agentId, err: err instanceof Error ? err.message : String(err) })
+  }
+  return out
+}
+
+export function listDreamSignalFiles(agentId: string): DreamSignalFile[] {
+  const root = dreamDir(agentId)
+  if (!existsSync(root)) return []
+  const out: DreamSignalFile[] = []
+  try {
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (entry.isFile()) {
+        const p = join(root, entry.name)
+        let mtimeMs = Date.now()
+        try { mtimeMs = statSync(p).mtimeMs } catch { /* fallback */ }
+        out.push({ agent: agentId, relPath: entry.name, path: p, mtimeMs })
+      } else if (entry.isDirectory() && entry.name === 'session-corpus') {
+        const corpus = join(root, entry.name)
+        try {
+          for (const f of readdirSync(corpus, { withFileTypes: true })) {
+            if (!f.isFile()) continue
+            const p = join(corpus, f.name)
+            let mtimeMs = Date.now()
+            try { mtimeMs = statSync(p).mtimeMs } catch { /* fallback */ }
+            out.push({ agent: agentId, relPath: `session-corpus/${f.name}`, path: p, mtimeMs })
+          }
+        } catch { /* skip */ }
+      }
+    }
+  } catch (err) {
+    log.warn('listDreamSignalFiles failed', { agentId, err: err instanceof Error ? err.message : String(err) })
+  }
+  return out
+}
+
+export function readPhaseDoc(agentId: string, phase: string, filename: string): string | null {
+  if (!isSafeFilename(phase) || !isSafeFilename(filename) || !filename.endsWith('.md')) return null
+  const file = join(dreamingDir(agentId), phase, filename)
+  if (!existsSync(file)) return null
+  try {
+    return readFileSync(file, 'utf-8')
+  } catch {
+    return null
+  }
+}
+
+export function readDreamSignal(agentId: string, relPath: string): string | null {
+  if (!isSafeRelPath(relPath)) return null
+  const file = join(dreamDir(agentId), relPath)
+  if (!existsSync(file)) return null
+  try {
+    return readFileSync(file, 'utf-8')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Map a filesystem path back to `{ agent, phase, filename }` if it is a
+ * `memory/dreaming/<phase>/<file>.md` under a recognized agent workspace.
+ */
+export function matchPhaseDocPath(
+  path: string,
+): { agent: string; phase: string; filename: string } | null {
+  for (const agentId of listAgentIds()) {
+    const root = dreamingDir(agentId)
+    if (path.startsWith(root + '/')) {
+      const rest = path.slice(root.length + 1)
+      const slash = rest.indexOf('/')
+      if (slash < 0) continue
+      const phase = rest.slice(0, slash)
+      const filename = rest.slice(slash + 1)
+      if (filename.includes('/') || !filename.endsWith('.md')) continue
+      return { agent: agentId, phase, filename }
+    }
+  }
+  const mainRoot = getOpenClawPath('workspace', 'memory', 'dreaming')
+  if (path.startsWith(mainRoot + '/')) {
+    const rest = path.slice(mainRoot.length + 1)
+    const slash = rest.indexOf('/')
+    if (slash < 0) return null
+    const phase = rest.slice(0, slash)
+    const filename = rest.slice(slash + 1)
+    if (filename.includes('/') || !filename.endsWith('.md')) return null
+    return { agent: tryGetMainAgentId() ?? 'main', phase, filename }
+  }
+  return null
+}
+
+/**
+ * Map a filesystem path back to `{ agent, relPath }` if it is under
+ * `memory/.dreams/` for a recognized agent workspace (flat file or
+ * `session-corpus/<file>`).
+ */
+export function matchDreamSignalPath(
+  path: string,
+): { agent: string; relPath: string } | null {
+  for (const agentId of listAgentIds()) {
+    const root = dreamDir(agentId)
+    if (path.startsWith(root + '/')) {
+      const rest = path.slice(root.length + 1)
+      if (!rest.includes('/') || rest.startsWith('session-corpus/')) {
+        if (rest.startsWith('session-corpus/')) {
+          const tail = rest.slice('session-corpus/'.length)
+          if (tail.includes('/')) continue
+        }
+        return { agent: agentId, relPath: rest }
+      }
+    }
+  }
+  const mainRoot = getOpenClawPath('workspace', 'memory', '.dreams')
+  if (path.startsWith(mainRoot + '/')) {
+    const rest = path.slice(mainRoot.length + 1)
+    if (!rest.includes('/') || rest.startsWith('session-corpus/')) {
+      if (rest.startsWith('session-corpus/')) {
+        const tail = rest.slice('session-corpus/'.length)
+        if (tail.includes('/')) return null
+      }
+      return { agent: tryGetMainAgentId() ?? 'main', relPath: rest }
+    }
+  }
+  return null
+}
+
 // ─── Durable (canonical bootstrap) files ─────────────────────────────────────
 
 export const CANONICAL_DURABLE_FILES = [

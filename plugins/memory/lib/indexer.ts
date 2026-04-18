@@ -22,6 +22,12 @@ import { parseSession, rowId as sessionRowId } from './tier-parsers/session-pars
 import { parseTurnLine } from './tier-parsers/turn-parser'
 import { parseCheckpoint, rowId as checkpointRowId } from './tier-parsers/checkpoint-parser'
 import {
+  classifyDreamSignal,
+  parsePhaseDoc,
+  parseDreamSignal,
+  rowId as dreamRowId,
+} from './tier-parsers/dream-parser'
+import {
   CANONICAL_DURABLE_FILES,
   checkpointJsonlStat,
   dailyNotePath,
@@ -31,15 +37,21 @@ import {
   listAgentIds,
   listCheckpointJsonlFiles,
   listDailyNotes,
+  listDreamSignalFiles,
+  listPhaseDocs,
   listSessionJsonlFiles,
   matchCheckpointJsonlPath,
   matchDailyNotePath,
+  matchDreamSignalPath,
   matchDurablePath,
+  matchPhaseDocPath,
   matchSessionJsonlPath,
   matchSessionStorePath,
   readCheckpoint,
   readDailyNote,
+  readDreamSignal,
   readDurableFile,
+  readPhaseDoc,
   readSessionStore,
   sessionJsonlStat,
   sessionStorePath,
@@ -97,7 +109,10 @@ export class MemoryIndexer {
       await this.indexCheckpointTier()
       return
     }
-    // C8+ tiers land in subsequent commits.
+    if (tier === 'dream') {
+      await this.indexDreamTier()
+      return
+    }
   }
 
   async handleWatcherEvent(path: string, kind: 'add' | 'change' | 'unlink'): Promise<void> {
@@ -165,7 +180,26 @@ export class MemoryIndexer {
       }
       return
     }
-    // Other tiers add routing here in C8+.
+
+    const phaseDoc = matchPhaseDocPath(path)
+    if (phaseDoc) {
+      if (kind === 'unlink') {
+        await this.removePhaseDoc(phaseDoc.agent, phaseDoc.phase, phaseDoc.filename)
+      } else {
+        await this.indexPhaseDoc(phaseDoc.agent, phaseDoc.phase, phaseDoc.filename, path)
+      }
+      return
+    }
+
+    const dreamSignal = matchDreamSignalPath(path)
+    if (dreamSignal) {
+      if (kind === 'unlink') {
+        await this.removeDreamSignal(dreamSignal.agent, dreamSignal.relPath)
+      } else {
+        await this.indexDreamSignal(dreamSignal.agent, dreamSignal.relPath, path)
+      }
+      return
+    }
   }
 
   // ─── Audit tier (C3) ──────────────────────────────────────────────────────
@@ -505,6 +539,68 @@ export class MemoryIndexer {
     checkpointId: string,
   ): Promise<void> {
     await this.ctx.search.remove(checkpointRowId(agent, sessionId, checkpointId))
+  }
+
+  // ─── Dream tier (C8) ──────────────────────────────────────────────────────
+
+  private async indexDreamTier(): Promise<void> {
+    for (const agent of listAgentIds()) {
+      for (const file of listPhaseDocs(agent)) {
+        await this.indexPhaseDoc(agent, file.phase, file.filename, file.path, file.mtimeMs)
+      }
+      for (const file of listDreamSignalFiles(agent)) {
+        await this.indexDreamSignal(agent, file.relPath, file.path, file.mtimeMs)
+      }
+    }
+  }
+
+  private async indexPhaseDoc(
+    agent: string,
+    phase: string,
+    filename: string,
+    path: string,
+    mtimeMs?: number,
+  ): Promise<void> {
+    const body = readPhaseDoc(agent, phase, filename)
+    if (body === null) return
+    let mtime = mtimeMs
+    if (mtime === undefined) {
+      try { mtime = existsSync(path) ? statSync(path).mtimeMs : Date.now() } catch { mtime = Date.now() }
+    }
+    const row = parsePhaseDoc(agent, phase, filename, body, path, mtime)
+    if (row === null) return
+    await this.writeRow(row)
+  }
+
+  private async indexDreamSignal(
+    agent: string,
+    relPath: string,
+    path: string,
+    mtimeMs?: number,
+  ): Promise<void> {
+    const body = readDreamSignal(agent, relPath)
+    if (body === null) return
+    let mtime = mtimeMs
+    if (mtime === undefined) {
+      try { mtime = existsSync(path) ? statSync(path).mtimeMs : Date.now() } catch { mtime = Date.now() }
+    }
+    const row = parseDreamSignal(agent, relPath, body, path, mtime)
+    if (row === null) return
+    await this.writeRow(row)
+  }
+
+  private async removePhaseDoc(agent: string, phase: string, filename: string): Promise<void> {
+    const m = /^(\d{4}-\d{2}-\d{2})(?:[-.].*)?\.md$/.exec(filename)
+    if (!m) return
+    const date = m[1]
+    await this.ctx.search.remove(dreamRowId(agent, 'phase_doc', `${phase}|${date}`))
+  }
+
+  private async removeDreamSignal(agent: string, relPath: string): Promise<void> {
+    const c = classifyDreamSignal(relPath)
+    if (!c) return
+    const key = c.date ?? c.artifactType
+    await this.ctx.search.remove(dreamRowId(agent, c.artifactType, key))
   }
 
   // ─── Shared write ─────────────────────────────────────────────────────────
