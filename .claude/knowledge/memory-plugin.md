@@ -98,6 +98,17 @@ plugins/memory/
       status.ts       ─ GET /status — one Antfly count per tier (`limit: 0`),
                         returns `{ countsByTier, totalRows, offsetsTracked, lastUpdated }`.
                         Tolerant of per-tier failures (→ 0 for that tier).
+  mcp/
+    search.ts       ─ bakin_exec_memory_search — hybrid query over bakin_memory,
+                      optional tier/agent filters, limit default 20 / max 100.
+    get-session.ts  ─ bakin_exec_memory_get_session — session row + recent turns
+                      matched by parsed meta.sessionKey.
+    get-turn.ts     ─ bakin_exec_memory_get_turn — fetch a single turn by id,
+                      returns full (non-truncated) content + parsed meta.
+    list-agents.ts  ─ bakin_exec_memory_list_agents — per-agent per-tier counts
+                      via Antfly aggregations. Sorted by total desc.
+    status.ts       ─ bakin_exec_memory_status — counts + offsetsTracked +
+                      lastUpdated, same shape as GET /status.
 ```
 
 ## Invariants
@@ -174,8 +185,14 @@ Lives at `~/.bakin/plugin-settings/memory.json`. Fields:
   - **Shell wiring.** `MemoryShell` is the whole `/memory` landing page: overview cards → search input → tier + agent facet filters → results list. Search and filter state all live in the URL (`?q=…&tier=…&agent=…`) via `useQueryState` / `useQueryArrayState`, so the page is bookmarkable and browser back/forward round-trip the view. Facet aggregations come from Antfly's `aggregations.agent` and `aggregations.tier` — the agent facet only appears once there's data to populate it, which avoids showing an empty dropdown on a fresh install.
   - **No sub-route.** The search surface is the landing page — `/memory/search` is intentionally not created. One URL, one view, no internal redirects.
   - No changes needed to `src/core/api-search-handler.ts` — the unified `bakin_memory` table flows through the existing cross-plugin pipeline. The only stale reference was a doc comment in `src/core/audit.ts`, which correctly names the new table.
-- C10 — `feat(memory): MCP exec tools` (pending)
-- C10 — `feat(memory): MCP exec tools` (pending)
+- C10 — `feat(memory): MCP exec tools` ✅
+  - Five agent-facing tools, one per file under `plugins/memory/mcp/`, each a factory `(ctx: PluginContext) => ExecToolDefinition`. Factory pattern (vs inline in `index.ts` like schedule) is spec-mandated and keeps per-tool tests small and focused.
+  - `bakin_exec_memory_search` — thin wrapper over `ctx.search.query` with `tier` (enum-validated against `MemoryTierSchema`) and `agent` as optional filters. Limit defaults to 20, clamps to 100. Returns `{ id, tier, agent, title, snippet, score, sourceRef, updatedAt, meta }` — `meta` is JSON-parsed so the agent consumer doesn't have to.
+  - `bakin_exec_memory_get_session` — two queries: session row (tier=session, sessionKey as q-string, match by parsed `meta.sessionKey` since id is a hash), then turns (tier=turn, same q-string, match by `meta.sessionKey`). Agent filter narrows both. 404s as `{ok:false, error:'session not found'}`.
+  - `bakin_exec_memory_get_turn` — single lookup by `turn:<hex>` id. Validates the `turn:` prefix. Returns full `content` (not the snippet) so agents can read past the 32 KB turn truncation cap via the indexer's on-disk line offset if they want more.
+  - `bakin_exec_memory_list_agents` — seven parallel Antfly queries, one per tier, each asking for `facets: ['agent']` aggregations. Pivots the per-tier agent buckets into `{agent, total, byTier}` and sorts by total desc. Per-tier failures degrade that tier's contribution to 0 rather than erroring the whole tool.
+  - `bakin_exec_memory_status` — same counts-by-tier logic as the `/status` REST route, wrapped in the exec-tool envelope so agents don't need an HTTP round-trip. Per-tier failures → 0.
+  - All five tools are wired via `ctx.registerExecTool()` in `plugins/memory/index.ts:activate()`; the plugin-activation test pins the exact name set so we can't silently drop one.
 - C11 — `docs(memory): final knowledge pass + CLAUDE/README` (pending)
 
 ## URL state (see also `.claude/knowledge/url-state-deep-linking.md`)

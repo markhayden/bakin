@@ -33,6 +33,11 @@ import {
 import { checkpointsListRoute, checkpointDetailRoute } from './lib/routes/checkpoints'
 import { dreamsListRoute, dreamDetailRoute } from './lib/routes/dreams'
 import { statusRoute } from './lib/routes/status'
+import { createMemorySearchTool } from './mcp/search'
+import { createMemoryGetSessionTool } from './mcp/get-session'
+import { createMemoryGetTurnTool } from './mcp/get-turn'
+import { createMemoryListAgentsTool } from './mcp/list-agents'
+import { createMemoryStatusTool } from './mcp/status'
 
 const log = createLogger('memory')
 
@@ -151,6 +156,13 @@ const memoryPlugin: BakinPlugin = {
     ctx.registerRoute(dreamsListRoute)
     ctx.registerRoute(dreamDetailRoute)
     ctx.registerRoute(statusRoute)
+
+    // ─── MCP exec tools (spec §Feature 10) ──────────────────────────────────
+    ctx.registerExecTool(createMemorySearchTool(ctx))
+    ctx.registerExecTool(createMemoryGetSessionTool(ctx))
+    ctx.registerExecTool(createMemoryGetTurnTool(ctx))
+    ctx.registerExecTool(createMemoryListAgentsTool(ctx))
+    ctx.registerExecTool(createMemoryStatusTool(ctx))
 
     // ─── Watcher paths (spec §Watcher paths) ────────────────────────────────
     // The indexer fans these out to per-tier handlers once those land.
