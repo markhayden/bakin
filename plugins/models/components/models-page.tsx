@@ -3,10 +3,11 @@
 // React
 import { useEffect, useState, useCallback } from 'react'
 // External
-import { AlertCircle, ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
 // Internal
 import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
+import { ErrorBanner } from '@/components/error-banner'
 import { UnderlineTabs } from '@/components/underline-tabs'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -68,18 +69,6 @@ function TableSkeleton({ rows = 4, cols = 4 }: { rows?: number; cols?: number })
           ))}
         </TableBody>
       </Table>
-    </div>
-  )
-}
-
-function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3">
-      <AlertCircle className="size-4 text-destructive shrink-0" />
-      <span className="text-sm text-destructive flex-1">{message}</span>
-      {onRetry && (
-        <Button variant="outline" size="xs" onClick={onRetry}>Retry</Button>
-      )}
     </div>
   )
 }
