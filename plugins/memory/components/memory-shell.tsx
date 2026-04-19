@@ -11,7 +11,17 @@
  * bookmarkable and browser back/forward round-trip the view.
  */
 import { Suspense, useEffect, useMemo } from 'react'
-import { Input } from '@/components/ui/input'
+import {
+  ClipboardList,
+  MessagesSquare,
+  CornerDownRight,
+  Bookmark,
+  Calendar,
+  Database,
+  Moon,
+  User,
+} from 'lucide-react'
+import { PluginHeader } from '@/components/plugin-header'
 import { FacetFilter, type FacetOption } from '@/components/facet-filter'
 import { useSearch } from '@/hooks/use-search'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
@@ -19,13 +29,13 @@ import { TierOverviewCards } from './tier-overview-cards'
 import { MemorySearchResults } from './memory-search-results'
 
 const TIER_OPTIONS: FacetOption[] = [
-  { value: 'audit', label: 'Audit' },
-  { value: 'session', label: 'Sessions' },
-  { value: 'turn', label: 'Turns' },
-  { value: 'checkpoint', label: 'Checkpoints' },
-  { value: 'daily_note', label: 'Daily Notes' },
-  { value: 'durable', label: 'Durable' },
-  { value: 'dream', label: 'Dreams' },
+  { value: 'audit', label: 'Audit', icon: <ClipboardList className="size-3.5" /> },
+  { value: 'session', label: 'Sessions', icon: <MessagesSquare className="size-3.5" /> },
+  { value: 'turn', label: 'Turns', icon: <CornerDownRight className="size-3.5" /> },
+  { value: 'checkpoint', label: 'Checkpoints', icon: <Bookmark className="size-3.5" /> },
+  { value: 'daily_note', label: 'Daily Notes', icon: <Calendar className="size-3.5" /> },
+  { value: 'durable', label: 'Durable', icon: <Database className="size-3.5" /> },
+  { value: 'dream', label: 'Dreams', icon: <Moon className="size-3.5" /> },
 ]
 
 function MemoryShellInner() {
@@ -59,7 +69,11 @@ function MemoryShellInner() {
 
   const agentOptions: FacetOption[] = useMemo(() => {
     const agg = aggregations?.agent ?? []
-    return agg.map((a) => ({ value: a.value, label: a.value }))
+    return agg.map((a) => ({
+      value: a.value,
+      label: a.value,
+      icon: <User className="size-3.5" />,
+    }))
   }, [aggregations])
 
   const tierCounts = useMemo(() => {
@@ -74,42 +88,35 @@ function MemoryShellInner() {
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Memory</h1>
-        <p className="text-sm text-muted-foreground">
-          Observability over every memory tier — sessions, turns, checkpoints,
-          daily notes, dreams, durable bootstrap files, and Bakin&rsquo;s audit log.
-        </p>
-      </header>
+      <PluginHeader
+        title="Memory"
+        count={filtered.length}
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: 'Search across every tier…',
+        }}
+      />
 
       <TierOverviewCards />
 
-      <div className="flex flex-col gap-3">
-        <Input
-          type="search"
-          placeholder="Search across every tier…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search memory"
+      <div className="flex items-center gap-2 flex-wrap">
+        <FacetFilter
+          label="Tier"
+          options={TIER_OPTIONS}
+          selected={tiers}
+          onChange={setTiers}
+          counts={tierCounts}
         />
-        <div className="flex items-center gap-2 flex-wrap">
+        {agentOptions.length > 0 && (
           <FacetFilter
-            label="Tier"
-            options={TIER_OPTIONS}
-            selected={tiers}
-            onChange={setTiers}
-            counts={tierCounts}
+            label="Agent"
+            options={agentOptions}
+            selected={agents}
+            onChange={setAgents}
+            counts={agentCounts}
           />
-          {agentOptions.length > 0 && (
-            <FacetFilter
-              label="Agent"
-              options={agentOptions}
-              selected={agents}
-              onChange={setAgents}
-              counts={agentCounts}
-            />
-          )}
-        </div>
+        )}
       </div>
 
       <MemorySearchResults
