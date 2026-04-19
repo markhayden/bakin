@@ -66,7 +66,7 @@ src/
     messaging/page.tsx     — Messaging (redirects to /messaging/calendar)
     messaging/calendar/page.tsx — Content calendar view
     messaging/brainstorm/page.tsx — Brainstorm planning sessions
-    memory/page.tsx        — Audit log viewer
+    memory/page.tsx        — Memory observability dashboard (7 tiers via unified bakin_memory table)
     health/page.tsx        — System health dashboard
     models/page.tsx        — Model configuration
     api/plugins/[pluginId]/[[...path]]/route.ts  — Catch-all plugin API router
@@ -76,7 +76,7 @@ plugins/                   — Core plugins (each has bakin-plugin.json manifest
   assets/                  — Asset management with sidecar metadata, manual upload, clipboard paste
   projects/                — Project tracking with checklists
   schedule/                — Cron job scheduling with OpenClaw bridge
-  memory/                  — Audit logs and agent workspaces
+  memory/                  — Read-only observability over all 7 memory tiers (sessions, turns, checkpoints, daily notes, dreams, durable bootstrap, audit) via unified bakin_memory table
   messaging/               — Content calendar + brainstorm planning sessions
   models/                  — AI model configuration
   team/                    — Agent team management (OpenClaw adapter layer)
@@ -218,6 +218,9 @@ All user-facing filter/view state **must** be backed by URL query parameters so 
 
 ### Search Indexing
 File-backed plugins (projects, workflows, assets, messaging brainstorm) register via `ctx.search.registerFileBackedContentType()` during `activate()` — the helper auto-wires the watcher sync/unlink hooks AND schedules a startup mtime reconcile, so filesystem deletes propagate to the search index within ~300ms without each plugin owning the wiring. Non-filesystem-backed plugins (tasks, schedule, team, memory) use the bare `ctx.search.registerContentType()` and call `ctx.search.index()` / `remove()` themselves. **Both registration helpers also auto-register a `GET /search` route on the plugin's router** (`/api/plugins/{pluginId}/search`) — plugins no longer write that route by hand (issue #67 cleanup). The cross-plugin `GET /api/search` endpoint is backed by `src/core/api-search-handler.ts`. The memory plugin owns the unified `bakin_memory` table — a single table with a `tier` facet that discriminates across sessions, turns, checkpoints, daily notes, dreams, durable bootstrap files, and Bakin's audit log — replacing the former `bakin_audit` table. The messaging plugin owns brainstorm session search. REST/MCP routes still call the search mutators inline for synchronous consistency — the watcher path is the safety net for writes that bypass REST. The orphan backstop scan runs every 7d via `src/core/search-cleanup.ts` to catch the rare events the watcher missed. All Antfly tables use the `bakin_` prefix; `getTableForPlugin(pluginId)` resolves a plugin id to its table and throws if a plugin registers more than one content type. The client-side hook is `useSearch` from `src/hooks/use-search.ts` — it takes a `plugin: <id>` option that targets the plugin's auto-wired `/search` route, falling back to the cross-plugin endpoint when omitted. The MCP search exec tools (`bakin_exec_search_query`, `_table`, `_lookup`, `_facets`, `_similar`, `_reindex`, `_stats`) all take a `plugin` parameter — never a raw table name. Config in `settings.antfly.*`. Antfly is optional — all calls are no-ops when disabled. See `.claude/knowledge/search-system.md` for the "Three consistency paths" architecture and `.claude/knowledge/search-plugin-guide.md` for the helper API walkthrough.
+
+### Memory Observability
+The memory plugin is a read-only dashboard over all 7 OpenClaw memory tiers plus Bakin's own audit log, surfaced through the unified `bakin_memory` Antfly table. One row per artifact, discriminated by a `tier` facet (`audit | session | turn | checkpoint | daily_note | durable | dream`) so cross-tier queries, per-agent pivots, and global search all work against a single table. The plugin watches both `~/.bakin/audit.jsonl` and OpenClaw paths under `~/.openclaw/` (sessions, workspace, daily notes, dream artifacts) and incrementally indexes deltas using persisted byte offsets in `~/.bakin/plugin-data/memory/offsets.json`. Stable SHA256 row IDs (`turn:<16-hex>`, `checkpoint:<16-hex>`, etc.) make upserts idempotent. 5 MCP exec tools (`bakin_exec_memory_{search,get_session,get_turn,list_agents,status}`) expose the same data to agents. See `.claude/knowledge/memory-plugin.md` for tier-by-tier data sources, offset strategy, and the full route/MCP surface.
 
 ### Onboarding
 `src/core/onboarding/` — eight component modules (mkdir, settings, openclaw, antfly, models, mcporter, llm, channels) with a shared `check()` + `install()` contract. The orchestrator in `index.ts` runs them in a fixed dependency order, writes `~/.bakin/.onboarded` on completion, and the doctor gates on the marker via `settings.doctor.requireOnboard`. CLI surface: `bakin onboard` (aggregated), `bakin mkdir`, `bakin install {antfly,models,mcporter}`, `bakin check {openclaw,llm,channels,all}`, `bakin settings init`. On a fresh machine, use `bakin onboard --yes` to set everything up non-interactively.

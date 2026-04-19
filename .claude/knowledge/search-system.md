@@ -116,7 +116,7 @@ Higher-numbered paths exist as backstops for the lower ones.
 
 All Antfly tables use the `bakin_` prefix: `bakin_tasks`, `bakin_assets`, `bakin_projects`, etc.
 
-**Registered tables:** tasks, assets, projects, workflows, schedule, team, audit, brainstorm (8 total). All are registered by their owning plugin. The audit table is now owned by the **memory** plugin (moved out of `server.ts` during the issue #67 cleanup) and the brainstorm table is owned by the **messaging** plugin.
+**Registered tables:** tasks, assets, projects, workflows, schedule, team, memory, brainstorm (8 total). All are registered by their owning plugin. The **memory** plugin owns `bakin_memory` — a single unified table with a `tier` facet that discriminates across 7 memory tiers (audit, session, turn, checkpoint, daily_note, durable, dream). This replaced the former `bakin_audit` table during the memory-plugin-rebuild (2026-04-18) — the old table was dropped with no shim. The brainstorm table is owned by the **messaging** plugin.
 
 **Multi-index tables:** `bakin_assets` is currently the only table with more than one embedding index — it has `assets_text` (BGE over sidecar metadata + extracted PDF/text content) and `assets_visual` (CLIP over raster image pixels). All other tables use a single default embedding index named `embeddings`.
 
@@ -246,7 +246,7 @@ Optional cross-encoder reranking after initial retrieval. Configured globally vi
 | `bakin_workflows` | `description` | Workflow purpose text |
 | `bakin_schedule` | `command` | The thing you actually search for |
 | `bakin_team` | `soul` | Agent persona text |
-| `bakin_audit` | `content` | Audit log entry body (owned by **memory** plugin) |
+| `bakin_memory` | `content` | Memory observability body — full text across 7 tiers (audit, session, turn, checkpoint, daily_note, durable, dream), owned by **memory** plugin |
 | `bakin_messaging_brainstorm` | `message_body` | Brainstorm session messages (owned by **messaging** plugin) |
 | **`bakin_assets`** | **(unset)** | **Intentionally skipped — see below** |
 

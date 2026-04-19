@@ -211,7 +211,7 @@ bakin search:stats   # show Antfly status and per-table doc counts
 | `bakin_workflows` | workflows | type, status | No | `embeddings` (BGE) | `description` |
 | `bakin_schedule` | schedule | agent, enabled | No | `embeddings` (BGE) | `command` |
 | `bakin_team` | team | model, status | No | `embeddings` (BGE) | `soul` |
-| `bakin_audit` | memory | event, agent, channel | No (TTL) | `embeddings` (BGE) | `content` |
+| `bakin_memory` | memory | tier, agent, kind, eventType, phase, date | No | `embeddings` (BGE) | `content` |
 | `bakin_messaging_brainstorm` | messaging | status, agent_id | No | `embeddings` (BGE) | `message_body` |
 
 **`bakin_assets` is the only multi-index table.** See `.claude/knowledge/multimodal-search.md` for why it has separate `assets_text` and `assets_visual` indexes, how server-side content extraction feeds the text index, and the format support matrix for which file types land in which index.

@@ -133,7 +133,7 @@ bakin/
 │   ├── projects/           # Project tracking
 │   ├── schedule/           # Cron job scheduling
 │   ├── messaging/          # Content calendar + brainstorm
-│   ├── memory/             # Audit logs + agent workspaces
+│   ├── memory/             # Observability dashboard over 7 memory tiers (unified bakin_memory table)
 │   ├── models/             # AI model configuration
 │   ├── team/               # Agent team management
 │   └── health/             # System health dashboard
@@ -169,7 +169,7 @@ Plugins are configured in `bakin.config.ts` and loaded at startup. Each plugin c
 | **projects** | Project tracking with checklists | `/api/plugins/projects/` |
 | **schedule** | Cron job scheduling | `/api/plugins/schedule/` |
 | **messaging** | Content calendar + brainstorm sessions | `/api/plugins/messaging/` |
-| **memory** | Audit log viewer + agent workspaces | `/api/plugins/memory/` |
+| **memory** | Read-only observability over all 7 memory tiers (sessions, turns, checkpoints, daily notes, dreams, durable, audit) | `/api/plugins/memory/` |
 | **models** | Agent model assignments | `/api/plugins/models/` |
 | **team** | Agent team management (OpenClaw adapter) | `/api/plugins/team/` |
 | **health** | System health dashboard | `/api/plugins/health/` |
@@ -362,7 +362,7 @@ bakin reindex
 
 - **Auto-start:** Bakin spawns `antfly swarm` as a child process on boot (port 8080)
 - **Auto-stop:** Killed gracefully on Bakin shutdown (SIGTERM, force after 5s)
-- **Auto-tables:** 7 tables created on first run — tasks, assets, projects, workflows, schedule, team, audit
+- **Auto-tables:** 7 tables created on first run — tasks, assets, projects, workflows, schedule, team, memory (unified 7-tier observability table)
 - **Multimodal indexing:** Text content indexed via BAAI/bge-small-en-v1.5, image content via OpenAI CLIP (clip-vit-base-patch32), both running locally through Antfly's Termite ML subsystem. The assets table uses two embedding indexes side by side (`assets_text` + `assets_visual`) so text and visual queries hit the right modality automatically.
 - **Server-side content extraction:** PDFs and text formats (.md, .txt, .json, .csv, .yaml) are extracted to a `content` field in Bakin before indexing — pdf-parse handles PDFs, fs.readFileSync handles plain text. See `.claude/knowledge/multimodal-search.md` for the pipeline.
 - **Cross-encoder reranker:** Single-modality tables get a post-retrieval rerank pass via mxbai-rerank-base-v1 for sharper relevance. Multimodal tables (assets) skip reranking — see `search-system.md` for why.
@@ -378,7 +378,7 @@ For the full architecture see `.claude/knowledge/search-system.md`. For the mult
 | Table | Source | Indexed When |
 |-------|--------|-------------|
 | `bakin_tasks` | Completed tasks | On move to Done |
-| `bakin_audit` | `audit.jsonl` | On every audit event |
+| `bakin_memory` | `audit.jsonl` + OpenClaw sessions/workspace/memory dirs | On file change (offset-driven) |
 | `bakin_assets` | Generated assets | On create |
 | `bakin_projects` | Project files | On file write |
 | `bakin_workflows` | Workflow instances | On state change |

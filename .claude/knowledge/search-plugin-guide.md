@@ -223,7 +223,7 @@ The watcher path is the safety net for writes that bypass REST entirely
 | workflows | `bakin_workflows` | YAML defs + JSON instances | `registerFileBackedContentType` (two filePatterns) |
 | schedule | `bakin_schedule` | OpenClaw cron jobs | `registerContentType` |
 | team | `bakin_team` | OpenClaw agents | `registerContentType` |
-| memory | `bakin_audit` | `audit.jsonl` | `registerContentType` (TTL-managed) |
+| memory | `bakin_memory` | `audit.jsonl` + OpenClaw sessions/workspace/memory dirs | `registerContentType` (single table, `tier` facet discriminates across 7 memory tiers) |
 | messaging | `bakin_messaging_brainstorm` | brainstorm session JSON files | `registerFileBackedContentType` |
 
 ## Common Pitfalls
