@@ -332,8 +332,8 @@ describe('team/openclaw-adapter · openclawExec', () => {
   })
 
   it('throws on non-zero exit', async () => {
-    execFileMock.mockImplementation((_cmd: string, _args: string[], cb: (err: Error | null) => void) => {
-      cb(new Error('Command failed: openclaw agents add'))
+    execFileMock.mockImplementation((_cmd: string, _args: string[], cb: (err: Error | null, result: { stdout: string; stderr: string }) => void) => {
+      cb(new Error('Command failed: openclaw agents add'), { stdout: '', stderr: '' })
     })
     await expect(openclawExec(['agents', 'add', 'bad'])).rejects.toThrow('Command failed')
   })
@@ -505,8 +505,8 @@ describe('team/openclaw-adapter · removeAgent', () => {
 
   it('returns false when CLI fails', async () => {
     setConfig({ agents: { list: [{ id: 'main' }, { id: 'pixel' }] } })
-    execFileMock.mockImplementation((_cmd: string, _args: string[], cb: (err: Error | null) => void) => {
-      cb(new Error('CLI failed'))
+    execFileMock.mockImplementation((_cmd: string, _args: string[], cb: (err: Error | null, result: { stdout: string; stderr: string }) => void) => {
+      cb(new Error('CLI failed'), { stdout: '', stderr: '' })
     })
 
     const result = await removeAgent('pixel')

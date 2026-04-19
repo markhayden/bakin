@@ -194,7 +194,7 @@ describe('MCP search tools — plugin param coverage', () => {
       expect(lastCall[0]).toBe('foo')
       expect(lastCall[1]?.table).toBe('bakin_tasks')
       // single-table mock returns 1 result
-      expect((result as { results: unknown[] }).results.length).toBe(1)
+      expect((result as unknown as { results: unknown[] }).results.length).toBe(1)
     })
 
     it('runs cross-plugin multi-query when plugin omitted', async () => {
@@ -204,15 +204,15 @@ describe('MCP search tools — plugin param coverage', () => {
       expect(result.ok).toBe(true)
       const lastCall = crossTableSearchMock.mock.calls.at(-1)!
       expect(lastCall[1]?.table).toBeUndefined()
-      expect((result as { results: unknown[] }).results.length).toBe(2)
+      expect((result as unknown as { results: unknown[] }).results.length).toBe(2)
     })
 
     it('returns clear error for unknown plugin', async () => {
       const tool = await getTool('bakin_exec_search_query')
       const result = await tool.handler({ plugin: 'nonexistent', q: 'foo' }, {} as never)
       expect(result.ok).toBe(false)
-      expect((result as { error: string }).error).toMatch(/nonexistent/)
-      expect((result as { error: string }).error).toMatch(/no registered search content type/)
+      expect((result as unknown as { error: string }).error).toMatch(/nonexistent/)
+      expect((result as unknown as { error: string }).error).toMatch(/no registered search content type/)
     })
   })
 
@@ -224,7 +224,7 @@ describe('MCP search tools — plugin param coverage', () => {
       const lastCall = crossTableSearchMock.mock.calls.at(-1)!
       expect(lastCall[1]?.table).toBe('bakin_tasks')
       expect(lastCall[1]?.facets).toEqual(['status', 'agent'])
-      expect((result as { aggregations?: Record<string, unknown> }).aggregations).toBeDefined()
+      expect((result as unknown as { aggregations?: Record<string, unknown> }).aggregations).toBeDefined()
     })
   })
 
@@ -235,7 +235,7 @@ describe('MCP search tools — plugin param coverage', () => {
       expect(result.ok).toBe(true)
       expect(getTableStatsMock).toHaveBeenCalledWith('bakin_projects')
       expect(queryTableMock).toHaveBeenCalled()
-      expect((result as { document: { id: string } }).document.id).toBe('doc-1')
+      expect((result as unknown as { document: { id: string } }).document.id).toBe('doc-1')
     })
   })
 
@@ -248,7 +248,7 @@ describe('MCP search tools — plugin param coverage', () => {
       expect(lastCall[0]).toBe('*')
       expect(lastCall[1]?.table).toBe('bakin_tasks')
       expect(lastCall[1]?.facets).toEqual(['status', 'agent'])
-      expect((result as { aggregations: Record<string, unknown> }).aggregations).toBeDefined()
+      expect((result as unknown as { aggregations: Record<string, unknown> }).aggregations).toBeDefined()
     })
   })
 
@@ -261,7 +261,7 @@ describe('MCP search tools — plugin param coverage', () => {
       expect(lastCall[0]).toBe('sunset photo')
       expect(lastCall[1]?.table).toBe('bakin_assets')
       expect(lastCall[1]?.limit).toBe(5)
-      expect((result as { similar: unknown[] }).similar).toBeDefined()
+      expect((result as unknown as { similar: unknown[] }).similar).toBeDefined()
     })
   })
 
@@ -272,7 +272,7 @@ describe('MCP search tools — plugin param coverage', () => {
       expect(result.ok).toBe(true)
       const lastCall = reindexContentTypesMock.mock.calls.at(-1)!
       expect(lastCall[0]?.table).toBe('bakin_tasks')
-      expect((result as { total: number }).total).toBe(5)
+      expect((result as unknown as { total: number }).total).toBe(5)
     })
   })
 
@@ -281,9 +281,9 @@ describe('MCP search tools — plugin param coverage', () => {
       const tool = await getTool('bakin_exec_search_stats')
       const result = await tool.handler({}, {} as never)
       expect(result.ok).toBe(true)
-      expect((result as { enabled: boolean }).enabled).toBe(true)
-      expect((result as { tables: unknown[] }).tables.length).toBe(2)
-      const registered = (result as { registered: Array<{ pluginId: string }> }).registered
+      expect((result as unknown as { enabled: boolean }).enabled).toBe(true)
+      expect((result as unknown as { tables: unknown[] }).tables.length).toBe(2)
+      const registered = (result as unknown as { registered: Array<{ pluginId: string }> }).registered
       expect(registered.length).toBe(3)
       expect(registered.map(r => r.pluginId).sort()).toEqual(['assets', 'projects', 'tasks'])
     })

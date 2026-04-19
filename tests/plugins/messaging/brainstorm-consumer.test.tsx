@@ -64,7 +64,7 @@ const hookState: Hook = {
   meta: null,
 }
 
-const useSearchMock = vi.fn(() => hookState)
+const useSearchMock = vi.fn((..._args: unknown[]) => hookState)
 
 vi.mock('@/hooks/use-search', () => ({
   useSearch: (...args: unknown[]) => useSearchMock(...args),

@@ -1,13 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+const testDir = join(tmpdir(), `bakin-test-antfly-reranker-${Date.now()}`)
+
+vi.mock('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir }),
+}))
+vi.mock('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir }),
+}))
 
 // Shared mutable reference so the test can swap the query mock between cases
 // and tweak settings without reinstantiating the SDK mock.
-const mockQuery = vi.fn(async () => ({
-  responses: [{ hits: { hits: [], total: 0 }, took: 0 }],
-}))
-const mockMultiquery = vi.fn(async () => ({
-  responses: [{ hits: { hits: [], total: 0 }, took: 0 }],
-}))
+type QueryResponse = {
+  responses: Array<{ hits: { hits: unknown[]; total: number }; took: number }>
+}
+const mockQuery = vi.fn<(table: string, body: Record<string, unknown>) => Promise<QueryResponse>>(
+  async () => ({ responses: [{ hits: { hits: [], total: 0 }, took: 0 }] }),
+)
+const mockMultiquery = vi.fn<(body: Array<Record<string, unknown>>) => Promise<QueryResponse>>(
+  async () => ({ responses: [{ hits: { hits: [], total: 0 }, took: 0 }] }),
+)
 const mockGetStatus = vi.fn(async () => ({ health: 'healthy' }))
 const mockListTables = vi.fn(async () => [])
 

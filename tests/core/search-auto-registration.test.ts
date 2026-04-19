@@ -199,7 +199,7 @@ describe('search-registry buildSearchAPI auto-registration', () => {
 
     expect(captured).not.toBeNull()
     const route = captured! as APIRoute
-    const res = await route.handler(new Request('http://localhost/search'))
+    const res = await route.handler(new Request('http://localhost/search'), {} as never)
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toMatch(/q/)
@@ -212,6 +212,7 @@ describe('search-registry buildSearchAPI auto-registration', () => {
 
     const res = await (captured! as APIRoute).handler(
       new Request('http://localhost/search?q=hello'),
+      {} as never,
     )
     expect(res.status).toBe(200)
     expect(antfly.queryTable).toHaveBeenCalledWith(
@@ -228,6 +229,7 @@ describe('search-registry buildSearchAPI auto-registration', () => {
 
     await (captured! as APIRoute).handler(
       new Request('http://localhost/search?q=foo&limit=7&offset=14&facets=status,owner,tags'),
+      {} as never,
     )
 
     expect(antfly.queryTable).toHaveBeenCalledWith(
@@ -252,6 +254,7 @@ describe('search-registry buildSearchAPI auto-registration', () => {
 
     const res = await (captured! as APIRoute).handler(
       new Request('http://localhost/search?q=foo&facets='),
+      {} as never,
     )
     // Comma-split with `.filter(Boolean)` on empty string yields []. The
     // handler should not 500; query should still fire.
