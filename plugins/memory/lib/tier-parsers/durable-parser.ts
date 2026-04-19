@@ -8,6 +8,7 @@
  * single row (chunkIndex=0, headingLevel=0, headingPath=[]).
  */
 import { createHash } from 'crypto'
+import { durableKindForBasename } from '../openclaw-adapter'
 import type { MemoryRow } from '../types'
 
 const SNIPPET_CAP = 2048
@@ -26,6 +27,7 @@ export function parseDurableFile(
   sourcePath: string,
   mtimeMs: number,
 ): MemoryRow[] {
+  const kind = durableKindForBasename(basename)
   const chunks = chunkByHeading(body, basename)
   return chunks.map((chunk, chunkIndex) => {
     const content = chunk.content
@@ -35,6 +37,7 @@ export function parseDurableFile(
       id,
       tier: 'durable',
       agent,
+      kind,
       title: chunk.title,
       snippet,
       content,
@@ -53,6 +56,14 @@ export function parseDurableFile(
       }),
     }
   })
+}
+
+/**
+ * Shared H1/H2 chunker — exported so other durable-family parsers (skills)
+ * can reuse the same chunking rules without copy/paste.
+ */
+export function chunkByHeadingExported(body: string, fallbackTitle: string) {
+  return chunkByHeading(body, fallbackTitle)
 }
 
 export function rowId(agent: string, basename: string, chunkIndex: number): string {

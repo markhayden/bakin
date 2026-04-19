@@ -48,6 +48,16 @@ vi.mock('../../../plugins/memory/lib/openclaw-adapter', () => ({
   durableFilePath: mockDurableFilePath,
   matchDurablePath: mockMatchDurablePath,
   CANONICAL_DURABLE_FILES: mockCanonicalFiles,
+  DURABLE_KIND_BY_BASENAME: { 'SOUL.md': 'soul', 'MEMORY.md': 'memory' },
+  durableKindForBasename: (basename: string) =>
+    ({ 'SOUL.md': 'soul', 'MEMORY.md': 'memory' } as Record<string, string>)[basename],
+  // Skills (tier=durable, kind=skill) — stubbed so the durable indexer pass
+  // doesn't try to walk a real skills/ directory during this test.
+  listAgentSkills: vi.fn(() => []),
+  readAgentSkill: vi.fn(() => null),
+  skillFilePath: vi.fn(() => ''),
+  skillFileMtime: vi.fn(() => null),
+  matchSkillPath: vi.fn(() => null),
   // daily-note tier (C5) — stubbed so handleWatcherEvent's fallthrough match
   // doesn't blow up in this tier's isolated tests.
   listDailyNotes: vi.fn(() => []),

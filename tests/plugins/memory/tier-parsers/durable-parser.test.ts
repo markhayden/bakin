@@ -215,3 +215,30 @@ describe('parseDurableFile — row identity + shape', () => {
     expect(rows[0].content.length).toBeGreaterThan(2048)
   })
 })
+
+describe('parseDurableFile — kind mapping', () => {
+  it('tags SOUL.md rows with kind=soul', () => {
+    const rows = parseDurableFile('main', 'SOUL.md', '# A\nbody', workspacePath, updatedAt)
+    expect(rows[0].kind).toBe('soul')
+  })
+
+  it('tags AGENTS.md rows with kind=rules', () => {
+    const rows = parseDurableFile('main', 'AGENTS.md', '# A\nbody', workspacePath, updatedAt)
+    expect(rows[0].kind).toBe('rules')
+  })
+
+  it('tags TOOLS.md rows with kind=tools', () => {
+    const rows = parseDurableFile('main', 'TOOLS.md', '# A\nbody', workspacePath, updatedAt)
+    expect(rows[0].kind).toBe('tools')
+  })
+
+  it('tags MEMORY-LOG.md rows with kind=memory-log', () => {
+    const rows = parseDurableFile('main', 'MEMORY-LOG.md', '# A\nbody', workspacePath, updatedAt)
+    expect(rows[0].kind).toBe('memory-log')
+  })
+
+  it('returns kind=undefined for unmapped basenames', () => {
+    const rows = parseDurableFile('main', 'UNKNOWN.md', '# A\nbody', workspacePath, updatedAt)
+    expect(rows[0].kind).toBeUndefined()
+  })
+})

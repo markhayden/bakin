@@ -44,6 +44,11 @@ export const MemoryRowSchema = z.object({
   id: z.string(),
   tier: MemoryTierSchema,
   agent: z.string(),
+  // Sub-tier discriminator. Durable tier uses this to distinguish
+  // soul / rules / tools / identity / heartbeat / skill etc. Other tiers
+  // leave it undefined today but the schema slot is reserved so the
+  // `kind` facet registered on `bakin_memory` has a column to aggregate.
+  kind: z.string().optional(),
   title: z.string(),
   snippet: z.string(),
   content: z.string(),
