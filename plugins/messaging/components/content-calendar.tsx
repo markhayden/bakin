@@ -16,6 +16,19 @@ import {
   Trash2,
   Link2,
   Search,
+  UtensilsCrossed,
+  Lightbulb,
+  Sparkles,
+  Dumbbell,
+  Trees,
+  Video as VideoIcon,
+  ImageIcon,
+  MessageSquare,
+  Instagram,
+  Mail,
+  Twitter,
+  Youtube,
+  Music2,
 } from 'lucide-react'
 import { PluginHeader } from '@/components/plugin-header'
 import { FacetFilter } from '@/components/facet-filter'
@@ -52,8 +65,35 @@ const STATUS_OPTIONS = [
   { value: 'failed', label: 'Failed', icon: <span className="size-2 rounded-full bg-red-500" /> },
 ]
 
-const TYPE_OPTIONS = Object.entries(CONTENT_TYPE_LABELS).map(([value, label]) => ({ value, label }))
-const CHANNEL_OPTIONS = Object.entries(CHANNEL_LABELS).map(([value, label]) => ({ value, label }))
+const TYPE_ICONS: Record<string, React.ReactNode> = {
+  recipe: <UtensilsCrossed className="size-3.5" />,
+  tip: <Lightbulb className="size-3.5" />,
+  motivation: <Sparkles className="size-3.5" />,
+  workout: <Dumbbell className="size-3.5" />,
+  outdoor: <Trees className="size-3.5" />,
+  video: <VideoIcon className="size-3.5" />,
+  'image-post': <ImageIcon className="size-3.5" />,
+}
+
+const CHANNEL_ICONS: Record<string, React.ReactNode> = {
+  discord: <MessageSquare className="size-3.5" />,
+  instagram: <Instagram className="size-3.5" />,
+  email: <Mail className="size-3.5" />,
+  twitter: <Twitter className="size-3.5" />,
+  youtube: <Youtube className="size-3.5" />,
+  tiktok: <Music2 className="size-3.5" />,
+}
+
+const TYPE_OPTIONS = Object.entries(CONTENT_TYPE_LABELS).map(([value, label]) => ({
+  value,
+  label,
+  icon: TYPE_ICONS[value],
+}))
+const CHANNEL_OPTIONS = Object.entries(CHANNEL_LABELS).map(([value, label]) => ({
+  value,
+  label,
+  icon: CHANNEL_ICONS[value],
+}))
 
 type ViewMode = 'month' | 'week' | 'list'
 

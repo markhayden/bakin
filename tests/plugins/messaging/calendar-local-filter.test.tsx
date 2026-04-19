@@ -122,6 +122,18 @@ vi.mock('lucide-react', () => {
     MessageSquare: Icon,
     CheckCircle: Icon,
     MoreHorizontal: Icon,
+    UtensilsCrossed: Icon,
+    Lightbulb: Icon,
+    Sparkles: Icon,
+    Dumbbell: Icon,
+    Trees: Icon,
+    Video: Icon,
+    ImageIcon: Icon,
+    Instagram: Icon,
+    Mail: Icon,
+    Twitter: Icon,
+    Youtube: Icon,
+    Music2: Icon,
   }
 })
 
