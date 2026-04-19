@@ -9,6 +9,7 @@ import { AssetDetailModal } from '@bakin/assets/components/asset-detail'
 import { ProjectChecklist } from './project-checklist'
 import { ProjectEditor } from './project-editor'
 import { MarkdownContent } from '@/components/markdown-content'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { ProjectStatus } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -412,7 +413,15 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   // Render
   // ---------------------------------------------------------------------------
 
-  if (loading) return <div className="text-sm text-muted-foreground py-8">Loading...</div>
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-3 py-4">
+        <Skeleton className="h-6 w-60" />
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    )
+  }
   if (!project) return <div className="text-sm text-muted-foreground py-8">Project not found.</div>
 
   const statusCfg = STATUS_CONFIG[editStatus]

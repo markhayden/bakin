@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { SortableHead, type SortDir } from '@/components/sortable-head'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/empty-state'
 import { MessageSquare, CheckCircle, MoreHorizontal, Trash2 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -202,9 +203,11 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
 
   if (filtered.length === 0 && search && !searchLoading) {
     return (
-      <div className="flex items-center justify-center py-16 text-muted-foreground">
-        <span className="text-sm">No sessions matching &ldquo;{search}&rdquo;</span>
-      </div>
+      <EmptyState
+        icon={MessageSquare}
+        title="No matching sessions"
+        description={`No sessions matching "${search}"`}
+      />
     )
   }
 

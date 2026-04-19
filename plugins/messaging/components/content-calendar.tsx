@@ -33,6 +33,7 @@ import {
 import { PluginHeader } from '@/components/plugin-header'
 import { FacetFilter } from '@/components/facet-filter'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/empty-state'
 import { AgentFilter } from '@/components/agent-filter'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
@@ -430,7 +431,7 @@ export function ContentCalendar() {
     return (
       <div>
         {sorted.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-8 text-center">No items match filters.</p>
+          <EmptyState icon={CalendarDays} title="No items match filters" />
         ) : (
           <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-xs">
