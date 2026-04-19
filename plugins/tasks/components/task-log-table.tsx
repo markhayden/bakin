@@ -5,6 +5,8 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table'
 import { SortableHead, type SortDir } from '@/components/sortable-head'
+import { EmptyState } from '@/components/empty-state'
+import { ClipboardList } from 'lucide-react'
 import { STATUS_BADGE_STYLES } from '../constants'
 import { useAgent } from '@bakin/team/hooks/use-agent-store'
 import { AgentAvatar } from '@/components/agent-avatar'
@@ -174,9 +176,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
             Loading task history...
           </div>
         ) : sorted.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-            No tasks found
-          </div>
+          <EmptyState icon={ClipboardList} title="No tasks found" />
         ) : (
           <Table>
             <TableHeader>

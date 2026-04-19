@@ -1,6 +1,8 @@
 'use client'
 
 import { AssetCard } from './asset-card'
+import { EmptyState } from '@/components/empty-state'
+import { Images } from 'lucide-react'
 import type { AssetMeta } from '@/types'
 
 export interface AssetScoreInfo {
@@ -19,12 +21,11 @@ interface AssetsGridProps {
 export function AssetsGrid({ assets, onSelect, onDelete, scores }: AssetsGridProps) {
   if (assets.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <p className="text-sm text-muted-foreground">No assets found.</p>
-        <p className="text-xs text-muted-foreground/60 mt-1">
-          Agents will create assets here as they complete tasks.
-        </p>
-      </div>
+      <EmptyState
+        icon={Images}
+        title="No assets found"
+        description="Agents will create assets here as they complete tasks."
+      />
     )
   }
 

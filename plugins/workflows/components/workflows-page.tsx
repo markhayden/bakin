@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { PluginHeader } from '@/components/plugin-header'
+import { EmptyState } from '@/components/empty-state'
+import { Workflow } from 'lucide-react'
 import { useQueryState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
 import { useDebug } from '@/hooks/use-debug'
@@ -80,9 +82,10 @@ export function WorkflowsPage() {
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading workflows...</div>
         ) : filtered.length === 0 ? (
-          <div className="text-sm text-muted-foreground">
-            {search ? 'No matching workflows.' : 'No workflow templates found.'}
-          </div>
+          <EmptyState
+            icon={Workflow}
+            title={search ? 'No matching workflows' : 'No workflow templates found'}
+          />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((t) => {

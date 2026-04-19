@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, ListFilter } from 'lucide-react'
+import { Plus, ListFilter, FolderKanban } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
+import { EmptyState } from '@/components/empty-state'
 import { useQueryState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
 import { useDebug } from '@/hooks/use-debug'
@@ -126,9 +127,11 @@ export function ProjectGrid() {
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading projects...</div>
         ) : filtered.length === 0 ? (
-          <div className="text-sm text-muted-foreground">
-            {search ? 'No matching projects.' : status === 'all' ? 'No projects yet. Create one to get started.' : `No ${status} projects.`}
-          </div>
+          <EmptyState
+            icon={FolderKanban}
+            title={search ? 'No matching projects' : status === 'all' ? 'No projects yet' : `No ${status} projects`}
+            description={!search && status === 'all' ? 'Create one to get started.' : undefined}
+          />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((p) => {
