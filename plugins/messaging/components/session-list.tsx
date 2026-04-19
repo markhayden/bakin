@@ -7,6 +7,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { SortableHead, type SortDir } from '@/components/sortable-head'
+import { Skeleton } from '@/components/ui/skeleton'
 import { MessageSquare, CheckCircle, MoreHorizontal, Trash2 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -156,8 +157,10 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-muted-foreground">
-        <span className="text-sm">Loading sessions...</span>
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-12 w-full" />
+        ))}
       </div>
     )
   }

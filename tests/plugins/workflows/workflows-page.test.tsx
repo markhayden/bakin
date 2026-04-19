@@ -194,9 +194,9 @@ describe('WorkflowsPage', () => {
     // Pin fetch to a never-resolving promise so we stay in loading.
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
 
-    render(<WorkflowsPage />)
+    const { container } = render(<WorkflowsPage />)
 
-    expect(screen.getByText(/Loading workflows/i)).toBeDefined()
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
   })
 
   it('renders workflow cards after fetch resolves', async () => {

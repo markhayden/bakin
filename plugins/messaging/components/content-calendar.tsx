@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { PluginHeader } from '@/components/plugin-header'
 import { FacetFilter } from '@/components/facet-filter'
+import { Skeleton } from '@/components/ui/skeleton'
 import { AgentFilter } from '@/components/agent-filter'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
@@ -554,8 +555,11 @@ export function ContentCalendar() {
 
       {/* Content */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <span className="text-sm text-muted-foreground">Loading calendar...</span>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-8 w-full" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full" />
+          ))}
         </div>
       ) : (
         <>

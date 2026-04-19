@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { ArrowLeft, PanelRight, PanelRightClose, Pencil, Check, X, Calendar, MoreHorizontal, Trash2 } from 'lucide-react'
 import {
@@ -140,8 +141,10 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        Loading session...
+      <div className="flex flex-col gap-3 p-6">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-32 w-full" />
       </div>
     )
   }
