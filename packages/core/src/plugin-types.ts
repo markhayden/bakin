@@ -273,6 +273,13 @@ export interface SearchQueryParams {
    * See Antfly API docs for the aggregation schema.
    */
   aggregations?: Record<string, unknown>
+  /**
+   * Search strategy override. Defaults to the site-wide strategy from
+   * `antfly.search.strategy`. Pass 'full_text_only' for filter-driven
+   * counts or ID lookups — semantic search rejects `limit: 0` queries
+   * with the "semantic search requires topk limit to be positive" error.
+   */
+  strategy?: 'rrf' | 'semantic_only' | 'full_text_only'
 }
 
 /** A single search result */

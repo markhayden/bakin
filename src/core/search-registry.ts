@@ -516,6 +516,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         indexes: getIndexNames(tableName),
         rerank: params.rerank,
         rerankField: getRerankField(tableName),
+        strategy: params.strategy,
       })
 
       // Map aggregation results to our format

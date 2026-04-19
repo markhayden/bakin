@@ -262,6 +262,13 @@ const TRANSIENT_BATCH_ERROR_PATTERNS = [
   'still initializing',
   'not found on store',
   'shard is still initializing',
+  // Antfly's auto-takeover restart (see antfly-server.ts "Antfly disappeared")
+  // drops the socket for ~500ms. Treat the resulting connect-level failures
+  // as transient so the 5-step backoff covers the gap.
+  'fetch failed',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'socket hang up',
 ]
 
 function isTransientBatchError(err: unknown): boolean {

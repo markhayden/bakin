@@ -430,7 +430,9 @@ pnpm test tests/plugins/memory/ && pnpm dev:mock
 
 ---
 
-## Commit 11 — `docs(memory): knowledge dive, CLAUDE.md, README`
+## Commit 11 — `docs(memory): knowledge dive, CLAUDE.md, README` ✅
+
+**Status:** Complete. The knowledge-file C11 entry (in `.claude/knowledge/memory-plugin.md`) is the canonical record of what actually landed — including the post-plan additions (retention + TTL prune, schema-version migration, detail drawer, tier colors, System Logs toggle, score breakdown, `/recent` route, dual-debug model). The plan items below match the shipped work.
 
 **Scope:** Final documentation pass. Every change in commits 1–10 that touched knowledge got an incremental note; this commit is the consolidation pass.
 

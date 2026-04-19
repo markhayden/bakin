@@ -10,18 +10,25 @@
  * geometry stays stable even on partial responses.
  */
 import { useEffect, useState } from 'react'
+import { Microscope } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorBanner } from '@/components/error-banner'
+import { tierStyle } from './tier-colors'
+
+// Tiers that only surface under the page-local "System Logs" toggle. The
+// Microscope glyph on their overview card tells the user at a glance that
+// the number belongs to the opt-in group, not the default feed.
+const SYSTEM_LOG_TIERS = new Set(['turn', 'audit'])
 
 const TIERS: Array<{ key: string; label: string }> = [
-  { key: 'audit', label: 'Audit' },
   { key: 'session', label: 'Sessions' },
-  { key: 'turn', label: 'Turns' },
-  { key: 'checkpoint', label: 'Checkpoints' },
   { key: 'daily_note', label: 'Daily Notes' },
-  { key: 'durable', label: 'Durable' },
   { key: 'dream', label: 'Dreams' },
+  { key: 'durable', label: 'Durable' },
+  { key: 'checkpoint', label: 'Checkpoints' },
+  { key: 'audit', label: 'Audit' },
+  { key: 'turn', label: 'Turns' },
 ]
 
 interface StatusResponse {
@@ -70,10 +77,21 @@ export function TierOverviewCards() {
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
       {TIERS.map((t) => {
         const count = data.countsByTier[t.key] ?? 0
+        const style = tierStyle(t.key)
         return (
           <Card key={t.key} className="flex flex-col gap-1 p-4">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+              <span
+                className={`inline-block size-2 rounded-full shrink-0 ${style.dot}`}
+                aria-hidden
+              />
               {t.label}
+              {SYSTEM_LOG_TIERS.has(t.key) && (
+                <Microscope
+                  className="size-3 ml-auto shrink-0"
+                  aria-label="System log tier"
+                />
+              )}
             </div>
             <div className="text-2xl font-semibold tabular-nums">{count}</div>
           </Card>

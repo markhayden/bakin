@@ -296,4 +296,85 @@ describe('antfly', () => {
     expect(result!.healthy).toBe(true)
     expect(result!.indexes).toHaveLength(0)
   })
+
+  // ── Transient batch-error retry (Apr 2026 Antfly-takeover incident) ──
+  //
+  // When Antfly's auto-takeover restarts the subprocess mid-boot, the HTTP
+  // socket drops for ~500ms and every in-flight write surfaces as
+  // `TypeError: fetch failed`. Before this fix, indexDocument gave up on the
+  // first attempt and the memory-plugin offsets advanced past data that
+  // never made it into the table, leaving the dashboard empty until offsets
+  // were manually cleared. The retry classifier must treat connect-level
+  // failures as transient so the 5-step backoff covers the gap.
+  describe('retryTransientBatch — connect-level failures', () => {
+    async function withEnabled<T>(fn: () => Promise<T>): Promise<T> {
+      const { getSettings } = await import('@/core/settings')
+      const mocked = vi.mocked(getSettings)
+      const prev = mocked.getMockImplementation()
+      mocked.mockReturnValue({
+        antfly: {
+          enabled: true,
+          url: 'http://localhost:8080/api/v1',
+          search: {
+            strategy: 'rrf',
+            defaultLimit: 20,
+            reranker: { enabled: true, provider: 'termite', model: 'x', threshold: 0 },
+          },
+          embedders: {
+            default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+            visual: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
+          },
+          chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
+          auditTtl: '90d',
+          cleanupInterval: '24h',
+        },
+      } as unknown as ReturnType<typeof getSettings>)
+      try {
+        return await fn()
+      } finally {
+        if (prev) mocked.mockImplementation(prev)
+      }
+    }
+
+    it('retries "fetch failed" (Antfly socket gone) before giving up', async () => {
+      installMockClient()
+      // First call fails with the takeover-restart error shape; second succeeds.
+      mockTablesBatch
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        .mockResolvedValueOnce(undefined)
+
+      await withEnabled(async () => {
+        const antfly = await import('@/core/antfly')
+        await antfly.indexDocument('bakin_memory', 'audit:abc', { tier: 'audit' })
+      })
+
+      expect(mockTablesBatch).toHaveBeenCalledTimes(2)
+    })
+
+    it('retries ECONNREFUSED before giving up', async () => {
+      installMockClient()
+      const err = new Error('connect ECONNREFUSED 127.0.0.1:8080')
+      mockTablesBatch.mockRejectedValueOnce(err).mockResolvedValueOnce(undefined)
+
+      await withEnabled(async () => {
+        const antfly = await import('@/core/antfly')
+        await antfly.indexDocument('bakin_memory', 'x', {})
+      })
+
+      expect(mockTablesBatch).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not retry on non-transient errors (e.g. 400 validation)', async () => {
+      installMockClient()
+      mockTablesBatch.mockRejectedValue(new Error('bad request: invalid schema'))
+
+      await withEnabled(async () => {
+        const antfly = await import('@/core/antfly')
+        await antfly.indexDocument('bakin_memory', 'x', {})
+      })
+
+      // One attempt, then indexDocument swallows the error non-blocking.
+      expect(mockTablesBatch).toHaveBeenCalledTimes(1)
+    })
+  })
 })

@@ -62,6 +62,7 @@ import { getOffset, setOffset } from './offsets'
 const DEFAULT_SKIP_SESSION_BYTES = 10 * 1024 * 1024
 const HEAD_CHUNK_BYTES = 4 * 1024 * 1024
 const HEAD_CHUNK_MAX_ROWS = 2000
+const DAY_MS = 86_400_000
 
 const log = createLogger('memory:indexer')
 
@@ -69,6 +70,10 @@ export interface IndexerOptions {
   backfillDays?: number
   skipSessionOverBytes?: number
   skipResetBackups?: boolean
+  /** Drop turn rows older than this many days at write time. 0/undefined = keep all. */
+  turnRetentionDays?: number
+  /** Drop audit rows older than this many days at write time. 0/undefined = keep all. */
+  auditRetentionDays?: number
 }
 
 export class MemoryIndexer {
@@ -605,7 +610,28 @@ export class MemoryIndexer {
 
   // ─── Shared write ─────────────────────────────────────────────────────────
 
+  /**
+   * TTL filter. Returns true when the row is older than the tier's retention
+   * window and should be skipped at write time. Turns hit this aggressively
+   * (default 7d) because they dominate the table; audits get 30d because the
+   * operational log is cheap and useful for longer incident forensics.
+   * Tiers with no retention configured always pass.
+   */
+  private isExpired(row: MemoryRow): boolean {
+    const days = this.retentionDays(row.tier)
+    if (!days || days <= 0) return false
+    if (!Number.isFinite(row.updatedAt) || row.updatedAt <= 0) return false
+    return row.updatedAt < Date.now() - days * DAY_MS
+  }
+
+  private retentionDays(tier: MemoryTier): number | undefined {
+    if (tier === 'turn') return this.opts.turnRetentionDays
+    if (tier === 'audit') return this.opts.auditRetentionDays
+    return undefined
+  }
+
   private async writeRow(row: MemoryRow): Promise<void> {
+    if (this.isExpired(row)) return
     const doc: Record<string, unknown> = {
       tier: row.tier,
       agent: row.agent,
