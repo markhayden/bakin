@@ -18,6 +18,7 @@ import { ModelSelect } from '@/components/model-select'
 import { useGatewayStatus } from '@/hooks/use-gateway-status'
 import type { AvailableModel } from '@bakin/models/types'
 import { useAgentStore, useAgentColor, useMainAgentId } from '../hooks/use-agent-store'
+import { useQueryState } from '@/hooks/use-query-state'
 import type { AgentProfile, SkillSummary } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
 
@@ -42,7 +43,9 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const reload = useAgentStore((s) => s.load)
   const currentTeamId = displaySettings[agentId]?.teamId ?? ''
   const [profile, setProfile] = useState<AgentProfile | null>(null)
-  const [activeTab, setActiveTab] = useState<Tab>('profile')
+  const [tabParam, setTabParam] = useQueryState('tab', 'profile')
+  const activeTab = (TABS.some((t) => t.id === tabParam) ? tabParam : 'profile') as Tab
+  const setActiveTab = (t: Tab) => setTabParam(t)
   const [loading, setLoading] = useState(true)
   const [avatarKey, setAvatarKey] = useState(0)
   const avatarInputRef = useRef<HTMLInputElement>(null)
