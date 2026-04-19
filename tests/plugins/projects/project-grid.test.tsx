@@ -108,8 +108,8 @@ type StubSearchResult = {
 }
 
 let stubSearchResults: StubSearchResult[] = []
-const searchSpy = vi.fn<[string], void>()
-const clearSpy = vi.fn<[], void>()
+const searchSpy = vi.fn<(q: string) => void>()
+const clearSpy = vi.fn<() => void>()
 
 vi.mock('@/hooks/use-search', () => ({
   useSearch: () => ({
