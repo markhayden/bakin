@@ -12,6 +12,7 @@
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ErrorBanner } from '@/components/error-banner'
 import type { SearchResult } from '@/hooks/use-search'
 
 interface Props {
@@ -57,11 +58,7 @@ export function MemorySearchResults({ results, loading, error, query, onSelect }
   }
 
   if (error) {
-    return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-        Search failed: {error}
-      </div>
-    )
+    return <ErrorBanner message={`Search failed: ${error}`} />
   }
 
   if (!query.trim()) {

@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ErrorBanner } from '@/components/error-banner'
 
 const TIERS: Array<{ key: string; label: string }> = [
   { key: 'audit', label: 'Audit' },
@@ -52,11 +53,7 @@ export function TierOverviewCards() {
   }, [])
 
   if (error) {
-    return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-        Failed to load memory status: {error}
-      </div>
-    )
+    return <ErrorBanner message={`Failed to load memory status: ${error}`} />
   }
 
   if (!data) {
