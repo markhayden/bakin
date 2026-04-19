@@ -638,6 +638,30 @@ export type DurableBasename = typeof CANONICAL_DURABLE_FILES[number]
 
 const DURABLE_SET: ReadonlySet<string> = new Set(CANONICAL_DURABLE_FILES)
 
+/**
+ * Normalized kind bucket for each canonical durable file. Mirrors the tab
+ * names on `/team/<id>` so filtering memory by `kind=soul` lines up with
+ * "look at this agent's soul" in the team view. Extended with `skill` for
+ * per-skill SKILL.md rows (indexed alongside durable files).
+ */
+export const DURABLE_KIND_BY_BASENAME: Record<string, string> = {
+  'SOUL.md': 'soul',
+  'AGENTS.md': 'rules',
+  'TOOLS.md': 'tools',
+  'IDENTITY.md': 'identity',
+  'HEARTBEAT.md': 'heartbeat',
+  'MEMORY.md': 'memory',
+  'MEMORY-LOG.md': 'memory-log',
+  'DREAMS.md': 'dreams',
+  'USER.md': 'user',
+  'BOOTSTRAP.md': 'bootstrap',
+}
+
+/** Resolve a durable basename to its normalized kind, or undefined. */
+export function durableKindForBasename(basename: string): string | undefined {
+  return DURABLE_KIND_BY_BASENAME[basename]
+}
+
 export function readDurableFile(agentId: string, basename: string): string | null {
   if (!isSafeFilename(basename)) return null
   if (!DURABLE_SET.has(basename)) return null
@@ -662,6 +686,96 @@ export function durableFileMtime(agentId: string, basename: string): number | nu
   } catch {
     return null
   }
+}
+
+// ─── Skills (indexed alongside durable, kind=skill) ──────────────────────────
+
+export interface AgentSkillFile {
+  skillName: string
+  path: string
+  mtimeMs: number
+}
+
+/**
+ * List every `{workspace}/skills/*\/SKILL.md` for an agent.
+ * Non-existent skills dirs and missing SKILL.md files are silently skipped.
+ */
+export function listAgentSkills(agentId: string): AgentSkillFile[] {
+  const skillsDir = join(workspacePath(agentId), 'skills')
+  if (!existsSync(skillsDir)) return []
+  try {
+    const entries = readdirSync(skillsDir, { withFileTypes: true })
+    const out: AgentSkillFile[] = []
+    for (const d of entries) {
+      if (!d.isDirectory()) continue
+      if (!isSafeFilename(d.name)) continue
+      const skillMd = join(skillsDir, d.name, 'SKILL.md')
+      if (!existsSync(skillMd)) continue
+      try {
+        out.push({ skillName: d.name, path: skillMd, mtimeMs: statSync(skillMd).mtimeMs })
+      } catch { /* skip unreadable */ }
+    }
+    return out
+  } catch (err) {
+    log.warn('listAgentSkills failed', {
+      agent: agentId,
+      err: err instanceof Error ? err.message : String(err),
+    })
+    return []
+  }
+}
+
+export function readAgentSkill(agentId: string, skillName: string): string | null {
+  if (!isSafeFilename(skillName)) return null
+  const file = join(workspacePath(agentId), 'skills', skillName, 'SKILL.md')
+  if (!existsSync(file)) return null
+  try {
+    return readFileSync(file, 'utf-8')
+  } catch {
+    return null
+  }
+}
+
+export function skillFilePath(agentId: string, skillName: string): string {
+  return join(workspacePath(agentId), 'skills', skillName, 'SKILL.md')
+}
+
+export function skillFileMtime(agentId: string, skillName: string): number | null {
+  const file = skillFilePath(agentId, skillName)
+  if (!existsSync(file)) return null
+  try {
+    return statSync(file).mtimeMs
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Map a filesystem path back to `{ agent, skillName }` if it's a SKILL.md
+ * under a recognized workspace's skills directory. Returns null otherwise.
+ */
+export function matchSkillPath(path: string): { agent: string; skillName: string } | null {
+  const agents = listAgentIds()
+  for (const agentId of agents) {
+    const root = join(workspacePath(agentId), 'skills')
+    if (!path.startsWith(root + '/')) continue
+    const rest = path.slice(root.length + 1)
+    const parts = rest.split('/')
+    if (parts.length !== 2 || parts[1] !== 'SKILL.md') continue
+    const skillName = parts[0]
+    if (!isSafeFilename(skillName)) continue
+    return { agent: agentId, skillName }
+  }
+  // Main-agent workspace (collapsed to `workspace/skills/...`).
+  const mainRoot = getOpenClawPath('workspace', 'skills')
+  if (path.startsWith(mainRoot + '/')) {
+    const rest = path.slice(mainRoot.length + 1)
+    const parts = rest.split('/')
+    if (parts.length === 2 && parts[1] === 'SKILL.md' && isSafeFilename(parts[0])) {
+      return { agent: tryGetMainAgentId() ?? 'main', skillName: parts[0] }
+    }
+  }
+  return null
 }
 
 /**

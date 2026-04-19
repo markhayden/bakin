@@ -53,6 +53,12 @@ import {
   matchDreamSignalPath,
   readDurableFile,
   CANONICAL_DURABLE_FILES,
+  DURABLE_KIND_BY_BASENAME,
+  durableKindForBasename,
+  listAgentSkills,
+  readAgentSkill,
+  skillFilePath,
+  matchSkillPath,
 } from '../../../plugins/memory/lib/openclaw-adapter'
 
 function seedAgent(agentId: string): void {
@@ -454,5 +460,138 @@ describe('readDurableFile', () => {
     expect(CANONICAL_DURABLE_FILES).toContain('SOUL.md')
     expect(CANONICAL_DURABLE_FILES).toContain('MEMORY.md')
     expect(CANONICAL_DURABLE_FILES).toContain('USER.md')
+  })
+})
+
+describe('listAgentSkills', () => {
+  it('returns [] when skills/ dir is missing', () => {
+    seedAgent('main')
+    expect(listAgentSkills('main')).toEqual([])
+  })
+
+  it('returns [] when skills/<name>/ exists but SKILL.md is missing', () => {
+    seedAgent('main')
+    mkdirSync(join(openclawDir, 'workspace', 'skills', 'research'), { recursive: true })
+    expect(listAgentSkills('main')).toEqual([])
+  })
+
+  it('lists each skill with name, absolute path, and mtime', () => {
+    seedAgent('main')
+    writeFile('workspace/skills/research/SKILL.md', '# Research')
+    writeFile('workspace/skills/summarize/SKILL.md', '# Summarize')
+    const skills = listAgentSkills('main').map((s) => s.skillName).sort()
+    expect(skills).toEqual(['research', 'summarize'])
+    const one = listAgentSkills('main').find((s) => s.skillName === 'research')!
+    expect(one.path).toBe(join(openclawDir, 'workspace', 'skills', 'research', 'SKILL.md'))
+    expect(typeof one.mtimeMs).toBe('number')
+  })
+
+  it('ignores non-directory entries under skills/', () => {
+    seedAgent('main')
+    mkdirSync(join(openclawDir, 'workspace', 'skills'), { recursive: true })
+    writeFileSync(join(openclawDir, 'workspace', 'skills', 'stray.txt'), 'x', 'utf-8')
+    expect(listAgentSkills('main')).toEqual([])
+  })
+
+  it('walks the per-agent workspace for non-main agents', () => {
+    seedAgent('pixel')
+    writeFile('workspaces/pixel/skills/editor/SKILL.md', '# Editor')
+    const skills = listAgentSkills('pixel')
+    expect(skills.map((s) => s.skillName)).toEqual(['editor'])
+  })
+})
+
+describe('readAgentSkill', () => {
+  it('returns content for an existing skill', () => {
+    writeFile('workspace/skills/research/SKILL.md', '# research body')
+    expect(readAgentSkill('main', 'research')).toBe('# research body')
+  })
+
+  it('returns null for a missing skill', () => {
+    expect(readAgentSkill('main', 'nope')).toBeNull()
+  })
+
+  it('blocks path traversal via `..` in the skill name', () => {
+    writeFile('workspace/SOUL.md', '# soul')
+    expect(readAgentSkill('main', '../')).toBeNull()
+    expect(readAgentSkill('main', '../../etc/passwd')).toBeNull()
+  })
+
+  it('blocks absolute-path skill names', () => {
+    expect(readAgentSkill('main', '/etc/passwd')).toBeNull()
+  })
+
+  it('blocks backslash-separated skill names', () => {
+    expect(readAgentSkill('main', 'foo\\bar')).toBeNull()
+  })
+})
+
+describe('matchSkillPath', () => {
+  it('returns null for paths outside any workspace', () => {
+    expect(matchSkillPath('/not/under/openclaw/SKILL.md')).toBeNull()
+  })
+
+  it('returns null for a workspace file that is not a skill', () => {
+    seedAgent('main')
+    const p = join(openclawDir, 'workspace', 'SOUL.md')
+    expect(matchSkillPath(p)).toBeNull()
+  })
+
+  it('returns null for nested files under a skill directory', () => {
+    seedAgent('main')
+    const p = join(openclawDir, 'workspace', 'skills', 'research', 'notes', 'README.md')
+    expect(matchSkillPath(p)).toBeNull()
+  })
+
+  it('returns null for non-SKILL.md files inside a skill dir', () => {
+    seedAgent('main')
+    const p = join(openclawDir, 'workspace', 'skills', 'research', 'other.md')
+    expect(matchSkillPath(p)).toBeNull()
+  })
+
+  it('matches main-agent layout (workspace/skills/<name>/SKILL.md)', () => {
+    seedAgent('main')
+    const p = skillFilePath('main', 'research')
+    expect(matchSkillPath(p)).toEqual({ agent: 'main', skillName: 'research' })
+  })
+
+  it('matches per-agent layout (workspaces/<id>/skills/<name>/SKILL.md)', () => {
+    seedAgent('pixel')
+    const p = skillFilePath('pixel', 'editor')
+    expect(matchSkillPath(p)).toEqual({ agent: 'pixel', skillName: 'editor' })
+  })
+
+  it('rejects unsafe skill names embedded in the path', () => {
+    seedAgent('main')
+    // Craft a path that structurally looks like a skill file but whose
+    // skill-name segment is unsafe. The matcher must refuse it.
+    const p = join(openclawDir, 'workspace', 'skills', '..', 'SKILL.md')
+    expect(matchSkillPath(p)).toBeNull()
+  })
+})
+
+describe('durableKindForBasename', () => {
+  it('maps canonical basenames to their kind', () => {
+    expect(durableKindForBasename('SOUL.md')).toBe('soul')
+    expect(durableKindForBasename('AGENTS.md')).toBe('rules')
+    expect(durableKindForBasename('TOOLS.md')).toBe('tools')
+    expect(durableKindForBasename('IDENTITY.md')).toBe('identity')
+    expect(durableKindForBasename('HEARTBEAT.md')).toBe('heartbeat')
+    expect(durableKindForBasename('MEMORY.md')).toBe('memory')
+    expect(durableKindForBasename('MEMORY-LOG.md')).toBe('memory-log')
+    expect(durableKindForBasename('DREAMS.md')).toBe('dreams')
+    expect(durableKindForBasename('USER.md')).toBe('user')
+    expect(durableKindForBasename('BOOTSTRAP.md')).toBe('bootstrap')
+  })
+
+  it('returns undefined for unknown basenames', () => {
+    expect(durableKindForBasename('RANDOM.md')).toBeUndefined()
+    expect(durableKindForBasename('soul.md')).toBeUndefined() // case-sensitive
+  })
+
+  it('covers every canonical durable file', () => {
+    for (const basename of CANONICAL_DURABLE_FILES) {
+      expect(DURABLE_KIND_BY_BASENAME[basename]).toBeDefined()
+    }
   })
 })

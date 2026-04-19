@@ -17,6 +17,7 @@ import { createLogger } from '../../../src/core/logger'
 import type { MemoryRow, MemoryTier } from './types'
 import { parseAuditLine } from './tier-parsers/audit-parser'
 import { parseDurableFile, rowId as durableRowId } from './tier-parsers/durable-parser'
+import { parseSkillFile, rowId as skillRowId } from './tier-parsers/skill-parser'
 import { parseDailyNote, rowId as dailyNoteRowId } from './tier-parsers/daily-note-parser'
 import { parseSession, rowId as sessionRowId } from './tier-parsers/session-parser'
 import { parseTurnLine } from './tier-parsers/turn-parser'
@@ -35,6 +36,7 @@ import {
   dailyNoteSize,
   durableFilePath,
   listAgentIds,
+  listAgentSkills,
   listCheckpointJsonlFiles,
   listDailyNotes,
   listDreamSignalFiles,
@@ -47,6 +49,8 @@ import {
   matchPhaseDocPath,
   matchSessionJsonlPath,
   matchSessionStorePath,
+  matchSkillPath,
+  readAgentSkill,
   readCheckpoint,
   readDailyNote,
   readDreamSignal,
@@ -55,6 +59,8 @@ import {
   readSessionStore,
   sessionJsonlStat,
   sessionStorePath,
+  skillFilePath,
+  skillFileMtime,
 } from './openclaw-adapter'
 import { gatewayCall } from './openclaw-gateway'
 import { getOffset, setOffset } from './offsets'
@@ -137,6 +143,16 @@ export class MemoryIndexer {
         await this.removeDurableFile(durable.agent, durable.basename)
       } else {
         await this.indexDurableFile(durable.agent, durable.basename)
+      }
+      return
+    }
+
+    const skill = matchSkillPath(path)
+    if (skill) {
+      if (kind === 'unlink') {
+        await this.removeSkillFile(skill.agent, skill.skillName)
+      } else {
+        await this.indexSkillFile(skill.agent, skill.skillName)
       }
       return
     }
@@ -273,6 +289,7 @@ export class MemoryIndexer {
       for (const basename of CANONICAL_DURABLE_FILES) {
         await this.indexDurableFile(agent, basename)
       }
+      await this.indexSkillsForAgent(agent)
     }
   }
 
@@ -307,6 +324,62 @@ export class MemoryIndexer {
       await this.ctx.search.remove(durableRowId(agent, basename, i))
     }
     this.lastDurableChunkCount.delete(this.durableKey(agent, basename))
+  }
+
+  // ─── Skills (sub-flavor of durable, kind=skill) ───────────────────────────
+
+  private readonly lastSkillChunkCount = new Map<string, number>()
+
+  private skillKey(agent: string, skillName: string): string {
+    return `${agent}::skill::${skillName}`
+  }
+
+  private async indexSkillsForAgent(agent: string): Promise<void> {
+    const files = listAgentSkills(agent)
+    const seen = new Set<string>()
+    for (const file of files) {
+      seen.add(file.skillName)
+      await this.indexSkillFile(agent, file.skillName)
+    }
+    // Drop chunks for skills the agent removed between passes. Scan the
+    // chunk-count map for this agent and tombstone any key not seen above.
+    const prefix = `${agent}::skill::`
+    for (const key of Array.from(this.lastSkillChunkCount.keys())) {
+      if (!key.startsWith(prefix)) continue
+      const skillName = key.slice(prefix.length)
+      if (seen.has(skillName)) continue
+      await this.removeSkillFile(agent, skillName)
+    }
+  }
+
+  private async indexSkillFile(agent: string, skillName: string): Promise<void> {
+    const body = readAgentSkill(agent, skillName)
+    if (body === null) return
+
+    const path = skillFilePath(agent, skillName)
+    const mtimeMs = skillFileMtime(agent, skillName) ?? Date.now()
+
+    const rows = parseSkillFile(agent, skillName, body, path, mtimeMs)
+
+    const prevCount = this.lastSkillChunkCount.get(this.skillKey(agent, skillName)) ?? 0
+    if (rows.length < prevCount) {
+      for (let i = rows.length; i < prevCount; i += 1) {
+        await this.ctx.search.remove(skillRowId(agent, skillName, i))
+      }
+    }
+
+    for (const row of rows) {
+      await this.writeRow(row)
+    }
+    this.lastSkillChunkCount.set(this.skillKey(agent, skillName), rows.length)
+  }
+
+  private async removeSkillFile(agent: string, skillName: string): Promise<void> {
+    const count = this.lastSkillChunkCount.get(this.skillKey(agent, skillName)) ?? 0
+    for (let i = 0; i < count; i += 1) {
+      await this.ctx.search.remove(skillRowId(agent, skillName, i))
+    }
+    this.lastSkillChunkCount.delete(this.skillKey(agent, skillName))
   }
 
   // ─── Daily-note tier (C5) ─────────────────────────────────────────────────
@@ -644,6 +717,7 @@ export class MemoryIndexer {
       updated_at: row.updatedAt,
       created_at: row.createdAt,
     }
+    if (row.kind !== undefined) doc.kind = row.kind
     await this.ctx.search.index(row.id, doc)
   }
 }

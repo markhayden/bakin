@@ -30,6 +30,10 @@ const MAX_LIMIT = 100
 // Pulled per tier before the merge+sort. Needs to cover the most recent
 // window even when BM25 on `q: '*'` returns results in arbitrary order.
 const OVERSHOOT_PER_TIER = 100
+// Defensive cap on fan-out so a crafted URL (or legacy CSV agent bookmark)
+// can't explode into hundreds of Antfly queries. Worst case at the cap is
+// 50 × 100 = 5000 rows materialized server-side before merge+sort.
+const MAX_FANOUT = 50
 
 const DEBUG_ONLY_TIERS: ReadonlySet<MemoryTier> = new Set(['turn', 'audit'])
 
@@ -87,35 +91,47 @@ export const recentRoute: APIRoute = {
     }
 
     const agents = parseCsv(url.searchParams.get('agent'))
+    const kinds = parseCsv(url.searchParams.get('kind'))
 
     const started = Date.now()
 
-    // One query per tier × agent. When no agent filter is set, the inner
-    // agents array collapses to a single [undefined] pass. With filters we
-    // fan out so each tier/agent pair gets its own overshoot window —
-    // otherwise a chatty agent would crowd out quieter ones.
+    // One query per tier × agent × kind. Each facet that's actually filtering
+    // fans out so overshoot windows stay per-bucket — otherwise a chatty
+    // agent or dominant kind would crowd out quieter ones. When a facet has
+    // no filter, that axis collapses to a single [undefined] pass.
     const agentBuckets = agents.length ? agents : [undefined]
+    const kindBuckets = kinds.length ? kinds : [undefined]
+
+    if (tiers.length * agentBuckets.length * kindBuckets.length > MAX_FANOUT) {
+      return Response.json(
+        { error: 'too many filter combinations; narrow tier/agent/kind' },
+        { status: 400 },
+      )
+    }
 
     const perQueryResults = await Promise.all(
       tiers.flatMap((tier) =>
-        agentBuckets.map(async (agent) => {
-          const filters: Record<string, string> = { tier }
-          if (agent) filters.agent = agent
-          const params: SearchQueryParams = {
-            q: '*',
-            filters,
-            limit: OVERSHOOT_PER_TIER,
-            offset: 0,
-            rerank: false,
-            strategy: 'full_text_only',
-          }
-          try {
-            const res = await ctx.search.query(params)
-            return res.results
-          } catch {
-            return []
-          }
-        }),
+        agentBuckets.flatMap((agent) =>
+          kindBuckets.map(async (kind) => {
+            const filters: Record<string, string> = { tier }
+            if (agent) filters.agent = agent
+            if (kind) filters.kind = kind
+            const params: SearchQueryParams = {
+              q: '*',
+              filters,
+              limit: OVERSHOOT_PER_TIER,
+              offset: 0,
+              rerank: false,
+              strategy: 'full_text_only',
+            }
+            try {
+              const res = await ctx.search.query(params)
+              return res.results
+            } catch {
+              return []
+            }
+          }),
+        ),
       ),
     )
 

@@ -207,6 +207,9 @@ const memoryPlugin: BakinPlugin = {
       // Durable bootstrap files (main-agent workspace + subagent workspaces)
       getOpenClawPath('workspace', '*.md'),
       getOpenClawPath('workspaces', '*', '*.md'),
+      // Skills — SKILL.md per skill directory; indexed as durable kind=skill
+      getOpenClawPath('workspace', 'skills', '*', 'SKILL.md'),
+      getOpenClawPath('workspaces', '*', 'skills', '*', 'SKILL.md'),
       // Daily notes + dream artifacts
       getOpenClawPath('workspace', 'memory', '**', '*'),
       getOpenClawPath('workspaces', '*', 'memory', '**', '*'),
