@@ -3,11 +3,12 @@
 // React
 import { useEffect, useState, useCallback } from 'react'
 // External
-import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, X, Users, Layers } from 'lucide-react'
 // Internal
 import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
 import { ErrorBanner } from '@/components/error-banner'
+import { EmptyState } from '@/components/empty-state'
 import { UnderlineTabs } from '@/components/underline-tabs'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -73,9 +74,9 @@ function TableSkeleton({ rows = 4, cols = 4 }: { rows?: number; cols?: number })
   )
 }
 
-function EmptyState({ message }: { message: string }) {
+function InlineEmpty({ message }: { message: string }) {
   return (
-    <div className="py-12 text-center text-sm text-muted-foreground">{message}</div>
+    <div className="py-6 text-center text-sm text-muted-foreground">{message}</div>
   )
 }
 
@@ -456,7 +457,7 @@ export function ModelsPage() {
 
                 <div className="space-y-2">
                   {effectiveFallbackModels.length === 0 ? (
-                    <EmptyState message="No fallback models configured." />
+                    <InlineEmpty message="No fallback models configured." />
                   ) : (
                     effectiveFallbackModels.map((modelId, index) => (
                       <div key={`${modelId}-${index}`} className="flex items-center gap-2">
@@ -522,7 +523,7 @@ export function ModelsPage() {
             {loading ? (
               <TableSkeleton rows={5} cols={4} />
             ) : agents.length === 0 ? (
-              <EmptyState message="No agents configured in OpenClaw" />
+              <EmptyState icon={Users} title="No agents configured in OpenClaw" />
             ) : (
               <div className="overflow-hidden rounded-xl border border-border">
                 <Table>
@@ -640,7 +641,7 @@ export function ModelsPage() {
             })}
 
             {availableModels.length === 0 && (
-              <EmptyState message="Could not fetch models from OpenClaw. Showing fallback list." />
+              <InlineEmpty message="Could not fetch models from OpenClaw. Showing fallback list." />
             )}
         </div>
       )}
@@ -669,7 +670,7 @@ export function ModelsPage() {
                   {Object.entries(aliases).length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={3}>
-                        <EmptyState message="No aliases defined" />
+                        <InlineEmpty message="No aliases defined" />
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -746,7 +747,7 @@ export function ModelsPage() {
             </div>
 
             {displayProfiles.length === 0 ? (
-              <EmptyState message="No task profiles configured" />
+              <EmptyState icon={Layers} title="No task profiles configured" />
             ) : (
               <div className="overflow-hidden rounded-xl border border-border">
                 <Table>

@@ -135,8 +135,16 @@ export function AgentDetail({ agentId }: { agentId: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-4">
+          <Skeleton className="size-16 rounded-full" />
+          <div className="flex flex-col gap-2 flex-1">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+        </div>
+        <Skeleton className="h-8 w-96" />
+        <Skeleton className="h-40 w-full" />
       </div>
     )
   }
@@ -554,7 +562,7 @@ function MemoryTab({ agentId }: { agentId: string }) {
             {content}
           </div>
         ) : selectedFile ? (
-          <div className="text-sm text-muted-foreground">Loading...</div>
+          <Skeleton className="h-40 w-full" />
         ) : (
           <div className="text-sm text-muted-foreground">Select a date to view</div>
         )}

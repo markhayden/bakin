@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { FileText, Image, Video, Music, Map, Database, Package, RotateCcw, Trash2 } from 'lucide-react'
 import { formatAge, formatSize } from '@/lib/format'
+import { EmptyState } from '@/components/empty-state'
 import { DeleteAssetDialog } from './delete-asset-dialog'
 import type { TrashedAssetMeta } from '@/types'
 
@@ -111,13 +112,11 @@ export function TrashGrid({ items, onRestore, onPermanentDelete, onEmptyTrash }:
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <Trash2 className="size-8 text-muted-foreground/30 mb-3" />
-        <p className="text-sm text-muted-foreground">Trash is empty.</p>
-        <p className="text-xs text-muted-foreground/60 mt-1">
-          Deleted assets appear here for 7 days before auto-purge.
-        </p>
-      </div>
+      <EmptyState
+        icon={Trash2}
+        title="Trash is empty"
+        description="Deleted assets appear here for 7 days before auto-purge."
+      />
     )
   }
 

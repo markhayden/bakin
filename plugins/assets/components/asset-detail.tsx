@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { MarkdownContent } from '@/components/markdown-content'
 import { MarkdownEditor } from '@/components/markdown-editor'
@@ -107,7 +108,7 @@ function TextRenderer({ fileUrl, mimeType }: { fileUrl: string; mimeType: string
   }, [fileUrl])
 
   if (content === null) {
-    return <div className="p-4 text-sm text-muted-foreground">Loading...</div>
+    return <Skeleton className="h-40 w-full" />
   }
 
   if (mimeType === 'text/markdown') {
@@ -144,7 +145,7 @@ function CodeRenderer({ fileUrl }: { fileUrl: string }) {
   }, [fileUrl])
 
   if (content === null) {
-    return <div className="p-4 text-sm text-muted-foreground">Loading...</div>
+    return <Skeleton className="h-40 w-full" />
   }
 
   // Try to pretty-print JSON
