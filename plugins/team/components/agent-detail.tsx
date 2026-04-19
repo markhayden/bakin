@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { AgentAvatar } from '@/components/agent-avatar'
+import { Skeleton } from '@/components/ui/skeleton'
 import { MarkdownContent } from '@/components/markdown-content'
 import { ModelSelect } from '@/components/model-select'
 import { useGatewayStatus } from '@/hooks/use-gateway-status'
@@ -454,7 +455,15 @@ function SkillsTab({ agentId }: { agentId: string }) {
       .then((data) => setSkillContent(data.content ?? null))
   }, [agentId, selectedSkill])
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading skills...</div>
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-10 w-full" />
+        ))}
+      </div>
+    )
+  }
   if (skills.length === 0) return <div className="text-sm text-muted-foreground py-8 text-center">No skills installed</div>
 
   return (
@@ -510,7 +519,15 @@ function MemoryTab({ agentId }: { agentId: string }) {
       .then((data) => setContent(data.content ?? null))
   }, [agentId, selectedFile])
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading memory...</div>
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-10 w-full" />
+        ))}
+      </div>
+    )
+  }
   if (files.length === 0) return <div className="text-sm text-muted-foreground py-8 text-center">No memory files</div>
 
   return (
@@ -556,7 +573,15 @@ function StatsTab({ agentId }: { agentId: string }) {
       .finally(() => setLoading(false))
   }, [agentId])
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading stats...</div>
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-20 w-full" />
+        ))}
+      </div>
+    )
+  }
 
   if (!usage) {
     return <div className="text-sm text-muted-foreground py-8 text-center">No session data available</div>

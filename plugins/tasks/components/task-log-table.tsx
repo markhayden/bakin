@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/table'
 import { SortableHead, type SortDir } from '@/components/sortable-head'
 import { EmptyState } from '@/components/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ClipboardList } from 'lucide-react'
 import { STATUS_BADGE_STYLES } from '../constants'
 import { useAgent } from '@bakin/team/hooks/use-agent-store'
@@ -172,8 +173,10 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
     <div className="flex flex-col gap-3 h-full">
       <div className="flex-1 overflow-auto min-h-0">
         {loading ? (
-          <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-            Loading task history...
+          <div className="flex flex-col gap-2 p-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
           </div>
         ) : sorted.length === 0 ? (
           <EmptyState icon={ClipboardList} title="No tasks found" />

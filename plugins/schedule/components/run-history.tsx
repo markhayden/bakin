@@ -2,6 +2,7 @@
 
 import { useRunHistory } from '@/hooks/use-schedule'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 
 function formatTime(ts: string): string {
   const d = new Date(ts)
@@ -21,7 +22,13 @@ export function RunHistory({ jobId }: { jobId: string }) {
   const { runs, loading } = useRunHistory(jobId)
 
   if (loading) {
-    return <div className="text-sm text-muted-foreground py-4">Loading runs...</div>
+    return (
+      <div className="flex flex-col gap-2 py-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-8 w-full" />
+        ))}
+      </div>
+    )
   }
 
   if (runs.length === 0) {

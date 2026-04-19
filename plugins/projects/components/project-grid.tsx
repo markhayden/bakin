@@ -6,6 +6,7 @@ import { Plus, ListFilter, FolderKanban } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PluginHeader } from '@/components/plugin-header'
 import { EmptyState } from '@/components/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useQueryState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
 import { useDebug } from '@/hooks/use-debug'
@@ -125,7 +126,11 @@ export function ProjectGrid() {
       {/* Grid */}
       <div className="flex-1 min-h-0 overflow-auto">
         {loading ? (
-          <div className="text-sm text-muted-foreground">Loading projects...</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-40 w-full" />
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={FolderKanban}

@@ -6,6 +6,7 @@ import { List, CalendarDays, CalendarRange, Clock, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BakinDrawer } from '@/components/bakin-drawer'
 import { PluginHeader } from '@/components/plugin-header'
+import { Skeleton } from '@/components/ui/skeleton'
 import { AgentFilter } from '@/components/agent-filter'
 import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useQueryState } from '@/hooks/use-query-state'
@@ -221,8 +222,10 @@ export function SchedulePage() {
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="text-sm text-muted-foreground">Loading schedule...</div>
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
           </div>
         ) : view === 'list' ? (
           <JobList

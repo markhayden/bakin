@@ -251,9 +251,9 @@ describe('SchedulePage smoke', () => {
     scheduleState.loading = true
     queryStateRefs.view = 'list'
 
-    render(<SchedulePage />)
+    const { container } = render(<SchedulePage />)
 
-    expect(screen.getByText(/Loading schedule/i)).toBeDefined()
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
   })
 
   it('renders the JobList in list view with all jobs when no search is active', () => {
