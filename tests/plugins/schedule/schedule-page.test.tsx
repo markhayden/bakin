@@ -148,6 +148,8 @@ vi.mock('@/hooks/use-schedule', () => ({
 
 vi.mock('@bakin/team/hooks/use-agent-store', () => ({
   useAgentIds: () => ['chef', 'pixel'],
+  useAgent: (id: string) => ({ id, name: id }),
+  useAgentDisplayName: () => undefined,
 }))
 
 vi.mock('next/navigation', () => ({

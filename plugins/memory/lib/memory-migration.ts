@@ -11,6 +11,10 @@
  *       rows indexed before this version predate the filter, so the table
  *       is dropped and the offsets cache is cleared; `onReady`'s backfill
  *       then re-enriches everything under the new rules.
+ *   2 — populate `kind` on durable tier (soul/rules/tools/identity/
+ *       heartbeat/memory/memory-log/dreams/user/bootstrap) and bring
+ *       `{workspace}/skills/*\/SKILL.md` into the durable indexer with
+ *       kind=skill. Existing rows have no `kind` — drop + re-derive.
  *
  * Bump `MEMORY_SCHEMA_VERSION` whenever a write-path change means existing
  * rows should be re-derived from source (new filters, new fields, changed
@@ -26,7 +30,7 @@ import { clearAllOffsets, getOffsetsFilePath } from './offsets'
 
 const log = createLogger('memory:migration')
 
-export const MEMORY_SCHEMA_VERSION = 1
+export const MEMORY_SCHEMA_VERSION = 2
 const TABLE = 'bakin_memory'
 
 function versionFilePath(): string {
