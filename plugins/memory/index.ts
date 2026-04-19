@@ -32,6 +32,7 @@ import {
 } from './lib/routes/sessions'
 import { checkpointsListRoute, checkpointDetailRoute } from './lib/routes/checkpoints'
 import { dreamsListRoute, dreamDetailRoute } from './lib/routes/dreams'
+import { statusRoute } from './lib/routes/status'
 
 const log = createLogger('memory')
 
@@ -149,6 +150,7 @@ const memoryPlugin: BakinPlugin = {
     ctx.registerRoute(checkpointDetailRoute)
     ctx.registerRoute(dreamsListRoute)
     ctx.registerRoute(dreamDetailRoute)
+    ctx.registerRoute(statusRoute)
 
     // ─── Watcher paths (spec §Watcher paths) ────────────────────────────────
     // The indexer fans these out to per-tier handlers once those land.
