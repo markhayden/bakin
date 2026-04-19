@@ -1,0 +1,146 @@
+// @vitest-environment jsdom
+
+/**
+ * Tests for plugins/memory/components/tier-overview-cards.tsx.
+ *
+ * The overview renders one card per memory tier. It fetches /status on
+ * mount, shows skeletons while loading, shows the per-tier counts once
+ * data arrives, and tolerates a missing tier (→ 0). It is the fastest
+ * feedback surface on the /memory landing page, so render-stability on
+ * partial data matters more than exhaustive prettiness.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+
+// Defensive isolation per CLAUDE.md.
+vi.mock('../../../src/core/content-dir', async () => {
+  const { join: j } = await import('path')
+  const { tmpdir: t } = await import('os')
+  const base = j(t(), `bakin-test-memory-overview-mock`)
+  return {
+    getContentDir: () => base,
+    getBakinPaths: () => ({ root: base, plugins: j(base, 'plugin-settings') }),
+  }
+})
+vi.mock('../../../packages/core/src/content-dir', async () => {
+  const { join: j } = await import('path')
+  const { tmpdir: t } = await import('os')
+  const base = j(t(), `bakin-test-memory-overview-mock`)
+  return {
+    getContentDir: () => base,
+    getBakinPaths: () => ({ root: base, plugins: j(base, 'plugin-settings') }),
+  }
+})
+
+vi.mock('@/components/ui/card', () => ({
+  Card: ({ children, ...props }: Record<string, unknown>) => (
+    <div data-testid="card" {...props}>{children as React.ReactNode}</div>
+  ),
+}))
+vi.mock('@/components/ui/skeleton', () => ({
+  Skeleton: (props: Record<string, unknown>) => <div data-testid="skeleton" {...props} />,
+}))
+
+import { TierOverviewCards } from '../../../plugins/memory/components/tier-overview-cards'
+
+type FetchFn = typeof global.fetch
+
+function mockFetchOnce(body: unknown, status = 200): FetchFn {
+  return vi.fn(async () => ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  })) as unknown as FetchFn
+}
+
+const originalFetch = global.fetch
+
+beforeEach(() => {
+  ;(global as { fetch: FetchFn }).fetch = originalFetch
+})
+
+afterEach(() => {
+  cleanup()
+  ;(global as { fetch: FetchFn }).fetch = originalFetch
+})
+
+describe('TierOverviewCards', () => {
+  it('renders a card for every tier', async () => {
+    global.fetch = mockFetchOnce({
+      countsByTier: {
+        audit: 10, durable: 4, daily_note: 7, session: 3, turn: 200, checkpoint: 1, dream: 5,
+      },
+      totalRows: 230,
+      offsetsTracked: 2,
+      lastUpdated: Date.now(),
+    })
+    render(<TierOverviewCards />)
+    await waitFor(() => {
+      expect(screen.getAllByTestId('card').length).toBe(7)
+    })
+  })
+
+  it('displays the count for each tier once /status responds', async () => {
+    global.fetch = mockFetchOnce({
+      countsByTier: {
+        audit: 10, durable: 4, daily_note: 7, session: 3, turn: 200, checkpoint: 1, dream: 5,
+      },
+      totalRows: 230,
+      offsetsTracked: 2,
+      lastUpdated: Date.now(),
+    })
+    render(<TierOverviewCards />)
+    await waitFor(() => {
+      // each count shows up somewhere
+      expect(screen.getByText('200')).toBeDefined()
+      expect(screen.getByText('10')).toBeDefined()
+      expect(screen.getByText('7')).toBeDefined()
+    })
+  })
+
+  it('shows skeletons before the first response', () => {
+    global.fetch = vi.fn(() => new Promise(() => {})) as unknown as FetchFn
+    render(<TierOverviewCards />)
+    expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0)
+  })
+
+  it('fetches /api/plugins/memory/status', async () => {
+    const fn = mockFetchOnce({
+      countsByTier: {
+        audit: 0, durable: 0, daily_note: 0, session: 0, turn: 0, checkpoint: 0, dream: 0,
+      },
+      totalRows: 0, offsetsTracked: 0, lastUpdated: 0,
+    })
+    global.fetch = fn
+    render(<TierOverviewCards />)
+    await waitFor(() => {
+      expect(fn).toHaveBeenCalled()
+    })
+    const url = (fn as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][0] as string
+    expect(url).toContain('/api/plugins/memory/status')
+  })
+
+  it('tolerates a tier missing from the response — renders 0', async () => {
+    global.fetch = mockFetchOnce({
+      countsByTier: { audit: 10 }, // missing every other tier
+      totalRows: 10, offsetsTracked: 0, lastUpdated: Date.now(),
+    })
+    render(<TierOverviewCards />)
+    await waitFor(() => {
+      expect(screen.getAllByTestId('card').length).toBe(7)
+    })
+    // 6 tiers should show 0 — so at least 6 zero values present.
+    const zeros = screen.getAllByText('0')
+    expect(zeros.length).toBeGreaterThanOrEqual(6)
+  })
+
+  it('renders an error state when /status fails', async () => {
+    global.fetch = vi.fn(async () => {
+      throw new Error('network blip')
+    }) as unknown as FetchFn
+    render(<TierOverviewCards />)
+    await waitFor(() => {
+      expect(screen.getByText(/network blip|failed/i)).toBeDefined()
+    })
+  })
+})

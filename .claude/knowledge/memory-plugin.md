@@ -28,7 +28,16 @@ plugins/memory/
   client.tsx            ─ Nav item export.
   bakin-plugin.json     ─ Manifest + settings schema.
   components/
-    memory-shell.tsx    ─ Layout frame for /memory (tier tabs fill in per-commit).
+    memory-shell.tsx          ─ Landing layout: overview cards + search input +
+                                tier/agent facet filters + cross-tier results.
+                                Filters persisted in the URL via useQueryState /
+                                useQueryArrayState so the page is bookmarkable.
+    memory-search-results.tsx ─ Cross-tier result list — one card per hit,
+                                tier badge + agent badge + score + snippet.
+                                Handles loading / error / empty-state itself.
+    tier-overview-cards.tsx   ─ Seven cards on the landing page, one per tier,
+                                live counts from /api/plugins/memory/status.
+                                Stable geometry even on partial responses.
   lib/
     types.ts            ─ MemoryTier, MemoryRow, per-tier meta schemas (Zod).
     indexer.ts          ─ MemoryIndexer: backfill, indexTier, handleWatcherEvent.
@@ -86,6 +95,9 @@ plugins/memory/
                         GET /dreams/:agent/:artifactType[?phase=&date=] (detail via
                         meta scan — phase_doc needs phase+date, session_corpus
                         needs date, others identified by artifactType alone).
+      status.ts       ─ GET /status — one Antfly count per tier (`limit: 0`),
+                        returns `{ countsByTier, totalRows, offsetsTracked, lastUpdated }`.
+                        Tolerant of per-tier failures (→ 0 for that tier).
 ```
 
 ## Invariants
@@ -155,8 +167,23 @@ Lives at `~/.bakin/plugin-settings/memory.json`. Fields:
   - **Adapter additions.** `listPhaseDocs(agent)` walks `workspace/memory/dreaming/<phase>/*.md`; `listDreamSignalFiles(agent)` enumerates `.dreams/` flat files plus a single-level `session-corpus/` subdir (no deeper recursion). `readPhaseDoc(agent, phase, filename)` and `readDreamSignal(agent, relPath)` both block path traversal. `matchPhaseDocPath(path)` and `matchDreamSignalPath(path)` round-trip filesystem paths back to `(agent, phase, filename)` or `(agent, relPath)` for watcher routing, handling both the collapsed main-agent workspace and per-agent `workspaces/<id>/` layouts.
   - **Watcher routing.** `file.add` / `file.change` on a phase doc path → `indexPhaseDoc`; on a signal file path → `indexDreamSignal`. `unlink` derives the row id from the filename (for phase docs, the `YYYY-MM-DD` prefix) or from `classifyDreamSignal(relPath)` and removes it. The existing watch glob (`workspace/memory/**/*`, `workspaces/*/memory/**/*`) already covers both path shapes.
   - **Routes.** `GET /dreams?agent=<id>[&phase=&date=&artifactType=]` runs an Antfly query with `{tier: 'dream', agent}` filters, passes the phase/date/artifactType terms as the q-string for BM25 scoring, then post-filters the results by JSON-parsing each row's `meta`. `GET /dreams/:agent/:artifactType[?phase=&date=]` does the same query narrowed by the artifactType term and finds the first row whose meta matches all provided fields. Malformed meta is tolerated as a non-match. Routes never touch the filesystem; the indexer is the single source of truth.
-- C9 — `feat(memory): global search + facets UX` (pending)
+- C9 — `feat(memory): global search + facets UX` ✅
+  - **Status route.** `GET /status` runs one Antfly query per tier with `limit: 0` — we only need `meta.total`. A single failing tier returns 0 rather than erroring the whole response; `/memory` is a dashboard, not a source of truth. Also reports `offsetsTracked` (count of keys in `offsets.json`) and `lastUpdated` (server timestamp of the snapshot).
+  - **Integration test.** `tests/plugins/memory/global-search-integration.test.ts` proves the round-trip: plugin activates, fake Antfly returns rows from three tiers (`session`, `daily_note`, `audit`), the auto-wired `/search` route preserves tier, agent, id, and meta unchanged. This is the contract for cross-plugin search — if it breaks, the unified-table story breaks.
+  - **Client components.** `MemorySearchResults` renders one card per hit, tier and agent as badges, relevance score, and the snippet — handles its own loading / error / empty states so page code stays thin. `TierOverviewCards` fetches `/status` on mount, renders seven fixed cards in a stable grid, falls back to `0` for any tier missing from the response.
+  - **Shell wiring.** `MemoryShell` is the whole `/memory` landing page: overview cards → search input → tier + agent facet filters → results list. Search and filter state all live in the URL (`?q=…&tier=…&agent=…`) via `useQueryState` / `useQueryArrayState`, so the page is bookmarkable and browser back/forward round-trip the view. Facet aggregations come from Antfly's `aggregations.agent` and `aggregations.tier` — the agent facet only appears once there's data to populate it, which avoids showing an empty dropdown on a fresh install.
+  - **No sub-route.** The search surface is the landing page — `/memory/search` is intentionally not created. One URL, one view, no internal redirects.
+  - No changes needed to `src/core/api-search-handler.ts` — the unified `bakin_memory` table flows through the existing cross-plugin pipeline. The only stale reference was a doc comment in `src/core/audit.ts`, which correctly names the new table.
+- C10 — `feat(memory): MCP exec tools` (pending)
 - C10 — `feat(memory): MCP exec tools` (pending)
 - C11 — `docs(memory): final knowledge pass + CLAUDE/README` (pending)
+
+## URL state (see also `.claude/knowledge/url-state-deep-linking.md`)
+
+- `?q=<term>` — active search query.
+- `?tier=session,daily_note` — active tier filter (comma-separated).
+- `?agent=explorer,chef` — active agent filter (comma-separated).
+
+All three are omitted when at their default (empty); `MemoryShell` wraps its content in `<Suspense>` per the hook contract.
 
 See `.claude/specs/memory-plugin-rebuild-PLAN.md` for the full plan.
