@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { FileText, Image, Video, Music, Map, Database, Package, Clock, MoreHorizontal, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { FileText, Image, Video, Music, Map, Database, Package, Clock, MoreHorizontal, Trash2, ArrowUp, ArrowDown, ArrowUpDown, Images } from 'lucide-react'
+import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
 import {
@@ -165,12 +166,11 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
 export function AssetsList({ assets, onSelect, onDelete, sort, sortDir, onSort }: AssetsListProps) {
   if (assets.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <p className="text-sm text-muted-foreground">No assets found.</p>
-        <p className="text-xs text-muted-foreground/60 mt-1">
-          Agents will create assets here as they complete tasks.
-        </p>
-      </div>
+      <EmptyState
+        icon={Images}
+        title="No assets found"
+        description="Agents will create assets here as they complete tasks."
+      />
     )
   }
 

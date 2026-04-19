@@ -1,6 +1,8 @@
 'use client'
 
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { EmptyState } from '@/components/empty-state'
+import { CalendarClock } from 'lucide-react'
 import { JobRow, type JobScoreInfo } from './job-row'
 import type { ScheduleJob } from '@/hooks/use-schedule'
 
@@ -30,11 +32,7 @@ export function JobList({
   showScores?: boolean
 }) {
   if (jobs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-        <p className="text-sm">No scheduled jobs found.</p>
-      </div>
-    )
+    return <EmptyState icon={CalendarClock} title="No scheduled jobs found" />
   }
 
   return (

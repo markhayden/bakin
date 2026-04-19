@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -93,9 +94,11 @@ export function TeamManager() {
 
       {/* Existing teams */}
       {teams.length === 0 ? (
-        <div className="text-sm text-muted-foreground text-center py-6 border border-dashed border-border rounded-lg">
-          No teams yet. Create one to organize your agents.
-        </div>
+        <EmptyState
+          icon={Users}
+          title="No teams yet"
+          description="Create one to organize your agents."
+        />
       ) : (
         <div className="space-y-3">
           {teams.map((team) => {
