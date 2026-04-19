@@ -134,6 +134,18 @@ describe('memory plugin shell (C2)', () => {
     expect(findRoute(activated.routes, 'GET', '/search')).toBeDefined()
   })
 
+  it('registers all 5 MCP exec tools (C10)', async () => {
+    const activated = await activatePlugin(memoryPlugin, testDir)
+    const names = activated.execTools.map((t) => t.name).sort()
+    expect(names).toEqual([
+      'bakin_exec_memory_get_session',
+      'bakin_exec_memory_get_turn',
+      'bakin_exec_memory_list_agents',
+      'bakin_exec_memory_search',
+      'bakin_exec_memory_status',
+    ])
+  })
+
   it('calls watchFiles with the spec-listed paths', async () => {
     const activated = await activatePlugin(memoryPlugin, testDir)
     const watch = activated.ctx.watchFiles as ReturnType<typeof vi.fn>
