@@ -91,7 +91,9 @@ describe('MemorySearchResults', () => {
 
   it('shows an empty-state message when a non-empty query returns no results', () => {
     render(<MemorySearchResults results={[]} loading={false} error={null} query="needle" />)
-    expect(screen.getByText(/no results/i)).toBeDefined()
+    // EmptyState renders both a title ("No results") and a description
+    // ("No results for "needle"") — either one satisfies the contract.
+    expect(screen.getAllByText(/no results/i).length).toBeGreaterThan(0)
     expect(screen.getByText(/needle/)).toBeDefined()
   })
 

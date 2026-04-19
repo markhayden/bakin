@@ -22,12 +22,20 @@ import { createLogger } from '../../../../src/core/logger'
 const log = createLogger('memory:status')
 
 async function countForTier(ctx: PluginContext, tier: MemoryTier): Promise<number> {
+  // Count rows by filter. Two non-obvious choices here:
+  //   - q: '*' so full-text matches every doc (empty q scores nothing
+  //     and returns total=0, which looked like an empty backfill).
+  //   - strategy: 'full_text_only' so semantic search is skipped. With
+  //     the default RRF strategy, Antfly rejects limit: 0 queries with
+  //     "semantic search requires topk limit to be positive" and the
+  //     status route silently returned 0 for every tier.
   const params: SearchQueryParams = {
-    q: '',
+    q: '*',
     filters: { tier },
     limit: 0,
     offset: 0,
     rerank: false,
+    strategy: 'full_text_only',
   }
   try {
     const res = await ctx.search.query(params)

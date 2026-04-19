@@ -1,6 +1,6 @@
 # Memory plugin
 
-_Living doc — grows commit by commit during the memory plugin rebuild. Final polish lands in C11._
+_Living doc for the completed memory plugin rebuild (C1–C11)._
 
 ## What it is
 
@@ -29,14 +29,55 @@ plugins/memory/
   bakin-plugin.json     ─ Manifest + settings schema.
   components/
     memory-shell.tsx          ─ Landing layout: overview cards + search input +
-                                tier/agent facet filters + cross-tier results.
+                                tier/agent facet filters + cross-tier results +
+                                detail drawer + "System Logs" toggle.
                                 Filters persisted in the URL via useQueryState /
                                 useQueryArrayState so the page is bookmarkable.
+                                Shows `/recent` when no query, search results when
+                                one is active.
     memory-search-results.tsx ─ Cross-tier result list — one card per hit,
                                 tier badge + agent badge + score + snippet.
-                                Handles loading / error / empty-state itself.
+                                Left-edge accent + hover tint from tier-colors.ts.
+                                When the global `useDebug()` flag is on AND a
+                                query is active, each row renders RRF/BM25/SEM
+                                score breakdown (same pattern as messaging
+                                session list + asset cards).
+                                Handles loading / error / empty-state itself,
+                                with a targeted "debug-only matches" CTA when
+                                every hit got stripped by the System Logs toggle.
+    memory-detail-drawer.tsx  ─ Shared BakinDrawer slideover for a clicked row.
+                                Header shows tier badge + agent badge + title.
+                                Body: row id, created/updated timestamps,
+                                backend + source path, score, then the full
+                                content routed through MemoryContentRenderer.
+                                Forces JSON rendering for `turn` rows with
+                                `meta.eventType='tool_call'` (their content is
+                                a JSON toolCall block that the heuristic would
+                                mis-classify when argument payloads contain
+                                markdown), and forces markdown for daily_note,
+                                durable, and dream tiers.
+    memory-content-renderer.tsx ─ Auto-detects JSON / Markdown / plain text.
+                                JSON requires full parse of the complete body
+                                (no partial-prefix matching); markdown requires
+                                an explicit marker (fence, heading, list, link).
+                                Conservative on purpose — misclassifying a
+                                long plain-text body as markdown strips line
+                                breaks, misclassifying JSON strips indentation.
+                                Callers can pass `format` to override.
+    tier-colors.ts            ─ Per-tier visual identity map. Full Tailwind
+                                class strings (JIT-safe) for `accent` (4 px
+                                left-edge border), `badge` (tier pill),
+                                `bg` (hover tint), `dot` (solid-fill swatch
+                                for the overview cards), and `label`. One
+                                source of truth — change a tier color here.
     tier-overview-cards.tsx   ─ Seven cards on the landing page, one per tier,
                                 live counts from /api/plugins/memory/status.
+                                Tier order: Sessions, Daily Notes, Dreams,
+                                Durable, Checkpoints, Audit, Turns. Audit +
+                                Turns render a Microscope glyph — the same
+                                icon next to the header "System Logs" toggle
+                                — so users can see at a glance that those two
+                                counts belong to the opt-in group.
                                 Stable geometry even on partial responses.
   lib/
     types.ts            ─ MemoryTier, MemoryRow, per-tier meta schemas (Zod).
@@ -77,6 +118,14 @@ plugins/memory/
                             `classifyDreamSignal(relPath)`. Dormant (empty) bodies
                             still emit rows so the UI can show friendly copy
                             instead of a mysterious absence. 2 KB snippet cap.
+    ttl-prune.ts        ─ Daily sweep for turn/audit rows past the retention
+                          window. One-shot at boot, then `setInterval(DAY_MS)`.
+                          `scanTable` + `batchRemove(100)` — safe on tables
+                          with ≤100k rows (actual size ~20k with debug data).
+    memory-migration.ts ─ Per-plugin schema-version gate. On bump: drop the
+                          `bakin_memory` table, unlink `offsets.json`, call
+                          `ensureRegisteredTables()` to recreate, write new
+                          marker. Runs once per boot from `onReady`.
     routes/
       audit.ts        ─ GET /audit — tier='audit' facet query + agent/event filters.
       durable.ts      ─ GET /durable?agent=<id> (list), GET /durable/:agent/:basename (render).
@@ -98,6 +147,15 @@ plugins/memory/
       status.ts       ─ GET /status — one Antfly count per tier (`limit: 0`),
                         returns `{ countsByTier, totalRows, offsetsTracked, lastUpdated }`.
                         Tolerant of per-tier failures (→ 0 for that tier).
+                        Forces `strategy: 'full_text_only'` — semantic search
+                        rejects `limit: 0` with "topk must be positive".
+      recent.ts       ─ GET /recent?limit=&tier=&agent=&debug= — cross-tier
+                        activity feed for the landing page when no query is
+                        active. Fans out per (tier, agent) with match-all
+                        (`q='*'`, `strategy='full_text_only'`, overshoot=100),
+                        merges, sorts by `updated_at` desc, trims to limit.
+                        Turn + audit excluded by default; `?debug=1` or an
+                        explicit `?tier=turn|audit` chip opts them back in.
   mcp/
     search.ts       ─ bakin_exec_memory_search — hybrid query over bakin_memory,
                       optional tier/agent filters, limit default 20 / max 100.
@@ -130,6 +188,38 @@ Lives at `~/.bakin/plugin-settings/memory.json`. Fields:
 | `skipSessionOverBytes` | `10485760` | Transcripts larger than this are skipped. |
 | `skipResetBackups` | `true` | Skip `*.reset.*.jsonl` historical backups. |
 | `lanceDbComparisonEnabled` | `true` | Show OpenClaw daily-note vector recall alongside Antfly results. |
+| `turnRetentionDays` | `7` | Drop turn rows older than this at write time and in the daily prune. OpenClaw still owns the source JSONL. |
+| `auditRetentionDays` | `30` | Drop audit rows older than this at write time and in the daily prune. |
+
+## Retention + TTL prune
+
+Two write-path + sweep-path filters keep the noisy tiers bounded:
+
+- **Write-path filter.** `MemoryIndexer.isExpired(row)` short-circuits `writeRow` for turn/audit rows whose `updatedAt` falls outside the retention window. No DB round-trip. Live indexing from watcher events never pollutes the index with rows destined for immediate deletion.
+- **Sweep-path prune.** `plugins/memory/lib/ttl-prune.ts:pruneExpired` scans `bakin_memory` via `antfly.scanTable`, collects keys whose `(tier, updated_at)` combo is past the cutoff, and batch-removes in groups of 100. Runs once at boot (catches rows indexed before the retention policy landed — the schema-version migration now handles this, but the one-shot prune is kept as a defense in depth) and then on `setInterval(DAY_MS)`.
+- **Timer ordering.** `onReady` arms the daily timer *before* awaiting the one-shot prune. A slow initial prune (or a first call racing a cold Antfly) must not gate the recurring sweep.
+
+Tiers other than turn/audit have no retention — they're bounded by their own source file count.
+
+## Per-plugin schema migration
+
+`plugins/memory/lib/memory-migration.ts` owns this. Separate from the global `~/.bakin/.search-state.json` because bumping the global version drops every `bakin_*` table, which is too blunt when only memory's write rules changed.
+
+- Version marker lives at `~/.bakin/plugin-settings/memory/schema-version.json`.
+- `MEMORY_SCHEMA_VERSION = 1` — introduce turn/audit retention (v0 → v1 drops the table + clears offsets so the backfill re-derives under the new filters).
+- On boot, `migrateIfNeeded()` compares stored vs code version. Behind: drop `bakin_memory`, unlink `offsets.json` + `clearAllOffsets()` (so backfill re-reads every file from byte 0 instead of skipping past data that's no longer in the index), call `ensureRegisteredTables()` to recreate, write the new marker. Then `indexer.backfill(...)` runs under the current write rules.
+- Bump the version whenever a write-path change means existing rows should be re-derived: new filters, new fields, changed id hashing. Pure UI tweaks don't need a bump.
+
+## Page-local debug ("System Logs") vs global debug
+
+Two distinct toggles with different jobs:
+
+| toggle | source | scope | shown when off |
+|---|---|---|---|
+| **System Logs** (Microscope icon in page header) | `?debug=1` URL param, via `useQueryState` | Page-local. Controls `/recent` tier selection + client-side post-filter on search results. | Turn + Audit tiers stripped from the feed. |
+| **Global Debug** (Bug icon in app header) | `useDebug()` hook → Zustand + `localStorage.bakin-debug` | App-wide. Currently controls activity-feed duplicate visibility, asset search score overlays, and the score breakdown on `/memory` result rows. | Score breakdown collapses to the plain RRF score. |
+
+They're intentionally separate — a user debugging a search-quality issue wants the global debug on (to see BM25 / SEM scores) without necessarily wanting the noisy tiers. Vice versa for operators reviewing audit activity.
 
 ## Commit history (this rebuild)
 
@@ -193,14 +283,24 @@ Lives at `~/.bakin/plugin-settings/memory.json`. Fields:
   - `bakin_exec_memory_list_agents` — seven parallel Antfly queries, one per tier, each asking for `facets: ['agent']` aggregations. Pivots the per-tier agent buckets into `{agent, total, byTier}` and sorts by total desc. Per-tier failures degrade that tier's contribution to 0 rather than erroring the whole tool.
   - `bakin_exec_memory_status` — same counts-by-tier logic as the `/status` REST route, wrapped in the exec-tool envelope so agents don't need an HTTP round-trip. Per-tier failures → 0.
   - All five tools are wired via `ctx.registerExecTool()` in `plugins/memory/index.ts:activate()`; the plugin-activation test pins the exact name set so we can't silently drop one.
-- C11 — `docs(memory): final knowledge pass + CLAUDE/README` (pending)
+- C11 — `docs(memory): final knowledge pass + CLAUDE/README` ✅
+  - **UX polish.** Swapped the Debug `Button` for a `Switch` in the page header, relabelled "Enhanced Debugging" → **System Logs**, moved the icon to `Microscope`, and added the same Microscope glyph to the Audit + Turns overview cards so users can see which counts belong to the opt-in group. Reordered the overview cards: Sessions, Daily Notes, Dreams, Durable, Checkpoints, Audit, Turns (usefulness descending, System Logs at the end).
+  - **Per-tier colors.** New `plugins/memory/components/tier-colors.ts` — one source of truth for the 7 tier color families. Each style has `accent` (4 px left border on result cards), `badge` (tier pill), `bg` (hover tint on clickable rows), `dot` (solid-fill for overview-card swatches), and `label`. Full Tailwind class strings so the JIT compiler picks them up at build time — changing a tier color means editing one file.
+  - **Detail drawer.** New `MemoryDetailDrawer` over the shared `BakinDrawer` (storage key `"memory"`) so the slideover width persists across the app. Click any result row → drawer opens with tier/agent badges, row id, timestamps, backend, source path, score, then the full `content` and the parsed `meta`. `MemoryContentRenderer` auto-detects JSON (full-parse heuristic — no partial prefix match), markdown (requires an explicit marker: fence, heading, list, link), or plain text; the drawer forces JSON for turn `tool_call` rows and markdown for daily_note/durable/dream.
+  - **Score breakdown.** When the global `useDebug()` flag is on AND a query is active, each result row renders RRF / BM25 / SEM side by side (amber / cyan / purple, same palette as messaging session list + asset cards). BM25 key is sniffed dynamically via `/bleve|full_text/.test(k)` because Bleve's index key is an absolute filesystem path — can't hard-code.
+  - **Cross-tier `/recent` feed.** New `lib/routes/recent.ts` — the landing page's no-query state. Fans out match-all (`q='*'`, `strategy='full_text_only'`) per (tier, agent) pair with an overshoot of 100, merges, sorts by `updated_at` desc client-side, trims to the requested limit (default 30, max 100). Turn + audit excluded by default; `?debug=1` (from the page-local System Logs toggle) or an explicit `?tier=turn|audit` chip opts them back in. Per-tier failures degrade to `[]` without poisoning the merged response.
+  - **Retention + TTL prune.** New `IndexerOptions.{turnRetentionDays, auditRetentionDays}` (defaults 7 / 30) + write-path `isExpired(row)` short-circuit in `writeRow`. New `lib/ttl-prune.ts` provides `pruneExpired(config)` (`scanTable` + `batchRemove(100)`) and `startTtlTimer(config, intervalMs=DAY_MS)` / `stopTtlTimer()` as a globalThis-backed singleton (survives Next.js webpack re-eval). `onReady` arms the timer *before* awaiting the one-shot prune — a slow cold start can't block the recurring sweep.
+  - **Schema-version migration.** New `lib/memory-migration.ts` with `MEMORY_SCHEMA_VERSION = 1` and a marker at `plugin-settings/memory/schema-version.json`. On version gap: drop `bakin_memory`, unlink `offsets.json` + `clearAllOffsets()`, `ensureRegisteredTables()` to recreate, bump marker. Intentionally per-plugin — bumping the global search-state version wipes every `bakin_*` table, which is the wrong hammer for "memory's retention rules changed".
+  - **Lifecycle contract.** `plugins/memory/index.ts`'s module-level `ready` flag gates watcher event handlers until `onReady()` fires; `tests/plugins/memory/plugin-lifecycle.test.ts` pins this contract with both the negative case (pre-onReady events don't reach `indexer.handleWatcherEvent`) and the positive case (post-onReady events do).
+  - **Docs.** `.claude/knowledge/memory-plugin.md` (this file) updated with the new modules, routes, UX, retention, migration, and dual-debug model. `CLAUDE.md §Memory Observability` gets a sentence on retention + migration. The rebuild plan marks C11 complete.
 
 ## URL state (see also `.claude/knowledge/url-state-deep-linking.md`)
 
 - `?q=<term>` — active search query.
 - `?tier=session,daily_note` — active tier filter (comma-separated).
 - `?agent=explorer,chef` — active agent filter (comma-separated).
+- `?debug=1` — page-local "System Logs" toggle. Distinct from the global `useDebug()` Zustand flag.
 
-All three are omitted when at their default (empty); `MemoryShell` wraps its content in `<Suspense>` per the hook contract.
+All four are omitted when at their default (empty / `'0'`); `MemoryShell` wraps its content in `<Suspense>` per the hook contract. When a debug-only tier is currently selected via URL but the System Logs toggle is off, the tier chip stays visible so the user has a way to remove it — otherwise it would filter silently with no affordance to clear.
 
 See `.claude/specs/memory-plugin-rebuild-PLAN.md` for the full plan.
