@@ -931,21 +931,21 @@ const MANAGED_BLOCKS: ManagedBlockDef[] = [
 All Bakin interactions use **mcporter**. Your MCP server is \`bakin-${agentId}\`.
 
 ### Session Start
-1. Check your tasks: \`mcporter call bakin-${agentId}.bakin_get_task taskId=<id>\`
+1. Check your tasks: \`mcporter call bakin-${agentId}.bakin_exec_tasks_get taskId=<id>\`
 2. Load the Bakin skill for full conventions and tool reference
 
 ### Path Discovery
 All content paths are resolved via mcporter — never hardcode paths:
 \`\`\`bash
-mcporter call bakin-${agentId}.bakin_get_paths
+mcporter call bakin-${agentId}.bakin_exec_get_paths
 \`\`\`
 
 ### Task Changes
-- Use \`bakin_report_complete\` when done, \`bakin_block_task\` when stuck
+- Use \`bakin_exec_tasks_complete\` when done, \`bakin_exec_tasks_block\` when stuck
 - Use Bakin tools via mcporter for all task operations
 
 ### Heartbeat (every 10 minutes)
-- Write your heartbeat JSON to the heartbeats path (discover via \`bakin_get_paths\`)
+- Write your heartbeat JSON to the heartbeats path (discover via \`bakin_exec_get_paths\`)
 - Check for new tasks via mcporter`,
   },
 
@@ -955,10 +955,10 @@ mcporter call bakin-${agentId}.bakin_get_paths
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
-- **NEVER use \`openclaw agent\` to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-${agentId}.bakin_create_task title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
+- **NEVER use \`openclaw agent\` to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
 - **NEVER modify task state directly.** Use Bakin tools via mcporter only.
 - **NEVER post to Discord without explicit instruction.** Content goes through Mark's review first.
-- **NEVER hardcode file paths.** Always discover paths via \`mcporter call bakin-${agentId}.bakin_get_paths\`. Hardcoded paths break when the content directory moves.
+- **NEVER hardcode file paths.** Always discover paths via \`mcporter call bakin-${agentId}.bakin_exec_get_paths\`. Hardcoded paths break when the content directory moves.
 - **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Bakin tracking — no MCP call, no Health metrics, no audit log. Always use the MCP tool via \`mcporter call bakin-${agentId}.bakin_exec_<tool> ...\` instead.
 - **NEVER use \`openclaw cron\` directly for recurring tasks.** Use \`mcporter call bakin-${agentId}.bakin_exec_schedule_create name="..." schedule="every day at 9am" agentId="..." taskPrompt="..."\` instead. Direct cron jobs bypass Bakin — no agent context, no task creation, no audit trail.`,
   },
@@ -971,7 +971,7 @@ mcporter call bakin-${agentId}.bakin_get_paths
 
 If your task requires output from another agent, create their task first, note its task ID, then register a dependency:
 \`\`\`bash
-mcporter call bakin-${agentId}.bakin_register_dependency taskId=<your-task-id> dependsOn=<their-task-id>
+mcporter call bakin-${agentId}.bakin_exec_tasks_set_dependency taskId=<your-task-id> dependsOn=<their-task-id>
 \`\`\`
 Then exit — you will be automatically re-dispatched when their task completes.`,
   },
@@ -988,11 +988,11 @@ Then exit — you will be automatically re-dispatched when their task completes.
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.\n`
 
       if (!canImage) {
-        content += `\n**IMAGES:** You cannot generate images. Ever. Not with nano-banana-pro, not with any other tool. All image generation goes through Pixel. Create a Pixel task via \`mcporter call bakin-${agentId}.bakin_create_task\` and wait.\n`
+        content += `\n**IMAGES:** You cannot generate images. Ever. Not with nano-banana-pro, not with any other tool. All image generation goes through Pixel. Create a Pixel task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create\` and wait.\n`
       }
 
       if (!canVideo) {
-        content += `\n**VIDEO:** You cannot generate video. Ever. Not with Runway, not with any other tool. All video generation goes through Rolo. Create a Rolo task via \`mcporter call bakin-${agentId}.bakin_create_task\` and wait.\n`
+        content += `\n**VIDEO:** You cannot generate video. Ever. Not with Runway, not with any other tool. All video generation goes through Rolo. Create a Rolo task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create\` and wait.\n`
       }
 
       if (!canImage && !canVideo) {
@@ -1002,7 +1002,7 @@ Then exit — you will be automatically re-dispatched when their task completes.
       if (createsSubtasks) {
         content += `\n### When Creating Pixel or Rolo Tasks\n`
         content += `\n- **NEVER include posting instructions in a Pixel or Rolo brief.** They generate assets only — they do not post.`
-        content += `\n- Task descriptions for Pixel/Rolo should end with asset delivery: "Save to the assets directory (discover path via \`bakin_get_paths\`) and report the file path."`
+        content += `\n- Task descriptions for Pixel/Rolo should end with asset delivery: "Save to the assets directory (discover path via \`bakin_exec_get_paths\`) and report the file path."`
         content += `\n- YOU are responsible for posting the finished content. Not Pixel. Not Rolo.`
       }
 
@@ -1020,7 +1020,7 @@ When Bakin dispatches a workflow step to you, the dispatch message contains ever
 
 1. **The dispatch message is your single source of truth.** Follow it exactly for workflow steps.
 
-2. **Submit output ONLY via mcporter:** \`mcporter call bakin-${agentId}.bakin_submit_step taskId=<id> stepId=<step> --args '<json>'\`. Conversational output does NOT complete the step.
+2. **Submit output ONLY via mcporter:** \`mcporter call bakin-${agentId}.bakin_exec_submit_step taskId=<id> stepId=<step> --args '<json>'\`. Conversational output does NOT complete the step.
 
 3. **Do NOT move the task, create subtasks, or message ${getMainAgentName()}** for workflow tasks — the workflow engine handles all coordination.
 
@@ -1056,7 +1056,7 @@ mcporter call bakin-${agentId}.bakin_exec_schedule_create name="daily-recipe" sc
 
 ### When to Use Scheduling vs One-Off Tasks
 - **Recurring work** (daily posts, weekly reports, periodic checks) → \`bakin_exec_schedule_create\`
-- **One-time deliverables** → \`bakin_create_task\``,
+- **One-time deliverables** → \`bakin_exec_tasks_create\``,
   },
 
   {
@@ -1067,7 +1067,7 @@ mcporter call bakin-${agentId}.bakin_exec_schedule_create name="daily-recipe" sc
 
 All created content (images, video, audio, text, plans, data) MUST go to the assets directory. Use the Bakin skill for full conventions, but here's the minimum:
 
-1. **Discover paths via mcporter:** \`mcporter call bakin-${agentId}.bakin_get_paths\`
+1. **Discover paths via mcporter:** \`mcporter call bakin-${agentId}.bakin_exec_get_paths\`
 2. **Organize by task:** \`\$ASSETS_DIR/<task-id>/filename.ext\`
    - **No task?** Write to \`\$ASSETS_DIR/_unlinked/\` — NEVER place files directly in the type root (e.g. \`assets/text/file.md\` is WRONG, use \`assets/text/_unlinked/file.md\`)
    - **Shared/reusable?** Write to \`\$ASSETS_DIR/library/\`
