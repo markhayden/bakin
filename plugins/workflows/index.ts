@@ -3,14 +3,17 @@
  * Enforces step-by-step agent execution with gated delivery,
  * parallel steps, human gates, and output validation.
  */
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { userInfo } from 'os'
+import yaml from 'js-yaml'
 import { z } from 'zod'
 import type { ApprovalActor, BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { listDefinitions, loadDefinition } from './lib/parser'
 import { loadDefaultWorkflows } from './lib/load-defaults'
+import { workflowDefinitionSchema } from './lib/node-type-registry'
+import { isReadOnly, getDefinition as getRegistryDefinition } from './lib/source-registry'
 import {
   createInstance,
   loadInstance,
@@ -504,7 +507,121 @@ const workflowsPlugin: BakinPlugin = {
     }
     ctx.registerRoute({ path: '/definitions/:name', method: 'GET', description: 'Get a specific workflow definition by name', handler: getDefinitionHandler })
 
-    // ─── Runtime Routes ���──────────────────────────────��───────────────
+    // ─── CRUD Routes (user definitions only) ──────────────────────────
+    // User YAML files live at ~/.bakin/workflows/definitions/{id}.yaml.
+    // Plugin-shipped definitions are read-only — POST refuses to overwrite
+    // a plugin-owned id, DELETE refuses to remove a plugin-only id with no
+    // user shadow. PUT always writes to disk (creating a shadow if needed)
+    // because the user-wins rule lets a user override a plugin definition.
+
+    const getDefinitionsDir = (): string => join(getContentDir(), 'workflows', 'definitions')
+
+    const writeUserDefinition = (id: string, def: unknown): void => {
+      const dir = getDefinitionsDir()
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, `${id}.yaml`), yaml.dump(def), 'utf-8')
+    }
+
+    // POST /definitions — create a new user-owned workflow YAML
+    const createDefinitionHandler = async (req: Request) => {
+      let body: { id?: string; [k: string]: unknown }
+      try {
+        body = await req.json()
+      } catch {
+        return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
+      }
+
+      const id = typeof body.id === 'string' ? body.id : undefined
+      if (!id) {
+        return Response.json({ error: 'id is required' }, { status: 400 })
+      }
+
+      // Refuse to overwrite a plugin-only id (no user shadow yet)
+      if (isReadOnly(id)) {
+        const entry = getRegistryDefinition(id)
+        return Response.json(
+          { error: `Workflow id "${id}" is owned by plugin "${entry?.pluginId ?? 'unknown'}" — POST refuses to overwrite. Use PUT to create a user shadow.` },
+          { status: 409 },
+        )
+      }
+
+      const rest = { ...body }
+      delete rest.id
+      const parsed = workflowDefinitionSchema.safeParse(rest)
+      if (!parsed.success) {
+        return Response.json(
+          { error: 'validation failed', issues: parsed.error.issues },
+          { status: 400 },
+        )
+      }
+
+      writeUserDefinition(id, parsed.data)
+      return Response.json({ id, source: 'user', definition: parsed.data }, { status: 201 })
+    }
+    ctx.registerRoute({ path: '/definitions', method: 'POST', description: 'Create a new user-owned workflow definition', handler: createDefinitionHandler })
+
+    // PUT /definitions/:name — update or create a user-owned workflow YAML
+    const updateDefinitionHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const name = url.searchParams.get('name')
+      if (!name) {
+        return Response.json({ error: 'name param required' }, { status: 400 })
+      }
+
+      let body: Record<string, unknown>
+      try {
+        body = await req.json()
+      } catch {
+        return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
+      }
+
+      const rest = { ...body }
+      delete rest.id
+      const parsed = workflowDefinitionSchema.safeParse(rest)
+      if (!parsed.success) {
+        return Response.json(
+          { error: 'validation failed', issues: parsed.error.issues },
+          { status: 400 },
+        )
+      }
+
+      writeUserDefinition(name, parsed.data)
+      return Response.json({ id: name, source: 'user', definition: parsed.data })
+    }
+    ctx.registerRoute({ path: '/definitions/:name', method: 'PUT', description: 'Update or shadow a workflow definition (writes user YAML)', handler: updateDefinitionHandler })
+
+    // DELETE /definitions/:name — remove the user-owned YAML for this id
+    const deleteDefinitionHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const name = url.searchParams.get('name')
+      if (!name) {
+        return Response.json({ error: 'name param required' }, { status: 400 })
+      }
+
+      const dir = getDefinitionsDir()
+      const yamlPath = join(dir, `${name}.yaml`)
+      const ymlPath = join(dir, `${name}.yml`)
+      const existing = existsSync(yamlPath) ? yamlPath : existsSync(ymlPath) ? ymlPath : null
+
+      if (!existing) {
+        // No user file. If plugin owns this id, the user is trying to delete
+        // something they don't own — return 409 so the UI can explain.
+        if (isReadOnly(name)) {
+          const entry = getRegistryDefinition(name)
+          return Response.json(
+            { error: `Workflow id "${name}" is owned by plugin "${entry?.pluginId ?? 'unknown'}" — cannot delete. Edit the plugin or shadow it with PUT.` },
+            { status: 409 },
+          )
+        }
+        return Response.json({ error: 'Definition not found' }, { status: 404 })
+      }
+
+      unlinkSync(existing)
+      return Response.json({ id: name, deleted: true })
+    }
+    ctx.registerRoute({ path: '/definitions/:name', method: 'DELETE', description: 'Delete a user-owned workflow definition', handler: deleteDefinitionHandler })
+
+    // ─── Runtime Routes ───────────────────────────────────────────────
 
     // GET /steps/:taskId — get current step for a task
     const getStepHandler = async (req: Request) => {
