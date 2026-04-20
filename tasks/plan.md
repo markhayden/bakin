@@ -1,431 +1,384 @@
-# Plan: Team plugin canonical main-agent ids
+# Plan: Issue #115 — Dispatch retry + transient cooldown
 
-**Spec:** `.claude/specs/issue-90-team-main-agent-canonical.md`
-**Issue:** https://github.com/madeinwyo/bakin/issues/90
-**Branch:** `fix/issue-90-team-main-agent`
-**Created:** 2026-04-15
-**Author:** claude (opus-4-6) / roscoe
-
----
-
-## Spec correction (apply before starting work)
-
-The spec as written says Bakin "never writes to openclaw.json, ever." That's wrong — `plugins/team/lib/openclaw-adapter.ts:279` (`addAgent`) and `:333` (`removeAgent`) already write to it as part of normal user-initiated agent CRUD, and the CLAUDE.md adapter principle explicitly permits it ("Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never *copies* OpenClaw").
-
-The correct rule is: **doctor checks, migration helpers, and onboarding code never auto-mutate openclaw.json.** User-initiated CRUD through the existing adapter functions is fine.
-
-**Pre-flight task:** update section 4 ("Out of scope") and section 7 ("Never") of the spec to reflect this. Do this in the same PR, at the top of commit 1.
+**Spec:** `.claude/specs/issue-115-dispatch-retry.md`
+**Issue:** https://github.com/madeinwyo/bakin/issues/115
+**Branch:** `issue-115-dispatch-retry`
+**Created:** 2026-04-20
+**Author:** claude (opus-4-7) / roscoe
 
 ---
 
 ## Dependency graph
 
 ```
-Phase 1 (solo):
-  T3 — create openclaw-config.ts, migrate the three duplicate readers
-       (pure refactor, no behavior change)
-              │
-              ▼
-Phase 2 (6-way parallel, all file-disjoint after T3):
-  ┌──── T1 — main-agent.ts: strip detection heuristic
-  │
-  ├──── T2 — settings.ts: delete `agents` + `mainAgentId` fields,
-  │          migrate cli/bakin.ts consumers
-  │
-  ├──── T4 — openclaw-adapter.ts: listAgents validation + dedupe
-  │
-  ├──── T5 — team-grid.tsx: pyramid root = main agent,
-  │          reportsTo?.mainAgentId resolution
-  │
-  ├──── T6 — team/index.ts: writer normalization (reportsTo===main → null)
-  │
-  └──── T7 — onboarding/openclaw.ts: doctor integrity check
-              │
-              ▼
-Phase 3 (solo):
-  T8 — docs (describes the final shipped state)
-              │
-              ▼
-Phase 4 (runbook, no commit):
-  T9 — manual cleanup on this machine
+T0 — branch setup (issue-115-dispatch-retry from main)
+       │
+       ▼
+T1 — feat(openclaw): retry transient fetch failures in sendMessage
+     (src/core/openclaw-client.ts + tests/core/openclaw-client.test.ts)
+       │
+       ▼
+T2 — feat(dispatch): classify transient vs structural; shorter transient cooldown
+     (packages/core/src/settings.ts + src/core/dispatch.ts + tests/core/dispatch.test.ts)
+       │
+       ▼
+T3 — docs(dispatch): document retry + cooldown classification
+     (CLAUDE.md + .claude/knowledge new/updated entry)
+       │
+       ▼
+T4 — PR + close issue
 ```
 
-**Why this shape:** after the T3 refactor lands, each of T1/T2/T4/T5/T6/T7 touches a single file that no other task touches. Zero merge conflicts, zero ordering dependencies. They can execute as 6 parallel sub-agents (6× wall-time speedup on Phase 2) or serially by a single agent — either way the commit graph is the same.
-
-**Key micro-reshuffle from v1 of this plan:** the `settings.mainAgentId` field deletion moved from T1 into T2, so T1 is now `main-agent.ts`-only and T2 is `settings.ts` + `cli/bakin.ts`-only. That removes the false conflict between T1 and T2 that made them appear sequential.
-
-**Commit landing order** (for rollback sanity) follows the graph: T3 first, then any order of T1/T2/T4/T5/T6/T7, then T8. T9 is a runbook, not a commit.
+Linear chain — no parallelism. T2 depends on T1 logically (retry exhaustion →
+transient classification is what makes T2 useful), though the code changes are
+independent. T3 documents the shipped state of T1+T2 together.
 
 ---
 
-## Phase 1 — Refactor prelude (solo, 1 commit)
+## T0 — Branch setup
 
-### T3. Centralize the `openclaw.json` reader
+**Command:** `git checkout -b issue-115-dispatch-retry`
 
-**Files:**
-- `packages/core/src/openclaw-config.ts` — **new file**
-- `packages/core/src/main-agent.ts` — migrate to use the new module (keep existing heuristic for now; T1 strips it)
-- `plugins/team/lib/openclaw-adapter.ts` — migrate `getOpenClawConfig` to use the new module
-- `packages/core/src/settings.ts` — migrate `readAgentIdsFromOpenClaw` to use the new module (keep the field for now; T2 deletes it)
-- `tests/core/openclaw-config.test.ts` — **new** unit tests for the reader
+**Verification:** `git branch --show-current` → `issue-115-dispatch-retry`
 
-**Changes:**
-- **Create `packages/core/src/openclaw-config.ts`** — owns the single mtime-cached reader for `openclaw.json`. Exports:
-  - `readOpenClawConfig(): OpenClawConfig | null`
-  - `getAgentList(): OpenClawAgent[]`
-  - `getAgentIds(): string[]`
-  - `findAgentById(id: string): OpenClawAgent | null`
-  - Shared `OpenClawConfig` / `OpenClawAgent` Zod schemas (types defined here and re-exported).
-- **Delete the three duplicate readers:**
-  - `packages/core/src/main-agent.ts` — `readOpenClawConfig` + `cachedConfig` (lines ~94–114)
-  - `plugins/team/lib/openclaw-adapter.ts` — `getOpenClawConfig` + `configCache` (lines ~51–67)
-  - `packages/core/src/settings.ts` — `readAgentIdsFromOpenClaw` + its `__bakinOpenClawMtime` / `__bakinOpenClawAgents` globals (lines ~256–273)
-- **Replace with imports** from `@bakin/core/openclaw-config`.
-- **No behavior change.** `getMainAgentId()` still runs its heuristic. `BakinSettings.agents` is still populated. All existing tests still pass unchanged.
-- Pure plumbing refactor. The sole purpose of this commit is to collapse three readers into one so Phase 2 can fan out cleanly.
-
-**Acceptance:**
-- `packages/core/src/openclaw-config.ts` exists with the exports above.
-- Net LOC reduction across the three touched files: ~30–50 lines.
-- No behavior observable from outside: all pre-existing tests pass without modification.
-- `grep -rn "statSync.*openclaw.json" packages src plugins` returns exactly one hit (the new module).
-
-**Verification:**
-- `npm run test` passes in full.
-- `npm run typecheck` passes.
-- `bakin check openclaw` still works.
-- Team page renders identically to before.
-
-**Commit:** `refactor(core): centralize openclaw.json reader into openclaw-config module`
+**Risks:** None.
 
 ---
 
-## ✅ Phase 1 checkpoint
+## T1 — feat(openclaw): retry transient fetch failures in sendMessage
 
-- `npm run typecheck` green
-- `npm run test` green (full suite, no modifications)
-- Manual: start dev server, team page and `/api/settings` both unchanged from Phase 0
+### Files
 
-If this fails, `git revert` the T3 commit — everything is back to pre-refactor state with zero side effects.
+- `src/core/openclaw-client.ts` — wrap the single `fetch` at line 69 in a
+  3-attempt loop with 1 s / 2 s backoff. Add module-level
+  `TRANSIENT_FETCH_CODES` set and `isTransientFetchError(err)` helper.
+- `tests/core/openclaw-client.test.ts` — expand from 2 tests to 5. Mocks
+  `global.fetch` directly.
 
----
+### Exact change shape
 
-## Phase 2 — Parallel fan-out (6 commits, independently landable)
+In `openclaw-client.ts`:
 
-**All six tasks below touch disjoint files and can execute in parallel.** Either as six concurrent sub-agents (fastest), or serially by one agent in any order. Each lands as its own commit for granular rollback.
+```ts
+const TRANSIENT_FETCH_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'EPIPE',
+])
 
-### T1. Strip the detection heuristic from `getMainAgentId()`
+function isTransientFetchError(err: unknown): boolean {
+  if (err instanceof TypeError && err.message.includes('fetch failed')) return true
+  const cause = (err as { cause?: { code?: string } })?.cause
+  if (cause?.code && TRANSIENT_FETCH_CODES.has(cause.code)) return true
+  if (err instanceof Error && err.name === 'AbortError') return true
+  return false
+}
 
-**Files:**
-- `packages/core/src/main-agent.ts` — rewrite
-- `tests/core/main-agent.test.ts` — update + add cases
+// Inside sendMessage, replace the direct fetch with:
+const backoffMs = [1000, 2000]  // before attempts 2 and 3
+let lastErr: unknown
+let res: Response | undefined
+for (let attempt = 1; attempt <= 3; attempt++) {
+  try {
+    res = await fetch(...)
+    break  // non-transient result (ok OR http error) — exit loop
+  } catch (err) {
+    lastErr = err
+    if (!isTransientFetchError(err) || attempt === 3) throw err
+    log.warn('sendMessage transient fetch failure — retrying', { agentId, attempt, error: String(err) })
+    await new Promise(r => setTimeout(r, backoffMs[attempt - 1]))
+  }
+}
+if (!res) throw lastErr  // defensive — loop invariant
+```
 
-**Changes:**
-- `getMainAgentId()` reads from `openclaw-config.findAgentById("main")`. If present, returns `"main"`. If missing, throws: *"openclaw.json has no agent with id 'main'. OpenClaw's orchestrator id is always 'main'; add that entry or run `bakin check openclaw`."*
-- `tryGetMainAgentId()` returns `"main"` if the entry exists, `null` otherwise. No detection, no fallback.
-- `getMainAgentName()` returns `identity.name` from the `main` entry, falling back to the string `"Main"` when unset.
-- Delete `detectOrchestratorFromOpenClaw()`. (This function becomes dead code after the heuristic is stripped.)
-- **Does NOT touch `settings.ts`.** The `mainAgentId` override deletion is T2's responsibility.
+The rest of `sendMessage` (the `!res.ok` path, JSON parsing, reply recording)
+is unchanged.
 
-**Acceptance:**
-- `getMainAgentId()` with a valid openclaw.json returns `"main"`.
-- With `agents.list[0] = { id: "main" }` only, returns `"main"`.
-- With `{ id: "bob" }` only (no `main`), throws.
-- With an empty list, throws.
-- `tryGetMainAgentId()` returns `null` in the empty / missing cases.
-- `getMainAgentName()` returns `"Roscoe"` when the main entry has `identity.name: "Roscoe"`, returns `"Main"` when identity is absent.
+### Test additions (tests/core/openclaw-client.test.ts)
 
-**Verification:**
-- `npm run test -- tests/core/main-agent.test.ts` passes.
-- `npm run typecheck` passes.
-- `grep -rn "detectOrchestratorFromOpenClaw\|OPENCLAW_TO_BAKIN\|OPENCLAW_ID_TO_BAKIN_NAME"` returns zero hits.
+Replace the thin existing file with full retry coverage:
 
-**Commit:** `refactor(core): getMainAgentId always returns "main"`
+1. `sendMessage retries on transient TypeError('fetch failed') and succeeds on attempt 3`
+2. `sendMessage does NOT retry on 500 response (fetch returned, !res.ok path)`
+3. `sendMessage does NOT retry on 4xx response`
+4. `sendMessage throws after 3 transient failures`
+5. `sendMessage retries on err.cause.code=ECONNRESET`
 
----
+Keep the existing `exports expected functions` and `ping returns boolean`
+tests.
 
-### T2. Delete `BakinSettings.agents` + `settings.mainAgentId`, migrate consumers
+Mock shape:
+```ts
+const fetchMock = vi.fn()
+global.fetch = fetchMock as unknown as typeof fetch
+fetchMock
+  .mockRejectedValueOnce(new TypeError('fetch failed'))
+  .mockRejectedValueOnce(new TypeError('fetch failed'))
+  .mockResolvedValueOnce({ ok: true, json: async () => ({ choices: [{ message: { content: 'ok' } }] }) })
+```
 
-**Files:**
-- `packages/core/src/settings.ts` — delete the two fields and related code
-- `cli/bakin.ts` — migrate consumers to `openclaw-config.getAgentIds()`
-- `tests/core/settings.test.ts` (if exists) — drop assertions on the deleted fields
+Use `vi.useFakeTimers()` + `vi.runAllTimersAsync()` to skip the 1s/2s backoff
+waits (otherwise tests add 3 s of wall time each).
 
-**Changes:**
-- Delete `agents: string[]` from `BakinSettings` (line 56).
-- Delete `mainAgentId?: string` from `BakinSettings` (line 62) and its comment block.
-- Delete `agents: []` from `DEFAULTS` (line 182).
-- Delete `readAgentIdsFromOpenClaw()` and its globals (already thin after T3's centralization; just remove the wrapper).
-- Delete the `hasExplicitAgentsOverride` branch (lines 348–354).
-- Migrate `cli/bakin.ts` consumers:
-  - `cli/bakin.ts:87` — replace `settings.agents.join(', ')` with `getAgentIds().join(', ')`
-  - `cli/bakin.ts:882` — delete the `(settings as Record...).agents as string[]` cast hack; replace with `getAgentIds()`
-  - `cli/bakin.ts:147` — verify this is reading an API response's `result.agents` (not settings); leave alone if so
-- **Does NOT touch `main-agent.ts`.** T1 handles that.
-
-**Acceptance:**
-- `BakinSettings` type has no `agents` or `mainAgentId` fields.
-- `getSettings()` returns a settings object that is identical to before for all other fields.
-- No code path in `settings.ts` touches `openclaw.json`.
-- `grep -rn "settings\\.agents\|settings\\.mainAgentId" packages src plugins cli` returns no hits.
-
-**Verification:**
-- `npm run typecheck` passes.
-- `npm run test` passes.
-- `bakin` commands that listed agents render identical output.
-
-**Commit:** `refactor(core): drop stale settings.agents + mainAgentId fields`
-
----
-
-### T4. `listAgents()` dedupes and validates OpenClaw's agent list
-
-### T4. `listAgents()` dedupes and validates OpenClaw's agent list
-
-**Files:**
-- `plugins/team/lib/openclaw-adapter.ts` — `listAgents()` rewrite
-- `tests/plugins/team/openclaw-adapter.test.ts` — new or extended
-- `tests/fixtures/openclaw/` — add negative fixtures (broken configs)
-
-**Changes:**
-- After T3, `listAgents()` pulls its raw list from `openclaw-config.getAgentList()`. Validation pass:
-  1. Track seen ids; on duplicate id, log error and skip the second occurrence.
-  2. Resolve each agent's effective workspace (explicit `workspace` field OR `defaults.workspace` when the agent has no override). Track seen resolved workspaces; on collision, log an error naming both ids and skip the second.
-  3. Confirm an entry with `id === "main"` exists. If missing, log a critical error and return an empty list so the UI surfaces an unmistakable empty state instead of silently hiding the orchestrator.
-- Log level: use `log.error` for dupes, `log.error` + empty-return for missing main. Never `log.warn` — these are bugs in the config, not curiosities.
-- Do NOT mutate `openclaw.json`. Read-only path.
-
-**Acceptance:**
-- Given a fixture with `[{id:"main"},{id:"roscoe",workspace:<default>}]`, `listAgents()` returns 1 entry (`main`) and logs one error mentioning both ids and the shared workspace.
-- Given a fixture with `[{id:"main"},{id:"main"}]`, returns 1 entry, logs one error mentioning duplicate id.
-- Given a fixture with `[{id:"bob"}]` (no main), returns `[]` and logs a critical error.
-- Given a clean fixture, returns the full list unchanged.
-
-**Verification:**
-- `npm run test -- tests/plugins/team/openclaw-adapter.test.ts` passes.
-- `npm run typecheck` passes.
-
-**Commit:** `feat(team): validate and dedupe openclaw agent list`
-
----
-
-### T5. Pyramid root is always `main`; `reportsTo` defaults to main at render time
-
-**Files:**
-- `plugins/team/components/team-grid.tsx` — rewrite `buildGraph()` grouping logic
-- `plugins/team/hooks/use-agent-store.ts` — ensure a selector for the main agent id is available (route response already returns `mainAgentId`)
-- `plugins/team/index.ts` — the `GET /` route already returns `mainAgentId`; verify the store consumes it
-- `tests/plugins/team/team-grid.test.tsx` — new or extended (or write assertions against `buildGraph` as a pure function if component-level tests aren't set up)
-
-**Changes in `team-grid.tsx:buildGraph()`:**
-- Accept `mainAgentId: string` as a new input field in `GraphInput`. Pass it from the store.
-- Pyramid root = the agent whose `id === mainAgentId`. Always. Not derived from `topAgentIds`.
-- `teamsByReporter` key resolution: `team.reportsTo ?? mainAgentId`. This means a null/undefined `reportsTo` renders under the main agent automatically.
-- Delete the `topAgentIds` heuristic; replace with `new Set([mainAgentId])` plus any additional ids that appear as non-null `reportsTo` values. (An agent who is a team leader for a non-default reporter also gets a "top-of-subtree" row.)
-- Unassigned bucket: only include agents that (a) are not in any team's `teamMembers`, (b) are not the `mainAgentId`, (c) are not a team leader. In the default flat config, subagents all go under main via the default `reportsTo` fallback, so unassigned is empty.
-- Row 1 now always has exactly the main agent (if present); teams for main render in row 2 (section headers) and row 3 (members). Matches current visual hierarchy for the "one orchestrator with teams under it" case.
-- If `mainAgentId` is not in the roster (e.g. `listAgents()` returned empty per T4's missing-main path), render only the founder + an empty state message.
-
-**Acceptance:**
-- Fresh install simulation: `team.json` absent, openclaw.json has `main` + 7 subagents. Pyramid renders founder → main → single row of 7 subagents. No "Unassigned" bucket.
-- Current user state during transition: openclaw.json still has both `main` and `roscoe` — T4 dedupes to just `main`, T5 puts `main` at the root, Creators + Builders teams with `reportsTo: "roscoe"` (unresolvable) fall back to main per T6.
-- Roster override: team.json has a team with `reportsTo: "basil"`. That team renders under basil, not main.
-- Empty roster: only the founder node renders.
-- No duplicate card for the main agent anywhere in the grid.
-
-**Verification:**
-- `npm run test -- tests/plugins/team/team-grid.test.tsx` passes (or whichever harness we use).
-- Manual: start dev server on imitation-crab fixture, visually confirm the pyramid shape.
-
-**Commit:** `feat(team): pyramid root is always the main agent`
-
----
-
-### T6. Normalize `team.json` writes: null/omit `reportsTo` when it equals main
-
-**Files:**
-- `plugins/team/index.ts` — the team.json writer route (POST/PUT for teams)
-- `plugins/team/lib/team-settings.ts` (if exists) or wherever `writePluginSettings` lives
-- `tests/plugins/team/routes.test.ts` — add normalization assertion
-
-**Changes:**
-- On write: for each team in the incoming payload, if `reportsTo === getMainAgentId()` or `reportsTo === undefined`, set it to `null`. (Null over omission for schema stability.)
-- On read: in `buildGraph`, a `null`/missing `reportsTo` resolves to `mainAgentId` at render time (already covered by T5).
-- Reading a team.json written by old code that has `"reportsTo": "roscoe"` (an unknown id): **graceful degradation** — treat any `reportsTo` that isn't in the roster as null, and log a warning telling the user to re-save. This way, the user's current messy team.json starts rendering correctly as soon as T5+T6 land.
-
-**Acceptance:**
-- POST `/api/plugins/team/teams` with `reportsTo: "main"` → written file has `reportsTo: null`.
-- POST with `reportsTo: "basil"` → written file has `reportsTo: "basil"`.
-- Reading a file with `reportsTo: "roscoe"` (unknown id) logs a warning and treats the team as reporting to main.
-- Reading a file with `reportsTo: null` resolves to main at render time.
-
-**Verification:**
-- `npm run test -- tests/plugins/team/routes.test.ts` passes.
-- `npm run test -- tests/plugins/team/team-grid.test.tsx` still passes.
-- Manual: edit team.json by hand with `reportsTo: "roscoe"`, reload, confirm the team renders under main.
-
-**Commit:** `feat(team): normalize team.json writes to drop implicit main reportsTo`
-
----
-
-### T7. Doctor check for openclaw.json integrity
-
-**Files:**
-- `src/core/onboarding/openclaw.ts` — extend the existing `check()` function OR add a new sub-check
-- `tests/core/doctor.test.ts` (or `tests/core/onboarding/openclaw.test.ts`) — new cases
-- `cli/bakin.ts` — if a `bakin check openclaw` subcommand exists, ensure it hits the new validation
-
-**Changes:**
-- Add a validator that, on `bakin check openclaw` / `bakin doctor`, reports:
-  1. Does an agent with `id === "main"` exist? If not, error with actionable text.
-  2. Are there duplicate ids in `agents.list`? If so, error naming the dupes.
-  3. Are there two agents whose effective workspace (explicit + defaults fallback) resolves to the same path? If so, error naming both ids and the shared path.
-- Reports-only. Does not auto-fix. Non-zero exit on error.
-- Wire into `bakin onboard` and the doctor loop so fresh installs catch broken configs immediately.
-
-**Acceptance:**
-- Clean openclaw.json: check passes silently.
-- Missing main: clear error *"openclaw.json has no agent with id 'main'. Add an entry: `{ \"id\": \"main\", \"identity\": { \"name\": \"<your-agent-name>\" } }`"*.
-- Duplicate id: clear error naming the id.
-- Two agents sharing workspace `/Users/.../workspace`: clear error naming both ids and the shared path.
-- Non-zero exit code when any of the above fire.
-
-**Verification:**
-- `npm run test -- tests/core/doctor.test.ts` passes.
-- Manual: break openclaw.json intentionally (add a duplicate id), run `bakin check openclaw`, confirm the error.
-- Manual: run on a known-good imitation-crab fixture, confirm silence.
-
-**Commit:** `feat(onboarding): doctor validates openclaw.json integrity`
-
----
-
-## ✅ Phase 2 checkpoint
-
-After T1, T2, T4, T5, T6, T7 have all landed (in any order):
-- `npm run typecheck` green
-- `npm run test` green (full suite)
-- Manual: start dev server on imitation-crab fixture — team page shows founder → Crab → 7 subagents. No duplicate cards.
-- Manual: edit team.json on imitation-crab to add a Creators team with `reportsTo: null`. Reload. Confirm Creators renders under Crab.
-- Manual: run `bakin check openclaw` against a deliberately-broken fixture. Confirm it flags the expected error and exits non-zero.
-
-Commits so far: 7 on the branch (T3 + T1 + T2 + T4 + T5 + T6 + T7). Revert granularity: any single commit is independently reversible because all six parallel tasks touch disjoint files.
-
----
-
-## Phase 3 — Docs (solo, 1 commit)
-
-### T8. Doc updates
-
-**Files:**
-- `.claude/knowledge/agent-system.md` — confirm line 50 statement is now literally true (after fix, not aspirational); add a subsection on `getMainAgentId()` being trivial and the `openclaw-config.ts` centralized reader
-- `.claude/knowledge/team-plugin.md` — create if missing, or append: document the pyramid rendering rules (root = main, reportsTo resolution, unassigned bucket semantics) and the team.json schema
-- `CLAUDE.md` — check the "OpenClaw Adapter Principle" section and the Directory Map's `main-agent.ts` description; update if stale. The principle statement is still correct — leave it alone unless the specific file descriptions are wrong.
-- `README.md` — no changes needed (README doesn't discuss agent identity)
-
-**Acceptance:**
-- `.claude/knowledge/agent-system.md` mentions the centralized `openclaw-config.ts` reader and notes that `getMainAgentId()` is constant-return.
-- `.claude/knowledge/team-plugin.md` exists and documents the pyramid rules.
-- Running `grep -rn "roscoe\|OPENCLAW_TO_BAKIN" .claude/knowledge CLAUDE.md README.md` returns only intentional references (e.g. historical context).
-
-**Verification:**
-- Read each touched doc; confirm the statements match the shipped code.
-
-**Commit:** `docs: update agent-system and team-plugin knowledge notes`
-
----
-
-### T9. Manual cleanup on this machine (documented, not code)
-
-**Not a commit — a runbook for roscoe to execute after T1–T8 merge.**
+### Verification
 
 ```bash
-# 1. Back everything up first
-cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.pre-issue-90
-cp -r ~/.bakin ~/.bakin.pre-issue-90
-
-# 2. Stop Bakin
-bakin stop
-
-# 3. Edit ~/.openclaw/openclaw.json by hand:
-#    - In the agents.list[0] "main" entry, add identity.name = "Roscoe" and identity.emoji = "🐾"
-#    - Delete the agents.list[] entry with id: "roscoe"
-#    (Do not leave a stale workspace field — inherit from agents.defaults.workspace)
-
-# 4. Move avatars
-mv ~/.bakin/agents/roscoe/avatar.jpg ~/.bakin/agents/main/
-mv ~/.bakin/agents/roscoe/avatar-full.png ~/.bakin/agents/main/
-rm ~/.bakin/agents/roscoe/AGENTS.md    # stale — owned by openclaw now
-rmdir ~/.bakin/agents/roscoe
-
-# 5. Delete stale heartbeat
-rm ~/.bakin/heartbeats/roscoe.json
-
-# 6. Edit ~/.bakin/plugin-settings/team.json by hand:
-#    - Remove "reportsTo": "roscoe" from both team entries
-#    (null/omitted means main at render time — T5/T6)
-
-# 7. Edit ~/.bakin/settings.json by hand:
-#    - Delete the top-level "agents": [...] array
-#    (T2 deleted the field from the type — it's no longer read)
-
-# 8. Run the new doctor check
-bakin check openclaw
-# Should print nothing (clean)
-
-# 9. Start Bakin
-bakin start
-
-# 10. Open team page in browser. Expected:
-#     - Founder (Mark) at top
-#     - Roscoe as single card below
-#     - Creators + Builders sections under Roscoe
-#     - No orphan "main" card anywhere
+pnpm vitest run tests/core/openclaw-client.test.ts
+pnpm vitest run tests/core/dispatch.test.ts        # regression — still passes with retry in place
+pnpm tsc --noEmit
 ```
 
-**Acceptance:**
-- Team page renders one Roscoe card at the pyramid top, with Creators + Builders underneath. No duplicate.
-- `bakin check openclaw` passes.
-- No files in `~/.bakin/agents/roscoe/` or `~/.bakin/heartbeats/roscoe.json`.
-- `~/.bakin/settings.json` has no `agents` field.
-- `~/.bakin/plugin-settings/team.json` has `reportsTo: null` (or omitted) on both teams.
+All three must pass. The full test suite is not required at this commit
+(will run at T2's checkpoint).
 
-**Commit:** (no code commit — this is a runbook the user executes.)
+### Checkpoint
 
----
+- [ ] `pnpm vitest run tests/core/openclaw-client.test.ts` → 7 tests passing (5 new + 2 kept)
+- [ ] `pnpm vitest run tests/core/dispatch.test.ts` → existing tests still pass
+- [ ] `pnpm tsc --noEmit` → no new errors in `src/core/openclaw-client.ts`
+- [ ] Commit: `feat(openclaw): retry transient fetch failures in sendMessage`
 
-## ✅ Phase 3 checkpoint (final)
+### Risks
 
-- All tests green.
-- Team page visually correct on this machine.
-- Issue #90 closable with a summary comment linking the commits.
-
----
-
-## Commit sequence summary
-
-| # | Task | Commit | Phase | Parallel? | Reversible? |
-|---|------|--------|-------|-----------|-------------|
-| 1 | T3 | `refactor(core): centralize openclaw.json reader into openclaw-config module` | 1 (solo) | No — must land first | Yes (pure refactor) |
-| 2 | T1 | `refactor(core): getMainAgentId always returns "main"` | 2 | ✅ Parallel | Yes |
-| 3 | T2 | `refactor(core): drop stale settings.agents + mainAgentId fields` | 2 | ✅ Parallel | Yes |
-| 4 | T4 | `feat(team): validate and dedupe openclaw agent list` | 2 | ✅ Parallel | Yes |
-| 5 | T5 | `feat(team): pyramid root is always the main agent` | 2 | ✅ Parallel | Yes |
-| 6 | T6 | `feat(team): normalize team.json writes to drop implicit main reportsTo` | 2 | ✅ Parallel | Yes |
-| 7 | T7 | `feat(onboarding): doctor validates openclaw.json integrity` | 2 | ✅ Parallel | Yes |
-| 8 | T8 | `docs: update agent-system and team-plugin knowledge notes` | 3 (solo) | No — must land last | Yes |
-
-**8 commits. 3 phases. 3 checkpoints (after Phase 1, Phase 2, Phase 3).**
-
-The Phase 2 fan-out (commits 2–7) is truly parallel: each task touches a disjoint set of files, so they can execute as six concurrent sub-agents or serially in any order. The commit landing order within Phase 2 doesn't matter for correctness — only for reviewability.
-
-Any single commit can be reverted with `git revert <sha>` without corrupting the ones before it. The only ordering constraint is: commit 1 must land before any Phase 2 commit, and commit 8 must land after.
+- Fake timers interaction with `await new Promise(r => setTimeout(r, ...))` —
+  need `vi.runAllTimersAsync()`, not `vi.advanceTimersByTime` alone, because
+  the awaited promise yields the microtask queue. If a test hangs, that's
+  the cause.
+- `global.fetch = fetchMock` must be restored in `afterEach` so other test
+  files don't inherit the mock.
 
 ---
 
-## Risks and open edges
+## T2 — feat(dispatch): classify transient vs structural; shorter transient cooldown
 
-1. **T3 scope creep.** Centralizing the openclaw.json reader touches main-agent.ts, settings.ts, openclaw-adapter.ts, and possibly cli/bakin.ts. If the refactor touches more than ~150 lines, split it into "create openclaw-config.ts" and "migrate consumers" as two commits.
-2. **team-grid.tsx tests may not exist yet.** The current test file structure is unclear — if no test harness exists for rendering React components in this repo, we'll write assertions against `buildGraph()` as a pure function rather than the full component. That's fine for verifying the pyramid shape.
-3. **T6 unresolved-id fallback.** Graceful degradation means team.json with `reportsTo: "roscoe"` "just works" after Phase 2 — which is good for the user but means the T9 manual edit of team.json is optional, not strictly required. Keep it in the runbook so on-disk state matches code expectations.
-4. **Imitation Crab fixture.** `dev/imitation-crab/fixtures/openclaw.json:9` already has `id: "main"`. Good — this is the "fresh install" reference for F2/F6 tests. Don't touch it.
-5. **`~/.bakin/agents/{id}/AGENTS.md`** — origin unclear. The plan treats it as a stale artifact on this machine. If something still writes it and the spec's implication is wrong, that's a follow-up to investigate, not a blocker for this PR.
+### Files
+
+- `packages/core/src/settings.ts` — add `transientCooldownMs: number` to
+  `BakinSettings.dispatch` (line 17 area) + default `60 * 1000` (line 144 area).
+- `src/core/dispatch.ts`:
+  - Extend `FailureRecord` with `kind?: 'transient' | 'structural'` (the `?`
+    lets legacy-format normalizer default to structural).
+  - Add `classifyDispatchError(err)` + `TRANSIENT_CODES` set.
+  - Update `getFailureRecord()` to default `kind` to `'structural'` when
+    migrating a legacy number or a record missing the field.
+  - In the `todoTasks` loop (lines 160-173): select cooldown by
+    `failure.kind === 'transient' ? settings.dispatch.transientCooldownMs
+    : settings.dispatch.failureCooldownMs`.
+  - In the catch block (lines 204-219): classify the caught error and write
+    `{ lastAttempt: Date.now(), count: (prev?.count || 0) + 1, kind }`.
+  - Same three changes in `dispatchSingleTask` (lines 266-275 and 346-349).
+  - Workflow drive-by at line 606: replace `state.failedDispatches[task.id] = Date.now()`
+    with a proper `FailureRecord` write using the same classification.
+- `tests/core/dispatch.test.ts`:
+  - Update the settings mock to include `transientCooldownMs: 60000`.
+  - Add tests (see below).
+
+### Exact change shape
+
+Settings:
+```ts
+dispatch: {
+  intervalMs: number
+  failureCooldownMs: number
+  transientCooldownMs: number   // NEW
+  maxDispatched: number
+  maxRetries: number
+}
+// DEFAULTS:
+dispatch: {
+  intervalMs: 5 * 60 * 1000,
+  failureCooldownMs: 30 * 60 * 1000,
+  transientCooldownMs: 60 * 1000,  // NEW
+  maxDispatched: 500,
+  maxRetries: 5,
+},
+```
+
+Dispatch classification helper:
+```ts
+const TRANSIENT_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'EPIPE',
+])
+
+type DispatchFailureKind = 'transient' | 'structural'
+
+function classifyDispatchError(err: unknown): DispatchFailureKind {
+  if (err instanceof Error && /^OpenClaw sendMessage failed \(\d+\)/.test(err.message)) {
+    return 'structural'
+  }
+  if (err instanceof TypeError && err.message.includes('fetch failed')) return 'transient'
+  const cause = (err as { cause?: { code?: string } })?.cause
+  if (cause?.code && TRANSIENT_CODES.has(cause.code)) return 'transient'
+  if (err instanceof Error && err.name === 'AbortError') return 'transient'
+  return 'structural'
+}
+```
+
+FailureRecord:
+```ts
+interface FailureRecord {
+  lastAttempt: number
+  count: number
+  kind: 'transient' | 'structural'
+}
+
+function getFailureRecord(entry: FailureRecord | number | undefined): FailureRecord | null {
+  if (!entry) return null
+  if (typeof entry === 'number') return { lastAttempt: entry, count: 1, kind: 'structural' }
+  return { ...entry, kind: entry.kind ?? 'structural' }
+}
+```
+
+Cooldown selection in the dispatch loop:
+```ts
+const cooldownMs = failure.kind === 'transient'
+  ? settings.dispatch.transientCooldownMs
+  : settings.dispatch.failureCooldownMs
+if (Date.now() - failure.lastAttempt < cooldownMs) continue
+```
+
+Failure write:
+```ts
+const kind = classifyDispatchError(err)
+state.failedDispatches[task.id] = {
+  lastAttempt: Date.now(),
+  count: (prev?.count || 0) + 1,
+  kind,
+}
+```
+
+Same write in `dispatchSingleTask` catch block and in the workflow dispatch
+branch (replacing the legacy `= Date.now()` line).
+
+### Test additions (tests/core/dispatch.test.ts)
+
+New `describe('failure classification and cooldown')` block:
+
+1. `transient fetch failure records kind="transient" and expires after transientCooldownMs`
+2. `structural 5xx failure records kind="structural" and does not expire after transientCooldownMs`
+3. `5 transient failures still escalates to blocked via tasks.blockTask`
+4. `workflow dispatch failure writes FailureRecord shape, not legacy number`
+5. `legacy number entries are normalized with kind="structural"`
+
+Test structure (for #1):
+```ts
+// Seed a todo task, make openclaw.sendMessage reject with TypeError('fetch failed')
+// Run dispatchTasks → expect failedDispatches[id].kind === 'transient' and count === 1
+// Advance timers by 30s → run again → task still skipped (30s < 60s transient cooldown)
+// Advance timers by 35s more (65s total) → run again → dispatch retried
+```
+
+### Verification
+
+```bash
+pnpm vitest run tests/core/openclaw-client.test.ts tests/core/dispatch.test.ts tests/core/settings.test.ts
+pnpm vitest run                    # full suite — no regressions elsewhere
+pnpm tsc --noEmit
+```
+
+Full suite must pass (or match the pre-existing unrelated failures already
+documented in Phase 2 checkpoint of issue #90's plan — antfly-reranker,
+search-auto-registration, search-tools-mcp, brainstorm, project-grid).
+
+### Checkpoint
+
+- [ ] `pnpm vitest run tests/core/dispatch.test.ts` → all tests passing (pre-existing 6 + 5 new)
+- [ ] `pnpm vitest run tests/core/settings.test.ts` → still passing
+- [ ] `pnpm vitest run` → no new failures vs the pre-refactor baseline
+- [ ] `pnpm tsc --noEmit` → no new errors introduced
+- [ ] Commit: `feat(dispatch): classify transient vs structural failures; shorter transient cooldown`
+
+### Risks
+
+- **Settings mock drift:** tests that mock `getSettings` and don't include
+  `transientCooldownMs` in `dispatch.*` will produce `undefined`, and the
+  `Date.now() - failure.lastAttempt < undefined` comparison resolves to
+  `false` — meaning the task would never be skipped during cooldown. Audit
+  the mocks in `tests/core/dispatch.test.ts`, `tests/core/dispatch-assets.test.ts`,
+  `tests/integration/usage-wiring-agent.test.ts`, and `tests/core/settings.test.ts`.
+- **Legacy state migration:** a real `~/.bakin/.dispatch-state.json` on this
+  machine may still have the plain-number form. The `getFailureRecord()`
+  normalizer handles it; verify manually after landing by inspecting the
+  file once.
+- **Import location:** `settings.test.ts` may already assert the exact shape
+  of `DEFAULTS.dispatch` — adding a field means updating the expected shape.
+
+---
+
+## T3 — docs(dispatch): document retry + cooldown classification
+
+### Files
+
+- `CLAUDE.md` — add a new sub-bullet under "Key Patterns": "### Dispatch Failure
+  Handling". ~6 lines. Describes: retry happens in `openclaw-client.sendMessage`
+  (3 attempts, 1s/2s), classification splits transient vs structural in
+  `dispatch.ts`, transient uses `dispatch.transientCooldownMs` (60 s default),
+  structural keeps `dispatch.failureCooldownMs` (30 min default), both share
+  `maxRetries` for the block-escalation ceiling.
+- `.claude/knowledge/repo-architecture.md` (IF it covers dispatch — check
+  first and only add if it fits; otherwise skip and let CLAUDE.md be the
+  single source).
+
+### Verification
+
+```bash
+pnpm vitest run            # docs-only commit, but run full suite for safety
+```
+
+Grep to confirm no stale references to the old single-cooldown model remain:
+
+```bash
+# expect: only the new sub-bullet and the new settings field
+grep -rn "failureCooldownMs" CLAUDE.md .claude/
+```
+
+### Checkpoint
+
+- [ ] `CLAUDE.md` has a "Dispatch Failure Handling" sub-bullet under Key Patterns
+- [ ] `pnpm vitest run` — still clean
+- [ ] Commit: `docs(dispatch): document retry + cooldown classification`
+
+### Risks
+
+- Scope creep — resist rewriting other CLAUDE.md sections.
+
+---
+
+## T4 — PR + close issue
+
+- Push branch: `git push -u origin issue-115-dispatch-retry`
+- Open PR against `main` with:
+  - Title: `fix(dispatch): retry transient fetch failures and classify cooldowns (#115)`
+  - Body: references #115, lists the three commits, summarizes the "before/after"
+    behavior (30 min lockout → 60 s for transient), calls out the related #114
+    watchdog race, includes the manual smoke plan.
+- Wait for CI (no CI checks on this repo currently per recent merges, but `gh pr checks` will confirm).
+- Merge when green.
+- After merge: close #115 with a comment referencing the PR, archive
+  `tasks/plan.md` + `tasks/todo.md`.
+
+---
+
+## Global checkpoints
+
+- **After T1:** `pnpm vitest run tests/core/openclaw-client.test.ts` passes.
+  System is already better — retries hide most blips. Safe to stop here if
+  something goes wrong at T2.
+- **After T2:** full `pnpm vitest run` + `pnpm tsc --noEmit`. No new failures.
+  Manual smoke: kill gateway briefly during a dispatch cycle → task lands within
+  one cycle. Gateway dead for 10 min → long cooldown still applies.
+- **After T3:** docs in place, full suite still green, PR opens cleanly.
+
+## Rollback plan
+
+Each commit is individually revertable. If T2 breaks something subtle in the
+state-file shape, `git revert <T2-sha>` + delete `~/.bakin/.dispatch-state.json`
+(safe — it auto-heals on next cycle). T1 is purely additive inside sendMessage;
+reverting it returns to the single-attempt behavior. T3 is docs only.
+
+## Out-of-scope reminders
+
+- No watchdog changes (#114).
+- No gateway-side serialization detection.
+- No UI for `transientCooldownMs`.
+- No replacement of `execFile` CLI fallbacks.
+- No cleanup of unrelated `.claude/` specs / stale TODOs.
