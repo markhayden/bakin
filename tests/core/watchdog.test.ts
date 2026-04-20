@@ -3,6 +3,19 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
+// Defensive content-dir mock (per CLAUDE.md test isolation rules) — the
+// watchdog receives its contentDir via `start()`, but any transitive import
+// must be prevented from reading/writing ~/.bakin/.
+const contentDirMockPath = join(tmpdir(), `bakin-watchdog-test-${Date.now()}`)
+vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: () => contentDirMockPath,
+  getBakinPaths: () => ({ root: contentDirMockPath }),
+}))
+vi.mock('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => contentDirMockPath,
+  getBakinPaths: () => ({ root: contentDirMockPath }),
+}))
+
 vi.mock('../../src/core/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
@@ -283,6 +296,66 @@ describe('watchdog', () => {
         'task.auto_recovery_exhausted',
         'watchdog',
         expect.objectContaining({ id: 'task-3', recoveryCount: 3 }),
+      )
+    })
+
+    // Regression guard for issue #114 — dispatch moves a task
+    // todo → inProgress and the watchdog, running in the same tick off a
+    // stale pre-move snapshot, declares the task "30 min stuck" and moves
+    // it back to todo. The task's log timestamps are ancient (the task was
+    // queued long ago) but `updatedAt` was just bumped by dispatch's move,
+    // so we key the guard off that.
+    it('does not auto-recover when task.updatedAt is within the guard window', async () => {
+      const hookRegistry = getHookRegistry()
+      const invokeMock = vi.mocked(hookRegistry.invoke)
+
+      invokeMock.mockImplementation(async (name: string) => {
+        if (name === 'tasks.readTaskboard') {
+          return {
+            columns: {
+              todo: [],
+              inProgress: [
+                {
+                  id: 'race-task',
+                  title: 'Just-dispatched task',
+                  agent: 'pixel',
+                  // Log is ancient — the "stuck" check would normally fire.
+                  log: [{ message: 'Queued', timestamp: '2020-01-01T00:00:00Z' }],
+                  // But updatedAt was bumped by dispatch's moveTask 1s ago.
+                  updatedAt: Date.now() - 1000,
+                },
+              ],
+              done: [],
+            },
+          }
+        }
+        return undefined
+      })
+
+      // Heartbeat stale — so absent the guard this would auto-recover.
+      vi.mocked(isStale).mockReturnValue(true)
+
+      start(tempDir, 3737)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      // Guard must block both branches of the recovery decision.
+      expect(invokeMock).not.toHaveBeenCalledWith('tasks.moveTask', expect.anything())
+      expect(invokeMock).not.toHaveBeenCalledWith('tasks.blockTask', expect.anything())
+      expect(invokeMock).not.toHaveBeenCalledWith(
+        'tasks.addTaskLog',
+        expect.objectContaining({ message: expect.stringContaining('Auto-recovered') }),
+      )
+      expect(vi.mocked(appendAudit)).not.toHaveBeenCalledWith(
+        tempDir,
+        'task.auto_recovered',
+        expect.anything(),
+        expect.anything(),
+      )
+      expect(vi.mocked(appendAudit)).not.toHaveBeenCalledWith(
+        tempDir,
+        'task.auto_recovery_exhausted',
+        expect.anything(),
+        expect.anything(),
       )
     })
   })
