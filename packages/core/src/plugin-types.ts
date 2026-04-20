@@ -3,7 +3,7 @@
  * All plugin interfaces are defined here — no behavioral changes.
  */
 
-import type { ZodRawShape } from 'zod'
+import type { ZodRawShape, ZodType } from 'zod'
 
 // ---------------------------------------------------------------------------
 // Approval actor — identifies who decided a gate (or any reviewable action)
@@ -153,6 +153,56 @@ export interface HookAPI {
   invoke<R>(name: string, data: unknown): Promise<R | undefined>
 }
 
+// ---------------------------------------------------------------------------
+// Workflow node-type registration
+// ---------------------------------------------------------------------------
+
+/** Field types the workflow canvas knows how to render. */
+export type FormFieldType =
+  | 'string'
+  | 'text'
+  | 'number'
+  | 'boolean'
+  | 'select'
+  | 'agent'
+  | 'skill'
+  | 'list'
+
+/** One input shown in the node's config drawer. */
+export interface FormField {
+  name: string
+  type: FormFieldType
+  required?: boolean
+  description?: string
+  options?: { value: string; label: string }[]
+}
+
+/** Edge connection rules enforced by the canvas editor's onConnect validator. */
+export interface EdgeRules {
+  /** Max inbound edges allowed; undefined = unlimited. */
+  maxInbound?: number
+  /** Max outbound edges allowed; undefined = unlimited. 0 = terminal (no outgoing). */
+  maxOutbound?: number
+}
+
+/**
+ * Input shape plugins pass to `ctx.registerNodeType`. The plugin id is
+ * prepended to `kind` automatically (`{pluginId}.{kind}`), so two plugins
+ * can ship the same unprefixed kind without colliding.
+ *
+ * The Zod schema validates the full step object (including `id`, `type`,
+ * `label`, plus any plugin-specific fields). It is checked against step
+ * definitions loaded from YAML and against step bodies built by the canvas
+ * editor — one definition, no drift.
+ */
+export interface PluginNodeTypeInput<T = unknown> {
+  kind: string
+  zodSchema: ZodType<T>
+  formFields: FormField[]
+  /** Defaults to `{ maxOutbound: 1 }` (agent-style) when omitted. */
+  edgeRules?: EdgeRules
+}
+
 export interface PluginContext {
   storage: StorageAdapter
   events: EventBus
@@ -171,6 +221,14 @@ export interface PluginContext {
    * is idempotent (newer wins) so hot reload works.
    */
   registerWorkflow(definition: WorkflowDefinitionInput, opts?: { readOnly?: boolean }): void
+  /**
+   * Register a workflow node type owned by this plugin. The kind is
+   * auto-namespaced to `{pluginId}.{kind}` so plugins can't stomp each
+   * other. Returns the namespaced kind the plugin should use to register
+   * a matching `workflows.executeNode.{namespacedKind}` hook handler and
+   * to reference the kind from its node renderer export.
+   */
+  registerNodeType<T = unknown>(def: PluginNodeTypeInput<T>): string
   watchFiles(patterns: string[]): void
   /** Read this plugin's persisted settings */
   getSettings<T = Record<string, unknown>>(): T

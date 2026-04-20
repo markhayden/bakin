@@ -16,6 +16,7 @@ import type {
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'
+import { registerPluginNodeType } from '../../plugins/workflows/lib/node-type-registry'
 import type { WorkflowDefinition } from '../../plugins/workflows/types'
 import { createLogger } from '../../src/core/logger'
 
@@ -110,6 +111,17 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
           `registerWorkflow collision in plugin "${pluginId}" for id "${id}"`,
           err as Error,
         )
+      }
+    },
+    registerNodeType: (def) => {
+      try {
+        return registerPluginNodeType(pluginId, def)
+      } catch (err) {
+        testHelperLog.error(
+          `registerNodeType collision in plugin "${pluginId}" for kind "${def.kind}"`,
+          err as Error,
+        )
+        return `${pluginId}.${def.kind}`
       }
     },
     watchFiles: vi.fn(),
