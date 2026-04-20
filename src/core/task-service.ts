@@ -91,7 +91,7 @@ export async function moveTaskWithEffects(
         if (task?.workflowId) {
           const instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
           if (instance && instance.status !== 'complete') {
-            throw new Error('Workflow tasks cannot be moved to Done directly. Use bakin_submit_step — the workflow engine manages task completion.')
+            throw new Error('Workflow tasks cannot be moved to Done directly. Use bakin_exec_submit_step — the workflow engine manages task completion.')
           }
           break
         }
@@ -280,7 +280,7 @@ export async function createTaskWithEffects(opts: {
 
 /**
  * Report a task as complete.
- * Rejects workflow tasks (they must use bakin_submit_step).
+ * Rejects workflow tasks (they must use bakin_exec_submit_step).
  * Moves to done, logs summary, notifies orchestrator.
  */
 export async function reportComplete(
@@ -297,7 +297,7 @@ export async function reportComplete(
       if (task?.workflowId) {
         const instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
         if (instance && instance.status !== 'complete') {
-          throw new Error('This is a workflow task — use bakin_submit_step to submit your step output instead of bakin_report_complete.')
+          throw new Error('This is a workflow task — use bakin_exec_submit_step to submit your step output instead of bakin_exec_tasks_complete.')
         }
         break
       }

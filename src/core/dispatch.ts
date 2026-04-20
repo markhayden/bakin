@@ -423,11 +423,11 @@ export function buildDispatchMessage(
   const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
 
   if (!task.agent) {
-    return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, chef=research/strategy) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, chef=research/strategy) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   if (task.agent === getMainAgentId()) {
-    return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}\n\n${contactsRef} When done: \`${mc('bakin_report_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}${projectBlock}
@@ -452,25 +452,25 @@ All Bakin interactions use mcporter. Your server is \`${server}\`.
 
 \`\`\`bash
 # Log progress (mandatory, every major step)
-${mc('bakin_log_progress', `taskId=${task.id} message="<what you did or are doing>"`)}
+${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<what you did or are doing>"`)}
 
 # Report complete (when finished — includes summary + notifies orchestrator)
-${mc('bakin_report_complete', `taskId=${task.id} summary="<what you accomplished>"`)}
+${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you accomplished>"`)}
 
 # Block task (if stuck or cannot proceed)
-${mc('bakin_block_task', `taskId=${task.id} reason="<what went wrong>"`)}
+${mc('bakin_exec_tasks_block', `taskId=${task.id} reason="<what went wrong>"`)}
 
 # Create subtask for another agent
-${mc('bakin_create_task', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
+${mc('bakin_exec_tasks_create', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
 
 # Register dependency (then stop — you'll be re-dispatched)
-${mc('bakin_register_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
+${mc('bakin_exec_tasks_set_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
 
 # Check your task details
-${mc('bakin_get_task', `taskId=${task.id}`)}
+${mc('bakin_exec_tasks_get', `taskId=${task.id}`)}
 
 # Find content directories (assets, team, etc.)
-${mc('bakin_get_paths', '')}
+${mc('bakin_exec_get_paths', '')}
 \`\`\`
 
 ## EXECUTION TOOLS — for doing actual work
@@ -500,8 +500,8 @@ ${mc('bakin_exec_project_add_item', `projectId="${task.projectId}" title="<item 
 ## DEPENDENCY PATTERN
 
 If your task requires output from another agent:
-1. Create their task with bakin_create_task (use parentId for immediate dispatch)
-2. Register the dependency with bakin_register_dependency
+1. Create their task with bakin_exec_tasks_create (use parentId for immediate dispatch)
+2. Register the dependency with bakin_exec_tasks_set_dependency
 3. Stop — you will be automatically re-dispatched when their task completes`
 }
 
@@ -658,7 +658,7 @@ function buildWorkflowDispatchMessage(
   lines.push('## HARD CONSTRAINTS — violations are rejected server-side')
   lines.push('')
   lines.push('1. **SCOPE:** Do ONLY the work described in "YOUR TASK" below. Nothing more. If the task implies work for another step (e.g., generating images when your step is writing copy), STOP — that belongs to a different agent.')
-  lines.push('2. **OUTPUT:** Submit via bakin_submit_step. Describing results in conversation does NOT complete the step. The workflow will not advance.')
+  lines.push('2. **OUTPUT:** Submit via bakin_exec_submit_step. Describing results in conversation does NOT complete the step. The workflow will not advance.')
   lines.push('3. **SCHEMA:** Your output MUST match the JSON schema below. The server validates it. Missing fields = rejection. Extra fields = rejection. Wrong types = rejection.')
   lines.push('4. **NO SIDE EFFECTS:** Do not create subtasks, dispatch other agents, move the task to Done, or post to any channel. The workflow engine handles ALL downstream handoffs — the next agent is already defined in the workflow and will be dispatched automatically when your step is approved. Creating a subtask would duplicate the workflow\'s job.')
   lines.push('5. **ONE SUBMISSION:** Submit your output once via the API, then stop. Do not continue working after submission.')
@@ -769,13 +769,13 @@ function buildWorkflowDispatchMessage(
   lines.push('')
   lines.push('```bash')
   lines.push(`# Submit your output (must match the schema above)`)
-  lines.push(`${wfMc('bakin_submit_step', `taskId=${task.id} stepId=${stepContext.stepId} --args '<json output>'`)}`)
+  lines.push(`${wfMc('bakin_exec_submit_step', `taskId=${task.id} stepId=${stepContext.stepId} --args '<json output>'`)}`)
   lines.push('')
   lines.push(`# Log progress (mandatory, every major step)`)
-  lines.push(`${wfMc('bakin_log_progress', `taskId=${task.id} message="<update>"`)}`)
+  lines.push(`${wfMc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}`)
   lines.push('')
   lines.push(`# Check your current step details if needed`)
-  lines.push(`${wfMc('bakin_get_step', `taskId=${task.id}`)}`)
+  lines.push(`${wfMc('bakin_exec_get_step', `taskId=${task.id}`)}`)
   lines.push('')
   lines.push('# --- Execution tools for doing actual work ---')
   lines.push('')
@@ -799,7 +799,7 @@ function buildWorkflowDispatchMessage(
   // ─── Stop Instruction ───────────────────────────────────────────────
   lines.push('## AFTER SUBMITTING')
   lines.push('')
-  lines.push('After bakin_submit_step returns success, your work is done. Do NOT:')
+  lines.push('After bakin_exec_submit_step returns success, your work is done. Do NOT:')
   lines.push('- Generate additional outputs or deliverables')
   lines.push('- Start work on what you think the next step might be')
   lines.push('- Send messages about what should happen next')

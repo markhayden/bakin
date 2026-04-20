@@ -99,6 +99,10 @@ export interface WorkflowTemplate {
   description: string
   stepCount: number
   definition: WorkflowDefinition
+  /** Provenance: 'plugin' for plugin-shipped definitions, 'user' for ones in ~/.bakin/workflows/definitions/ */
+  source?: 'plugin' | 'user'
+  /** Set when source === 'plugin' — the id of the plugin that shipped this workflow */
+  pluginId?: string
 }
 
 // ─── Skill Types ────────────────────────────────────────────────────────────

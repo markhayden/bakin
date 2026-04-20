@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { PluginHeader } from '@/components/plugin-header'
 import { EmptyState } from '@/components/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Workflow } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Plus, Workflow } from 'lucide-react'
 import { useQueryState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
 import { useDebug } from '@/hooks/use-debug'
@@ -77,6 +78,11 @@ export function WorkflowsPage() {
         title="Workflows"
         count={loading ? undefined : filtered.length}
         search={{ value: search, onChange: setSearch, placeholder: 'Search workflows...' }}
+        actions={
+          <Button size="sm" onClick={() => router.push('/workflows/new')}>
+            <Plus className="size-3.5 mr-1" /> New workflow
+          </Button>
+        }
       />
 
       <div className="flex-1 min-h-0 overflow-auto">

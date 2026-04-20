@@ -8,7 +8,7 @@ steps:
     type: agent
     label: Write Script
     agent: chef
-    skill: write-script
+    description: Write full video script using SALT methodology
 
   - id: script-gate
     type: gate
@@ -24,7 +24,7 @@ steps:
     type: agent
     label: Break Into Clips
     agent: chef
-    skill: segment-script
+    description: Break approved script into 5-10 second clip segments, each with visual prompts
 
   - id: segments-gate
     type: gate

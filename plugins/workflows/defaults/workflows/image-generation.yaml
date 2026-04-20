@@ -1,0 +1,97 @@
+id: image-generation
+name: Image Generation
+description: >
+  Develop an image prompt from a creative brief, get approval, generate via
+  Nano Banana. Designed to run standalone or nested inside a parent workflow.
+  When nested, expects parentContext to contain an imageBrief object.
+version: 3
+
+steps:
+  - id: develop-prompt
+    type: agent
+    label: Develop Prompt
+    agent: pixel
+    description: >
+      Develop a Nano Banana image generation prompt from the creative brief.
+
+      CONTEXT: Check priorStepOutput (or parentContext if this is a nested
+      workflow). Look for an imageBrief object with subject, mood, style,
+      lighting, composition, and orientation fields.
+
+      YOUR JOB:
+      1. Read the brief carefully.
+      2. Write the full text prompt for Nano Banana using SALT methodology.
+         Front-load the most important visual elements. Be specific about
+         lighting, composition, and subject placement.
+      3. Choose a preset from: social-portrait (1080x1920, default),
+         social-square (1080x1080), social-landscape (1200x675).
+         MOST content is destined for social media / iPhone vertical.
+         Use social-portrait unless the brief explicitly needs something else.
+      4. Choose a model tier: flash (default, cheaper) or pro (higher quality).
+         Use flash unless the brief calls for exceptional quality.
+
+      Do NOT generate the image yet. Prompt only.
+
+      IMPORTANT: Do NOT specify pixel dimensions, resolution like "2K", or
+      aspect ratios. Use the preset names above — the generation tool handles
+      the rest. This saves tokens and ensures consistent sizing.
+    output_schema:
+      prompt:
+        type: string
+        description: The full Nano Banana text prompt
+      preset:
+        type: string
+        description: "social-portrait | social-square | social-landscape (default: social-portrait)"
+      model:
+        type: string
+        description: "flash | pro (default: flash)"
+      notes:
+        type: string
+        description: Optional notes about prompt choices or tradeoffs
+
+  - id: prompt-gate
+    type: gate
+    label: Approve Prompt
+    # TRAINING WHEELS — useful during early testing to catch bad prompts
+    # before spending generation tokens. Can be removed once Pixel's prompt
+    # quality is consistently good. Keep for now.
+    description: >
+      Review the image generation prompt. Check that it matches the creative
+      brief's intent, the preset is appropriate for the platform, and the
+      prompt is specific enough to produce a usable image on the first try.
+    approval_required: true
+    on_approve: generate-image
+    on_reject:
+      goto: develop-prompt
+      note_to_agent: true
+
+  - id: generate-image
+    type: agent
+    label: Generate Image
+    agent: pixel
+    description: >
+      Generate the image using bakin_exec_gen_image with the approved prompt.
+
+      From priorStepOutput (the approved develop-prompt output), use:
+        - prompt: the generation text
+        - preset: social-portrait, social-square, or social-landscape
+        - model: flash or pro
+
+      Call bakin_exec_gen_image with these parameters. The tool handles
+      dimensions, file naming, sidecar metadata, and thumbnail generation
+      automatically. Do NOT manually save files or create sidecars.
+
+      After generation, verify the tool returned ok: true and report the path.
+    output_schema:
+      imagePath:
+        type: string
+        description: Path to the generated image file (from bakin_exec_gen_image result)
+      thumbnailPath:
+        type: string
+        description: Path to the thumbnail (from bakin_exec_gen_image result)
+      preset:
+        type: string
+        description: The preset used
+      prompt:
+        type: string
+        description: The exact prompt used (for audit trail)

@@ -110,6 +110,21 @@ export interface SkillDefinition {
 }
 
 // ---------------------------------------------------------------------------
+// Workflow Definition Input (permissive shape — full schema lives in the
+// workflows plugin, but core needs the type to expose ctx.registerWorkflow
+// without an upward import. The workflows plugin re-validates with Zod.)
+// ---------------------------------------------------------------------------
+export interface WorkflowDefinitionInput {
+  /** Stable workflow id. Falls back to slug(name) when omitted. */
+  id?: string
+  name: string
+  description: string
+  version: number
+  inputs?: Record<string, unknown>
+  steps: unknown[]
+}
+
+// ---------------------------------------------------------------------------
 // Plugin Context (provided to activate())
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
@@ -147,6 +162,15 @@ export interface PluginContext {
   registerSlot(registration: UISlotRegistration): void
   registerExecTool(tool: ExecToolDefinition): void
   registerSkill(skill: SkillDefinition): void
+  /**
+   * Register a workflow definition shipped by this plugin. Disk-resident
+   * user definitions in `~/.bakin/workflows/definitions/` always win on id
+   * collision (user-wins). A second plugin claiming an id already taken by
+   * another plugin is a containment error: it's logged but does not throw
+   * out of `activate()`. Re-registering the same id from the same plugin
+   * is idempotent (newer wins) so hot reload works.
+   */
+  registerWorkflow(definition: WorkflowDefinitionInput, opts?: { readOnly?: boolean }): void
   watchFiles(patterns: string[]): void
   /** Read this plugin's persisted settings */
   getSettings<T = Record<string, unknown>>(): T

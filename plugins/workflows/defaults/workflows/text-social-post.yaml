@@ -1,0 +1,41 @@
+id: text-social-post
+name: Text Social Post
+description: Write copy for a text-only social post, review, and publish
+version: 1
+
+steps:
+  - id: write-copy
+    type: agent
+    label: Write Copy
+    agent: $assigned
+    description: >
+      Write the post caption and copy. No image or video asset — text only.
+      Output must include: caption, target platform, and any hashtags or mentions.
+
+  - id: copy-gate
+    type: gate
+    label: Approve Copy
+    description: Owner reviews the post copy before publishing
+    approval_required: true
+    on_approve: publish
+    on_reject:
+      goto: write-copy
+      note_to_agent: true
+
+  - id: publish
+    type: output
+    label: Publish
+    agent: main-operator
+    description: >
+      Post the text-only content using bakin_exec_post_discord.
+
+      From stepOutputs, extract the caption from stepOutputs['write-copy'].caption.
+
+      Call bakin_exec_post_discord with:
+        - channel: the appropriate Discord channel
+        - content: the caption text
+        - taskId: your task ID
+
+      After posting, submit output with the returned messageId and channel.
+    channels:
+      - discord

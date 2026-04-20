@@ -159,7 +159,7 @@ All subsystems shut down gracefully on SIGTERM/SIGINT.
 
 ## Plugins
 
-Plugins are configured in `bakin.config.ts` and loaded at startup. Each plugin can register API routes, navigation items, exec tools, and event handlers.
+Plugins are configured in `bakin.config.ts` and loaded at startup. Each plugin can register API routes, navigation items, exec tools, event handlers, and **workflows + skills**: drop YAMLs under `defaults/workflows/`, in-memory skill instructions under `defaults/workflow-skills/`, and OpenClaw runtime skills under `defaults/openclaw-skills/{name}/`. The first two are auto-registered at activation; the third is installed via `bakin install plugin-assets` and surfaced by `bakin doctor`. See `.claude/knowledge/workflows-plugin.md` for the authoring contract.
 
 | Plugin | Description | Key Routes |
 |--------|-------------|------------|

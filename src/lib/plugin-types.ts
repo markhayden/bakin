@@ -13,6 +13,7 @@ export type {
   SettingsField,
   PluginSettingsSchema,
   SkillDefinition,
+  WorkflowDefinitionInput,
   ActivityAPI,
   HookAPI,
   PluginContext,

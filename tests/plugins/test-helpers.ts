@@ -11,9 +11,26 @@ import type {
   BakinPlugin,
   SearchResult,
   SearchResponse,
+  WorkflowDefinitionInput,
 } from '../../src/lib/plugin-types'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
+import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'
+import type { WorkflowDefinition } from '../../plugins/workflows/types'
+import { createLogger } from '../../src/core/logger'
+
+const testHelperLog = createLogger('test-helpers')
+
+function slugifyWorkflowId(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 60)
+    .replace(/-$/, '')
+}
 
 export interface ActivatedPlugin {
   ctx: PluginContext
@@ -84,6 +101,17 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     registerSlot: vi.fn(),
     registerExecTool: (tool) => execTools.push(tool),
     registerSkill: vi.fn(),
+    registerWorkflow: (def: WorkflowDefinitionInput) => {
+      const id = (def.id && def.id.length > 0) ? def.id : slugifyWorkflowId(def.name)
+      try {
+        registerPluginDefinition(pluginId, id, def as unknown as WorkflowDefinition)
+      } catch (err) {
+        testHelperLog.error(
+          `registerWorkflow collision in plugin "${pluginId}" for id "${id}"`,
+          err as Error,
+        )
+      }
+    },
     watchFiles: vi.fn(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: vi.fn(),
