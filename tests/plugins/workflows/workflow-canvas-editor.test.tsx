@@ -63,11 +63,14 @@ vi.mock('@/lib/plugin-manifest', () => ({
   allNavItems: [],
 }))
 
-// Stub palette — T10 has its own dedicated test. Keeps canvas-editor
-// tests focused on the save pipeline and off the palette's fetch call.
+// Stub palette + drawer — they have their own dedicated tests. Keeps
+// canvas-editor tests focused on the save pipeline.
 vi.mock('../../../plugins/workflows/components/node-type-palette', () => ({
   NodeTypePalette: () => null,
   PALETTE_DRAG_MIME_TYPE: 'application/x-bakin-node-kind',
+}))
+vi.mock('../../../plugins/workflows/components/node-config-drawer', () => ({
+  NodeConfigDrawer: () => null,
 }))
 
 // Imported AFTER mocks.
