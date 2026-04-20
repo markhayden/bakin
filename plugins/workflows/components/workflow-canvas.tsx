@@ -26,24 +26,14 @@ const RESET_NODE_STYLES = `
   }
 `
 
-import { TriggerNode } from './nodes/trigger-node'
-import { AgentNode } from './nodes/agent-node'
-import { GateNode } from './nodes/gate-node'
-import { ParallelNode } from './nodes/parallel-node'
-import { OutputNode } from './nodes/output-node'
-import { WorkflowNode } from './nodes/workflow-node'
-import { SubflowGroupNode } from './nodes/subflow-group-node'
+// Importing the plugin manifest for its side effects — populates the
+// node renderer registry at module load so `getAllNodeRenderers()`
+// below returns the full set of builtin + plugin renderers.
+import '@/lib/plugin-manifest'
+import { getAllNodeRenderers } from '../lib/node-renderer-registry'
 import type { WorkflowDefinition, WorkflowStep } from '../types'
 
-const nodeTypes: NodeTypes = {
-  trigger: TriggerNode,
-  agent: AgentNode,
-  gate: GateNode,
-  parallel: ParallelNode,
-  output: OutputNode,
-  workflow: WorkflowNode,
-  subflowGroup: SubflowGroupNode,
-}
+const nodeTypes: NodeTypes = getAllNodeRenderers()
 
 const NODE_WIDTH = 280
 const NODE_HEIGHT = 100
