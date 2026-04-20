@@ -35,6 +35,7 @@ import { loadSkill } from './skill-loader'
 import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
 import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyStepDispatched, notifyStepComplete, sendDiscordGateAlert, getDiscordGateSettings } from './notifications'
 import { getContentDir } from './content-dir'
+import { isPluginKind } from './node-type-registry'
 import { createLogger } from '@/core/logger'
 
 const log = createLogger('workflow-runtime')
@@ -253,6 +254,9 @@ export function createInstance(
     // Create a board task so the child workflow's gates are visible in the UI
     const childDef = loadDefinition(nested.workflow_id, dir)
     createBoardTaskForChild(childTaskId, taskId, nested, childDef, assignee)
+  } else if (isPluginKind(firstStep.type)) {
+    // First step is a plugin-owned kind — fire its executeNode hook.
+    dispatchPluginNode(instance, firstStep, dir)
   }
 
   return instance
@@ -265,6 +269,91 @@ export function createInstance(
 function resolveAgent(agentValue: string | undefined, instance: WorkflowInstance): string | undefined {
   if (agentValue === '$assigned') return instance.resolvedAgent || agentValue
   return agentValue
+}
+
+/**
+ * Payload passed to `workflows.executeNode.{kind}` hook handlers. The plugin
+ * that owns the kind is responsible for driving the step to completion
+ * (eventually calling `completeStep` or handling errors itself).
+ */
+export interface PluginNodeDispatchPayload {
+  taskId: string
+  instanceId: string
+  workflowId: string
+  stepId: string
+  /** The raw step definition — includes plugin-specific fields. */
+  step: WorkflowStep
+  /** Most recent completed step output (convenience — same as StepContext.priorStepOutput). */
+  priorStepOutput?: Record<string, unknown>
+  contentDir: string
+}
+
+/**
+ * Dispatch a plugin-owned node kind via the hook registry. Fire-and-forget:
+ * the owning plugin is expected to call `completeStep` when done (or handle
+ * its own failure mode). Logs a warning if no handler is registered — the
+ * workflow will stall at this step until the plugin activates or a human
+ * force-completes it.
+ */
+function dispatchPluginNode(
+  instance: WorkflowInstance,
+  step: WorkflowStep,
+  contentDir: string,
+): void {
+  const hookName = `workflows.executeNode.${step.type}`
+  // Dynamic require so runtime.ts has no hard dep on src/lib/plugin-registry
+  // (tests mock-activate plugins without the full registry singleton).
+  let registry: { has: (n: string) => boolean; invoke: <R>(n: string, d: unknown) => Promise<R | undefined> } | null = null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    registry = require('../../../src/lib/plugin-registry').getHookRegistry()
+  } catch (err) {
+    log.warn(`Could not load hook registry for plugin kind '${step.type}'`, err as Error)
+    return
+  }
+  if (!registry || !registry.has(hookName)) {
+    log.warn(
+      `No handler for plugin node kind '${step.type}' (hook: ${hookName}). ` +
+      `Workflow ${instance.workflowId}/${instance.taskId} will stall at step '${step.id}' ` +
+      `until the owning plugin activates.`,
+    )
+    return
+  }
+
+  // Collect prior step output for convenience
+  let priorStepOutput: Record<string, unknown> | undefined
+  const def = loadDefinition(instance.workflowId, contentDir)
+  if (def) {
+    const flat = def.steps.flatMap(s => s.type === 'parallel' ? (s as ParallelStep).steps : [s])
+    const idx = flat.findIndex(s => s.id === step.id)
+    for (let i = idx - 1; i >= 0; i--) {
+      const priorState = instance.stepStates[flat[i].id]
+      if (priorState?.output) {
+        priorStepOutput = priorState.output
+        break
+      }
+    }
+  }
+
+  const payload: PluginNodeDispatchPayload = {
+    taskId: instance.taskId,
+    instanceId: instance.instanceId,
+    workflowId: instance.workflowId,
+    stepId: step.id,
+    step,
+    priorStepOutput,
+    contentDir,
+  }
+
+  // Fire-and-forget — log but don't surface errors from the handler back
+  // into the runtime (the plugin owns its own error reporting).
+  registry.invoke(hookName, payload).catch((err) => {
+    log.error(`Plugin node handler for '${step.type}' threw`, err as Error, {
+      workflowId: instance.workflowId,
+      taskId: instance.taskId,
+      stepId: step.id,
+    })
+  })
 }
 
 // ─── Step Context ───────────────────────────────────────────────────────────
@@ -789,6 +878,11 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     import('../../tasks/lib/flow-store').then(({ moveTask }) => {
       moveTask(instance.taskId, 'review').catch(() => {})
     }).catch(() => {})
+  } else if (isPluginKind(nextStep.type)) {
+    // Plugin-owned node kind — mark in_progress and dispatch via hook.
+    // The owning plugin is responsible for driving completion.
+    instance.stepStates[nextStep.id] = { status: 'in_progress', startedAt: now }
+    dispatchPluginNode(instance, nextStep, contentDir)
   } else {
     instance.stepStates[nextStep.id] = { status: 'in_progress', startedAt: now }
     // Notify that a step has been dispatched to an agent

@@ -123,6 +123,15 @@ export function unregisterPluginNodeTypes(pluginId: string): void {
   }
 }
 
+/**
+ * True when `kind` is a registered plugin-owned node type. Used by the
+ * workflow runtime to decide between the builtin dispatch branches and
+ * the `workflows.executeNode.{kind}` hook fallback.
+ */
+export function isPluginKind(kind: string): boolean {
+  return registry.get(kind)?.runtime === 'plugin'
+}
+
 // ─── Shared sub-schemas ─────────────────────────────────────────────────────
 
 const dependsOnSchema = z.union([z.string(), z.array(z.string())]).optional()
