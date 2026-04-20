@@ -36,6 +36,7 @@ import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
 import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyStepDispatched, notifyStepComplete, sendDiscordGateAlert, getDiscordGateSettings } from './notifications'
 import { getContentDir } from './content-dir'
 import { isPluginKind } from './node-type-registry'
+import { getHookRegistry } from '../../../src/lib/plugin-registry'
 import { createLogger } from '@/core/logger'
 
 const log = createLogger('workflow-runtime')
@@ -301,17 +302,8 @@ function dispatchPluginNode(
   contentDir: string,
 ): void {
   const hookName = `workflows.executeNode.${step.type}`
-  // Dynamic require so runtime.ts has no hard dep on src/lib/plugin-registry
-  // (tests mock-activate plugins without the full registry singleton).
-  let registry: { has: (n: string) => boolean; invoke: <R>(n: string, d: unknown) => Promise<R | undefined> } | null = null
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    registry = require('../../../src/lib/plugin-registry').getHookRegistry()
-  } catch (err) {
-    log.warn(`Could not load hook registry for plugin kind '${step.type}'`, err as Error)
-    return
-  }
-  if (!registry || !registry.has(hookName)) {
+  const registry = getHookRegistry()
+  if (!registry.has(hookName)) {
     log.warn(
       `No handler for plugin node kind '${step.type}' (hook: ${hookName}). ` +
       `Workflow ${instance.workflowId}/${instance.taskId} will stall at step '${step.id}' ` +
