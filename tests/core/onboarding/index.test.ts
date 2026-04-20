@@ -25,7 +25,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'openclaw', 'antfly', 'models', 'mcporter', 'llm', 'channels'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'openclaw', 'antfly', 'models', 'mcporter', 'plugin-assets', 'llm', 'channels'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -52,6 +52,7 @@ vi.mock('../../../src/core/onboarding/openclaw', () => ({ openclawComponent: mak
 vi.mock('../../../src/core/onboarding/antfly', () => ({ antflyComponent: makeMock('antfly') }))
 vi.mock('../../../src/core/onboarding/models', () => ({ modelsComponent: makeMock('models') }))
 vi.mock('../../../src/core/onboarding/mcporter', () => ({ mcporterComponent: makeMock('mcporter') }))
+vi.mock('../../../src/core/onboarding/plugin-assets', () => ({ pluginAssetsComponent: makeMock('plugin-assets') }))
 vi.mock('../../../src/core/onboarding/credentials', () => ({
   llmComponent: makeMock('llm'),
   channelsComponent: makeMock('channels'),
@@ -82,6 +83,15 @@ vi.mock('../../../src/core/logger', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   }),
+}))
+
+// Belt-and-braces: every component is already mocked above, so the real
+// modules below are never imported. We still mock content-dir per the
+// CLAUDE.md test-isolation rule so any future test addition that pulls
+// in a real component still can't write to ~/.bakin/.
+vi.mock('../../../src/core/content-dir', () => ({
+  getContentDir: () => '/tmp/bakin-onboarding-orchestrator-test',
+  getBakinPaths: () => ({}),
 }))
 
 describe('runOnboard orchestrator', () => {
@@ -138,7 +148,7 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
 
   describe('COMPONENT_ORDER', () => {
-    it('contains exactly the 8 expected components in the spec order', () => {
+    it('contains exactly the 9 expected components in the spec order', () => {
       expect(COMPONENT_ORDER.map((c) => c.name)).toEqual([
         'mkdir',
         'settings',
@@ -146,6 +156,7 @@ describe('runOnboard orchestrator', () => {
         'antfly',
         'models',
         'mcporter',
+        'plugin-assets',
         'llm',
         'channels',
       ])
@@ -162,7 +173,7 @@ describe('runOnboard orchestrator', () => {
       expect(result.exitCode).toBe(0)
       expect(result.markerWritten).toBe(true)
       expect(result.outcomes.map((o) => o.finalStatus)).toEqual([
-        'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
+        'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
       ])
       // check() was called on every component
       for (const n of COMPONENT_NAMES) {
@@ -180,6 +191,7 @@ describe('runOnboard orchestrator', () => {
         antfly: 'ok',
         models: 'ok',
         mcporter: 'ok',
+        'plugin-assets': 'ok',
         llm: 'ok',
         channels: 'ok',
       })
@@ -298,7 +310,7 @@ describe('runOnboard orchestrator', () => {
       expect(scripts.llm.checkCalls).toBe(0)
       expect(scripts.channels.checkCalls).toBe(0)
       // All 8 components still appear in outcomes
-      expect(result.outcomes).toHaveLength(8)
+      expect(result.outcomes).toHaveLength(9)
       // OpenClaw is error (missing prerequisite), downstream all skipped
       expect(result.outcomes.find((o) => o.name === 'openclaw')?.finalStatus).toBe('error')
       expect(result.outcomes.find((o) => o.name === 'antfly')?.finalStatus).toBe('skipped')
@@ -375,7 +387,7 @@ describe('runOnboard orchestrator', () => {
   describe('json output', () => {
     it('emits one JSON line per outcome', async () => {
       await runOnboard({ ...opts, json: true })
-      expect(stdoutLines).toHaveLength(8)
+      expect(stdoutLines).toHaveLength(9)
       for (const line of stdoutLines) {
         const parsed = JSON.parse(line)
         expect(COMPONENT_NAMES).toContain(parsed.component)
@@ -388,7 +400,7 @@ describe('runOnboard orchestrator', () => {
       scripts.openclaw.install = { name: 'openclaw', status: 'noop', message: 'required', durationMs: 0 }
       await runOnboard({ ...opts, json: true })
       // Should emit 8 lines total: 3 that actually ran + 5 cascade-skipped
-      expect(stdoutLines).toHaveLength(8)
+      expect(stdoutLines).toHaveLength(9)
     })
 
     it('does not emit JSON when json flag is false', async () => {
@@ -405,7 +417,7 @@ describe('runOnboard orchestrator', () => {
     it('calls check() on every component and never install()', async () => {
       scripts.antfly.check = { name: 'antfly', status: 'missing', message: 'antfly missing' }
       const results = await checkAll()
-      expect(results).toHaveLength(8)
+      expect(results).toHaveLength(9)
       expect(results.map((r) => r.name)).toEqual([...COMPONENT_NAMES])
       for (const n of COMPONENT_NAMES) {
         expect(scripts[n].checkCalls).toBe(1)
