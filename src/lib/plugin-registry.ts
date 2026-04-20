@@ -16,7 +16,10 @@ import type {
   ExecToolDefinition,
   SkillDefinition,
   PluginSettingsSchema,
+  WorkflowDefinitionInput,
 } from './plugin-types'
+import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'
+import type { WorkflowDefinition } from '../../plugins/workflows/types'
 import { registerRouteDoc } from '../core/api-docs'
 import { addExecTool } from '../../scripts/lib/registry'
 import { runMigrations } from '../core/migrations'
@@ -44,6 +47,18 @@ interface PluginState {
   routes: APIRoute[]
   slots: UISlotRegistration[]
   watchPatterns: string[]
+}
+
+/** Slug a workflow definition `name` into a stable id when no `id` is supplied. */
+function slugifyWorkflowId(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 60)
+    .replace(/-$/, '')
 }
 
 /** Skills registered by plugins (keyed by name, first-registered wins) */
@@ -168,6 +183,17 @@ class PluginRegistryImpl {
         skill.source = `plugin:${pluginId}`
         if (!pluginSkills.has(skill.name)) {
           pluginSkills.set(skill.name, skill)
+        }
+      },
+      registerWorkflow: (def: WorkflowDefinitionInput) => {
+        const id = (def.id && def.id.length > 0) ? def.id : slugifyWorkflowId(def.name)
+        try {
+          registerPluginDefinition(pluginId, id, def as unknown as WorkflowDefinition)
+        } catch (err) {
+          log.error(
+            `registerWorkflow collision in plugin "${pluginId}" for id "${id}"`,
+            err as Error,
+          )
         }
       },
       watchFiles: (patterns: string[]) => { state.watchPatterns.push(...patterns) },

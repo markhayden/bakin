@@ -65,6 +65,8 @@ vi.mock('../../scripts/lib/post-discord', () => ({
   loadDiscordConfig: vi.fn(() => null),
 }))
 
+vi.mock('../../plugins/tasks/lib/flow-store', () => ({}))
+
 const indexCalls: Array<{ table: string; key: string; doc: Record<string, unknown> }> = []
 const removeCalls: Array<{ table: string; key: string }> = []
 
@@ -132,6 +134,7 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     registerSlot: vi.fn(),
     registerExecTool: vi.fn(),
     registerSkill: vi.fn(),
+    registerWorkflow: vi.fn(),
     watchFiles: vi.fn(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: vi.fn(),

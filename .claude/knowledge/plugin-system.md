@@ -58,6 +58,7 @@ Provided to `activate()`. This is the plugin's only interface to the system:
 | `registerSlot(reg)` | Register React component for a named UI slot |
 | `registerExecTool(tool)` | Register MCP execution tool (agent-callable) |
 | `registerSkill(skill)` | Register AI skill definition |
+| `registerWorkflow(def, opts?)` | Register a plugin-shipped workflow definition. Falls back to `slug(def.name)` when `def.id` is omitted. User definitions in `~/.bakin/workflows/definitions/` always win on collision; cross-plugin id collisions are logged but do not throw out of `activate()`. Same-plugin re-registration is idempotent (hot reload). Plugins should ship their YAML under `defaults/workflows/` and load it during `activate()`. |
 | `watchFiles(patterns)` | Request file watcher notifications |
 | `getSettings<T>()` | Read this plugin's persisted settings from `plugin-settings/{id}.json` |
 | `updateSettings(patch)` | Merge partial update into settings, persist, notify `onSettingsChange` |

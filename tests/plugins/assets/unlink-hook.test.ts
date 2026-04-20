@@ -83,6 +83,7 @@ function makeCtx(): CapturedCtx {
     registerSlot: vi.fn(),
     registerExecTool: vi.fn(),
     registerSkill: vi.fn(),
+    registerWorkflow: vi.fn(),
     watchFiles: vi.fn(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: vi.fn(),
