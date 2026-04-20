@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Workflow, Lock } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Workflow, Lock, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { WorkflowCanvas } from './workflow-canvas'
@@ -75,6 +76,7 @@ interface WorkflowDetailProps {
 }
 
 export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
+  const router = useRouter()
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null)
   const [subWorkflows, setSubWorkflows] = useState<Record<string, WorkflowDefinition>>({})
   const [source, setSource] = useState<'plugin' | 'user' | undefined>()
@@ -158,6 +160,15 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push(`/workflows/${workflowId}/edit`)}
+            title={source === 'plugin' ? 'Edit a copy of this workflow' : 'Edit workflow'}
+          >
+            <Pencil className="size-3.5 mr-1" />
+            {source === 'plugin' ? 'Customize' : 'Edit'}
+          </Button>
           <Badge variant="secondary" className="text-[10px]">
             {definition.steps.length} steps
           </Badge>
