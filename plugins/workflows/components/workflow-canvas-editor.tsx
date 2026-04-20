@@ -338,7 +338,8 @@ export function WorkflowCanvasEditor({
           return { ...prev, steps: { ...prev.steps, [prevId]: merged } }
         }
         // Id rename — keep order stable, move position + drop the old key.
-        const { [prevId]: _, ...restSteps } = prev.steps
+        const restSteps = { ...prev.steps }
+        delete restSteps[prevId]
         const { [prevId]: oldPos, ...restPositions } = prev.positions
         const nextOrder = prev.order.map((o) => (o === prevId ? nextId : o))
         const nextEdges = prev.edges.map((e) => ({
@@ -561,6 +562,7 @@ export function WorkflowCanvasEditor({
 
         {selectedStep && (
           <NodeConfigDrawer
+            key={`${selectedStep.id}:${selectedStep.type ?? ''}`}
             step={selectedStep}
             onApply={handleApply}
             onClose={() => setSelectedId(null)}

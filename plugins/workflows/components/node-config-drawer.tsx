@@ -9,7 +9,7 @@
  * before Apply, so the drawer and the loader cannot drift.
  */
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -63,23 +63,20 @@ export function NodeConfigDrawer({ step, fallbackKind, onApply, onClose }: NodeC
   const kind = step?.type ?? fallbackKind ?? ''
   const def = useMemo(() => (kind ? getNodeType(kind) : undefined), [kind])
 
+  // The parent remounts this component via `key` when `step.id`/`step.type`
+  // changes, so lazy state initializers from props are safe here.
   const [id, setId] = useState(step?.id ?? '')
   const [label, setLabel] = useState(step?.label ?? '')
-  const [fieldValues, setFieldValues] = useState<Record<string, unknown>>({})
-  const [errors, setErrors] = useState<string[]>([])
-
-  useEffect(() => {
-    setId(step?.id ?? '')
-    setLabel(step?.label ?? '')
+  const [fieldValues, setFieldValues] = useState<Record<string, unknown>>(() => {
     const seeded: Record<string, unknown> = {}
     if (step && def) {
       for (const field of def.formFields) {
         seeded[field.name] = fieldInitialValue(step, field)
       }
     }
-    setFieldValues(seeded)
-    setErrors([])
-  }, [step, def])
+    return seeded
+  })
+  const [errors, setErrors] = useState<string[]>([])
 
   if (!step) return null
 
