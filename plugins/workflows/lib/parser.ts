@@ -1,12 +1,34 @@
 /**
  * YAML workflow definition parser.
  * Uses js-yaml for reliable parsing with definition validation.
+ *
+ * Definitions come from two sources, merged with user-wins precedence:
+ *   1. User-owned YAML files at ~/.bakin/workflows/definitions/{id}.yaml
+ *   2. Plugin-registered definitions (via ctx.registerWorkflow, see source-registry)
  */
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import yaml from 'js-yaml'
 import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep } from '../types'
 import { getContentDir } from './content-dir'
+import {
+  getDefinition as getRegistryDefinition,
+  listAll as listRegistryAll,
+  type DefinitionSource,
+} from './source-registry'
+
+/** A definition plus its provenance. Disk-loaded defs carry source='user'; plugin-registered ones carry source='plugin' + pluginId. */
+export type LoadedDefinition = WorkflowDefinition & {
+  source?: DefinitionSource
+  pluginId?: string
+}
+
+export interface LoadedDefinitionEntry {
+  name: string
+  definition: LoadedDefinition
+  source: DefinitionSource
+  pluginId?: string
+}
 
 function getDefinitionsDir(contentDir?: string): string {
   const dir = contentDir || getContentDir()
@@ -85,11 +107,13 @@ export function validateDefinition(def: WorkflowDefinition): string[] {
       if (!nested.workflow_id) {
         errors.push(`Step "${step.id}": workflow step requires workflow_id`)
       } else {
-        // Check that referenced workflow exists
+        // Check that referenced workflow exists on disk OR in the plugin registry
         const defsDir = join(getContentDir(), 'workflows', 'definitions')
         const nestedYaml = join(defsDir, `${nested.workflow_id}.yaml`)
         const nestedYml = join(defsDir, `${nested.workflow_id}.yml`)
-        if (!existsSync(nestedYaml) && !existsSync(nestedYml)) {
+        const onDisk = existsSync(nestedYaml) || existsSync(nestedYml)
+        const inRegistry = !!getRegistryDefinition(nested.workflow_id)
+        if (!onDisk && !inRegistry) {
           errors.push(`Step "${step.id}": workflow_id "${nested.workflow_id}" not found in definitions`)
         }
       }
@@ -114,33 +138,68 @@ export function validateDefinition(def: WorkflowDefinition): string[] {
 }
 
 /**
- * Load a workflow definition by name.
+ * Load a workflow definition by name, consulting disk first (user-wins) then
+ * the plugin source registry.
  */
-export function loadDefinition(name: string, contentDir?: string): WorkflowDefinition | null {
+export function loadDefinition(name: string, contentDir?: string): LoadedDefinition | null {
+  // User-wins: check ~/.bakin/ disk first
   const defsDir = getDefinitionsDir(contentDir)
   const yamlPath = join(defsDir, `${name}.yaml`)
   const ymlPath = join(defsDir, `${name}.yml`)
   const filePath = existsSync(yamlPath) ? yamlPath : existsSync(ymlPath) ? ymlPath : null
-  if (!filePath) return null
+  if (filePath) {
+    const content = readFileSync(filePath, 'utf-8')
+    const parsed = parseYAML(content) as unknown as WorkflowDefinition
+    return { ...parsed, source: 'user' }
+  }
 
-  const content = readFileSync(filePath, 'utf-8')
-  const parsed = parseYAML(content) as unknown as WorkflowDefinition
-  return parsed
+  // Fall back to plugin-registered definitions
+  const entry = getRegistryDefinition(name)
+  if (entry) {
+    return {
+      ...entry.definition,
+      source: entry.source,
+      pluginId: entry.pluginId,
+    }
+  }
+
+  return null
 }
 
 /**
- * List all available workflow definitions.
+ * List all available workflow definitions, merging disk (user) + plugin
+ * registry entries with user-wins precedence on id collision.
  */
-export function listDefinitions(contentDir?: string): { name: string; definition: WorkflowDefinition }[] {
-  const defsDir = getDefinitionsDir(contentDir)
-  if (!existsSync(defsDir)) return []
+export function listDefinitions(contentDir?: string): LoadedDefinitionEntry[] {
+  const byName = new Map<string, LoadedDefinitionEntry>()
 
-  return readdirSync(defsDir)
-    .filter(f => f.endsWith('.yaml') || f.endsWith('.yml'))
-    .map(f => {
+  // 1. Plugin-registered entries (lower precedence)
+  for (const entry of listRegistryAll()) {
+    if (entry.source === 'plugin') {
+      byName.set(entry.id, {
+        name: entry.id,
+        definition: { ...entry.definition, source: entry.source, pluginId: entry.pluginId },
+        source: entry.source,
+        pluginId: entry.pluginId,
+      })
+    }
+  }
+
+  // 2. Disk entries (user — overwrites plugin on collision)
+  const defsDir = getDefinitionsDir(contentDir)
+  if (existsSync(defsDir)) {
+    for (const f of readdirSync(defsDir)) {
+      if (!f.endsWith('.yaml') && !f.endsWith('.yml')) continue
       const name = f.replace(/\.(yaml|yml)$/, '')
       const definition = loadDefinition(name, contentDir)
-      return definition ? { name, definition } : null
-    })
-    .filter((d): d is { name: string; definition: WorkflowDefinition } => d !== null)
+      if (!definition) continue
+      byName.set(name, {
+        name,
+        definition,
+        source: 'user',
+      })
+    }
+  }
+
+  return Array.from(byName.values())
 }
