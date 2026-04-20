@@ -12,7 +12,7 @@ import { z } from 'zod'
 import type { ApprovalActor, BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { listDefinitions, loadDefinition } from './lib/parser'
 import { loadDefaultWorkflows } from './lib/load-defaults'
-import { workflowDefinitionSchema } from './lib/node-type-registry'
+import { workflowDefinitionSchema, listNodeTypes } from './lib/node-type-registry'
 import { isReadOnly, getDefinition as getRegistryDefinition } from './lib/source-registry'
 import {
   createInstance,
@@ -620,6 +620,21 @@ const workflowsPlugin: BakinPlugin = {
       return Response.json({ id: name, deleted: true })
     }
     ctx.registerRoute({ path: '/definitions/:name', method: 'DELETE', description: 'Delete a user-owned workflow definition', handler: deleteDefinitionHandler })
+
+    // GET /node-types — palette data source. Returns the registered node-type
+    // metadata (builtin + plugin-registered) minus the Zod schemas (which
+    // aren't JSON-serializable). The canvas-editor palette hydrates from this.
+    const nodeTypesHandler = async () => {
+      const items = listNodeTypes().map((def) => ({
+        kind: def.kind,
+        runtime: def.runtime,
+        pluginId: def.pluginId,
+        edgeRules: def.edgeRules,
+        formFields: def.formFields,
+      }))
+      return Response.json({ nodeTypes: items })
+    }
+    ctx.registerRoute({ path: '/node-types', method: 'GET', description: 'List registered workflow node types (builtin + plugin-registered) for the canvas palette', handler: nodeTypesHandler })
 
     // ─── Runtime Routes ───────────────────────────────────────────────
 

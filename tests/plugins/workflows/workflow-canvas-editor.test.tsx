@@ -63,6 +63,13 @@ vi.mock('@/lib/plugin-manifest', () => ({
   allNavItems: [],
 }))
 
+// Stub palette — T10 has its own dedicated test. Keeps canvas-editor
+// tests focused on the save pipeline and off the palette's fetch call.
+vi.mock('../../../plugins/workflows/components/node-type-palette', () => ({
+  NodeTypePalette: () => null,
+  PALETTE_DRAG_MIME_TYPE: 'application/x-bakin-node-kind',
+}))
+
 // Imported AFTER mocks.
 import { WorkflowCanvasEditor } from '../../../plugins/workflows/components/workflow-canvas-editor'
 import type { WorkflowDefinition } from '../../../plugins/workflows/types'
