@@ -12,7 +12,7 @@
  * they ship a `nodeRenderers` export.
  */
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -26,6 +26,7 @@ import {
   type NodeChange,
   type EdgeChange,
   type NodeTypes,
+  type ReactFlowInstance,
   type XYPosition,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -36,6 +37,7 @@ import { Button } from '@/components/ui/button'
 // before we snapshot it via getAllNodeRenderers().
 import '@/lib/plugin-manifest'
 import { getAllNodeRenderers } from '../lib/node-renderer-registry'
+import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import type {
   WorkflowDefinition,
   WorkflowStep,
@@ -130,6 +132,19 @@ function extractPositions(nodes: Node[]): Record<string, NodePosition> {
   return out
 }
 
+/**
+ * Generate a unique step id for a dropped kind. Prefers `{kind}-N` with N
+ * = 1 for the first entry of that kind and bumping until free.
+ */
+function nextStepId(kind: string, existing: Set<string>): string {
+  const base = kind.includes('.') ? kind.split('.').slice(1).join('-') : kind
+  for (let i = 1; i < 1000; i++) {
+    const candidate = i === 1 ? base : `${base}-${i}`
+    if (!existing.has(candidate)) return candidate
+  }
+  return `${base}-${Date.now()}`
+}
+
 export function WorkflowCanvasEditor({
   mode,
   initialId,
@@ -148,12 +163,54 @@ export function WorkflowCanvasEditor({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
+
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
     [],
   )
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    [],
+  )
+
+  const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+  }, [])
+
+  const onDrop = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      const kind =
+        event.dataTransfer.getData(PALETTE_DRAG_MIME_TYPE) ||
+        event.dataTransfer.getData('text/plain')
+      if (!kind) return
+
+      const bounds = wrapperRef.current?.getBoundingClientRect()
+      const rf = rfInstanceRef.current
+      const position: XYPosition =
+        bounds && rf
+          ? rf.screenToFlowPosition({
+              x: event.clientX - bounds.left,
+              y: event.clientY - bounds.top,
+            })
+          : { x: event.clientX, y: event.clientY }
+
+      setNodes((nds) => {
+        const existing = new Set(nds.map((n) => n.id))
+        const id = nextStepId(kind, existing)
+        const newNode: Node = {
+          id,
+          type: kind,
+          position,
+          data: { label: id },
+          style: { width: NODE_WIDTH },
+        }
+        return [...nds, newNode]
+      })
+    },
     [],
   )
 
@@ -222,34 +279,41 @@ export function WorkflowCanvasEditor({
         </div>
       </div>
 
-      <div className="relative flex-1 bg-zinc-950">
-        <style dangerouslySetInnerHTML={{ __html: RESET_NODE_STYLES }} />
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.3 }}
-          proOptions={{ hideAttribution: true }}
-          nodesDraggable={true}
-          nodesConnectable={false}
-          defaultEdgeOptions={{
-            style: { stroke: '#525252', strokeWidth: 2 },
-          }}
-        >
-          <Background variant={BackgroundVariant.Dots} color="#3f3f46" gap={24} size={1.5} />
-          <Controls
-            showInteractive={false}
-            className="[&>button]:border-zinc-700 [&>button]:bg-zinc-900 [&>button]:text-zinc-400 [&>button]:hover:bg-zinc-800"
-          />
-          <MiniMap
-            nodeColor="#3f3f46"
-            maskColor="rgba(0,0,0,0.7)"
-            className="rounded-lg border border-zinc-800 bg-zinc-900"
-          />
-        </ReactFlow>
+      <div className="flex flex-1 overflow-hidden">
+        <NodeTypePalette />
+
+        <div ref={wrapperRef} className="relative flex-1 bg-zinc-950" onDragOver={onDragOver} onDrop={onDrop}>
+          <style dangerouslySetInnerHTML={{ __html: RESET_NODE_STYLES }} />
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onInit={(rf) => {
+              rfInstanceRef.current = rf
+            }}
+            nodeTypes={nodeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.3 }}
+            proOptions={{ hideAttribution: true }}
+            nodesDraggable={true}
+            nodesConnectable={false}
+            defaultEdgeOptions={{
+              style: { stroke: '#525252', strokeWidth: 2 },
+            }}
+          >
+            <Background variant={BackgroundVariant.Dots} color="#3f3f46" gap={24} size={1.5} />
+            <Controls
+              showInteractive={false}
+              className="[&>button]:border-zinc-700 [&>button]:bg-zinc-900 [&>button]:text-zinc-400 [&>button]:hover:bg-zinc-800"
+            />
+            <MiniMap
+              nodeColor="#3f3f46"
+              maskColor="rgba(0,0,0,0.7)"
+              className="rounded-lg border border-zinc-800 bg-zinc-900"
+            />
+          </ReactFlow>
+        </div>
       </div>
     </div>
   )
