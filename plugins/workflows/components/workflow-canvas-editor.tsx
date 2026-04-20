@@ -1,13 +1,11 @@
 'use client'
 
 /**
- * Editable workflow canvas.
- *
- * Drives the /workflows/{id}/edit and /workflows/new routes. Replaces the
- * form-driven WorkflowEditor.
+ * Editable workflow canvas — sole editor for /workflows/new and
+ * /workflows/{id}/edit.
  *
  * Source of truth: an internal `steps` record keyed by step id. Positions
- * and nodes are derived each render. When the drawer applies a patch we
+ * and edges are derived each render. When the drawer applies a patch we
  * mutate the step body; when a node is dragged we mutate positions; when
  * a palette item is dropped we mint a new step with a default body.
  *
@@ -36,8 +34,9 @@ import {
   type XYPosition,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { LayoutGrid, Save } from 'lucide-react'
+import { Copy, LayoutGrid, Save, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 // Side-effect import — guarantees the NodeRendererRegistry is populated
 // before we snapshot it via getAllNodeRenderers().
@@ -73,10 +72,29 @@ interface WorkflowCanvasEditorProps {
   mode: 'create' | 'edit'
   /** Required in edit mode — the id used in the PUT path. */
   initialId?: string
-  initialDefinition: WorkflowDefinition
+  /** Omit in create mode to start from a blank workflow. */
+  initialDefinition?: WorkflowDefinition
   source?: 'plugin' | 'user'
   onSaved?: (id: string) => void
+  onDeleted?: () => void
   onCancel?: () => void
+}
+
+const BLANK_DEFINITION: WorkflowDefinition = {
+  name: '',
+  description: '',
+  version: 1,
+  steps: [],
+}
+
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 60)
 }
 
 /** Build node data shown on the canvas from a step body. */
@@ -192,12 +210,16 @@ export function WorkflowCanvasEditor({
   initialDefinition,
   source,
   onSaved,
+  onDeleted,
   onCancel,
 }: WorkflowCanvasEditorProps) {
-  const [state, setState] = useState<EditorState>(() => seedState(initialDefinition))
+  const baseDefinition = initialDefinition ?? BLANK_DEFINITION
+  const [definition, setDefinition] = useState<WorkflowDefinition>(baseDefinition)
+  const [state, setState] = useState<EditorState>(() => seedState(baseDefinition))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
@@ -339,32 +361,26 @@ export function WorkflowCanvasEditor({
     [selectedId],
   )
 
-  const readOnlyPlugin = source === 'plugin'
+  const isPluginSource = source === 'plugin'
+  const canSaveInPlace = mode === 'create' || !isPluginSource
+  const canDelete = mode === 'edit' && source === 'user'
 
-  async function handleSave() {
+  function buildDefinition(): WorkflowDefinition {
+    return {
+      ...definition,
+      steps: state.order.map((id) => state.steps[id]).filter(Boolean),
+      layout: { positions: { ...state.positions } },
+    }
+  }
+
+  async function postOrPut(method: 'POST' | 'PUT', url: string, body: unknown) {
     setSaving(true)
     setError(null)
     try {
-      const nextDefinition: WorkflowDefinition = {
-        ...initialDefinition,
-        steps: state.order.map((id) => state.steps[id]).filter(Boolean),
-        layout: { positions: { ...state.positions } },
-      }
-
-      const url =
-        mode === 'edit' && initialId
-          ? `/api/plugins/workflows/definitions/${initialId}`
-          : '/api/plugins/workflows/definitions'
-      const method = mode === 'edit' && initialId ? 'PUT' : 'POST'
-      const body =
-        method === 'POST'
-          ? JSON.stringify({ id: initialId ?? initialDefinition.id ?? '', ...nextDefinition })
-          : JSON.stringify(nextDefinition)
-
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body,
+        body: JSON.stringify(body),
       })
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
       if (!res.ok) {
@@ -379,6 +395,58 @@ export function WorkflowCanvasEditor({
     }
   }
 
+  async function handleSave() {
+    const next = buildDefinition()
+    if (mode === 'edit' && initialId && canSaveInPlace) {
+      await postOrPut('PUT', `/api/plugins/workflows/definitions/${initialId}`, next)
+      return
+    }
+    const id = (initialDefinition?.id || slugify(definition.name)) || ''
+    if (!id) {
+      setError('Name is required to derive an id')
+      return
+    }
+    await postOrPut('POST', '/api/plugins/workflows/definitions', { id, ...next })
+  }
+
+  async function handleSaveAsNew() {
+    const suggestion = slugify(definition.name) || initialId || ''
+    const newId = typeof window !== 'undefined'
+      ? window.prompt('New workflow id:', suggestion)
+      : suggestion
+    if (!newId || !newId.trim()) return
+    await postOrPut('POST', '/api/plugins/workflows/definitions', {
+      id: newId.trim(),
+      ...buildDefinition(),
+    })
+  }
+
+  async function handleDelete() {
+    if (!initialId) return
+    if (!confirmingDelete) {
+      setConfirmingDelete(true)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/plugins/workflows/definitions/${initialId}`, {
+        method: 'DELETE',
+      })
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+      if (!res.ok) {
+        setError((data.error as string) || `Delete failed (${res.status})`)
+        return
+      }
+      onDeleted?.()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
+      setConfirmingDelete(false)
+    }
+  }
+
   const selectedStep = selectedId ? (state.steps[selectedId] as {
     id: string
     type: string
@@ -388,14 +456,28 @@ export function WorkflowCanvasEditor({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
-        <div className="text-sm">
-          <span className="font-medium">
+      <div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-2">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className="whitespace-nowrap text-sm font-medium">
             {mode === 'create' ? 'New workflow' : `Edit · ${initialId}`}
           </span>
-          {readOnlyPlugin && (
-            <span className="ml-2 text-xs text-amber-300">
-              (plugin-owned — saving creates a user shadow)
+          <Input
+            aria-label="Workflow name"
+            className="h-8 max-w-[240px]"
+            value={definition.name}
+            onChange={(e) => setDefinition((d) => ({ ...d, name: e.target.value }))}
+            placeholder="Workflow name"
+          />
+          <Input
+            aria-label="Workflow description"
+            className="h-8 max-w-[360px]"
+            value={definition.description}
+            onChange={(e) => setDefinition((d) => ({ ...d, description: e.target.value }))}
+            placeholder="Description"
+          />
+          {isPluginSource && (
+            <span className="text-xs text-amber-300">
+              plugin-owned — use Save as new
             </span>
           )}
         </div>
@@ -404,14 +486,32 @@ export function WorkflowCanvasEditor({
           <Button variant="ghost" size="sm" onClick={handleAutoArrange} disabled={saving}>
             <LayoutGrid className="mr-1 size-3.5" /> Auto-arrange
           </Button>
+          {canDelete && (
+            <Button
+              variant={confirmingDelete ? 'destructive' : 'ghost'}
+              size="sm"
+              onClick={handleDelete}
+              disabled={saving}
+            >
+              <Trash2 className="mr-1 size-3.5" />
+              {confirmingDelete ? 'Confirm' : 'Delete'}
+            </Button>
+          )}
+          {isPluginSource && (
+            <Button variant="ghost" size="sm" onClick={handleSaveAsNew} disabled={saving}>
+              <Copy className="mr-1 size-3.5" /> Save as new
+            </Button>
+          )}
           {onCancel && (
             <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
               Cancel
             </Button>
           )}
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            <Save className="mr-1 size-3.5" /> Save
-          </Button>
+          {canSaveInPlace && (
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              <Save className="mr-1 size-3.5" /> Save
+            </Button>
+          )}
         </div>
       </div>
 
