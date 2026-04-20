@@ -17,9 +17,11 @@ import type {
   SkillDefinition,
   PluginSettingsSchema,
   WorkflowDefinitionInput,
+  PluginNodeTypeInput,
 } from './plugin-types'
 import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'
 import type { WorkflowDefinition } from '../../plugins/workflows/types'
+import { registerPluginNodeType, unregisterPluginNodeTypes } from '../../plugins/workflows/lib/node-type-registry'
 import { registerRouteDoc } from '../core/api-docs'
 import { addExecTool } from '../../scripts/lib/registry'
 import { runMigrations } from '../core/migrations'
@@ -48,6 +50,8 @@ interface PluginState {
   routes: APIRoute[]
   slots: UISlotRegistration[]
   watchPatterns: string[]
+  /** Namespaced workflow node kinds registered via ctx.registerNodeType. */
+  nodeKinds: string[]
 }
 
 /** Slug a workflow definition `name` into a stable id when no `id` is supplied. */
@@ -197,6 +201,19 @@ class PluginRegistryImpl {
           )
         }
       },
+      registerNodeType: <T = unknown>(def: PluginNodeTypeInput<T>): string => {
+        try {
+          const namespacedKind = registerPluginNodeType<T>(pluginId, def)
+          state.nodeKinds.push(namespacedKind)
+          return namespacedKind
+        } catch (err) {
+          log.error(
+            `registerNodeType collision in plugin "${pluginId}" for kind "${def.kind}"`,
+            err as Error,
+          )
+          return `${pluginId}.${def.kind}`
+        }
+      },
       watchFiles: (patterns: string[]) => { state.watchPatterns.push(...patterns) },
       getSettings: <T = Record<string, unknown>>(): T => {
         const settingsPath = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
@@ -287,6 +304,7 @@ class PluginRegistryImpl {
         routes: [],
         slots: [],
         watchPatterns: [],
+        nodeKinds: [],
       }
 
       const ctx = this.buildContext(plugin.id, state, storage, events)
@@ -325,9 +343,12 @@ class PluginRegistryImpl {
           const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
           const pluginId = manifest.id || entry.name
 
-          // User plugin overrides built-in
+          // User plugin overrides built-in — drop the built-in's workflow
+          // node kinds so the user plugin can re-register them without
+          // hitting the duplicate-kind guard in registerPluginNodeType.
           if (this.plugins.has(pluginId)) {
             console.log(`  ↻ User plugin overrides built-in: ${pluginId}`)
+            unregisterPluginNodeTypes(pluginId)
             this.plugins.delete(pluginId)
           }
 
@@ -349,6 +370,7 @@ class PluginRegistryImpl {
             routes: [],
             slots: [],
             watchPatterns: [],
+            nodeKinds: [],
           }
 
           const ctx = this.buildContext(plugin.id, state, storage, events)

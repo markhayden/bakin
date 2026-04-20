@@ -6,15 +6,16 @@
  * drives the UI editor. The two share one definition so the form editor and
  * the YAML loader cannot drift.
  *
- * MVP ships 5 builtins (agent, gate, parallel, output, workflow). The
- * `registerNodeType` API is the forward-compat hook for plugin-registered
- * node types — see Phase 2A in `.claude/specs/workflows-plugin-architecture.md`.
+ * Builtins self-register at module load with `runtime: 'builtin'`. Plugins
+ * register their own node types via `ctx.registerNodeType()`, which calls
+ * `registerPluginNodeType()` here. Plugin kinds are auto-namespaced as
+ * `{pluginId}.{kind}` to avoid cross-plugin collisions.
  */
 import { z } from 'zod'
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
-export type NodeRuntime = 'builtin'
+export type NodeRuntime = 'builtin' | 'plugin'
 
 export type FormFieldType =
   | 'string'
@@ -34,11 +35,23 @@ export interface FormField {
   options?: { value: string; label: string }[]
 }
 
+/**
+ * Edge connection rules consumed by the canvas editor's onConnect validator.
+ * `undefined` = unlimited. `0` = forbidden.
+ */
+export interface EdgeRules {
+  maxInbound?: number
+  maxOutbound?: number
+}
+
 export interface NodeTypeDef<T = unknown> {
   kind: string
   runtime: NodeRuntime
   zodSchema: z.ZodType<T>
   formFields: FormField[]
+  edgeRules?: EdgeRules
+  /** Set when runtime === 'plugin'; identifies the owning plugin. */
+  pluginId?: string
 }
 
 // ─── Registry ───────────────────────────────────────────────────────────────
@@ -58,6 +71,65 @@ export function getNodeType(kind: string): NodeTypeDef | undefined {
 
 export function listNodeTypes(): NodeTypeDef[] {
   return Array.from(registry.values())
+}
+
+/**
+ * Remove a registration. Used at plugin teardown (hot reload) to drop the
+ * plugin's node types so re-activation doesn't throw "already registered".
+ */
+export function unregisterNodeType(kind: string): void {
+  registry.delete(kind)
+}
+
+// ─── Plugin-side registration helper ────────────────────────────────────────
+
+/** The subset of NodeTypeDef a plugin supplies — no pluginId/runtime (derived). */
+export interface PluginNodeTypeInput<T = unknown> {
+  kind: string
+  zodSchema: z.ZodType<T>
+  formFields: FormField[]
+  edgeRules?: EdgeRules
+}
+
+const AGENT_STYLE_EDGE_RULES: EdgeRules = { maxOutbound: 1 }
+
+/**
+ * Register a plugin-owned node type. The kind is auto-namespaced to
+ * `{pluginId}.{kind}` so two plugins can ship the same unprefixed kind
+ * without colliding. Returns the namespaced kind so callers can wire hooks.
+ */
+export function registerPluginNodeType<T>(
+  pluginId: string,
+  def: PluginNodeTypeInput<T>,
+): string {
+  const namespacedKind = `${pluginId}.${def.kind}`
+  registerNodeType({
+    kind: namespacedKind,
+    runtime: 'plugin',
+    pluginId,
+    zodSchema: def.zodSchema,
+    formFields: def.formFields,
+    edgeRules: def.edgeRules ?? AGENT_STYLE_EDGE_RULES,
+  })
+  return namespacedKind
+}
+
+/** Remove every node type owned by a plugin. */
+export function unregisterPluginNodeTypes(pluginId: string): void {
+  for (const [kind, def] of registry.entries()) {
+    if (def.runtime === 'plugin' && def.pluginId === pluginId) {
+      registry.delete(kind)
+    }
+  }
+}
+
+/**
+ * True when `kind` is a registered plugin-owned node type. Used by the
+ * workflow runtime to decide between the builtin dispatch branches and
+ * the `workflows.executeNode.{kind}` hook fallback.
+ */
+export function isPluginKind(kind: string): boolean {
+  return registry.get(kind)?.runtime === 'plugin'
 }
 
 // ─── Shared sub-schemas ─────────────────────────────────────────────────────
@@ -185,35 +257,42 @@ registerNodeType({
   runtime: 'builtin',
   zodSchema: agentStepSchema,
   formFields: agentFormFields,
+  edgeRules: { maxOutbound: 1 },
 })
 registerNodeType({
   kind: 'gate',
   runtime: 'builtin',
   zodSchema: gateStepSchema,
   formFields: gateFormFields,
+  edgeRules: { maxOutbound: 1 },
 })
 registerNodeType({
   kind: 'parallel',
   runtime: 'builtin',
   zodSchema: parallelStepSchema,
   formFields: parallelFormFields,
+  edgeRules: { maxOutbound: 1 },
 })
 registerNodeType({
   kind: 'output',
   runtime: 'builtin',
   zodSchema: outputStepSchema,
   formFields: outputFormFields,
+  edgeRules: { maxOutbound: 0 },
 })
 registerNodeType({
   kind: 'workflow',
   runtime: 'builtin',
   zodSchema: nestedWorkflowStepSchema,
   formFields: nestedWorkflowFormFields,
+  edgeRules: { maxOutbound: 1 },
 })
 
-// ─── Top-level workflow schema (discriminated union over registered kinds) ──
+// ─── Top-level workflow schema ──────────────────────────────────────────────
 
-export const stepSchema = z.discriminatedUnion('type', [
+const BUILTIN_KINDS = new Set(['agent', 'gate', 'parallel', 'output', 'workflow'])
+
+const builtinStepSchema = z.discriminatedUnion('type', [
   agentStepSchema,
   gateStepSchema,
   parallelStepSchema,
@@ -221,11 +300,79 @@ export const stepSchema = z.discriminatedUnion('type', [
   nestedWorkflowStepSchema,
 ])
 
+/**
+ * Passthrough branch for plugin-registered node types. Validates against the
+ * schema registered for `step.type`. If the type isn't registered, surfaces a
+ * targeted error pointing at the likely cause (plugin didn't activate).
+ */
+const pluginStepSchema = z.unknown().superRefine((val, ctx) => {
+  if (typeof val !== 'object' || val === null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Step must be an object' })
+    return
+  }
+  const record = val as Record<string, unknown>
+  const kind = record.type
+  if (typeof kind !== 'string') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Step is missing string `type` field',
+      path: ['type'],
+    })
+    return
+  }
+  if (BUILTIN_KINDS.has(kind)) {
+    // Builtins are handled by the discriminated union above; this branch should
+    // never be reached for a builtin step. If we got here with a builtin kind
+    // it means the builtin validation already failed — let that error surface.
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Invalid builtin step of kind '${kind}'`,
+    })
+    return
+  }
+  const def = registry.get(kind)
+  if (!def) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Unknown node type '${kind}' — did the plugin fail to activate?`,
+      path: ['type'],
+    })
+    return
+  }
+  const result = def.zodSchema.safeParse(val)
+  if (!result.success) {
+    for (const issue of result.error.issues) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: issue.message,
+        path: issue.path,
+      })
+    }
+  }
+})
+
+export const stepSchema = z.union([builtinStepSchema, pluginStepSchema])
+
 export const workflowInputSchema = z.object({
   type: z.enum(['string', 'number', 'boolean']),
   description: z.string(),
   required: z.boolean().optional(),
   default: z.unknown().optional(),
+})
+
+/**
+ * Canvas-editor layout hints. Optional — the workflow engine does not consult
+ * this field at runtime. When present, `positions` maps step id → canvas
+ * coordinates so the editor can restore node placement across saves instead of
+ * auto-laying out from scratch every time.
+ */
+export const nodePositionSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+})
+
+export const workflowLayoutSchema = z.object({
+  positions: z.record(z.string(), nodePositionSchema).optional(),
 })
 
 export const workflowDefinitionSchema = z.object({
@@ -235,6 +382,7 @@ export const workflowDefinitionSchema = z.object({
   version: z.number(),
   inputs: z.record(z.string(), workflowInputSchema).optional(),
   steps: z.array(stepSchema).min(1),
+  layout: workflowLayoutSchema.optional(),
 })
 
 export type WorkflowDefinitionParsed = z.infer<typeof workflowDefinitionSchema>
