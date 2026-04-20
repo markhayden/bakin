@@ -1,0 +1,142 @@
+id: image-social-post
+name: Image Social Post
+description: >
+  Write social copy with a creative image brief, generate the image via nested
+  workflow, review the assembled post, and publish.
+version: 2
+
+steps:
+  - id: write-copy
+    type: agent
+    label: Write Copy & Brief
+    agent: $assigned
+    description: >
+      Write a social media post based on the task description.
+
+      You are writing TWO things:
+
+      1. POST CAPTION — the actual text that will be published. Write for the
+         platform(s) listed in the task description. Keep it authentic, not
+         corporate. Include hashtags if appropriate for the platform.
+
+      2. IMAGE BRIEF — a creative direction document for the image artist.
+         Be specific about mood, lighting, composition, subject, and style.
+         Include target dimensions if the platform requires specific sizing
+         (e.g., Instagram feed = 1080x1350 portrait, Stories = 1080x1920,
+         Twitter/X = 1600x900 landscape).
+
+      If the task description doesn't specify a platform, default to Instagram
+      feed (portrait 1080x1350).
+
+      Do NOT generate any images. Your job is words only.
+    output_schema:
+      caption:
+        type: string
+        description: The post caption text, ready to publish as-is
+      platform:
+        type: string
+        description: "Target platform (instagram, twitter, discord, etc.)"
+      imageBrief:
+        type: object
+        fields:
+          subject:
+            type: string
+            description: What the image shows
+          mood:
+            type: string
+            description: Emotional tone (warm, energetic, serene, etc.)
+          style:
+            type: string
+            description: Visual style (photography, illustration, etc.)
+          lighting:
+            type: string
+            description: Lighting direction (golden hour, studio, flat lay, etc.)
+          composition:
+            type: string
+            description: Framing and layout notes
+          dimensions:
+            type: string
+            description: "Target size as WxH (e.g., 1080x1350)"
+          orientation:
+            type: string
+            description: "portrait | landscape | square"
+          references:
+            type: array
+            description: Optional URLs or descriptions of reference imagery
+
+  - id: copy-gate
+    type: gate
+    label: Approve Copy & Brief
+    # ESSENTIAL — prevents wasted generation tokens on bad briefs.
+    # Review both the caption quality and whether the brief gives Pixel
+    # enough to work with. Reject with notes if the brief is vague.
+    description: >
+      Review the caption and image brief before image generation begins.
+      Check: Does the caption match the brief? Is the image brief specific enough
+      for an artist to execute without guessing?
+    approval_required: true
+    on_approve: generate-image
+    on_reject:
+      goto: write-copy
+      note_to_agent: true
+
+  - id: generate-image
+    type: workflow
+    label: Generate Image
+    workflow_id: image-generation
+    description: >
+      Nested image generation workflow. Pixel develops a prompt from the
+      approved brief, generates via Nano Banana, and the image goes through
+      approval. The brief's dimensions and orientation carry through —
+      Pixel should not override them unless technically necessary.
+
+  - id: final-review
+    type: gate
+    label: Review Assembled Post
+    # ESSENTIAL — this is the only point where caption + image are reviewed
+    # together as a unit before publishing. Do not remove this gate.
+    description: >
+      Review the complete post: caption from write-copy and image from the
+      nested workflow. This is the final check before publish. Verify the
+      caption and image work together as a cohesive post. If either needs
+      changes, reject with notes specifying which part to fix.
+    approval_required: true
+    on_approve: publish
+    on_reject:
+      goto: write-copy
+      note_to_agent: true
+
+  - id: publish
+    type: output
+    label: Publish
+    agent: roscoe
+    description: >
+      Post the completed social media content using bakin_exec_post_discord.
+
+      From stepOutputs, extract:
+        - Caption: stepOutputs['write-copy'].caption
+        - Platform: stepOutputs['write-copy'].platform
+        - Image: stepOutputs['generate-image'].finalOutput.imagePath
+
+      Call bakin_exec_post_discord with:
+        - channel: the appropriate Discord channel for the platform
+        - content: the caption text
+        - imagePath: the generated image path
+        - taskId: your task ID
+
+      After posting, submit output with the returned messageId, channel, and url.
+    output_schema:
+      posted:
+        type: boolean
+        description: Whether the post was published successfully
+      messageId:
+        type: string
+        description: Discord message ID or platform post ID
+      channel:
+        type: string
+        description: Where it was posted
+      url:
+        type: string
+        description: Link to the published post if available
+    channels:
+      - discord

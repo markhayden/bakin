@@ -1,0 +1,58 @@
+id: video-social-post
+name: Video Social Post
+description: Write copy, script and assemble video via nested workflows, review, and publish
+version: 1
+
+steps:
+  - id: write-copy
+    type: agent
+    label: Write Copy
+    agent: $assigned
+    description: >
+      Write the post caption and a creative brief for the video.
+      Output must include: caption, video concept, target length,
+      and any reference material or mood direction.
+
+  - id: copy-gate
+    type: gate
+    label: Approve Copy
+    description: Owner reviews copy and video brief before production begins
+    approval_required: true
+    on_approve: script-video
+    on_reject:
+      goto: write-copy
+      note_to_agent: true
+
+  - id: script-video
+    type: workflow
+    label: Script Video
+    workflow_id: video-script
+    description: Nested video scripting workflow — write script, approve, break into clip segments
+
+  - id: assemble-video
+    type: workflow
+    label: Assemble Video
+    workflow_id: assemble-video
+    description: Nested video assembly workflow — voiceover, stitching, and final approval
+    dependsOn: script-video
+
+  - id: publish
+    type: output
+    label: Publish
+    agent: roscoe
+    description: >
+      Post the caption and final video using bakin_exec_post_discord.
+
+      From stepOutputs, extract:
+        - Caption from the write-copy step
+        - Video path from the assemble-video step
+
+      Call bakin_exec_post_discord with:
+        - channel: the appropriate Discord channel
+        - content: the caption text
+        - videoPath: the assembled video path
+        - taskId: your task ID
+
+      After posting, submit output with the returned messageId and channel.
+    channels:
+      - discord

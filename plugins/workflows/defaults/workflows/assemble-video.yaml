@@ -1,0 +1,45 @@
+id: assemble-video
+name: Assemble Video
+description: Generate voiceover, stitch approved clips, and publish the final video
+version: 1
+
+steps:
+  - id: generate-voiceover
+    type: agent
+    label: Generate Voiceover
+    agent: rolo
+    description: Generate voiceover audio from the approved script via TTS
+
+  - id: voiceover-gate
+    type: gate
+    label: Approve Voiceover
+    description: Owner reviews the voiceover audio
+    approval_required: true
+    on_approve: stitch-video
+    on_reject:
+      goto: generate-voiceover
+      note_to_agent: true
+
+  - id: stitch-video
+    type: agent
+    label: Stitch Video
+    agent: rolo
+    description: Concatenate clips, overlay voiceover and music via ffmpeg
+
+  - id: final-gate
+    type: gate
+    label: Approve Final Video
+    description: Owner reviews the assembled video before publishing
+    approval_required: true
+    on_approve: publish
+    on_reject:
+      goto: stitch-video
+      note_to_agent: true
+
+  - id: publish
+    type: output
+    label: Publish
+    channels:
+      - discord
+    agent: roscoe
+    description: Post the final video to the channel
