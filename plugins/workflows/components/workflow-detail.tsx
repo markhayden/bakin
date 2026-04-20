@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Workflow } from 'lucide-react'
+import { ArrowLeft, Workflow, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { WorkflowCanvas } from './workflow-canvas'
@@ -77,6 +77,8 @@ interface WorkflowDetailProps {
 export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null)
   const [subWorkflows, setSubWorkflows] = useState<Record<string, WorkflowDefinition>>({})
+  const [source, setSource] = useState<'plugin' | 'user' | undefined>()
+  const [pluginId, setPluginId] = useState<string | undefined>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
@@ -93,6 +95,8 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
         const data = await res.json()
         setDefinition(data.definition)
         setSubWorkflows(data.subWorkflows ?? {})
+        setSource(data.source)
+        setPluginId(data.pluginId)
       } catch {
         setError('Failed to load workflow')
       } finally {
@@ -166,6 +170,19 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
           )}
         </div>
       </div>
+
+      {/* Read-only banner — plugin-shipped definitions cannot be edited in place */}
+      {source === 'plugin' && (
+        <div className="flex items-center gap-2 border-b border-border bg-amber-500/10 px-6 py-2 text-xs text-amber-200">
+          <Lock className="size-3.5" />
+          <span>
+            Read-only: this workflow ships with the
+            {pluginId ? ` "${pluginId}"` : ''} plugin. Save a copy under
+            <code className="px-1 mx-1 rounded bg-black/30 font-mono text-[11px]">~/.bakin/workflows/definitions/{workflowId}.yaml</code>
+            to override it locally.
+          </span>
+        </div>
+      )}
 
       {/* Canvas */}
       <div className="flex-1 overflow-hidden">

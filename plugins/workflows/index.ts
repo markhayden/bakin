@@ -495,7 +495,12 @@ const workflowsPlugin: BakinPlugin = {
       const subWorkflows: Record<string, WorkflowDefinition> = {}
       resolveSubWorkflows(definition.steps, subWorkflows)
 
-      return Response.json({ definition, subWorkflows })
+      return Response.json({
+        definition,
+        subWorkflows,
+        source: definition.source,
+        pluginId: definition.pluginId,
+      })
     }
     ctx.registerRoute({ path: '/definitions/:name', method: 'GET', description: 'Get a specific workflow definition by name', handler: getDefinitionHandler })
 
