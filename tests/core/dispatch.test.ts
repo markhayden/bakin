@@ -3,6 +3,19 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs
 import { join } from 'path'
 import { tmpdir } from 'os'
 
+// Defensive content-dir mock (per CLAUDE.md test isolation rules). The
+// dispatch module takes `contentDir` as a parameter so it never calls
+// getContentDir() directly, but transitive imports could.
+const sentinelContentDir = join(tmpdir(), `bakin-dispatch-test-content-${Date.now()}`)
+vi.mock('../../src/core/content-dir', () => ({
+  getContentDir: () => sentinelContentDir,
+  getBakinPaths: () => ({ root: sentinelContentDir }),
+}))
+vi.mock('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => sentinelContentDir,
+  getBakinPaths: () => ({ root: sentinelContentDir }),
+}))
+
 vi.mock('../../src/core/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
@@ -17,7 +30,8 @@ vi.mock('../../src/core/settings', () => ({
     dispatch: {
       intervalMs: 1000,
       maxRetries: 3,
-      failureCooldownMs: 60000,
+      failureCooldownMs: 30 * 60 * 1000,  // 30m — structural
+      transientCooldownMs: 60 * 1000,     // 60s — transient
       maxDispatched: 500,
     },
     agents: ['main', 'pixel', 'trainer'],
@@ -51,9 +65,23 @@ vi.mock('../../src/lib/format', () => ({
   isStale: vi.fn().mockReturnValue(true),
 }))
 
+vi.mock('@bakin/core/openclaw-config', () => ({
+  getAgentIds: vi.fn().mockReturnValue(['main', 'pixel', 'trainer']),
+}))
+
+vi.mock('@bakin/core/main-agent', () => ({
+  getMainAgentId: vi.fn().mockReturnValue('main'),
+}))
+
+vi.mock('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => sentinelContentDir,
+  getOpenClawPath: (sub: string) => join(sentinelContentDir, sub),
+}))
+
 import { loadDispatchState, start, stop, getDispatchInfo } from '../../src/core/dispatch'
 import { dispatchTasks } from '../../src/core/dispatch'
 import * as openclaw from '../../src/core/openclaw-client'
+import * as taskboard from '../../src/lib/taskboard'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import type { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 
@@ -174,6 +202,188 @@ describe('dispatch', () => {
       const info = getDispatchInfo(tempDir)
       // secondsUntilNext should be > 0 (next tick in the future)
       expect(info.secondsUntilNext).toBeGreaterThanOrEqual(0)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // failure classification + cooldown (issue #115)
+  // -------------------------------------------------------------------------
+
+  describe('failure classification and cooldown', () => {
+    type ColumnsShape = { todo: Array<{ id: string; title: string; agent?: string }>; inProgress: unknown[]; done: unknown[]; archived: unknown[] }
+
+    function setupTodoTask(
+      task: { id: string; title: string; agent?: string },
+      initialState?: Partial<{ failedDispatches: Record<string, unknown>; dispatched: string[]; lastRun: number; serverStart: number }>,
+    ): void {
+      const stateFile = join(tempDir, '.dispatch-state.json')
+      if (initialState) {
+        writeFileSync(stateFile, JSON.stringify({
+          lastRun: initialState.lastRun ?? Date.now(),
+          serverStart: initialState.serverStart ?? Date.now(),
+          dispatched: initialState.dispatched ?? [],
+          failedDispatches: initialState.failedDispatches ?? {},
+        }))
+      }
+
+      const columns: ColumnsShape = { todo: [task], inProgress: [], done: [], archived: [] }
+
+      const invoke = vi.fn(async (hook: string) => {
+        if (hook === 'tasks.readTaskboard') return { columns }
+        if (hook === 'workflows.getActiveAgents') return []
+        if (hook === 'tasks.blockTask') return undefined
+        return undefined
+      })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke,
+        has: vi.fn().mockReturnValue(false),
+        register: vi.fn(),
+      } as unknown as HookRegistry)
+
+      // Make getTodoTasks return our seeded task
+      vi.mocked(taskboard.getTodoTasks).mockReturnValue({ columns, todoTasks: [task] } as unknown as ReturnType<typeof taskboard.getTodoTasks>)
+    }
+
+    function readState() {
+      return JSON.parse(readFileSync(join(tempDir, '.dispatch-state.json'), 'utf-8'))
+    }
+
+    beforeEach(() => {
+      vi.useRealTimers()  // these tests don't need fake timers; cooldown checks use Date.now arithmetic
+    })
+
+    afterEach(() => {
+      // Reset mocks to a clean state so later test suites don't inherit
+      // todoTasks leaked from setupTodoTask or accumulated sendMessage
+      // call records. `vi.restoreAllMocks` in the parent afterEach restores
+      // spies but not `vi.fn()` mocks from vi.mock factories.
+      vi.mocked(taskboard.getTodoTasks).mockReturnValue({ todoTasks: [] } as unknown as ReturnType<typeof taskboard.getTodoTasks>)
+      vi.mocked(openclaw.sendMessage).mockClear()
+      vi.mocked(openclaw.sendMessage).mockResolvedValue(undefined as unknown as string)
+    })
+
+    it('records kind="transient" on TypeError("fetch failed") and expires after transientCooldownMs', async () => {
+      setupTodoTask({ id: 't-transient', title: 'Transient-failing task' })
+      vi.mocked(openclaw.sendMessage).mockRejectedValueOnce(new TypeError('fetch failed'))
+
+      await dispatchTasks(tempDir, 3737)
+
+      const state1 = readState()
+      expect(state1.failedDispatches['t-transient']).toBeDefined()
+      expect(state1.failedDispatches['t-transient'].kind).toBe('transient')
+      expect(state1.failedDispatches['t-transient'].count).toBe(1)
+
+      // 30s later — still inside 60s transient cooldown → skipped
+      state1.failedDispatches['t-transient'].lastAttempt = Date.now() - 30_000
+      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state1))
+      vi.mocked(openclaw.sendMessage).mockClear()
+      await dispatchTasks(tempDir, 3737)
+      expect(openclaw.sendMessage).not.toHaveBeenCalled()
+
+      // 65s later — cooldown expired → retried
+      const state2 = readState()
+      state2.failedDispatches['t-transient'].lastAttempt = Date.now() - 65_000
+      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state2))
+      vi.mocked(openclaw.sendMessage).mockResolvedValueOnce('')
+      await dispatchTasks(tempDir, 3737)
+      expect(openclaw.sendMessage).toHaveBeenCalledTimes(1)
+    })
+
+    it('records kind="structural" on 5xx error and does NOT expire after transientCooldownMs', async () => {
+      setupTodoTask({ id: 't-structural', title: 'Structural-failing task' })
+      vi.mocked(openclaw.sendMessage).mockRejectedValueOnce(
+        new Error('OpenClaw sendMessage failed (500): upstream boom'),
+      )
+
+      await dispatchTasks(tempDir, 3737)
+
+      const state1 = readState()
+      expect(state1.failedDispatches['t-structural'].kind).toBe('structural')
+
+      // 5 minutes later — past transient cooldown (60s) but inside structural (30m) → still skipped
+      state1.failedDispatches['t-structural'].lastAttempt = Date.now() - 5 * 60_000
+      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state1))
+      vi.mocked(openclaw.sendMessage).mockClear()
+      await dispatchTasks(tempDir, 3737)
+      expect(openclaw.sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('escalates to blocked after maxRetries cumulative failures', async () => {
+      const blockTask = vi.fn()
+      const columns: ColumnsShape = {
+        todo: [{ id: 't-exhausted', title: 'About to exhaust' }],
+        inProgress: [], done: [], archived: [],
+      }
+      const invoke = vi.fn(async (hook: string, args?: unknown) => {
+        if (hook === 'tasks.readTaskboard') return { columns }
+        if (hook === 'workflows.getActiveAgents') return []
+        if (hook === 'tasks.blockTask') { blockTask(args); return undefined }
+        return undefined
+      })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke,
+        has: vi.fn().mockReturnValue(false),
+        register: vi.fn(),
+      } as unknown as HookRegistry)
+      vi.mocked(taskboard.getTodoTasks).mockReturnValue({ todoTasks: columns.todo } as ReturnType<typeof taskboard.getTodoTasks>)
+
+      // Seed state already at maxRetries (3 in the test settings mock)
+      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify({
+        lastRun: Date.now(),
+        serverStart: Date.now(),
+        dispatched: [],
+        failedDispatches: {
+          't-exhausted': { lastAttempt: Date.now() - 1_000_000, count: 3, kind: 'transient' },
+        },
+      }))
+
+      await dispatchTasks(tempDir, 3737)
+      expect(blockTask).toHaveBeenCalledTimes(1)
+      expect(openclaw.sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('normalizes legacy number entries to kind="structural"', async () => {
+      setupTodoTask(
+        { id: 't-legacy', title: 'Legacy format' },
+        {
+          failedDispatches: {
+            // legacy plain-number format — 5 minutes ago
+            't-legacy': Date.now() - 5 * 60_000,
+          },
+        },
+      )
+      vi.mocked(openclaw.sendMessage).mockClear()
+
+      // 5 minutes < 30m structural cooldown → should still be skipped
+      await dispatchTasks(tempDir, 3737)
+      expect(openclaw.sendMessage).not.toHaveBeenCalled()
+
+      // Now drive another failure so the record gets rewritten in new shape
+      const state = readState()
+      state.failedDispatches['t-legacy'] = Date.now() - 45 * 60_000  // past structural cooldown
+      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state))
+      vi.mocked(openclaw.sendMessage).mockRejectedValueOnce(new TypeError('fetch failed'))
+      await dispatchTasks(tempDir, 3737)
+
+      const after = readState()
+      expect(typeof after.failedDispatches['t-legacy']).toBe('object')
+      expect(after.failedDispatches['t-legacy'].kind).toBe('transient')
+      // count should be 2: legacy migrated to count=1, then incremented on this failure
+      expect(after.failedDispatches['t-legacy'].count).toBe(2)
+    })
+
+    it('audit event carries the classified kind', async () => {
+      const { appendAudit } = await import('../../src/core/audit')
+      vi.mocked(appendAudit).mockClear()
+
+      setupTodoTask({ id: 't-audit', title: 'Audit carries kind' })
+      vi.mocked(openclaw.sendMessage).mockRejectedValueOnce(new TypeError('fetch failed'))
+
+      await dispatchTasks(tempDir, 3737)
+
+      const dispatchFailed = vi.mocked(appendAudit).mock.calls.find(c => c[1] === 'task.dispatch_failed')
+      expect(dispatchFailed).toBeDefined()
+      expect((dispatchFailed?.[3] as { kind: string }).kind).toBe('transient')
     })
   })
 

@@ -25,7 +25,7 @@ vi.mock('../../src/core/logger', () => ({
 
 vi.mock('../../src/core/settings', () => ({
   getSettings: vi.fn().mockReturnValue({
-    dispatch: { intervalMs: 1000, maxRetries: 3, failureCooldownMs: 60000, maxDispatched: 500 },
+    dispatch: { intervalMs: 1000, maxRetries: 3, failureCooldownMs: 60000, transientCooldownMs: 5000, maxDispatched: 500 },
     agents: ['main', 'pixel'],
     watchdog: { stuckThresholdMs: 30 * 60 * 1000 },
   }),

@@ -27,9 +27,12 @@ function formatDispatchError(err: unknown): string {
   return raw.length > MAX_ERR_LEN ? `${raw.slice(0, MAX_ERR_LEN)}… (truncated)` : raw
 }
 
+type DispatchFailureKind = 'transient' | 'structural'
+
 interface FailureRecord {
   lastAttempt: number
   count: number
+  kind: DispatchFailureKind
 }
 
 interface DispatchState {
@@ -37,6 +40,30 @@ interface DispatchState {
   serverStart: number
   dispatched: string[]
   failedDispatches: Record<string, FailureRecord | number>  // number = legacy format
+}
+
+const TRANSIENT_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'EPIPE',
+])
+
+// Split dispatch failures into:
+//   - transient: fetch/network errors that slipped past sendMessage's in-call
+//     retry — e.g. node-undici's TypeError('fetch failed'), raw socket
+//     errors surfaced via err.cause.code. Use the short cooldown.
+//   - structural: "OpenClaw sendMessage failed (<status>): <body>" — the
+//     gateway talked to us and said no. Use the long cooldown.
+// Default to 'structural' on unknown errors: treating an unknown failure as
+// a real outage is the safer side — worst case we wait longer than needed,
+// not shorter.
+function classifyDispatchError(err: unknown): DispatchFailureKind {
+  if (err instanceof Error && /^OpenClaw sendMessage failed \(\d+\)/.test(err.message)) {
+    return 'structural'
+  }
+  if (err instanceof TypeError && err.message.includes('fetch failed')) return 'transient'
+  const cause = (err as { cause?: { code?: string } })?.cause
+  if (cause?.code && TRANSIENT_CODES.has(cause.code)) return 'transient'
+  if (err instanceof Error && err.name === 'AbortError') return 'transient'
+  return 'structural'
 }
 
 let dispatching = false
@@ -58,9 +85,19 @@ function getStateFile(contentDir: string): string {
 
 function getFailureRecord(entry: FailureRecord | number | undefined): FailureRecord | null {
   if (!entry) return null
-  // Migrate legacy format (plain timestamp number)
-  if (typeof entry === 'number') return { lastAttempt: entry, count: 1 }
-  return entry
+  // Migrate legacy format (plain timestamp number) — default to structural
+  // because that's the behavior legacy records were written under.
+  if (typeof entry === 'number') return { lastAttempt: entry, count: 1, kind: 'structural' }
+  return { ...entry, kind: entry.kind ?? 'structural' }
+}
+
+function cooldownForFailure(
+  failure: FailureRecord,
+  settings: { dispatch: { transientCooldownMs: number; failureCooldownMs: number } },
+): number {
+  return failure.kind === 'transient'
+    ? settings.dispatch.transientCooldownMs
+    : settings.dispatch.failureCooldownMs
 }
 
 function getDispatchMarkerTaskId(marker: string): string {
@@ -170,7 +207,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
           }
           continue
         }
-        if (Date.now() - failure.lastAttempt < settings.dispatch.failureCooldownMs) continue
+        if (Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings)) continue
       }
 
       if (task.agent && !getAgentIds().includes(task.agent)) continue
@@ -206,16 +243,17 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
         if (!state.failedDispatches) state.failedDispatches = {}
         const prev = getFailureRecord(state.failedDispatches[task.id])
-        state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1 }
+        const kind = classifyDispatchError(err)
+        state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1, kind }
 
         const errMsg = formatDispatchError(err)
         try {
-          await addTaskLog(task.id, 'system', `Dispatch failed (attempt ${(prev?.count || 0) + 1}) → ${targetAgent}: ${errMsg}`)
+          await addTaskLog(task.id, 'system', `Dispatch failed (attempt ${(prev?.count || 0) + 1}, ${kind}) → ${targetAgent}: ${errMsg}`)
         } catch {
           // best effort
         }
 
-        appendAudit(contentDir, 'task.dispatch_failed', targetAgent, { id: task.id, title: task.title, error: errMsg, attempt: (prev?.count || 0) + 1 })
+        appendAudit(contentDir, 'task.dispatch_failed', targetAgent, { id: task.id, title: task.title, error: errMsg, attempt: (prev?.count || 0) + 1, kind })
       }
     }
 
@@ -269,8 +307,8 @@ export async function dispatchSingleTask(
         log.warn('dispatchSingleTask: task exhausted retries', { taskId, count: failure.count })
         return
       }
-      if (Date.now() - failure.lastAttempt < settings.dispatch.failureCooldownMs) {
-        log.debug('dispatchSingleTask: task in cooldown', { taskId })
+      if (Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings)) {
+        log.debug('dispatchSingleTask: task in cooldown', { taskId, kind: failure.kind })
         return
       }
     }
@@ -345,12 +383,13 @@ export async function dispatchSingleTask(
 
       if (!state.failedDispatches) state.failedDispatches = {}
       const prev = getFailureRecord(state.failedDispatches[task.id])
-      state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1 }
+      const kind = classifyDispatchError(err)
+      state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1, kind }
       saveDispatchState(contentDir, state)
 
       try {
         const errMsg = formatDispatchError(err)
-        await addTaskLog(task.id, 'system', `Immediate dispatch failed (attempt ${(prev?.count || 0) + 1}) → ${targetAgent}: ${errMsg}`)
+        await addTaskLog(task.id, 'system', `Immediate dispatch failed (attempt ${(prev?.count || 0) + 1}, ${kind}) → ${targetAgent}: ${errMsg}`)
       } catch {
         // best effort
       }
@@ -603,11 +642,13 @@ async function dispatchWorkflowTask(
     } catch (err) {
       log.error(`Failed to dispatch workflow step "${stepId}" to ${targetAgent}`, err)
       if (!state.failedDispatches) state.failedDispatches = {}
-      state.failedDispatches[task.id] = Date.now()
+      const prev = getFailureRecord(state.failedDispatches[task.id])
+      const kind = classifyDispatchError(err)
+      state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1, kind }
 
       try {
         const errMsg = formatDispatchError(err)
-        await addTaskLog(task.id, 'system', `Workflow dispatch failed for step "${stepId}" → ${targetAgent}: ${errMsg}`)
+        await addTaskLog(task.id, 'system', `Workflow dispatch failed (attempt ${(prev?.count || 0) + 1}, ${kind}) for step "${stepId}" → ${targetAgent}: ${errMsg}`)
       } catch {
         // best effort
       }
