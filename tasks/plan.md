@@ -1,384 +1,281 @@
-# Plan: Issue #115 — Dispatch retry + transient cooldown
+# Plan — Issue #118: Messaging plugin refactor
 
-**Spec:** `.claude/specs/issue-115-dispatch-retry.md`
-**Issue:** https://github.com/madeinwyo/bakin/issues/115
-**Branch:** `issue-115-dispatch-retry`
-**Created:** 2026-04-20
-**Author:** claude (opus-4-7) / roscoe
+**Spec:** `.claude/specs/messaging-refactor.md`
+**Issue:** https://github.com/madeinwyo/bakin/issues/118
+**Branch:** `issue-118-messaging-refactor`
+**Broader context:** `docs/ideas/plugin-system.md`
 
----
+## Goal
+
+Strip hardcoded agent/channel/content-type string-literal unions from the messaging plugin so it's a neutral core plugin, unblocking the plugin-system spec. Reuse existing `team.*` hooks + `useAgentStore` for agents. Make content types user-configurable via a new `list` field type in `PluginSettingsRenderer`. Leave channels mostly alone (type drops to `string`; hardcoded maps stay until the future channel registry lands).
 
 ## Dependency graph
 
 ```
-T0 — branch setup (issue-115-dispatch-retry from main)
-       │
-       ▼
-T1 — feat(openclaw): retry transient fetch failures in sendMessage
-     (src/core/openclaw-client.ts + tests/core/openclaw-client.test.ts)
-       │
-       ▼
-T2 — feat(dispatch): classify transient vs structural; shorter transient cooldown
-     (packages/core/src/settings.ts + src/core/dispatch.ts + tests/core/dispatch.test.ts)
-       │
-       ▼
-T3 — docs(dispatch): document retry + cooldown classification
-     (CLAUDE.md + .claude/knowledge new/updated entry)
-       │
-       ▼
-T4 — PR + close issue
+T0 (branch + scaffold commit) — done, only archival commit to write
+  │
+  ▼
+T1 (renderer `list` field — core primitive)     [standalone, reusable]
+  │
+  ▼
+T2 (MessagingSettings.contentTypes + seed on activate)
+  │
+  ▼
+T3 (runtime content-type label lookup + UI swap)
+  │
+  │     T4 (prompt-builder → team.getAgent) ────┐     [independent; can parallelize with T3]
+  │                                              │
+  ▼                                              ▼
+  └────────────►  T5 (8 client components → useAgentStore) ◄─ requires T4 merged
+                                              │
+                                              ▼
+                                  T6 (strip unions, AGENT_INFO, dead constants)
+                                              │
+                                              ▼
+                                  T7 (regression guard tests)
+                                              │
+                                              ▼
+                                  T8 (ship: push, PR, merge, close, archive)
 ```
 
-Linear chain — no parallelism. T2 depends on T1 logically (retry exhaustion →
-transient classification is what makes T2 useful), though the code changes are
-independent. T3 documents the shipped state of T1+T2 together.
+Solo sequential is expected; parallelization note is for information only. Each task = one commit.
+
+## Task detail
+
+### T0 — chore(issue-118): spec + plan scaffold
+
+**Already done:** branch created, spec written at `.claude/specs/messaging-refactor.md`, plugin-system one-pager at `docs/ideas/plugin-system.md`, this plan + todo being written, issue-115 tasks archived.
+
+**Commit:** bundle all scaffolding into one chore commit.
+
+**Verification:** `git status` clean after commit; spec/plan/todo files tracked in the new branch.
 
 ---
 
-## T0 — Branch setup
+### T1 — feat(core): list field type in PluginSettingsRenderer
 
-**Command:** `git checkout -b issue-115-dispatch-retry`
+**What:** Add a `list` variant to `SettingsField` for list-of-rows editing. Reusable by any future plugin with a taxonomy setting.
 
-**Verification:** `git branch --show-current` → `issue-115-dispatch-retry`
+**Files:**
+- `packages/core/src/plugin-types.ts` — extend `SettingsField` union (turn into a discriminated union: scalar variants + new `list` variant with `itemShape: Record<string, SettingsField>`)
+- `src/components/plugin-settings-renderer.tsx` — add `list` rendering branch
+- `tests/components/plugin-settings-renderer.test.tsx` (new) — unit tests
 
-**Risks:** None.
+**Shape:**
+
+```ts
+type SettingsField =
+  | { type: 'string' | 'number';    key: string; label: string; description?: string; default?: unknown }
+  | { type: 'boolean';              key: string; label: string; description?: string; default?: boolean }
+  | { type: 'select';               key: string; label: string; description?: string; default?: string;
+      options: { value: string; label: string }[] }
+  | { type: 'list';                 key: string; label: string; description?: string; default?: unknown[];
+      itemShape: Record<string, SettingsField>; addLabel?: string;
+      minItems?: number; maxItems?: number }
+```
+
+Renderer behavior for `list`:
+- Read value as `unknown[]`; default to `[]`
+- Render one row per item; each row renders nested fields using the `itemShape`
+- "Add" button appends a blank row (fields initialized to empty strings / false / field.default)
+- Per-row delete (confirm not needed for v1 — click-through is cheap)
+- Validation: required fields non-empty, `minItems` / `maxItems` respected, `id`-keyed fields enforce uniqueness within the list (when `key: 'id'` is in the shape)
+- No reordering in v1
+
+**Acceptance criteria:**
+- [ ] `SettingsField` is a discriminated union; TS compiles
+- [ ] All existing plugins' settings schemas still validate (type-check clean after the union change)
+- [ ] Renderer renders add/edit/delete for a list field; validation blocks save when rules fail
+- [ ] Unit tests cover: add row, edit row, delete row, `required` validation, unique-id validation, `maxItems`
+- [ ] `pnpm tsc --noEmit` clean; full test suite runs green
+
+**Commit:** `feat(core): support list-of-rows field in PluginSettingsRenderer`
 
 ---
 
-## T1 — feat(openclaw): retry transient fetch failures in sendMessage
+### T2 — feat(messaging): add contentTypes setting + seed defaults on activate
 
-### Files
+**What:** Add `MessagingSettings.contentTypes`, register the `settingsSchema` using T1's new `list` field, and seed generic defaults on first activate.
 
-- `src/core/openclaw-client.ts` — wrap the single `fetch` at line 69 in a
-  3-attempt loop with 1 s / 2 s backoff. Add module-level
-  `TRANSIENT_FETCH_CODES` set and `isTransientFetchError(err)` helper.
-- `tests/core/openclaw-client.test.ts` — expand from 2 tests to 5. Mocks
-  `global.fetch` directly.
+**Files:**
+- `plugins/messaging/types.ts` — add `MessagingSettings` interface (or extend existing one)
+- `plugins/messaging/index.ts` — register `settingsSchema`; seed `DEFAULT_CONTENT_TYPES` in `activate()` if missing
+- `tests/plugins/messaging/activate.test.ts` (new or extended) — seed behavior
 
-### Exact change shape
-
-In `openclaw-client.ts`:
+**Defaults:**
 
 ```ts
-const TRANSIENT_FETCH_CODES = new Set([
-  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'EPIPE',
-])
-
-function isTransientFetchError(err: unknown): boolean {
-  if (err instanceof TypeError && err.message.includes('fetch failed')) return true
-  const cause = (err as { cause?: { code?: string } })?.cause
-  if (cause?.code && TRANSIENT_FETCH_CODES.has(cause.code)) return true
-  if (err instanceof Error && err.name === 'AbortError') return true
-  return false
-}
-
-// Inside sendMessage, replace the direct fetch with:
-const backoffMs = [1000, 2000]  // before attempts 2 and 3
-let lastErr: unknown
-let res: Response | undefined
-for (let attempt = 1; attempt <= 3; attempt++) {
-  try {
-    res = await fetch(...)
-    break  // non-transient result (ok OR http error) — exit loop
-  } catch (err) {
-    lastErr = err
-    if (!isTransientFetchError(err) || attempt === 3) throw err
-    log.warn('sendMessage transient fetch failure — retrying', { agentId, attempt, error: String(err) })
-    await new Promise(r => setTimeout(r, backoffMs[attempt - 1]))
-  }
-}
-if (!res) throw lastErr  // defensive — loop invariant
+const DEFAULT_CONTENT_TYPES = [
+  { id: 'post',         label: 'Post' },
+  { id: 'article',      label: 'Article' },
+  { id: 'video',        label: 'Video' },
+  { id: 'image',        label: 'Image' },
+  { id: 'announcement', label: 'Announcement' },
+]
 ```
 
-The rest of `sendMessage` (the `!res.ok` path, JSON parsing, reply recording)
-is unchanged.
+**Acceptance criteria:**
+- [ ] `MessagingSettings` typed with `contentTypes: Array<{ id: string; label: string }>`
+- [ ] `settingsSchema` uses the new `list` field with `itemShape: { id, label }`, both `required: true`
+- [ ] Fresh activate with no persisted settings → defaults seeded and persisted
+- [ ] Re-activate with settings already present → idempotent no-op
+- [ ] Unit test covers both paths; uses `activatePlugin` helper from `tests/plugins/test-helpers.ts`
+- [ ] Settings page at `/settings` renders the content-types editor correctly (manual check)
 
-### Test additions (tests/core/openclaw-client.test.ts)
-
-Replace the thin existing file with full retry coverage:
-
-1. `sendMessage retries on transient TypeError('fetch failed') and succeeds on attempt 3`
-2. `sendMessage does NOT retry on 500 response (fetch returned, !res.ok path)`
-3. `sendMessage does NOT retry on 4xx response`
-4. `sendMessage throws after 3 transient failures`
-5. `sendMessage retries on err.cause.code=ECONNRESET`
-
-Keep the existing `exports expected functions` and `ping returns boolean`
-tests.
-
-Mock shape:
-```ts
-const fetchMock = vi.fn()
-global.fetch = fetchMock as unknown as typeof fetch
-fetchMock
-  .mockRejectedValueOnce(new TypeError('fetch failed'))
-  .mockRejectedValueOnce(new TypeError('fetch failed'))
-  .mockResolvedValueOnce({ ok: true, json: async () => ({ choices: [{ message: { content: 'ok' } }] }) })
-```
-
-Use `vi.useFakeTimers()` + `vi.runAllTimersAsync()` to skip the 1s/2s backoff
-waits (otherwise tests add 3 s of wall time each).
-
-### Verification
-
-```bash
-pnpm vitest run tests/core/openclaw-client.test.ts
-pnpm vitest run tests/core/dispatch.test.ts        # regression — still passes with retry in place
-pnpm tsc --noEmit
-```
-
-All three must pass. The full test suite is not required at this commit
-(will run at T2's checkpoint).
-
-### Checkpoint
-
-- [ ] `pnpm vitest run tests/core/openclaw-client.test.ts` → 7 tests passing (5 new + 2 kept)
-- [ ] `pnpm vitest run tests/core/dispatch.test.ts` → existing tests still pass
-- [ ] `pnpm tsc --noEmit` → no new errors in `src/core/openclaw-client.ts`
-- [ ] Commit: `feat(openclaw): retry transient fetch failures in sendMessage`
-
-### Risks
-
-- Fake timers interaction with `await new Promise(r => setTimeout(r, ...))` —
-  need `vi.runAllTimersAsync()`, not `vi.advanceTimersByTime` alone, because
-  the awaited promise yields the microtask queue. If a test hangs, that's
-  the cause.
-- `global.fetch = fetchMock` must be restored in `afterEach` so other test
-  files don't inherit the mock.
+**Commit:** `feat(messaging): user-configurable content types with generic defaults`
 
 ---
 
-## T2 — feat(dispatch): classify transient vs structural; shorter transient cooldown
+### T3 — feat(messaging): runtime content-type lookup
 
-### Files
+**What:** Replace compile-time `CONTENT_TYPE_LABELS` lookups with a runtime function reading from settings.
 
-- `packages/core/src/settings.ts` — add `transientCooldownMs: number` to
-  `BakinSettings.dispatch` (line 17 area) + default `60 * 1000` (line 144 area).
-- `src/core/dispatch.ts`:
-  - Extend `FailureRecord` with `kind?: 'transient' | 'structural'` (the `?`
-    lets legacy-format normalizer default to structural).
-  - Add `classifyDispatchError(err)` + `TRANSIENT_CODES` set.
-  - Update `getFailureRecord()` to default `kind` to `'structural'` when
-    migrating a legacy number or a record missing the field.
-  - In the `todoTasks` loop (lines 160-173): select cooldown by
-    `failure.kind === 'transient' ? settings.dispatch.transientCooldownMs
-    : settings.dispatch.failureCooldownMs`.
-  - In the catch block (lines 204-219): classify the caught error and write
-    `{ lastAttempt: Date.now(), count: (prev?.count || 0) + 1, kind }`.
-  - Same three changes in `dispatchSingleTask` (lines 266-275 and 346-349).
-  - Workflow drive-by at line 606: replace `state.failedDispatches[task.id] = Date.now()`
-    with a proper `FailureRecord` write using the same classification.
-- `tests/core/dispatch.test.ts`:
-  - Update the settings mock to include `transientCooldownMs: 60000`.
-  - Add tests (see below).
+**Discovery step (do first):** grep for the existing pattern by which messaging's client components read plugin settings. Two likely paths:
+1. A hook exists (e.g., `usePluginSettings('messaging')`) — use it
+2. No hook exists — add a small fetch-on-mount at the top-level layout (`plugins/messaging/components/planning-layout.tsx` or similar) and pass `contentTypes` down via props or Zustand store
 
-### Exact change shape
+Document which path in the commit message.
 
-Settings:
-```ts
-dispatch: {
-  intervalMs: number
-  failureCooldownMs: number
-  transientCooldownMs: number   // NEW
-  maxDispatched: number
-  maxRetries: number
-}
-// DEFAULTS:
-dispatch: {
-  intervalMs: 5 * 60 * 1000,
-  failureCooldownMs: 30 * 60 * 1000,
-  transientCooldownMs: 60 * 1000,  // NEW
-  maxDispatched: 500,
-  maxRetries: 5,
-},
-```
+**Files:**
+- `plugins/messaging/lib/content-types.ts` (new) — `getContentTypeLabel(id, contentTypes)` + `listContentTypes(contentTypes)` helpers
+- `plugins/messaging/components/item-detail-drawer.tsx` — 3 call sites (line 229 select-value, line 232 iteration, line 488 label read)
+- `plugins/messaging/components/content-calendar.tsx` — `TYPE_OPTIONS` derivation at line 88 becomes runtime
+- `plugins/messaging/constants.ts` — keep `CONTENT_TYPE_LABELS` ONLY as a fallback-empty placeholder during transition, remove in T6
+- Any settings-fetch wiring identified in discovery
 
-Dispatch classification helper:
-```ts
-const TRANSIENT_CODES = new Set([
-  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'EPIPE',
-])
+**Fallback behavior:** `getContentTypeLabel(id, contentTypes)` returns the match's label, or the raw `id` (title-cased) if no match. Orphaned references render the id; no crash.
 
-type DispatchFailureKind = 'transient' | 'structural'
+**Acceptance criteria:**
+- [ ] All `CONTENT_TYPE_LABELS[x]` reads replaced with `getContentTypeLabel(x, contentTypes)` or the runtime iteration equivalent
+- [ ] Typing compiles: `ContentType` widened to `string` in any local annotations that blocked the swap (types.ts stays untouched until T6)
+- [ ] Manual smoke: open a calendar item, change its content type, save; verify selector shows current list from settings; add/remove a type in settings and see it reflected after refresh
+- [ ] No new tests strictly required; helper unit test nice-to-have
 
-function classifyDispatchError(err: unknown): DispatchFailureKind {
-  if (err instanceof Error && /^OpenClaw sendMessage failed \(\d+\)/.test(err.message)) {
-    return 'structural'
-  }
-  if (err instanceof TypeError && err.message.includes('fetch failed')) return 'transient'
-  const cause = (err as { cause?: { code?: string } })?.cause
-  if (cause?.code && TRANSIENT_CODES.has(cause.code)) return 'transient'
-  if (err instanceof Error && err.name === 'AbortError') return 'transient'
-  return 'structural'
-}
-```
-
-FailureRecord:
-```ts
-interface FailureRecord {
-  lastAttempt: number
-  count: number
-  kind: 'transient' | 'structural'
-}
-
-function getFailureRecord(entry: FailureRecord | number | undefined): FailureRecord | null {
-  if (!entry) return null
-  if (typeof entry === 'number') return { lastAttempt: entry, count: 1, kind: 'structural' }
-  return { ...entry, kind: entry.kind ?? 'structural' }
-}
-```
-
-Cooldown selection in the dispatch loop:
-```ts
-const cooldownMs = failure.kind === 'transient'
-  ? settings.dispatch.transientCooldownMs
-  : settings.dispatch.failureCooldownMs
-if (Date.now() - failure.lastAttempt < cooldownMs) continue
-```
-
-Failure write:
-```ts
-const kind = classifyDispatchError(err)
-state.failedDispatches[task.id] = {
-  lastAttempt: Date.now(),
-  count: (prev?.count || 0) + 1,
-  kind,
-}
-```
-
-Same write in `dispatchSingleTask` catch block and in the workflow dispatch
-branch (replacing the legacy `= Date.now()` line).
-
-### Test additions (tests/core/dispatch.test.ts)
-
-New `describe('failure classification and cooldown')` block:
-
-1. `transient fetch failure records kind="transient" and expires after transientCooldownMs`
-2. `structural 5xx failure records kind="structural" and does not expire after transientCooldownMs`
-3. `5 transient failures still escalates to blocked via tasks.blockTask`
-4. `workflow dispatch failure writes FailureRecord shape, not legacy number`
-5. `legacy number entries are normalized with kind="structural"`
-
-Test structure (for #1):
-```ts
-// Seed a todo task, make openclaw.sendMessage reject with TypeError('fetch failed')
-// Run dispatchTasks → expect failedDispatches[id].kind === 'transient' and count === 1
-// Advance timers by 30s → run again → task still skipped (30s < 60s transient cooldown)
-// Advance timers by 35s more (65s total) → run again → dispatch retried
-```
-
-### Verification
-
-```bash
-pnpm vitest run tests/core/openclaw-client.test.ts tests/core/dispatch.test.ts tests/core/settings.test.ts
-pnpm vitest run                    # full suite — no regressions elsewhere
-pnpm tsc --noEmit
-```
-
-Full suite must pass (or match the pre-existing unrelated failures already
-documented in Phase 2 checkpoint of issue #90's plan — antfly-reranker,
-search-auto-registration, search-tools-mcp, brainstorm, project-grid).
-
-### Checkpoint
-
-- [ ] `pnpm vitest run tests/core/dispatch.test.ts` → all tests passing (pre-existing 6 + 5 new)
-- [ ] `pnpm vitest run tests/core/settings.test.ts` → still passing
-- [ ] `pnpm vitest run` → no new failures vs the pre-refactor baseline
-- [ ] `pnpm tsc --noEmit` → no new errors introduced
-- [ ] Commit: `feat(dispatch): classify transient vs structural failures; shorter transient cooldown`
-
-### Risks
-
-- **Settings mock drift:** tests that mock `getSettings` and don't include
-  `transientCooldownMs` in `dispatch.*` will produce `undefined`, and the
-  `Date.now() - failure.lastAttempt < undefined` comparison resolves to
-  `false` — meaning the task would never be skipped during cooldown. Audit
-  the mocks in `tests/core/dispatch.test.ts`, `tests/core/dispatch-assets.test.ts`,
-  `tests/integration/usage-wiring-agent.test.ts`, and `tests/core/settings.test.ts`.
-- **Legacy state migration:** a real `~/.bakin/.dispatch-state.json` on this
-  machine may still have the plain-number form. The `getFailureRecord()`
-  normalizer handles it; verify manually after landing by inspecting the
-  file once.
-- **Import location:** `settings.test.ts` may already assert the exact shape
-  of `DEFAULTS.dispatch` — adding a field means updating the expected shape.
+**Commit:** `refactor(messaging): runtime content-type lookup from settings`
 
 ---
 
-## T3 — docs(dispatch): document retry + cooldown classification
+### T4 — refactor(messaging): server agent resolution via team.getAgent
 
-### Files
+**What:** Replace `AGENT_INFO[agentId]` in the server-side prompt-builder with a hook call to team.
 
-- `CLAUDE.md` — add a new sub-bullet under "Key Patterns": "### Dispatch Failure
-  Handling". ~6 lines. Describes: retry happens in `openclaw-client.sendMessage`
-  (3 attempts, 1s/2s), classification splits transient vs structural in
-  `dispatch.ts`, transient uses `dispatch.transientCooldownMs` (60 s default),
-  structural keeps `dispatch.failureCooldownMs` (30 min default), both share
-  `maxRetries` for the block-escalation ceiling.
-- `.claude/knowledge/repo-architecture.md` (IF it covers dispatch — check
-  first and only add if it fits; otherwise skip and let CLAUDE.md be the
-  single source).
+**Files:**
+- `plugins/messaging/lib/prompt-builder.ts:64` — swap lookup; need to check whether `ctx`/hooks are available at the call site
+- Caller updates if prompt-builder doesn't have hook access — lift the lookup one level up and pass `AgentMeta` in
+- `tests/plugins/messaging/prompt-builder.test.ts` (new or extended) — mock `team.getAgent` hook
 
-### Verification
+**Acceptance criteria:**
+- [ ] `prompt-builder.ts` no longer imports `AGENT_INFO`
+- [ ] Agent resolution goes through `ctx.hooks.invoke<AgentMeta>('team.getAgent', { agentId })` (or an `AgentMeta` param passed in from caller)
+- [ ] Test covers: hook returns agent → prompt includes name/emoji; hook returns null → prompt degrades cleanly to id-only
+- [ ] Tests mock `openclaw-client`, `content-dir`, `logger`, `watcher` per CLAUDE.md
 
-```bash
-pnpm vitest run            # docs-only commit, but run full suite for safety
-```
-
-Grep to confirm no stale references to the old single-cooldown model remain:
-
-```bash
-# expect: only the new sub-bullet and the new settings field
-grep -rn "failureCooldownMs" CLAUDE.md .claude/
-```
-
-### Checkpoint
-
-- [ ] `CLAUDE.md` has a "Dispatch Failure Handling" sub-bullet under Key Patterns
-- [ ] `pnpm vitest run` — still clean
-- [ ] Commit: `docs(dispatch): document retry + cooldown classification`
-
-### Risks
-
-- Scope creep — resist rewriting other CLAUDE.md sections.
+**Commit:** `refactor(messaging): resolve agents via team.getAgent hook`
 
 ---
 
-## T4 — PR + close issue
+### T5 — refactor(messaging): client agent resolution via useAgentStore
 
-- Push branch: `git push -u origin issue-115-dispatch-retry`
-- Open PR against `main` with:
-  - Title: `fix(dispatch): retry transient fetch failures and classify cooldowns (#115)`
-  - Body: references #115, lists the three commits, summarizes the "before/after"
-    behavior (30 min lockout → 60 s for transient), calls out the related #114
-    watchdog race, includes the manual smoke plan.
-- Wait for CI (no CI checks on this repo currently per recent merges, but `gh pr checks` will confirm).
-- Merge when green.
-- After merge: close #115 with a comment referencing the PR, archive
-  `tasks/plan.md` + `tasks/todo.md`.
+**What:** Swap all client-side `AGENT_INFO[id]` and `CONTENT_AGENTS` usages to use the team plugin's `useAgentStore`.
+
+**Files (8 components):**
+- `plugins/messaging/components/item-detail-drawer.tsx` — AGENT_INFO at `:367`; CONTENT_AGENTS at `:220`
+- `plugins/messaging/components/planning-layout.tsx` — AGENT_INFO at `:164`
+- `plugins/messaging/components/session-chat.tsx` — AGENT_INFO at `:85`
+- `plugins/messaging/components/brainstorm-panel.tsx` — AGENT_INFO at `:143`, `:162`; CONTENT_AGENTS at `:151`
+- `plugins/messaging/components/new-session-dialog.tsx` — AGENT_INFO at `:25`
+- `plugins/messaging/components/content-calendar.tsx` — AGENT_INFO at `:41`; CONTENT_AGENTS at `:546`
+- `plugins/messaging/components/brainstorm-view.tsx` — AGENT_INFO at `:115`; CONTENT_AGENTS at `:114`, `:134`
+- `plugins/messaging/components/session-list.tsx` — AGENT_INFO at `:182`; CONTENT_AGENTS at `:181`
+
+**Swap pattern:**
+
+```tsx
+// BEFORE
+import { AGENT_INFO } from '../types'
+import { CONTENT_AGENTS } from '../constants'
+const info = AGENT_INFO[id]
+CONTENT_AGENTS.map(id => ...)
+
+// AFTER
+import { useAgentStore, getAgentColor } from '@bakin/team/hooks/use-agent-store'
+const agent = useAgentStore(s => s.getAgent(id))
+const color = useAgentStore(s => getAgentColor(s, id))
+const agentIds = useAgentStore(s => s.agents.map(a => a.id))
+// handle agent?? with sensible fallback (show id, neutral styling)
+```
+
+**Acceptance criteria:**
+- [ ] `grep -n AGENT_INFO plugins/messaging/components/` → zero hits
+- [ ] `grep -n CONTENT_AGENTS plugins/messaging/components/` → zero hits
+- [ ] Every component handles `agent === null` (orphaned id) without crashing: renders id, no emoji/color
+- [ ] Manual smoke: calendar loads, opens item drawer, switches agent, runs brainstorm session end-to-end; no console errors
+- [ ] Manual degraded-display check: stage one calendar item with a fake agent id in frontmatter → drawer opens, id shown, no crash
+- [ ] `pnpm tsc --noEmit` clean
+
+**Commit:** `refactor(messaging): client agent resolution via useAgentStore`
 
 ---
 
-## Global checkpoints
+### T6 — refactor(messaging): strip unions, AGENT_INFO, dead constants
 
-- **After T1:** `pnpm vitest run tests/core/openclaw-client.test.ts` passes.
-  System is already better — retries hide most blips. Safe to stop here if
-  something goes wrong at T2.
-- **After T2:** full `pnpm vitest run` + `pnpm tsc --noEmit`. No new failures.
-  Manual smoke: kill gateway briefly during a dispatch cycle → task lands within
-  one cycle. Gateway dead for 10 min → long cooldown still applies.
-- **After T3:** docs in place, full suite still green, PR opens cleanly.
+**What:** Final cleanup — remove the now-unreferenced hardcoded unions and constants.
 
-## Rollback plan
+**Files:**
+- `plugins/messaging/types.ts` — remove `ContentAgent | ContentChannel | ContentType` unions, replace with `type ContentAgent = string` / `type ContentChannel = string` / `type ContentType = string` aliases (kept for documentation of intent). Remove `AGENT_INFO`.
+- `plugins/messaging/constants.ts` — remove `CONTENT_AGENTS` (line 4) and `CONTENT_TYPE_LABELS` (lines 16-24). Keep `STATUS_BADGE`, `TONE_LABELS`, `CHANNEL_LABELS`, `CHANNEL_INITIALS`.
 
-Each commit is individually revertable. If T2 breaks something subtle in the
-state-file shape, `git revert <T2-sha>` + delete `~/.bakin/.dispatch-state.json`
-(safe — it auto-heals on next cycle). T1 is purely additive inside sendMessage;
-reverting it returns to the single-attempt behavior. T3 is docs only.
+**Verifications (run all):**
+- `grep -r AGENT_INFO plugins/messaging/` → zero hits
+- `grep -rn "CONTENT_AGENTS\|CONTENT_TYPE_LABELS" plugins/messaging/` → zero hits
+- `grep -rE "'basil'|'scout'|'nemo'|'zen'" plugins/messaging/` → zero hits
+- `grep -rE "'recipe'|'tip'|'motivation'|'workout'|'outdoor'|'image-post'" plugins/messaging/` → zero hits (confirm `DEFAULT_CONTENT_TYPES` didn't accidentally adopt any brand values)
+- `pnpm tsc --noEmit` clean
+- `pnpm vitest run` clean
 
-## Out-of-scope reminders
+**Acceptance criteria:**
+- [ ] All grep checks return zero hits
+- [ ] Full test suite passes
+- [ ] tsc clean
 
-- No watchdog changes (#114).
-- No gateway-side serialization detection.
-- No UI for `transientCooldownMs`.
-- No replacement of `execFile` CLI fallbacks.
-- No cleanup of unrelated `.claude/` specs / stale TODOs.
+**Commit:** `refactor(messaging): strip hardcoded unions and AGENT_INFO`
+
+---
+
+### T7 — test: regression guards for orphaned refs
+
+**What:** Add fixture-based tests that prove the "graceful degradation" promise.
+
+**Files:**
+- `tests/plugins/messaging/orphan-refs.test.tsx` (new) — renders components with fixture data containing unknown agent id and unknown content-type id; asserts no crash, raw id rendered
+
+**Acceptance criteria:**
+- [ ] Test for orphaned agent id in a calendar item
+- [ ] Test for orphaned content-type id in a calendar item
+- [ ] Tests mock all required surfaces per CLAUDE.md (content-dir, logger, watcher, openclaw-client, team.getAgent hook)
+- [ ] Tests pass
+
+**Commit:** `test(messaging): regression guards for orphaned agent/content-type refs`
+
+---
+
+### T8 — Ship
+
+- [ ] `pnpm vitest run` full pass + `pnpm tsc --noEmit` clean
+- [ ] Manual smoke: wipe local `~/.bakin/messaging/` → start server → content calendar renders empty → create a new item with one of the default content types → works end-to-end
+- [ ] `git push -u origin issue-118-messaging-refactor`
+- [ ] Open PR against `main`, reference #118, link one-pager (`docs/ideas/plugin-system.md`)
+- [ ] Merge when green
+- [ ] Close #118 with before/after summary
+- [ ] Archive `tasks/plan.md` + `tasks/todo.md` to `.claude/tasks/issue-118-{plan,todo}.md`
+
+## Commit strategy
+
+One PR, 7 commits (T0 scaffold + T1 through T6 + T7 regression tests). Commit boundaries match task boundaries. Each commit should be self-contained: passes tests, passes tsc, doesn't break runtime (T3 in particular: UI keeps rendering using the fallback path even before T6 removes the old constants).
+
+## Risks / call-outs
+
+- **Renderer discriminated-union change (T1)** — turning `SettingsField` into a discriminated union could require touching every plugin's `settingsSchema` if any of them rely on the loose shape. Mitigation: after the type change, run `tsc --noEmit` across the whole repo before proceeding; fix any per-plugin schema sites in the same T1 commit.
+- **Client settings read pattern (T3)** — if no existing hook exists, the minimal fetch-and-pass-through approach is acceptable but introduces a small wiring footprint that will be superseded when the plugin-system spec formalizes settings-read. Fine for now; don't over-engineer.
+- **useAgentStore SSR-safety (T5)** — client components are `'use client'`, so hook usage is fine. Just confirm no message plugin component has accidentally become server-rendered.
+- **DEFAULT_CONTENT_TYPES creep** — watch that no brand-specific values slip into the defaults during T2. Grep in T6 is the backstop.
