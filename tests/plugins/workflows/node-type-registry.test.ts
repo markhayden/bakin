@@ -407,4 +407,62 @@ describe('node-type-registry', () => {
       }
     })
   })
+
+  describe('workflowDefinitionSchema — optional layout.positions', () => {
+    it('accepts a definition without layout', () => {
+      const result = workflowDefinitionSchema.safeParse({
+        name: 'No Layout',
+        description: 'x',
+        version: 1,
+        steps: [{ id: 's1', type: 'agent', label: 'S', agent: 'basil' }],
+      })
+      expect(result.success).toBe(true)
+    })
+
+    it('accepts a definition with layout.positions', () => {
+      const result = workflowDefinitionSchema.safeParse({
+        name: 'With Layout',
+        description: 'x',
+        version: 1,
+        steps: [
+          { id: 's1', type: 'agent', label: 'S1', agent: 'basil' },
+          { id: 's2', type: 'agent', label: 'S2', agent: 'pixel' },
+        ],
+        layout: {
+          positions: {
+            s1: { x: 0, y: 0 },
+            s2: { x: 0, y: 150 },
+          },
+        },
+      })
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.layout?.positions?.s1).toEqual({ x: 0, y: 0 })
+      }
+    })
+
+    it('accepts an empty layout object', () => {
+      const result = workflowDefinitionSchema.safeParse({
+        name: 'Empty Layout',
+        description: 'x',
+        version: 1,
+        steps: [{ id: 's1', type: 'agent', label: 'S', agent: 'basil' }],
+        layout: {},
+      })
+      expect(result.success).toBe(true)
+    })
+
+    it('rejects non-numeric coordinates', () => {
+      const result = workflowDefinitionSchema.safeParse({
+        name: 'Bad Layout',
+        description: 'x',
+        version: 1,
+        steps: [{ id: 's1', type: 'agent', label: 'S', agent: 'basil' }],
+        layout: {
+          positions: { s1: { x: 'nope', y: 0 } },
+        },
+      })
+      expect(result.success).toBe(false)
+    })
+  })
 })

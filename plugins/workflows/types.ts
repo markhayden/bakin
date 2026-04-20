@@ -82,6 +82,19 @@ export interface NestedWorkflowStep extends BaseStep {
 
 export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep | NestedWorkflowStep
 
+export interface NodePosition {
+  x: number
+  y: number
+}
+
+/**
+ * Canvas-editor layout hints. Not consulted by the workflow runtime; persisted
+ * only so node positions survive a save/load cycle in the visual editor.
+ */
+export interface WorkflowLayout {
+  positions?: Record<string, NodePosition>
+}
+
 export interface WorkflowDefinition {
   id?: string
   name: string
@@ -89,6 +102,7 @@ export interface WorkflowDefinition {
   version: number
   inputs?: Record<string, WorkflowInput>
   steps: WorkflowStep[]
+  layout?: WorkflowLayout
 }
 
 // ─── Template Types ─────────────────────────────────────────────────────────
