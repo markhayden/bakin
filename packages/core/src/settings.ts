@@ -12,7 +12,15 @@ const log = createLogger('settings')
 export interface BakinSettings {
   dispatch: {
     intervalMs: number
+    /** Cooldown after a structural failure (4xx/5xx from the gateway). */
     failureCooldownMs: number
+    /**
+     * Cooldown after a transient failure (fetch/network error that survived
+     * the sendMessage in-call retry). Shorter than `failureCooldownMs`
+     * because transient errors should usually clear within a cycle — a
+     * long cooldown masks a healthy gateway as a real outage. See #115.
+     */
+    transientCooldownMs: number
     maxDispatched: number
     maxRetries: number
   }
@@ -140,6 +148,7 @@ const DEFAULTS: BakinSettings = {
   dispatch: {
     intervalMs: 5 * 60 * 1000,
     failureCooldownMs: 30 * 60 * 1000,
+    transientCooldownMs: 60 * 1000,
     maxDispatched: 500,
     maxRetries: 5,
   },
