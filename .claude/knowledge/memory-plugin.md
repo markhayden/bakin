@@ -15,7 +15,7 @@ A read-only observability dashboard over every OpenClaw memory tier plus Bakin's
 | `checkpoint` | `agents/*/sessions/*.checkpoint.*.jsonl` | ✅ C7 |
 | `daily_note` | `workspace/memory/*.md` | ✅ C5 |
 | `dream` | `workspace/memory/dreaming/**/*.md`, `workspace/memory/.dreams/**/*` | ✅ C8 |
-| `durable` | `workspace/*.md` (MEMORY.md, SOUL.md, etc. — canonical bootstrap files) | ✅ C4 |
+| `durable` | `workspace/*.md` (MEMORY.md, SOUL.md, etc. — canonical bootstrap files) + `workspace/skills/*/SKILL.md` (agent skills). Rows carry a `kind` facet: `soul | rules | tools | identity | heartbeat | memory | memory-log | dreams | user | bootstrap | skill` so the UI can filter by flavor. | ✅ C4 (+ skills v2) |
 | `audit` | `~/.bakin/audit.jsonl` | ✅ C3 |
 
 ## Module layout
@@ -90,7 +90,16 @@ plugins/memory/
     tier-parsers/
       audit-parser.ts     ─ Pure line → MemoryRow parser for ~/.bakin/audit.jsonl.
       durable-parser.ts   ─ H1/H2 chunker for canonical bootstrap files;
-                            one MemoryRow per heading chunk.
+                            one MemoryRow per heading chunk. Populates
+                            `kind` via `durableKindForBasename()`. Exports
+                            `chunkByHeadingExported` so the skill parser
+                            can reuse the same chunker without copy/paste.
+      skill-parser.ts     ─ Per-skill SKILL.md file → rows with
+                            `tier='durable', kind='skill'`. Row id
+                            `skill:<sha256(agent|skill|skillName|chunkIndex)>`.
+                            Title composed as `<skillName> — <heading>`
+                            for headed chunks, plain `<skillName>` for
+                            level-0 pre-heading chunks.
       daily-note-parser.ts ─ Whole-file → MemoryRow; filename must match
                             /^(\d{4}-\d{2}-\d{2})([-.].*)?\.md$/ — invalid names return null.
       session-parser.ts   ─ (agent, sessionKey, raw) → MemoryRow. Kind extracted
@@ -207,6 +216,7 @@ Tiers other than turn/audit have no retention — they're bounded by their own s
 
 - Version marker lives at `~/.bakin/plugin-settings/memory/schema-version.json`.
 - `MEMORY_SCHEMA_VERSION = 1` — introduce turn/audit retention (v0 → v1 drops the table + clears offsets so the backfill re-derives under the new filters).
+- `MEMORY_SCHEMA_VERSION = 2` — populate `kind` on durable-tier rows and bring `{workspace}/skills/*/SKILL.md` into the durable indexer with `kind=skill`. v1 rows predate the `kind` field, so the table is dropped and the offsets cache is cleared; `onReady`'s backfill re-derives everything under the current write rules.
 - On boot, `migrateIfNeeded()` compares stored vs code version. Behind: drop `bakin_memory`, unlink `offsets.json` + `clearAllOffsets()` (so backfill re-reads every file from byte 0 instead of skipping past data that's no longer in the index), call `ensureRegisteredTables()` to recreate, write the new marker. Then `indexer.backfill(...)` runs under the current write rules.
 - Bump the version whenever a write-path change means existing rows should be re-derived: new filters, new fields, changed id hashing. Pure UI tweaks don't need a bump.
 
@@ -297,10 +307,11 @@ They're intentionally separate — a user debugging a search-quality issue wants
 ## URL state (see also `.claude/knowledge/url-state-deep-linking.md`)
 
 - `?q=<term>` — active search query.
-- `?tier=session,daily_note` — active tier filter (comma-separated).
-- `?agent=scout,basil` — active agent filter (comma-separated).
+- `?tier=session,daily_note` — active tier filter (comma-separated, multi-select).
+- `?agent=<id>` — active agent filter (single-select; `all` / omitted means no agent filter). Rendered as the shared avatar-strip `AgentFilter` component (same widget as schedule/messaging/models/tasks), with a tooltip showing the display name per avatar.
+- `?kind=soul,skill` — active durable-kind filter (comma-separated, multi-select). Only rendered on `/memory` when `tier=durable` is the sole selected tier — filtering by kind outside durable silently matches nothing. A client effect auto-clears `?kind=` when the facet hides so a stale bookmark can't strip the feed invisibly.
 - `?debug=1` — page-local "System Logs" toggle. Distinct from the global `useDebug()` Zustand flag.
 
-All four are omitted when at their default (empty / `'0'`); `MemoryShell` wraps its content in `<Suspense>` per the hook contract. When a debug-only tier is currently selected via URL but the System Logs toggle is off, the tier chip stays visible so the user has a way to remove it — otherwise it would filter silently with no affordance to clear.
+All five are omitted when at their default (empty / `'0'`); `MemoryShell` wraps its content in `<Suspense>` per the hook contract. When a debug-only tier is currently selected via URL but the System Logs toggle is off, the tier chip stays visible so the user has a way to remove it — otherwise it would filter silently with no affordance to clear.
 
 See `.claude/specs/memory-plugin-rebuild-PLAN.md` for the full plan.

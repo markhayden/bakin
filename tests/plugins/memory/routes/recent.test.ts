@@ -258,6 +258,39 @@ describe('recentRoute — limit', () => {
   })
 })
 
+describe('recentRoute — fan-out cap', () => {
+  it('returns 400 when tier × agent × kind exceeds MAX_FANOUT', async () => {
+    const { ctx, recorder } = makeCtx(() => [])
+    // 7 tiers (debug=1) × 8 agents × 1 kind = 56 > 50 cap.
+    const res = await recentRoute.handler(
+      makeReq({
+        debug: '1',
+        agent: 'a,b,c,d,e,f,g,h',
+      }),
+      ctx,
+    )
+    expect(res.status).toBe(400)
+    const body = await res.json() as { error: string }
+    expect(body.error).toMatch(/too many filter combinations/i)
+    // Must reject before dispatching any queries.
+    expect(recorder.calls).toHaveLength(0)
+  })
+
+  it('allows fan-out just under the cap', async () => {
+    const { ctx, recorder } = makeCtx(() => [])
+    // 7 tiers (debug=1) × 7 agents × 1 kind = 49, under 50.
+    const res = await recentRoute.handler(
+      makeReq({
+        debug: '1',
+        agent: 'a,b,c,d,e,f,g',
+      }),
+      ctx,
+    )
+    expect(res.status).toBe(200)
+    expect(recorder.calls).toHaveLength(49)
+  })
+})
+
 describe('recentRoute — resilience', () => {
   it('returns [] for a single tier failure without poisoning the rest', async () => {
     const { ctx } = makeCtx((p) => {
