@@ -41,7 +41,11 @@ export async function checkAndContinueDependents(
 
 Your Bakin MCP server is \`${mcServer}\`. Use mcporter for all interactions:
 \`\`\`bash
-mcporter call ${mcServer}.bakin_log_progress taskId=${task.id} message="<update>"mcporter call ${mcServer}.bakin_report_complete taskId=${task.id} summary="<what you did>"mcporter call ${mcServer}.bakin_block_task taskId=${task.id} reason="<why>"mcporter call ${mcServer}.bakin_get_task taskId=${task.id}\`\`\``
+mcporter call ${mcServer}.bakin_exec_tasks_log_progress taskId=${task.id} message="<update>"
+mcporter call ${mcServer}.bakin_exec_tasks_complete taskId=${task.id} summary="<what you did>"
+mcporter call ${mcServer}.bakin_exec_tasks_block taskId=${task.id} reason="<why>"
+mcporter call ${mcServer}.bakin_exec_tasks_get taskId=${task.id}
+\`\`\``
 
         let sent = false
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
