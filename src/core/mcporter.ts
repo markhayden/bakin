@@ -6,7 +6,7 @@
  * pointing to http://localhost:<port>/mcp?agent=<agent>.
  *
  * This allows agents to call Bakin MCP tools via:
- *   mcporter call bakin-pixel.bakin_log_progress taskId=abc message="hello"
+ *   mcporter call bakin-pixel.bakin_exec_tasks_log_progress taskId=abc message="hello"
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'

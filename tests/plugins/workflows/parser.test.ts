@@ -1,20 +1,39 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+
+const testDir = join(tmpdir(), `bakin-test-parser-${Date.now()}`)
+const defsDir = join(testDir, 'workflows', 'definitions')
+
+// CLAUDE.md hard rule — content-dir must be mocked to a temp dir so the parser
+// can never walk out of the sandbox.
+vi.mock('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
+}))
+vi.mock('@bakin/tasks/lib/flow-store', () => ({}))
+vi.mock('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+}))
+
 import { parseYAML, validateDefinition, loadDefinition, listDefinitions } from '@bakin/workflows/lib/parser'
+import {
+  registerPluginDefinition,
+  clearSourceRegistry,
+} from '@bakin/workflows/lib/source-registry'
 import type { WorkflowDefinition } from '@bakin/workflows/types'
 
 describe('parser', () => {
-  const testDir = join(tmpdir(), `bakin-test-parser-${Date.now()}`)
-  const defsDir = join(testDir, 'workflows', 'definitions')
-
   beforeEach(() => {
     mkdirSync(defsDir, { recursive: true })
+    clearSourceRegistry()
   })
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
+    clearSourceRegistry()
   })
 
   describe('parseYAML', () => {
@@ -137,6 +156,89 @@ steps:
 
       const defs = listDefinitions(testDir)
       expect(defs.length).toBe(2)
+    })
+
+    it('tags disk-loaded definitions with source="user"', () => {
+      writeFileSync(join(defsDir, 'test.yaml'), `
+name: Disk Workflow
+description: A test
+version: 1
+steps:
+  - id: step1
+    type: agent
+    label: Do
+    agent: basil
+`)
+      const def = loadDefinition('test', testDir)
+      expect(def!.source).toBe('user')
+      expect(def!.pluginId).toBeUndefined()
+    })
+
+    it('resolves plugin-registered definitions when no disk copy exists', () => {
+      const pluginDef: WorkflowDefinition = {
+        name: 'Plugin Workflow',
+        description: 'From plugin',
+        version: 1,
+        steps: [{ id: 's1', type: 'agent', label: 'S', agent: 'basil' }],
+      }
+      registerPluginDefinition('workflows', 'plugin-only', pluginDef)
+
+      const def = loadDefinition('plugin-only', testDir)
+      expect(def).not.toBeNull()
+      expect(def!.name).toBe('Plugin Workflow')
+      expect(def!.source).toBe('plugin')
+      expect(def!.pluginId).toBe('workflows')
+    })
+
+    it('user disk copy shadows a plugin-registered definition with the same id', () => {
+      const pluginDef: WorkflowDefinition = {
+        name: 'Plugin Original',
+        description: 'Plugin',
+        version: 1,
+        steps: [{ id: 's1', type: 'agent', label: 'S', agent: 'basil' }],
+      }
+      registerPluginDefinition('workflows', 'shared', pluginDef)
+
+      writeFileSync(join(defsDir, 'shared.yaml'), `
+name: User Override
+description: Mine
+version: 1
+steps:
+  - id: s1
+    type: agent
+    label: Override
+    agent: pixel
+`)
+
+      const def = loadDefinition('shared', testDir)
+      expect(def!.name).toBe('User Override')
+      expect(def!.source).toBe('user')
+      expect(def!.pluginId).toBeUndefined()
+    })
+
+    it('listDefinitions merges disk + plugin entries, user wins on collision', () => {
+      const pluginDef: WorkflowDefinition = {
+        name: 'Plugin Alpha',
+        description: 'From plugin',
+        version: 1,
+        steps: [{ id: 's1', type: 'agent', label: 'S', agent: 'basil' }],
+      }
+      registerPluginDefinition('workflows', 'alpha', pluginDef)
+      registerPluginDefinition('workflows', 'beta', { ...pluginDef, name: 'Plugin Beta' })
+
+      // Disk shadows "alpha" and adds "gamma"
+      writeFileSync(join(defsDir, 'alpha.yaml'), 'name: User Alpha\ndescription: U\nversion: 1\nsteps:\n  - id: s1\n    type: agent\n    label: S\n    agent: x')
+      writeFileSync(join(defsDir, 'gamma.yaml'), 'name: User Gamma\ndescription: U\nversion: 1\nsteps:\n  - id: s1\n    type: agent\n    label: S\n    agent: x')
+
+      const defs = listDefinitions(testDir)
+      const byName = new Map(defs.map(d => [d.name, d]))
+
+      expect(byName.size).toBe(3)
+      expect(byName.get('alpha')!.source).toBe('user')
+      expect(byName.get('alpha')!.definition.name).toBe('User Alpha')
+      expect(byName.get('beta')!.source).toBe('plugin')
+      expect(byName.get('beta')!.pluginId).toBe('workflows')
+      expect(byName.get('gamma')!.source).toBe('user')
     })
   })
 })

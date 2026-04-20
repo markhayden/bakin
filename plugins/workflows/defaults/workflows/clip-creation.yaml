@@ -1,0 +1,53 @@
+id: clip-creation
+name: Clip Creation
+description: Produce a single video clip from an approved script segment
+version: 1
+
+inputs:
+  segment:
+    type: string
+    description: The approved clip segment text and visual prompt
+    required: true
+
+steps:
+  - id: generate-frames
+    type: parallel
+    label: Generate Frames
+    steps:
+      - id: start-frame
+        type: agent
+        label: Start Frame
+        agent: pixel
+        description: Generate the opening frame image from the clip prompt
+
+      - id: end-frame
+        type: agent
+        label: End Frame
+        agent: pixel
+        description: Generate the closing frame image from the clip prompt
+
+  - id: frames-gate
+    type: gate
+    label: Approve Frames
+    description: Owner reviews start and end frame images
+    approval_required: true
+    on_approve: generate-video
+    on_reject:
+      goto: generate-frames
+      note_to_agent: true
+
+  - id: generate-video
+    type: agent
+    label: Generate Video
+    agent: rolo
+    description: Generate video clip using image-to-video from start frame to end frame
+
+  - id: video-gate
+    type: gate
+    label: Approve Clip
+    description: Owner reviews the final video clip
+    approval_required: true
+    on_approve: done
+    on_reject:
+      goto: generate-video
+      note_to_agent: true

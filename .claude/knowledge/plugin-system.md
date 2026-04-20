@@ -58,6 +58,7 @@ Provided to `activate()`. This is the plugin's only interface to the system:
 | `registerSlot(reg)` | Register React component for a named UI slot |
 | `registerExecTool(tool)` | Register MCP execution tool (agent-callable) |
 | `registerSkill(skill)` | Register AI skill definition |
+| `registerWorkflow(def, opts?)` | Register a plugin-shipped workflow definition. Falls back to `slug(def.name)` when `def.id` is omitted. User definitions in `~/.bakin/workflows/definitions/` always win on collision; cross-plugin id collisions are logged but do not throw out of `activate()`. Same-plugin re-registration is idempotent (hot reload). Plugins should ship their YAML under `defaults/workflows/` and load it during `activate()`. |
 | `watchFiles(patterns)` | Request file watcher notifications |
 | `getSettings<T>()` | Read this plugin's persisted settings from `plugin-settings/{id}.json` |
 | `updateSettings(patch)` | Merge partial update into settings, persist, notify `onSettingsChange` |
@@ -317,6 +318,18 @@ All paths relative to `~/.bakin/` (resolved via `getContentDir()`).
 - `once(pattern, handler)` — one-time subscription
 
 The event bus is used by the workflows plugin for notifications. Most cross-plugin communication uses the HookRegistry instead.
+
+## Plugin `defaults/` Conventions
+
+A plugin may ship three sibling directories under `defaults/`. The plugin loader handles each one automatically — plugin code only needs to drop the files in.
+
+| Directory | Loader | Behavior |
+|-----------|--------|----------|
+| `defaults/workflows/*.yaml` | The owning plugin's `activate()` (workflows plugin uses `lib/load-defaults.ts`) | Each YAML is parsed and registered via `ctx.registerWorkflow(def, { readOnly: true })`. User copies under `~/.bakin/workflows/definitions/` always shadow these. |
+| `defaults/workflow-skills/*.md` | `src/lib/plugin-skill-loader.ts`, invoked by the plugin loader after every `activate()` | Each `.md` is parsed (YAML frontmatter for `name` + `output_schema`; body is the instruction) and registered via `ctx.registerSkill()`. Generic across all plugins. **In-memory only — no filesystem install.** |
+| `defaults/openclaw-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `~/.openclaw/skills/{name}/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
+
+The first two are S-A (workflow-step skills, in-memory). The third is S-B (OpenClaw runtime skills, on disk). See `.claude/knowledge/workflows-plugin.md` for the full breakdown.
 
 ## User Plugin Override
 

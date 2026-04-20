@@ -45,7 +45,7 @@ addExecTool({
   name: 'bakin_exec_log',
   label: 'Logged message',
   activityDuplicate: true,
-  description: 'Log a formatted progress update with category and stage tags. Categories: start, progress, milestone, blocked, complete. More structured than raw bakin_log_progress.',
+  description: 'Log a formatted progress update with category and stage tags. Categories: start, progress, milestone, blocked, complete. More structured than raw bakin_exec_tasks_log_progress.',
   source: 'core',
   parameters: {
     taskId: z.string().describe('Task ID'),

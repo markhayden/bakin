@@ -1,6 +1,6 @@
 'use client'
 
-import { Workflow } from 'lucide-react'
+import { Workflow, Lock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
 import type { WorkflowTemplate, WorkflowStep, AgentStep } from '../types'
@@ -70,9 +70,21 @@ export function WorkflowCard({
       </p>
 
       <div className="flex items-center justify-between">
-        <Badge variant="secondary" className="text-[10px]">
-          {template.stepCount} steps
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          <Badge variant="secondary" className="text-[10px]">
+            {template.stepCount} steps
+          </Badge>
+          {template.source === 'plugin' && (
+            <Badge
+              variant="outline"
+              className="text-[10px] gap-1"
+              title={`Shipped by plugin${template.pluginId ? ` "${template.pluginId}"` : ''} — read-only`}
+            >
+              <Lock className="size-2.5" />
+              {template.pluginId ?? 'plugin'}
+            </Badge>
+          )}
+        </div>
         {agentIds.length > 0 && (
           <div className="flex -space-x-1.5">
             {agentIds.slice(0, 5).map(id => (

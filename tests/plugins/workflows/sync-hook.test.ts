@@ -56,7 +56,7 @@ vi.mock('../../../scripts/lib/post-discord', () => ({
   loadDiscordConfig: vi.fn(() => null),
 }))
 
-vi.mock('../../plugins/tasks/lib/flow-store', () => ({
+vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
   createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
   addTaskLog: vi.fn(() => Promise.resolve()),
   moveTask: vi.fn(() => Promise.resolve()),
@@ -100,6 +100,7 @@ function makeCtx(): CapturedCtx {
     registerSlot: vi.fn(),
     registerExecTool: vi.fn(),
     registerSkill: vi.fn(),
+    registerWorkflow: vi.fn(),
     watchFiles: vi.fn(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: vi.fn(),
