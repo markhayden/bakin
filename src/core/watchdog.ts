@@ -21,6 +21,13 @@ let watchdogTimer: NodeJS.Timeout | null = null
 let lastMcpAlertAt = 0
 let lastRestAlertAt = 0
 
+// Suppress auto-recovery when a task was mutated within this window.
+// Closes the watchdog/dispatch race where dispatch moves a task
+// todo → inProgress and the watchdog, reasoning from a pre-move snapshot
+// taken earlier in the same tick, declares it "stuck" and moves it back.
+// See issue #114.
+const AUTO_RECOVERY_GUARD_MS = 60 * 1000
+
 // Bypass detection patterns — agents trying to work around errors instead of blocking
 const BYPASS_PATTERNS = [
   /work(?:ing)?\s+around/i,
@@ -121,6 +128,18 @@ export function start(contentDir: string, port: number): void {
         if (stuckMs <= settings.watchdog.stuckThresholdMs) {
           // Task has recent activity — check for bypass patterns instead
           checkBypassPatterns(task, contentDir, port)
+          continue
+        }
+
+        // Race guard (#114): a fresh updatedAt means something (usually
+        // dispatch's moveTask) just touched this task. Skip this tick and
+        // re-evaluate on the next one; by then any legitimate mutation will
+        // have written a log entry that feeds lastLogTs above.
+        if (task.updatedAt && now - task.updatedAt < AUTO_RECOVERY_GUARD_MS) {
+          log.debug('Skipping auto-recovery: updatedAt within guard window', {
+            id: task.id,
+            updatedAtAgeMs: now - task.updatedAt,
+          })
           continue
         }
 
