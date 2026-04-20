@@ -1,18 +1,22 @@
 'use client'
 
 /**
- * Editable canvas (Phase 2B scaffold).
+ * Editable workflow canvas.
  *
- * Replacement for the form-driven WorkflowEditor. This first cut owns
- * only load + edit node positions + save — no palette, no config drawer,
- * no edge-rule enforcement. Those land in T10/T11/T12.
+ * Drives the /workflows/{id}/edit and /workflows/new routes. Replaces the
+ * form-driven WorkflowEditor.
  *
- * Renderers come from the NodeRendererRegistry (populated by the plugin
- * manifest at module load), so plugin-registered kinds Just Work once
- * they ship a `nodeRenderers` export.
+ * Source of truth: an internal `steps` record keyed by step id. Positions
+ * and nodes are derived each render. When the drawer applies a patch we
+ * mutate the step body; when a node is dragged we mutate positions; when
+ * a palette item is dropped we mint a new step with a default body.
+ *
+ * Node renderers come from the NodeRendererRegistry (populated by the
+ * plugin manifest at module load) so plugin-registered kinds work
+ * without special-casing.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ReactFlow,
   Background,
@@ -38,6 +42,7 @@ import { Button } from '@/components/ui/button'
 import '@/lib/plugin-manifest'
 import { getAllNodeRenderers } from '../lib/node-renderer-registry'
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
+import { NodeConfigDrawer } from './node-config-drawer'
 import type {
   WorkflowDefinition,
   WorkflowStep,
@@ -56,7 +61,6 @@ const RESET_NODE_STYLES = `
 
 const NODE_WIDTH = 280
 const Y_SPACING = 130
-const DEFAULT_X = 0
 
 const nodeTypes: NodeTypes = getAllNodeRenderers()
 
@@ -70,72 +74,25 @@ interface WorkflowCanvasEditorProps {
   onCancel?: () => void
 }
 
-/** Default auto-layout — stack steps vertically when no layout.positions present. */
-function defaultPosition(index: number): XYPosition {
-  return { x: DEFAULT_X, y: index * Y_SPACING }
-}
-
-function stepNodeType(step: WorkflowStep): string {
-  // Builtins render by their bare kind; plugin kinds already carry their
-  // namespaced `{pluginId}.{kind}` as `step.type`.
-  return step.type
-}
-
+/** Build node data shown on the canvas from a step body. */
 function stepNodeData(step: WorkflowStep): Record<string, unknown> {
-  return {
-    label: step.label,
-    ...(step.type === 'agent' ? { agent: step.agent, task: step.task } : {}),
-    ...(step.type === 'gate' ? { description: step.description } : {}),
-    ...(step.type === 'output' ? { channels: step.channels, description: step.description } : {}),
-    ...(step.type === 'workflow'
-      ? { description: step.description, workflow_id: step.workflow_id }
-      : {}),
+  const data: Record<string, unknown> = { label: step.label }
+  if (step.type === 'agent') {
+    data.agent = step.agent
+    data.task = step.task
+  } else if (step.type === 'gate') {
+    data.description = step.description
+  } else if (step.type === 'output') {
+    data.channels = step.channels
+    data.description = step.description
+  } else if (step.type === 'workflow') {
+    data.description = step.description
+    data.workflow_id = step.workflow_id
   }
+  return data
 }
 
-/**
- * Build the initial node + edge arrays from a definition. Positions come
- * from `layout.positions` when present, otherwise from the fallback stack.
- */
-function buildInitialGraph(def: WorkflowDefinition): { nodes: Node[]; edges: Edge[] } {
-  const positions = def.layout?.positions ?? {}
-  const nodes: Node[] = def.steps.map((step, idx) => {
-    const saved = positions[step.id]
-    const position: XYPosition = saved ? { x: saved.x, y: saved.y } : defaultPosition(idx)
-    return {
-      id: step.id,
-      type: stepNodeType(step),
-      position,
-      data: stepNodeData(step),
-      style: { width: NODE_WIDTH },
-    }
-  })
-
-  const edges: Edge[] = []
-  for (let i = 0; i < def.steps.length - 1; i++) {
-    const source = def.steps[i].id
-    const target = def.steps[i + 1].id
-    edges.push({ id: `${source}-${target}`, source, target })
-  }
-
-  return { nodes, edges }
-}
-
-/**
- * Extract `layout.positions` from the live node array in its current state.
- */
-function extractPositions(nodes: Node[]): Record<string, NodePosition> {
-  const out: Record<string, NodePosition> = {}
-  for (const node of nodes) {
-    out[node.id] = { x: node.position.x, y: node.position.y }
-  }
-  return out
-}
-
-/**
- * Generate a unique step id for a dropped kind. Prefers `{kind}-N` with N
- * = 1 for the first entry of that kind and bumping until free.
- */
+/** Generate a unique step id for a dropped kind. */
 function nextStepId(kind: string, existing: Set<string>): string {
   const base = kind.includes('.') ? kind.split('.').slice(1).join('-') : kind
   for (let i = 1; i < 1000; i++) {
@@ -143,6 +100,64 @@ function nextStepId(kind: string, existing: Set<string>): string {
     if (!existing.has(candidate)) return candidate
   }
   return `${base}-${Date.now()}`
+}
+
+/** Build a default body for a newly-dropped step of the given kind. */
+function defaultStepBody(id: string, kind: string): WorkflowStep {
+  // Builtins have known required fields; plugin kinds get a minimal shell.
+  if (kind === 'agent') return { id, type: 'agent', label: id, agent: '' }
+  if (kind === 'gate') return { id, type: 'gate', label: id, on_approve: '' }
+  if (kind === 'output') return { id, type: 'output', label: id }
+  if (kind === 'workflow') return { id, type: 'workflow', label: id, workflow_id: '' }
+  if (kind === 'parallel') return { id, type: 'parallel', label: id, steps: [] }
+  // Plugin kind — preserve `type` as-is; the drawer will validate against the
+  // plugin's zodSchema when the user edits the node.
+  return { id, type: kind, label: id } as unknown as WorkflowStep
+}
+
+interface EditorState {
+  steps: Record<string, WorkflowStep>
+  order: string[]
+  positions: Record<string, NodePosition>
+}
+
+function seedState(def: WorkflowDefinition): EditorState {
+  const steps: Record<string, WorkflowStep> = {}
+  const order: string[] = []
+  const positions: Record<string, NodePosition> = { ...(def.layout?.positions ?? {}) }
+  for (let i = 0; i < def.steps.length; i++) {
+    const step = def.steps[i]
+    steps[step.id] = step
+    order.push(step.id)
+    if (!positions[step.id]) {
+      positions[step.id] = { x: 0, y: i * Y_SPACING }
+    }
+  }
+  return { steps, order, positions }
+}
+
+function deriveNodes(state: EditorState): Node[] {
+  return state.order.map((id) => {
+    const step = state.steps[id]
+    const pos = state.positions[id] ?? { x: 0, y: 0 }
+    return {
+      id,
+      type: step.type,
+      position: { x: pos.x, y: pos.y },
+      data: stepNodeData(step),
+      style: { width: NODE_WIDTH },
+    }
+  })
+}
+
+function deriveEdges(state: EditorState): Edge[] {
+  const edges: Edge[] = []
+  for (let i = 0; i < state.order.length - 1; i++) {
+    const source = state.order[i]
+    const target = state.order[i + 1]
+    edges.push({ id: `${source}-${target}`, source, target })
+  }
+  return edges
 }
 
 export function WorkflowCanvasEditor({
@@ -153,25 +168,39 @@ export function WorkflowCanvasEditor({
   onSaved,
   onCancel,
 }: WorkflowCanvasEditorProps) {
-  const { nodes: seedNodes, edges: seedEdges } = useMemo(
-    () => buildInitialGraph(initialDefinition),
-    [initialDefinition],
-  )
-
-  const [nodes, setNodes] = useState<Node[]>(seedNodes)
-  const [edges, setEdges] = useState<Edge[]>(seedEdges)
+  const [state, setState] = useState<EditorState>(() => seedState(initialDefinition))
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
 
+  const nodes = useMemo(() => deriveNodes(state), [state])
+  const edges = useMemo(() => deriveEdges(state), [state])
+
   const onNodesChange = useCallback(
-    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    (changes: NodeChange[]) => {
+      // Persist position updates into state.positions; ignore everything else
+      // (applyNodeChanges returns the full node array we can diff against).
+      setState((prev) => {
+        const derived = deriveNodes(prev)
+        const nextNodes = applyNodeChanges(changes, derived)
+        const nextPositions = { ...prev.positions }
+        for (const n of nextNodes) {
+          nextPositions[n.id] = { x: n.position.x, y: n.position.y }
+        }
+        return { ...prev, positions: nextPositions }
+      })
+    },
     [],
   )
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+  const onEdgesChange = useCallback((_changes: EdgeChange[]) => {
+    // Edges are derived from step order; user-initiated edge changes land in T12.
+  }, [])
+
+  const onNodeClick = useCallback(
+    (_e: React.MouseEvent, node: Node) => setSelectedId(node.id),
     [],
   )
 
@@ -180,38 +209,61 @@ export function WorkflowCanvasEditor({
     event.dataTransfer.dropEffect = 'copy'
   }, [])
 
-  const onDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault()
-      const kind =
-        event.dataTransfer.getData(PALETTE_DRAG_MIME_TYPE) ||
-        event.dataTransfer.getData('text/plain')
-      if (!kind) return
+  const onDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const kind =
+      event.dataTransfer.getData(PALETTE_DRAG_MIME_TYPE) ||
+      event.dataTransfer.getData('text/plain')
+    if (!kind) return
 
-      const bounds = wrapperRef.current?.getBoundingClientRect()
-      const rf = rfInstanceRef.current
-      const position: XYPosition =
-        bounds && rf
-          ? rf.screenToFlowPosition({
-              x: event.clientX - bounds.left,
-              y: event.clientY - bounds.top,
-            })
-          : { x: event.clientX, y: event.clientY }
+    const bounds = wrapperRef.current?.getBoundingClientRect()
+    const rf = rfInstanceRef.current
+    const position: XYPosition =
+      bounds && rf
+        ? rf.screenToFlowPosition({
+            x: event.clientX - bounds.left,
+            y: event.clientY - bounds.top,
+          })
+        : { x: event.clientX, y: event.clientY }
 
-      setNodes((nds) => {
-        const existing = new Set(nds.map((n) => n.id))
-        const id = nextStepId(kind, existing)
-        const newNode: Node = {
-          id,
-          type: kind,
-          position,
-          data: { label: id },
-          style: { width: NODE_WIDTH },
+    setState((prev) => {
+      const id = nextStepId(kind, new Set(prev.order))
+      return {
+        steps: { ...prev.steps, [id]: defaultStepBody(id, kind) },
+        order: [...prev.order, id],
+        positions: { ...prev.positions, [id]: { x: position.x, y: position.y } },
+      }
+    })
+  }, [])
+
+  const handleApply = useCallback(
+    (patch: Record<string, unknown>) => {
+      const prevId = selectedId
+      if (!prevId) return
+      setState((prev) => {
+        const base = prev.steps[prevId]
+        if (!base) return prev
+        const merged = { ...base, ...patch } as WorkflowStep
+        const nextId = (patch.id as string | undefined) ?? prevId
+        if (nextId === prevId) {
+          return { ...prev, steps: { ...prev.steps, [prevId]: merged } }
         }
-        return [...nds, newNode]
+        // Id rename — keep order stable, move position + drop the old key.
+        const { [prevId]: _, ...restSteps } = prev.steps
+        const { [prevId]: oldPos, ...restPositions } = prev.positions
+        const nextOrder = prev.order.map((o) => (o === prevId ? nextId : o))
+        return {
+          steps: { ...restSteps, [nextId]: { ...merged, id: nextId } },
+          order: nextOrder,
+          positions: { ...restPositions, [nextId]: oldPos ?? { x: 0, y: 0 } },
+        }
       })
+      if (typeof patch.id === 'string' && patch.id !== prevId) {
+        setSelectedId(patch.id)
+      }
+      setSelectedId(null)
     },
-    [],
+    [selectedId],
   )
 
   const readOnlyPlugin = source === 'plugin'
@@ -222,7 +274,8 @@ export function WorkflowCanvasEditor({
     try {
       const nextDefinition: WorkflowDefinition = {
         ...initialDefinition,
-        layout: { positions: extractPositions(nodes) },
+        steps: state.order.map((id) => state.steps[id]).filter(Boolean),
+        layout: { positions: { ...state.positions } },
       }
 
       const url =
@@ -253,6 +306,13 @@ export function WorkflowCanvasEditor({
     }
   }
 
+  const selectedStep = selectedId ? (state.steps[selectedId] as {
+    id: string
+    type: string
+    label: string
+    [k: string]: unknown
+  } | undefined) : null
+
   return (
     <div className="flex h-full w-full flex-col">
       <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
@@ -282,13 +342,19 @@ export function WorkflowCanvasEditor({
       <div className="flex flex-1 overflow-hidden">
         <NodeTypePalette />
 
-        <div ref={wrapperRef} className="relative flex-1 bg-zinc-950" onDragOver={onDragOver} onDrop={onDrop}>
+        <div
+          ref={wrapperRef}
+          className="relative flex-1 bg-zinc-950"
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+        >
           <style dangerouslySetInnerHTML={{ __html: RESET_NODE_STYLES }} />
           <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            onNodeClick={onNodeClick}
             onInit={(rf) => {
               rfInstanceRef.current = rf
             }}
@@ -314,7 +380,19 @@ export function WorkflowCanvasEditor({
             />
           </ReactFlow>
         </div>
+
+        {selectedStep && (
+          <NodeConfigDrawer
+            step={selectedStep}
+            onApply={handleApply}
+            onClose={() => setSelectedId(null)}
+          />
+        )}
       </div>
     </div>
   )
 }
+
+// Explicitly re-export the ReactNode type to keep TS happy in strict builds
+// where React types are only imported transitively.
+export type { ReactNode }
