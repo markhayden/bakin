@@ -36,7 +36,7 @@ import {
   type XYPosition,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Save } from 'lucide-react'
+import { LayoutGrid, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 // Side-effect import — guarantees the NodeRendererRegistry is populated
@@ -46,6 +46,7 @@ import { getAllNodeRenderers } from '../lib/node-renderer-registry'
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
 import { canConnect } from '../lib/edge-rules'
+import { layoutNodes } from '../lib/dagre-layout'
 import { toast } from '@/hooks/use-toast'
 import type {
   WorkflowDefinition,
@@ -139,16 +140,36 @@ function seedEdges(order: string[]): Edge[] {
 function seedState(def: WorkflowDefinition): EditorState {
   const steps: Record<string, WorkflowStep> = {}
   const order: string[] = []
-  const positions: Record<string, NodePosition> = { ...(def.layout?.positions ?? {}) }
-  for (let i = 0; i < def.steps.length; i++) {
-    const step = def.steps[i]
+  for (const step of def.steps) {
     steps[step.id] = step
     order.push(step.id)
-    if (!positions[step.id]) {
-      positions[step.id] = { x: 0, y: i * Y_SPACING }
+  }
+  const edges = seedEdges(order)
+  const seeded = def.layout?.positions
+
+  // If the definition carries explicit positions, use them; otherwise run
+  // dagre to give the canvas a sensible left-to-right layout instead of
+  // stacking every node at (0, 0).
+  let positions: Record<string, NodePosition>
+  if (seeded && Object.keys(seeded).length > 0) {
+    positions = { ...seeded }
+    for (let i = 0; i < order.length; i++) {
+      if (!positions[order[i]]) positions[order[i]] = { x: 0, y: i * Y_SPACING }
+    }
+  } else {
+    const bareNodes = order.map((id) => ({
+      id,
+      position: { x: 0, y: 0 },
+      data: {},
+      style: { width: NODE_WIDTH },
+    }))
+    const arranged = layoutNodes(bareNodes, edges)
+    positions = {}
+    for (const n of arranged) {
+      positions[n.id] = { x: n.position.x, y: n.position.y }
     }
   }
-  return { steps, order, positions, edges: seedEdges(order) }
+  return { steps, order, positions, edges }
 }
 
 function deriveNodes(state: EditorState): Node[] {
@@ -237,6 +258,17 @@ export function WorkflowCanvasEditor({
     (_e: React.MouseEvent, node: Node) => setSelectedId(node.id),
     [],
   )
+
+  const handleAutoArrange = useCallback(() => {
+    setState((prev) => {
+      const arranged = layoutNodes(deriveNodes(prev), prev.edges)
+      const nextPositions: Record<string, NodePosition> = {}
+      for (const n of arranged) {
+        nextPositions[n.id] = { x: n.position.x, y: n.position.y }
+      }
+      return { ...prev, positions: nextPositions }
+    })
+  }, [])
 
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -369,6 +401,9 @@ export function WorkflowCanvasEditor({
         </div>
         <div className="flex items-center gap-2">
           {error && <span className="text-xs text-red-300">{error}</span>}
+          <Button variant="ghost" size="sm" onClick={handleAutoArrange} disabled={saving}>
+            <LayoutGrid className="mr-1 size-3.5" /> Auto-arrange
+          </Button>
           {onCancel && (
             <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
               Cancel
