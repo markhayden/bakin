@@ -385,6 +385,63 @@ describe('dispatch', () => {
       expect(dispatchFailed).toBeDefined()
       expect((dispatchFailed?.[3] as { kind: string }).kind).toBe('transient')
     })
+
+    it('classifies AbortError as transient', async () => {
+      setupTodoTask({ id: 't-abort', title: 'AbortError task' })
+      const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })
+      vi.mocked(openclaw.sendMessage).mockRejectedValueOnce(abortErr)
+
+      await dispatchTasks(tempDir, 3737)
+
+      const state = readState()
+      expect(state.failedDispatches['t-abort'].kind).toBe('transient')
+    })
+
+    it('defaults to structural for unrecognized errors (safe side)', async () => {
+      setupTodoTask({ id: 't-unknown', title: 'Weird error task' })
+      vi.mocked(openclaw.sendMessage).mockRejectedValueOnce(new Error('something entirely unexpected'))
+
+      await dispatchTasks(tempDir, 3737)
+
+      const state = readState()
+      expect(state.failedDispatches['t-unknown'].kind).toBe('structural')
+    })
+
+    it('workflow dispatch failure writes FailureRecord shape (not legacy number)', async () => {
+      const columns = {
+        todo: [{ id: 'wf-fail', title: 'Failing workflow task', workflowId: 'img-flow', agent: 'pixel' }],
+        inProgress: [], done: [], archived: [],
+      }
+      const invoke = vi.fn(async (hook: string) => {
+        if (hook === 'tasks.readTaskboard') return { columns }
+        if (hook === 'workflows.loadInstance') return null
+        if (hook === 'workflows.createInstance') return { id: 'inst-1' }
+        if (hook === 'workflows.getActiveAgents') return [{ agent: 'pixel', stepId: 'step-generate' }]
+        if (hook === 'workflows.getCurrentStep') {
+          return { stepId: 'step-generate', label: 'Generate', instructions: 'make it', output_schema: {} }
+        }
+        return undefined
+      })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke,
+        has: vi.fn().mockReturnValue(false),
+        register: vi.fn(),
+      } as unknown as HookRegistry)
+      vi.mocked(taskboard.getTodoTasks).mockReturnValue({ columns: columns as never, todoTasks: columns.todo as never } as ReturnType<typeof taskboard.getTodoTasks>)
+
+      // The workflow branch calls sendMessage inside dispatchWorkflowTask; make it throw transiently.
+      vi.mocked(openclaw.sendMessage).mockRejectedValueOnce(new TypeError('fetch failed'))
+
+      await dispatchTasks(tempDir, 3737)
+
+      const state = readState()
+      const record = state.failedDispatches['wf-fail']
+      expect(record).toBeDefined()
+      expect(typeof record).toBe('object')                  // not the legacy plain number
+      expect(record.kind).toBe('transient')
+      expect(record.count).toBe(1)
+      expect(typeof record.lastAttempt).toBe('number')
+    })
   })
 
   describe('workflow re-dispatch guard', () => {
