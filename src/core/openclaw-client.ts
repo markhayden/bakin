@@ -59,6 +59,25 @@ function getHeaders(): Record<string, string> {
   return headers
 }
 
+const TRANSIENT_FETCH_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'EPIPE',
+])
+
+// Transient failures are node-undici's generic `fetch failed` wrapper and
+// the raw socket errors surfaced via `err.cause.code`. Retrying on these
+// turns a DNS/socket blip into one successful send instead of 30 minutes
+// of dispatch silence (see issue #115). Non-transient errors — any `!res.ok`
+// HTTP response, JSON parse failures — throw immediately.
+function isTransientFetchError(err: unknown): boolean {
+  if (err instanceof TypeError && err.message.includes('fetch failed')) return true
+  const cause = (err as { cause?: { code?: string } })?.cause
+  if (cause?.code && TRANSIENT_FETCH_CODES.has(cause.code)) return true
+  if (err instanceof Error && err.name === 'AbortError') return true
+  return false
+}
+
+const SEND_MESSAGE_RETRY_BACKOFF_MS = [1000, 2000]
+
 /**
  * Send a message to an agent via the chat completions API.
  * Replaces: openclaw agent --agent <id> --message <msg> --deliver
@@ -66,17 +85,32 @@ function getHeaders(): Record<string, string> {
 export async function sendMessage(agentId: string, message: string): Promise<string> {
   const baseUrl = getBaseUrl()
 
-  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      ...getHeaders(),
-      'x-openclaw-agent-id': agentId,
-    },
-    body: JSON.stringify({
-      model: 'openclaw',
-      messages: [{ role: 'user', content: message }],
-    }),
-  })
+  let res: Response | undefined
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      res = await fetch(`${baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          ...getHeaders(),
+          'x-openclaw-agent-id': agentId,
+        },
+        body: JSON.stringify({
+          model: 'openclaw',
+          messages: [{ role: 'user', content: message }],
+        }),
+      })
+      break
+    } catch (err) {
+      if (!isTransientFetchError(err) || attempt === 3) throw err
+      log.warn('sendMessage transient fetch failure — retrying', {
+        agentId,
+        attempt,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      await new Promise(r => setTimeout(r, SEND_MESSAGE_RETRY_BACKOFF_MS[attempt - 1]))
+    }
+  }
+  if (!res) throw new Error('OpenClaw sendMessage: unreachable — retry loop exited without response')
 
   if (!res.ok) {
     const body = await res.text()
