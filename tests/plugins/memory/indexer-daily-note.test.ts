@@ -58,6 +58,33 @@ vi.mock('../../../plugins/memory/lib/openclaw-adapter', () => ({
   readDurableFile: vi.fn(() => null),
   durableFilePath: vi.fn(() => ''),
   CANONICAL_DURABLE_FILES: [] as const,
+  // session / turn / checkpoint / dream tiers — stubs so handleWatcherEvent fallthrough doesn't blow up.
+  readSessionStore: vi.fn(() => null),
+  sessionStorePath: vi.fn(() => ''),
+  matchSessionStorePath: vi.fn(() => null),
+  listSessionJsonlFiles: vi.fn(() => []),
+  sessionJsonlPath: vi.fn(() => ''),
+  sessionJsonlStat: vi.fn(() => null),
+  matchSessionJsonlPath: vi.fn(() => null),
+  listCheckpointJsonlFiles: vi.fn(() => []),
+  readCheckpoint: vi.fn(() => null),
+  checkpointJsonlPath: vi.fn(() => ''),
+  checkpointJsonlStat: vi.fn(() => null),
+  matchCheckpointJsonlPath: vi.fn(() => null),
+  listPhaseDocs: vi.fn(() => []),
+  listDreamSignalFiles: vi.fn(() => []),
+  readPhaseDoc: vi.fn(() => null),
+  readDreamSignal: vi.fn(() => null),
+  matchPhaseDocPath: vi.fn(() => null),
+  matchDreamSignalPath: vi.fn(() => null),
+  // skills (tier=durable, kind=skill) — stubs so handleWatcherEvent fallthrough doesn't blow up.
+  DURABLE_KIND_BY_BASENAME: {} as Record<string, string>,
+  durableKindForBasename: vi.fn(() => undefined),
+  listAgentSkills: vi.fn(() => []),
+  readAgentSkill: vi.fn(() => null),
+  skillFilePath: vi.fn(() => ''),
+  skillFileMtime: vi.fn(() => null),
+  matchSkillPath: vi.fn(() => null),
 }))
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'

@@ -27,14 +27,25 @@ import {
   Database,
   Moon,
   User,
+  UserCircle,
+  Scroll,
+  Wrench,
+  Fingerprint,
+  HeartPulse,
+  Brain,
+  NotebookText,
+  Play,
+  Sparkles,
   ListFilter,
   Microscope,
 } from 'lucide-react'
 import { PluginHeader } from '@/components/plugin-header'
 import { FacetFilter, type FacetOption } from '@/components/facet-filter'
+import { AgentFilter } from '@/components/agent-filter'
 import { Switch } from '@/components/ui/switch'
 import { useSearch, type SearchResult } from '@/hooks/use-search'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
+import { useAgentList } from '@bakin/team/hooks/use-agent-store'
 import { TierOverviewCards } from './tier-overview-cards'
 import { MemorySearchResults } from './memory-search-results'
 import { MemoryDetailDrawer } from './memory-detail-drawer'
@@ -55,10 +66,29 @@ const ALL_TIER_OPTIONS: FacetOption[] = [
   { value: 'audit', label: 'Audit', icon: <ClipboardList className="size-3.5" /> },
 ]
 
+// Durable sub-tier "kind" buckets. Values match the normalized mapping in
+// `plugins/memory/lib/openclaw-adapter.ts:DURABLE_KIND_BY_BASENAME` plus
+// `skill` from the skill indexer. Labels mirror the team-detail tab names
+// so `kind=soul` on /memory lines up with the SOUL tab on /team/<id>.
+const KIND_OPTIONS: FacetOption[] = [
+  { value: 'soul', label: 'Soul', icon: <UserCircle className="size-3.5" /> },
+  { value: 'rules', label: 'Rules', icon: <Scroll className="size-3.5" /> },
+  { value: 'tools', label: 'Tools', icon: <Wrench className="size-3.5" /> },
+  { value: 'skill', label: 'Skills', icon: <Sparkles className="size-3.5" /> },
+  { value: 'identity', label: 'Identity', icon: <Fingerprint className="size-3.5" /> },
+  { value: 'heartbeat', label: 'Heartbeat', icon: <HeartPulse className="size-3.5" /> },
+  { value: 'memory', label: 'Memory', icon: <Brain className="size-3.5" /> },
+  { value: 'memory-log', label: 'Memory Log', icon: <NotebookText className="size-3.5" /> },
+  { value: 'dreams', label: 'Dreams (file)', icon: <Moon className="size-3.5" /> },
+  { value: 'user', label: 'User', icon: <User className="size-3.5" /> },
+  { value: 'bootstrap', label: 'Bootstrap', icon: <Play className="size-3.5" /> },
+]
+
 function useRecentFeed(
   enabled: boolean,
   tiers: string[],
-  agents: string[],
+  agent: string,
+  kinds: string[],
   debug: boolean,
 ): { results: SearchResult[]; loading: boolean; error: string | null } {
   const [results, setResults] = useState<SearchResult[]>([])
@@ -68,7 +98,8 @@ function useRecentFeed(
   // Serialize deps as a primitive so the effect doesn't fire on every
   // parent render when the array refs change.
   const tierKey = tiers.slice().sort().join(',')
-  const agentKey = agents.slice().sort().join(',')
+  const agentKey = agent
+  const kindKey = kinds.slice().sort().join(',')
 
   useEffect(() => {
     if (!enabled) {
@@ -85,6 +116,7 @@ function useRecentFeed(
     params.set('limit', '30')
     if (tierKey) params.set('tier', tierKey)
     if (agentKey) params.set('agent', agentKey)
+    if (kindKey) params.set('kind', kindKey)
     if (debug) params.set('debug', '1')
 
     fetch(`/api/plugins/memory/recent?${params}`, { signal: controller.signal })
@@ -103,7 +135,7 @@ function useRecentFeed(
       })
 
     return () => controller.abort()
-  }, [enabled, tierKey, agentKey, debug])
+  }, [enabled, tierKey, agentKey, kindKey, debug])
 
   return { results, loading, error }
 }
@@ -111,12 +143,18 @@ function useRecentFeed(
 function MemoryShellInner() {
   const [query, setQuery] = useQueryState('q', '')
   const [tiers, setTiers] = useQueryArrayState('tier')
-  const [agents, setAgents] = useQueryArrayState('agent')
+  const [agent, setAgent] = useQueryState('agent', '')
+  const [kinds, setKinds] = useQueryArrayState('kind')
   const [debugParam, setDebugParam] = useQueryState('debug', '')
   const debug = debugParam === '1'
   const [selected, setSelected] = useState<SearchResult | null>(null)
 
   const searchActive = query.trim().length > 0
+
+  // The Kind facet only makes sense under the durable tier (it discriminates
+  // SOUL vs TOOLS vs skill, etc.). Showing it while sessions/turns/audits are
+  // in the feed would attach a filter that silently matches nothing.
+  const kindFacetVisible = tiers.length === 1 && tiers[0] === 'durable'
 
   // limit=20 is the ceiling we can run cheaply — the reranker is per-doc
   // and turn content is up to 32 KB, so bumping to 100 pushed latency to
@@ -124,14 +162,15 @@ function MemoryShellInner() {
   // renders a targeted empty state pointing the user at the Debug toggle.
   const { results: searchResults, aggregations, loading: searchLoading, error: searchError, search, clear } = useSearch({
     plugin: 'memory',
-    facets: ['tier', 'agent'],
+    facets: ['tier', 'agent', 'kind'],
     debounce: 250,
   })
 
   const { results: recentResults, loading: recentLoading, error: recentError } = useRecentFeed(
     !searchActive,
     tiers,
-    agents,
+    agent,
+    kinds,
     debug,
   )
 
@@ -140,6 +179,14 @@ function MemoryShellInner() {
     else clear()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query])
+
+  // If the user switches tier away from just-durable, drop any selected
+  // kind filters — they become invisible (facet is hidden) and would
+  // silently zero out the feed otherwise.
+  useEffect(() => {
+    if (!kindFacetVisible && kinds.length > 0) setKinds([])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kindFacetVisible])
 
   const sourceResults = searchActive ? searchResults : recentResults
   const loading = searchActive ? searchLoading : recentLoading
@@ -155,10 +202,14 @@ function MemoryShellInner() {
       const tier = String(r.fields.tier)
       if (!debug && DEBUG_ONLY_TIERS.has(tier) && !tiers.includes(tier)) return false
       if (tiers.length && !tiers.includes(tier)) return false
-      if (agents.length && !agents.includes(String(r.fields.agent))) return false
+      if (agent && String(r.fields.agent) !== agent) return false
+      if (kinds.length) {
+        const k = r.fields.kind
+        if (typeof k !== 'string' || !kinds.includes(k)) return false
+      }
       return true
     })
-  }, [sourceResults, tiers, agents, debug])
+  }, [sourceResults, tiers, agent, kinds, debug])
 
   // True when the server returned hits but the Debug filter stripped them
   // all — a targeted empty state points the user at the toggle rather than
@@ -175,23 +226,50 @@ function MemoryShellInner() {
     )
   }, [debug, tiers])
 
-  const agentOptions: FacetOption[] = useMemo(() => {
-    const agg = aggregations?.agent ?? []
-    return agg.map((a) => ({
-      value: a.value,
-      label: a.value,
-      icon: <User className="size-3.5" />,
-    }))
-  }, [aggregations])
+  // Roster-backed so every known agent appears in the filter even if they
+  // have nothing indexed yet. Aggregation values outside the roster (retired
+  // agents, renamed ids) are surfaced at the end so the filter still reaches
+  // every row present in search.
+  const roster = useAgentList()
+
+  const agentIds = useMemo(() => {
+    const seen = new Set<string>()
+    const ids: string[] = []
+    for (const a of roster) {
+      if (seen.has(a.id)) continue
+      seen.add(a.id)
+      ids.push(a.id)
+    }
+    for (const a of aggregations?.agent ?? []) {
+      if (seen.has(a.value)) continue
+      seen.add(a.value)
+      ids.push(a.value)
+    }
+    return ids
+  }, [roster, aggregations])
 
   const tierCounts = useMemo(() => {
     const agg = aggregations?.tier ?? []
     return Object.fromEntries(agg.map((a) => [a.value, a.count]))
   }, [aggregations])
 
-  const agentCounts = useMemo(() => {
-    const agg = aggregations?.agent ?? []
+  const kindCounts = useMemo(() => {
+    const agg = aggregations?.kind ?? []
     return Object.fromEntries(agg.map((a) => [a.value, a.count]))
+  }, [aggregations])
+
+  // Surface aggregation-only kinds (unknown buckets from forward-compat
+  // additions) so filtering still reaches them even if KIND_OPTIONS is out
+  // of date. Static options render first in their curated order; unknowns
+  // append at the end with a generic icon.
+  const kindOptions: FacetOption[] = useMemo(() => {
+    const seen = new Set(KIND_OPTIONS.map((o) => o.value))
+    const extras: FacetOption[] = []
+    for (const a of aggregations?.kind ?? []) {
+      if (seen.has(a.value)) continue
+      extras.push({ value: a.value, label: a.value, icon: <Database className="size-3.5" /> })
+    }
+    return [...KIND_OPTIONS, ...extras]
   }, [aggregations])
 
   return (
@@ -231,13 +309,19 @@ function MemoryShellInner() {
           onChange={setTiers}
           counts={tierCounts}
         />
-        {agentOptions.length > 0 && (
+        <AgentFilter
+          agentIds={agentIds}
+          value={agent || 'all'}
+          onChange={(id) => setAgent(id === 'all' ? '' : id)}
+          showIcon={false}
+        />
+        {kindFacetVisible && (
           <FacetFilter
-            label="Agent"
-            options={agentOptions}
-            selected={agents}
-            onChange={setAgents}
-            counts={agentCounts}
+            label="Kind"
+            options={kindOptions}
+            selected={kinds}
+            onChange={setKinds}
+            counts={kindCounts}
           />
         )}
       </div>

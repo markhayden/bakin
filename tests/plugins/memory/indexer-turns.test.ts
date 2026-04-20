@@ -81,6 +81,27 @@ vi.mock('../../../plugins/memory/lib/openclaw-adapter', () => ({
   dailyNoteMtime: vi.fn(() => null),
   dailyNoteSize: vi.fn(() => 0),
   matchDailyNotePath: vi.fn(() => null),
+  // checkpoint tier — stubbed so handleWatcherEvent fallthrough doesn't blow up.
+  listCheckpointJsonlFiles: vi.fn(() => []),
+  readCheckpoint: vi.fn(() => null),
+  checkpointJsonlPath: vi.fn(() => ''),
+  checkpointJsonlStat: vi.fn(() => null),
+  matchCheckpointJsonlPath: vi.fn(() => null),
+  // dream tier — stubbed.
+  listPhaseDocs: vi.fn(() => []),
+  listDreamSignalFiles: vi.fn(() => []),
+  readPhaseDoc: vi.fn(() => null),
+  readDreamSignal: vi.fn(() => null),
+  matchPhaseDocPath: vi.fn(() => null),
+  matchDreamSignalPath: vi.fn(() => null),
+  // skills (tier=durable, kind=skill) — stubs so handleWatcherEvent fallthrough doesn't blow up.
+  DURABLE_KIND_BY_BASENAME: {} as Record<string, string>,
+  durableKindForBasename: vi.fn(() => undefined),
+  listAgentSkills: vi.fn(() => []),
+  readAgentSkill: vi.fn(() => null),
+  skillFilePath: vi.fn(() => ''),
+  skillFileMtime: vi.fn(() => null),
+  matchSkillPath: vi.fn(() => null),
 }))
 
 vi.mock('../../../plugins/memory/lib/openclaw-gateway', () => ({
