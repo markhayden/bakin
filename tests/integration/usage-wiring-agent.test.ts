@@ -139,7 +139,7 @@ describe('T2.3 agent usage wiring', () => {
     // Stub settings before importing dispatch.
     vi.doMock('../../src/core/settings', () => ({
       getSettings: () => ({
-        dispatch: { maxRetries: 3, failureCooldownMs: 1000, maxDispatched: 200 },
+        dispatch: { maxRetries: 3, failureCooldownMs: 1000, transientCooldownMs: 500, maxDispatched: 200 },
       }),
     }))
     // Dispatch now derives the agent roster from openclaw-config (T2).
