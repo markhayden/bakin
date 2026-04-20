@@ -160,7 +160,7 @@ describe('WorkflowCanvasEditor', () => {
     expect(screen.getByText(/plugin-owned/)).toBeDefined()
   })
 
-  it('falls back to default positions when layout.positions is absent', async () => {
+  it('auto-arranges nodes when layout.positions is absent', async () => {
     const noLayout: WorkflowDefinition = {
       ...sampleDefinition,
       layout: undefined,
@@ -178,8 +178,13 @@ describe('WorkflowCanvasEditor', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0]
     const body = JSON.parse(init.body as string) as WorkflowDefinition
-    // Stacked default: step 0 at y=0, step 1 at y=130
-    expect(body.layout?.positions?.write).toEqual({ x: 0, y: 0 })
-    expect(body.layout?.positions?.review).toEqual({ x: 0, y: 130 })
+    // Dagre produces a left-to-right arrangement (rankdir: 'LR'); we only
+    // assert that write is to the left of review — the exact coordinates
+    // depend on the layout engine's internals.
+    const write = body.layout?.positions?.write
+    const review = body.layout?.positions?.review
+    expect(write).toBeDefined()
+    expect(review).toBeDefined()
+    expect(write!.x).toBeLessThan(review!.x)
   })
 })
