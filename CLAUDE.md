@@ -120,7 +120,7 @@ Every plugin has:
 - `types.ts` — plugin-specific type definitions
 - `defaults/` (optional) — `workflows/*.yaml` (auto-registered via `ctx.registerWorkflow`), `workflow-skills/*.md` (auto-registered via `ctx.registerSkill` — S-A in-memory), `openclaw-skills/{name}/` (installed to `~/.openclaw/skills/` by `bakin install plugin-assets` — S-B on disk)
 
-Plugin context provides: `storage`, `events`, `registerNav()`, `registerRoute()`, `registerSlot()`, `registerExecTool()`, `registerSkill()`, `registerWorkflow()`, `watchFiles()`, `getSettings()`, `updateSettings()`, `activity` (log + audit), `hooks` (register + has + invoke), `search` (registerContentType, registerFileBackedContentType, index, remove, transform, query)
+Plugin context provides: `storage`, `events`, `registerNav()`, `registerRoute()`, `registerSlot()`, `registerExecTool()`, `registerSkill()`, `registerWorkflow()`, `registerNodeType()`, `watchFiles()`, `getSettings()`, `updateSettings()`, `activity` (log + audit), `hooks` (register + has + invoke), `search` (registerContentType, registerFileBackedContentType, index, remove, transform, query)
 
 Routes registered as: `/api/plugins/{pluginId}/{path}` via the catch-all route.
 

@@ -73,7 +73,7 @@ Cross-plugin id collisions are an activation-time error, but the loader catches 
 
 ## Node-Type Registry
 
-`plugins/workflows/lib/node-type-registry.ts`. 5 builtins self-register at module load:
+`plugins/workflows/lib/node-type-registry.ts`. 5 builtins self-register at module load; plugins add more via `ctx.registerNodeType`:
 
 | Kind | Schema | Purpose |
 |------|--------|---------|
@@ -84,14 +84,19 @@ Cross-plugin id collisions are an activation-time error, but the loader catches 
 | `workflow` | `nestedWorkflowStepSchema` | Invoke another workflow as a sub-step |
 
 Each `NodeTypeDef<T>` carries:
-- `kind` — string discriminator
-- `runtime: 'builtin'` (forward-compat slot for plugin runtimes — see Phase 2A)
-- `zodSchema` — validates step shape; aggregated by `workflowDefinitionSchema` into a discriminated union
-- `formFields` — typed metadata that drives the per-step subform in the editor
+- `kind` — string discriminator (plugin kinds are auto-namespaced as `{pluginId}.{kind}`)
+- `runtime: 'builtin' | 'plugin'` — distinguishes self-registered kinds from those contributed via `ctx.registerNodeType`
+- `pluginId?` — set when `runtime === 'plugin'`; identifies the owning plugin
+- `zodSchema` — validates step shape; the top-level `workflowDefinitionSchema` uses a `z.union` over the builtin discriminated union + a plugin-passthrough branch that delegates to the registered schema for the step's `type`
+- `formFields` — typed metadata that drives the inline node-config drawer
+- `edgeRules` — `{ maxInbound?, maxOutbound? }` consumed by the canvas editor's `canConnect` helper. Plugin kinds default to `{ maxOutbound: 1 }` when they don't ship their own.
 
-The form editor uses `listNodeTypes()` to populate the type picker and `getNodeType(kind).formFields` to render the editor for the chosen type. The route validators (`POST /definitions`, `PUT /definitions/:name`) use the same `workflowDefinitionSchema` — saved YAML and form output are byte-equivalent.
+The canvas editor's palette fetches `GET /api/plugins/workflows/node-types` on mount so it sees every registered kind, including plugin contributions. The drawer uses `getNodeType(kind).formFields` to render the right inputs and `safeParse` against the kind's `zodSchema` on Apply — schema drift between the loader and the editor is impossible by construction.
 
-`registerNodeType()` is the forward-compat hook for plugin-registered node types (Phase 2A in `.claude/specs/workflows-plugin-architecture.md`). It throws on duplicate `kind`.
+Plugin registration goes through `ctx.registerNodeType`, which:
+1. Calls `registerPluginNodeType(pluginId, def)` — namespaces the kind to `{pluginId}.{kind}` and stores `runtime: 'plugin'`.
+2. Aggregates the plugin's `nodeRenderers` into the client `NodeRendererRegistry` so the canvas can render non-builtin kinds without a core change.
+3. Registers a `workflows.executeNode.{namespacedKind}` hook; `runtime.ts` looks this up when it encounters a step whose `type` isn't a builtin.
 
 ## CRUD Routes
 
@@ -111,10 +116,23 @@ The watcher syncs YAML → search index within ~300 ms, so no extra indexing cal
 |------|-----------|
 | `/workflows` | `plugins/workflows/components/workflows-page.tsx` — grid of cards |
 | `/workflows/:id` | `plugins/workflows/components/workflow-detail.tsx` — canvas + step drawer; read-only banner if `source === 'plugin'` |
-| `/workflows/new` | wraps `workflow-editor.tsx` in create mode |
-| `/workflows/:id/edit` | wraps `workflow-editor.tsx` in edit mode (refuses if plugin-owned without user shadow) |
+| `/workflows/new` | wraps `workflow-canvas-editor.tsx` in create mode |
+| `/workflows/:id/edit` | wraps `workflow-canvas-editor.tsx` in edit mode (plugin-owned sources offer Save-as-new only) |
 
-`workflow-card.tsx` adds a "Provided by {pluginId}" badge when source is plugin. `workflow-editor.tsx` consumes the node-type registry's `formFields` to render per-step subforms — adding a new builtin (or, post-Phase 2A, a plugin-registered node type) makes it appear in the editor automatically.
+`workflow-card.tsx` adds a "Provided by {pluginId}" badge when source is plugin.
+
+### Canvas Editor (`workflow-canvas-editor.tsx`)
+
+Sole editor for create and edit. Wraps xyflow with three panels:
+
+- **Toolbar** (top): workflow name/description inputs, Auto-arrange (dagre LR re-layout), Save / Save-as-new / Delete.
+- **Palette** (left): `node-type-palette.tsx` — lists every registered kind, grouped as "Builtin" vs "Plugins" with the `pluginId` badge. Drag a tile onto the canvas to mint a new step; the drag MIME type is `application/x-bakin-node-kind`.
+- **Canvas** (centre): xyflow with the full `NodeRendererRegistry` passed as `nodeTypes`. Edges are user-drawn; `canConnect` (from `lib/edge-rules.ts`) enforces `edgeRules` from the node-type registry and toasts the rejection reason. `onNodesChange` persists positions into `state.positions`, which are serialized as `definition.layout.positions` on save.
+- **Drawer** (right, contextual): `node-config-drawer.tsx` — opens when a node is clicked. Renders fields from `getNodeType(step.type).formFields`, validates the candidate step via `zodSchema.safeParse` on Apply, and surfaces Zod issues inline.
+
+When a definition has no `layout.positions`, the editor runs `layoutNodes` from `lib/dagre-layout.ts` on load with `rankdir: 'LR'` so nodes don't stack at (0, 0). The "Auto-arrange" button re-runs the same layout on demand, respecting whatever edges the user has drawn.
+
+`GET /api/plugins/workflows/node-types` is the single source of truth the palette hydrates from — plugin-registered kinds appear in the palette without a core change.
 
 ## Plugin-Assets Install Pipeline (S-B)
 
@@ -176,7 +194,12 @@ Same non-negotiable rules as the rest of the codebase:
 | `plugins/workflows/lib/node-type-registry.ts` | Zod schemas + form metadata for the 5 builtins |
 | `plugins/workflows/lib/load-defaults.ts` | Reads `defaults/workflows/*.yaml` and calls `ctx.registerWorkflow` per file |
 | `plugins/workflows/lib/skill-loader.ts` | Resolves `step.skill` to in-memory body (S-A) |
-| `plugins/workflows/components/workflow-editor.tsx` | Form-driven CRUD UI |
+| `plugins/workflows/lib/edge-rules.ts` | `canConnect()` validator used by canvas `isValidConnection` |
+| `plugins/workflows/lib/dagre-layout.ts` | Pure `layoutNodes()` wrapper — used on load + Auto-arrange |
+| `plugins/workflows/lib/node-renderer-registry.ts` | Client-side registry of per-kind renderers (aggregated from plugins) |
+| `plugins/workflows/components/workflow-canvas-editor.tsx` | Sole editor — drives `/workflows/new` + `/workflows/:id/edit` |
+| `plugins/workflows/components/node-type-palette.tsx` | Draggable palette grouped by builtin vs plugin |
+| `plugins/workflows/components/node-config-drawer.tsx` | Inline per-step form driven by `formFields` + Zod |
 | `plugins/workflows/components/workflow-card.tsx` | Grid card with source badge |
 | `plugins/workflows/components/workflow-detail.tsx` | Canvas + read-only banner |
 | `src/lib/plugin-skill-loader.ts` | Generic auto-register for `defaults/workflow-skills/*.md` (called from plugin-registry) |
@@ -187,11 +210,9 @@ Same non-negotiable rules as the rest of the codebase:
 
 ## Future Work
 
-Tracked as separate GitHub issues (Phase 2 follow-ups):
+Tracked as separate GitHub issues:
 
-- **2A — Plugin-registered node types.** `ctx.registerNodeType({ kind, runtime, renderer, zodSchema, formFields })` with `{pluginId}.{kind}` namespacing.
-- **2B — Visual drag-and-drop editor** on the canvas, replacing the form editor.
 - **2C — Plugin distribution**: `bakin plugin install <name>` from a registry/git, signature verification, automatic `plugin-assets install` after upgrade.
 - **2D — Skill rebase UX**: replace `.userEdited` warn-and-skip with 3-way merge and a UI for resolving conflicts.
 
-See `.claude/specs/workflows-plugin-architecture.md` §11 and `.claude/specs/workflows-plugin-plan.md` §7 for full bodies.
+Phases 2A (plugin-registered node types) and 2B (visual canvas editor) shipped together — see the Node-Type Registry and Canvas Editor sections above and `.claude/specs/workflows-phase-2-plugin-nodes-and-canvas.md` for the original spec.

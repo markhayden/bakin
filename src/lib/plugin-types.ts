@@ -33,4 +33,8 @@ export type {
   SearchTransformOp,
   FilePatternMapper,
   FileBackedContentTypeDefinition,
+  FormField,
+  FormFieldType,
+  EdgeRules,
+  PluginNodeTypeInput,
 } from '@bakin/core/plugin-types'

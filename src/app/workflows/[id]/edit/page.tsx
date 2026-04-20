@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { WorkflowEditor } from '@bakin/workflows/components/workflow-editor'
+import { WorkflowCanvasEditor } from '@bakin/workflows/components/workflow-canvas-editor'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { WorkflowDefinition } from '@bakin/workflows/types'
 
@@ -53,7 +53,7 @@ export default function EditWorkflowRoute({ params }: { params: Promise<{ id: st
   }
 
   return (
-    <WorkflowEditor
+    <WorkflowCanvasEditor
       mode="edit"
       initialId={id}
       initialDefinition={definition}
