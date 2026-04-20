@@ -37,12 +37,20 @@
 
 - [x] Add "Dispatch Failure Handling" sub-bullet under CLAUDE.md "Key Patterns"
 - [x] Checked `.claude/knowledge/repo-architecture.md` — dispatch coverage is table-level only, not deepened
-- [ ] Checkpoint: `pnpm vitest run` still clean
-- [ ] Commit: `docs(dispatch): document retry + cooldown classification`
+- [x] Checkpoint: `pnpm vitest run` still clean (2836 passed)
+- [x] Commit `b8a49c7`: `docs(dispatch): document retry + cooldown classification`
 
-## T4 — Ship (on hold until `/agent-skills:test` coverage audit)
+## T3.5 — test(dispatch): coverage audit additions
 
-- [ ] `/agent-skills:test` — audit coverage
+- [x] AC6: workflow dispatch catch writes FailureRecord shape
+- [x] Edge case: AbortError → transient
+- [x] Edge case: unrecognized error → structural (safe default)
+- [x] Checkpoint: `pnpm vitest run` (2836 passed | 1 skipped)
+- [x] Commit `2744e6c`: `test(dispatch): cover AC6 workflow path + classifier edge cases`
+
+## T4 — Ship (awaiting user go-ahead to push)
+
+- [x] `/agent-skills:test` — audit coverage (all 7 AC mapped, gaps filled)
 - [ ] `git push -u origin issue-115-dispatch-retry`
 - [ ] Open PR against `main`, reference #115, link related #114
 - [ ] Merge when green
