@@ -452,6 +452,8 @@ const workflowsPlugin: BakinPlugin = {
           description: d.definition.description,
           stepCount: countSteps(d.definition.steps),
           definition: d.definition,
+          source: d.source,
+          pluginId: d.pluginId,
         }
       })
       return { templates, subWorkflows }
