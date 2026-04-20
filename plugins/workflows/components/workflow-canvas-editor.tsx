@@ -23,10 +23,12 @@ import {
   BackgroundVariant,
   Controls,
   MiniMap,
+  addEdge,
   applyNodeChanges,
   applyEdgeChanges,
   type Node,
   type Edge,
+  type Connection,
   type NodeChange,
   type EdgeChange,
   type NodeTypes,
@@ -43,6 +45,8 @@ import '@/lib/plugin-manifest'
 import { getAllNodeRenderers } from '../lib/node-renderer-registry'
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
+import { canConnect } from '../lib/edge-rules'
+import { toast } from '@/hooks/use-toast'
 import type {
   WorkflowDefinition,
   WorkflowStep,
@@ -119,6 +123,17 @@ interface EditorState {
   steps: Record<string, WorkflowStep>
   order: string[]
   positions: Record<string, NodePosition>
+  edges: Edge[]
+}
+
+function seedEdges(order: string[]): Edge[] {
+  const edges: Edge[] = []
+  for (let i = 0; i < order.length - 1; i++) {
+    const source = order[i]
+    const target = order[i + 1]
+    edges.push({ id: `${source}-${target}`, source, target })
+  }
+  return edges
 }
 
 function seedState(def: WorkflowDefinition): EditorState {
@@ -133,7 +148,7 @@ function seedState(def: WorkflowDefinition): EditorState {
       positions[step.id] = { x: 0, y: i * Y_SPACING }
     }
   }
-  return { steps, order, positions }
+  return { steps, order, positions, edges: seedEdges(order) }
 }
 
 function deriveNodes(state: EditorState): Node[] {
@@ -148,16 +163,6 @@ function deriveNodes(state: EditorState): Node[] {
       style: { width: NODE_WIDTH },
     }
   })
-}
-
-function deriveEdges(state: EditorState): Edge[] {
-  const edges: Edge[] = []
-  for (let i = 0; i < state.order.length - 1; i++) {
-    const source = state.order[i]
-    const target = state.order[i + 1]
-    edges.push({ id: `${source}-${target}`, source, target })
-  }
-  return edges
 }
 
 export function WorkflowCanvasEditor({
@@ -177,7 +182,7 @@ export function WorkflowCanvasEditor({
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
 
   const nodes = useMemo(() => deriveNodes(state), [state])
-  const edges = useMemo(() => deriveEdges(state), [state])
+  const edges = state.edges
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -195,9 +200,38 @@ export function WorkflowCanvasEditor({
     },
     [],
   )
-  const onEdgesChange = useCallback((_changes: EdgeChange[]) => {
-    // Edges are derived from step order; user-initiated edge changes land in T12.
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    setState((prev) => ({ ...prev, edges: applyEdgeChanges(changes, prev.edges) }))
   }, [])
+
+  const isValidConnection = useCallback(
+    (conn: Connection | Edge) => {
+      const source = (conn as Connection).source
+      const target = (conn as Connection).target
+      if (!source || !target) return false
+      const result = canConnect(source, target, state.edges, (id) => state.steps[id]?.type)
+      return result.ok
+    },
+    [state.edges, state.steps],
+  )
+
+  const onConnect = useCallback(
+    (conn: Connection) => {
+      if (!conn.source || !conn.target) return
+      const result = canConnect(
+        conn.source,
+        conn.target,
+        state.edges,
+        (id) => state.steps[id]?.type,
+      )
+      if (!result.ok) {
+        if (result.reason) toast(result.reason, 'error')
+        return
+      }
+      setState((prev) => ({ ...prev, edges: addEdge(conn, prev.edges) }))
+    },
+    [state.edges, state.steps],
+  )
 
   const onNodeClick = useCallback(
     (_e: React.MouseEvent, node: Node) => setSelectedId(node.id),
@@ -229,6 +263,7 @@ export function WorkflowCanvasEditor({
     setState((prev) => {
       const id = nextStepId(kind, new Set(prev.order))
       return {
+        ...prev,
         steps: { ...prev.steps, [id]: defaultStepBody(id, kind) },
         order: [...prev.order, id],
         positions: { ...prev.positions, [id]: { x: position.x, y: position.y } },
@@ -252,10 +287,16 @@ export function WorkflowCanvasEditor({
         const { [prevId]: _, ...restSteps } = prev.steps
         const { [prevId]: oldPos, ...restPositions } = prev.positions
         const nextOrder = prev.order.map((o) => (o === prevId ? nextId : o))
+        const nextEdges = prev.edges.map((e) => ({
+          ...e,
+          source: e.source === prevId ? nextId : e.source,
+          target: e.target === prevId ? nextId : e.target,
+        }))
         return {
           steps: { ...restSteps, [nextId]: { ...merged, id: nextId } },
           order: nextOrder,
           positions: { ...restPositions, [nextId]: oldPos ?? { x: 0, y: 0 } },
+          edges: nextEdges,
         }
       })
       if (typeof patch.id === 'string' && patch.id !== prevId) {
@@ -355,6 +396,8 @@ export function WorkflowCanvasEditor({
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
+            onConnect={onConnect}
+            isValidConnection={isValidConnection}
             onInit={(rf) => {
               rfInstanceRef.current = rf
             }}
@@ -363,7 +406,7 @@ export function WorkflowCanvasEditor({
             fitViewOptions={{ padding: 0.3 }}
             proOptions={{ hideAttribution: true }}
             nodesDraggable={true}
-            nodesConnectable={false}
+            nodesConnectable={true}
             defaultEdgeOptions={{
               style: { stroke: '#525252', strokeWidth: 2 },
             }}
