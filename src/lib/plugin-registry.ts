@@ -28,6 +28,7 @@ import { createLogger } from '../core/logger'
 import { appendAudit } from '../core/audit'
 import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 import { buildSearchAPI } from '../core/search-registry'
+import { loadPluginSkills } from './plugin-skill-loader'
 
 const log = createLogger('plugin-registry')
 
@@ -290,6 +291,12 @@ class PluginRegistryImpl {
 
       const ctx = this.buildContext(plugin.id, state, storage, events)
       await plugin.activate(ctx)
+      const skillResult = loadPluginSkills(pluginPath, ctx, log)
+      if (skillResult.registered.length > 0) {
+        log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for "${plugin.id}"`, {
+          skills: skillResult.registered,
+        })
+      }
       this.plugins.set(plugin.id, state)
       console.log(`  ✓ Plugin loaded: ${plugin.name} v${plugin.version}`)
     } catch (err) {
@@ -346,6 +353,13 @@ class PluginRegistryImpl {
 
           const ctx = this.buildContext(plugin.id, state, storage, events)
           await plugin.activate(ctx)
+          const userPluginPath = join(userPluginsDir, entry.name)
+          const skillResult = loadPluginSkills(userPluginPath, ctx, log)
+          if (skillResult.registered.length > 0) {
+            log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for user plugin "${plugin.id}"`, {
+              skills: skillResult.registered,
+            })
+          }
           this.plugins.set(plugin.id, state)
           console.log(`  ✓ User plugin loaded: ${plugin.name} v${plugin.version}`)
         } catch (err) {
