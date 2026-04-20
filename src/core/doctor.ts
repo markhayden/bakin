@@ -20,6 +20,7 @@ import { isUsingBakinHome, getContentDir } from './content-dir'
 import * as openclaw from './openclaw-client'
 import * as mcporter from './mcporter'
 import { isOnboarded } from './onboarding/state'
+import { pluginAssetsComponent } from './onboarding/plugin-assets'
 import { getMainAgentId, getMainAgentName } from './main-agent'
 import { getAllExecTools } from '../../scripts/lib/registry'
 import { getHookRegistry } from '../lib/plugin-registry'
@@ -1668,6 +1669,23 @@ function checkTaskPositionIntegrity(autoFix: boolean): DiagnosticResult[] {
   }
 }
 
+/**
+ * Plugin-shipped OpenClaw skills (S-B): surface install state + drift.
+ * Never auto-installs — points the user at `bakin install plugin-assets`.
+ */
+async function checkPluginAssets(): Promise<DiagnosticResult[]> {
+  try {
+    const result = await pluginAssetsComponent.check()
+    if (result.status === 'ok') {
+      return [ok('plugin-assets', result.message)]
+    }
+    const reminder = result.remediation ?? 'Run `bakin install plugin-assets` to apply.'
+    return [warn('plugin-assets', `${result.message} — ${reminder}`)]
+  } catch (err) {
+    return [warn('plugin-assets', `plugin-assets check failed: ${err}`)]
+  }
+}
+
 export async function runDiagnostics(
   contentDir: string,
   projectRoot: string
@@ -1711,12 +1729,13 @@ export async function runDiagnostics(
   results.push(...checkTaskPositionIntegrity(autoFix))
 
   // Async checks (network, not auto-fixable) — run in parallel
-  const [gatewayResults, antflyResults, searchTableResults] = await Promise.all([
+  const [gatewayResults, antflyResults, searchTableResults, pluginAssetsResults] = await Promise.all([
     checkGateway(),
     checkAntfly(),
     checkSearchTables(),
+    checkPluginAssets(),
   ])
-  results.push(...gatewayResults, ...antflyResults, ...searchTableResults)
+  results.push(...gatewayResults, ...antflyResults, ...searchTableResults, ...pluginAssetsResults)
 
   // Summarize
   const errors = results.filter(r => r.status === 'error').length
