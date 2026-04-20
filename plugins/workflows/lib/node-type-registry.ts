@@ -360,6 +360,21 @@ export const workflowInputSchema = z.object({
   default: z.unknown().optional(),
 })
 
+/**
+ * Canvas-editor layout hints. Optional — the workflow engine does not consult
+ * this field at runtime. When present, `positions` maps step id → canvas
+ * coordinates so the editor can restore node placement across saves instead of
+ * auto-laying out from scratch every time.
+ */
+export const nodePositionSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+})
+
+export const workflowLayoutSchema = z.object({
+  positions: z.record(z.string(), nodePositionSchema).optional(),
+})
+
 export const workflowDefinitionSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1),
@@ -367,6 +382,7 @@ export const workflowDefinitionSchema = z.object({
   version: z.number(),
   inputs: z.record(z.string(), workflowInputSchema).optional(),
   steps: z.array(stepSchema).min(1),
+  layout: workflowLayoutSchema.optional(),
 })
 
 export type WorkflowDefinitionParsed = z.infer<typeof workflowDefinitionSchema>
