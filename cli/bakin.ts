@@ -1323,10 +1323,12 @@ Commands:
   check openclaw                   Detect OpenClaw binary + config
   check llm                        Verify at least one LLM provider configured
   check channels                   Verify at least one messaging channel configured
+  check plugin-assets              Detect plugin-shipped OpenClaw skills needing install
   check all                        Run all onboarding checks, report each
   install antfly                   Install AntflyDB via Homebrew
   install models                   Download Termite ML models (BGE, CLIP, mxbai-rerank)
   install mcporter                 Install mcporter + sync per-agent MCP config
+  install plugin-assets            Install plugin-shipped OpenClaw skills into ~/.openclaw/skills/
   onboard                          Run full first-run onboarding (all checks + installs)
     --check                          Check-only mode (no installs, exit 0/1/2)
     --yes                            Auto-approve all prompts (for CI/scripts)
@@ -1417,11 +1419,12 @@ async function cmdOnboardingSettingsInit(): Promise<void> {
   if (result.status === 'failed') process.exit(1)
 }
 
-async function cmdOnboardingCheckSingle(target: 'openclaw' | 'llm' | 'channels'): Promise<void> {
+async function cmdOnboardingCheckSingle(target: 'openclaw' | 'llm' | 'channels' | 'plugin-assets'): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
     openclaw: async () => (await import('../src/core/onboarding/openclaw')).openclawComponent,
     llm: async () => (await import('../src/core/onboarding/credentials')).llmComponent,
     channels: async () => (await import('../src/core/onboarding/credentials')).channelsComponent,
+    'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
   }
   const component = await componentMap[target]()
   const result = await component.check()
@@ -1448,6 +1451,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     antfly: async () => (await import('../src/core/onboarding/antfly')).antflyComponent,
     models: async () => (await import('../src/core/onboarding/models')).modelsComponent,
     mcporter: async () => (await import('../src/core/onboarding/mcporter')).mcporterComponent,
+    'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
   }
   const component = await componentMap[target]()
   const isTTY = Boolean(process.stdout.isTTY)
@@ -1695,23 +1699,23 @@ async function main(): Promise<void> {
         break
 
       case 'check':
-        if (sub === 'openclaw' || sub === 'llm' || sub === 'channels') {
+        if (sub === 'openclaw' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets') {
           await cmdOnboardingCheckSingle(sub)
         } else if (sub === 'all') {
           await cmdOnboardingCheckAll()
         } else {
           console.error(`Unknown check target: ${sub}`)
-          console.error('Available: bakin check openclaw | llm | channels | all')
+          console.error('Available: bakin check openclaw | llm | channels | plugin-assets | all')
           process.exit(1)
         }
         break
 
       case 'install':
-        if (sub === 'antfly' || sub === 'models' || sub === 'mcporter') {
+        if (sub === 'antfly' || sub === 'models' || sub === 'mcporter' || sub === 'plugin-assets') {
           await cmdOnboardingInstallSingle(sub, args)
         } else {
           console.error(`Unknown install target: ${sub}`)
-          console.error('Available: bakin install antfly | models | mcporter')
+          console.error('Available: bakin install antfly | models | mcporter | plugin-assets')
           process.exit(1)
         }
         break
