@@ -4,10 +4,9 @@
  * Inline node config drawer.
  *
  * Opens when a node is clicked on the canvas editor. Renders a form
- * generated from the selected node type's `formFields` metadata — the
- * same shape the old WorkflowEditor consumed in its subforms. Validates
- * the merged step payload against the node type's Zod schema before
- * Apply, so the drawer and the loader cannot drift.
+ * generated from the selected node type's `formFields` metadata and
+ * validates the merged step payload against the node type's Zod schema
+ * before Apply, so the drawer and the loader cannot drift.
  */
 
 import { useMemo, useState, useEffect } from 'react'
