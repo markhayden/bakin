@@ -4,11 +4,13 @@
  * parallel steps, human gates, and output validation.
  */
 import { existsSync, readdirSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
 import { userInfo } from 'os'
 import { z } from 'zod'
 import type { ApprovalActor, BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { listDefinitions, loadDefinition } from './lib/parser'
+import { loadDefaultWorkflows } from './lib/load-defaults'
 import {
   createInstance,
   loadInstance,
@@ -295,6 +297,18 @@ const workflowsPlugin: BakinPlugin = {
       } catch (err) {
         log.warn('Failed to index workflow definition', { name, error: err instanceof Error ? err.message : String(err) })
       }
+    }
+
+    // ─── Plugin-shipped workflow defaults ─────────────────────────────
+    // Load every YAML in defaults/workflows/ and register through
+    // ctx.registerWorkflow so disk-resident user copies still win.
+    const moduleDir = dirname(fileURLToPath(import.meta.url))
+    const defaultsDir = join(moduleDir, 'defaults', 'workflows')
+    const defaultsLoaded = loadDefaultWorkflows(ctx, defaultsDir, log)
+    if (defaultsLoaded.registered.length > 0) {
+      log.info(`Registered ${defaultsLoaded.registered.length} plugin-shipped workflow(s)`, {
+        ids: defaultsLoaded.registered,
+      })
     }
 
     // Wire up event bus for notifications
