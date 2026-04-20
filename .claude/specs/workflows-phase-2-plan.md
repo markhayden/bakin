@@ -1,12 +1,12 @@
 # PLAN — Workflows Phase 2A + 2B
 
-**Status:** Draft awaiting approval
+**Status:** Shipped — [PR #117](https://github.com/madeinwyo/bakin/pull/117) (2026-04-20)
 **Source spec:** `.claude/specs/workflows-phase-2-plugin-nodes-and-canvas.md`
 **Branch:** `issue-107-108-workflows-phase-2`
 **Issues:** [#107](https://github.com/madeinwyo/bakin/issues/107), [#108](https://github.com/madeinwyo/bakin/issues/108)
 **Owner:** roscoe@madeinwyo.com
 **Date:** 2026-04-20
-**Next step:** `/agent-skills:build` task-by-task → `/agent-skills:test`
+**Next step:** Merge PR #117; close #107 and #108.
 
 ---
 
