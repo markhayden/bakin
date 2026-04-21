@@ -37,9 +37,9 @@ import { useAgent, useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
 import {
   useNotificationChannels,
-  getChannelInitials,
   getChannelLabel,
 } from '@bakin/workflows/hooks/use-notification-channels'
+import { ChannelIcon } from '@bakin/workflows/hooks/channel-icon'
 
 interface Props {
   item: CalendarItem | null
@@ -310,13 +310,14 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
                       )
                       setDirty(true)
                     }}
-                    className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                    className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border transition-colors cursor-pointer ${
                       active
                         ? 'bg-accent text-accent-foreground border-accent'
                         : 'bg-transparent text-muted-foreground border-border hover:border-foreground/30'
                     }`}
                   >
-                    {getChannelInitials(c.id, availableChannels)} {c.label}
+                    <ChannelIcon channelId={c.id} className="size-3.5" />
+                    {c.label}
                   </button>
                 )
               })}
@@ -534,9 +535,8 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
             </div>
             <div className="flex items-center gap-2 text-sm font-medium">
               {(item.channels || (item.channel ? [item.channel] : [])).map(ch => (
-                <Badge key={ch} variant="outline" className="text-[10px]">
-                  {getChannelInitials(ch, availableChannels)}
-                  {' '}
+                <Badge key={ch} variant="outline" className="text-[10px] inline-flex items-center gap-1">
+                  <ChannelIcon channelId={ch} className="size-3" />
                   {getChannelLabel(ch, availableChannels)}
                 </Badge>
               ))}
