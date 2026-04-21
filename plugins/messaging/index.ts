@@ -11,7 +11,8 @@ import {
   deleteItem,
   getItem,
 } from './lib/storage'
-import type { CalendarItem, ContentStatus, ProposalStatus } from './types'
+import type { CalendarItem, ContentStatus, ProposalStatus, MessagingSettings } from './types'
+import { DEFAULT_CONTENT_TYPES } from './types'
 import {
   createSession,
   loadSession,
@@ -55,6 +56,28 @@ function json(data: unknown, status = 200): Response {
 
 async function readBody<T>(req: Request): Promise<T> {
   return req.json() as Promise<T>
+}
+
+interface AgentMetaLike { id: string; name?: string }
+
+/**
+ * Resolve the prompt-builder options for a given agent by pulling the
+ * display name from the team plugin (via HookRegistry) and the current
+ * content-type taxonomy from this plugin's settings. Both degrade to
+ * safe defaults when the hook throws, the team plugin isn't active, or
+ * settings return nothing — callers can always build a prompt.
+ */
+async function resolvePromptOptions(ctx: PluginContext, agentId: string) {
+  let agentName: string | undefined
+  try {
+    const agent = await ctx.hooks.invoke<AgentMetaLike | null>('team.getAgent', { id: agentId })
+    agentName = agent?.name
+  } catch (err) {
+    log.warn('team.getAgent hook failed; falling back to raw agentId', { agentId, err: err instanceof Error ? err.message : String(err) })
+  }
+  const settings = ctx.getSettings<MessagingSettings>()
+  const contentTypes = settings.contentTypes ?? DEFAULT_CONTENT_TYPES
+  return { agentName, contentTypes }
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +145,19 @@ const messagingPlugin: BakinPlugin = {
       { key: 'defaultView', type: 'select', label: 'Default view', description: 'Default messaging view on page load', options: [{ value: 'month', label: 'Month' }, { value: 'week', label: 'Week' }, { value: 'list', label: 'List' }], default: 'month' },
       { key: 'showScheduleJobs', type: 'boolean', label: 'Show schedule jobs', description: 'Display recurring schedule jobs on the content calendar', default: false },
       { key: 'channels', type: 'string', label: 'Channels', description: 'Comma-separated list of available distribution channels (e.g., discord,instagram,email)', default: 'discord' },
+      {
+        key: 'contentTypes',
+        type: 'list',
+        label: 'Content types',
+        description: 'Categories used across the content calendar and brainstorm proposals.',
+        addLabel: 'Add content type',
+        minItems: 1,
+        uniqueField: 'id',
+        itemShape: {
+          id:    { key: 'id',    type: 'string', label: 'ID',    description: 'Machine id — lowercase, no spaces (e.g. "blog-post").', required: true },
+          label: { key: 'label', type: 'string', label: 'Label', description: 'Display name shown in menus.',                           required: true },
+        },
+      },
     ],
   },
 
@@ -154,6 +190,13 @@ const messagingPlugin: BakinPlugin = {
       }
     } catch (err) {
       log.warn('Data migration failed (non-fatal)', err)
+    }
+
+    // ── Seed default content types on first activate ──────────────────
+    const currentSettings = ctx.getSettings<MessagingSettings>()
+    if (!currentSettings.contentTypes || currentSettings.contentTypes.length === 0) {
+      ctx.updateSettings({ contentTypes: DEFAULT_CONTENT_TYPES })
+      log.info(`Seeded ${DEFAULT_CONTENT_TYPES.length} default content types`)
     }
 
     // ── Search Content Type Registration ─────────────────────────────
@@ -256,7 +299,7 @@ const messagingPlugin: BakinPlugin = {
         agent: (agent as string) as CalendarItem['agent'],
         channel: ((channel as string) || resolvedChannels[0] || 'discord') as CalendarItem['channel'],
         channelTarget: (channelTarget as string) || '1483917792745885768',
-        contentType: ((contentType as string) || 'tip') as CalendarItem['contentType'],
+        contentType: ((contentType as string) || 'post') as CalendarItem['contentType'],
         tone: ((tone as string) || 'conversational') as CalendarItem['tone'],
         scheduledAt: scheduledAt as string,
         brief: (brief as string) || '',
@@ -321,6 +364,28 @@ const messagingPlugin: BakinPlugin = {
     }
     ctx.registerRoute({ path: '/:itemId/approve', method: 'POST', description: 'Approve messaging item', handler: approveHandler })
 
+    // POST /:itemId/unapprove — revert scheduled item back to draft
+    const unapproveHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const body = await readBody<{ id?: string }>(req).catch(() => ({} as { id?: string }))
+      const id = url.searchParams.get('itemId') || body.id
+
+      if (!id) return json({ error: 'id required' }, 400)
+
+      const item = getItem(id)
+      if (!item) return json({ error: 'Item not found' }, 404)
+
+      if (item.status !== 'scheduled') {
+        return json({ error: `Can only unapprove items in scheduled status (got: ${item.status})` }, 400)
+      }
+
+      const updated = updateItem(id, { status: 'draft' })
+      ctx.activity.audit('item.unapproved', 'system', { itemId: id, from: 'scheduled', to: 'draft' })
+      ctx.activity.log('system', `Messaging item "${item.title}" unapproved → draft`)
+      return json({ ok: true, item: updated })
+    }
+    ctx.registerRoute({ path: '/:itemId/unapprove', method: 'POST', description: 'Unapprove messaging item', handler: unapproveHandler })
+
     // POST /:itemId/reject — reject item back to draft
     const rejectHandler = async (req: Request) => {
       const url = new URL(req.url)
@@ -373,19 +438,15 @@ const messagingPlugin: BakinPlugin = {
             persona = readFileSync(personaPath, 'utf-8')
           }
 
-          const agentNames: Record<string, string> = {
-            chef: 'Chef',
-            explorer: 'Explorer (Connor)',
-            trainer: 'Trainer (Yuki)',
-            coach: 'Coach (Marcus)',
-          }
-          const agentName = agentNames[body.agentId] || body.agentId
+          const { agentName: resolvedName, contentTypes: brainstormTypes } = await resolvePromptOptions(ctx, body.agentId)
+          const agentName = resolvedName || body.agentId
+          const typeList = brainstormTypes.map(t => t.id).join(', ')
 
           const historyContext = (body.history || []).map(h =>
             `${h.role === 'user' ? 'Mark' : agentName}: ${h.content}`
           ).join('\n\n')
 
-          const fullPrompt = `You are ${agentName}, a SampleBrand content creator. Here is your persona:
+          const fullPrompt = `You are ${agentName}. Here is your persona:
 
 ${persona}
 
@@ -396,7 +457,7 @@ You are brainstorming content messaging ideas with Mark. When he describes what 
 For each suggestion provide:
 - title: catchy post title in your voice
 - scheduledAt: suggested date+time ISO string (timezone: America/Denver, MDT = UTC-6)
-- contentType: one of recipe, tip, motivation, workout, outdoor, video, image-post
+- contentType: one of ${typeList}
 - tone: one of energetic, calm, educational, humorous, inspiring, conversational
 - brief: 2-3 sentence description of what to create when this executes
 
@@ -568,7 +629,8 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         const userMsg = appendMessage(id, { role: 'user', content: body.message })
 
         // Build messages array with full session history
-        const messages = buildMessages(session, body.message)
+        const promptOptions = await resolvePromptOptions(ctx, session.agentId)
+        const messages = buildMessages(session, body.message, promptOptions)
         const sessionKey = `session-${id}-${Date.now()}`
 
         // Create a ReadableStream that pipes gateway SSE to the client
@@ -817,13 +879,13 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
       description: 'Confirm plan and create messaging items',
       handler: async (req: Request) => {
         const url = new URL(req.url)
-        const body = await readBody<{ id?: string }>(req).catch(() => ({} as { id?: string }))
+        const body = await readBody<{ id?: string; autoApprove?: boolean }>(req).catch(() => ({} as { id?: string; autoApprove?: boolean }))
         const id = url.searchParams.get('id') || body.id
         if (!id) return json({ error: 'id required' }, 400)
         try {
-          const result = confirmSession(id)
-          ctx.activity.audit('session.confirmed', 'system', { sessionId: id, itemsCreated: result.itemsCreated })
-          ctx.activity.log('system', `Confirmed planning session — ${result.itemsCreated} items created`)
+          const result = confirmSession(id, { autoApprove: !!body.autoApprove })
+          ctx.activity.audit('session.confirmed', 'system', { sessionId: id, itemsCreated: result.itemsCreated, autoApprove: !!body.autoApprove })
+          ctx.activity.log('system', `Confirmed planning session — ${result.itemsCreated} items created (${body.autoApprove ? 'scheduled' : 'draft'})`)
           return json({ ok: true, ...result })
         } catch (e: unknown) {
           return json({ error: (e as Error).message }, 400)
@@ -899,7 +961,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         channel: z.string().optional().describe('Channel (default: discord)'),
         channels: z.array(z.string()).optional().describe('Distribution channels (e.g. ["discord", "instagram"])'),
         channelTarget: z.string().optional().describe('Channel target ID'),
-        contentType: z.string().optional().describe('Content type (recipe, tip, motivation, etc.)'),
+        contentType: z.string().optional().describe('Content type id from the messaging contentTypes setting (e.g. post, article, video)'),
         tone: z.string().optional().describe('Content tone (energetic, calm, educational, etc.)'),
         brief: z.string().optional().describe('Content brief'),
         status: z.string().optional().describe('Initial status (default: draft)'),
@@ -916,7 +978,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
           channel: ((params.channel as string) || channels[0] || 'discord') as CalendarItem['channel'],
           channels,
           channelTarget: (params.channelTarget as string) || '1483917792745885768',
-          contentType: ((params.contentType as string) || 'tip') as CalendarItem['contentType'],
+          contentType: ((params.contentType as string) || 'post') as CalendarItem['contentType'],
           tone: ((params.tone as string) || 'conversational') as CalendarItem['tone'],
           brief: (params.brief as string) || '',
           status: (params.status as ContentStatus) || 'draft',
@@ -1128,7 +1190,8 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         })
 
         // Non-streaming: call gateway synchronously and collect full response
-        const messages = buildMessages(session, params.message as string)
+        const promptOptions = await resolvePromptOptions(ctx, session.agentId)
+        const messages = buildMessages(session, params.message as string, promptOptions)
         const sessionKey = `session-${params.sessionId}-${Date.now()}`
 
         let fullContent: string
@@ -1214,14 +1277,16 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
       description: 'Confirm a planning session — creates messaging items from approved proposals',
       parameters: {
         sessionId: z.string().describe('Session ID (required)'),
+        autoApprove: z.boolean().optional().describe('Auto-approve: create items in scheduled status instead of draft'),
       },
       handler: async (params: Record<string, unknown>) => {
         if (!params.sessionId) return { ok: false, error: 'sessionId required' }
         try {
-          const result = confirmSession(params.sessionId as string)
+          const result = confirmSession(params.sessionId as string, { autoApprove: !!params.autoApprove })
           ctx.activity.audit('session.confirmed', 'system', {
             sessionId: params.sessionId,
             itemsCreated: result.itemsCreated,
+            autoApprove: !!params.autoApprove,
           })
           return { ok: true, ...result }
         } catch (e: unknown) {

@@ -6,8 +6,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { Send, Loader2 } from 'lucide-react'
-import type { ContentAgent, PlanningSession, ProposedItem, SessionMessage } from '../types'
-import { AGENT_INFO } from '../types'
+import type { PlanningSession, ProposedItem, SessionMessage } from '../types'
+import { useAgent, useAgentColor } from '@bakin/team/hooks/use-agent-store'
 
 /**
  * Strip ```json proposal blocks from text so users don't see raw JSON.
@@ -55,7 +55,7 @@ function stripAndSplit(text: string): { segments: string[]; proposalCount: numbe
 
 interface Props {
   sessionId: string
-  agentId: ContentAgent
+  agentId: string
   initialMessages?: SessionMessage[]
   initialProposals?: ProposedItem[]
   isCompleted?: boolean
@@ -82,17 +82,10 @@ export function SessionChat({
     streamedText: '',
   })
   const scrollRef = useRef<HTMLDivElement>(null)
-  const agentInfo = AGENT_INFO[agentId]
-
-  const agentBorderColor = useMemo(() => {
-    const colors: Record<string, string> = {
-      green: 'border-l-emerald-500/50',
-      orange: 'border-l-orange-500/50',
-      blue: 'border-l-blue-500/50',
-      purple: 'border-l-purple-500/50',
-    }
-    return colors[agentInfo.color] || 'border-l-muted-foreground'
-  }, [agentInfo.color])
+  const agent = useAgent(agentId)
+  const agentColor = useAgentColor(agentId)
+  const agentName = agent?.name ?? agentId
+  const agentBorderStyle = useMemo(() => ({ borderLeftColor: `${agentColor}80` }), [agentColor])
 
   useEffect(() => {
     if (scrollRef.current && typeof scrollRef.current.scrollIntoView === 'function') {
@@ -264,11 +257,11 @@ export function SessionChat({
             <AgentAvatar agentId={agentId} size="xl" />
             <div className="space-y-2 max-w-md">
               <p className="text-base font-medium text-foreground">
-                Plan with {agentInfo.name}
+                Plan with {agentName}
               </p>
               <p className="text-sm">
                 Describe the content you want to plan — topics, themes, dates, or audience.
-                {' '}{agentInfo.name} will suggest calendar items you can review and approve.
+                {' '}{agentName} will suggest calendar items you can review and approve.
               </p>
             </div>
           </div>
@@ -308,7 +301,7 @@ export function SessionChat({
                     ) : (
                       <div className="w-6 shrink-0" />
                     )}
-                    <div className={`rounded-lg p-2.5 max-w-[85%] border-l-2 ${agentBorderColor} bg-[rgba(255,255,255,0.03)]`}>
+                    <div className="rounded-lg p-2.5 max-w-[85%] border-l-2 bg-[rgba(255,255,255,0.03)]" style={agentBorderStyle}>
                       <p className="text-xs whitespace-pre-wrap">{segment}</p>
                     </div>
                   </div>
@@ -348,7 +341,7 @@ export function SessionChat({
                     ) : (
                       <div className="w-6 shrink-0" />
                     )}
-                    <div className={`rounded-lg p-2.5 max-w-[85%] border-l-2 ${agentBorderColor} bg-[rgba(255,255,255,0.03)]`}>
+                    <div className="rounded-lg p-2.5 max-w-[85%] border-l-2 bg-[rgba(255,255,255,0.03)]" style={agentBorderStyle}>
                       <p className="text-xs whitespace-pre-wrap">{segment}</p>
                     </div>
                   </div>
@@ -376,7 +369,7 @@ export function SessionChat({
           <div className="flex items-center gap-2.5 text-muted-foreground">
             <AgentAvatar agentId={agentId} size="sm" className="shrink-0" />
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            <span className="text-xs">{agentInfo.name} is thinking...</span>
+            <span className="text-xs">{agentName} is thinking...</span>
           </div>
         )}
 
@@ -402,11 +395,11 @@ export function SessionChat({
                   handleSend()
                 }
               }}
-              placeholder={`Ask ${agentInfo.name} for content ideas...`}
+              placeholder={`Ask ${agentName} for content ideas...`}
               className="bg-surface min-h-[80px] resize-none"
               disabled={streaming.isStreaming}
             />
-            <Button type="submit" disabled={streaming.isStreaming || !input.trim()} className="shrink-0">
+            <Button type="submit" disabled={streaming.isStreaming || !input.trim()} className="shrink-0 cursor-pointer disabled:cursor-not-allowed">
               <Send className="w-4 h-4" />
             </Button>
           </form>

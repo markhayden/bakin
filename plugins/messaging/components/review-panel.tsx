@@ -6,11 +6,26 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { BakinDrawer } from '@/components/bakin-drawer'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Check, CheckCircle, Loader2, X } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { ProposalCard } from './proposal-card'
-import type { ProposedItem } from '../types'
+import type { ContentTone, ProposedItem } from '../types'
+import { TONE_LABELS } from '../constants'
+import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
 
 interface Props {
   sessionId: string
@@ -33,6 +48,7 @@ export function ReviewPanel({
 }: Props) {
   const [confirming, setConfirming] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [editingProposal, setEditingProposal] = useState<ProposedItem | null>(null)
   const [editForm, setEditForm] = useState({
     title: '',
@@ -43,6 +59,7 @@ export function ReviewPanel({
   })
   const [drawerRejectNote, setDrawerRejectNote] = useState('')
   const [showDrawerReject, setShowDrawerReject] = useState(false)
+  const contentTypes = useContentTypes()
 
   const approvedCount = useMemo(
     () => proposals.filter((p) => p.status === 'approved').length,
@@ -105,18 +122,43 @@ export function ReviewPanel({
     }
   }
 
-  const handleConfirm = async () => {
+  const handleUndoDecision = async (proposalId: string) => {
+    try {
+      const res = await fetch(
+        `/api/plugins/messaging/sessions/${sessionId}/proposals/${proposalId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'proposed', rejectionNote: '' }),
+        }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        onProposalUpdate?.(data.proposal)
+        setEditingProposal((prev) =>
+          prev && prev.id === data.proposal.id ? data.proposal : prev
+        )
+      }
+    } catch {
+      // Silently fail
+    }
+  }
+
+  const handleConfirm = async (autoApprove: boolean) => {
+    setShowConfirmDialog(false)
     setConfirming(true)
     try {
       const res = await fetch(`/api/plugins/messaging/sessions/${sessionId}/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoApprove }),
       })
       if (res.ok) {
         const data = await res.json()
         setConfirmed(true)
         const count = data.itemsCreated ?? approvedCount
-        toast(`${count} ${count === 1 ? 'item' : 'items'} added to calendar`, 'success')
+        const destination = autoApprove ? 'scheduled on calendar' : 'added as drafts'
+        toast(`${count} ${count === 1 ? 'item' : 'items'} ${destination}`, 'success')
         onConfirm?.(data)
       }
     } catch {
@@ -238,9 +280,9 @@ export function ReviewPanel({
       {!isCompleted && !confirmed && (
         <div className="p-3 border-t border-border">
           <Button
-            onClick={handleConfirm}
+            onClick={() => setShowConfirmDialog(true)}
             disabled={approvedCount === 0 || confirming}
-            className="w-full"
+            className="w-full cursor-pointer"
           >
             {confirming ? (
               <>
@@ -265,6 +307,33 @@ export function ReviewPanel({
         </div>
       )}
 
+      {/* Confirm dialog — auto-approve choice */}
+      <Dialog
+        open={showConfirmDialog}
+        onOpenChange={(v) => { if (!v) setShowConfirmDialog(false) }}
+      >
+        <DialogContent className="bg-card border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm {approvedCount} {approvedCount === 1 ? 'item' : 'items'}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Auto-approve and schedule these on your calendar, or add them as drafts
+            so you can review each one individually before they go live?
+          </p>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setShowConfirmDialog(false)} className="cursor-pointer">
+              Cancel
+            </Button>
+            <Button variant="outline" onClick={() => handleConfirm(false)} className="cursor-pointer">
+              Add as drafts
+            </Button>
+            <Button onClick={() => handleConfirm(true)} className="cursor-pointer">
+              Auto-approve &amp; schedule
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit drawer */}
       <BakinDrawer
         open={!!editingProposal}
@@ -274,121 +343,175 @@ export function ReviewPanel({
         storageKey="proposal-edit"
       >
         {editingProposal && (
-          <div className="space-y-4 p-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-title">Title</Label>
-              <Input
-                id="edit-title"
-                value={editForm.title}
-                onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-brief">Brief</Label>
-              <Textarea
-                id="edit-brief"
-                value={editForm.brief}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  setEditForm((f) => ({ ...f, brief: e.target.value }))
-                }
-                className="min-h-[100px]"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-scheduledAt">Scheduled At</Label>
-              <Input
-                id="edit-scheduledAt"
-                type="datetime-local"
-                value={editForm.scheduledAt}
-                onChange={(e) => setEditForm((f) => ({ ...f, scheduledAt: e.target.value }))}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col h-full -mx-7 -mb-6">
+            <div className="flex-1 overflow-y-auto px-7 pt-1 pb-6 space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-contentType">Content Type</Label>
+                <Label htmlFor="edit-title">Title</Label>
                 <Input
-                  id="edit-contentType"
-                  value={editForm.contentType}
-                  onChange={(e) => setEditForm((f) => ({ ...f, contentType: e.target.value }))}
+                  id="edit-title"
+                  value={editForm.title}
+                  onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-tone">Tone</Label>
-                <Input
-                  id="edit-tone"
-                  value={editForm.tone}
-                  onChange={(e) => setEditForm((f) => ({ ...f, tone: e.target.value }))}
+                <Label htmlFor="edit-brief">Brief</Label>
+                <Textarea
+                  id="edit-brief"
+                  value={editForm.brief}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    setEditForm((f) => ({ ...f, brief: e.target.value }))
+                  }
+                  className="min-h-[300px]"
                 />
               </div>
-            </div>
 
-            {/* Reject input */}
-            {showDrawerReject && (
-              <div className="space-y-2 pt-2 border-t border-border">
-                <Label htmlFor="drawer-reject-note">Rejection Note (optional)</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="drawer-reject-note"
-                    value={drawerRejectNote}
-                    onChange={(e) => setDrawerRejectNote(e.target.value)}
-                    placeholder="What should change?"
-                    className="text-sm"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleReject(editingProposal.id, drawerRejectNote)
-                        setEditingProposal(null)
-                      }
-                      if (e.key === 'Escape') setShowDrawerReject(false)
-                    }}
-                    autoFocus
-                  />
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      handleReject(editingProposal.id, drawerRejectNote)
-                      setEditingProposal(null)
-                    }}
+              <div className="space-y-2">
+                <Label htmlFor="edit-scheduledAt">Scheduled At</Label>
+                <Input
+                  id="edit-scheduledAt"
+                  type="datetime-local"
+                  value={editForm.scheduledAt}
+                  onChange={(e) => setEditForm((f) => ({ ...f, scheduledAt: e.target.value }))}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-contentType">Content Type</Label>
+                  <Select
+                    value={editForm.contentType}
+                    onValueChange={(v) =>
+                      setEditForm((f) => ({ ...f, contentType: v ?? f.contentType }))
+                    }
                   >
-                    Reject
-                  </Button>
+                    <SelectTrigger id="edit-contentType" className="w-full">
+                      <SelectValue>
+                        {getContentTypeLabel(editForm.contentType, contentTypes)}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contentTypes.map(({ id, label }) => (
+                        <SelectItem key={id} value={id}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-tone">Tone</Label>
+                  <Select
+                    value={editForm.tone}
+                    onValueChange={(v) =>
+                      setEditForm((f) => ({ ...f, tone: (v as ContentTone) ?? f.tone }))
+                    }
+                  >
+                    <SelectTrigger id="edit-tone" className="w-full">
+                      <SelectValue>
+                        {TONE_LABELS[editForm.tone as ContentTone] ?? editForm.tone}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.entries(TONE_LABELS) as [ContentTone, string][]).map(([val, label]) => (
+                        <SelectItem key={val} value={val}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-            )}
 
-            {/* Actions */}
-            <div className="flex gap-2 pt-2">
-              <Button onClick={handleEditSave} className="flex-1">
+              {/* Approve / Reject — proposal status actions */}
+              {(editingProposal.status === 'proposed' || editingProposal.status === 'revised') && (
+                <div className="mt-6 pt-6 border-t border-border space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Once you&apos;re happy with the details, approve this proposal to add it to your calendar.
+                    Reject it to send feedback back to the agent for revision.
+                  </p>
+                  <div className="flex justify-center gap-2">
+                    <Button
+                      variant="outline"
+                      className="px-8 text-red-400 border-red-500/30 hover:bg-red-500/10 cursor-pointer"
+                      onClick={() => setShowDrawerReject(true)}
+                      title="Reject"
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Reject
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="px-8 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                      onClick={() => {
+                        handleApprove(editingProposal.id)
+                        setEditingProposal(null)
+                      }}
+                      title="Approve"
+                    >
+                      <Check className="w-4 h-4 mr-1" />
+                      Approve
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Undo — when proposal is already approved or rejected */}
+              {(editingProposal.status === 'approved' || editingProposal.status === 'rejected') && (
+                <div className="mt-6 pt-6 border-t border-border space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    This proposal is {editingProposal.status}. Changed your mind? Undo to return it to
+                    the review queue so you can approve or reject again.
+                  </p>
+                  <div className="flex justify-center">
+                    <Button
+                      variant="outline"
+                      className="px-8 cursor-pointer"
+                      onClick={() => handleUndoDecision(editingProposal.id)}
+                      title="Undo decision"
+                    >
+                      Undo {editingProposal.status === 'approved' ? 'approval' : 'rejection'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Reject input */}
+              {showDrawerReject && (
+                <div className="space-y-2 pt-2 border-t border-border">
+                  <Label htmlFor="drawer-reject-note">Rejection Note (optional)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="drawer-reject-note"
+                      value={drawerRejectNote}
+                      onChange={(e) => setDrawerRejectNote(e.target.value)}
+                      placeholder="What should change?"
+                      className="text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleReject(editingProposal.id, drawerRejectNote)
+                          setEditingProposal(null)
+                        }
+                        if (e.key === 'Escape') setShowDrawerReject(false)
+                      }}
+                      autoFocus
+                    />
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        handleReject(editingProposal.id, drawerRejectNote)
+                        setEditingProposal(null)
+                      }}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Sticky footer — Save Changes only */}
+            <div className="shrink-0 border-t border-border bg-background px-7 py-4">
+              <Button onClick={handleEditSave} className="w-full cursor-pointer">
                 Save Changes
               </Button>
-              {(editingProposal.status === 'proposed' || editingProposal.status === 'revised') && (
-                <>
-                  <Button
-                    variant="outline"
-                    className="text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
-                    onClick={() => {
-                      handleApprove(editingProposal.id)
-                      setEditingProposal(null)
-                    }}
-                    title="Approve"
-                  >
-                    <Check className="w-4 h-4 mr-1" />
-                    Approve
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="text-red-400 border-red-500/30 hover:bg-red-500/10"
-                    onClick={() => setShowDrawerReject(true)}
-                    title="Reject"
-                  >
-                    <X className="w-4 h-4 mr-1" />
-                    Reject
-                  </Button>
-                </>
-              )}
             </div>
           </div>
         )}

@@ -1,7 +1,4 @@
-import type { ContentAgent, ContentChannel, ContentStatus, ContentType, ContentTone } from './types'
-import { AGENT_INFO } from './types'
-
-export const CONTENT_AGENTS = Object.keys(AGENT_INFO) as ContentAgent[]
+import type { ContentChannel, ContentStatus, ContentTone } from './types'
 
 export const STATUS_BADGE: Record<ContentStatus, string> = {
   draft: 'bg-zinc-500/20 text-zinc-400',
@@ -13,16 +10,6 @@ export const STATUS_BADGE: Record<ContentStatus, string> = {
   failed: 'bg-red-500/20 text-red-400',
 }
 
-export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
-  recipe: 'Recipe',
-  tip: 'Tip',
-  motivation: 'Motivation',
-  workout: 'Workout',
-  outdoor: 'Outdoor',
-  video: 'Video',
-  'image-post': 'Image Post',
-}
-
 export const TONE_LABELS: Record<ContentTone, string> = {
   energetic: 'Energetic',
   calm: 'Calm',
@@ -32,6 +19,10 @@ export const TONE_LABELS: Record<ContentTone, string> = {
   conversational: 'Conversational',
 }
 
+// Channel label/initials remain as literal maps until the future
+// workflows.notificationChannels registry lands (plugin-system spec). The
+// type is already widened to string, so looking up an unknown channel
+// returns undefined and callers fall back to the raw id.
 export const CHANNEL_LABELS: Record<ContentChannel, string> = {
   discord: 'Discord',
   instagram: 'Instagram',

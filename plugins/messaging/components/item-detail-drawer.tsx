@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Pencil, Trash2, MoreHorizontal, Check, X, Calendar, Clock, Hash, MessageSquare } from 'lucide-react'
+import { Pencil, Trash2, MoreHorizontal, Check, X, Calendar, Clock, Hash, MessageSquare, Undo2 } from 'lucide-react'
 import { BakinDrawer } from '@/components/bakin-drawer'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { AgentSelect } from '@/components/agent-select'
@@ -24,9 +24,17 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import type { CalendarItem, ContentAgent, ContentChannel, ContentType, ContentTone } from '../types'
-import { AGENT_INFO, DISCORD_GENERAL } from '../types'
-import { CONTENT_AGENTS, CONTENT_TYPE_LABELS, TONE_LABELS, STATUS_BADGE, CHANNEL_LABELS, CHANNEL_INITIALS } from '../constants'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import type { CalendarItem, ContentChannel, ContentTone } from '../types'
+import { DISCORD_GENERAL } from '../types'
+import { TONE_LABELS, STATUS_BADGE, CHANNEL_LABELS, CHANNEL_INITIALS } from '../constants'
+import { useAgent, useAgentIds } from '@bakin/team/hooks/use-agent-store'
+import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
 
 interface Props {
   item: CalendarItem | null
@@ -43,8 +51,11 @@ interface Props {
 export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, onEdit, onUpdated, onDelete, defaultDate }: Props) {
   // Form state for create/edit
   const [title, setTitle] = useState('')
-  const [agent, setAgent] = useState<ContentAgent>('chef')
-  const [contentType, setContentType] = useState<ContentType>('tip')
+  const [agent, setAgent] = useState<string>('')
+  const [contentType, setContentType] = useState<string>('post')
+  const contentTypes = useContentTypes()
+  const agentIds = useAgentIds()
+  const itemAgent = useAgent(item?.agent ?? '')
   const [tone, setTone] = useState<ContentTone>('conversational')
   const [scheduledAt, setScheduledAt] = useState('')
   const [brief, setBrief] = useState('')
@@ -81,8 +92,8 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
     } else if (isCreate) {
       // New item
       setTitle('')
-      setAgent('chef')
-      setContentType('tip')
+      setAgent(agentIds[0] ?? '')
+      setContentType(contentTypes[0]?.id ?? 'post')
       setTone('conversational')
       setScheduledAt(defaultDate || new Date().toISOString().slice(0, 16))
       setBrief('')
@@ -162,6 +173,21 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
     }
   }
 
+  const handleUnapprove = async () => {
+    if (!item) return
+    setActionLoading(true)
+    try {
+      await fetch(`/api/plugins/messaging/${item.id}/unapprove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      onUpdated()
+      onClose()
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   const handleReject = async () => {
     if (!item) return
     setActionLoading(true)
@@ -179,10 +205,10 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
   }
 
   const handleDeleteClick = () => {
-    if (!confirmDelete) {
-      setConfirmDelete(true)
-      return
-    }
+    setConfirmDelete(true)
+  }
+
+  const handleConfirmDelete = () => {
     if (item) {
       onDelete(item.id)
       onClose()
@@ -216,21 +242,21 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
               <label className="text-sm text-muted-foreground mb-1 block">Agent</label>
               <AgentSelect
                 value={agent}
-                onValueChange={(v) => { setAgent(v as ContentAgent); setDirty(true) }}
-                agentIds={CONTENT_AGENTS}
+                onValueChange={(v) => { setAgent(v ?? ''); setDirty(true) }}
+                agentIds={agentIds}
                 className="bg-surface"
               />
             </div>
 
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Content Type</label>
-              <Select value={contentType} onValueChange={(v) => { setContentType(v as ContentType); setDirty(true) }}>
+              <Select value={contentType} onValueChange={(v) => { setContentType(v ?? contentTypes[0]?.id ?? 'post'); setDirty(true) }}>
                 <SelectTrigger className="bg-surface">
-                  <SelectValue>{CONTENT_TYPE_LABELS[contentType]}</SelectValue>
+                  <SelectValue>{getContentTypeLabel(contentType, contentTypes)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {(Object.entries(CONTENT_TYPE_LABELS) as [ContentType, string][]).map(([val, label]) => (
-                    <SelectItem key={val} value={val}>{label}</SelectItem>
+                  {contentTypes.map(({ id, label }) => (
+                    <SelectItem key={id} value={id}>{label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -364,7 +390,6 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
   // ─── Detail View ────────────────────────────────────────────────
   if (!item) return null
 
-  const agentInfo = AGENT_INFO[item.agent]
   const scheduledDate = new Date(item.scheduledAt)
 
   return (
@@ -379,7 +404,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
       }}
       title={item.title}
       actions={
-        <DropdownMenu onOpenChange={(o) => { if (!o) setConfirmDelete(false) }}>
+        <DropdownMenu>
           <DropdownMenuTrigger className="p-1.5 rounded-md hover:bg-accent transition-colors">
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
@@ -394,7 +419,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
               className="text-red-400 focus:text-red-400"
             >
               <Trash2 className="size-3.5 mr-2" />
-              {confirmDelete ? 'Confirm Delete' : 'Delete'}
+              Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -405,7 +430,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
         <div className="flex items-center gap-4 rounded-lg p-4 border border-border bg-surface">
           <AgentAvatar agentId={item.agent} size="lg" />
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">{agentInfo.name}</div>
+            <div className="text-sm font-medium text-foreground">{itemAgent?.name ?? item.agent}</div>
             <div className="flex items-center gap-2 mt-1">
               <Badge className={STATUS_BADGE[item.status]}>
                 {item.status === 'waiting'
@@ -429,6 +454,11 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
           {item.status === 'draft' && (
             <Button variant="outline" size="sm" onClick={handleApprove} disabled={actionLoading}>
               <Check className="size-3.5 mr-1.5" /> Schedule
+            </Button>
+          )}
+          {item.status === 'scheduled' && (
+            <Button variant="outline" size="sm" onClick={handleUnapprove} disabled={actionLoading}>
+              <Undo2 className="size-3.5 mr-1.5" /> Unapprove
             </Button>
           )}
           {item.status === 'review' && (
@@ -485,7 +515,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
           </div>
           <div className="rounded-lg bg-surface p-3 space-y-1">
             <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Type</div>
-            <div className="text-sm font-medium">{CONTENT_TYPE_LABELS[item.contentType]}</div>
+            <div className="text-sm font-medium">{getContentTypeLabel(item.contentType, contentTypes)}</div>
           </div>
           <div className="rounded-lg bg-surface p-3 space-y-1">
             <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Tone</div>
@@ -584,6 +614,29 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
             </div>
           </>
         )}
+
+        <Dialog
+          open={confirmDelete}
+          onOpenChange={(v) => { if (!v) setConfirmDelete(false) }}
+        >
+          <DialogContent className="bg-card border-border max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Delete this item?</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              This will permanently delete <span className="text-foreground font-medium">{item.title}</span>
+              {item.status === 'scheduled' && ' and cancel its scheduled delivery'}. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2 mt-2">
+              <Button variant="outline" onClick={() => setConfirmDelete(false)} className="cursor-pointer">
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleConfirmDelete} className="cursor-pointer">
+                Delete
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </BakinDrawer>
   )

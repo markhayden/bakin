@@ -15,8 +15,7 @@ import { AgentAvatar } from '@/components/agent-avatar'
 import { AgentFilter } from '@/components/agent-filter'
 import { useQueryState } from '@/hooks/use-query-state'
 import { useSearch } from '@/hooks/use-search'
-import { AGENT_INFO, type ContentAgent } from '../types'
-import { CONTENT_AGENTS } from '../constants'
+import { useAgentList, useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { SessionList } from './session-list'
 import { PlanningLayout } from './planning-layout'
 import { NewSessionDialog } from './new-session-dialog'
@@ -31,7 +30,9 @@ export function BrainstormView() {
   const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
   const [creating, setCreating] = useState(false)
   const [sessionCount, setSessionCount] = useState<number | undefined>(undefined)
-  const [pendingAgent, setPendingAgent] = useState<ContentAgent | null>(null)
+  const [pendingAgent, setPendingAgent] = useState<string | null>(null)
+  const agentList = useAgentList()
+  const agentIds = useAgentIds()
 
   const searchHook = useSearch({ plugin: 'messaging', facets: ['status', 'agent_id'], debounce: 300 })
   useEffect(() => {
@@ -54,7 +55,7 @@ export function BrainstormView() {
 
   // Open the naming dialog for a given agent
   const handleStartCreate = (agentId: string) => {
-    setPendingAgent(agentId as ContentAgent)
+    setPendingAgent(agentId)
   }
 
   // Actually create the session with a name
@@ -111,19 +112,16 @@ export function BrainstormView() {
               }
             />
             <DropdownMenuContent align="end" className="min-w-[200px]">
-              {CONTENT_AGENTS.map(agentId => {
-                const info = AGENT_INFO[agentId]
-                return (
-                  <DropdownMenuItem
-                    key={agentId}
-                    onClick={() => handleStartCreate(agentId)}
-                    data-testid={`agent-option-${agentId}`}
-                  >
-                    <AgentAvatar agentId={agentId} size="xs" />
-                    <span>{info.name}</span>
-                  </DropdownMenuItem>
-                )
-              })}
+              {agentList.map(agent => (
+                <DropdownMenuItem
+                  key={agent.id}
+                  onClick={() => handleStartCreate(agent.id)}
+                  data-testid={`agent-option-${agent.id}`}
+                >
+                  <AgentAvatar agentId={agent.id} size="xs" />
+                  <span>{agent.name}</span>
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
         }
@@ -131,7 +129,7 @@ export function BrainstormView() {
 
       <div className="mt-4 flex flex-col gap-4">
         <AgentFilter
-          agentIds={CONTENT_AGENTS}
+          agentIds={agentIds}
           value={agentFilter}
           onChange={setAgentFilter}
         />

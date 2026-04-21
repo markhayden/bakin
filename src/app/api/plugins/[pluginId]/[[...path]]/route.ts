@@ -249,8 +249,8 @@ async function handleRequest(
   const startedAt = Date.now()
   // Best-effort actor attribution: agents sending direct REST calls can
   // identify themselves via X-Bakin-Agent. UI/human traffic won't set it
-  // and will land in the "unknown" bucket — which is the point.
-  const actor = req.headers.get('x-bakin-agent') || 'unknown'
+  // and is attributed to "human" (the browser user).
+  const actor = req.headers.get('x-bakin-agent') || 'human'
 
   try {
     // Inject extracted path params into the request URL's searchParams

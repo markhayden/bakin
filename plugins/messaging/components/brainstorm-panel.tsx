@@ -6,9 +6,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { Send, Check, X, Loader2 } from 'lucide-react'
-import type { ContentAgent } from '../types'
-import { AGENT_INFO, DISCORD_GENERAL } from '../types'
-import { CONTENT_AGENTS } from '../constants'
+import { DISCORD_GENERAL } from '../types'
+import { useAgent, useAgentList, useAgentIds } from '@bakin/team/hooks/use-agent-store'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -31,11 +30,19 @@ interface Props {
 }
 
 export function BrainstormPanel({ onItemCreated }: Props) {
-  const [agent, setAgent] = useState<ContentAgent>('chef')
+  const agentIds = useAgentIds()
+  const agentList = useAgentList()
+  const [agent, setAgent] = useState<string>('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const currentAgent = useAgent(agent)
+  const agentName = currentAgent?.name ?? agent
+
+  useEffect(() => {
+    if (!agent && agentIds.length > 0) setAgent(agentIds[0])
+  }, [agent, agentIds])
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -140,26 +147,24 @@ export function BrainstormPanel({ onItemCreated }: Props) {
     )
   }
 
-  const agentInfo = AGENT_INFO[agent]
-
   return (
     <div className="flex flex-col h-full">
       {/* Agent selector — avatar pills */}
       <div className="flex items-center gap-3 p-4 border-b border-border">
         <span className="text-sm text-muted-foreground">Brainstorming with:</span>
         <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
-          {CONTENT_AGENTS.map((a) => (
+          {agentList.map((a) => (
             <button
-              key={a}
-              onClick={() => setAgent(a)}
+              key={a.id}
+              onClick={() => setAgent(a.id)}
               className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium transition-all ${
-                agent === a
+                agent === a.id
                   ? 'bg-accent text-accent-foreground'
                   : 'text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100'
               }`}
             >
-              <AgentAvatar agentId={a} size="xs" />
-              {AGENT_INFO[a].name}
+              <AgentAvatar agentId={a.id} size="xs" />
+              {a.name}
             </button>
           ))}
         </div>
@@ -172,11 +177,11 @@ export function BrainstormPanel({ onItemCreated }: Props) {
             <AgentAvatar agentId={agent} size="xl" />
             <div className="space-y-2 max-w-md">
               <p className="text-base font-medium text-foreground">
-                Brainstorm with {agentInfo.name}
+                Brainstorm with {agentName}
               </p>
               <p className="text-sm">
                 Describe the kind of content you&apos;re looking for — topics, themes, dates, or audience.
-                {' '}{agentInfo.name} will suggest calendar items you can accept and schedule.
+                {' '}{agentName} will suggest calendar items you can accept and schedule.
               </p>
             </div>
           </div>
@@ -268,7 +273,7 @@ export function BrainstormPanel({ onItemCreated }: Props) {
           <div className="flex items-center gap-2.5 text-muted-foreground">
             <AgentAvatar agentId={agent} size="sm" className="shrink-0" />
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            <span className="text-xs">{agentInfo.name} is thinking...</span>
+            <span className="text-xs">{agentName} is thinking...</span>
           </div>
         )}
 
@@ -293,7 +298,7 @@ export function BrainstormPanel({ onItemCreated }: Props) {
                 handleSend()
               }
             }}
-            placeholder={`Ask ${agentInfo.name} for content ideas...`}
+            placeholder={`Ask ${agentName} for content ideas...`}
             className="bg-surface min-h-[80px] resize-none"
             disabled={loading}
           />
