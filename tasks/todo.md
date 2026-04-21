@@ -101,3 +101,55 @@
 - [ ] Merge when green
 - [ ] Close #118 with before/after summary
 - [ ] Archive `tasks/plan.md` + `tasks/todo.md` → `.claude/tasks/issue-118-{plan,todo}.md`
+
+## T9 — UX follow-ups from manual QA
+
+Reviewed-on-branch fixes surfaced during end-to-end smoke test. All bundled onto this PR since they only touch the messaging-plugin surface that issue #118 introduced, plus two one-line cross-cutting tweaks.
+
+### T9a — feat(core): `NavItem.alwaysExpanded` + hover flyout in collapsed sidebar
+- [x] Add optional `alwaysExpanded?: boolean` to `NavItem` in `packages/core/src/plugin-types.ts`
+- [x] Messaging plugin opts in (`plugins/messaging/client.tsx`)
+- [x] `app-sidebar.tsx` expanded branch: hide the chevron toggle when `alwaysExpanded`; keep a spacer for alignment
+- [x] `app-sidebar.tsx` collapsed branch: render children as a Base UI Popover `openOnHover` flyout; `nativeButton={false}` so Base UI accepts the Link render
+
+### T9b — fix(core): attribute UI-originated REST calls as `human`
+- [x] `src/app/api/plugins/[pluginId]/[[...path]]/route.ts`: `'unknown'` → `'human'` when no `X-Bakin-Agent` header present
+- [x] Comment updated to reflect intent
+
+### T9c — fix(ui): dark-theme default avatar fallback
+- [x] `src/components/agent-avatar.tsx`: unresolved agents use `bg-muted text-muted-foreground` (dark-theme-aware) instead of the accent-color inline style
+
+### T9d — feat(messaging): auto-approve choice on brainstorm confirm
+- [x] `confirmSession(sessionId, { autoApprove })` threads a flag into `createItem({ status })` (`'scheduled'` vs `'draft'`)
+- [x] REST `POST /sessions/:id/confirm` + exec tool `bakin_exec_messaging_session_confirm` both accept `autoApprove`
+- [x] `ReviewPanel`: "Confirm Plan" opens a dialog with **Add as drafts** / **Auto-approve & schedule**
+
+### T9e — feat(messaging): unapprove action (scheduled → draft)
+- [x] New route `POST /:itemId/unapprove` with symmetric guard (`status !== 'scheduled'`)
+- [x] Button surfaced in `ItemDetailDrawer` when item is scheduled
+- [x] Bumped route-count test assertions 17 → 18
+
+### T9f — feat(messaging): calendar list view shows all items + sortable columns
+- [x] `fetchItems` in `ContentCalendar` skips `?month=` when `view === 'list'`
+- [x] Renders via `Table`/`TableRow`/`TableCell` + `SortableHead` (date, agent, type, title, status)
+
+### T9g — feat(messaging): proposal edit drawer redesign
+- [x] Content Type + Tone: text inputs → `<Select>` bound to `useContentTypes()` / `TONE_LABELS`; full-width
+- [x] Brief textarea: taller default (`min-h-[300px]`)
+- [x] Sticky "Save Changes" footer; Approve/Reject in their own section (contextual helper text + centered outline buttons)
+- [x] Undo action for `approved` / `rejected` proposals (PUT `status: 'proposed'`, clears `rejectionNote`)
+
+### T9h — fix(messaging): delete confirmation via Dialog
+- [x] `ItemDetailDrawer`: replaced the in-menu two-click "Confirm Delete" pattern (broke because `DropdownMenu.onOpenChange` reset state on close) with a proper `<Dialog>`
+
+### T9i — chore(messaging): remove vestigial mini-calendar
+- [x] `mini-calendar.tsx` + test deleted; `planning-layout.tsx` no longer renders or toggles it (it had no `onDayClick` / selected-date wiring)
+
+### T9j — polish
+- [x] Pointer cursors on agent-empty-state cards, Send button, and CTAs that were missing them
+
+### Verification
+
+- [x] Code review (agent-skills:code-reviewer): APPROVE, no critical or important issues
+- [x] Messaging suite: 231 passed | 1 skipped
+- [x] Full suite: 2849 passed | 1 skipped
