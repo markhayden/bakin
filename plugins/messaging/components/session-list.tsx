@@ -183,7 +183,7 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
               key={agent.id}
               onClick={() => onCreateSession?.(agent.id)}
               disabled={creating}
-              className="flex items-center gap-3 p-4 rounded-lg border border-border bg-surface hover:bg-muted/50 transition-colors text-left"
+              className="flex items-center gap-3 p-4 rounded-lg border border-border bg-surface hover:bg-muted/50 transition-colors text-left cursor-pointer disabled:cursor-not-allowed"
               data-testid={`agent-card-${agent.id}`}
             >
               <AgentAvatar agentId={agent.id} size="md" />

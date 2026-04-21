@@ -399,7 +399,7 @@ export function SessionChat({
               className="bg-surface min-h-[80px] resize-none"
               disabled={streaming.isStreaming}
             />
-            <Button type="submit" disabled={streaming.isStreaming || !input.trim()} className="shrink-0">
+            <Button type="submit" disabled={streaming.isStreaming || !input.trim()} className="shrink-0 cursor-pointer disabled:cursor-not-allowed">
               <Send className="w-4 h-4" />
             </Button>
           </form>
