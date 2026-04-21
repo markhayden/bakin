@@ -64,16 +64,20 @@ interface AgentMetaLike { id: string; name?: string }
  * Resolve the prompt-builder options for a given agent by pulling the
  * display name from the team plugin (via HookRegistry) and the current
  * content-type taxonomy from this plugin's settings. Both degrade to
- * safe defaults when the hook or settings return nothing.
+ * safe defaults when the hook throws, the team plugin isn't active, or
+ * settings return nothing — callers can always build a prompt.
  */
 async function resolvePromptOptions(ctx: PluginContext, agentId: string) {
-  const agent = await ctx.hooks.invoke<AgentMetaLike | null>('team.getAgent', { id: agentId })
+  let agentName: string | undefined
+  try {
+    const agent = await ctx.hooks.invoke<AgentMetaLike | null>('team.getAgent', { id: agentId })
+    agentName = agent?.name
+  } catch (err) {
+    log.warn('team.getAgent hook failed; falling back to raw agentId', { agentId, err: err instanceof Error ? err.message : String(err) })
+  }
   const settings = ctx.getSettings<MessagingSettings>()
   const contentTypes = settings.contentTypes ?? DEFAULT_CONTENT_TYPES
-  return {
-    agentName: agent?.name,
-    contentTypes,
-  }
+  return { agentName, contentTypes }
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +152,7 @@ const messagingPlugin: BakinPlugin = {
         description: 'Categories used across the content calendar and brainstorm proposals.',
         addLabel: 'Add content type',
         minItems: 1,
+        uniqueField: 'id',
         itemShape: {
           id:    { key: 'id',    type: 'string', label: 'ID',    description: 'Machine id — lowercase, no spaces (e.g. "blog-post").', required: true },
           label: { key: 'label', type: 'string', label: 'Label', description: 'Display name shown in menus.',                           required: true },
@@ -411,11 +416,9 @@ const messagingPlugin: BakinPlugin = {
             persona = readFileSync(personaPath, 'utf-8')
           }
 
-          const resolvedAgent = await ctx.hooks.invoke<AgentMetaLike | null>('team.getAgent', { id: body.agentId })
-          const agentName = resolvedAgent?.name || body.agentId
-
-          const settingsNow = ctx.getSettings<MessagingSettings>()
-          const typeList = (settingsNow.contentTypes ?? DEFAULT_CONTENT_TYPES).map(t => t.id).join(', ')
+          const { agentName: resolvedName, contentTypes: brainstormTypes } = await resolvePromptOptions(ctx, body.agentId)
+          const agentName = resolvedName || body.agentId
+          const typeList = brainstormTypes.map(t => t.id).join(', ')
 
           const historyContext = (body.history || []).map(h =>
             `${h.role === 'user' ? 'Mark' : agentName}: ${h.content}`

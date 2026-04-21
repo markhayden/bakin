@@ -61,7 +61,7 @@ function buildPlanState(session: PlanningSession): string {
 }
 
 function formatContentTypes(contentTypes: ContentTypeOption[]): string {
-  if (contentTypes.length === 0) return 'any string id'
+  if (contentTypes.length === 0) return 'a content type id of your choosing'
   return contentTypes.map((t) => t.id).join(', ')
 }
 

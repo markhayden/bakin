@@ -501,6 +501,11 @@ export interface ListSettingsField extends BaseSettingsField {
   addLabel?: string
   minItems?: number
   maxItems?: number
+  /**
+   * If set, the renderer blocks save when two rows share the same value for
+   * this sub-field key. Typical use: uniqueField: 'id' on a taxonomy list.
+   */
+  uniqueField?: string
 }
 
 export type SettingsField =

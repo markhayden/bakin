@@ -85,9 +85,9 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('contentType: one of blog, reel')
   })
 
-  it('falls back to "any string id" when contentTypes is empty', () => {
+  it('falls back to a neutral placeholder when contentTypes is empty', () => {
     const prompt = buildSystemPrompt('x', makeSession(), opts({ contentTypes: [] }))
-    expect(prompt).toContain('contentType: one of any string id')
+    expect(prompt).toContain('contentType: one of a content type id of your choosing')
   })
 
   it('includes persona when file exists', () => {
