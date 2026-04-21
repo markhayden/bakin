@@ -553,6 +553,15 @@ export function ContentCalendar() {
                 </button>
               ))}
             </div>
+            <div className="relative w-56">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search calendar..."
+                className="pl-9 h-8 bg-surface border-border"
+              />
+            </div>
             <Button size="sm" onClick={() => openCreate()}>
               <Plus className="size-3.5" data-icon="inline-start" />
               New Item
@@ -584,34 +593,23 @@ export function ContentCalendar() {
             onChange={setChannelFilter}
           />
 
-          {/* Search + date navigation — far right */}
-          <div className="flex items-center gap-2 ml-auto shrink-0">
-            <div className="relative w-56">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search calendar..."
-                className="pl-9 h-8 bg-surface border-border"
-              />
+          {/* Date navigation — far right */}
+          {(view === 'month' || view === 'week') && (
+            <div className="flex items-center gap-1 ml-auto shrink-0">
+              <Button size="icon-xs" variant="ghost" onClick={prevPeriod}>
+                <ChevronLeft className="size-3.5" />
+              </Button>
+              <span className="text-sm font-medium text-foreground min-w-[160px] text-center">
+                {navLabel}
+              </span>
+              <Button size="icon-xs" variant="ghost" onClick={nextPeriod}>
+                <ChevronRight className="size-3.5" />
+              </Button>
+              <Button size="xs" variant="ghost" className="ml-1 text-muted-foreground" onClick={goToday}>
+                Today
+              </Button>
             </div>
-            {(view === 'month' || view === 'week') && (
-              <div className="flex items-center gap-1">
-                <Button size="icon-xs" variant="ghost" onClick={prevPeriod}>
-                  <ChevronLeft className="size-3.5" />
-                </Button>
-                <span className="text-sm font-medium text-foreground min-w-[160px] text-center">
-                  {navLabel}
-                </span>
-                <Button size="icon-xs" variant="ghost" onClick={nextPeriod}>
-                  <ChevronRight className="size-3.5" />
-                </Button>
-                <Button size="xs" variant="ghost" className="ml-1 text-muted-foreground" onClick={goToday}>
-                  Today
-                </Button>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       )}
 
