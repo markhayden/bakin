@@ -13,6 +13,10 @@ import type { ApprovalActor, BakinPlugin, PluginContext } from '../../src/lib/pl
 import { listDefinitions, loadDefinition } from './lib/parser'
 import { loadDefaultWorkflows } from './lib/load-defaults'
 import { workflowDefinitionSchema, listNodeTypes } from './lib/node-type-registry'
+import {
+  getNotificationChannel,
+  listNotificationChannels,
+} from './lib/notification-channel-registry'
 import { isReadOnly, getDefinition as getRegistryDefinition } from './lib/source-registry'
 import {
   createInstance,
@@ -438,6 +442,23 @@ const workflowsPlugin: BakinPlugin = {
     ctx.hooks.register('workflows.isGateNotified', (d: Record<string, unknown>) => isGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined))
     ctx.hooks.register('workflows.markGateNotified', (d: Record<string, unknown>) => markGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined))
     ctx.hooks.register('workflows.validateStepOutput', (d: Record<string, unknown>) => validateStepOutput(d.schema as Record<string, unknown> | undefined, d.output as Record<string, unknown>))
+
+    // ─── Notification Channel Registry Hooks ─────────────────────────
+    ctx.hooks.register('workflows.listNotificationChannels', () => listNotificationChannels())
+    ctx.hooks.register('workflows.getNotificationChannel', (d: Record<string, unknown>) => {
+      return getNotificationChannel(d.id as string) ?? null
+    })
+
+    // ─── Notification Channels Route ─────────────────────────────────
+    ctx.registerRoute({
+      path: '/notification-channels',
+      method: 'GET',
+      description: 'List registered notification channels',
+      handler: async () => new Response(
+        JSON.stringify({ channels: listNotificationChannels() }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    })
 
     // ─── Template Routes ──────────────────────────────────────────────
 
