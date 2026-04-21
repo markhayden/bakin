@@ -734,8 +734,8 @@ describe('Proposal lifecycle', () => {
 // ===========================================================================
 
 describe('Calendar plugin registration (updated)', () => {
-  it('registers exactly 17 routes', () => {
-    expect(plugin.routes.length).toBe(17)
+  it('registers exactly 18 routes', () => {
+    expect(plugin.routes.length).toBe(18)
   })
 
   it('registers exactly 15 exec tools', () => {

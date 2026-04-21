@@ -364,6 +364,28 @@ const messagingPlugin: BakinPlugin = {
     }
     ctx.registerRoute({ path: '/:itemId/approve', method: 'POST', description: 'Approve messaging item', handler: approveHandler })
 
+    // POST /:itemId/unapprove — revert scheduled item back to draft
+    const unapproveHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const body = await readBody<{ id?: string }>(req).catch(() => ({} as { id?: string }))
+      const id = url.searchParams.get('itemId') || body.id
+
+      if (!id) return json({ error: 'id required' }, 400)
+
+      const item = getItem(id)
+      if (!item) return json({ error: 'Item not found' }, 404)
+
+      if (item.status !== 'scheduled') {
+        return json({ error: `Can only unapprove items in scheduled status (got: ${item.status})` }, 400)
+      }
+
+      const updated = updateItem(id, { status: 'draft' })
+      ctx.activity.audit('item.unapproved', 'system', { itemId: id, from: 'scheduled', to: 'draft' })
+      ctx.activity.log('system', `Messaging item "${item.title}" unapproved → draft`)
+      return json({ ok: true, item: updated })
+    }
+    ctx.registerRoute({ path: '/:itemId/unapprove', method: 'POST', description: 'Unapprove messaging item', handler: unapproveHandler })
+
     // POST /:itemId/reject — reject item back to draft
     const rejectHandler = async (req: Request) => {
       const url = new URL(req.url)
@@ -857,13 +879,13 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
       description: 'Confirm plan and create messaging items',
       handler: async (req: Request) => {
         const url = new URL(req.url)
-        const body = await readBody<{ id?: string }>(req).catch(() => ({} as { id?: string }))
+        const body = await readBody<{ id?: string; autoApprove?: boolean }>(req).catch(() => ({} as { id?: string; autoApprove?: boolean }))
         const id = url.searchParams.get('id') || body.id
         if (!id) return json({ error: 'id required' }, 400)
         try {
-          const result = confirmSession(id)
-          ctx.activity.audit('session.confirmed', 'system', { sessionId: id, itemsCreated: result.itemsCreated })
-          ctx.activity.log('system', `Confirmed planning session — ${result.itemsCreated} items created`)
+          const result = confirmSession(id, { autoApprove: !!body.autoApprove })
+          ctx.activity.audit('session.confirmed', 'system', { sessionId: id, itemsCreated: result.itemsCreated, autoApprove: !!body.autoApprove })
+          ctx.activity.log('system', `Confirmed planning session — ${result.itemsCreated} items created (${body.autoApprove ? 'scheduled' : 'draft'})`)
           return json({ ok: true, ...result })
         } catch (e: unknown) {
           return json({ error: (e as Error).message }, 400)
@@ -1255,14 +1277,16 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
       description: 'Confirm a planning session — creates messaging items from approved proposals',
       parameters: {
         sessionId: z.string().describe('Session ID (required)'),
+        autoApprove: z.boolean().optional().describe('Auto-approve: create items in scheduled status instead of draft'),
       },
       handler: async (params: Record<string, unknown>) => {
         if (!params.sessionId) return { ok: false, error: 'sessionId required' }
         try {
-          const result = confirmSession(params.sessionId as string)
+          const result = confirmSession(params.sessionId as string, { autoApprove: !!params.autoApprove })
           ctx.activity.audit('session.confirmed', 'system', {
             sessionId: params.sessionId,
             itemsCreated: result.itemsCreated,
+            autoApprove: !!params.autoApprove,
           })
           return { ok: true, ...result }
         } catch (e: unknown) {
