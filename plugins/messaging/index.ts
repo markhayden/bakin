@@ -58,6 +58,24 @@ async function readBody<T>(req: Request): Promise<T> {
   return req.json() as Promise<T>
 }
 
+interface AgentMetaLike { id: string; name?: string }
+
+/**
+ * Resolve the prompt-builder options for a given agent by pulling the
+ * display name from the team plugin (via HookRegistry) and the current
+ * content-type taxonomy from this plugin's settings. Both degrade to
+ * safe defaults when the hook or settings return nothing.
+ */
+async function resolvePromptOptions(ctx: PluginContext, agentId: string) {
+  const agent = await ctx.hooks.invoke<AgentMetaLike | null>('team.getAgent', { id: agentId })
+  const settings = ctx.getSettings<MessagingSettings>()
+  const contentTypes = settings.contentTypes ?? DEFAULT_CONTENT_TYPES
+  return {
+    agentName: agent?.name,
+    contentTypes,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Approve logic (shared by route + exec tool)
 // ---------------------------------------------------------------------------
@@ -588,7 +606,8 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         const userMsg = appendMessage(id, { role: 'user', content: body.message })
 
         // Build messages array with full session history
-        const messages = buildMessages(session, body.message)
+        const promptOptions = await resolvePromptOptions(ctx, session.agentId)
+        const messages = buildMessages(session, body.message, promptOptions)
         const sessionKey = `session-${id}-${Date.now()}`
 
         // Create a ReadableStream that pipes gateway SSE to the client
@@ -1148,7 +1167,8 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         })
 
         // Non-streaming: call gateway synchronously and collect full response
-        const messages = buildMessages(session, params.message as string)
+        const promptOptions = await resolvePromptOptions(ctx, session.agentId)
+        const messages = buildMessages(session, params.message as string, promptOptions)
         const sessionKey = `session-${params.sessionId}-${Date.now()}`
 
         let fullContent: string
