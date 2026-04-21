@@ -1,6 +1,6 @@
 # Messaging Plugin Refactor — Remove Hardcoded Unions
 
-**Status:** Draft
+**Status:** Implemented (commits `4a6fa3e..61d9342` on `issue-118-messaging-refactor`)
 **Tracking issue:** [#118](https://github.com/markhayden/bakin/issues/118)
 **Gates:** Plugin-system spec (`docs/ideas/plugin-system.md`)
 

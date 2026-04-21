@@ -28,7 +28,9 @@ Core plugins expose these registries from day one:
 
 ## Pre-requisite Work
 
-**Messaging plugin refactor must land before the plugin system spec ships.** Current state (`plugins/messaging/types.ts:1-4`) hardcodes user-specific agents, channels, and content types as TypeScript string-literal unions:
+**Messaging plugin refactor — shipped** on `issue-118-messaging-refactor` (issue #118, spec at `.claude/specs/messaging-refactor.md`). The agent + content-type portion is done; channel neutrality will land with the `workflows.notificationChannels` registry as part of this spec's implementation.
+
+Historical context — the original hardcoded state (`plugins/messaging/types.ts:1-4`):
 
 ```ts
 export type ContentAgent = 'chef' | 'explorer' | 'trainer' | 'coach'
