@@ -157,6 +157,7 @@ function ensureInitialized() {
       registerSkill: () => {},
       registerWorkflow: () => {},
       registerNodeType: (def) => `${plugin.id}.${def.kind}`,
+      registerNotificationChannel: (def) => `${plugin.id}.${def.id}`,
       watchFiles: () => {},
       ...buildCtxExtras(plugin.id, registerRoute),
     }
@@ -223,6 +224,7 @@ function buildContext(pluginId: string): PluginContext {
     registerSkill: () => {},
     registerWorkflow: () => {},
     registerNodeType: (def) => `${pluginId}.${def.kind}`,
+    registerNotificationChannel: (def) => `${pluginId}.${def.id}`,
     watchFiles: () => {},
     ...buildCtxExtras(pluginId, noopRegisterRoute),
   }

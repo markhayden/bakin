@@ -22,6 +22,11 @@ import type {
 import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'
 import type { WorkflowDefinition } from '../../plugins/workflows/types'
 import { registerPluginNodeType, unregisterPluginNodeTypes } from '../../plugins/workflows/lib/node-type-registry'
+import {
+  registerPluginNotificationChannel,
+  unregisterPluginNotificationChannels,
+} from '../../plugins/workflows/lib/notification-channel-registry'
+import type { PluginNotificationChannelInput } from '@bakin/core/plugin-types'
 import { registerRouteDoc } from '../core/api-docs'
 import { addExecTool } from '../../scripts/lib/registry'
 import { runMigrations } from '../core/migrations'
@@ -52,6 +57,8 @@ interface PluginState {
   watchPatterns: string[]
   /** Namespaced workflow node kinds registered via ctx.registerNodeType. */
   nodeKinds: string[]
+  /** Namespaced notification channel ids registered via ctx.registerNotificationChannel. */
+  channelIds: string[]
 }
 
 /** Slug a workflow definition `name` into a stable id when no `id` is supplied. */
@@ -214,6 +221,19 @@ class PluginRegistryImpl {
           return `${pluginId}.${def.kind}`
         }
       },
+      registerNotificationChannel: (def: PluginNotificationChannelInput): string => {
+        try {
+          const namespacedId = registerPluginNotificationChannel(pluginId, def)
+          state.channelIds.push(namespacedId)
+          return namespacedId
+        } catch (err) {
+          log.error(
+            `registerNotificationChannel collision in plugin "${pluginId}" for id "${def.id}"`,
+            err as Error,
+          )
+          return `${pluginId}.${def.id}`
+        }
+      },
       watchFiles: (patterns: string[]) => { state.watchPatterns.push(...patterns) },
       getSettings: <T = Record<string, unknown>>(): T => {
         const settingsPath = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
@@ -305,6 +325,7 @@ class PluginRegistryImpl {
         slots: [],
         watchPatterns: [],
         nodeKinds: [],
+        channelIds: [],
       }
 
       const ctx = this.buildContext(plugin.id, state, storage, events)
@@ -349,6 +370,7 @@ class PluginRegistryImpl {
           if (this.plugins.has(pluginId)) {
             console.log(`  ↻ User plugin overrides built-in: ${pluginId}`)
             unregisterPluginNodeTypes(pluginId)
+            unregisterPluginNotificationChannels(pluginId)
             this.plugins.delete(pluginId)
           }
 
@@ -371,6 +393,7 @@ class PluginRegistryImpl {
             slots: [],
             watchPatterns: [],
             nodeKinds: [],
+            channelIds: [],
           }
 
           const ctx = this.buildContext(plugin.id, state, storage, events)

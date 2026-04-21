@@ -204,6 +204,33 @@ export interface PluginNodeTypeInput<T = unknown> {
   edgeRules?: EdgeRules
 }
 
+// ---------------------------------------------------------------------------
+// Notification channel registration
+// ---------------------------------------------------------------------------
+
+/**
+ * Input shape plugins pass to `ctx.registerNotificationChannel`. The plugin id
+ * is prepended to `id` automatically (`{pluginId}.{id}`), matching the node-
+ * type precedent. Built-in workflows-plugin channels (discord, slack, email,
+ * instagram, twitter, youtube, tiktok) self-register at module load in
+ * `plugins/workflows/lib/notification-channel-registry.ts` and keep their
+ * short ids for backwards compat with existing workflow YAML.
+ */
+export interface PluginNotificationChannelInput {
+  id: string
+  label: string
+  /** Optional 2-character badge (e.g. "DC", "IG"). Falls back to `id.slice(0, 2).toUpperCase()` at render time. */
+  initials?: string
+  /** Lucide-react icon export name (e.g. "MessageSquare"). Unknown names fall back to HelpCircle at render time. */
+  icon?: string
+}
+
+export interface NotificationChannelDef extends PluginNotificationChannelInput {
+  runtime: 'builtin' | 'plugin'
+  /** Set when runtime === 'plugin'; identifies the owning plugin. */
+  pluginId?: string
+}
+
 export interface PluginContext {
   storage: StorageAdapter
   events: EventBus
@@ -230,6 +257,14 @@ export interface PluginContext {
    * to reference the kind from its node renderer export.
    */
   registerNodeType<T = unknown>(def: PluginNodeTypeInput<T>): string
+  /**
+   * Register a notification channel owned by this plugin. The id is
+   * auto-namespaced to `{pluginId}.{id}`. Returns the namespaced id so
+   * callers can reference it from downstream code and tests. Built-in
+   * workflows-plugin channels register directly (without the plugin prefix)
+   * via the registry module's lazy self-seed.
+   */
+  registerNotificationChannel(def: PluginNotificationChannelInput): string
   watchFiles(patterns: string[]): void
   /** Read this plugin's persisted settings */
   getSettings<T = Record<string, unknown>>(): T

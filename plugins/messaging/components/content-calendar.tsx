@@ -21,11 +21,6 @@ import {
   Video as VideoIcon,
   ImageIcon,
   MessageSquare,
-  Instagram,
-  Mail,
-  Twitter,
-  Youtube,
-  Music2,
 } from 'lucide-react'
 import { PluginHeader } from '@/components/plugin-header'
 import { FacetFilter } from '@/components/facet-filter'
@@ -44,9 +39,11 @@ import {
 import { SortableHead, type SortDir } from '@/components/sortable-head'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import type { CalendarItem } from '../types'
-import { STATUS_BADGE, CHANNEL_LABELS } from '../constants'
+import { STATUS_BADGE } from '../constants'
 import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
+import { useNotificationChannels } from '@bakin/workflows/hooks/use-notification-channels'
+import { ChannelIcon } from '@bakin/workflows/hooks/channel-icon'
 import { ItemDetailDrawer } from './item-detail-drawer'
 import { CalendarWeek } from './calendar-week'
 
@@ -80,21 +77,6 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   image:        <ImageIcon className="size-3.5" />,
   announcement: <Megaphone className="size-3.5" />,
 }
-
-const CHANNEL_ICONS: Record<string, React.ReactNode> = {
-  discord: <MessageSquare className="size-3.5" />,
-  instagram: <Instagram className="size-3.5" />,
-  email: <Mail className="size-3.5" />,
-  twitter: <Twitter className="size-3.5" />,
-  youtube: <Youtube className="size-3.5" />,
-  tiktok: <Music2 className="size-3.5" />,
-}
-
-const CHANNEL_OPTIONS = Object.entries(CHANNEL_LABELS).map(([value, label]) => ({
-  value,
-  label,
-  icon: CHANNEL_ICONS[value],
-}))
 
 type ViewMode = 'month' | 'week' | 'list'
 
@@ -135,10 +117,16 @@ export function ContentCalendar() {
 
   const contentTypes = useContentTypes()
   const agentIds = useAgentIds()
+  const availableChannels = useNotificationChannels()
   const typeOptions = contentTypes.map(({ id, label }) => ({
     value: id,
     label,
     icon: TYPE_ICONS[id],
+  }))
+  const channelOptions = availableChannels.map(({ id, label }) => ({
+    value: id,
+    label,
+    icon: <ChannelIcon channelId={id} className="size-3.5" />,
   }))
 
   // URL state
@@ -551,6 +539,15 @@ export function ContentCalendar() {
         count={filteredItems.length}
         actions={
           <div className="flex items-center gap-3">
+            <div className="relative w-56">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search calendar..."
+                className="pl-9 h-8 bg-surface border-border"
+              />
+            </div>
             <div className="flex items-center rounded-lg bg-muted/50 p-0.5">
               {VIEW_DEFS.map(v => (
                 <button
@@ -573,57 +570,44 @@ export function ContentCalendar() {
         }
       />
 
-      {/* Filters + date nav */}
-      {(
-        <div className="flex items-center gap-3 mt-4 mb-4">
-          <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
-          <FacetFilter
-            label="Status"
-            options={STATUS_OPTIONS}
-            selected={statusFilter}
-            onChange={setStatusFilter}
-          />
-          <FacetFilter
-            label="Type"
-            options={typeOptions}
-            selected={typeFilter}
-            onChange={setTypeFilter}
-          />
-          <FacetFilter
-            label="Channel"
-            options={CHANNEL_OPTIONS}
-            selected={channelFilter}
-            onChange={setChannelFilter}
-          />
+      {/* Filters */}
+      <div className="flex items-center gap-3 mt-4 mb-4">
+        <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
+        <FacetFilter
+          label="Status"
+          options={STATUS_OPTIONS}
+          selected={statusFilter}
+          onChange={setStatusFilter}
+        />
+        <FacetFilter
+          label="Type"
+          options={typeOptions}
+          selected={typeFilter}
+          onChange={setTypeFilter}
+        />
+        <FacetFilter
+          label="Channel"
+          options={channelOptions}
+          selected={channelFilter}
+          onChange={setChannelFilter}
+        />
+      </div>
 
-          {/* Search + date navigation — far right */}
-          <div className="flex items-center gap-2 ml-auto shrink-0">
-            <div className="relative w-56">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search calendar..."
-                className="pl-9 h-8 bg-surface border-border"
-              />
-            </div>
-            {(view === 'month' || view === 'week') && (
-              <div className="flex items-center gap-1">
-                <Button size="icon-xs" variant="ghost" onClick={prevPeriod}>
-                  <ChevronLeft className="size-3.5" />
-                </Button>
-                <span className="text-sm font-medium text-foreground min-w-[160px] text-center">
-                  {navLabel}
-                </span>
-                <Button size="icon-xs" variant="ghost" onClick={nextPeriod}>
-                  <ChevronRight className="size-3.5" />
-                </Button>
-                <Button size="xs" variant="ghost" className="ml-1 text-muted-foreground" onClick={goToday}>
-                  Today
-                </Button>
-              </div>
-            )}
-          </div>
+      {/* Date navigation — own row, centered above the calendar */}
+      {(view === 'month' || view === 'week') && (
+        <div className="flex items-center justify-center gap-1 mb-4">
+          <Button size="icon-xs" variant="ghost" onClick={prevPeriod}>
+            <ChevronLeft className="size-3.5" />
+          </Button>
+          <span className="text-sm font-medium text-foreground min-w-[160px] text-center">
+            {navLabel}
+          </span>
+          <Button size="icon-xs" variant="ghost" onClick={nextPeriod}>
+            <ChevronRight className="size-3.5" />
+          </Button>
+          <Button size="xs" variant="ghost" className="ml-1 text-muted-foreground" onClick={goToday}>
+            Today
+          </Button>
         </div>
       )}
 

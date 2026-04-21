@@ -1,281 +1,283 @@
-# Plan — Issue #118: Messaging plugin refactor
+# Plan — Issue #125: Notification Channels Registry
 
-**Spec:** `.claude/specs/messaging-refactor.md`
-**Issue:** https://github.com/madeinwyo/bakin/issues/118
-**Branch:** `issue-118-messaging-refactor`
-**Broader context:** `docs/ideas/plugin-system.md`
+**Spec:** `.claude/specs/issue-125-notification-channels-registry.md`
+**Issue:** https://github.com/madeinwyo/bakin/issues/125
+**Branch:** `issue-125-notification-channels-registry`
+**Precedent to mirror:** `plugins/workflows/lib/node-type-registry.ts` + wiring at `src/lib/plugin-registry.ts:204-216`
 
 ## Goal
 
-Strip hardcoded agent/channel/content-type string-literal unions from the messaging plugin so it's a neutral core plugin, unblocking the plugin-system spec. Reuse existing `team.*` hooks + `useAgentStore` for agents. Make content types user-configurable via a new `list` field type in `PluginSettingsRenderer`. Leave channels mostly alone (type drops to `string`; hardcoded maps stay until the future channel registry lands).
+Land the first Registry Extension Point — `workflows.notificationChannels` — as the proof-of-concept for the pattern that four more registries will follow (model providers, asset renderers, health checks, etc.). Finish the job started in #118: messaging's `CHANNEL_LABELS` / `CHANNEL_INITIALS` / `CHANNEL_ICONS` disappear, workflows' `NotifyChannel.channel` widens from the literal union to `string`, and plugins (including future third-parties) contribute channels via `ctx.registerNotificationChannel(...)`.
 
 ## Dependency graph
 
 ```
-T0 (branch + scaffold commit) — done, only archival commit to write
-  │
-  ▼
-T1 (renderer `list` field — core primitive)     [standalone, reusable]
-  │
-  ▼
-T2 (MessagingSettings.contentTypes + seed on activate)
-  │
-  ▼
-T3 (runtime content-type label lookup + UI swap)
-  │
-  │     T4 (prompt-builder → team.getAgent) ────┐     [independent; can parallelize with T3]
-  │                                              │
-  ▼                                              ▼
-  └────────────►  T5 (8 client components → useAgentStore) ◄─ requires T4 merged
-                                              │
-                                              ▼
-                                  T6 (strip unions, AGENT_INFO, dead constants)
-                                              │
-                                              ▼
-                                  T7 (regression guard tests)
-                                              │
-                                              ▼
-                                  T8 (ship: push, PR, merge, close, archive)
+T0 scaffold (branch + archive #118 tasks)
+  ↓
+T1 core types ............................................ (foundation)
+  ↓
+T2 registry store + lazy builtin seeding ................. (depends on T1)
+  ↓
+T3 plugin-registry wiring + teardown path ................ (depends on T2)
+  ↓
+T4 workflows plugin: hooks + REST route .................. (depends on T3)
+  ↓
+  ├─ T5 client hook + ChannelIcon component .............. (depends on T4)
+  │      ↓
+  └─ T6 workflows type + zod widening .................... (independent of T5)
+         ↓
+         T7 messaging migration ........................... (needs T5 + T6)
+            ↓
+            T8 regression tests + full checkpoint
+               ↓
+               T9 ship
 ```
 
-Solo sequential is expected; parallelization note is for information only. Each task = one commit.
+Solo sequential expected. Each task = one commit.
 
 ## Task detail
 
-### T0 — chore(issue-118): spec + plan scaffold
+### T0 — chore(issue-125): spec + plan scaffold
 
-**Already done:** branch created, spec written at `.claude/specs/messaging-refactor.md`, plugin-system one-pager at `docs/ideas/plugin-system.md`, this plan + todo being written, issue-115 tasks archived.
+**Already done:** branch `issue-125-notification-channels-registry` created from main; `tasks/plan.md` + `tasks/todo.md` git-mv'd to `.claude/tasks/issue-118-{plan,todo}.md` (staged).
 
-**Commit:** bundle all scaffolding into one chore commit.
+**Still to do:** commit the archival + spec + new plan/todo.
 
-**Verification:** `git status` clean after commit; spec/plan/todo files tracked in the new branch.
+**Acceptance:**
+- [ ] Single commit `chore(issue-125): spec + plan scaffold`
+- [ ] `git status` clean after commit
+- [ ] Issue-118 archives visible at `.claude/tasks/issue-118-{plan,todo}.md`
 
 ---
 
-### T1 — feat(core): list field type in PluginSettingsRenderer
-
-**What:** Add a `list` variant to `SettingsField` for list-of-rows editing. Reusable by any future plugin with a taxonomy setting.
+### T1 — feat(core): NotificationChannel types + PluginContext.registerNotificationChannel
 
 **Files:**
-- `packages/core/src/plugin-types.ts` — extend `SettingsField` union (turn into a discriminated union: scalar variants + new `list` variant with `itemShape: Record<string, SettingsField>`)
-- `src/components/plugin-settings-renderer.tsx` — add `list` rendering branch
-- `tests/components/plugin-settings-renderer.test.tsx` (new) — unit tests
+- `packages/core/src/plugin-types.ts` — add `PluginNotificationChannelInput`, `NotificationChannelDef` interfaces; add `registerNotificationChannel(def: PluginNotificationChannelInput): string` to `PluginContext`
+- `src/lib/plugin-types.ts` — extend the re-export list
 
-**Shape:**
+**Type shape:**
 
 ```ts
-type SettingsField =
-  | { type: 'string' | 'number';    key: string; label: string; description?: string; default?: unknown }
-  | { type: 'boolean';              key: string; label: string; description?: string; default?: boolean }
-  | { type: 'select';               key: string; label: string; description?: string; default?: string;
-      options: { value: string; label: string }[] }
-  | { type: 'list';                 key: string; label: string; description?: string; default?: unknown[];
-      itemShape: Record<string, SettingsField>; addLabel?: string;
-      minItems?: number; maxItems?: number }
+export interface PluginNotificationChannelInput {
+  id: string
+  label: string
+  initials?: string
+  icon?: string  // lucide icon export name (e.g. "MessageSquare")
+}
+
+export interface NotificationChannelDef extends PluginNotificationChannelInput {
+  runtime: 'builtin' | 'plugin'
+  pluginId?: string
+}
 ```
 
-Renderer behavior for `list`:
-- Read value as `unknown[]`; default to `[]`
-- Render one row per item; each row renders nested fields using the `itemShape`
-- "Add" button appends a blank row (fields initialized to empty strings / false / field.default)
-- Per-row delete (confirm not needed for v1 — click-through is cheap)
-- Validation: required fields non-empty, `minItems` / `maxItems` respected, `id`-keyed fields enforce uniqueness within the list (when `key: 'id'` is in the shape)
-- No reordering in v1
+**Acceptance:**
+- [ ] Types exist and are exported from both `packages/core/src/plugin-types.ts` and re-exported via `src/lib/plugin-types.ts`
+- [ ] `PluginContext` has `registerNotificationChannel(def: PluginNotificationChannelInput): string`
+- [ ] `pnpm tsc --noEmit` passes (every plugin's `ctx` type still compiles; the new method is used nowhere yet — a stub in `plugin-registry.ts` will satisfy the interface in T3)
 
-**Acceptance criteria:**
-- [ ] `SettingsField` is a discriminated union; TS compiles
-- [ ] All existing plugins' settings schemas still validate (type-check clean after the union change)
-- [ ] Renderer renders add/edit/delete for a list field; validation blocks save when rules fail
-- [ ] Unit tests cover: add row, edit row, delete row, `required` validation, unique-id validation, `maxItems`
-- [ ] `pnpm tsc --noEmit` clean; full test suite runs green
-
-**Commit:** `feat(core): support list-of-rows field in PluginSettingsRenderer`
+**Commit:** `feat(core): notification-channel types on PluginContext`
 
 ---
 
-### T2 — feat(messaging): add contentTypes setting + seed defaults on activate
+### T2 — feat(workflows): notification-channel-registry with lazy builtin seeding
 
-**What:** Add `MessagingSettings.contentTypes`, register the `settingsSchema` using T1's new `list` field, and seed generic defaults on first activate.
-
-**Files:**
-- `plugins/messaging/types.ts` — add `MessagingSettings` interface (or extend existing one)
-- `plugins/messaging/index.ts` — register `settingsSchema`; seed `DEFAULT_CONTENT_TYPES` in `activate()` if missing
-- `tests/plugins/messaging/activate.test.ts` (new or extended) — seed behavior
-
-**Defaults:**
+**New file:** `plugins/workflows/lib/notification-channel-registry.ts` — mirrors `node-type-registry.ts`:
 
 ```ts
-const DEFAULT_CONTENT_TYPES = [
-  { id: 'post',         label: 'Post' },
-  { id: 'article',      label: 'Article' },
-  { id: 'video',        label: 'Video' },
-  { id: 'image',        label: 'Image' },
-  { id: 'announcement', label: 'Announcement' },
-]
+const registry = new Map<string, NotificationChannelDef>()
+
+export function registerNotificationChannel(def: NotificationChannelDef): void
+export function getNotificationChannel(id: string): NotificationChannelDef | undefined
+export function listNotificationChannels(): NotificationChannelDef[]
+export function unregisterNotificationChannel(id: string): void
+export function unregisterPluginNotificationChannels(pluginId: string): void
+
+/** Plugin wrapper — namespaces id to `{pluginId}.{id}`, returns namespaced id. */
+export function registerPluginNotificationChannel(
+  pluginId: string,
+  input: PluginNotificationChannelInput,
+): string
+
+// ─── Built-in channels — lazy self-register at module load ─────────────────
+registerNotificationChannel({ runtime: 'builtin', id: 'discord',   label: 'Discord',   initials: 'DC', icon: 'MessageSquare' })
+registerNotificationChannel({ runtime: 'builtin', id: 'slack',     label: 'Slack',     initials: 'SL', icon: 'MessageSquare' })
+registerNotificationChannel({ runtime: 'builtin', id: 'email',     label: 'Email',     initials: 'EM', icon: 'Mail' })
+registerNotificationChannel({ runtime: 'builtin', id: 'instagram', label: 'Instagram', initials: 'IG', icon: 'Instagram' })
+registerNotificationChannel({ runtime: 'builtin', id: 'twitter',   label: 'Twitter',   initials: 'TW', icon: 'Twitter' })
+registerNotificationChannel({ runtime: 'builtin', id: 'youtube',   label: 'YouTube',   initials: 'YT', icon: 'Youtube' })
+registerNotificationChannel({ runtime: 'builtin', id: 'tiktok',    label: 'TikTok',    initials: 'TK', icon: 'Music2' })
 ```
 
-**Acceptance criteria:**
-- [ ] `MessagingSettings` typed with `contentTypes: Array<{ id: string; label: string }>`
-- [ ] `settingsSchema` uses the new `list` field with `itemShape: { id, label }`, both `required: true`
-- [ ] Fresh activate with no persisted settings → defaults seeded and persisted
-- [ ] Re-activate with settings already present → idempotent no-op
-- [ ] Unit test covers both paths; uses `activatePlugin` helper from `tests/plugins/test-helpers.ts`
-- [ ] Settings page at `/settings` renders the content-types editor correctly (manual check)
+**New test:** `tests/plugins/workflows/notification-channel-registry.test.ts` — cover:
+- register + get + list
+- collision throw on duplicate id
+- plugin helper namespaces ids as `{pluginId}.{id}`
+- `unregisterPluginNotificationChannels(pluginId)` removes only that plugin's entries
+- builtin-seeding fires at module load (list returns 7 channels without any explicit seed call)
 
-**Commit:** `feat(messaging): user-configurable content types with generic defaults`
-
----
-
-### T3 — feat(messaging): runtime content-type lookup
-
-**What:** Replace compile-time `CONTENT_TYPE_LABELS` lookups with a runtime function reading from settings.
-
-**Discovery step (do first):** grep for the existing pattern by which messaging's client components read plugin settings. Two likely paths:
-1. A hook exists (e.g., `usePluginSettings('messaging')`) — use it
-2. No hook exists — add a small fetch-on-mount at the top-level layout (`plugins/messaging/components/planning-layout.tsx` or similar) and pass `contentTypes` down via props or Zustand store
-
-Document which path in the commit message.
-
-**Files:**
-- `plugins/messaging/lib/content-types.ts` (new) — `getContentTypeLabel(id, contentTypes)` + `listContentTypes(contentTypes)` helpers
-- `plugins/messaging/components/item-detail-drawer.tsx` — 3 call sites (line 229 select-value, line 232 iteration, line 488 label read)
-- `plugins/messaging/components/content-calendar.tsx` — `TYPE_OPTIONS` derivation at line 88 becomes runtime
-- `plugins/messaging/constants.ts` — keep `CONTENT_TYPE_LABELS` ONLY as a fallback-empty placeholder during transition, remove in T6
-- Any settings-fetch wiring identified in discovery
-
-**Fallback behavior:** `getContentTypeLabel(id, contentTypes)` returns the match's label, or the raw `id` (title-cased) if no match. Orphaned references render the id; no crash.
-
-**Acceptance criteria:**
-- [ ] All `CONTENT_TYPE_LABELS[x]` reads replaced with `getContentTypeLabel(x, contentTypes)` or the runtime iteration equivalent
-- [ ] Typing compiles: `ContentType` widened to `string` in any local annotations that blocked the swap (types.ts stays untouched until T6)
-- [ ] Manual smoke: open a calendar item, change its content type, save; verify selector shows current list from settings; add/remove a type in settings and see it reflected after refresh
-- [ ] No new tests strictly required; helper unit test nice-to-have
-
-**Commit:** `refactor(messaging): runtime content-type lookup from settings`
-
----
-
-### T4 — refactor(messaging): server agent resolution via team.getAgent
-
-**What:** Replace `AGENT_INFO[agentId]` in the server-side prompt-builder with a hook call to team.
-
-**Files:**
-- `plugins/messaging/lib/prompt-builder.ts:64` — swap lookup; need to check whether `ctx`/hooks are available at the call site
-- Caller updates if prompt-builder doesn't have hook access — lift the lookup one level up and pass `AgentMeta` in
-- `tests/plugins/messaging/prompt-builder.test.ts` (new or extended) — mock `team.getAgent` hook
-
-**Acceptance criteria:**
-- [ ] `prompt-builder.ts` no longer imports `AGENT_INFO`
-- [ ] Agent resolution goes through `ctx.hooks.invoke<AgentMeta>('team.getAgent', { agentId })` (or an `AgentMeta` param passed in from caller)
-- [ ] Test covers: hook returns agent → prompt includes name/emoji; hook returns null → prompt degrades cleanly to id-only
-- [ ] Tests mock `openclaw-client`, `content-dir`, `logger`, `watcher` per CLAUDE.md
-
-**Commit:** `refactor(messaging): resolve agents via team.getAgent hook`
-
----
-
-### T5 — refactor(messaging): client agent resolution via useAgentStore
-
-**What:** Swap all client-side `AGENT_INFO[id]` and `CONTENT_AGENTS` usages to use the team plugin's `useAgentStore`.
-
-**Files (8 components):**
-- `plugins/messaging/components/item-detail-drawer.tsx` — AGENT_INFO at `:367`; CONTENT_AGENTS at `:220`
-- `plugins/messaging/components/planning-layout.tsx` — AGENT_INFO at `:164`
-- `plugins/messaging/components/session-chat.tsx` — AGENT_INFO at `:85`
-- `plugins/messaging/components/brainstorm-panel.tsx` — AGENT_INFO at `:143`, `:162`; CONTENT_AGENTS at `:151`
-- `plugins/messaging/components/new-session-dialog.tsx` — AGENT_INFO at `:25`
-- `plugins/messaging/components/content-calendar.tsx` — AGENT_INFO at `:41`; CONTENT_AGENTS at `:546`
-- `plugins/messaging/components/brainstorm-view.tsx` — AGENT_INFO at `:115`; CONTENT_AGENTS at `:114`, `:134`
-- `plugins/messaging/components/session-list.tsx` — AGENT_INFO at `:182`; CONTENT_AGENTS at `:181`
-
-**Swap pattern:**
-
-```tsx
-// BEFORE
-import { AGENT_INFO } from '../types'
-import { CONTENT_AGENTS } from '../constants'
-const info = AGENT_INFO[id]
-CONTENT_AGENTS.map(id => ...)
-
-// AFTER
-import { useAgentStore, getAgentColor } from '@bakin/team/hooks/use-agent-store'
-const agent = useAgentStore(s => s.getAgent(id))
-const color = useAgentStore(s => getAgentColor(s, id))
-const agentIds = useAgentStore(s => s.agents.map(a => a.id))
-// handle agent?? with sensible fallback (show id, neutral styling)
-```
-
-**Acceptance criteria:**
-- [ ] `grep -n AGENT_INFO plugins/messaging/components/` → zero hits
-- [ ] `grep -n CONTENT_AGENTS plugins/messaging/components/` → zero hits
-- [ ] Every component handles `agent === null` (orphaned id) without crashing: renders id, no emoji/color
-- [ ] Manual smoke: calendar loads, opens item drawer, switches agent, runs brainstorm session end-to-end; no console errors
-- [ ] Manual degraded-display check: stage one calendar item with a fake agent id in frontmatter → drawer opens, id shown, no crash
+**Acceptance:**
+- [ ] Registry module loads 7 builtins immediately (no activation-order dependency)
+- [ ] Unit test file passes 6+ assertions
 - [ ] `pnpm tsc --noEmit` clean
 
-**Commit:** `refactor(messaging): client agent resolution via useAgentStore`
+**Commit:** `feat(workflows): notification-channel registry with builtin seeding`
 
 ---
 
-### T6 — refactor(messaging): strip unions, AGENT_INFO, dead constants
+### T3 — feat(core): wire registerNotificationChannel through plugin-registry
 
-**What:** Final cleanup — remove the now-unreferenced hardcoded unions and constants.
+**File:** `src/lib/plugin-registry.ts`
 
-**Files:**
-- `plugins/messaging/types.ts` — remove `ContentAgent | ContentChannel | ContentType` unions, replace with `type ContentAgent = string` / `type ContentChannel = string` / `type ContentType = string` aliases (kept for documentation of intent). Remove `AGENT_INFO`.
-- `plugins/messaging/constants.ts` — remove `CONTENT_AGENTS` (line 4) and `CONTENT_TYPE_LABELS` (lines 16-24). Keep `STATUS_BADGE`, `TONE_LABELS`, `CHANNEL_LABELS`, `CHANNEL_INITIALS`.
+- Import `registerPluginNotificationChannel`, `unregisterPluginNotificationChannels` alongside the existing node-type helpers (line 24 area)
+- Add `channelIds: string[]` to `PluginState` (next to `nodeKinds`)
+- Implement `ctx.registerNotificationChannel` mirroring `ctx.registerNodeType` at :204-216 — try/catch + log on collision, push namespaced id onto `state.channelIds`
+- Call `unregisterPluginNotificationChannels(pluginId)` alongside `unregisterPluginNodeTypes(pluginId)` at :351 (user-plugin-overrides-builtin path)
 
-**Verifications (run all):**
-- `grep -r AGENT_INFO plugins/messaging/` → zero hits
-- `grep -rn "CONTENT_AGENTS\|CONTENT_TYPE_LABELS" plugins/messaging/` → zero hits
-- `grep -rE "'basil'|'scout'|'nemo'|'zen'" plugins/messaging/` → zero hits
-- `grep -rE "'recipe'|'tip'|'motivation'|'workout'|'outdoor'|'image-post'" plugins/messaging/` → zero hits (confirm `DEFAULT_CONTENT_TYPES` didn't accidentally adopt any brand values)
-- `pnpm tsc --noEmit` clean
-- `pnpm vitest run` clean
+**"Look first" verification during build:** grep for other teardown sites that call `unregisterPluginNodeTypes`; if any exist beyond :351, mirror the same call.
 
-**Acceptance criteria:**
-- [ ] All grep checks return zero hits
-- [ ] Full test suite passes
-- [ ] tsc clean
+**Acceptance:**
+- [ ] `ctx.registerNotificationChannel` returns namespaced id
+- [ ] Teardown clears only the owning plugin's channels (existing contract-test pattern proves this)
+- [ ] `pnpm tsc --noEmit` + full `pnpm vitest run` clean
 
-**Commit:** `refactor(messaging): strip hardcoded unions and AGENT_INFO`
+**Commit:** `feat(core): wire registerNotificationChannel through plugin-registry`
 
 ---
 
-### T7 — test: regression guards for orphaned refs
+### T4 — feat(workflows): expose channels via hooks + REST route
 
-**What:** Add fixture-based tests that prove the "graceful degradation" promise.
+**File:** `plugins/workflows/index.ts`
 
-**Files:**
-- `tests/plugins/messaging/orphan-refs.test.tsx` (new) — renders components with fixture data containing unknown agent id and unknown content-type id; asserts no crash, raw id rendered
+- Register hooks in `activate(ctx)`:
+  - `ctx.hooks.register('workflows.listNotificationChannels', () => listNotificationChannels())`
+  - `ctx.hooks.register('workflows.getNotificationChannel', (d) => getNotificationChannel(d.id as string) ?? null)`
+- Register REST route:
+  - `GET /notification-channels` → `json({ channels: listNotificationChannels() })`
 
-**Acceptance criteria:**
-- [ ] Test for orphaned agent id in a calendar item
-- [ ] Test for orphaned content-type id in a calendar item
-- [ ] Tests mock all required surfaces per CLAUDE.md (content-dir, logger, watcher, openclaw-client, team.getAgent hook)
+**Test:** extend `tests/plugins/workflows/` (either an existing routes test or a new `notification-channels-route.test.ts`) — activate plugin via `activatePlugin` helper, call the route, assert 7 built-in channels returned.
+
+**Acceptance:**
+- [ ] Hooks registered during activate
+- [ ] `GET /api/plugins/workflows/notification-channels` returns 7 builtins
+- [ ] Route + hook tests pass
+- [ ] Full `pnpm vitest run` clean
+
+**Commit:** `feat(workflows): expose notification channels via hooks + REST route`
+
+---
+
+### T5 — feat(workflows): client hook + ChannelIcon component
+
+**New files:**
+- `plugins/workflows/hooks/use-notification-channels.ts` — module-level promise cache + in-flight coalescing, mirroring `plugins/messaging/hooks/use-content-types.ts`:
+  ```ts
+  export function useNotificationChannels(): NotificationChannelDef[]
+  export function getChannelLabel(id: string, channels: NotificationChannelDef[]): string
+  export function getChannelInitials(id: string, channels: NotificationChannelDef[]): string
+  export function __resetNotificationChannelsCache(): void  // test-only, NODE_ENV-guarded
+  ```
+  Fetches from `/api/plugins/workflows/notification-channels`. Falls back to empty array on error.
+
+- `plugins/workflows/hooks/channel-icon.tsx` — small component that resolves a lucide name to a component via an **explicit map** (not `import * as Lucide`, which bundles everything):
+  ```ts
+  const CHANNEL_ICON_MAP = {
+    MessageSquare, Mail, Instagram, Twitter, Youtube, Music2, HelpCircle,
+  }
+  // <ChannelIcon channelId="discord" className="size-3.5" />
+  ```
+  Falls back to `HelpCircle` for unknown names. Plugin-contributed channels with non-map icons render the fallback — accepted for v1.
+
+**Test:** `tests/plugins/workflows/use-notification-channels.test.tsx` — mocks `fetch`, verifies single-flight coalescing across two concurrent callers (mirrors the `useContentTypes` test pattern in PR #121).
+
+**Acceptance:**
+- [ ] Hook returns channels from cache after first fetch
+- [ ] Two concurrent callers trigger one `fetch` (single-flight)
+- [ ] `getChannelLabel` / `getChannelInitials` return raw id as fallback for unknown channels
+- [ ] `ChannelIcon` renders `HelpCircle` for unknown/missing icon
 - [ ] Tests pass
 
-**Commit:** `test(messaging): regression guards for orphaned agent/content-type refs`
+**Commit:** `feat(workflows): client hook + ChannelIcon for notification channels`
 
 ---
 
-### T8 — Ship
+### T6 — refactor(workflows): widen NotifyChannel.channel to string
 
-- [ ] `pnpm vitest run` full pass + `pnpm tsc --noEmit` clean
-- [ ] Manual smoke: wipe local `~/.bakin/messaging/` → start server → content calendar renders empty → create a new item with one of the default content types → works end-to-end
-- [ ] `git push -u origin issue-118-messaging-refactor`
-- [ ] Open PR against `main`, reference #118, link one-pager (`docs/ideas/plugin-system.md`)
+**Files:**
+- `plugins/workflows/types.ts:25` — `channel: 'discord' | 'slack'` → `channel: string`
+- `plugins/workflows/lib/node-type-registry.ts:145-148` — `notifyChannelSchema.channel: z.enum(['discord', 'slack'])` → `z.string().min(1)`
+
+**"Look first" verification:** grep for any test that asserts the zod enum shape specifically, e.g. `expect(...).toThrow` on `channel: 'email'` being invalid. If any, update.
+
+**Acceptance:**
+- [ ] Existing workflow YAML with `notify: { channel: discord, target: ... }` loads
+- [ ] New YAML with `notify: { channel: email, target: ... }` loads (previously would have been rejected by the zod enum)
+- [ ] `pnpm tsc --noEmit` clean
+- [ ] Full `pnpm vitest run` clean
+
+**Commit:** `refactor(workflows): widen NotifyChannel.channel to string`
+
+---
+
+### T7 — refactor(messaging): migrate channel consumers to registry
+
+**Files:**
+- `plugins/messaging/components/item-detail-drawer.tsx` — sites at :295-313 (channel chip selector) and :532-534 (channel display):
+  - `CHANNEL_LABELS[ch]` → `getChannelLabel(ch, channels)`
+  - `CHANNEL_INITIALS[ch]` → `getChannelInitials(ch, channels)`
+  - Add `const channels = useNotificationChannels()` near the top of the component
+- `plugins/messaging/components/content-calendar.tsx` — sites at :84-97:
+  - Delete local `CHANNEL_ICONS` map (lines 84-91)
+  - Replace module-level `CHANNEL_OPTIONS` derivation with in-component derivation driven by `useNotificationChannels()`
+  - `<ChannelIcon channelId={ch} />` replaces direct lucide component use where relevant
+- `plugins/messaging/constants.ts` — delete `CHANNEL_LABELS` and `CHANNEL_INITIALS` constants (lines 26-44). Keep `STATUS_BADGE`, `TONE_LABELS`.
+
+**Test mock updates (if existing messaging tests import the deleted constants):** swap to mocked `useNotificationChannels`. Mirror the pattern used for `useAgentStore` in `session-list.test.tsx`.
+
+**Acceptance:**
+- [ ] Grep: `CHANNEL_LABELS|CHANNEL_INITIALS|CHANNEL_ICONS` under `plugins/messaging/` returns zero hits
+- [ ] `pnpm tsc --noEmit` clean
+- [ ] Full `pnpm vitest run` clean
+- [ ] Manual smoke: item drawer renders channel chips; calendar list renders channel icons
+
+**Commit:** `refactor(messaging): resolve notification channels via workflows registry`
+
+---
+
+### T8 — test: regression guards + full checkpoint
+
+**Add:**
+- `tests/plugins/messaging/channel-rendering.test.tsx` (or extend an existing drawer test) — mocks `useNotificationChannels` with 3 channels, renders the drawer, asserts chips for each
+- If no existing orphan-channel test exists: add one that passes an item with `channel: 'mastodon'` (not in registry) and asserts the drawer renders the raw id without crashing
+
+**Full run:** `pnpm tsc --noEmit` + `pnpm vitest run` both clean.
+
+**Acceptance:**
+- [ ] Two new regression tests pass
+- [ ] Full test suite + tsc green
+
+**Commit:** `test(channels): regression guards for registry consumers`
+
+---
+
+### T9 — Ship
+
+- [ ] Manual smoke on maintainer's install: open messaging item → channel chips render; open calendar → channel icons render; create/edit a workflow with `notify: { channel: email, ... }` → validates
+- [ ] `git push -u origin issue-125-notification-channels-registry`
+- [ ] Open PR against `main`, reference #125, link spec + one-pager
 - [ ] Merge when green
-- [ ] Close #118 with before/after summary
-- [ ] Archive `tasks/plan.md` + `tasks/todo.md` to `.claude/tasks/issue-118-{plan,todo}.md`
+- [ ] Close #125 with before/after summary
+- [ ] Archive `tasks/plan.md` + `tasks/todo.md` → `.claude/tasks/issue-125-{plan,todo}.md`
 
 ## Commit strategy
 
-One PR, 7 commits (T0 scaffold + T1 through T6 + T7 regression tests). Commit boundaries match task boundaries. Each commit should be self-contained: passes tests, passes tsc, doesn't break runtime (T3 in particular: UI keeps rendering using the fallback path even before T6 removes the old constants).
+One PR, 8 commits (T0 scaffold + T1–T8). Each commit self-contained: tsc clean, tests pass, runtime behavior preserved (T5 ships the hook before T7 consumes it, so each intermediate commit still builds and runs).
 
 ## Risks / call-outs
 
-- **Renderer discriminated-union change (T1)** — turning `SettingsField` into a discriminated union could require touching every plugin's `settingsSchema` if any of them rely on the loose shape. Mitigation: after the type change, run `tsc --noEmit` across the whole repo before proceeding; fix any per-plugin schema sites in the same T1 commit.
-- **Client settings read pattern (T3)** — if no existing hook exists, the minimal fetch-and-pass-through approach is acceptable but introduces a small wiring footprint that will be superseded when the plugin-system spec formalizes settings-read. Fine for now; don't over-engineer.
-- **useAgentStore SSR-safety (T5)** — client components are `'use client'`, so hook usage is fine. Just confirm no message plugin component has accidentally become server-rendered.
-- **DEFAULT_CONTENT_TYPES creep** — watch that no brand-specific values slip into the defaults during T2. Grep in T6 is the backstop.
+- **T3 teardown site audit.** The plan assumes `:351` is the only place that drops per-plugin node-type registrations. Verify during T3; if there are more, mirror all of them for channels.
+- **T5 ChannelIcon bundle size.** Using an explicit map (not `import * as Lucide`) caps the lucide surface we pull into the client bundle. Plugins with exotic icons get `HelpCircle`. Accept for v1.
+- **T6 zod widening backwards compat.** Existing YAML with `channel: 'discord'` or `'slack'` still passes `z.string().min(1)`. Risk is only if some test asserts the enum rejects non-builtin channels — grep during T6.
+- **T7 messaging test mocks.** At least one existing test (`item-detail-drawer.test.tsx` or similar) likely imports `CHANNEL_LABELS`. Update those mocks in the same commit — don't let test breakage leak across tasks.
+- **Single-flight in T5.** The pattern is proven from `useContentTypes` but the test needs to trigger two mounts in the same tick. Use the same test pattern as PR #121.
