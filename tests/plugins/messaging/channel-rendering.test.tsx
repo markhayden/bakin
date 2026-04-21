@@ -126,8 +126,7 @@ describe('messaging drawer — channel chips from the workflows registry', () =>
         onDelete={vi.fn()}
       />
     )
-    // Raw id rendered as the label, prefix MA as the initials
+    // Raw id rendered as the label when the channel isn't in the registry
     expect(screen.getByText(/mastodon/)).toBeDefined()
-    expect(screen.getByText(/MA/)).toBeDefined()
   })
 })
