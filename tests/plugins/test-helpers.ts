@@ -17,6 +17,7 @@ import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'
 import { registerPluginNodeType } from '../../plugins/workflows/lib/node-type-registry'
+import { registerPluginNotificationChannel } from '../../plugins/workflows/lib/notification-channel-registry'
 import type { WorkflowDefinition } from '../../plugins/workflows/types'
 import { createLogger } from '../../src/core/logger'
 
@@ -124,7 +125,17 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
         return `${pluginId}.${def.kind}`
       }
     },
-    registerNotificationChannel: vi.fn((def) => `${pluginId}.${def.id}`),
+    registerNotificationChannel: (def) => {
+      try {
+        return registerPluginNotificationChannel(pluginId, def)
+      } catch (err) {
+        testHelperLog.error(
+          `registerNotificationChannel collision in plugin "${pluginId}" for id "${def.id}"`,
+          err as Error,
+        )
+        return `${pluginId}.${def.id}`
+      }
+    },
     watchFiles: vi.fn(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: vi.fn(),

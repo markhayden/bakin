@@ -98,6 +98,35 @@ Plugin registration goes through `ctx.registerNodeType`, which:
 2. Aggregates the plugin's `nodeRenderers` into the client `NodeRendererRegistry` so the canvas can render non-builtin kinds without a core change.
 3. Registers a `workflows.executeNode.{namespacedKind}` hook; `runtime.ts` looks this up when it encounters a step whose `type` isn't a builtin.
 
+## Notification Channel Registry
+
+`plugins/workflows/lib/notification-channel-registry.ts`. Same shape as the node-type registry — `Map<id, NotificationChannelDef>` with 7 builtins (`discord`, `slack`, `email`, `instagram`, `twitter`, `youtube`, `tiktok`) self-registering at module load. Plugins add more via `ctx.registerNotificationChannel`:
+
+```ts
+ctx.registerNotificationChannel({
+  id: 'mastodon',
+  label: 'Mastodon',
+  initials: 'MA',      // optional; falls back to id.slice(0, 2).toUpperCase()
+  icon: 'MessageSquare', // optional lucide-react export name
+})
+// returns namespaced id: 'socialstack.mastodon'
+```
+
+Plugin ids are auto-namespaced as `{pluginId}.{id}`; builtins keep their short ids (`discord`, `slack`, ...) so existing workflow YAML with `notify: { channel: discord, target: ... }` validates unchanged. `NotifyChannel.channel` in `plugins/workflows/types.ts` is `string` (widened from the old `'discord' | 'slack'` union) and the zod schema at `notifyChannelSchema` uses `z.string().min(1)`.
+
+**Cross-plugin read surfaces:**
+- `workflows.listNotificationChannels` — HookRegistry, returns `NotificationChannelDef[]`
+- `workflows.getNotificationChannel` — HookRegistry, takes `{ id }`, returns `NotificationChannelDef | null`
+- `GET /api/plugins/workflows/notification-channels` — REST, returns `{ channels: NotificationChannelDef[] }`
+
+**Client consumers** use `useNotificationChannels()` from `plugins/workflows/hooks/use-notification-channels.ts` — module-level promise cache with single-flight coalescing so concurrent mounts share one fetch. Paired helpers `getChannelLabel(id, channels)` + `getChannelInitials(id, channels)` return raw-id fallbacks for orphan refs (channel ids that were removed from the registry but still appear in legacy markdown frontmatter).
+
+**Icon rendering** goes through `<ChannelIcon channelId="..." />` in `plugins/workflows/hooks/channel-icon.tsx`, which holds an explicit 7-entry lucide map (`MessageSquare`, `Mail`, `Instagram`, `Twitter`, `Youtube`, `Music2`, `HelpCircle`). `import * as Lucide` is deliberately avoided to keep the client bundle small — unknown icon names silently fall back to `HelpCircle`. Widening the map (or switching to an `IconSpec` discriminator that accepts emoji/URL/SVG) is a future concern when a plugin actually needs non-lucide icons.
+
+Teardown: `unregisterPluginNotificationChannels(pluginId)` is called by `src/lib/plugin-registry.ts` in the user-plugin-overrides-builtin path alongside `unregisterPluginNodeTypes`, so hot reload of a plugin that registered channels doesn't leak `{pluginId}.{id}` entries.
+
+Messaging's drawer + calendar resolve channels through this registry (see `plugins/messaging/components/item-detail-drawer.tsx` + `content-calendar.tsx`); the old `CHANNEL_LABELS` / `CHANNEL_INITIALS` / `CHANNEL_ICONS` maps in `plugins/messaging/constants.ts` are gone.
+
 ## CRUD Routes
 
 | Method | Path | Behavior |
