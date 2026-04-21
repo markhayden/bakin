@@ -24,9 +24,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import type { CalendarItem, ContentAgent, ContentChannel, ContentTone } from '../types'
-import { AGENT_INFO, DISCORD_GENERAL } from '../types'
-import { CONTENT_AGENTS, TONE_LABELS, STATUS_BADGE, CHANNEL_LABELS, CHANNEL_INITIALS } from '../constants'
+import type { CalendarItem, ContentChannel, ContentTone } from '../types'
+import { DISCORD_GENERAL } from '../types'
+import { TONE_LABELS, STATUS_BADGE, CHANNEL_LABELS, CHANNEL_INITIALS } from '../constants'
+import { useAgent, useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
 
 interface Props {
@@ -44,9 +45,11 @@ interface Props {
 export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, onEdit, onUpdated, onDelete, defaultDate }: Props) {
   // Form state for create/edit
   const [title, setTitle] = useState('')
-  const [agent, setAgent] = useState<ContentAgent>('basil')
+  const [agent, setAgent] = useState<string>('')
   const [contentType, setContentType] = useState<string>('post')
   const contentTypes = useContentTypes()
+  const agentIds = useAgentIds()
+  const itemAgent = useAgent(item?.agent ?? '')
   const [tone, setTone] = useState<ContentTone>('conversational')
   const [scheduledAt, setScheduledAt] = useState('')
   const [brief, setBrief] = useState('')
@@ -83,7 +86,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
     } else if (isCreate) {
       // New item
       setTitle('')
-      setAgent('basil')
+      setAgent(agentIds[0] ?? '')
       setContentType(contentTypes[0]?.id ?? 'post')
       setTone('conversational')
       setScheduledAt(defaultDate || new Date().toISOString().slice(0, 16))
@@ -218,8 +221,8 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
               <label className="text-sm text-muted-foreground mb-1 block">Agent</label>
               <AgentSelect
                 value={agent}
-                onValueChange={(v) => { setAgent(v as ContentAgent); setDirty(true) }}
-                agentIds={CONTENT_AGENTS}
+                onValueChange={(v) => { setAgent(v ?? ''); setDirty(true) }}
+                agentIds={agentIds}
                 className="bg-surface"
               />
             </div>
@@ -366,7 +369,6 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
   // ─── Detail View ────────────────────────────────────────────────
   if (!item) return null
 
-  const agentInfo = AGENT_INFO[item.agent]
   const scheduledDate = new Date(item.scheduledAt)
 
   return (
@@ -407,7 +409,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
         <div className="flex items-center gap-4 rounded-lg p-4 border border-border bg-surface">
           <AgentAvatar agentId={item.agent} size="lg" />
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">{agentInfo.name}</div>
+            <div className="text-sm font-medium text-foreground">{itemAgent?.name ?? item.agent}</div>
             <div className="flex items-center gap-2 mt-1">
               <Badge className={STATUS_BADGE[item.status]}>
                 {item.status === 'waiting'

@@ -17,8 +17,8 @@ import { SessionChat } from './session-chat'
 import { ReviewPanel } from './review-panel'
 import { MiniCalendar } from './mini-calendar'
 import { DeleteSessionDialog } from './delete-session-dialog'
-import type { ContentAgent, PlanningSession, ProposedItem } from '../types'
-import { AGENT_INFO } from '../types'
+import type { PlanningSession, ProposedItem } from '../types'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
 
 interface Props {
   sessionId: string
@@ -35,6 +35,8 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
   const [showMiniCal, setShowMiniCal] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
+
+  const sessionAgent = useAgent(session?.agentId ?? '')
 
   const fetchSession = useCallback(async () => {
     try {
@@ -160,8 +162,7 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
     )
   }
 
-  const agentId = session.agentId as ContentAgent
-  const agentInfo = AGENT_INFO[agentId]
+  const agentId = session.agentId
   const isCompleted = session.status === 'completed'
 
   return (
@@ -214,7 +215,7 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
         )}
 
         <Badge variant="outline" className="text-[10px] shrink-0">
-          {agentInfo?.name || agentId}
+          {sessionAgent?.name || agentId}
         </Badge>
 
         {isCompleted && (

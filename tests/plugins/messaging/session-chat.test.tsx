@@ -2,6 +2,19 @@
 
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'os'
+import { join } from 'path'
+
+const testDir = join(tmpdir(), `bakin-test-session-chat-${Date.now()}`)
+
+vi.mock('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir }),
+}))
+vi.mock('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir }),
+}))
 
 // Mock UI components
 vi.mock('@/components/ui/button', () => ({
@@ -27,6 +40,21 @@ vi.mock('@/components/agent-avatar', () => ({
 vi.mock('lucide-react', () => ({
   Send: () => <span data-testid="send-icon" />,
   Loader2: () => <span data-testid="loader-icon" />,
+}))
+
+const MOCK_AGENTS = [
+  { id: 'basil', name: 'Basil', emoji: '🥗', role: '', headshot: '' },
+  { id: 'scout', name: 'Scout', emoji: '🏕️', role: '', headshot: '' },
+  { id: 'nemo', name: 'Nemo', emoji: '🏊', role: '', headshot: '' },
+  { id: 'zen', name: 'Zen', emoji: '🧘', role: '', headshot: '' },
+]
+vi.mock('@bakin/team/hooks/use-agent-store', () => ({
+  useAgentList: () => MOCK_AGENTS,
+  useAgentIds: () => MOCK_AGENTS.map(a => a.id),
+  useAgent: (id: string) => MOCK_AGENTS.find(a => a.id === id),
+  useAgentColor: () => '#a1a1aa',
+  useAgentStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector({ agents: MOCK_AGENTS, agentIds: MOCK_AGENTS.map(a => a.id) }),
 }))
 
 import { SessionChat } from '../../../plugins/messaging/components/session-chat'

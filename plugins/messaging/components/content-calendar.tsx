@@ -37,9 +37,9 @@ import { EmptyState } from '@/components/empty-state'
 import { AgentFilter } from '@/components/agent-filter'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
-import type { CalendarItem, ContentAgent } from '../types'
-import { AGENT_INFO } from '../types'
-import { CONTENT_AGENTS, STATUS_BADGE, CHANNEL_LABELS } from '../constants'
+import type { CalendarItem } from '../types'
+import { STATUS_BADGE, CHANNEL_LABELS } from '../constants'
+import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
 import { ItemDetailDrawer } from './item-detail-drawer'
 import { CalendarWeek } from './calendar-week'
@@ -48,7 +48,7 @@ import { CalendarWeek } from './calendar-week'
  * Agent colors use CSS custom properties from the agent settings system.
  * Each agent's --agent-{id} var is set by AgentThemeProvider.
  */
-function agentColorStyle(agent: ContentAgent): React.CSSProperties {
+function agentColorStyle(agent: string): React.CSSProperties {
   const v = `var(--agent-${agent})`
   return {
     backgroundColor: `color-mix(in srgb, ${v} 20%, transparent)`,
@@ -130,6 +130,7 @@ export function ContentCalendar() {
   const searchParams = useSearchParams()
 
   const contentTypes = useContentTypes()
+  const agentIds = useAgentIds()
   const typeOptions = contentTypes.map(({ id, label }) => ({
     value: id,
     label,
@@ -546,7 +547,7 @@ export function ContentCalendar() {
       {/* Filters + date nav */}
       {(
         <div className="flex items-center gap-3 mt-4 mb-4">
-          <AgentFilter agentIds={[...CONTENT_AGENTS]} value={agentFilter} onChange={setAgentFilter} />
+          <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
           <FacetFilter
             label="Status"
             options={STATUS_OPTIONS}
