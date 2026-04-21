@@ -83,3 +83,31 @@ export const AGENT_INFO: Record<ContentAgent, { name: string; emoji: string; col
 }
 
 export const DISCORD_GENERAL = '1483917792745885768'
+
+// ---------------------------------------------------------------------------
+// Plugin settings
+// ---------------------------------------------------------------------------
+
+export interface ContentTypeOption {
+  id: string
+  label: string
+}
+
+export interface MessagingSettings {
+  defaultView?: 'month' | 'week' | 'list'
+  showScheduleJobs?: boolean
+  channels?: string
+  contentTypes?: ContentTypeOption[]
+}
+
+/**
+ * Generic default content types, seeded on first activate. Intentionally
+ * broad — users customize in settings. Do not ship brand-specific values here.
+ */
+export const DEFAULT_CONTENT_TYPES: ContentTypeOption[] = [
+  { id: 'post',         label: 'Post' },
+  { id: 'article',      label: 'Article' },
+  { id: 'video',        label: 'Video' },
+  { id: 'image',        label: 'Image' },
+  { id: 'announcement', label: 'Announcement' },
+]
