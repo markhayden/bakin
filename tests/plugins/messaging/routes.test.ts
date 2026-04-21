@@ -650,7 +650,7 @@ describe('Calendar exec tools', () => {
       expect(result.ok).toBe(true)
       const item = result.item as CalendarItem
       expect(item.channel).toBe('discord')
-      expect(item.contentType).toBe('tip')
+      expect(item.contentType).toBe('post')
       expect(item.tone).toBe('conversational')
       expect(item.status).toBe('draft')
     })
@@ -904,8 +904,8 @@ describe('GET /search — auto-registered brainstorm search', () => {
 // ===========================================================================
 
 describe('Calendar plugin registration', () => {
-  it('registers exactly 17 routes', () => {
-    expect(plugin.routes.length).toBe(17)
+  it('registers exactly 18 routes', () => {
+    expect(plugin.routes.length).toBe(18)
   })
 
   it('registers exactly 15 exec tools', () => {

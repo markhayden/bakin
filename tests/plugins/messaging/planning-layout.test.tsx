@@ -2,6 +2,23 @@
 
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+const testDir = join(tmpdir(), `bakin-test-planning-layout-${Date.now()}`)
+
+// Safety mock — keeps any accidental storage access off ~/.bakin/
+vi.mock('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    root: testDir,
+    assets: join(testDir, 'assets'),
+    projects: join(testDir, 'projects'),
+    heartbeats: join(testDir, 'heartbeats'),
+    agents: join(testDir, 'agents'),
+    settings: join(testDir, 'settings.json'),
+  }),
+}))
 
 // Mock all child components to isolate layout testing
 vi.mock('../../../plugins/messaging/components/session-chat', () => ({
@@ -55,10 +72,6 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuTrigger: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
   DropdownMenuContent: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
   DropdownMenuItem: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
-}))
-
-vi.mock('../../../plugins/messaging/components/mini-calendar', () => ({
-  MiniCalendar: () => <div data-testid="mini-calendar">Mini Calendar</div>,
 }))
 
 vi.mock('../../../plugins/messaging/components/delete-session-dialog', () => ({

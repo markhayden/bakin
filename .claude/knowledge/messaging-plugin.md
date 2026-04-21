@@ -11,7 +11,7 @@ The parent `/messaging` route redirects to `/messaging/calendar`.
 
 ## Sidebar Sub-Navigation
 
-The messaging plugin uses `NavItem.children` (added in `packages/core/src/plugin-types.ts`) for sub-nav. The sidebar renders children indented under the parent, with a chevron toggle for expand/collapse. Auto-expands when navigating to a child route.
+The messaging plugin uses `NavItem.children` (added in `packages/core/src/plugin-types.ts`) for sub-nav. It also sets `NavItem.alwaysExpanded: true` so the chevron toggle is hidden and children are always visible under the parent in the expanded sidebar. In the collapsed sidebar (icon-only mode), hovering the messaging icon opens a Base UI Popover flyout containing the sub-nav links — so the children remain reachable without expanding the whole sidebar. The flyout uses `openOnHover` with a 120ms delay, and `nativeButton={false}` on the trigger so Base UI accepts the `<Link>` render.
 
 ## Planning Sessions (Brainstorm)
 
@@ -56,9 +56,27 @@ The brainstorm chat uses SSE streaming (`POST /api/plugins/messaging/sessions/:i
 ### Confirm Flow
 
 When user clicks "Confirm Plan":
-1. `POST /sessions/:id/confirm` creates calendar items from approved proposals
-2. Toast shows "X items added to calendar"
-3. Auto-navigates back to session list after brief delay
+1. A dialog prompts for auto-approval: **Add as drafts** or **Auto-approve & schedule**
+2. `POST /sessions/:id/confirm` with `{ autoApprove: boolean }` creates calendar items from approved proposals. `autoApprove: true` lands items in `status: 'scheduled'`; false lands them in `status: 'draft'` (same path as the agent-tool `bakin_exec_messaging_session_confirm`, which also accepts `autoApprove`).
+3. Toast shows "X items scheduled on calendar" or "X items added as drafts"
+4. Auto-navigates back to session list after brief delay
+
+### Calendar Item Lifecycle
+
+Calendar items have `ContentStatus = 'draft' | 'scheduled' | 'executing' | 'waiting' | 'review' | 'published' | 'failed'`. Human-driven state transitions:
+
+| From | Action | To | Route |
+|------|--------|-----|-------|
+| `draft` | Approve (Schedule) | `scheduled` | `POST /:itemId/approve` |
+| `scheduled` | **Unapprove** | `draft` | `POST /:itemId/unapprove` |
+| `review` | Approve & Publish | `published` (posts to Discord) | `POST /:itemId/approve` |
+| `review` | Reject | `draft` (with note) | `POST /:itemId/reject` |
+
+The unapprove action is surfaced as a button in `ItemDetailDrawer` when `status === 'scheduled'`. Delete is confirmed via a proper `<Dialog>` — not an in-menu two-click pattern (the earlier pattern broke because `DropdownMenu.onOpenChange` reset the confirm state when the menu closed).
+
+### List View Scope
+
+`ContentCalendar`'s month/week views fetch only the current month (`?month=YYYY-MM`). The list view fetches **all** items and supports column sorting via `SortableHead` (date, agent, type, title, status). The view toggle drives the fetch scope in `fetchItems`.
 
 ### Brainstorm Search
 

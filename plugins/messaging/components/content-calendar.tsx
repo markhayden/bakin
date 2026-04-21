@@ -16,11 +16,8 @@ import {
   Trash2,
   Link2,
   Search,
-  UtensilsCrossed,
-  Lightbulb,
-  Sparkles,
-  Dumbbell,
-  Trees,
+  FileText,
+  Megaphone,
   Video as VideoIcon,
   ImageIcon,
   MessageSquare,
@@ -36,10 +33,20 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/empty-state'
 import { AgentFilter } from '@/components/agent-filter'
 import { AgentAvatar } from '@/components/agent-avatar'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table'
+import { SortableHead, type SortDir } from '@/components/sortable-head'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
-import type { CalendarItem, ContentAgent } from '../types'
-import { AGENT_INFO } from '../types'
-import { CONTENT_AGENTS, STATUS_BADGE, CONTENT_TYPE_LABELS, CHANNEL_LABELS } from '../constants'
+import type { CalendarItem } from '../types'
+import { STATUS_BADGE, CHANNEL_LABELS } from '../constants'
+import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
+import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
 import { ItemDetailDrawer } from './item-detail-drawer'
 import { CalendarWeek } from './calendar-week'
 
@@ -47,7 +54,7 @@ import { CalendarWeek } from './calendar-week'
  * Agent colors use CSS custom properties from the agent settings system.
  * Each agent's --agent-{id} var is set by AgentThemeProvider.
  */
-function agentColorStyle(agent: ContentAgent): React.CSSProperties {
+function agentColorStyle(agent: string): React.CSSProperties {
   const v = `var(--agent-${agent})`
   return {
     backgroundColor: `color-mix(in srgb, ${v} 20%, transparent)`,
@@ -67,13 +74,11 @@ const STATUS_OPTIONS = [
 ]
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
-  recipe: <UtensilsCrossed className="size-3.5" />,
-  tip: <Lightbulb className="size-3.5" />,
-  motivation: <Sparkles className="size-3.5" />,
-  workout: <Dumbbell className="size-3.5" />,
-  outdoor: <Trees className="size-3.5" />,
-  video: <VideoIcon className="size-3.5" />,
-  'image-post': <ImageIcon className="size-3.5" />,
+  post:         <MessageSquare className="size-3.5" />,
+  article:      <FileText className="size-3.5" />,
+  video:        <VideoIcon className="size-3.5" />,
+  image:        <ImageIcon className="size-3.5" />,
+  announcement: <Megaphone className="size-3.5" />,
 }
 
 const CHANNEL_ICONS: Record<string, React.ReactNode> = {
@@ -85,11 +90,6 @@ const CHANNEL_ICONS: Record<string, React.ReactNode> = {
   tiktok: <Music2 className="size-3.5" />,
 }
 
-const TYPE_OPTIONS = Object.entries(CONTENT_TYPE_LABELS).map(([value, label]) => ({
-  value,
-  label,
-  icon: TYPE_ICONS[value],
-}))
 const CHANNEL_OPTIONS = Object.entries(CHANNEL_LABELS).map(([value, label]) => ({
   value,
   label,
@@ -133,6 +133,14 @@ export function ContentCalendar() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
+  const contentTypes = useContentTypes()
+  const agentIds = useAgentIds()
+  const typeOptions = contentTypes.map(({ id, label }) => ({
+    value: id,
+    label,
+    icon: TYPE_ICONS[id],
+  }))
+
   // URL state
   const [view, setView] = useQueryState('view', 'week')
   const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
@@ -147,6 +155,8 @@ export function ContentCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [listSortField, setListSortField] = useState<'scheduledAt' | 'agent' | 'contentType' | 'title' | 'status'>('scheduledAt')
+  const [listSortDir, setListSortDir] = useState<SortDir>('asc')
 
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
@@ -162,14 +172,18 @@ export function ContentCalendar() {
 
   const fetchItems = useCallback(async () => {
     try {
-      const res = await fetch(`/api/plugins/messaging/?month=${monthKey}`)
+      // List view shows everything; month/week views scope to the current month.
+      const url = view === 'list'
+        ? '/api/plugins/messaging/'
+        : `/api/plugins/messaging/?month=${monthKey}`
+      const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
         setItems(data.items ?? data)
       }
     } catch { /* */ }
     setLoading(false)
-  }, [monthKey])
+  }, [monthKey, view])
 
   useEffect(() => { fetchItems() }, [fetchItems])
 
@@ -425,8 +439,25 @@ export function ContentCalendar() {
   }
 
   // ─── List View ──────────────────────────────────────────────────
+  const toggleListSort = useCallback((field: typeof listSortField) => {
+    if (listSortField === field) {
+      setListSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setListSortField(field)
+      setListSortDir('asc')
+    }
+  }, [listSortField])
+
   function renderList() {
-    const sorted = [...filteredItems].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+    const sorted = [...filteredItems].sort((a, b) => {
+      let cmp = 0
+      if (listSortField === 'scheduledAt') cmp = a.scheduledAt.localeCompare(b.scheduledAt)
+      else if (listSortField === 'agent') cmp = a.agent.localeCompare(b.agent)
+      else if (listSortField === 'contentType') cmp = a.contentType.localeCompare(b.contentType)
+      else if (listSortField === 'title') cmp = a.title.localeCompare(b.title)
+      else if (listSortField === 'status') cmp = a.status.localeCompare(b.status)
+      return listSortDir === 'asc' ? cmp : -cmp
+    })
 
     return (
       <div>
@@ -434,48 +465,50 @@ export function ContentCalendar() {
           <EmptyState icon={CalendarDays} title="No items match filters" />
         ) : (
           <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-surface border-b border-border">
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Date</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Agent</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Type</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Title</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Status</th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <SortableHead field="scheduledAt" current={listSortField} dir={listSortDir} onSort={toggleListSort}>Date</SortableHead>
+                  <SortableHead field="agent" current={listSortField} dir={listSortDir} onSort={toggleListSort}>Agent</SortableHead>
+                  <SortableHead field="contentType" current={listSortField} dir={listSortDir} onSort={toggleListSort}>Type</SortableHead>
+                  <SortableHead field="title" current={listSortField} dir={listSortDir} onSort={toggleListSort}>Title</SortableHead>
+                  <SortableHead field="status" current={listSortField} dir={listSortDir} onSort={toggleListSort}>Status</SortableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {sorted.map(item => (
-                  <tr
+                  <TableRow
                     key={item.id}
-                    className="group border-b border-border/50 hover:bg-muted/30 transition-colors cursor-pointer"
+                    className="group cursor-pointer"
                     onClick={() => openItem(item)}
                   >
-                    <td className="px-3 py-2 font-mono text-muted-foreground whitespace-nowrap">
+                    <TableCell className="font-mono text-muted-foreground text-xs">
                       {item.scheduledAt.slice(0, 16).replace('T', ' ')}
-                    </td>
-                    <td className="px-3 py-2">
+                    </TableCell>
+                    <TableCell>
                       <span className="flex items-center gap-1.5">
                         <AgentAvatar agentId={item.agent} size="xs" />
-                        <span className="capitalize">{item.agent}</span>
+                        <span className="text-xs capitalize">{item.agent}</span>
                       </span>
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{item.contentType}</td>
-                    <td className="px-3 py-2 text-foreground max-w-[240px] truncate">
-                      <span className="flex items-center gap-1">
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-xs">
+                      {getContentTypeLabel(item.contentType, contentTypes)}
+                    </TableCell>
+                    <TableCell className="text-foreground max-w-[240px] truncate">
+                      <span className="flex items-center gap-1 text-xs">
                         {item.sessionId && <Link2 className="size-3 text-muted-foreground shrink-0" />}
                         {item.title}
                       </span>
-                    </td>
-                    <td className="px-3 py-2">
+                    </TableCell>
+                    <TableCell>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_BADGE[item.status]}`}>
                         {item.status === 'waiting'
                           ? `waiting: ${item.draft?.videoPrompt ? 'video' : 'image'}`
                           : item.status}
                       </span>
-                    </td>
-                    <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
+                    </TableCell>
+                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         {(item.status === 'draft' || item.status === 'review') && (
                           <Button
@@ -498,11 +531,11 @@ export function ContentCalendar() {
                           </Button>
                         )}
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       </div>
@@ -543,7 +576,7 @@ export function ContentCalendar() {
       {/* Filters + date nav */}
       {(
         <div className="flex items-center gap-3 mt-4 mb-4">
-          <AgentFilter agentIds={[...CONTENT_AGENTS]} value={agentFilter} onChange={setAgentFilter} />
+          <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
           <FacetFilter
             label="Status"
             options={STATUS_OPTIONS}
@@ -552,7 +585,7 @@ export function ContentCalendar() {
           />
           <FacetFilter
             label="Type"
-            options={TYPE_OPTIONS}
+            options={typeOptions}
             selected={typeFilter}
             onChange={setTypeFilter}
           />

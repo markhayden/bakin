@@ -208,10 +208,13 @@ describe('Plugin Contract', () => {
         expect(Array.isArray(plugin.settingsSchema.fields)).toBe(true)
         for (const field of plugin.settingsSchema.fields) {
           expect(field.key).toBeDefined()
-          expect(['string', 'number', 'boolean', 'select']).toContain(field.type)
+          expect(['string', 'number', 'boolean', 'select', 'list']).toContain(field.type)
           expect(field.label).toBeDefined()
           if (field.type === 'select') {
             expect(Array.isArray(field.options)).toBe(true)
+          }
+          if (field.type === 'list') {
+            expect(typeof field.itemShape).toBe('object')
           }
         }
       })

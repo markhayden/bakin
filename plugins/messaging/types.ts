@@ -1,6 +1,18 @@
-export type ContentAgent = 'basil' | 'scout' | 'nemo' | 'zen'
-export type ContentChannel = 'discord' | 'instagram' | 'email' | 'twitter' | 'youtube' | 'tiktok'
-export type ContentType = 'recipe' | 'tip' | 'motivation' | 'workout' | 'outdoor' | 'video' | 'image-post'
+// ---------------------------------------------------------------------------
+// Identifier aliases — all plain strings.
+//
+// These used to be string-literal unions tied to one installation's roster
+// (agents: basil/scout/nemo/zen; channels: discord/instagram/...; content
+// types: recipe/tip/motivation/...). They now exist as documented aliases
+// so call sites self-describe what the string represents:
+//   - ContentAgent   resolves against the OpenClaw roster via team.* hooks
+//   - ContentChannel will be constrained by a future notificationChannels
+//                    registry (plugin-system spec); today it's free string
+//   - ContentType    resolves against MessagingSettings.contentTypes
+// ---------------------------------------------------------------------------
+export type ContentAgent = string
+export type ContentChannel = string
+export type ContentType = string
 export type ContentTone = 'energetic' | 'calm' | 'educational' | 'humorous' | 'inspiring' | 'conversational'
 export type ContentStatus = 'draft' | 'scheduled' | 'executing' | 'waiting' | 'review' | 'published' | 'failed'
 
@@ -75,11 +87,32 @@ export interface PlanningSession {
   participants?: string[]
 }
 
-export const AGENT_INFO: Record<ContentAgent, { name: string; emoji: string; color: string }> = {
-  basil: { name: 'Basil', emoji: '🥗', color: 'green' },
-  scout: { name: 'Scout', emoji: '🏕️', color: 'orange' },
-  nemo: { name: 'Nemo', emoji: '🏊', color: 'blue' },
-  zen: { name: 'Zen', emoji: '🧘', color: 'purple' },
+export const DISCORD_GENERAL = '1483917792745885768'
+
+// ---------------------------------------------------------------------------
+// Plugin settings
+// ---------------------------------------------------------------------------
+
+export interface ContentTypeOption {
+  id: string
+  label: string
 }
 
-export const DISCORD_GENERAL = '1483917792745885768'
+export interface MessagingSettings {
+  defaultView?: 'month' | 'week' | 'list'
+  showScheduleJobs?: boolean
+  channels?: string
+  contentTypes?: ContentTypeOption[]
+}
+
+/**
+ * Generic default content types, seeded on first activate. Intentionally
+ * broad — users customize in settings. Do not ship brand-specific values here.
+ */
+export const DEFAULT_CONTENT_TYPES: ContentTypeOption[] = [
+  { id: 'post',         label: 'Post' },
+  { id: 'article',      label: 'Article' },
+  { id: 'video',        label: 'Video' },
+  { id: 'image',        label: 'Image' },
+  { id: 'announcement', label: 'Announcement' },
+]

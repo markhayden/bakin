@@ -78,6 +78,21 @@ vi.mock('../../../plugins/messaging/components/delete-session-dialog', () => ({
   DeleteSessionDialog: () => null,
 }))
 
+const MOCK_AGENTS = [
+  { id: 'basil', name: 'Basil', emoji: '🥗', role: '', headshot: '' },
+  { id: 'scout', name: 'Scout', emoji: '🏕️', role: '', headshot: '' },
+  { id: 'nemo', name: 'Nemo', emoji: '🏊', role: '', headshot: '' },
+  { id: 'zen', name: 'Zen', emoji: '🧘', role: '', headshot: '' },
+]
+vi.mock('@bakin/team/hooks/use-agent-store', () => ({
+  useAgentList: () => MOCK_AGENTS,
+  useAgentIds: () => MOCK_AGENTS.map(a => a.id),
+  useAgent: (id: string) => MOCK_AGENTS.find(a => a.id === id),
+  useAgentColor: () => '#a1a1aa',
+  useAgentStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector({ agents: MOCK_AGENTS, agentIds: MOCK_AGENTS.map(a => a.id) }),
+}))
+
 import { SessionList } from '../../../plugins/messaging/components/session-list'
 
 afterEach(() => cleanup())

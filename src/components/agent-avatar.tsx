@@ -57,8 +57,12 @@ export function AgentAvatar({
           />
         ) : null}
         <AvatarFallback
-          className={cn(config.text, 'font-medium text-white')}
-          style={{ backgroundColor: accentColor }}
+          className={cn(
+            config.text,
+            'font-medium',
+            agent ? 'text-white' : 'bg-muted text-muted-foreground',
+          )}
+          style={agent ? { backgroundColor: accentColor } : undefined}
         >
           {agent ? initial : <User className={config.icon} />}
         </AvatarFallback>

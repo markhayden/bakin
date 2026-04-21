@@ -44,6 +44,7 @@ export interface NavItem {
   href: string
   order?: number
   children?: NavItem[]
+  alwaysExpanded?: boolean
 }
 
 export interface APIRoute {
@@ -516,14 +517,62 @@ export interface SearchAPI {
 // ---------------------------------------------------------------------------
 // Settings Schema
 // ---------------------------------------------------------------------------
-export interface SettingsField {
+interface BaseSettingsField {
   key: string
-  type: 'string' | 'number' | 'boolean' | 'select'
   label: string
   description?: string
-  options?: { value: string; label: string }[]
-  default?: unknown
+  /** If true, the renderer blocks save when the field is empty (checked inside list rows). */
+  required?: boolean
 }
+
+export interface StringSettingsField extends BaseSettingsField {
+  type: 'string'
+  default?: string
+}
+
+export interface NumberSettingsField extends BaseSettingsField {
+  type: 'number'
+  default?: number
+}
+
+export interface BooleanSettingsField extends BaseSettingsField {
+  type: 'boolean'
+  default?: boolean
+}
+
+export interface SelectSettingsField extends BaseSettingsField {
+  type: 'select'
+  options: { value: string; label: string }[]
+  default?: string
+}
+
+/**
+ * List-of-rows field. Each row renders the fields declared in `itemShape`.
+ * The persisted value is `Array<Record<string, unknown>>`. Reusable by any
+ * plugin that needs a user-editable taxonomy (messaging content types,
+ * future notification channels, etc).
+ */
+export interface ListSettingsField extends BaseSettingsField {
+  type: 'list'
+  /** Keyed map of sub-fields rendered per row. Nested lists are not supported. */
+  itemShape: Record<string, StringSettingsField | NumberSettingsField | BooleanSettingsField | SelectSettingsField>
+  default?: unknown[]
+  addLabel?: string
+  minItems?: number
+  maxItems?: number
+  /**
+   * If set, the renderer blocks save when two rows share the same value for
+   * this sub-field key. Typical use: uniqueField: 'id' on a taxonomy list.
+   */
+  uniqueField?: string
+}
+
+export type SettingsField =
+  | StringSettingsField
+  | NumberSettingsField
+  | BooleanSettingsField
+  | SelectSettingsField
+  | ListSettingsField
 
 export interface PluginSettingsSchema {
   fields: SettingsField[]

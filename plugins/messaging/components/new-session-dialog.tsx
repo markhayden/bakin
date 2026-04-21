@@ -10,19 +10,18 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AgentAvatar } from '@/components/agent-avatar'
-import { AGENT_INFO } from '../types'
-import type { ContentAgent } from '../types'
+import { useAgent } from '@bakin/team/hooks/use-agent-store'
 
 interface NewSessionDialogProps {
   open: boolean
-  agentId: ContentAgent | null
+  agentId: string | null
   onConfirm: (agentId: string, title: string) => void
   onCancel: () => void
 }
 
 export function NewSessionDialog({ open, agentId, onConfirm, onCancel }: NewSessionDialogProps) {
   const [title, setTitle] = useState('')
-  const agentInfo = agentId ? AGENT_INFO[agentId] : null
+  const agent = useAgent(agentId ?? '')
 
   // Reset when dialog opens
   useEffect(() => {
@@ -40,10 +39,10 @@ export function NewSessionDialog({ open, agentId, onConfirm, onCancel }: NewSess
         <DialogHeader>
           <DialogTitle>New session</DialogTitle>
         </DialogHeader>
-        {agentInfo && (
+        {agentId && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <AgentAvatar agentId={agentId!} size="xs" />
-            <span>Planning with {agentInfo.name}</span>
+            <AgentAvatar agentId={agentId} size="xs" />
+            <span>Planning with {agent?.name ?? agentId}</span>
           </div>
         )}
         <Input
