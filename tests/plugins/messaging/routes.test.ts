@@ -904,8 +904,8 @@ describe('GET /search — auto-registered brainstorm search', () => {
 // ===========================================================================
 
 describe('Calendar plugin registration', () => {
-  it('registers exactly 17 routes', () => {
-    expect(plugin.routes.length).toBe(17)
+  it('registers exactly 18 routes', () => {
+    expect(plugin.routes.length).toBe(18)
   })
 
   it('registers exactly 15 exec tools', () => {

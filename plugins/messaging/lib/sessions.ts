@@ -312,7 +312,7 @@ export function updateProposal(
 // Confirm plan
 // ---------------------------------------------------------------------------
 
-export function confirmSession(sessionId: string): {
+export function confirmSession(sessionId: string, opts: { autoApprove?: boolean } = {}): {
   itemsCreated: number
   itemIds: string[]
 } {
@@ -324,6 +324,7 @@ export function confirmSession(sessionId: string): {
   if (approved.length === 0) throw new Error('No approved proposals to confirm')
 
   const itemIds: string[] = []
+  const initialStatus: CalendarItem['status'] = opts.autoApprove ? 'scheduled' : 'draft'
 
   for (const proposal of approved) {
     const item = createItem({
@@ -335,7 +336,7 @@ export function confirmSession(sessionId: string): {
       tone: proposal.tone as CalendarItem['tone'],
       scheduledAt: proposal.scheduledAt,
       brief: proposal.brief,
-      status: 'draft',
+      status: initialStatus,
       sessionId,
       channels: proposal.channels,
     })
