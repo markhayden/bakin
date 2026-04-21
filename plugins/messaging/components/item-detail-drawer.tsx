@@ -24,9 +24,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import type { CalendarItem, ContentAgent, ContentChannel, ContentType, ContentTone } from '../types'
+import type { CalendarItem, ContentAgent, ContentChannel, ContentTone } from '../types'
 import { AGENT_INFO, DISCORD_GENERAL } from '../types'
-import { CONTENT_AGENTS, CONTENT_TYPE_LABELS, TONE_LABELS, STATUS_BADGE, CHANNEL_LABELS, CHANNEL_INITIALS } from '../constants'
+import { CONTENT_AGENTS, TONE_LABELS, STATUS_BADGE, CHANNEL_LABELS, CHANNEL_INITIALS } from '../constants'
+import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
 
 interface Props {
   item: CalendarItem | null
@@ -44,7 +45,8 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
   // Form state for create/edit
   const [title, setTitle] = useState('')
   const [agent, setAgent] = useState<ContentAgent>('basil')
-  const [contentType, setContentType] = useState<ContentType>('tip')
+  const [contentType, setContentType] = useState<string>('post')
+  const contentTypes = useContentTypes()
   const [tone, setTone] = useState<ContentTone>('conversational')
   const [scheduledAt, setScheduledAt] = useState('')
   const [brief, setBrief] = useState('')
@@ -82,7 +84,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
       // New item
       setTitle('')
       setAgent('basil')
-      setContentType('tip')
+      setContentType(contentTypes[0]?.id ?? 'post')
       setTone('conversational')
       setScheduledAt(defaultDate || new Date().toISOString().slice(0, 16))
       setBrief('')
@@ -224,13 +226,13 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
 
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Content Type</label>
-              <Select value={contentType} onValueChange={(v) => { setContentType(v as ContentType); setDirty(true) }}>
+              <Select value={contentType} onValueChange={(v) => { setContentType(v ?? 'post'); setDirty(true) }}>
                 <SelectTrigger className="bg-surface">
-                  <SelectValue>{CONTENT_TYPE_LABELS[contentType]}</SelectValue>
+                  <SelectValue>{getContentTypeLabel(contentType, contentTypes)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {(Object.entries(CONTENT_TYPE_LABELS) as [ContentType, string][]).map(([val, label]) => (
-                    <SelectItem key={val} value={val}>{label}</SelectItem>
+                  {contentTypes.map(({ id, label }) => (
+                    <SelectItem key={id} value={id}>{label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -485,7 +487,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
           </div>
           <div className="rounded-lg bg-surface p-3 space-y-1">
             <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Type</div>
-            <div className="text-sm font-medium">{CONTENT_TYPE_LABELS[item.contentType]}</div>
+            <div className="text-sm font-medium">{getContentTypeLabel(item.contentType, contentTypes)}</div>
           </div>
           <div className="rounded-lg bg-surface p-3 space-y-1">
             <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Tone</div>

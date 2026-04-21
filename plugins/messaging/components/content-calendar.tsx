@@ -39,7 +39,8 @@ import { AgentAvatar } from '@/components/agent-avatar'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import type { CalendarItem, ContentAgent } from '../types'
 import { AGENT_INFO } from '../types'
-import { CONTENT_AGENTS, STATUS_BADGE, CONTENT_TYPE_LABELS, CHANNEL_LABELS } from '../constants'
+import { CONTENT_AGENTS, STATUS_BADGE, CHANNEL_LABELS } from '../constants'
+import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
 import { ItemDetailDrawer } from './item-detail-drawer'
 import { CalendarWeek } from './calendar-week'
 
@@ -85,11 +86,6 @@ const CHANNEL_ICONS: Record<string, React.ReactNode> = {
   tiktok: <Music2 className="size-3.5" />,
 }
 
-const TYPE_OPTIONS = Object.entries(CONTENT_TYPE_LABELS).map(([value, label]) => ({
-  value,
-  label,
-  icon: TYPE_ICONS[value],
-}))
 const CHANNEL_OPTIONS = Object.entries(CHANNEL_LABELS).map(([value, label]) => ({
   value,
   label,
@@ -132,6 +128,13 @@ export function ContentCalendar() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+
+  const contentTypes = useContentTypes()
+  const typeOptions = contentTypes.map(({ id, label }) => ({
+    value: id,
+    label,
+    icon: TYPE_ICONS[id],
+  }))
 
   // URL state
   const [view, setView] = useQueryState('view', 'week')
@@ -461,7 +464,7 @@ export function ContentCalendar() {
                         <span className="capitalize">{item.agent}</span>
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-muted-foreground">{item.contentType}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{getContentTypeLabel(item.contentType, contentTypes)}</td>
                     <td className="px-3 py-2 text-foreground max-w-[240px] truncate">
                       <span className="flex items-center gap-1">
                         {item.sessionId && <Link2 className="size-3 text-muted-foreground shrink-0" />}
@@ -552,7 +555,7 @@ export function ContentCalendar() {
           />
           <FacetFilter
             label="Type"
-            options={TYPE_OPTIONS}
+            options={typeOptions}
             selected={typeFilter}
             onChange={setTypeFilter}
           />
