@@ -143,7 +143,7 @@ const stepOutputSchema = z.object({
 })
 
 const notifyChannelSchema = z.object({
-  channel: z.enum(['discord', 'slack']),
+  channel: z.string().min(1),
   target: z.string(),
 })
 
