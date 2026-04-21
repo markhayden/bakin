@@ -277,15 +277,6 @@ async function fetchAvailableModels(): Promise<FetchResult> {
   }
 }
 
-function fallbackModels(): AvailableModel[] {
-  return [
-    { id: 'openai-codex/gpt-5.4', name: 'GPT-5.4', tier: 'premium', provider: 'openai-codex', configured: true, isDefault: true, fallbackIndex: null, tags: ['default', 'configured'] },
-    { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', tier: 'standard', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: 0, tags: ['fallback#1', 'configured'] },
-    { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', tier: 'premium', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: null, tags: ['configured'] },
-    { id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', tier: 'budget', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: null, tags: ['configured'] },
-  ]
-}
-
 // ---------------------------------------------------------------------------
 // Aliases helpers
 // ---------------------------------------------------------------------------
