@@ -21,11 +21,6 @@ import {
   Video as VideoIcon,
   ImageIcon,
   MessageSquare,
-  Instagram,
-  Mail,
-  Twitter,
-  Youtube,
-  Music2,
 } from 'lucide-react'
 import { PluginHeader } from '@/components/plugin-header'
 import { FacetFilter } from '@/components/facet-filter'
@@ -44,9 +39,11 @@ import {
 import { SortableHead, type SortDir } from '@/components/sortable-head'
 import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
 import type { CalendarItem } from '../types'
-import { STATUS_BADGE, CHANNEL_LABELS } from '../constants'
+import { STATUS_BADGE } from '../constants'
 import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
+import { useNotificationChannels } from '@bakin/workflows/hooks/use-notification-channels'
+import { ChannelIcon } from '@bakin/workflows/hooks/channel-icon'
 import { ItemDetailDrawer } from './item-detail-drawer'
 import { CalendarWeek } from './calendar-week'
 
@@ -80,21 +77,6 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   image:        <ImageIcon className="size-3.5" />,
   announcement: <Megaphone className="size-3.5" />,
 }
-
-const CHANNEL_ICONS: Record<string, React.ReactNode> = {
-  discord: <MessageSquare className="size-3.5" />,
-  instagram: <Instagram className="size-3.5" />,
-  email: <Mail className="size-3.5" />,
-  twitter: <Twitter className="size-3.5" />,
-  youtube: <Youtube className="size-3.5" />,
-  tiktok: <Music2 className="size-3.5" />,
-}
-
-const CHANNEL_OPTIONS = Object.entries(CHANNEL_LABELS).map(([value, label]) => ({
-  value,
-  label,
-  icon: CHANNEL_ICONS[value],
-}))
 
 type ViewMode = 'month' | 'week' | 'list'
 
@@ -135,10 +117,16 @@ export function ContentCalendar() {
 
   const contentTypes = useContentTypes()
   const agentIds = useAgentIds()
+  const availableChannels = useNotificationChannels()
   const typeOptions = contentTypes.map(({ id, label }) => ({
     value: id,
     label,
     icon: TYPE_ICONS[id],
+  }))
+  const channelOptions = availableChannels.map(({ id, label }) => ({
+    value: id,
+    label,
+    icon: <ChannelIcon channelId={id} className="size-3.5" />,
   }))
 
   // URL state
@@ -591,7 +579,7 @@ export function ContentCalendar() {
           />
           <FacetFilter
             label="Channel"
-            options={CHANNEL_OPTIONS}
+            options={channelOptions}
             selected={channelFilter}
             onChange={setChannelFilter}
           />
