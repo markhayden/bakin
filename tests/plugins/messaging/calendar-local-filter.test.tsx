@@ -131,6 +131,7 @@ vi.mock('lucide-react', () => {
     Twitter: Icon,
     Youtube: Icon,
     Music2: Icon,
+    HelpCircle: Icon,
   }
 })
 

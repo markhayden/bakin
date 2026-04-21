@@ -20,9 +20,9 @@ Uninstall: plugins own their own uninstall behavior (optional `onUninstall` hook
 
 Core plugins expose these registries from day one:
 
-- `workflows.stepTypes` — custom workflow step kinds beyond agent/gate/parallel/output/workflow
+- `workflows.stepTypes` — custom workflow step kinds beyond agent/gate/parallel/output/workflow **[shipped]**
+- `workflows.notificationChannels` — beyond hardcoded `discord` / `slack` (email, SMS, webhook, etc.) **[shipped — #125 / PR #126]**
 - `models.providers` — AI model providers beyond the built-in Anthropic catalog
-- `workflows.notificationChannels` — beyond hardcoded `discord` / `slack` (email, SMS, webhook, etc.)
 - `assets.renderers` — previewers for new file types (3D, Figma, specialized formats)
 - `health.checks` — plugin-contributed doctor/health probes
 

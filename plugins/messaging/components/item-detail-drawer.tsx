@@ -30,11 +30,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import type { CalendarItem, ContentChannel, ContentTone } from '../types'
+import type { CalendarItem, ContentTone } from '../types'
 import { DISCORD_GENERAL } from '../types'
-import { TONE_LABELS, STATUS_BADGE, CHANNEL_LABELS, CHANNEL_INITIALS } from '../constants'
+import { TONE_LABELS, STATUS_BADGE } from '../constants'
 import { useAgent, useAgentIds } from '@bakin/team/hooks/use-agent-store'
 import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
+import {
+  useNotificationChannels,
+  getChannelLabel,
+} from '@bakin/workflows/hooks/use-notification-channels'
+import { ChannelIcon } from '@bakin/workflows/hooks/channel-icon'
 
 interface Props {
   item: CalendarItem | null
@@ -56,6 +61,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
   const contentTypes = useContentTypes()
   const agentIds = useAgentIds()
   const itemAgent = useAgent(item?.agent ?? '')
+  const availableChannels = useNotificationChannels()
   const [tone, setTone] = useState<ContentTone>('conversational')
   const [scheduledAt, setScheduledAt] = useState('')
   const [brief, setBrief] = useState('')
@@ -292,25 +298,26 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
           <div>
             <label className="text-sm text-muted-foreground mb-1 block">Channels</label>
             <div className="flex flex-wrap gap-1.5 p-2 rounded-md border border-border bg-surface min-h-[38px]">
-              {(Object.entries(CHANNEL_LABELS) as [ContentChannel, string][]).map(([ch, label]) => {
-                const active = channels.includes(ch)
+              {availableChannels.map((c) => {
+                const active = channels.includes(c.id)
                 return (
                   <button
-                    key={ch}
+                    key={c.id}
                     type="button"
                     onClick={() => {
                       setChannels(prev =>
-                        active ? prev.filter(c => c !== ch) : [...prev, ch]
+                        active ? prev.filter(id => id !== c.id) : [...prev, c.id]
                       )
                       setDirty(true)
                     }}
-                    className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                    className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border transition-colors cursor-pointer ${
                       active
                         ? 'bg-accent text-accent-foreground border-accent'
                         : 'bg-transparent text-muted-foreground border-border hover:border-foreground/30'
                     }`}
                   >
-                    {CHANNEL_INITIALS[ch]} {label}
+                    <ChannelIcon channelId={c.id} className="size-3.5" />
+                    {c.label}
                   </button>
                 )
               })}
@@ -528,10 +535,9 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
             </div>
             <div className="flex items-center gap-2 text-sm font-medium">
               {(item.channels || (item.channel ? [item.channel] : [])).map(ch => (
-                <Badge key={ch} variant="outline" className="text-[10px]">
-                  {CHANNEL_INITIALS[ch as ContentChannel] || ch.slice(0, 2).toUpperCase()}
-                  {' '}
-                  {CHANNEL_LABELS[ch as ContentChannel] || ch}
+                <Badge key={ch} variant="outline" className="text-[10px] inline-flex items-center gap-1">
+                  <ChannelIcon channelId={ch} className="size-3" />
+                  {getChannelLabel(ch, availableChannels)}
                 </Badge>
               ))}
               {item.channelTarget && (
