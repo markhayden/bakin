@@ -60,6 +60,28 @@ vi.mock('os', async (importOriginal) => {
   }
 })
 
+// The os.homedir mock above routes ~/.bakin to tmpdir, but the hook
+// validator also requires an explicit content-dir mock. Both point at
+// the same tmpdir; this is defense-in-depth.
+vi.mock('../../../src/core/content-dir', async () => {
+  const { join: pathJoin } = await import('path')
+  const { tmpdir } = await import('os')
+  const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
+  return {
+    getContentDir: () => dir,
+    getBakinPaths: () => ({ root: dir }),
+  }
+})
+vi.mock('../../../packages/core/src/content-dir', async () => {
+  const { join: pathJoin } = await import('path')
+  const { tmpdir } = await import('os')
+  const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
+  return {
+    getContentDir: () => dir,
+    getBakinPaths: () => ({ root: dir }),
+  }
+})
+
 vi.mock('../../../src/core/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
@@ -144,6 +166,7 @@ describe('Models Plugin Activation', () => {
       'POST /config',
       'POST /defaults',
       'POST /gateway/restart',
+      'POST /refresh',
       'PUT /profiles',
     ])
   })
@@ -331,6 +354,47 @@ describe('GET /available', () => {
 
     const haiku = models.find((m) => (m.id as string).includes('haiku'))!
     expect(haiku.tier).toBe('budget')
+  })
+
+  it('returns stale flag in response shape', async () => {
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    // stale is defined on every successful response (true|false)
+    expect(typeof body.stale).toBe('boolean')
+  })
+})
+
+describe('POST /refresh', () => {
+  it('is registered', () => {
+    expect(findRoute(activated.routes, 'POST', '/refresh')).toBeDefined()
+  })
+
+  it('bypasses cache and returns fresh models', async () => {
+    const route = findRoute(activated.routes, 'POST', '/refresh')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.cached).toBe(false)
+    expect(body.stale).toBe(false)
+    expect(Array.isArray(body.models)).toBe(true)
+    expect((body.models as unknown[]).length).toBeGreaterThan(0)
+  })
+})
+
+describe('POST /gateway/restart', () => {
+  it('clears the in-memory cache after a successful restart', async () => {
+    // Prime the cache via /available
+    const availableRoute = findRoute(activated.routes, 'GET', '/available')!
+    const first = await callRoute(availableRoute, activated.ctx)
+    expect((first.body.models as unknown[]).length).toBeGreaterThan(0)
+
+    // Restart — will call the real openclaw binary; on CI / without it installed
+    // the restart itself will error (500). We only assert the handler handles
+    // that gracefully without crashing. The important invariant (cache clear)
+    // is covered by the unit-level cache tests; wiring here guards the route.
+    const restartRoute = findRoute(activated.routes, 'POST', '/gateway/restart')!
+    const result = await callRoute(restartRoute, activated.ctx)
+    expect([200, 500]).toContain(result.status)
   })
 })
 

@@ -413,6 +413,49 @@ const modelsPlugin: BakinPlugin = {
     })
 
     // -------------------------------------------------------------------
+    // POST /api/plugins/models/refresh
+    // -------------------------------------------------------------------
+    // Force a fresh fetch, bypassing both cache layers. Used by the
+    // manual Refresh button on the models page and by the stale-auto-
+    // refresh path. On OpenClaw failure we fall back to the last-known-
+    // good cache (if any) — never fake data.
+    ctx.registerRoute({
+      path: '/refresh',
+      method: 'POST',
+      description: 'Bypass cache and fetch the model list fresh from OpenClaw',
+      handler: async () => {
+        try {
+          const models = await loadConfiguredModelsFromOpenClaw()
+          const now = Date.now()
+          setModelsCache({ models, fetchedAt: now })
+          writePersistedCache({ models, fetchedAt: now, source: 'openclaw' })
+          return Response.json({ ok: true, models, cached: false, cachedAt: now, stale: false })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          const fallbackCache = readPersistedCache()
+          if (fallbackCache) {
+            return Response.json({
+              ok: false,
+              error: message,
+              models: fallbackCache.models,
+              cached: true,
+              cachedAt: fallbackCache.fetchedAt,
+              stale: true,
+            }, { status: 502 })
+          }
+          return Response.json({
+            ok: false,
+            error: message,
+            models: [],
+            cached: false,
+            cachedAt: null,
+            stale: false,
+          }, { status: 502 })
+        }
+      },
+    })
+
+    // -------------------------------------------------------------------
     // GET /api/plugins/models/config
     // -------------------------------------------------------------------
     ctx.registerRoute({
@@ -682,6 +725,10 @@ const modelsPlugin: BakinPlugin = {
               resolve(Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 }))
             } else {
               markGatewayRestarted()
+              // Gateway restart invalidates both cache layers — the user
+              // expects fresh data on the next /available hit.
+              setModelsCache(null)
+              clearPersistedCache()
               ctx.activity.audit('gateway.restarted', 'system')
               ctx.activity.log('system', 'OpenClaw gateway restarted', { category: 'models' })
               resolve(Response.json({ ok: true, message: 'Restart initiated' }))
