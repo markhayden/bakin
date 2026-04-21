@@ -19,8 +19,7 @@ import {
 import type { SearchResult } from '@/hooks/use-search'
 import { useDebug } from '@/hooks/use-debug'
 import { DeleteSessionDialog } from './delete-session-dialog'
-import { AGENT_INFO } from '../types'
-import { CONTENT_AGENTS } from '../constants'
+import { useAgentList } from '@bakin/team/hooks/use-agent-store'
 
 interface ScoreInfo {
   score: number
@@ -58,6 +57,7 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
   const [sortField, setSortField] = useState<SortField>('updatedAt')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [debug] = useDebug()
+  const agentList = useAgentList()
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -178,24 +178,21 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
         </div>
 
         <div className="grid grid-cols-2 gap-3 max-w-lg w-full">
-          {CONTENT_AGENTS.map(agentId => {
-            const info = AGENT_INFO[agentId]
-            return (
-              <button
-                key={agentId}
-                onClick={() => onCreateSession?.(agentId)}
-                disabled={creating}
-                className="flex items-center gap-3 p-4 rounded-lg border border-border bg-surface hover:bg-muted/50 transition-colors text-left"
-                data-testid={`agent-card-${agentId}`}
-              >
-                <AgentAvatar agentId={agentId} size="md" />
-                <div>
-                  <div className="text-sm font-medium text-foreground">{info.name}</div>
-                  <div className="text-xs text-muted-foreground">Start planning</div>
-                </div>
-              </button>
-            )
-          })}
+          {agentList.map(agent => (
+            <button
+              key={agent.id}
+              onClick={() => onCreateSession?.(agent.id)}
+              disabled={creating}
+              className="flex items-center gap-3 p-4 rounded-lg border border-border bg-surface hover:bg-muted/50 transition-colors text-left"
+              data-testid={`agent-card-${agent.id}`}
+            >
+              <AgentAvatar agentId={agent.id} size="md" />
+              <div>
+                <div className="text-sm font-medium text-foreground">{agent.name}</div>
+                <div className="text-xs text-muted-foreground">Start planning</div>
+              </div>
+            </button>
+          ))}
         </div>
       </div>
     )
