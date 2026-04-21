@@ -18,6 +18,7 @@ import {
   writePersistedCache,
   clearPersistedCache,
 } from './lib/models-cache'
+import { getKnownModel, getKnownProvider } from './data/known-models'
 
 const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
 const OPENCLAW_BIN = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
@@ -219,11 +220,14 @@ async function loadConfiguredModelsFromOpenClaw(): Promise<AvailableModel[]> {
       const id = normalizeModelId(model.key!)
       const tags = model.tags ?? []
       const fallbackIndex = fallbackModels.indexOf(id)
+      const provider = providerFromId(id)
+      const known = getKnownModel(id)
+      const knownProvider = getKnownProvider(provider)
       return {
         id,
-        name: model.name || id,
-        tier: tierFromId(id),
-        provider: providerFromId(id),
+        name: known?.name ?? model.name ?? id,
+        tier: known?.tier ?? tierFromId(id),
+        provider,
         input: model.input,
         contextWindow: model.contextWindow,
         local: model.local,
@@ -232,6 +236,17 @@ async function loadConfiguredModelsFromOpenClaw(): Promise<AvailableModel[]> {
         configured: tags.includes('configured'),
         isDefault: id === defaultModel,
         fallbackIndex: fallbackIndex >= 0 ? fallbackIndex : null,
+        // Enrichment from the curated catalog (plugins/models/data/known-models.ts).
+        // Unknown models get none of these and render plain in the UI.
+        description: known?.description,
+        bestFor: known?.bestFor,
+        costRange: known?.costRange,
+        contextWindowDisplay: known?.contextWindow,
+        kind: known?.kind,
+        brandIconSlug: known?.brandIconSlug,
+        providerLabel: knownProvider?.label,
+        providerBrandIconSlug: knownProvider?.brandIconSlug,
+        providerBrandColor: knownProvider?.brandColor,
       }
     })
     .sort(sortModels)

@@ -30,6 +30,26 @@ export interface AvailableModel {
   configured?: boolean
   isDefault?: boolean
   fallbackIndex?: number | null
+  // ── Enrichment from the curated catalog (plugins/models/data/known-models.ts) ──
+  // All optional — unknown models render without them.
+  /** Display-ready description shown under the model name. */
+  description?: string
+  /** Short purpose hint rendered next to the tier badge. */
+  bestFor?: string
+  /** Display-only cost summary, e.g. '$3 in / $15 out per 1M'. */
+  costRange?: string
+  /** Display-only context-window string override (e.g. '200K', '1M'). Distinct
+   *  from the numeric `contextWindow` which is OpenClaw-sourced. */
+  contextWindowDisplay?: string
+  /** 'llm' | 'image' | 'video' — gives the UI a reason to cluster differently. */
+  kind?: 'llm' | 'image' | 'video'
+  /** simple-icons slug for the model's primary brand (usually the provider's). */
+  brandIconSlug?: string
+  /** Resolved provider metadata — pre-joined server-side so the client doesn't
+   *  need a second registry lookup. */
+  providerLabel?: string
+  providerBrandIconSlug?: string
+  providerBrandColor?: string
 }
 
 export interface AvailableModelsResponse {

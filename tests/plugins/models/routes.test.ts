@@ -362,6 +362,36 @@ describe('GET /available', () => {
     // stale is defined on every successful response (true|false)
     expect(typeof body.stale).toBe('boolean')
   })
+
+  it('enriches catalog-matched models with description, bestFor, costRange', async () => {
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    const models = body.models as Array<Record<string, unknown>>
+
+    const sonnet = models.find((m) => m.id === 'anthropic/claude-sonnet-4-6')!
+    expect(sonnet.description).toBeTruthy()
+    expect(sonnet.bestFor).toBeTruthy()
+    expect(sonnet.costRange).toBeTruthy()
+    expect(sonnet.kind).toBe('llm')
+    expect(sonnet.brandIconSlug).toBe('anthropic')
+    expect(sonnet.providerLabel).toBe('Anthropic')
+    expect(sonnet.providerBrandIconSlug).toBe('anthropic')
+  })
+
+  it('resolves provider metadata on models even when the model itself is not in the catalog', async () => {
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    const models = body.models as Array<Record<string, unknown>>
+
+    // openai-codex/gpt-5.4 is not in the model catalog (we only seeded openai/gpt-5.4),
+    // but `openai-codex` IS in the provider catalog, so the provider-level fields
+    // should resolve even with no per-model enrichment.
+    const gpt = models.find((m) => m.id === 'openai-codex/gpt-5.4')!
+    expect(gpt.providerLabel).toBe('OpenAI (Codex)')
+    expect(gpt.providerBrandIconSlug).toBe('openai')
+    // Per-model fields should be absent (catalog miss)
+    expect(gpt.description).toBeUndefined()
+  })
 })
 
 describe('POST /refresh', () => {
