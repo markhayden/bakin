@@ -11,7 +11,8 @@ import {
   deleteItem,
   getItem,
 } from './lib/storage'
-import type { CalendarItem, ContentStatus, ProposalStatus } from './types'
+import type { CalendarItem, ContentStatus, ProposalStatus, MessagingSettings } from './types'
+import { DEFAULT_CONTENT_TYPES } from './types'
 import {
   createSession,
   loadSession,
@@ -122,6 +123,18 @@ const messagingPlugin: BakinPlugin = {
       { key: 'defaultView', type: 'select', label: 'Default view', description: 'Default messaging view on page load', options: [{ value: 'month', label: 'Month' }, { value: 'week', label: 'Week' }, { value: 'list', label: 'List' }], default: 'month' },
       { key: 'showScheduleJobs', type: 'boolean', label: 'Show schedule jobs', description: 'Display recurring schedule jobs on the content calendar', default: false },
       { key: 'channels', type: 'string', label: 'Channels', description: 'Comma-separated list of available distribution channels (e.g., discord,instagram,email)', default: 'discord' },
+      {
+        key: 'contentTypes',
+        type: 'list',
+        label: 'Content types',
+        description: 'Categories used across the content calendar and brainstorm proposals.',
+        addLabel: 'Add content type',
+        minItems: 1,
+        itemShape: {
+          id:    { key: 'id',    type: 'string', label: 'ID',    description: 'Machine id — lowercase, no spaces (e.g. "blog-post").', required: true },
+          label: { key: 'label', type: 'string', label: 'Label', description: 'Display name shown in menus.',                           required: true },
+        },
+      },
     ],
   },
 
@@ -154,6 +167,13 @@ const messagingPlugin: BakinPlugin = {
       }
     } catch (err) {
       log.warn('Data migration failed (non-fatal)', err)
+    }
+
+    // ── Seed default content types on first activate ──────────────────
+    const currentSettings = ctx.getSettings<MessagingSettings>()
+    if (!currentSettings.contentTypes || currentSettings.contentTypes.length === 0) {
+      ctx.updateSettings({ contentTypes: DEFAULT_CONTENT_TYPES })
+      log.info(`Seeded ${DEFAULT_CONTENT_TYPES.length} default content types`)
     }
 
     // ── Search Content Type Registration ─────────────────────────────
