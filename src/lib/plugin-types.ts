@@ -42,4 +42,6 @@ export type {
   FormFieldType,
   EdgeRules,
   PluginNodeTypeInput,
+  PluginNotificationChannelInput,
+  NotificationChannelDef,
 } from '@bakin/core/plugin-types'

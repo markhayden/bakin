@@ -102,6 +102,7 @@ function makeCtx(): CapturedCtx {
     registerSkill: vi.fn(),
     registerWorkflow: vi.fn(),
     registerNodeType: vi.fn(() => ''),
+    registerNotificationChannel: vi.fn(() => ''),
     watchFiles: vi.fn(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: vi.fn(),

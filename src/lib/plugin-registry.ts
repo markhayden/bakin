@@ -214,6 +214,9 @@ class PluginRegistryImpl {
           return `${pluginId}.${def.kind}`
         }
       },
+      // T3 wires this through the real registry. Interim stub keeps the
+      // PluginContext interface satisfied so T1/T2 commits build cleanly.
+      registerNotificationChannel: (def) => `${pluginId}.${def.id}`,
       watchFiles: (patterns: string[]) => { state.watchPatterns.push(...patterns) },
       getSettings: <T = Record<string, unknown>>(): T => {
         const settingsPath = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)

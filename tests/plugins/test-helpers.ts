@@ -124,6 +124,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
         return `${pluginId}.${def.kind}`
       }
     },
+    registerNotificationChannel: vi.fn((def) => `${pluginId}.${def.id}`),
     watchFiles: vi.fn(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: vi.fn(),
