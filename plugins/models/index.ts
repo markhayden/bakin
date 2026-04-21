@@ -13,6 +13,11 @@ import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { tryGetMainAgentId } from '@bakin/core/main-agent'
 import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
+import {
+  readPersistedCache,
+  writePersistedCache,
+  clearPersistedCache,
+} from './lib/models-cache'
 
 const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
 const OPENCLAW_BIN = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
@@ -232,20 +237,43 @@ async function loadConfiguredModelsFromOpenClaw(): Promise<AvailableModel[]> {
     .sort(sortModels)
 }
 
-async function fetchAvailableModels(): Promise<{ models: AvailableModel[]; cached: boolean; cachedAt: number | null }> {
-  const cached = getModelsCache()
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
-    return { models: cached.models, cached: true, cachedAt: cached.fetchedAt }
+interface FetchResult {
+  models: AvailableModel[]
+  cached: boolean
+  cachedAt: number | null
+  stale: boolean
+  error?: string
+}
+
+async function fetchAvailableModels(): Promise<FetchResult> {
+  // 1. Hot read — in-memory cache (fresh by TTL)
+  const memCached = getModelsCache()
+  if (memCached && Date.now() - memCached.fetchedAt < CACHE_TTL) {
+    return { models: memCached.models, cached: true, cachedAt: memCached.fetchedAt, stale: false }
   }
 
+  // 2. Persistent cache hydration — survives server restart even when
+  //    in-memory is empty. Always returns last-known-good; `stale` tells
+  //    the client whether to kick off a background refresh.
+  const diskCached = memCached ? null : readPersistedCache()
+  if (diskCached) {
+    setModelsCache({ models: diskCached.models, fetchedAt: diskCached.fetchedAt })
+    const stale = Date.now() - diskCached.fetchedAt >= CACHE_TTL
+    return { models: diskCached.models, cached: true, cachedAt: diskCached.fetchedAt, stale }
+  }
+
+  // 3. No cache → live fetch. On success: write both caches. On failure:
+  //    honest empty state — no fake data.
   try {
     const models = await loadConfiguredModelsFromOpenClaw()
     const now = Date.now()
     setModelsCache({ models, fetchedAt: now })
-    return { models, cached: false, cachedAt: now }
+    writePersistedCache({ models, fetchedAt: now, source: 'openclaw' })
+    return { models, cached: false, cachedAt: now, stale: false }
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     console.error('Failed to fetch models from OpenClaw:', err)
-    return { models: fallbackModels(), cached: false, cachedAt: null }
+    return { models: [], cached: false, cachedAt: null, stale: false, error: message }
   }
 }
 

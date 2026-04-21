@@ -36,6 +36,10 @@ export interface AvailableModelsResponse {
   models: AvailableModel[]
   cached: boolean
   cachedAt: number | null
+  /** True when cached data is older than the TTL; UI should trigger a background refresh. */
+  stale?: boolean
+  /** Populated when the live OpenClaw fetch failed AND no cache is available. */
+  error?: string
 }
 
 export interface AliasesResponse {
