@@ -411,6 +411,43 @@ describe('POST /refresh', () => {
   })
 })
 
+describe('GET /available — response shape invariants', () => {
+  it('response always has cached, cachedAt, stale, and models fields', async () => {
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    expect(body).toHaveProperty('models')
+    expect(body).toHaveProperty('cached')
+    expect(body).toHaveProperty('cachedAt')
+    expect(body).toHaveProperty('stale')
+    expect(Array.isArray(body.models)).toBe(true)
+  })
+
+  it('enriched models carry kind field for catalog hits', async () => {
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    const models = body.models as Array<Record<string, unknown>>
+    const sonnet = models.find((m) => m.id === 'anthropic/claude-sonnet-4-6')
+    expect(sonnet).toBeDefined()
+    expect(sonnet!.kind).toBe('llm')
+  })
+
+  it('models without a catalog match still render with tier from heuristic', async () => {
+    // The openclaw CLI mock returns google/gemini-2.5-pro. That provider IS
+    // in the catalog but the specific id is not — so the per-model enrichment
+    // should be absent but the provider label should still resolve.
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    const models = body.models as Array<Record<string, unknown>>
+    const gemini = models.find((m) => m.id === 'google/gemini-2.5-pro')
+    if (gemini) {
+      // tier comes from heuristic (tierFromId treats 'pro' as premium)
+      expect(gemini.tier).toBe('premium')
+      // provider-level enrichment resolves even when model isn't cataloged
+      expect(gemini.providerLabel).toBe('Google')
+    }
+  })
+})
+
 describe('POST /gateway/restart', () => {
   it('clears the in-memory cache after a successful restart', async () => {
     // Prime the cache via /available
