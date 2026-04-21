@@ -539,6 +539,15 @@ export function ContentCalendar() {
         count={filteredItems.length}
         actions={
           <div className="flex items-center gap-3">
+            <div className="relative w-56">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search calendar..."
+                className="pl-9 h-8 bg-surface border-border"
+              />
+            </div>
             <div className="flex items-center rounded-lg bg-muted/50 p-0.5">
               {VIEW_DEFS.map(v => (
                 <button
@@ -552,15 +561,6 @@ export function ContentCalendar() {
                   {v.label}
                 </button>
               ))}
-            </div>
-            <div className="relative w-56">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search calendar..."
-                className="pl-9 h-8 bg-surface border-border"
-              />
             </div>
             <Button size="sm" onClick={() => openCreate()}>
               <Plus className="size-3.5" data-icon="inline-start" />
