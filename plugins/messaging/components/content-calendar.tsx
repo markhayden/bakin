@@ -570,46 +570,44 @@ export function ContentCalendar() {
         }
       />
 
-      {/* Filters + date nav */}
-      {(
-        <div className="flex items-center gap-3 mt-4 mb-4">
-          <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
-          <FacetFilter
-            label="Status"
-            options={STATUS_OPTIONS}
-            selected={statusFilter}
-            onChange={setStatusFilter}
-          />
-          <FacetFilter
-            label="Type"
-            options={typeOptions}
-            selected={typeFilter}
-            onChange={setTypeFilter}
-          />
-          <FacetFilter
-            label="Channel"
-            options={channelOptions}
-            selected={channelFilter}
-            onChange={setChannelFilter}
-          />
+      {/* Filters */}
+      <div className="flex items-center gap-3 mt-4 mb-4">
+        <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
+        <FacetFilter
+          label="Status"
+          options={STATUS_OPTIONS}
+          selected={statusFilter}
+          onChange={setStatusFilter}
+        />
+        <FacetFilter
+          label="Type"
+          options={typeOptions}
+          selected={typeFilter}
+          onChange={setTypeFilter}
+        />
+        <FacetFilter
+          label="Channel"
+          options={channelOptions}
+          selected={channelFilter}
+          onChange={setChannelFilter}
+        />
+      </div>
 
-          {/* Date navigation — far right */}
-          {(view === 'month' || view === 'week') && (
-            <div className="flex items-center gap-1 ml-auto shrink-0">
-              <Button size="icon-xs" variant="ghost" onClick={prevPeriod}>
-                <ChevronLeft className="size-3.5" />
-              </Button>
-              <span className="text-sm font-medium text-foreground min-w-[160px] text-center">
-                {navLabel}
-              </span>
-              <Button size="icon-xs" variant="ghost" onClick={nextPeriod}>
-                <ChevronRight className="size-3.5" />
-              </Button>
-              <Button size="xs" variant="ghost" className="ml-1 text-muted-foreground" onClick={goToday}>
-                Today
-              </Button>
-            </div>
-          )}
+      {/* Date navigation — own row, centered above the calendar */}
+      {(view === 'month' || view === 'week') && (
+        <div className="flex items-center justify-center gap-1 mb-4">
+          <Button size="icon-xs" variant="ghost" onClick={prevPeriod}>
+            <ChevronLeft className="size-3.5" />
+          </Button>
+          <span className="text-sm font-medium text-foreground min-w-[160px] text-center">
+            {navLabel}
+          </span>
+          <Button size="icon-xs" variant="ghost" onClick={nextPeriod}>
+            <ChevronRight className="size-3.5" />
+          </Button>
+          <Button size="xs" variant="ghost" className="ml-1 text-muted-foreground" onClick={goToday}>
+            Today
+          </Button>
         </div>
       )}
 
