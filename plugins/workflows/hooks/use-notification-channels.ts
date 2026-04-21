@@ -48,6 +48,13 @@ export function getChannelLabel(id: string, channels: NotificationChannelDef[]):
   return channels.find((c) => c.id === id)?.label ?? id
 }
 
+/**
+ * Returns the 2-character badge for a channel id, with uppercase-prefix
+ * fallback for unknown ids. Part of the public client surface (compact
+ * chips in admin UIs, CLI listings, etc) — no core consumer uses it today
+ * now that the drawer renders icon+label pairs, but it's still the right
+ * shape when a caller wants the compact form.
+ */
 export function getChannelInitials(id: string, channels: NotificationChannelDef[]): string {
   const match = channels.find((c) => c.id === id)
   if (match?.initials) return match.initials

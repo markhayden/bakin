@@ -1,6 +1,6 @@
 # Notification Channels Registry (#125)
 
-**Status:** Draft
+**Status:** Implemented (PR #126, commits `39e30fa..11537a4` on `issue-125-notification-channels-registry`)
 **Tracking issue:** [#125](https://github.com/madeinwyo/bakin/issues/125)
 **Depends on:** #118 (merged, PR #121)
 **Unblocks:** broader plugin-system spec (five registry extension points, of which this is #2)
@@ -222,6 +222,7 @@ Follow `.claude/specs/messaging-refactor.md` and CLAUDE.md test rules (mock `con
 - **Icon shape:** plain `icon: string` holding a lucide-react export name. Future-non-lucide consumers (emoji, SVG) will be accommodated by widening the field to `string | IconSpec` later — non-breaking.
 - **Registration timing:** lazy / module-load seeding in `notification-channel-registry.ts`, matching the node-type-registry precedent. No activation-order dependency.
 - **Channel capabilities:** deferred. Add `capabilities?: string[]` when a consumer asks.
+- **Unknown icon names render `HelpCircle` silently.** `ChannelIcon` holds an explicit 7-entry lucide map to avoid bundling the full lucide set on the client. A plugin that registers `{ icon: 'Flame' }` will render the HelpCircle fallback with no warning. This is an explicit trade-off: bundle size > icon fidelity for rare third-party cases. Revisit by either expanding the map or widening the field to a discriminator (`{ kind: 'lucide' | 'emoji' | ... }`) when a plugin actually needs it.
 
 ## Open Questions
 
