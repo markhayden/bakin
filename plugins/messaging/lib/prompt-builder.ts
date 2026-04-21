@@ -4,18 +4,22 @@
  * Builds a system prompt with agent persona, planning instructions,
  * and current plan state. Returns a proper messages array (not a
  * flattened string) so the LLM can track conversational context.
+ *
+ * Agent identity and the content-type taxonomy are resolved by the
+ * caller (who has plugin context + user settings) and passed in via
+ * options, so this module stays neutral and testable.
  */
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'
-import type { PlanningSession } from '../types'
-import { AGENT_INFO } from '../types'
+import type { PlanningSession, ContentTypeOption } from '../types'
 
-const AGENT_NAMES: Record<string, string> = {
-  basil: 'Basil',
-  scout: 'Scout (Connor)',
-  nemo: 'Nemo (Yuki)',
-  zen: 'Zen (Marcus)',
+export interface PromptBuilderOptions {
+  /** Display name for the agent. Falls back to agentId when omitted (orphaned reference). */
+  agentName?: string
+  /** User-configured content types — surfaces valid ids in the prompt instruction. */
+  contentTypes: ContentTypeOption[]
+  contentDir?: string
 }
 
 /**
@@ -56,18 +60,33 @@ function buildPlanState(session: PlanningSession): string {
   return lines.join('\n')
 }
 
+function formatContentTypes(contentTypes: ContentTypeOption[]): string {
+  if (contentTypes.length === 0) return 'any string id'
+  return contentTypes.map((t) => t.id).join(', ')
+}
+
+function firstTypeId(contentTypes: ContentTypeOption[], fallback: string): string {
+  return contentTypes[0]?.id ?? fallback
+}
+
 /**
  * Build the system prompt for a planning session.
  */
-export function buildSystemPrompt(agentId: string, session: PlanningSession, contentDir?: string): string {
-  const agentName = AGENT_NAMES[agentId] || agentId
-  const agentInfo = AGENT_INFO[agentId as keyof typeof AGENT_INFO]
-  const persona = loadPersona(agentId, contentDir)
+export function buildSystemPrompt(
+  agentId: string,
+  session: PlanningSession,
+  options: PromptBuilderOptions,
+): string {
+  const agentName = options.agentName || agentId
+  const persona = loadPersona(agentId, options.contentDir)
+  const typeList = formatContentTypes(options.contentTypes)
+  const exampleType1 = firstTypeId(options.contentTypes, 'post')
+  const exampleType2 = options.contentTypes[1]?.id ?? exampleType1
 
   const sections: string[] = []
 
   // Identity
-  sections.push(`You are ${agentName}, a BetterFit content creator.`)
+  sections.push(`You are ${agentName}.`)
 
   // Persona
   if (persona) {
@@ -83,18 +102,18 @@ IMPORTANT: Emit each proposed item as its OWN separate fenced code block — one
 
 Here's what I'm thinking for Monday:
 \`\`\`json
-{ "title": "Don't Overstock Your Kitchen", "scheduledAt": "2026-04-14T10:00:00-06:00", "contentType": "tip", "tone": "educational", "brief": "Top 5 essential kitchen tools for new homeowners.", "channels": ["discord"] }
+{ "title": "An example post title", "scheduledAt": "2026-04-14T10:00:00-06:00", "contentType": "${exampleType1}", "tone": "educational", "brief": "Short description of the piece.", "channels": ["discord"] }
 \`\`\`
 
 And for Tuesday:
 \`\`\`json
-{ "title": "5 Knife Skills Every Beginner Needs", "scheduledAt": "2026-04-15T10:00:00-06:00", "contentType": "video", "tone": "energetic", "brief": "Quick demo of basic knife techniques.", "channels": ["discord"] }
+{ "title": "Another example", "scheduledAt": "2026-04-15T10:00:00-06:00", "contentType": "${exampleType2}", "tone": "energetic", "brief": "Another short description.", "channels": ["discord"] }
 \`\`\`
 
 Fields:
 - title: catchy post title in your authentic voice
 - scheduledAt: ISO datetime (timezone: America/Denver, MDT = UTC-6)
-- contentType: one of recipe, tip, motivation, workout, outdoor, video, image-post
+- contentType: one of ${typeList}
 - tone: one of energetic, calm, educational, humorous, inspiring, conversational
 - brief: 2-3 sentence description of what to create when this executes
 - channels: optional array of distribution channels (default: ["discord"])
@@ -131,14 +150,15 @@ Rules for revisions:
  */
 export function buildMessages(
   session: PlanningSession,
-  newMessage: string
+  newMessage: string,
+  options: PromptBuilderOptions,
 ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = []
 
   // System prompt
   messages.push({
     role: 'system',
-    content: buildSystemPrompt(session.agentId, session),
+    content: buildSystemPrompt(session.agentId, session, options),
   })
 
   // Session history
