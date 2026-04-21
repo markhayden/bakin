@@ -30,6 +30,11 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover'
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   CheckSquare,
@@ -104,7 +109,8 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
 
         // Items with children: clickable parent with chevron toggle
         if (hasChildren && !collapsed) {
-          const expanded = expandedIds.has(item.id)
+          const alwaysExpanded = item.alwaysExpanded === true
+          const expanded = alwaysExpanded || expandedIds.has(item.id)
           return (
             <div key={item.id} className="flex flex-col">
               <div
@@ -114,12 +120,16 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                     : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
                 }`}
               >
-                <button
-                  onClick={() => toggleExpand(item.id)}
-                  className="shrink-0 -ml-1 p-0.5 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors"
-                >
-                  <ChevronRight className={`size-3 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`} />
-                </button>
+                {alwaysExpanded ? (
+                  <span className="shrink-0 -ml-1 p-0.5 size-3" aria-hidden />
+                ) : (
+                  <button
+                    onClick={() => toggleExpand(item.id)}
+                    className="shrink-0 -ml-1 p-0.5 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors"
+                  >
+                    <ChevronRight className={`size-3 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`} />
+                  </button>
+                )}
                 <Link
                   href={item.children![0].href}
                   onClick={onNavigate}
@@ -158,6 +168,64 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
 
         // Collapsed mode with children: show parent icon, tooltip with label
         if (hasChildren && collapsed) {
+          // alwaysExpanded groups use a hover flyout so children remain reachable
+          if (item.alwaysExpanded) {
+            return (
+              <Popover key={item.id}>
+                <PopoverTrigger
+                  openOnHover
+                  delay={120}
+                  closeDelay={120}
+                  nativeButton={false}
+                  render={
+                    <Link
+                      href={item.children![0].href}
+                      onClick={onNavigate}
+                      className={`flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+                        active
+                          ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
+                      }`}
+                    >
+                      {Icon && <Icon className="size-4 shrink-0" />}
+                    </Link>
+                  }
+                />
+                <PopoverContent
+                  side="right"
+                  align="start"
+                  sideOffset={8}
+                  className="w-44 p-1"
+                >
+                  <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
+                    {item.label}
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    {item.children!.map((child) => {
+                      const ChildIcon = ICONS[child.icon]
+                      const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
+                      return (
+                        <Link
+                          key={child.id}
+                          href={child.href}
+                          onClick={onNavigate}
+                          className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+                            childActive
+                              ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
+                          }`}
+                        >
+                          {ChildIcon && <ChildIcon className="size-3.5 shrink-0" />}
+                          <span>{child.label}</span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )
+          }
+
           return (
             <Tooltip key={item.id}>
               <TooltipTrigger render={<div />}>
