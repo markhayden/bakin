@@ -44,6 +44,7 @@ export interface NavItem {
   href: string
   order?: number
   children?: NavItem[]
+  alwaysExpanded?: boolean
 }
 
 export interface APIRoute {
