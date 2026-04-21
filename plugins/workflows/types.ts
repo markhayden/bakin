@@ -22,7 +22,8 @@ export interface StepOutput {
 }
 
 export interface NotifyChannel {
-  channel: 'discord' | 'slack'
+  /** Channel id — resolves against the workflows.notificationChannels registry. */
+  channel: string
   target: string
 }
 
