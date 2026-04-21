@@ -229,7 +229,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
 
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Content Type</label>
-              <Select value={contentType} onValueChange={(v) => { setContentType(v ?? 'post'); setDirty(true) }}>
+              <Select value={contentType} onValueChange={(v) => { setContentType(v ?? contentTypes[0]?.id ?? 'post'); setDirty(true) }}>
                 <SelectTrigger className="bg-surface">
                   <SelectValue>{getContentTypeLabel(contentType, contentTypes)}</SelectValue>
                 </SelectTrigger>

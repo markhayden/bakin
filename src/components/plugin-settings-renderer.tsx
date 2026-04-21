@@ -74,6 +74,22 @@ function validateList(field: ListSettingsField, value: unknown): string | null {
       }
     }
   }
+  if (field.uniqueField) {
+    const seen = new Map<string, number>()
+    for (let i = 0; i < items.length; i++) {
+      const row = items[i] as Record<string, unknown>
+      const raw = row?.[field.uniqueField]
+      if (raw === undefined || raw === null) continue
+      const key = String(raw).trim()
+      if (key === '') continue
+      const prev = seen.get(key)
+      if (prev !== undefined) {
+        const subLabel = field.itemShape[field.uniqueField]?.label ?? field.uniqueField
+        return `${field.label}: rows ${prev + 1} and ${i + 1} share the same "${subLabel}" (${key}) — must be unique`
+      }
+      seen.set(key, i)
+    }
+  }
   return null
 }
 

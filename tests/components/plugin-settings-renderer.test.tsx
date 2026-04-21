@@ -155,6 +155,34 @@ describe('PluginSettingsRenderer — list field', () => {
     )
   })
 
+  it('blocks save with a toast when uniqueField rows collide', () => {
+    const schema: PluginSettingsSchema = {
+      fields: [
+        { ...listSchema.fields[0] as Extract<PluginSettingsSchema['fields'][number], { type: 'list' }>, uniqueField: 'id' },
+      ],
+    }
+    const onSave = vi.fn()
+    render(
+      <PluginSettingsRenderer
+        pluginId="messaging"
+        schema={schema}
+        values={{ contentTypes: [
+          { id: 'post',  label: 'Post' },
+          { id: 'video', label: 'Video' },
+        ] }}
+        onSave={onSave}
+      />
+    )
+    const inputs = screen.getAllByRole('textbox') as HTMLInputElement[]
+    // Collide row 2's id onto row 1's.
+    fireEvent.change(inputs[2], { target: { value: 'post' } })
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    expect(onSave).not.toHaveBeenCalled()
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'error', message: expect.stringMatching(/unique/i) })
+    )
+  })
+
   it('blocks save with a toast when below minItems', () => {
     // Load stored values that already violate minItems (e.g. older state pre-rule-change),
     // then edit a field to dirty the form and trigger save validation.

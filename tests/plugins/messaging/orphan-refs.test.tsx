@@ -97,6 +97,6 @@ describe('orphaned references — agents in prompt builder', () => {
       makeSession({ agentId: 'x' }),
       { contentTypes: [], contentDir: testDir },
     )
-    expect(prompt).toContain('contentType: one of any string id')
+    expect(prompt).toContain('contentType: one of a content type id of your choosing')
   })
 })
