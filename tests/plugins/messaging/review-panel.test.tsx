@@ -2,6 +2,23 @@
 
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+const testDir = join(tmpdir(), `bakin-test-review-panel-${Date.now()}`)
+
+// Safety mock — keeps any accidental storage access off ~/.bakin/
+vi.mock('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    root: testDir,
+    assets: join(testDir, 'assets'),
+    projects: join(testDir, 'projects'),
+    heartbeats: join(testDir, 'heartbeats'),
+    agents: join(testDir, 'agents'),
+    settings: join(testDir, 'settings.json'),
+  }),
+}))
 
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, disabled, onClick, ...props }: Record<string, unknown>) => (
@@ -24,6 +41,7 @@ vi.mock('@/components/ui/input', () => ({
 vi.mock('lucide-react', () => ({
   Check: () => <span />,
   X: () => <span />,
+  XIcon: () => <span />,
   Pencil: () => <span />,
   CheckCircle: () => <span data-testid="check-circle" />,
   Loader2: () => <span data-testid="loader" />,
