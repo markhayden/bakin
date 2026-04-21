@@ -16,11 +16,8 @@ import {
   Trash2,
   Link2,
   Search,
-  UtensilsCrossed,
-  Lightbulb,
-  Sparkles,
-  Dumbbell,
-  Trees,
+  FileText,
+  Megaphone,
   Video as VideoIcon,
   ImageIcon,
   MessageSquare,
@@ -68,13 +65,11 @@ const STATUS_OPTIONS = [
 ]
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
-  recipe: <UtensilsCrossed className="size-3.5" />,
-  tip: <Lightbulb className="size-3.5" />,
-  motivation: <Sparkles className="size-3.5" />,
-  workout: <Dumbbell className="size-3.5" />,
-  outdoor: <Trees className="size-3.5" />,
-  video: <VideoIcon className="size-3.5" />,
-  'image-post': <ImageIcon className="size-3.5" />,
+  post:         <MessageSquare className="size-3.5" />,
+  article:      <FileText className="size-3.5" />,
+  video:        <VideoIcon className="size-3.5" />,
+  image:        <ImageIcon className="size-3.5" />,
+  announcement: <Megaphone className="size-3.5" />,
 }
 
 const CHANNEL_ICONS: Record<string, React.ReactNode> = {
