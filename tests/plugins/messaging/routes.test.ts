@@ -650,7 +650,7 @@ describe('Calendar exec tools', () => {
       expect(result.ok).toBe(true)
       const item = result.item as CalendarItem
       expect(item.channel).toBe('discord')
-      expect(item.contentType).toBe('tip')
+      expect(item.contentType).toBe('post')
       expect(item.tone).toBe('conversational')
       expect(item.status).toBe('draft')
     })

@@ -1,6 +1,18 @@
-export type ContentAgent = 'chef' | 'explorer' | 'trainer' | 'coach'
-export type ContentChannel = 'discord' | 'instagram' | 'email' | 'twitter' | 'youtube' | 'tiktok'
-export type ContentType = 'recipe' | 'tip' | 'motivation' | 'workout' | 'outdoor' | 'video' | 'image-post'
+// ---------------------------------------------------------------------------
+// Identifier aliases — all plain strings.
+//
+// These used to be string-literal unions tied to one installation's roster
+// (agents: chef/explorer/trainer/coach; channels: discord/instagram/...; content
+// types: recipe/tip/motivation/...). They now exist as documented aliases
+// so call sites self-describe what the string represents:
+//   - ContentAgent   resolves against the OpenClaw roster via team.* hooks
+//   - ContentChannel will be constrained by a future notificationChannels
+//                    registry (plugin-system spec); today it's free string
+//   - ContentType    resolves against MessagingSettings.contentTypes
+// ---------------------------------------------------------------------------
+export type ContentAgent = string
+export type ContentChannel = string
+export type ContentType = string
 export type ContentTone = 'energetic' | 'calm' | 'educational' | 'humorous' | 'inspiring' | 'conversational'
 export type ContentStatus = 'draft' | 'scheduled' | 'executing' | 'waiting' | 'review' | 'published' | 'failed'
 
@@ -73,13 +85,6 @@ export interface PlanningSession {
   messages: SessionMessage[]
   proposals: ProposedItem[]
   participants?: string[]
-}
-
-export const AGENT_INFO: Record<ContentAgent, { name: string; emoji: string; color: string }> = {
-  chef: { name: 'Chef', emoji: '🥗', color: 'green' },
-  explorer: { name: 'Explorer', emoji: '🏕️', color: 'orange' },
-  trainer: { name: 'Trainer', emoji: '🏊', color: 'blue' },
-  coach: { name: 'Coach', emoji: '🧘', color: 'purple' },
 }
 
 export const DISCORD_GENERAL = '1483917792745885768'

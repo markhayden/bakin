@@ -294,7 +294,7 @@ const messagingPlugin: BakinPlugin = {
         agent: (agent as string) as CalendarItem['agent'],
         channel: ((channel as string) || resolvedChannels[0] || 'discord') as CalendarItem['channel'],
         channelTarget: (channelTarget as string) || '1483917792745885768',
-        contentType: ((contentType as string) || 'tip') as CalendarItem['contentType'],
+        contentType: ((contentType as string) || 'post') as CalendarItem['contentType'],
         tone: ((tone as string) || 'conversational') as CalendarItem['tone'],
         scheduledAt: scheduledAt as string,
         brief: (brief as string) || '',
@@ -411,19 +411,17 @@ const messagingPlugin: BakinPlugin = {
             persona = readFileSync(personaPath, 'utf-8')
           }
 
-          const agentNames: Record<string, string> = {
-            chef: 'Chef',
-            explorer: 'Explorer (Connor)',
-            trainer: 'Trainer (Yuki)',
-            coach: 'Coach (Marcus)',
-          }
-          const agentName = agentNames[body.agentId] || body.agentId
+          const resolvedAgent = await ctx.hooks.invoke<AgentMetaLike | null>('team.getAgent', { id: body.agentId })
+          const agentName = resolvedAgent?.name || body.agentId
+
+          const settingsNow = ctx.getSettings<MessagingSettings>()
+          const typeList = (settingsNow.contentTypes ?? DEFAULT_CONTENT_TYPES).map(t => t.id).join(', ')
 
           const historyContext = (body.history || []).map(h =>
             `${h.role === 'user' ? 'Mark' : agentName}: ${h.content}`
           ).join('\n\n')
 
-          const fullPrompt = `You are ${agentName}, a SampleBrand content creator. Here is your persona:
+          const fullPrompt = `You are ${agentName}. Here is your persona:
 
 ${persona}
 
@@ -434,7 +432,7 @@ You are brainstorming content messaging ideas with Mark. When he describes what 
 For each suggestion provide:
 - title: catchy post title in your voice
 - scheduledAt: suggested date+time ISO string (timezone: America/Denver, MDT = UTC-6)
-- contentType: one of recipe, tip, motivation, workout, outdoor, video, image-post
+- contentType: one of ${typeList}
 - tone: one of energetic, calm, educational, humorous, inspiring, conversational
 - brief: 2-3 sentence description of what to create when this executes
 
@@ -938,7 +936,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         channel: z.string().optional().describe('Channel (default: discord)'),
         channels: z.array(z.string()).optional().describe('Distribution channels (e.g. ["discord", "instagram"])'),
         channelTarget: z.string().optional().describe('Channel target ID'),
-        contentType: z.string().optional().describe('Content type (recipe, tip, motivation, etc.)'),
+        contentType: z.string().optional().describe('Content type id from the messaging contentTypes setting (e.g. post, article, video)'),
         tone: z.string().optional().describe('Content tone (energetic, calm, educational, etc.)'),
         brief: z.string().optional().describe('Content brief'),
         status: z.string().optional().describe('Initial status (default: draft)'),
@@ -955,7 +953,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
           channel: ((params.channel as string) || channels[0] || 'discord') as CalendarItem['channel'],
           channels,
           channelTarget: (params.channelTarget as string) || '1483917792745885768',
-          contentType: ((params.contentType as string) || 'tip') as CalendarItem['contentType'],
+          contentType: ((params.contentType as string) || 'post') as CalendarItem['contentType'],
           tone: ((params.tone as string) || 'conversational') as CalendarItem['tone'],
           brief: (params.brief as string) || '',
           status: (params.status as ContentStatus) || 'draft',
