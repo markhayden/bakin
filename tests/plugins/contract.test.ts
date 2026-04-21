@@ -132,6 +132,7 @@ function createMockContext(pluginId: string): {
     registerSkill: () => {},
     registerWorkflow: () => {},
     registerNodeType: () => '',
+    registerNotificationChannel: () => '',
     watchFiles: () => {},
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: () => {},
