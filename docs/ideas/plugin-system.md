@@ -22,7 +22,7 @@ Core plugins expose these registries from day one:
 
 - `workflows.stepTypes` — custom workflow step kinds beyond agent/gate/parallel/output/workflow **[shipped]**
 - `workflows.notificationChannels` — beyond hardcoded `discord` / `slack` (email, SMS, webhook, etc.) **[shipped — #125 / PR #126]**
-- `models.providers` — AI model providers beyond the built-in Anthropic catalog
+- ~~`models.providers`~~ — **dropped, see #128 close note.** Plugins don't add LLMs; OpenClaw is the authoritative source for which models exist. Plugins that need model access consume from `models.getAvailableModels` hook. No contribution path required.
 - `assets.renderers` — previewers for new file types (3D, Figma, specialized formats)
 - `health.checks` — plugin-contributed doctor/health probes
 
