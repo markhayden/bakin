@@ -36,6 +36,7 @@ interface ChannelIconProps {
 export function ChannelIcon({ channelId, className }: ChannelIconProps) {
   const channels = useNotificationChannels()
   const channel = channels.find((c) => c.id === channelId)
-  const Icon = (channel?.icon && CHANNEL_ICON_MAP[channel.icon]) ?? HelpCircle
+  const iconName = channel?.icon
+  const Icon: LucideIcon = iconName ? (CHANNEL_ICON_MAP[iconName] ?? HelpCircle) : HelpCircle
   return <Icon className={className} />
 }
