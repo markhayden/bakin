@@ -1,6 +1,6 @@
 'use client'
 
-import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import { useSearchParams, useRouter, usePathname } from '@bakin/sdk/hooks'
 import { useCallback, useMemo, useRef } from 'react'
 
 /**

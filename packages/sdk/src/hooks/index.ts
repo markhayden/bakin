@@ -40,3 +40,6 @@ export {
   getChannelLabel,
   getChannelInitials,
 } from '@bakin/workflows/hooks/use-notification-channels'
+
+// Group 4: Router hooks (TanStack Router wrappers; Next.js-shape compatible)
+export { useRouter, usePathname, useSearchParams, useParams } from './router'

@@ -53,9 +53,20 @@ vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
 const routerPush = vi.fn()
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: routerPush }),
-}))
+vi.mock('@bakin/sdk/hooks', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>
+  return {
+    ...actual,
+    useRouter: () => ({
+      push: routerPush,
+      replace: () => {},
+      back: () => {},
+      forward: () => {},
+      refresh: () => {},
+      prefetch: () => {},
+    }),
+  }
+})
 
 // useQueryState — back the value with React state so the input is controlled.
 vi.mock('@/hooks/use-query-state', () => ({

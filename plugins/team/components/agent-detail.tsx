@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@bakin/sdk/hooks'
 import { ArrowLeft, Save, Loader2, Camera, Trash2 } from 'lucide-react'
 import { Badge } from "@bakin/sdk/ui"
 import { Button } from "@bakin/sdk/ui"

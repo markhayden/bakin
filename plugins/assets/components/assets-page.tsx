@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import { useSearchParams, useRouter, usePathname } from '@bakin/sdk/hooks'
 import { useQueryState, useQueryArrayState } from "@bakin/sdk/hooks"
 import { useDebug } from "@bakin/sdk/hooks"
 import { useSearch } from "@bakin/sdk/hooks"
