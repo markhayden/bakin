@@ -1,13 +1,19 @@
 /**
  * Tasks plugin — client entry point.
- * Exports nav items and registers client-side slot contributions.
+ * Registers nav items and client-side slot contributions via registerPlugin.
  */
-import type { NavItem } from '../../src/lib/plugin-types'
-import { registerSlot } from '@bakin/sdk/slots'
+import { registerPlugin } from '@bakin/sdk'
+import type { NavItem } from '@bakin/sdk'
 import { KanbanBoard } from './components/kanban-board'
 
-export const navItems: NavItem[] = [
+const navItems: NavItem[] = [
   { id: 'tasks', label: 'Tasks', icon: 'CheckSquare', href: '/tasks', order: 10 },
 ]
 
-registerSlot('page:/tasks', KanbanBoard)
+registerPlugin({
+  id: 'tasks',
+  navItems,
+  slots: {
+    'page:/tasks': KanbanBoard,
+  },
+})
