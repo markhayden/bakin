@@ -1,24 +1,36 @@
 import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+import react from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
 
 const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
-  // Override default ignores of eslint-config-next.
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    plugins: { react, "react-hooks": reactHooks },
+    settings: { react: { version: "detect" } },
+    rules: {
+      "react/react-in-jsx-scope": "off",
+      "react/prop-types": "off",
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+    },
+  },
   globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
+    "node_modules/**",
+    "packages/host/dist/**",
+    "packages/host/public/vendor/**",
+    "plugins/**/dist/**",
+    "dist/**",
+    "bun-env.d.ts",
   ]),
   // Plugin isolation: every plugin talks to Bakin's shell and to other
   // plugins exclusively through @bakin/sdk/*. Direct imports from another
   // plugin's internals or from Bakin's src/ components/hooks are banned so
-  // the SDK surface stays the contract. This is the architectural lock for
-  // issue #141's client-side plugin loader — see the spec at
-  // .claude/specs/plugin-client-ui-loader.md.
+  // the SDK surface stays the contract. This is the architectural lock
+  // established in #141 (SDK + slot system) and enforced through the Bun
+  // migration in #147.
   {
     files: ["plugins/**/*.{ts,tsx}"],
     rules: {
