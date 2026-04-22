@@ -63,8 +63,8 @@ const sseSessions = new Map<string, SseSession>()
 const startedAt = new Date().toISOString()
 
 // Expose MCP session state to plugin-land without an HTTP hop. The health
-// plugin reads this via globalThis to avoid bundling mcp-server.ts into the
-// Next.js webpack context. Same pattern as __bakinBroadcast.
+// plugin reads this via globalThis to avoid coupling to mcp-server.ts
+// directly — same pattern as __bakinBroadcast.
 ;(globalThis as unknown as { __bakinGetMcpSessions?: () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } }).__bakinGetMcpSessions = () => {
   const agentMap = new Map<string, { sessions: number; latestAt: number }>()
   for (const [, s] of sessions) {

@@ -2,7 +2,7 @@
  * Search Registry — singleton that manages plugin content type registrations
  * and provides SearchAPI instances for each plugin.
  *
- * Uses globalThis to survive Next.js webpack re-evaluation.
+ * Uses globalThis so every reach into this module shares one registry.
  */
 import type {
   APIRoute,

@@ -82,9 +82,8 @@ describe('MCP bridge error passthrough', () => {
     const registry = await import('../../scripts/lib/registry')
     const { addExecTool } = registry
 
-    // The lazy eval('require') path inside getToolContext doesn't resolve
-    // under vitest's ESM loader. Stub it — production parity isn't the
-    // point of this test; passthrough of the handler's thrown error is.
+    // Stub getToolContext — this test only cares about handler-error
+    // passthrough, not the real PluginToolContext wiring.
     vi.spyOn(registry, 'getToolContext').mockReturnValue(undefined)
 
     addExecTool({

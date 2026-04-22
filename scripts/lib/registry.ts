@@ -5,15 +5,21 @@
  * PluginContext.registerExecTool() which calls addExecTool().
  * The MCP server iterates over getAllExecTools() to register them.
  */
-import type { ExecToolDefinition, PluginToolContext, StorageAdapter, EventBus } from '../../src/lib/plugin-types'
+import { join } from 'path'
+import { existsSync, readFileSync } from 'fs'
+import type { ExecToolDefinition, PluginToolContext } from '../../src/lib/plugin-types'
+import { getHookRegistry } from '../../src/lib/plugin-registry'
+import { getContentDir } from '../../src/core/content-dir'
+import { appendAudit } from '../../src/core/audit'
+import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
+import { BakinEventBus } from '../../src/lib/events/event-bus'
 
 // ---------------------------------------------------------------------------
 // Registry state
 //
-// Backed by globalThis so the custom Node server context and the Next.js
-// webpack-bundled context share one registry instance. Without this, plugins
-// activated at boot (Node context) are invisible to code running in API route
-// handlers (bundled context), including the doctor's skill-sync check.
+// Backed by globalThis so every reach into this module shares one registry.
+// Without this, plugins activated at boot are invisible to later code paths
+// (the doctor's skill-sync check, runtime-loaded user plugins).
 // ---------------------------------------------------------------------------
 
 const execTools: Map<string, ExecToolDefinition> =
@@ -47,34 +53,18 @@ export function getExecTool(name: string): ExecToolDefinition | undefined {
 // ---------------------------------------------------------------------------
 
 /**
- * Build a PluginToolContext for a registered tool.
- * Lazily imports getHookRegistry to avoid circular init.
- */
-/**
- * Build a PluginToolContext for a registered exec tool.
- * Only called at runtime from the MCP server (never bundled by Next.js).
+ * Build a PluginToolContext for a registered exec tool. Called at runtime from
+ * the MCP handler — safe against the plugin-registry ↔ registry circular by
+ * then, since both modules are fully evaluated before any tool handler runs.
  */
 export function getToolContext(toolName: string): PluginToolContext | undefined {
   const tool = execTools.get(toolName)
   if (!tool?.source) return undefined
   const pluginId = tool.source.startsWith('plugin:') ? tool.source.slice(7) : tool.source
 
-  // Runtime-only imports hidden behind eval() to prevent Next.js webpack
-  // from tracing them at bundle time. getToolContext is only called from
-  // the custom Node server's MCP handler, never from Next.js routes.
-  // eslint-disable-next-line no-eval
-  const _require = eval('require') as NodeRequire
-  const { getHookRegistry } = _require('../../src/lib/plugin-registry') as {
-    getHookRegistry: () => { register: (name: string, handler: (data: any) => any) => () => void; has: (name: string) => boolean; invoke: <R>(name: string, data: unknown) => Promise<R | undefined> }
-  }
-  const { getContentDir } = _require('../../src/core/content-dir') as { getContentDir: () => string }
-  const { appendAudit } = _require('../../src/core/audit') as { appendAudit: (...args: unknown[]) => void }
-  const { MarkdownStorageAdapter } = _require('../../src/lib/storage/markdown-adapter') as { MarkdownStorageAdapter: new (dir: string) => StorageAdapter }
-  const { BakinEventBus } = _require('../../src/lib/events/event-bus') as { BakinEventBus: new (broadcast: (data: Record<string, unknown>) => void) => EventBus }
-
   const hookReg = getHookRegistry()
   const contentDir = getContentDir()
-  const broadcastFn = (globalThis as any).__bakinBroadcast || (() => {})
+  const broadcastFn = (globalThis as { __bakinBroadcast?: (data: Record<string, unknown>) => void }).__bakinBroadcast ?? (() => {})
 
   return {
     storage: new MarkdownStorageAdapter(contentDir),
@@ -94,10 +84,8 @@ export function getToolContext(toolName: string): PluginToolContext | undefined 
       },
     },
     getSettings: (() => {
-      const { join } = require('path')
-      const { existsSync, readFileSync } = require('fs')
       const p = join(contentDir, 'plugin-settings', `${pluginId}.json`)
-      try { if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf-8')) } catch {}
+      try { if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf-8')) } catch { /* best-effort */ }
       return {}
     }) as PluginToolContext['getSettings'],
   }
@@ -106,10 +94,10 @@ export function getToolContext(toolName: string): PluginToolContext | undefined 
 // ---------------------------------------------------------------------------
 // Core tool imports
 //
-// Self-registering modules are imported from mcp-server.ts (not here)
-// to avoid circular initialization. Each tool file calls addExecTool()
-// at module scope, which requires execTools to be initialized first.
+// Self-registering tool modules are imported from mcp-server.ts, not here:
+// each tool file calls addExecTool() at module scope, which requires this
+// module's execTools map to be initialized first.
 //
-// To add a new core tool: create the file, then add an import in
+// To add a new core tool: create the file, then add an import to
 // src/core/mcp-server.ts alongside the existing tool imports.
 // ---------------------------------------------------------------------------

@@ -186,7 +186,7 @@ Audit event format:
 
 ## SSE Broadcasting (`src/core/sse.ts`)
 
-Uses `globalThis.__bakinBroadcast` to survive Next.js webpack re-evaluation.
+Uses `globalThis.__bakinBroadcast` so every reach into this module shares one SSE client set.
 
 Two broadcast functions:
 - `broadcast(data)` — sends to SSE clients + replay buffer

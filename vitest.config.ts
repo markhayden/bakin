@@ -25,6 +25,7 @@ export default defineConfig({
       '@bakin/core/content-dir': path.resolve(__dirname, 'packages/core/src/content-dir.ts'),
       '@bakin/core/settings': path.resolve(__dirname, 'packages/core/src/settings.ts'),
       '@bakin/core/ids': path.resolve(__dirname, 'packages/core/src/ids.ts'),
+      '@bakin/core/logger': path.resolve(__dirname, 'packages/core/src/logger.ts'),
       '@bakin/core': path.resolve(__dirname, 'packages/core/src/index.ts'),
       '@bakin/sdk/ui': path.resolve(__dirname, 'packages/sdk/src/ui/index.ts'),
       '@bakin/sdk/hooks': path.resolve(__dirname, 'packages/sdk/src/hooks/index.ts'),

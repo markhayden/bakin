@@ -61,7 +61,9 @@ export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>
 const log = createLogger('plugin-registry')
 
 /** Singleton hook registry shared across all plugins and core modules.
- *  Backed by globalThis to survive Next.js webpack re-evaluation. */
+ *  Backed by globalThis so a single process has exactly one hook map, even
+ *  when this module is reached from both the shell entry and dynamically
+ *  imported plugin bundles. */
 const hookRegistry: HookRegistry = (globalThis as any).__bakinHookRegistry ??= new HookRegistry()
 
 /** Access the hook registry from core modules to call hooks */
@@ -574,8 +576,9 @@ class PluginRegistryImpl {
   }
 }
 
-// Use globalThis to survive Next.js webpack re-evaluation — without this,
-// API routes get a separate module instance with an empty registry.
+// Backed by globalThis so every caller (shell, API handler, runtime-loaded
+// plugin bundle) sees the same registry instance even if this module is
+// evaluated more than once in a single process.
 const g = globalThis as unknown as { __bakinPluginRegistry?: PluginRegistryImpl }
 if (!g.__bakinPluginRegistry) {
   g.__bakinPluginRegistry = new PluginRegistryImpl()
