@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@bakin/sdk/hooks'
 import { ArrowLeft, Send, Loader2, Paperclip, X, FileText, Image, Film, Music, File, Sparkles, ChevronDown, Search, Pencil, Trash2 } from 'lucide-react'
 import { useAgent, useMainAgentId } from "@bakin/sdk/hooks"
 import { AgentSelect } from "@bakin/sdk/components"

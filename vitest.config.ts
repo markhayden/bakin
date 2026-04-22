@@ -18,6 +18,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, 'src'),
       'bun:sqlite': path.resolve(__dirname, 'tests/shims/bun-sqlite.ts'),
+      '@tanstack/react-router': path.resolve(__dirname, 'tests/shims/tanstack-router.ts'),
       '@bakin/core/openclaw-home': path.resolve(__dirname, 'packages/core/src/openclaw-home.ts'),
       '@bakin/core/openclaw-config': path.resolve(__dirname, 'packages/core/src/openclaw-config.ts'),
       '@bakin/core/main-agent': path.resolve(__dirname, 'packages/core/src/main-agent.ts'),

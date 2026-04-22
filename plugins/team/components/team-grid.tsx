@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useCallback, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@bakin/sdk/hooks'
 import { Plus, Users, Settings2, Loader2 } from 'lucide-react'
 import {
   ReactFlow,
