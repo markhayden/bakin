@@ -8,10 +8,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
-import { MarkdownContent } from '@/components/markdown-content'
 import { MarkdownEditor } from '@/components/markdown-editor'
+import { Slot } from '@bakin/sdk/slots'
 import { ASSET_TYPES, isEditableMimeType } from '../lib/constants'
 import { Trash2, ExternalLink, Download, Clock, User, Wrench, Tag, Layers, Eye, Pencil, Check, X, Unlink } from 'lucide-react'
 import { formatSize } from '@/lib/format'
@@ -24,142 +23,6 @@ interface AssetDetailProps {
   onDelete: (path: string) => void
   onRelink?: () => void
   onPathChange?: (newPath: string) => void
-}
-
-function AssetRenderer({ asset }: { asset: AssetMeta }) {
-  const fileUrl = `/api/assets/${encodeURIComponent(asset.filename)}?v=${asset.mtimeMs || ''}`
-
-  switch (asset.type) {
-    case 'images':
-      return (
-        <div className="flex items-center justify-center bg-zinc-950 rounded-lg p-2 h-full overflow-auto">
-          <img
-            src={fileUrl}
-            alt={asset.filename}
-            className="max-w-full max-h-full object-contain rounded"
-          />
-        </div>
-      )
-
-    case 'video':
-      return (
-        <div className="bg-zinc-950 rounded-lg overflow-hidden h-full flex items-center">
-          <video
-            src={fileUrl}
-            controls
-            className="w-full max-h-full"
-            preload="metadata"
-          />
-        </div>
-      )
-
-    case 'audio':
-      return (
-        <div className="bg-zinc-900 rounded-lg p-6 flex flex-col items-center gap-4">
-          <div className="size-20 rounded-full bg-zinc-800 flex items-center justify-center">
-            <span className="text-3xl">🎵</span>
-          </div>
-          <audio src={fileUrl} controls className="w-full" preload="metadata" />
-        </div>
-      )
-
-    case 'text':
-    case 'plans':
-    case 'research':
-      return <TextRenderer fileUrl={fileUrl} mimeType={asset.mimeType} />
-
-    case 'data':
-      return <CodeRenderer fileUrl={fileUrl} />
-
-    case 'pdf':
-      return (
-        <div className="bg-zinc-950 rounded-lg h-full overflow-hidden">
-          <embed src={fileUrl} type="application/pdf" className="w-full h-full" />
-        </div>
-      )
-
-    default:
-      return (
-        <div className="bg-zinc-900 rounded-lg p-8 flex flex-col items-center gap-4 text-center">
-          <p className="text-sm text-muted-foreground">
-            Preview not available for this file type.
-          </p>
-          <a
-            href={fileUrl}
-            download={asset.filename}
-            className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
-          >
-            <Download className="size-4" />
-            Download {asset.filename}
-          </a>
-        </div>
-      )
-  }
-}
-
-function TextRenderer({ fileUrl, mimeType }: { fileUrl: string; mimeType: string }) {
-  const [content, setContent] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetch(fileUrl)
-      .then(r => r.text())
-      .then(setContent)
-      .catch(() => setContent('Failed to load content'))
-  }, [fileUrl])
-
-  if (content === null) {
-    return <Skeleton className="h-40 w-full" />
-  }
-
-  if (mimeType === 'text/markdown') {
-    return (
-      <div className="bg-zinc-900/50 rounded-lg p-4 h-full overflow-y-auto">
-        <MarkdownContent content={content} />
-      </div>
-    )
-  }
-
-  if (mimeType === 'text/yaml' || mimeType === 'application/yaml') {
-    return (
-      <pre className="bg-zinc-900 rounded-lg p-4 text-sm text-zinc-300 overflow-auto h-full font-mono">
-        {content}
-      </pre>
-    )
-  }
-
-  return (
-    <pre className="bg-zinc-900 rounded-lg p-4 text-sm text-zinc-300 overflow-auto h-full font-mono whitespace-pre-wrap">
-      {content}
-    </pre>
-  )
-}
-
-function CodeRenderer({ fileUrl }: { fileUrl: string }) {
-  const [content, setContent] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetch(fileUrl)
-      .then(r => r.text())
-      .then(setContent)
-      .catch(() => setContent('Failed to load content'))
-  }, [fileUrl])
-
-  if (content === null) {
-    return <Skeleton className="h-40 w-full" />
-  }
-
-  // Try to pretty-print JSON
-  let displayContent = content
-  try {
-    const parsed = JSON.parse(content)
-    displayContent = JSON.stringify(parsed, null, 2)
-  } catch { /* not JSON, show as-is */ }
-
-  return (
-    <pre className="bg-zinc-900 rounded-lg p-4 text-sm text-zinc-300 overflow-auto h-full font-mono">
-      {displayContent}
-    </pre>
-  )
 }
 
 /**
@@ -358,7 +221,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
                 className="h-full"
               />
             ) : (
-              <AssetRenderer asset={previewAsset} key={contentRefreshKey} />
+              <Slot name="asset-preview" asset={previewAsset} key={contentRefreshKey} />
             )}
             {isEditableMimeType(displayAsset.mimeType) && !activeVariantPath && (
               <div className="absolute top-2 right-2 flex items-center gap-1.5">

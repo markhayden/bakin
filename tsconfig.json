@@ -26,6 +26,7 @@
       "@bakin/sdk/ui": ["./packages/sdk/src/ui/index.ts"],
       "@bakin/sdk/hooks": ["./packages/sdk/src/hooks/index.ts"],
       "@bakin/sdk/components": ["./packages/sdk/src/components/index.ts"],
+      "@bakin/sdk/slots": ["./packages/sdk/src/slots/index.tsx"],
       "@bakin/sdk/types": ["./packages/sdk/src/types/index.ts"],
       "@bakin/tasks": ["./plugins/tasks"],
       "@bakin/tasks/*": ["./plugins/tasks/*"],
