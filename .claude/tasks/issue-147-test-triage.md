@@ -56,3 +56,12 @@ Watch for this category to emerge during Phase B if any test asserts behavior sp
 - **Category 4 (new):** 4 tests to add in Phases D/E/F/G
 
 Zero migration-blocking test issues as of Phase A end. Vitest runs cleanly on Bun; the only Bun-related test infrastructure (bun:sqlite shim + type declarations) has landed.
+
+## Known Phase A casualty — `bun run build` (Next.js)
+
+After TA4 ported `plugins/tasks/lib/flow-store.ts` to `bun:sqlite`, Next.js's production build step (Turbopack's page-data collection using Node workers) can no longer resolve `bun:sqlite` — it's a Bun built-in not available under Node. `serverExternalPackages: ['bun:sqlite']` doesn't help; Turbopack fails before the external resolution applies.
+
+**This is an expected and accepted break.** Operating principle 3 allows Bakin to be broken mid-migration. `bun run dev` still works (Bun runtime resolves the native module); full Vitest suite still passes. The production Next.js build is the only thing failing, and Next.js itself exits the repo during Phase B/C.
+
+Phase A checkpoint therefore does NOT gate on `bun run build`. The full build gate returns at Phase C's end, when `packages/host/` builds replace `next build`.
+
