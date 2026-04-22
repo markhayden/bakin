@@ -1,12 +1,12 @@
 /**
  * Messaging plugin — client entry point.
  */
-import type { NavItem } from '../../src/lib/plugin-types'
-import { registerSlot } from '@bakin/sdk/slots'
+import { registerPlugin } from '@bakin/sdk'
+import type { NavItem } from '@bakin/sdk'
 import { ContentCalendar } from './components/content-calendar'
 import { BrainstormView } from './components/brainstorm-view'
 
-export const navItems: NavItem[] = [
+const navItems: NavItem[] = [
   {
     id: 'messaging',
     label: 'Messaging',
@@ -21,5 +21,11 @@ export const navItems: NavItem[] = [
   },
 ]
 
-registerSlot('page:/messaging/calendar', ContentCalendar)
-registerSlot('page:/messaging/brainstorm', BrainstormView)
+registerPlugin({
+  id: 'messaging',
+  navItems,
+  slots: {
+    'page:/messaging/calendar': ContentCalendar,
+    'page:/messaging/brainstorm': BrainstormView,
+  },
+})
