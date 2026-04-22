@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, ListFilter, FolderKanban } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { PluginHeader } from '@/components/plugin-header'
-import { EmptyState } from '@/components/empty-state'
-import { Skeleton } from '@/components/ui/skeleton'
-import { useQueryState } from '@/hooks/use-query-state'
-import { useSearch } from '@/hooks/use-search'
-import { useDebug } from '@/hooks/use-debug'
+import { Button } from "@bakin/sdk/ui"
+import { PluginHeader } from "@bakin/sdk/components"
+import { EmptyState } from "@bakin/sdk/components"
+import { Skeleton } from "@bakin/sdk/ui"
+import { useQueryState } from "@bakin/sdk/hooks"
+import { useSearch } from "@bakin/sdk/hooks"
+import { useDebug } from "@bakin/sdk/hooks"
 import { ProjectCard } from './project-card'
 import type { ProjectSummary, ProjectStatus } from '../types'
 

@@ -142,15 +142,6 @@ vi.mock('@/components/ui/badge', () => ({
   Badge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }))
 
-vi.mock('lucide-react', () => {
-  const Icon = () => <span />
-  return {
-    Plus: Icon,
-    ListFilter: Icon,
-    Search: Icon,
-  }
-})
-
 // project-card has its own dependencies — stub it to a simple title button.
 vi.mock('../../../plugins/projects/components/project-card', () => ({
   ProjectCard: ({ project, onClick }: { project: { id: string; title: string }; onClick: () => void }) => (

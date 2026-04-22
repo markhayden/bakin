@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Workflow, Lock, Pencil } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { Button } from "@bakin/sdk/ui"
+import { Badge } from "@bakin/sdk/ui"
 import { WorkflowCanvas } from './workflow-canvas'
 import { StepDetailDrawer } from './step-detail-drawer'
 import { collectAgents } from './workflow-card'
-import { AgentAvatar } from '@/components/agent-avatar'
+import { AgentAvatar } from "@bakin/sdk/components"
 import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep } from '../types'
 
 /** Find a step by ID in the step tree (top-level, parallel children, sub-workflow expansions) */

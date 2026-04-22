@@ -2,23 +2,23 @@
 
 import { useState } from 'react'
 import { Play, Pencil, Copy, Trash2, SkipForward, MoreHorizontal, Clock, Timer, Workflow, Terminal } from 'lucide-react'
-import { BakinDrawer } from '@/components/bakin-drawer'
-import { AgentAvatar } from '@/components/agent-avatar'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
-import { useAgent } from '@bakin/team/hooks/use-agent-store'
+import { BakinDrawer } from "@bakin/sdk/components"
+import { AgentAvatar } from "@bakin/sdk/components"
+import { Badge } from "@bakin/sdk/ui"
+import { Button } from "@bakin/sdk/ui"
+import { Separator } from "@bakin/sdk/ui"
+import { useAgent } from "@bakin/sdk/hooks"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
+} from "@bakin/sdk/ui"
 import { AgentBadge } from './agent-badge'
 import { RunHistory } from './run-history'
 import { PauseControls } from './pause-controls'
-import type { ScheduleJob } from '@/hooks/use-schedule'
+import type { ScheduleJob } from "@bakin/sdk/hooks"
 
 export function JobDrawer({
   job,

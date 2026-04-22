@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { FolderOpen, Image, Video, Music, FileText, Plus, X } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from "@bakin/sdk/ui"
 import { AssetDetailModal } from './asset-detail'
-import type { AssetMeta } from '@/types'
+import type { AssetMeta } from "@bakin/sdk/types"
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
   text: FileText,

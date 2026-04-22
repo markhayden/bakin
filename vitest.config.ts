@@ -29,6 +29,7 @@ export default defineConfig({
       '@bakin/sdk/components': path.resolve(__dirname, 'packages/sdk/src/components/index.ts'),
       '@bakin/sdk/slots': path.resolve(__dirname, 'packages/sdk/src/slots/index.tsx'),
       '@bakin/sdk/types': path.resolve(__dirname, 'packages/sdk/src/types/index.ts'),
+      '@bakin/sdk/utils': path.resolve(__dirname, 'packages/sdk/src/utils/index.ts'),
       '@bakin/sdk': path.resolve(__dirname, 'packages/sdk/src/index.ts'),
       '@bakin/tasks': path.resolve(__dirname, 'plugins/tasks'),
       '@bakin/memory': path.resolve(__dirname, 'plugins/memory'),

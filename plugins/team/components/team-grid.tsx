@@ -14,16 +14,16 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge } from "@bakin/sdk/ui"
+import { Button } from "@bakin/sdk/ui"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { BakinDrawer } from '@/components/bakin-drawer'
-import { useGatewayStatus } from '@/hooks/use-gateway-status'
+} from "@bakin/sdk/ui"
+import { BakinDrawer } from "@bakin/sdk/components"
+import { useGatewayStatus } from "@bakin/sdk/hooks"
 import { useAgentStore, useAgentColor, useMainAgentId } from '../hooks/use-agent-store'
 import { buildGraph } from '../lib/build-graph'
 import { AgentForm, type AgentFormData } from './agent-form'

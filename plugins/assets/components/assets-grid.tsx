@@ -1,9 +1,9 @@
 'use client'
 
 import { AssetCard } from './asset-card'
-import { EmptyState } from '@/components/empty-state'
+import { EmptyState } from "@bakin/sdk/components"
 import { Images } from 'lucide-react'
-import type { AssetMeta } from '@/types'
+import type { AssetMeta } from "@bakin/sdk/types"
 
 export interface AssetScoreInfo {
   score: number

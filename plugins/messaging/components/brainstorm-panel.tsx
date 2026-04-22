@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
-import { AgentAvatar } from '@/components/agent-avatar'
+import { Button } from "@bakin/sdk/ui"
+import { Textarea } from "@bakin/sdk/ui"
+import { Badge } from "@bakin/sdk/ui"
+import { AgentAvatar } from "@bakin/sdk/components"
 import { Send, Check, X, Loader2 } from 'lucide-react'
 import { DISCORD_GENERAL } from '../types'
-import { useAgent, useAgentList, useAgentIds } from '@bakin/team/hooks/use-agent-store'
+import { useAgent, useAgentList, useAgentIds } from "@bakin/sdk/hooks"
 
 interface ChatMessage {
   role: 'user' | 'assistant'

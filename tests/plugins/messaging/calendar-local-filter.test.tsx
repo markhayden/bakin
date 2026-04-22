@@ -104,37 +104,6 @@ vi.mock('@/components/ui/input', () => ({
 
 // Stub every lucide icon with a noop span. List all names imported by
 // content-calendar so destructured imports resolve.
-vi.mock('lucide-react', () => {
-  const Icon = () => <span />
-  return {
-    ChevronLeft: Icon,
-    ChevronRight: Icon,
-    Plus: Icon,
-    List: Icon,
-    CalendarDays: Icon,
-    CalendarRange: Icon,
-    Check: Icon,
-    X: Icon,
-    Trash2: Icon,
-    ListFilter: Icon,
-    Link2: Icon,
-    Search: Icon,
-    MessageSquare: Icon,
-    CheckCircle: Icon,
-    MoreHorizontal: Icon,
-    FileText: Icon,
-    Megaphone: Icon,
-    Video: Icon,
-    ImageIcon: Icon,
-    Instagram: Icon,
-    Mail: Icon,
-    Twitter: Icon,
-    Youtube: Icon,
-    Music2: Icon,
-    HelpCircle: Icon,
-  }
-})
-
 // CalendarWeek — emit one row per item we receive so we can assert on
 // what survives the filter.
 vi.mock('../../../plugins/messaging/components/calendar-week', () => ({

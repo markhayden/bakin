@@ -2,9 +2,9 @@
 
 import { useState, useMemo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from "@bakin/sdk/ui"
 import { AgentBadge } from './agent-badge'
-import type { ScheduleJob } from '@/hooks/use-schedule'
+import type { ScheduleJob } from "@bakin/sdk/hooks"
 
 // Matching glow colors from the weekly view's AGENT_STYLES
 const AGENT_DOT_GLOW: Record<string, string> = {

@@ -37,11 +37,6 @@ vi.mock('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
 }))
 
-vi.mock('lucide-react', () => ({
-  Send: () => <span data-testid="send-icon" />,
-  Loader2: () => <span data-testid="loader-icon" />,
-}))
-
 const MOCK_AGENTS = [
   { id: 'basil', name: 'Basil', emoji: '🥗', role: '', headshot: '' },
   { id: 'scout', name: 'Scout', emoji: '🏕️', role: '', headshot: '' },
@@ -96,8 +91,10 @@ describe('SessionChat', () => {
 
   it('disables input when no text entered', () => {
     render(<SessionChat sessionId="s1" agentId="nemo" />)
-    const buttons = screen.getAllByRole('button')
-    const sendButton = buttons.find(b => b.querySelector('[data-testid="send-icon"]'))
+    // The send button is the only submit button in the chat form.
+    const sendButton = screen
+      .getAllByRole('button')
+      .find(b => b.getAttribute('type') === 'submit')
     expect(sendButton?.hasAttribute('disabled')).toBe(true)
   })
 })
