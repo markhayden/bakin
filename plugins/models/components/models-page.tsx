@@ -48,13 +48,6 @@ const TIER_STYLES: Record<string, string> = {
   premium: 'bg-purple-500/10 text-purple-400',
 }
 
-const FALLBACK_MODEL_OPTIONS: AvailableModel[] = [
-  { id: 'openai-codex/gpt-5.4', name: 'GPT-5.4', tier: 'premium', provider: 'openai-codex', configured: true, isDefault: true, fallbackIndex: null },
-  { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', tier: 'standard', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: 0 },
-  { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', tier: 'premium', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: null },
-  { id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', tier: 'budget', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: null },
-]
-
 const TABS = [
   { id: 'agents', label: 'Agent Config' },
   { id: 'available', label: 'Available Models' },
@@ -407,10 +400,12 @@ export function ModelsPage() {
   const hasPending = Object.keys(pendingOwn).length > 0 || Object.keys(pendingSub).length > 0
   const defaultsDirty = pendingDefaultModel !== null || pendingDefaultSubagentModel !== undefined || pendingFallbackModels !== null
 
-  // Build model options (available or fallback)
-  const modelOptions: AvailableModel[] = availableModels.length > 0
-    ? availableModels
-    : FALLBACK_MODEL_OPTIONS
+  // Model options come straight from OpenClaw (via the cache). No fake
+  // fallback — if the list is empty, dropdowns stay empty and save
+  // buttons disable. The Available tab has its own loading / error UI
+  // upstream of this derivation.
+  const modelOptions: AvailableModel[] = availableModels
+  const modelsReady = modelsLoaded && availableModels.length > 0
 
   const availableProviders = [...new Set(modelOptions.map((m) => m.provider))].sort((a, b) => a.localeCompare(b))
   const effectiveDefaultModel = pendingDefaultModel ?? defaultModel
@@ -471,7 +466,7 @@ export function ModelsPage() {
                   </p>
                 </div>
                 {defaultsDirty && (
-                  <Button onClick={() => saveDefaults()} disabled={!!saving} size="sm">
+                  <Button onClick={() => saveDefaults()} disabled={!!saving || !modelsReady} size="sm">
                     Save Defaults
                   </Button>
                 )}
@@ -570,7 +565,7 @@ export function ModelsPage() {
 
             {hasPending && (
               <div className="flex justify-end">
-                <Button onClick={saveAll} disabled={!!saving} size="sm">
+                <Button onClick={saveAll} disabled={!!saving || !modelsReady} size="sm">
                   Save All
                 </Button>
               </div>
@@ -626,7 +621,7 @@ export function ModelsPage() {
                             {hasDirty && (
                               <Button
                                 onClick={() => saveAgent(agent.agentId)}
-                                disabled={isSaving}
+                                disabled={isSaving || !modelsReady}
                                 size="xs"
                               >
                                 {isSaving ? 'Saving...' : 'Save'}
@@ -860,7 +855,7 @@ export function ModelsPage() {
                   models={modelOptions}
                 />
               </div>
-              <Button onClick={addAlias} disabled={!newAliasName.trim() || !newAliasTarget.trim()}>
+              <Button onClick={addAlias} disabled={!newAliasName.trim() || !newAliasTarget.trim() || !modelsReady}>
                 Add
               </Button>
             </div>
