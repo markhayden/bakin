@@ -27,3 +27,34 @@ declare module 'bun:sqlite' {
     finalize(): void
   }
 }
+
+/**
+ * Minimal global `Bun` typing for build scripts (`packages/host/build.ts`,
+ * per-plugin builders in Phase E). Covers only `Bun.build()`. If we reach
+ * for more Bun globals, extend here rather than pulling in the full
+ * `bun-types` package.
+ */
+declare namespace Bun {
+  interface BuildConfig {
+    entrypoints: string[]
+    outdir?: string
+    target?: 'browser' | 'bun' | 'node'
+    format?: 'esm' | 'cjs' | 'iife'
+    naming?: string | { entry?: string; chunk?: string; asset?: string }
+    sourcemap?: 'none' | 'inline' | 'external' | 'linked' | boolean
+    external?: string[]
+    minify?: boolean | { whitespace?: boolean; identifiers?: boolean; syntax?: boolean }
+    splitting?: boolean
+    publicPath?: string
+    define?: Record<string, string>
+    loader?: Record<string, 'js' | 'jsx' | 'ts' | 'tsx' | 'json' | 'toml' | 'text' | 'file' | 'napi' | 'wasm'>
+  }
+
+  interface BuildResult {
+    success: boolean
+    outputs: Array<{ path: string; kind: string; hash?: string; sourcemap?: { path: string } | null }>
+    logs: unknown[]
+  }
+
+  function build(config: BuildConfig): Promise<BuildResult>
+}
