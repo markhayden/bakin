@@ -22,6 +22,9 @@ import { Route as WorkflowsIdEditRoute } from './routes/workflows.$id.edit'
 import { Route as AssetsRoute } from './routes/assets'
 import { Route as HealthRoute } from './routes/health'
 import { Route as MemoryRoute } from './routes/memory'
+import { Route as MessagingIndexRoute } from './routes/messaging.index'
+import { Route as MessagingCalendarRoute } from './routes/messaging.calendar'
+import { Route as MessagingBrainstormRoute } from './routes/messaging.brainstorm'
 
 const routeTree = RootRoute.addChildren([
   IndexRoute,
@@ -39,6 +42,9 @@ const routeTree = RootRoute.addChildren([
   AssetsRoute,
   HealthRoute,
   MemoryRoute,
+  MessagingIndexRoute,
+  MessagingCalendarRoute,
+  MessagingBrainstormRoute,
 ])
 
 export const router = createRouter({
