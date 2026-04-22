@@ -39,10 +39,14 @@ interface PluginRegistration {
   navItems?: NavItem[]
   /**
    * Map of slot name → component. Registered with the default order (100).
+   * Components are typed as `ComponentType<any>` because different slots
+   * accept different prop shapes (e.g. `page:/team/[id]` takes `agentId`,
+   * `asset-preview` takes `asset`) and `Slot` threads props through unchanged.
    * For fine-grained ordering, call `registerSlot(name, Component, order)`
    * directly from the plugin's client.tsx alongside registerPlugin.
    */
-  slots?: Record<string, ComponentType<Record<string, unknown>>>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  slots?: Record<string, ComponentType<any>>
 }
 
 interface ClientRegistry {
@@ -70,7 +74,7 @@ export function registerPlugin(reg: PluginRegistration): void {
 
   if (reg.slots) {
     for (const [slotName, component] of Object.entries(reg.slots)) {
-      registerSlot(slotName, component)
+      registerSlot(slotName, component as ComponentType<Record<string, unknown>>)
     }
   }
 }
