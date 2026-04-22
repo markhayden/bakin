@@ -14,9 +14,9 @@
  * itself contains markdown.
  */
 import { useMemo } from 'react'
-import { BakinDrawer } from '@/components/bakin-drawer'
-import { Badge } from '@/components/ui/badge'
-import type { SearchResult } from '@/hooks/use-search'
+import { BakinDrawer } from "@bakin/sdk/components"
+import { Badge } from "@bakin/sdk/ui"
+import type { SearchResult } from "@bakin/sdk/hooks"
 import { MemoryContentRenderer, type ContentFormat } from './memory-content-renderer'
 import { tierStyle } from './tier-colors'
 

@@ -45,6 +45,7 @@ export type {
   ProjectMeta,
   AssetVariantMeta,
   AssetMeta,
+  TrashedAssetMeta,
 } from '@/types'
 
 // Cross-plugin types

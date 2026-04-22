@@ -6,16 +6,16 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
-import { MarkdownEditor } from '@/components/markdown-editor'
+} from "@bakin/sdk/ui"
+import { Badge } from "@bakin/sdk/ui"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@bakin/sdk/ui"
+import { MarkdownEditor } from "@bakin/sdk/components"
 import { Slot } from '@bakin/sdk/slots'
 import { ASSET_TYPES, isEditableMimeType } from '../lib/constants'
 import { Trash2, ExternalLink, Download, Clock, User, Wrench, Tag, Layers, Eye, Pencil, Check, X, Unlink } from 'lucide-react'
-import { formatSize } from '@/lib/format'
+import { formatSize } from "@bakin/sdk/utils"
 import { DeleteAssetDialog } from './delete-asset-dialog'
-import type { AssetMeta } from '@/types'
+import type { AssetMeta } from "@bakin/sdk/types"
 
 interface AssetDetailProps {
   asset: AssetMeta | null

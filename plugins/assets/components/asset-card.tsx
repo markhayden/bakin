@@ -2,18 +2,18 @@
 
 import { useState } from 'react'
 import { FileText, Image, Video, Music, Map, Database, Package, Clock, MoreHorizontal, Trash2 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { AgentAvatar } from '@/components/agent-avatar'
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
+import { Badge } from "@bakin/sdk/ui"
+import { AgentAvatar } from "@bakin/sdk/components"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@bakin/sdk/ui"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
-import { formatAge, formatSize } from '@/lib/format'
+} from "@bakin/sdk/ui"
+import { formatAge, formatSize } from "@bakin/sdk/utils"
 import { DeleteAssetDialog } from './delete-asset-dialog'
-import type { AssetMeta } from '@/types'
+import type { AssetMeta } from "@bakin/sdk/types"
 import type { AssetScoreInfo } from './assets-grid'
 
 const TYPE_ICONS: Record<string, typeof FileText> = {

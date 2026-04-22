@@ -3,23 +3,23 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-} from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
-import { AgentAvatar } from '@/components/agent-avatar'
-import { SortableHead, type SortDir } from '@/components/sortable-head'
-import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/empty-state'
+} from "@bakin/sdk/ui"
+import { Badge } from "@bakin/sdk/ui"
+import { AgentAvatar } from "@bakin/sdk/components"
+import { SortableHead, type SortDir } from "@bakin/sdk/components"
+import { Skeleton } from "@bakin/sdk/ui"
+import { EmptyState } from "@bakin/sdk/components"
 import { MessageSquare, CheckCircle, MoreHorizontal, Trash2 } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
-import type { SearchResult } from '@/hooks/use-search'
-import { useDebug } from '@/hooks/use-debug'
+} from "@bakin/sdk/ui"
+import type { SearchResult } from "@bakin/sdk/hooks"
+import { useDebug } from "@bakin/sdk/hooks"
 import { DeleteSessionDialog } from './delete-session-dialog'
-import { useAgentList } from '@bakin/team/hooks/use-agent-store'
+import { useAgentList } from "@bakin/sdk/hooks"
 
 interface ScoreInfo {
   score: number

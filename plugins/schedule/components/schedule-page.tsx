@@ -3,16 +3,16 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { List, CalendarDays, CalendarRange, Clock, Plus } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { BakinDrawer } from '@/components/bakin-drawer'
-import { PluginHeader } from '@/components/plugin-header'
-import { Skeleton } from '@/components/ui/skeleton'
-import { AgentFilter } from '@/components/agent-filter'
-import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
-import { useQueryState } from '@/hooks/use-query-state'
-import { useSearch } from '@/hooks/use-search'
-import { useDebug } from '@/hooks/use-debug'
-import { useScheduleJobs, type ScheduleJob } from '@/hooks/use-schedule'
+import { Button } from "@bakin/sdk/ui"
+import { BakinDrawer } from "@bakin/sdk/components"
+import { PluginHeader } from "@bakin/sdk/components"
+import { Skeleton } from "@bakin/sdk/ui"
+import { AgentFilter } from "@bakin/sdk/components"
+import { useAgentIds } from "@bakin/sdk/hooks"
+import { useQueryState } from "@bakin/sdk/hooks"
+import { useSearch } from "@bakin/sdk/hooks"
+import { useDebug } from "@bakin/sdk/hooks"
+import { useScheduleJobs, type ScheduleJob } from "@bakin/sdk/hooks"
 import { JobList } from './job-list'
 import { JobDrawer } from './job-drawer'
 import { JobForm, type JobFormData } from './job-form'

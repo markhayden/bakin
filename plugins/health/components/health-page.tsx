@@ -1,14 +1,14 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { useContentStore } from '@/hooks/use-content-store'
-import { useQueryState } from '@/hooks/use-query-state'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { PluginHeader } from '@/components/plugin-header'
-import { UnderlineTabs } from '@/components/underline-tabs'
+import { useContentStore } from "@bakin/sdk/hooks"
+import { useQueryState } from "@bakin/sdk/hooks"
+import { Card, CardHeader, CardTitle, CardContent } from "@bakin/sdk/ui"
+import { Badge } from "@bakin/sdk/ui"
+import { Button } from "@bakin/sdk/ui"
+import { Input } from "@bakin/sdk/ui"
+import { PluginHeader } from "@bakin/sdk/components"
+import { UnderlineTabs } from "@bakin/sdk/components"
 import { ExternalLink, Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
 
 const USAGE_TABS = [

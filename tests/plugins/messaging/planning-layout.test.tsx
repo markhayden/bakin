@@ -55,18 +55,6 @@ vi.mock('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
 }))
 
-vi.mock('lucide-react', () => ({
-  ArrowLeft: () => <span />,
-  PanelRight: () => <span />,
-  PanelRightClose: () => <span />,
-  Pencil: () => <span />,
-  Check: () => <span />,
-  X: () => <span />,
-  Calendar: () => <span />,
-  MoreHorizontal: () => <span />,
-  Trash2: () => <span />,
-}))
-
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
   DropdownMenuTrigger: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,

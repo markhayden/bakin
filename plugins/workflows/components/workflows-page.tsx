@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { PluginHeader } from '@/components/plugin-header'
-import { EmptyState } from '@/components/empty-state'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Button } from '@/components/ui/button'
+import { PluginHeader } from "@bakin/sdk/components"
+import { EmptyState } from "@bakin/sdk/components"
+import { Skeleton } from "@bakin/sdk/ui"
+import { Button } from "@bakin/sdk/ui"
 import { Plus, Workflow } from 'lucide-react'
-import { useQueryState } from '@/hooks/use-query-state'
-import { useSearch } from '@/hooks/use-search'
-import { useDebug } from '@/hooks/use-debug'
+import { useQueryState } from "@bakin/sdk/hooks"
+import { useSearch } from "@bakin/sdk/hooks"
+import { useDebug } from "@bakin/sdk/hooks"
 import { WorkflowCard } from './workflow-card'
 import type { WorkflowTemplate } from '../types'
 

@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@bakin/sdk/ui"
+import { Button } from "@bakin/sdk/ui"
+import { Input } from "@bakin/sdk/ui"
 import { Upload, X, FileText, Image, Video, Music, Map, Database, Package, Loader2 } from 'lucide-react'
-import { toast } from '@/hooks/use-toast'
+import { toast } from "@bakin/sdk/hooks"
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
   text: FileText,

@@ -5,21 +5,21 @@ import { useEffect, useState, useCallback } from 'react'
 // External
 import { ArrowDown, ArrowUp, Plus, X, Users, Layers, RefreshCw, AlertTriangle } from 'lucide-react'
 // Internal
-import { Button } from '@/components/ui/button'
-import { PluginHeader } from '@/components/plugin-header'
-import { ErrorBanner } from '@/components/error-banner'
-import { EmptyState } from '@/components/empty-state'
-import { UnderlineTabs } from '@/components/underline-tabs'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from "@bakin/sdk/ui"
+import { PluginHeader } from "@bakin/sdk/components"
+import { ErrorBanner } from "@bakin/sdk/components"
+import { EmptyState } from "@bakin/sdk/components"
+import { UnderlineTabs } from "@bakin/sdk/components"
+import { Input } from "@bakin/sdk/ui"
+import { Badge } from "@bakin/sdk/ui"
+import { Skeleton } from "@bakin/sdk/ui"
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
-} from '@/components/ui/table'
-import { useQueryState } from '@/hooks/use-query-state'
-import { AgentAvatar } from '@/components/agent-avatar'
-import { ModelSelect } from '@/components/model-select'
-import { useGatewayStatus } from '@/hooks/use-gateway-status'
+} from "@bakin/sdk/ui"
+import { useQueryState } from "@bakin/sdk/hooks"
+import { AgentAvatar } from "@bakin/sdk/components"
+import { ModelSelect } from "@bakin/sdk/components"
+import { useGatewayStatus } from "@bakin/sdk/hooks"
 // Relative
 import type { AgentModelConfig, AvailableModel, ModelsConfigResponse, TaskProfile } from '../types'
 import { BrandIcon } from './brand-icon'

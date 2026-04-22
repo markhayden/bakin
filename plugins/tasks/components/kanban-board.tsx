@@ -10,17 +10,17 @@ import { DeleteTaskDialog } from './delete-task-dialog'
 import { BlockReasonDialog } from './block-reason-dialog'
 import { TaskDetailDrawer } from './task-detail-dialog'
 import { TaskMetrics } from './task-metrics'
-import { PluginHeader } from '@/components/plugin-header'
+import { PluginHeader } from "@bakin/sdk/components"
 import { TaskFilters } from './task-filters'
 import { TaskLogTable } from './task-log-table'
 import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
 import { WithLoading } from '@/components/layout/skeleton-loader'
-import { useContentStore } from '@/hooks/use-content-store'
-import { useDebug } from '@/hooks/use-debug'
-import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
-import { toast } from '@/hooks/use-toast'
+import { useContentStore } from "@bakin/sdk/hooks"
+import { useDebug } from "@bakin/sdk/hooks"
+import { useQueryState, useQueryArrayState } from "@bakin/sdk/hooks"
+import { toast } from "@bakin/sdk/hooks"
 import { useGateStatus } from '../hooks/use-gate-status'
-import { Button } from '@/components/ui/button'
+import { Button } from "@bakin/sdk/ui"
 import { Kanban, Table2, Plus } from 'lucide-react'
 import type { TaskScoreInfo } from './task-card'
 import type { Task, TaskColumns, ColumnId } from '../types'

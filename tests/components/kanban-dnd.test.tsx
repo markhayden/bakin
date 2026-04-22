@@ -202,13 +202,6 @@ vi.mock('../../plugins/tasks/hooks/use-gate-status', () => ({
   useGateStatus: () => ({}),
 }))
 
-vi.mock('lucide-react', () => ({
-  Kanban: () => null,
-  Table2: () => null,
-  Plus: () => null,
-  X: () => null,
-}))
-
 function makeTask(id: string, title: string, overrides?: Partial<Task>): Task {
   return { id, title, checked: false, ...overrides }
 }

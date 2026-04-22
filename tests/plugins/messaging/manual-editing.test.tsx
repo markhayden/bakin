@@ -29,12 +29,6 @@ vi.mock('@/components/ui/input', () => ({
   ),
 }))
 
-vi.mock('lucide-react', () => ({
-  Check: () => <span data-testid="check-icon" />,
-  X: () => <span data-testid="x-icon" />,
-  Pencil: () => <span data-testid="pencil-icon" />,
-}))
-
 import { ProposalCard } from '../../../plugins/messaging/components/proposal-card'
 import type { ProposedItem } from '../../../plugins/messaging/types'
 
