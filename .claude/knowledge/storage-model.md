@@ -68,7 +68,9 @@ Provided to plugins via `PluginContext.storage`. Each plugin reads/writes to nam
 ## Key File Formats
 
 ### Task Storage (SQLite)
-Tasks are stored in OpenClaw's `flow_runs` SQLite table, accessed via `plugins/tasks/lib/flow-store.ts` using `better-sqlite3`. Each task is a row filtered by `owner_key LIKE 'bakin:task:%'`. Task metadata (title, agent, description, log entries, dependencies) is stored in the `state_json` column. Column mapping uses `status` + disambiguating fields. See `.claude/knowledge/tasks-plugin.md` for the full column ↔ status mapping.
+Tasks are stored in OpenClaw's `flow_runs` SQLite table, accessed via `plugins/tasks/lib/flow-store.ts` using Bun's built-in `bun:sqlite` driver. Tests use a thin shim that satisfies the same surface under Node. Each task is a row filtered by `owner_key LIKE 'bakin:task:%'`. Task metadata (title, agent, description, log entries, dependencies) is stored in the `state_json` column. Column mapping uses `status` + disambiguating fields. See `.claude/knowledge/tasks-plugin.md` for the full column ↔ status mapping.
+
+Bakin's own operational state (`audit.jsonl`, per-plugin `plugin-settings/*.json`, heartbeats, etc.) is still plain JSON / JSONL on the filesystem. Migrating those to `bun:sqlite` is a possible follow-up — the driver is already linked into the binary — but has not been done. User content (projects, assets, workflows, messaging) stays in markdown + sidecars on the filesystem; that boundary is intentional and not up for migration.
 
 The `src/lib/taskboard.ts` file is a re-export shim that delegates to `flow-store.ts`.
 

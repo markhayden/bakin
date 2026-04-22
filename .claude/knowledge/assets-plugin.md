@@ -15,6 +15,17 @@ Without a centralized asset system, agent-created files are scattered with no co
 - **Trash lifecycle** — Soft-delete with 7-day retention prevents accidental data loss.
 - **Deep-linkable** — Every view state (filters, sort, selected asset) is URL-backed for bookmarking.
 
+## Client Entry
+
+`plugins/assets/client.tsx` calls `registerPlugin({ id: 'assets', navItems, slots: {...} })` and contributes four slots:
+
+| Slot | Component | Purpose |
+|------|-----------|---------|
+| `asset-preview` | `AssetRenderer` | Inline preview for an asset by type. Used by asset cards, modals, task drawers. User plugins can contribute lower-`order` renderers for specialized formats. |
+| `asset-detail-modal` | `AssetDetailModal` | Full-screen asset viewer. Consumed wherever a filename becomes click-to-preview. |
+| `task-assets` | `TaskAssets` | Task-scoped asset gallery used inside the task detail drawer. |
+| `page:/assets` | `AssetsPage` | Top-level `/assets` route — mounted by the shell's TanStack route, which renders `<Slot name="page:/assets" />`. |
+
 ## Storage Model — Filename-as-Identity
 
 The canonical filename **is** the asset's identity. Its location on disk is a pure function of that filename. This is the single design invariant the entire plugin is built on.
