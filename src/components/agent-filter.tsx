@@ -3,7 +3,7 @@
 import { ListFilter } from 'lucide-react'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useAgent, useAgentDisplayName } from '@bakin/team/hooks/use-agent-store'
+import { useAgent, useAgentDisplayName } from '@bakin/sdk/hooks'
 
 interface AgentFilterProps {
   agentIds: string[]

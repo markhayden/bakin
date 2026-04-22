@@ -1,12 +1,12 @@
 'use client'
 
 import { Suspense } from 'react'
-import { AssetsPage } from '@bakin/assets/components/assets-page'
+import { Slot } from '@bakin/sdk/slots'
 
-export default function Assets() {
+export default function Page() {
   return (
     <Suspense>
-      <AssetsPage />
+      <Slot name="page:/assets" />
     </Suspense>
   )
 }

@@ -1,12 +1,12 @@
 'use client'
 
 import { Suspense } from 'react'
-import { WorkflowsPage } from '@bakin/workflows/components/workflows-page'
+import { Slot } from '@bakin/sdk/slots'
 
-export default function WorkflowsRoute() {
+export default function Page() {
   return (
     <Suspense>
-      <WorkflowsPage />
+      <Slot name="page:/workflows" />
     </Suspense>
   )
 }

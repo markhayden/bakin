@@ -11,6 +11,7 @@
  */
 import type { NodeTypes } from '@xyflow/react'
 import type { NavItem } from '../../src/lib/plugin-types'
+import { registerSlot } from '@bakin/sdk/slots'
 
 import { TriggerNode } from './components/nodes/trigger-node'
 import { AgentNode } from './components/nodes/agent-node'
@@ -19,10 +20,13 @@ import { ParallelNode } from './components/nodes/parallel-node'
 import { OutputNode } from './components/nodes/output-node'
 import { WorkflowNode } from './components/nodes/workflow-node'
 import { SubflowGroupNode } from './components/nodes/subflow-group-node'
+import { WorkflowsPage } from './components/workflows-page'
 
 export const navItems: NavItem[] = [
   { id: 'workflows', label: 'Workflows', icon: 'Workflow', href: '/workflows', order: 40 },
 ]
+
+registerSlot('page:/workflows', WorkflowsPage)
 
 export const nodeRenderers: NodeTypes = {
   trigger: TriggerNode,

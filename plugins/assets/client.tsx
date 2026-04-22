@@ -8,6 +8,7 @@ import { registerSlot } from '@bakin/sdk/slots'
 import { AssetRenderer } from './components/asset-renderer'
 import { AssetDetailModal } from './components/asset-detail'
 import { TaskAssets } from './components/task-assets'
+import { AssetsPage } from './components/assets-page'
 
 export const navItems: NavItem[] = [
   { id: 'assets', label: 'Assets', icon: 'FolderOpen', href: '/assets', order: 20 },
@@ -28,3 +29,7 @@ registerSlot('asset-detail-modal', AssetDetailModal)
 // assets linked to a task plus an Add button. User plugins can override by
 // registering their own `task-assets` slot with a lower `order`.
 registerSlot('task-assets', TaskAssets)
+
+// Top-level /assets page — rendered by the Next.js route wrapper via
+// <Slot name="page:/assets" />. See src/app/assets/page.tsx.
+registerSlot('page:/assets', AssetsPage)
