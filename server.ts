@@ -58,6 +58,8 @@ import * as pluginsMemoryWorkspaceRoute from './packages/host/src/api/plugins/me
 import * as stateRoute from './packages/host/src/api/state'
 import * as assetsRoute from './packages/host/src/api/assets/[...path]'
 import * as pluginCatchAllRoute from './packages/host/src/api/plugins/[pluginId]/[[...path]]'
+import * as pluginsManifestRoute from './packages/host/src/api/plugins/manifest'
+import * as pluginsAssetsRoute from './packages/host/src/api/plugins/assets'
 import { serveHostClient } from './packages/host/src/api/_static'
 import { buildAllUserPlugins } from './packages/host/src/plugin-host/user-plugin-builder'
 
@@ -470,9 +472,22 @@ const eventBus = new BakinEventBus(broadcast)
       }
     }
 
+    // Manifest + asset endpoints for the runtime plugin loader (TF1/TF2).
+    // These MUST match before the plugin catch-all (which would otherwise
+    // eat `/api/plugins/manifest` as `{pluginId: 'manifest'}`).
+    if (url.pathname === '/api/plugins/manifest' && req.method === 'GET') {
+      dispatchWebHandler(req, res, pluginsManifestRoute.get)
+      return
+    }
+    if (/^\/api\/plugins\/[^/]+\/assets\//.test(url.pathname) && req.method === 'GET') {
+      dispatchWebHandler(req, res, pluginsAssetsRoute.get)
+      return
+    }
+
     // Plugin catch-all — /api/plugins/:pluginId/:path* dispatches to each
     // plugin's registered route handlers. Must come LAST among /api/plugins/*
-    // dispatches so the more-specific install/remove/memory/* routes above win.
+    // dispatches so the more-specific install/remove/memory/*/manifest/assets
+    // routes above win.
     if (url.pathname.startsWith('/api/plugins/') && url.pathname !== '/api/plugins/install' && url.pathname !== '/api/plugins/remove') {
       const method = req.method?.toLowerCase() ?? 'get'
       const handler = pluginCatchAllRoute[method === 'delete' ? 'del' : method as 'get' | 'post' | 'put' | 'patch' | 'del']
