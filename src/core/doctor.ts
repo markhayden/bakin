@@ -24,6 +24,34 @@ import { pluginAssetsComponent } from './onboarding/plugin-assets'
 import { getMainAgentId, getMainAgentName } from './main-agent'
 import { getAllExecTools } from '../../scripts/lib/registry'
 import { getHookRegistry } from '../lib/plugin-registry'
+import { listHealthChecks } from '../../plugins/health/lib/health-check-registry'
+
+/**
+ * Run every plugin-registered health check in parallel. Per-check try/catch
+ * isolates failures — a single bad handler yields one synthetic error result
+ * and never crashes the doctor sweep. Exported separately from runDiagnostics
+ * so the isolation behavior can be tested without mocking every builtin
+ * check's dependency tree.
+ */
+export async function runPluginHealthChecks(): Promise<DiagnosticResult[]> {
+  const defs = listHealthChecks()
+  const arrays = await Promise.all(
+    defs.map(async (def) => {
+      try {
+        return await def.run()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return [{
+          check: def.id,
+          status: 'error' as const,
+          message: `Plugin health check threw: ${message}`,
+          autoFixable: false,
+        }]
+      }
+    }),
+  )
+  return arrays.flat()
+}
 
 const log = createLogger('doctor')
 
@@ -1736,6 +1764,10 @@ export async function runDiagnostics(
     checkPluginAssets(),
   ])
   results.push(...gatewayResults, ...antflyResults, ...searchTableResults, ...pluginAssetsResults)
+
+  // Plugin-contributed health checks (#137). Results appended to the same
+  // list as builtins; the UI groups by status so ordering doesn't matter.
+  results.push(...await runPluginHealthChecks())
 
   // Summarize
   const errors = results.filter(r => r.status === 'error').length
