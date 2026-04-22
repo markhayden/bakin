@@ -4,16 +4,28 @@
  * Renders a brand logo for a known provider/model, with a first-letter
  * chip fallback for slugs we don't have icons for.
  *
- * SVG paths are inlined from `simple-icons` (MIT package, CC0 icon data,
- * fully free for commercial use). Inlining rather than importing avoids
- * dragging the full ~5 MB icon bundle into the client, and keeps the
- * component bundler-agnostic (simple-icons v16 is CommonJS and doesn't
- * reliably tree-shake).
+ * SVG paths are copied from https://simple-icons.org (MIT package, CC0
+ * icon data — fully free for commercial use). The paths are inlined
+ * directly in BRAND_PATHS below rather than imported from an npm dep,
+ * because simple-icons v16 ships a single CommonJS bundle that doesn't
+ * tree-shake reliably (a named import would drag ~5 MB into the client).
  *
- * Adding a new brand: find the slug at https://simple-icons.org,
- * copy the SVG path from `node_modules/simple-icons/index.js`, add a
- * one-line entry to `BRAND_PATHS`. If the brand isn't in simple-icons,
- * leave the map unchanged — the first-letter chip kicks in.
+ * ## Current coverage (5 of the ~10 brands referenced by the catalog)
+ *   Have logos:  anthropic, google, ollama, bytedance, kuaishou
+ *   Fall back:   openai, runway, stability, midjourney, blackforestlabs
+ *
+ * OpenAI et al. are either not in simple-icons at all (trademark) or
+ * weren't worth the extra rows at v1. Their catalog entries still set
+ * brandIconSlug for forward-compatibility — when a path lands here,
+ * every matching model picks it up automatically. Until then, the
+ * first-letter chip with the provider's brand color renders.
+ *
+ * ## Adding a new brand
+ *   1. Find the slug at https://simple-icons.org (or any trademark-safe
+ *      SVG source if the brand isn't there)
+ *   2. Extract the 24×24 path string
+ *   3. Add a one-line entry to BRAND_PATHS
+ * That's it — consumers resolve via the slug already on the catalog entry.
  */
 
 interface BrandIconProps {
