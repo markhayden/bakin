@@ -47,6 +47,7 @@ import { dispatchWebHandler } from './packages/host/src/api/_adapter'
 import * as activityRoute from './packages/host/src/api/activity'
 import * as agentsAvatarRoute from './packages/host/src/api/agents/avatar'
 import * as agentsHealthRoute from './packages/host/src/api/agents/health'
+import * as agentsSettingsRoute from './packages/host/src/api/agents/settings'
 
 const log = createLogger('server')
 
@@ -326,6 +327,18 @@ app.prepare().then(async () => {
     if (url.pathname === '/api/agents/health' && req.method === 'GET') {
       dispatchWebHandler(req, res, agentsHealthRoute.get)
       return
+    }
+
+    // Migrated: /api/agents/settings (must be before agent catch-all)
+    if (url.pathname === '/api/agents/settings') {
+      if (req.method === 'GET') {
+        dispatchWebHandler(req, res, agentsSettingsRoute.get)
+        return
+      }
+      if (req.method === 'PUT') {
+        dispatchWebHandler(req, res, agentsSettingsRoute.put)
+        return
+      }
     }
 
     // Agent API routes
