@@ -29,6 +29,23 @@ await Bun.build({
     chunk: '[name]-[hash].[ext]',
     asset: '[name]-[hash].[ext]',
   },
+  // TD1: externalize React + @bakin/sdk so plugins and shell share instances
+  // at runtime via the browser import map emitted in TD3. TD2 produces the
+  // vendor bundles that the import map points at.
+  external: [
+    'react',
+    'react-dom',
+    'react-dom/client',
+    'react/jsx-runtime',
+    'react/jsx-dev-runtime',
+    '@bakin/sdk',
+    '@bakin/sdk/ui',
+    '@bakin/sdk/hooks',
+    '@bakin/sdk/components',
+    '@bakin/sdk/slots',
+    '@bakin/sdk/types',
+    '@bakin/sdk/utils',
+  ],
 })
 
 console.log('packages/host: built')
