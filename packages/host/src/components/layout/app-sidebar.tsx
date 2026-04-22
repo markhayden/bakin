@@ -19,7 +19,8 @@ import {
   MessageSquare,
   Sparkles,
 } from 'lucide-react'
-import { allNavItems } from '@/lib/plugin-manifest'
+import { getAllNavItems } from '@bakin/sdk'
+import type { NavItem } from '@bakin/sdk'
 import { useSidebarContext } from '../../context/sidebar-context'
 import { usePathname } from '../../hooks/use-pathname'
 import {
@@ -55,6 +56,10 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   const { collapsed } = useSidebarContext()
+  // Runtime registry (populated by each plugin's client.mjs via registerPlugin
+  // after the PluginHost dynamic-imports them). Fetched per render so
+  // newly-registered plugins surface on the next re-render cycle.
+  const allNavItems = getAllNavItems()
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
     // Seed initial state: expand any group whose section is active on load
     const initial = new Set<string>()
@@ -100,7 +105,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="flex flex-col gap-0.5 px-2 py-3 flex-1">
       {allNavItems.map((item) => {
-        const Icon = ICONS[item.icon]
+        const Icon = item.icon ? ICONS[item.icon] : undefined
         const hasChildren = item.children && item.children.length > 0
         const active = pathname === item.href || pathname.startsWith(item.href + '/')
 
@@ -139,7 +144,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
               {expanded && (
                 <div className="flex flex-col gap-0.5 ml-7 mt-0.5">
                   {item.children!.map((child) => {
-                    const ChildIcon = ICONS[child.icon]
+                    const ChildIcon = child.icon ? ICONS[child.icon] : undefined
                     const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
                     return (
                       <a
@@ -199,7 +204,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                   </div>
                   <div className="flex flex-col gap-0.5">
                     {item.children!.map((child) => {
-                      const ChildIcon = ICONS[child.icon]
+                      const ChildIcon = child.icon ? ICONS[child.icon] : undefined
                       const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
                       return (
                         <a
