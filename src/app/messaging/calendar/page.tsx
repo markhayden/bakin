@@ -1,13 +1,13 @@
 'use client'
 
 import { Suspense } from 'react'
-import { ContentCalendar } from '@bakin/messaging/components/content-calendar'
+import { Slot } from '@bakin/sdk/slots'
 
-export default function MessagingCalendarPage() {
+export default function Page() {
   return (
     <div className="p-6 flex flex-col flex-1">
       <Suspense>
-        <ContentCalendar />
+        <Slot name="page:/messaging/calendar" />
       </Suspense>
     </div>
   )

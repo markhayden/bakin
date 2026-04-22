@@ -1,13 +1,13 @@
 'use client'
 
 import { Suspense } from 'react'
-import { BrainstormView } from '@bakin/messaging/components/brainstorm-view'
+import { Slot } from '@bakin/sdk/slots'
 
-export default function MessagingBrainstormPage() {
+export default function Page() {
   return (
     <div className="p-6 flex flex-col flex-1">
       <Suspense>
-        <BrainstormView />
+        <Slot name="page:/messaging/brainstorm" />
       </Suspense>
     </div>
   )
