@@ -137,6 +137,7 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     registerWorkflow: vi.fn(),
     registerNodeType: vi.fn(() => ''),
     registerNotificationChannel: vi.fn(() => ''),
+    registerHealthCheck: vi.fn(() => ''),
     watchFiles: vi.fn(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: vi.fn(),
