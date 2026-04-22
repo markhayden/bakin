@@ -29,18 +29,19 @@ interface VendorTarget {
   entrypoint: string
 }
 
-// Resolve bare specifiers to absolute paths via Bun.resolveSync so the
-// subprocess below doesn't need to figure out subpath exports or deal
-// with tsconfig path-mapping. (Bun 1.3 had an intermittent "FileNotFound
-// opening root directory" failure when passing bare specifiers like
-// `react-dom/client` as entrypoints to `bun build` from a subpath of the
-// workspace — resolving to absolute paths up-front avoids it.)
+// React + react-dom + jsx-runtime are CJS modules upstream. Passing the
+// package's own entrypoint to Bun.build produces a bundle with only a
+// default export — `import { useState } from 'react'` then fails at
+// runtime. The wrappers under scripts/vendor-entries/*.ts import the
+// default and explicitly re-export every named API, forcing Bun to emit
+// those names on the bundle. The SDK entrypoints stay as-is (they're
+// already ESM in source).
 const targets: VendorTarget[] = [
-  { specifier: 'react', name: 'react', entrypoint: Bun.resolveSync('react', process.cwd()) },
-  { specifier: 'react-dom', name: 'react-dom', entrypoint: Bun.resolveSync('react-dom', process.cwd()) },
-  { specifier: 'react-dom/client', name: 'react-dom-client', entrypoint: Bun.resolveSync('react-dom/client', process.cwd()) },
-  { specifier: 'react/jsx-runtime', name: 'jsx-runtime', entrypoint: Bun.resolveSync('react/jsx-runtime', process.cwd()) },
-  { specifier: 'react/jsx-dev-runtime', name: 'jsx-dev-runtime', entrypoint: Bun.resolveSync('react/jsx-dev-runtime', process.cwd()) },
+  { specifier: 'react', name: 'react', entrypoint: './scripts/vendor-entries/react.ts' },
+  { specifier: 'react-dom', name: 'react-dom', entrypoint: './scripts/vendor-entries/react-dom.ts' },
+  { specifier: 'react-dom/client', name: 'react-dom-client', entrypoint: './scripts/vendor-entries/react-dom-client.ts' },
+  { specifier: 'react/jsx-runtime', name: 'jsx-runtime', entrypoint: './scripts/vendor-entries/jsx-runtime.ts' },
+  { specifier: 'react/jsx-dev-runtime', name: 'jsx-dev-runtime', entrypoint: './scripts/vendor-entries/jsx-dev-runtime.ts' },
   { specifier: '@bakin/sdk', name: 'sdk-index', entrypoint: './packages/sdk/src/index.ts' },
   { specifier: '@bakin/sdk/ui', name: 'sdk-ui', entrypoint: './packages/sdk/src/ui/index.ts' },
   { specifier: '@bakin/sdk/hooks', name: 'sdk-hooks', entrypoint: './packages/sdk/src/hooks/index.ts' },
