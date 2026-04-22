@@ -1,17 +1,22 @@
-import { NextResponse, type NextRequest } from 'next/server'
+/**
+ * POST /api/agents/{action} — start/stop/restart an agent.
+ *
+ * Migrated from src/app/api/agents/[action]/route.ts for Phase B of #147.
+ * The {action} segment is parsed from url.pathname (last segment).
+ */
 import { startAgent, stopAgent, restartAgent } from '@/lib/agents'
 import { appendAudit } from '@/lib/audit'
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ action: string }> }
-) {
-  const { action } = await params
-  const body = await request.json()
+export async function post(req: Request, url: URL): Promise<Response> {
+  // Extract {action} from pathname: /api/agents/{action}
+  const segments = url.pathname.split('/').filter(Boolean)
+  const action = segments[segments.length - 1] || ''
+
+  const body = await req.json()
   const { agent } = body
 
   if (!agent) {
-    return NextResponse.json({ error: 'agent required' }, { status: 400 })
+    return Response.json({ error: 'agent required' }, { status: 400 })
   }
 
   let result
@@ -26,7 +31,7 @@ export async function POST(
       result = await restartAgent(agent)
       break
     default:
-      return NextResponse.json({ error: 'invalid action' }, { status: 400 })
+      return Response.json({ error: 'invalid action' }, { status: 400 })
   }
 
   // Only audit successful actions
@@ -36,5 +41,5 @@ export async function POST(
     appendAudit(`agent.${action}.failed`, 'system', { agent, error: 'error' in result ? result.error : 'note' in result ? result.note : 'unknown' })
   }
 
-  return NextResponse.json(result)
+  return Response.json(result)
 }
