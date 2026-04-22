@@ -1,379 +1,348 @@
-# Plan — Issue #129: Models loading UX + curated catalog
+# Plan — Issue #137: Health Checks Registry
 
-**Spec:** `.claude/specs/issue-129-models-loading-ux-and-catalog.md`
-**Issue:** https://github.com/madeinwyo/bakin/issues/129
-**Branch:** `issue-129-models-loading-ux`
-**Replaces:** closed #128 (plugin-contributed models registry — premature abstraction)
+**Spec:** `.claude/specs/issue-137-health-checks-registry.md`
+**Issue:** https://github.com/madeinwyo/bakin/issues/137
+**Branch:** `issue-137-health-checks-registry`
+**Precedent to mirror:** `workflows.notificationChannels` (#125 / PR #126) — same registry shape, same wiring, same teardown.
 
 ## Goal
 
-Kill `fallbackModels()` (the 15-second cold-start lie) by moving model data to a persistent disk cache, and while we're in there, ship the curated catalog + brand icons + enriched UI that makes the models page actually useful. One PR, two user-visible wins: honest loading states + rich model cards.
+Land the 4th Registry Extension Point from `docs/ideas/plugin-system.md`: `health.checks`. Core surface + plugin-registry wiring + orchestrator integration, with the workflows-plugin migration as the forcing-function proof. Pattern is validated the moment three existing core checks move into their owning plugin without breaking the doctor dashboard.
 
 ## Dependency graph
 
 ```
-T0 scaffold (archive #125 tasks, write this plan + todo)
+T0 scaffold (archive #129 tasks, commit spec + plan + todo)
   │
   ▼
-T1 disk cache + stale flag ...................... (foundation)
+T1 core types + ctx stubs .................... (foundation for everything)
   │
   ▼
-T2 /refresh route + gateway-restart invalidation . (depends on T1)
+T2 health-check-registry store ................ (depends on T1 types)
   │
   ▼
-T3 delete fallbackModels + MODEL_CATALOG dead code (depends on T1 so nothing still calls fallback)
+T3 plugin-registry wiring + teardown ........... (depends on T2; replaces T1 stub)
+  │                                                       ↓
+  ▼                                              Checkpoint: registry usable
+T4 health plugin hooks + REST route ............ (depends on T2; parallel-safe with T5)
   │
   ▼
-T4 curated catalog data module ................... (independent; new data, no consumers yet)
+T5 orchestrator integration in doctor.ts ....... (depends on T2; can land before or after T4)
+  │                                                       ↓
+  ▼                                              Checkpoint: plugin checks execute
+T6 workflows migration (3 checks) .............. (depends on T3 + T5)
+  │                                                       ↓
+  ▼                                              Checkpoint: migration complete
+T7 regression gap-fill tests
   │
   ▼
-T5 enrich AvailableModel from catalog ............ (depends on T4)
-  │
-  ▼
-T6 BrandIcon component + simple-icons dep ........ (independent; sets up the icon surface T7 uses)
-  │
-  ▼
-T7 enriched models-page cards + Refresh + banner . (needs T5 fields + T6 icons)
-  │
-  ▼
-T8 regression tests (full coverage pass)
-  │
-  ▼
-T9 ship
+T8 ship
 ```
 
-Solo sequential. Each task = one commit. Intermediate commits must build and pass tests — no broken-main moments.
+Solo sequential in practice. Each commit builds and passes tests — interim stubs in T1 exist specifically to keep tsc green across T1–T3.
 
 ## Task detail
 
-### T0 — chore(issue-129): spec + plan scaffold
+### T0 — chore(issue-137): spec + plan scaffold
 
-**Already done:**
-- Branch `issue-129-models-loading-ux` created from `main`
-- Issue #128 closed with rationale (plugin-registry for models is premature)
-- `docs/ideas/plugin-system.md` updated to strike `models.providers` from the registry list
-- Spec written at `.claude/specs/issue-129-models-loading-ux-and-catalog.md`
+**Status:** partial. Branch + spec exist uncommitted. `tasks/*.md` still holds #129 content.
 
-**Still to do (this task):**
-- Archive issue-125 tasks → `.claude/tasks/issue-125-{plan,todo}.md`
-- Write this `tasks/plan.md` + `tasks/todo.md`
-- One commit bundling all scaffolding
+**Steps:**
+- Archive `tasks/plan.md` + `tasks/todo.md` (#129 content) → `.claude/tasks/issue-129-{plan,todo}.md` via `git mv`
+- Commit staged renames + spec + this plan + todo together
 
 **Acceptance:**
-- [ ] `tasks/plan.md` + `tasks/todo.md` present, scoped to #129
-- [ ] `.claude/tasks/issue-125-{plan,todo}.md` present with #125's final state
-- [ ] Commit message: `chore(issue-129): spec + plan scaffold`
+- [ ] `.claude/tasks/issue-129-{plan,todo}.md` present with #129 content
+- [ ] `tasks/plan.md` + `tasks/todo.md` contain this new #137 content
+- [ ] `.claude/specs/issue-137-health-checks-registry.md` committed
+- [ ] `git status` clean after commit
+
+**Commit:** `chore(issue-137): spec + plan scaffold`
 
 ---
 
-### T1 — feat(models): disk-backed cache + stale flag
+### T1 — feat(core): HealthCheckResult types + PluginContext.registerHealthCheck
 
-**What:** Move model cache persistence from in-memory-only to in-memory + disk. Response gains `stale: boolean`.
+**Shape changes:**
+- `packages/core/src/plugin-types.ts` — add `HealthCheckResult`, `PluginHealthCheckInput`, `HealthCheckDef` types (per spec §Design)
+- Add `registerHealthCheck(def: PluginHealthCheckInput): string` method to `PluginContext`
+- `src/lib/plugin-types.ts` — extend re-export list
 
-**"Look first":** the existing cache at `plugins/models/index.ts:149-157` uses `globalThis.__bakinModelsCache`. Keep it as the hot-read layer; disk is underneath. Do NOT rip out the globalThis pattern.
+**Interim stubs** (keep tsc green until T3 wires the real path):
+All 8 `PluginContext`-literal sites get `registerHealthCheck: (def) => \`${pluginId}.${def.id}\`` (or `vi.fn(() => '')` in test files — same shape #125 used for `registerNotificationChannel`):
+- `src/lib/plugin-registry.ts` (insert after `registerNotificationChannel` ~line 220)
+- `src/app/api/plugins/[pluginId]/[[...path]]/route.ts` (two sites)
+- `tests/plugins/test-helpers.ts`
+- `tests/plugins/contract.test.ts`
+- `tests/plugins/projects/sync-hook.test.ts`
+- `tests/plugins/workflows/sync-hook.test.ts`
+- `tests/plugins/assets/unlink-hook.test.ts`
+- `tests/plugins/assets/retype-preserves-search.test.ts`
+- `tests/integration/search-watcher-sync.test.ts`
 
-**Files:**
-- New: `plugins/models/lib/models-cache.ts` — disk read/write with zod-validated reads
-- Edit: `plugins/models/index.ts` — `fetchAvailableModels()` extended to read disk on cold start, write disk on success, return `stale: boolean` in the response
-- Edit: `plugins/models/types.ts` — `AvailableModelsResponse` gains optional `stale?: boolean` field
-- New test: `tests/plugins/models/models-cache.test.ts`
+**Acceptance:**
+- [ ] Types exported from both core + re-export
+- [ ] `PluginContext.registerHealthCheck` signature present
+- [ ] All 8 ctx-literal sites stubbed
+- [ ] `pnpm tsc --noEmit` clean
+- [ ] `pnpm vitest run` green
 
-**Shape:**
+**Commit:** `feat(core): HealthCheckResult types + PluginContext.registerHealthCheck`
+
+---
+
+### T2 — feat(health): health-check-registry store + unit tests
+
+**New file:** `plugins/health/lib/health-check-registry.ts` — mirror `plugins/workflows/lib/notification-channel-registry.ts`:
 
 ```ts
-// plugins/models/lib/models-cache.ts
-interface PersistedCache {
-  models: AvailableModel[]
-  fetchedAt: number
-  source: 'openclaw' | 'empty'
-}
-export function readPersistedCache(): PersistedCache | null   // zod-validated; returns null on miss/corrupt
-export function writePersistedCache(cache: PersistedCache): void  // atomic tmp+rename
-export function clearPersistedCache(): void
+const registry = new Map<string, HealthCheckDef>()
+
+export function registerHealthCheck(def: HealthCheckDef): void     // throws on duplicate id
+export function getHealthCheck(id: string): HealthCheckDef | undefined
+export function listHealthChecks(): HealthCheckDef[]
+export function unregisterHealthCheck(id: string): void
+export function unregisterPluginHealthChecks(pluginId: string): void
+
+export function registerPluginHealthCheck(
+  pluginId: string,
+  input: PluginHealthCheckInput,
+): string  // namespaces id to `{pluginId}.{id}`, returns namespaced id
 ```
 
-Path: `getContentDir()` + `plugin-settings/models/available.json`. Mkdir parent on first write.
+**No builtin self-seeding** — unlike channels/node-types, core doctor checks stay as direct calls. Registry is plugin-contributions-only.
 
-Response flow in `/available`:
-1. In-memory cache fresh → return `{ models, cached: true, cachedAt, stale: false }`
-2. In-memory cache empty but disk cache present → hydrate in-memory, return `{ models, cached: true, cachedAt, stale: (Date.now() - cachedAt) > CACHE_TTL }`
-3. Both empty → call `loadConfiguredModelsFromOpenClaw`; write both caches on success, return `{ models, cached: false, cachedAt: now, stale: false }`
-4. OpenClaw fails AND no cache → return `{ models: [], cached: false, cachedAt: null, error: '...' }` — **never** `fallbackModels()`
-
-Note: `fallbackModels()` still exists in the file after T1; T3 deletes it. T1 just stops calling it in the success-empty branch.
-
-**Acceptance:**
-- [ ] `plugins/models/lib/models-cache.ts` exists with 3 exports + zod validation on read
-- [ ] Disk cache path resolves to `~/.bakin/plugin-settings/models/available.json`
-- [ ] First `/available` on a fresh install with no disk file returns an HTTP-200 with `models: []` + error (no fake data) — unless OpenClaw is reachable, in which case fresh fetch + disk write
-- [ ] Response shape includes `stale: boolean`
-- [ ] `fallbackModels()` is no longer referenced in `fetchAvailableModels` (still defined, deleted in T3)
-- [ ] Unit tests cover: round-trip write/read, corrupt JSON returns null, missing file returns null, `clearPersistedCache` deletes the file
-- [ ] `pnpm tsc --noEmit` + `pnpm vitest run tests/plugins/models/` clean
-
-**Commit:** `feat(models): disk-backed cache with stale flag`
-
----
-
-### T2 — feat(models): manual refresh + gateway-restart cache invalidation
-
-**What:** New `POST /api/plugins/models/refresh` endpoint that forces a cache bypass. Extend `POST /gateway/restart` to wipe both caches.
-
-**"Look first":** `getGatewaySync()`/`markGatewayRestarted()` live at `plugins/models/index.ts:23-28` (same file). `POST /gateway/restart` exists at `:647`. Just extend, don't relocate.
-
-**Files:**
-- Edit: `plugins/models/index.ts` — new `/refresh` route; `/gateway/restart` clears in-memory + disk cache after successful restart
-- Edit: existing `tests/plugins/models/routes.test.ts` — add cases for /refresh + cache-clear on restart
-
-**Flow for `/refresh`:**
-- Ignore cache
-- Call `loadConfiguredModelsFromOpenClaw` directly
-- On success: write both in-memory + disk cache
-- On failure + there IS a disk cache: return `{ ok: false, error, models: cachedModels, stale: true }`
-- On failure + no cache: return `{ ok: false, error, models: [] }`
+**New test:** `tests/plugins/health/health-check-registry.test.ts` — mirror `tests/plugins/workflows/notification-channel-registry.test.ts`:
+- register + retrieve + list
+- collision throw
+- `registerPluginHealthCheck` namespaces correctly
+- `unregisterPluginHealthChecks(pluginId)` removes only that plugin's entries
+- registry starts empty (no builtin seeds)
 
 **Acceptance:**
-- [ ] `POST /api/plugins/models/refresh` route registered
-- [ ] `/refresh` bypasses cache and returns fresh data
-- [ ] `/refresh` on OpenClaw failure falls back to last-known-good cache when available
-- [ ] `POST /gateway/restart` clears in-memory AND disk cache on successful restart
-- [ ] `pnpm vitest run` clean
+- [ ] 6 exports on the module matching the precedent
+- [ ] 6+ unit-test assertions pass
 - [ ] `pnpm tsc --noEmit` clean
 
-**Commit:** `feat(models): manual refresh endpoint + invalidate cache on gateway restart`
+**Commit:** `feat(health): health-check-registry with plugin namespacing + teardown`
 
 ---
 
-### T3 — refactor(models): delete fallbackModels + MODEL_CATALOG dead code
+### T3 — feat(core): wire registerHealthCheck through plugin-registry
 
-**What:** Pure deletion. Both surfaces are now unused.
+**Edits to `src/lib/plugin-registry.ts`:**
 
-**Files:**
-- Edit: `plugins/models/index.ts` — remove `fallbackModels()` function (lines 252-259)
-- Edit: `plugins/models/types.ts` — remove `MODEL_CATALOG` + `ModelCatalogEntry` (lines 45-58)
-
-**Grep verifications (all zero hits):**
-- `grep -rn 'fallbackModels' plugins/models/`
-- `grep -rn 'MODEL_CATALOG' plugins/`
-- `grep -rn 'ModelCatalogEntry' plugins/`
+1. Import `registerPluginHealthCheck` + `unregisterPluginHealthChecks` alongside the workflows helpers (around :24)
+2. Add `healthCheckIds: string[]` field to `PluginState`
+3. Initialize `healthCheckIds: []` at both `PluginState` construction sites (search for `nodeKinds: []` — two sites)
+4. Replace T1's interim stub at ~:220 with real impl:
+   ```ts
+   registerHealthCheck: (def: PluginHealthCheckInput): string => {
+     try {
+       const namespacedId = registerPluginHealthCheck(pluginId, def)
+       state.healthCheckIds.push(namespacedId)
+       return namespacedId
+     } catch (err) {
+       log.error(
+         `registerHealthCheck collision in plugin "${pluginId}" for id "${def.id}"`,
+         err as Error,
+       )
+       return `${pluginId}.${def.id}`
+     }
+   }
+   ```
+5. Extend teardown at `:372` (user-plugin-override path — verified single teardown site):
+   ```ts
+   unregisterPluginNodeTypes(pluginId)
+   unregisterPluginNotificationChannels(pluginId)
+   unregisterPluginHealthChecks(pluginId)  // NEW
+   ```
 
 **Acceptance:**
-- [ ] All three greps return zero hits
+- [ ] Real impl replaces T1 stub at production plugin-registry site only
+- [ ] Other 7 stubs stay (tests + per-request context that doesn't need the real registry)
+- [ ] Teardown updated
 - [ ] `pnpm tsc --noEmit` + `pnpm vitest run` clean
-- [ ] No test regressions — `MODEL_CATALOG` was dead code, nothing depends on it
+- [ ] Checkpoint: registry functional end-to-end — a plugin calling `ctx.registerHealthCheck(...)` writes to the real Map
 
-**Commit:** `refactor(models): remove fallbackModels + MODEL_CATALOG dead code`
+**Commit:** `feat(core): wire registerHealthCheck through plugin-registry`
 
 ---
 
-### T4 — feat(models): curated catalog data module
+### T4 — feat(health): list hooks + REST route
 
-**What:** New `plugins/models/data/known-models.ts` with the 22-entry seed + lookup helpers.
+**Edits to `plugins/health/index.ts`** in `activate(ctx)`:
+- `ctx.hooks.register('health.listChecks', () => listHealthChecks().map(stripRun))`
+- `ctx.hooks.register('health.getCheck', (d) => { const def = getHealthCheck(d.id as string); return def ? stripRun(def) : null })`
+- `ctx.registerRoute({ path: '/checks', method: 'GET', handler: async () => json({ checks: listHealthChecks().map(stripRun) }) })`
 
-**Files:**
-- New: `plugins/models/data/known-models.ts` — exports `KnownModel`, `KnownProvider`, `KNOWN_MODELS`, `KNOWN_PROVIDERS`, `getKnownModel`, `getKnownProvider`
-- New test: `tests/plugins/models/known-models.test.ts`
+Where `stripRun(def) = { id, name, pluginId, autoFix }` — omits non-serializable `run`.
 
-**Seed: 9 LLMs + 5 image + 5 video + providers** (per spec §Seed entries).
-
-**`getKnownModel` normalization:**
-- Exact match first
-- On miss, strip trailing `-\d{8}` date suffix and retry
-- Return `undefined` otherwise
-
-**Providers seed:** at minimum `anthropic`, `openai` (and `openai-codex` alias), `google`, `ollama`, `bytedance`, `kuaishou`, `runway`, `black-forest-labs`, `stability`, `midjourney` with matching `brandIconSlug` + `brandColor` (hex).
+**New test:** `tests/plugins/health/checks-route.test.ts` — activate the health plugin via `activatePlugin`, assert:
+- `/checks` returns `{ checks: [] }` on a fresh registry
+- After `registerHealthCheck(...)` via the plugin helper, the route returns that entry with correct shape (no `run` field)
 
 **Acceptance:**
-- [ ] 22 model entries across `kind: 'llm' | 'image' | 'video'` (9 + 5 + 5; 3 slots flexibility if a seed model shifts)
-- [ ] Providers cover every model's `providerFromId` output
-- [ ] `getKnownModel('anthropic/claude-sonnet-4-6-20250514')` matches the base `anthropic/claude-sonnet-4-6` entry
-- [ ] `getKnownModel('unknown/model')` returns undefined
-- [ ] Unit tests: exact match, date-suffix-strip match, miss, provider lookup hit + miss
-- [ ] `pnpm tsc --noEmit` + `pnpm vitest run tests/plugins/models/` clean
+- [ ] Hooks registered with documented shape
+- [ ] Route registered at `/checks`
+- [ ] Test asserts empty + populated cases
+- [ ] `pnpm tsc --noEmit` + `pnpm vitest run` clean
 
-**Commit:** `feat(models): curated catalog of 22 popular models + providers`
+**Commit:** `feat(health): expose registered checks via hooks + REST route`
 
 ---
 
-### T5 — feat(models): enrich AvailableModel from catalog
+### T5 — feat(core): run plugin health checks in runDiagnostics
 
-**What:** `loadConfiguredModelsFromOpenClaw` merges catalog metadata into every returned `AvailableModel`.
+**Edits to `src/core/doctor.ts`:**
 
-**Files:**
-- Edit: `plugins/models/types.ts` — `AvailableModel` gains optional fields: `description`, `bestFor`, `costRange`, `kind`, `brandIconSlug`, `providerLabel`, `providerBrandIconSlug`, `providerBrandColor`
-- Edit: `plugins/models/index.ts` — enrichment in the `.map(...)` block at `:213` (around the existing `AvailableModel` construction)
-- Extend: `tests/plugins/models/routes.test.ts` — fixture OpenClaw response for a known id should produce an `AvailableModel` with the catalog's `description` / `bestFor` / `costRange`; unknown id falls back to `tierFromId`
+1. Import `listHealthChecks`:
+   ```ts
+   import { listHealthChecks } from '../../plugins/health/lib/health-check-registry'
+   ```
+2. At the end of `runDiagnostics()` (after the existing `await Promise.all(...)` block around :1732), append:
+   ```ts
+   // Plugin-contributed health checks (#137). Per-check try/catch so one
+   // bad handler never crashes the sweep.
+   const pluginChecks = listHealthChecks()
+   const pluginResultArrays = await Promise.all(
+     pluginChecks.map(async (def) => {
+       try {
+         return await def.run()
+       } catch (err) {
+         const message = err instanceof Error ? err.message : String(err)
+         return [{
+           check: def.id,
+           status: 'error' as const,
+           message: `Plugin health check threw: ${message}`,
+           autoFixable: false,
+         }]
+       }
+     }),
+   )
+   results.push(...pluginResultArrays.flat())
+   ```
 
-**Enrichment shape (preserves existing fallbacks):**
+**New test file:** `tests/core/doctor-plugin-checks.test.ts` — `src/core/doctor.ts` has no dedicated test today; gap-filling is fair game.
 
+Test cases:
+- Register a plugin check that returns `[{ status: 'ok', ... }]` → appears in `runDiagnostics()` results
+- Register a plugin check that throws synchronously → synthetic error result appears, other checks still complete
+- Register a plugin check that rejects async → same synthetic-error behavior
+- Plugin check results appear alongside (not replacing) builtin check results — asserts `results.length` grew by exactly the plugin-check count
+
+Doctor test requires extensive mocks per CLAUDE.md (content-dir, openclaw-client, settings, etc.) — focus on the plugin-check code path; mock the existing builtin checks to a stable baseline.
+
+**No UI verification needed:** `plugins/health/components/health-page.tsx:28` consumes `DiagnosticResult`-shaped rows. Plugin check results are shape-identical, so no UI change is required. Confirmed by inspection.
+
+**Acceptance:**
+- [ ] `runDiagnostics()` ends with the plugin-check Promise.all + results.push
+- [ ] Throws in plugin checks never propagate out of runDiagnostics
+- [ ] 3+ new tests pass
+- [ ] `pnpm tsc --noEmit` + `pnpm vitest run` clean
+- [ ] Checkpoint: a plugin check registered via the real pipeline appears in doctor output end-to-end
+
+**Commit:** `feat(core): run plugin health checks in runDiagnostics`
+
+---
+
+### T6 — refactor(workflows): migrate 3 workflow checks out of core
+
+**The forcing function.** Until this commit, `health.checks` is infrastructure nobody uses. This is where it becomes live.
+
+**New file:** `plugins/workflows/lib/health-checks.ts` — move three functions out of `src/core/doctor.ts`:
+- `checkWorkflowDefinitions` from `doctor.ts:1139`
+- `checkStaleWorkflowInstances` from `doctor.ts:1175`
+- `checkWorkflowSkills` from `doctor.ts:1102`
+
+**Internalization during move:**
+- `checkWorkflowDefinitions` currently calls `getHookRegistry().invoke('workflows.listDefinitions', {})`. Replace with direct import from `plugins/workflows/lib/source-registry` (or wherever `listDefinitions` is defined). Verify shape match during build.
+- `checkStaleWorkflowInstances` currently takes `autoFix: boolean`. After move, read `getSettings().doctor.autoFixSkill` inline (reuse the core settings-read pattern). Its `hooks.invoke('workflows.listInstances', {})` becomes a direct `listInstances()` import. Its `hooks.invoke('tasks.readTaskboard', {})` STAYS as a hook — workflows→tasks is legitimate cross-plugin communication.
+- `checkWorkflowSkills` is sync, filesystem-only. No internalization needed.
+
+**Helpers needed:** `ok()`, `warn()`, `fixed()` constructors from `doctor.ts`. Inline them at the top of `plugins/workflows/lib/health-checks.ts` (4 lines each, trivial). Keeps the plugin self-contained for eventual helper migration in a follow-up PR.
+
+**Edits to `plugins/workflows/index.ts`** in `activate(ctx)`:
 ```ts
-const known = getKnownModel(id)
-const knownProvider = getKnownProvider(providerFromId(id))
-return {
-  id,
-  name: known?.name ?? model.name ?? id,
-  tier: known?.tier ?? tierFromId(id),
-  provider: providerFromId(id),
-  providerLabel: knownProvider?.label,
-  providerBrandIconSlug: knownProvider?.brandIconSlug,
-  providerBrandColor: knownProvider?.brandColor,
-  description: known?.description,
-  bestFor: known?.bestFor,
-  costRange: known?.costRange,
-  kind: known?.kind,
-  brandIconSlug: known?.brandIconSlug,
-  // ... existing fields untouched
-}
+ctx.registerHealthCheck({
+  id: 'definitions',
+  name: 'Workflow definition integrity',
+  run: () => checkWorkflowDefinitions(getContentDir()),
+})
+ctx.registerHealthCheck({
+  id: 'stale-instances',
+  name: 'Stale workflow instances',
+  autoFix: true,
+  run: () => checkStaleWorkflowInstances(getContentDir()),
+})
+ctx.registerHealthCheck({
+  id: 'skills',
+  name: 'Workflow skills validation',
+  run: async () => checkWorkflowSkills(getContentDir()),
+})
 ```
 
-**Acceptance:**
-- [ ] `AvailableModel` type has the 8 new optional fields
-- [ ] Mocked OpenClaw fixture including `anthropic/claude-sonnet-4-6` produces enriched shape with catalog fields
-- [ ] Mocked OpenClaw fixture for an unknown id still constructs a valid `AvailableModel` with `tier` from `tierFromId` heuristic and no enrichment fields
-- [ ] Existing `routes.test.ts` tests still pass (no regression on existing assertions)
-- [ ] `pnpm tsc --noEmit` clean — downstream consumers ignore the new optional fields
+**Edits to `src/core/doctor.ts`:**
+- Delete three function definitions: `checkWorkflowDefinitions`, `checkStaleWorkflowInstances`, `checkWorkflowSkills`
+- Delete three `results.push(...)` calls in `runDiagnostics()`
 
-**Commit:** `feat(models): enrich AvailableModel with curated catalog metadata`
+**New test:** `tests/plugins/workflows/health-checks.test.ts` — fixture directories with:
+- Valid + invalid workflow definitions (resolvable vs. broken skill references)
+- Stale + fresh workflow instances
+- Skills with + without `output_schema`
+
+Assert each migrated function produces the same `DiagnosticResult[]` count + shape as before the move. Invoke the run functions directly (not through the registry — that's T7's job).
+
+**Acceptance:**
+- [ ] `plugins/workflows/lib/health-checks.ts` exists with 3 function exports
+- [ ] Workflows plugin `activate()` registers all 3 via `ctx.registerHealthCheck`
+- [ ] `src/core/doctor.ts` no longer defines or calls the 3 functions
+- [ ] Migration regression test passes — output shapes identical
+- [ ] Full `runDiagnostics()` still produces the same check coverage (via the plugin registry)
+- [ ] `grep "checkWorkflowDefinitions\|checkStaleWorkflowInstances\|checkWorkflowSkills" src/core/doctor.ts` → 0 hits
+- [ ] `pnpm tsc --noEmit` + `pnpm vitest run` clean
+- [ ] Checkpoint: migration complete, pattern validated end-to-end
+
+**Commit:** `refactor(workflows): migrate workflow health checks out of core/doctor.ts`
 
 ---
 
-### T6 — feat(models): BrandIcon component + simple-icons dep
+### T7 — test(health): orchestrator isolation + migration regression
 
-**What:** New client component that renders SVG brand logos via `simple-icons`, with first-letter chip fallback.
+Gap-fill anything T5 and T6 didn't cover:
 
-**"Look first":**
-- Run `pnpm add simple-icons` first; verify the deep-import shape by `cat node_modules/simple-icons/icons/openai.js` (should export `{ title, slug, path, hex, source }`)
-- If tree-shaking concerns appear (bundle swells visibly), switch to deep imports by path: `import siOpenai from 'simple-icons/icons/openai'`. Not a blocker — covered in the spec's Not Doing list (no dynamic imports).
-
-**Files:**
-- `package.json` + `pnpm-lock.yaml` — add `simple-icons` dep
-- New: `plugins/models/components/brand-icon.tsx`
-- New test: `tests/plugins/models/brand-icon.test.tsx`
-
-**Import map: 10 slugs** matching the seed catalog — `anthropic`, `openai`, `google`, `ollama`, `runway`, `stability`, `midjourney`, `bytedance`, `kuaishou`, `blackforestlabs`. Plus `helpcircle`-shaped fallback if any icon happens to be missing in the package.
-
-**Props:**
-
-```ts
-interface BrandIconProps {
-  slug?: string
-  fallbackText?: string       // for first-letter chip
-  fallbackColor?: string      // hex
-  size?: 'sm' | 'md'
-  className?: string
-}
-```
-
-**Fallback rules:**
-- `slug` present and in the map → render the SVG path
-- `slug` missing or not in the map → render first-letter chip with `fallbackColor` bg
-- `fallbackText` missing → render `?`
+- **Integration test:** activate BOTH workflows + health plugins through `activatePlugin`, call `runDiagnostics()`. Assert the 3 workflow-owned checks appear in the results with correct `{pluginId}.{id}` naming.
+- **Isolation test** (if not already in T5): plugin A throws + plugin B returns results → plugin B still appears.
+- **End-to-end shape regression:** verify the `plugins/health/components/health-page.tsx` consumer path doesn't break with plugin-contributed rows. Manual eyeball if writing the component test feels heavyweight; a lightweight integration assertion is enough.
 
 **Acceptance:**
-- [ ] `simple-icons` installed, lockfile updated
-- [ ] `plugins/models/components/brand-icon.tsx` exports `BrandIcon`
-- [ ] Renders `<svg>` for known slug, `<span>` chip for unknown/missing
-- [ ] `pnpm build` (or `pnpm tsc --noEmit`) clean — no TS errors from the deep imports
-- [ ] Bundle size check: nothing obviously catastrophic. Eyeball only, not a hard gate.
-- [ ] Tests: 4 cases (known slug renders path, unknown slug renders chip, empty text renders '?', bg color applied)
-
-**Commit:** `feat(models): BrandIcon component with simple-icons + first-letter fallback`
-
----
-
-### T7 — feat(models): enriched models-page cards + Refresh + cache-age + banner
-
-**What:** The visible UI work. All changes scoped to the `tab === 'available'` block in `plugins/models/components/models-page.tsx` (lines ~590-640) plus a tab-header area for the Refresh button.
-
-**"Look first:** models-page.tsx is 808 lines; surgical edits, no full-page refactor. The tab content lives inside an `AnimatePresence`-style conditional block. Refresh button + cache-age indicator probably belong inside the `tab === 'available'` block's header (above the provider sections), not in the top-level page header.
-
-**UI additions:**
-1. **Refresh button + cache-age indicator** at top of `tab === 'available'`:
-   - Button disabled during in-flight request
-   - Spinner replaces icon while refreshing
-   - Text: `Last refreshed: 2m ago` (under 24h → relative; older → absolute date)
-2. **Gateway-out-of-sync banner** — pulled from `GET /gateway/status` on mount (`restartNeeded === true`):
-   - Amber background, inline `Restart gateway` button
-   - Only renders when flag is true
-3. **Provider header** now renders `<BrandIcon slug={providerBrandIconSlug} fallbackText={providerLabel ?? provider} fallbackColor={providerBrandColor} />` + `{providerLabel ?? provider.replace(/[-_]/g, ' ')}`
-4. **Model row** gains (when catalog match exists):
-   - Small `<BrandIcon>` next to name
-   - `description` as muted secondary line
-   - `bestFor` badge next to the tier badge
-   - `contextWindow` as mono-font small text next to name
-   - `costRange` right-aligned at end of row
-5. **Loading state** when fetch in-flight AND no cache yet: spinner + "Querying OpenClaw gateway — this can take up to 30 seconds on first load"
-6. **Error state** when fetch failed AND no cache: error message + Retry button (calls `POST /refresh`)
-
-**Files:**
-- Edit: `plugins/models/components/models-page.tsx` — surgical edits inside `tab === 'available'` block + a mount-time fetch for gateway-status
-- Optional new file: `plugins/models/components/model-card-row.tsx` if the enriched row JSX gets unwieldy inline (judgment call during implementation — prefer inline unless it hurts readability)
-
-**Acceptance:**
-- [ ] Refresh button triggers `POST /api/plugins/models/refresh` + updates UI
-- [ ] Cache-age indicator renders relative time for <24h, absolute date otherwise
-- [ ] Provider headers render `<BrandIcon>` + resolved label
-- [ ] Model rows with catalog match show description + bestFor badge + contextWindow + costRange
-- [ ] Model rows without catalog match show plain (existing) layout — no regression
-- [ ] First-ever load (no cache) shows loading state, not fake data
-- [ ] Fetch failure + no cache shows error + Retry button
-- [ ] Gateway-out-of-sync banner renders when `/gateway/status` reports `restartNeeded: true`
-- [ ] Existing model-selector UIs on other tabs (agents, aliases, profiles) render unchanged
-- [ ] `pnpm tsc --noEmit` clean; `pnpm vitest run` clean
-
-**Commit:** `feat(models): enriched cards + Refresh button + cache-age + gateway-sync banner`
-
----
-
-### T8 — test(models): regression guards
-
-**What:** Comprehensive test pass for the loading/catalog flow. Existing test coverage at `tests/plugins/models/` is limited to `routes.test.ts`; expand to cover cache + enrichment + UI degradation cases that the earlier commits didn't lock down.
-
-**Files:**
-- Extend: `tests/plugins/models/routes.test.ts` — new cases for `/refresh`, cache stale flag, gateway-restart cache-clear
-- New: `tests/plugins/models/enrichment.test.ts` — mocked OpenClaw fixture → enriched `AvailableModel[]` with catalog fields; unknown ids have no enrichment; date-suffix-stripped match works end-to-end
-- New: `tests/plugins/models/models-page.test.tsx` — component-level regression: renders cache-age indicator, renders Refresh button, triggers refresh, shows loading state with no cache, shows error state on fetch failure, gateway-sync banner renders when flag present
-
-**Mocks required:** content-dir, logger, watcher, openclaw-client, tasks/flow-store (per CLAUDE.md), plus `use-agent-store` and any other cross-plugin hooks the page references.
-
-**Acceptance:**
-- [ ] New regression tests pass
-- [ ] Full `pnpm vitest run` clean (ignore pre-existing `@dagrejs/dagre` failures)
+- [ ] Any coverage gap identified at T5/T6 closure is filled
+- [ ] Full `pnpm vitest run` clean
 - [ ] `pnpm tsc --noEmit` clean
-- [ ] Grep verifications (repeat from T3 for the final artifact): `fallbackModels` / `MODEL_CATALOG` / `ModelCatalogEntry` all zero hits
 
-**Commit:** `test(models): regression guards for cache + enrichment + loading UI`
+**Commit:** `test(health): regression guards + migration isolation`
 
 ---
 
-### T9 — Ship
+### T8 — Ship
 
-- [ ] Manual smoke on maintainer's install:
-  - Delete `~/.bakin/plugin-settings/models/available.json` to force cold start
-  - Load `/models` → loading state appears briefly, then real data lands
-  - Click Refresh → spinner, then updated timestamp
-  - Trigger a gateway config change (edit `openclaw.json`, don't restart) → banner appears
-  - Click the banner's Restart button → banner clears, cache refreshes
-  - Verify enriched cards for `anthropic/claude-sonnet-4-6` show description + bestFor + cost range + logo
-  - Verify a non-catalog model (e.g. an OSS local) renders plain row without errors
-- [ ] `git push -u origin issue-129-models-loading-ux`
-- [ ] Open PR against `main`, reference #129, link spec + plugin-system one-pager
+- [ ] Push branch: `git push -u origin issue-137-health-checks-registry`
+- [ ] Open PR against `main` — reference #137, link spec, mention the 2 follow-ups to file on merge
+- [ ] Quick manual smoke: `bakin doctor` on the other machine should produce the same check output as before (the 3 workflow checks are now plugin-contributed; user shouldn't notice any difference)
+- [ ] File 2 follow-ups (per spec):
+  - `chore(core): collapse DiagnosticResult into HealthCheckResult after all checks migrate`
+  - `chore: hook-name parity pass — rename all list{Noun} hooks to {namespace}.list`
 - [ ] Merge when green
-- [ ] Close #129 with before/after summary
-- [ ] Archive `tasks/plan.md` + `tasks/todo.md` → `.claude/tasks/issue-129-{plan,todo}.md`
+- [ ] Close #137 with before/after summary
+- [ ] Archive `tasks/plan.md` + `tasks/todo.md` → `.claude/tasks/issue-137-{plan,todo}.md`
 
-## Commit strategy
+## Risks & call-outs
 
-One PR, 9 implementation commits (T0 scaffold + T1–T8) plus any hotfix commits that show up during testing. Each commit self-contained: tsc clean, tests pass, no broken intermediate state. Intermediate commits must not break the models page — so T1 stops *calling* `fallbackModels()` but keeps the function defined until T3.
-
-## Risks / call-outs
-
-- **T1 disk-cache write contention.** If two server processes write concurrently, atomic tmp+rename prevents corruption but the later write wins. In practice Bakin is single-process per install, so this is theoretical. Flag only if we later support multi-process.
-- **T6 simple-icons bundle size.** If deep-imports don't tree-shake cleanly, client bundle swells by the full icon set (~1.5 MB). Worst case: do static imports for only the 10 brands we need (already planned), confirmed tree-shakable via deep paths. If bundle concern materializes, cut back to first-letter chips only and accept the loss of visual polish.
-- **T7 scope creep into a full models-page redesign.** The spec is crystal clear — surgical edits inside `tab === 'available'`. Don't touch other tabs. Don't reshape the page layout. If a visual tweak elsewhere is tempting, note it as a follow-up issue and move on.
-- **T8 test file sprawl.** Three new test files is a lot; if any feel redundant during writing, consolidate. The point is coverage, not file count.
-- **Pre-existing `@dagrejs/dagre` failures** in the test suite are unrelated and will still fail on this branch. Not a blocker; not introduced by #129.
+- **T5 imports plugin code from core.** `src/core/doctor.ts` imports `listHealthChecks` from `plugins/health/lib/`. This reverses the usual core-doesn't-depend-on-plugins direction. Justified — `src/lib/plugin-registry.ts:24` already imports from `plugins/workflows/lib/` for the same reason. The owner plugin's registry module IS the source of truth for that extension point. Document in commit message.
+- **T6 internalization of hook calls.** `checkWorkflowDefinitions` uses a hook to reach `listDefinitions`. Moving into the workflows plugin, we replace that with a direct import. Risk: if the hook handler does any transformation, the direct call might have a different shape. Verify during T6 — may need a small adapter layer.
+- **T5 test setup complexity.** `runDiagnostics()` has 18+ imports and reads many filesystem paths. Mocking everything for a full run is expensive. Prefer testing the plugin-check loop in isolation — register mock plugin checks, mock the builtin-check side to a stable baseline, assert only the plugin-check-path behavior. We're adding a new loop at the end, not regressing existing behavior.
+- **Commit sequencing invariant.** T1 stubs MUST be at all 8 sites before merging — if we land T1 with only 7 stubbed, the 8th file breaks tsc. Grep all 8 paths during T1 before committing.
 
 ## Archival
 
-After merge, T9 moves `tasks/plan.md` + `tasks/todo.md` into `.claude/tasks/issue-129-{plan,todo}.md` — matches the `issue-115-`, `issue-118-`, `issue-125-` archival pattern already in that directory.
+After merge, T8 moves `tasks/plan.md` + `tasks/todo.md` into `.claude/tasks/issue-137-{plan,todo}.md` — matches the `issue-115-`, `issue-118-`, `issue-125-`, `issue-129-` archival pattern.
