@@ -1,11 +1,11 @@
 /**
  * SQLite-backed task store using OpenClaw's flow_runs table.
  *
- * Internal operations are synchronous (better-sqlite3's sync API).
+ * Internal operations are synchronous (bun:sqlite's sync API).
  * Exported mutating functions return Promises for backward compatibility
  * with callers that chain .then() (workflow runtime, dispatch, etc.).
  */
-import Database from 'better-sqlite3'
+import { Database } from 'bun:sqlite'
 import { existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
@@ -19,17 +19,17 @@ const BAKIN_OWNER_PREFIX = 'bakin:task:'
 // Database access
 // ---------------------------------------------------------------------------
 
-function openDb(): Database.Database {
+function openDb(): Database {
   const dbPath = getOpenClawPath('flows', 'registry.sqlite')
   const dbDir = dirname(dbPath)
   if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true })
   const db = new Database(dbPath)
-  db.pragma('journal_mode = WAL')
-  db.pragma('busy_timeout = 5000')
+  db.exec('PRAGMA journal_mode = WAL')
+  db.exec('PRAGMA busy_timeout = 5000')
   return db
 }
 
-function withDb<T>(fn: (db: Database.Database) => T): T {
+function withDb<T>(fn: (db: Database) => T): T {
   const db = openDb()
   try {
     return fn(db)
@@ -38,7 +38,7 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
   }
 }
 
-function hasFlowRunsTable(db: Database.Database): boolean {
+function hasFlowRunsTable(db: Database): boolean {
   const row = db.prepare(`
     SELECT 1 as present
     FROM sqlite_master
@@ -235,7 +235,7 @@ function getColumnWhereClause(col: ColumnId): string {
 /**
  * Count tasks in a column. Used to assign order = count (append to end).
  */
-function getColumnTaskCount(db: Database.Database, col: ColumnId): number {
+function getColumnTaskCount(db: Database, col: ColumnId): number {
   const where = getColumnWhereClause(col)
   const row = db.prepare(`SELECT COUNT(*) as cnt FROM flow_runs WHERE ${where}`).get() as { cnt: number }
   return row.cnt
@@ -313,7 +313,7 @@ export function getAgentTasks(agentId: string): Task[] {
 // Find task by ID or title (ID preferred, title fallback)
 // ---------------------------------------------------------------------------
 
-function findFlowRow(db: Database.Database, identifier: string): FlowRunRow | null {
+function findFlowRow(db: Database, identifier: string): FlowRunRow | null {
   // Try by ID first
   const byId = db.prepare(SELECT_BY_ID).get(identifier) as FlowRunRow | undefined
   if (byId) return byId
