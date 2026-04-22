@@ -49,6 +49,7 @@ import * as agentsAvatarRoute from './packages/host/src/api/agents/avatar'
 import * as agentsHealthRoute from './packages/host/src/api/agents/health'
 import * as agentsSettingsRoute from './packages/host/src/api/agents/settings'
 import * as agentsActionRoute from './packages/host/src/api/agents/[action]'
+import * as memoryLogRoute from './packages/host/src/api/memory/log'
 
 const log = createLogger('server')
 
@@ -405,6 +406,11 @@ app.prepare().then(async () => {
     // These were Next.js App Router route.ts files; migrated in Phase B of #147.
     if (url.pathname === '/api/activity' && req.method === 'GET') {
       dispatchWebHandler(req, res, activityRoute.get)
+      return
+    }
+
+    if (url.pathname === '/api/memory/log' && req.method === 'POST') {
+      dispatchWebHandler(req, res, memoryLogRoute.post)
       return
     }
 
