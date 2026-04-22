@@ -1,14 +1,15 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { WorkflowCanvasEditor } from '@bakin/workflows/components/workflow-canvas-editor'
+import { Slot } from '@bakin/sdk/slots'
 
-export default function NewWorkflowRoute() {
+export default function Page() {
   const router = useRouter()
   return (
-    <WorkflowCanvasEditor
+    <Slot
+      name="page:/workflows/new"
       mode="create"
-      onSaved={(id) => router.push(`/workflows/${id}`)}
+      onSaved={(savedId: string) => router.push(`/workflows/${savedId}`)}
       onCancel={() => router.push('/workflows')}
     />
   )

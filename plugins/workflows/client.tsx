@@ -21,12 +21,19 @@ import { OutputNode } from './components/nodes/output-node'
 import { WorkflowNode } from './components/nodes/workflow-node'
 import { SubflowGroupNode } from './components/nodes/subflow-group-node'
 import { WorkflowsPage } from './components/workflows-page'
+import { WorkflowDetail } from './components/workflow-detail'
+import { WorkflowCanvasEditor } from './components/workflow-canvas-editor'
 
 export const navItems: NavItem[] = [
   { id: 'workflows', label: 'Workflows', icon: 'Workflow', href: '/workflows', order: 40 },
 ]
 
 registerSlot('page:/workflows', WorkflowsPage)
+registerSlot('page:/workflows/[id]', WorkflowDetail)
+// WorkflowCanvasEditor handles both /new and /[id]/edit — the wrapper passes
+// mode='create' or 'edit' and the appropriate initialDefinition / callbacks.
+registerSlot('page:/workflows/new', WorkflowCanvasEditor)
+registerSlot('page:/workflows/[id]/edit', WorkflowCanvasEditor)
 
 export const nodeRenderers: NodeTypes = {
   trigger: TriggerNode,
