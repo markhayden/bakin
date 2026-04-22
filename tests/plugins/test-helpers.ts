@@ -136,6 +136,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
         return `${pluginId}.${def.id}`
       }
     },
+    registerHealthCheck: vi.fn((def) => `${pluginId}.${def.id}`),
     watchFiles: vi.fn(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: vi.fn(),

@@ -113,8 +113,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 6 routes', () => {
-    expect(activated.routes.length).toBe(6)
+  it('registers 7 routes', () => {
+    expect(activated.routes.length).toBe(7)
   })
 
   it('registers 2 exec tools', () => {

@@ -17,6 +17,11 @@ import {
   getNotificationChannel,
   listNotificationChannels,
 } from './lib/notification-channel-registry'
+import {
+  checkWorkflowDefinitions,
+  checkStaleWorkflowInstances,
+  checkWorkflowSkills,
+} from './lib/health-checks'
 import { isReadOnly, getDefinition as getRegistryDefinition } from './lib/source-registry'
 import {
   createInstance,
@@ -458,6 +463,24 @@ const workflowsPlugin: BakinPlugin = {
         JSON.stringify({ channels: listNotificationChannels() }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
+    })
+
+    // ─── Health checks (migrated out of core/doctor.ts per #137) ─────
+    ctx.registerHealthCheck({
+      id: 'definitions',
+      name: 'Workflow definition integrity',
+      run: () => checkWorkflowDefinitions(getContentDir()),
+    })
+    ctx.registerHealthCheck({
+      id: 'stale-instances',
+      name: 'Stale workflow instances',
+      autoFix: true,
+      run: () => checkStaleWorkflowInstances(getContentDir()),
+    })
+    ctx.registerHealthCheck({
+      id: 'skills',
+      name: 'Workflow skills validation',
+      run: async () => checkWorkflowSkills(getContentDir()),
     })
 
     // ─── Template Routes ──────────────────────────────────────────────

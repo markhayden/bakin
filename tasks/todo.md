@@ -1,127 +1,92 @@
-# TODO: Issue #129 — Models loading UX + curated catalog
+# TODO: Issue #137 — Health Checks Registry
 
-**Spec:** `.claude/specs/issue-129-models-loading-ux-and-catalog.md`
+**Spec:** `.claude/specs/issue-137-health-checks-registry.md`
 **Plan:** `tasks/plan.md`
-**Issue:** https://github.com/madeinwyo/bakin/issues/129
-**Branch:** `issue-129-models-loading-ux`
+**Issue:** https://github.com/madeinwyo/bakin/issues/137
+**Branch:** `issue-137-health-checks-registry`
 
 ## T0 — Branch + scaffold commit
 
-- [x] `git checkout -b issue-129-models-loading-ux`
-- [x] Close #128 with rationale
-- [x] Update `docs/ideas/plugin-system.md` to strike `models.providers`
-- [x] Write spec at `.claude/specs/issue-129-models-loading-ux-and-catalog.md`
-- [x] Archive #125 tasks → `.claude/tasks/issue-125-{plan,todo}.md`
-- [x] Commit: `chore(issue-129): spec + plan scaffold`
+- [x] `git checkout -b issue-137-health-checks-registry` (already done)
+- [x] Write spec at `.claude/specs/issue-137-health-checks-registry.md`
+- [ ] Archive `tasks/plan.md` + `tasks/todo.md` (current content is #129) → `.claude/tasks/issue-129-{plan,todo}.md`
+- [ ] Commit: `chore(issue-137): spec + plan scaffold`
 
-## T1 — feat(models): disk-backed cache + stale flag
+## T1 — feat(core): HealthCheckResult types + PluginContext.registerHealthCheck
 
-- [x] New file `plugins/models/lib/models-cache.ts` — `readPersistedCache()`, `writePersistedCache()`, `clearPersistedCache()` + zod validation on read
-- [x] Path: `getContentDir() + 'plugin-settings/models/available.json'`; atomic tmp+rename on write
-- [x] Extend `fetchAvailableModels()` in `plugins/models/index.ts`:
-  - In-memory hot read stays
-  - On in-memory miss → check disk → hydrate + return with `stale` flag
-  - On OpenClaw fetch success → write both caches
-  - On OpenClaw failure + no cache → return `{ models: [], cached: false, error }` (NOT `fallbackModels()`)
-- [x] Response shape gains `stale: boolean`; `AvailableModelsResponse` in `plugins/models/types.ts` gains optional field
-- [x] New test `tests/plugins/models/models-cache.test.ts` — round-trip, corrupt JSON returns null, missing file returns null, clear deletes
-- [x] Checkpoint: `pnpm tsc --noEmit` + `pnpm vitest run tests/plugins/models/` clean
-- [x] Commit: `feat(models): disk-backed cache with stale flag`
+- [ ] Add `HealthCheckResult`, `PluginHealthCheckInput`, `HealthCheckDef` in `packages/core/src/plugin-types.ts`
+- [ ] Add `registerHealthCheck(def): string` method to `PluginContext`
+- [ ] Extend re-export list in `src/lib/plugin-types.ts`
+- [ ] Interim stubs at all 8 ctx-literal sites (plugin-registry + route.ts:2sites + 6 test files)
+- [ ] Checkpoint: `pnpm tsc --noEmit` + `pnpm vitest run` clean
+- [ ] Commit: `feat(core): HealthCheckResult types + PluginContext.registerHealthCheck`
 
-## T2 — feat(models): /refresh + gateway-restart invalidation
+## T2 — feat(health): health-check-registry store + unit tests
 
-- [x] New route: `POST /api/plugins/models/refresh`
-  - Bypasses cache
-  - Calls `loadConfiguredModelsFromOpenClaw`
-  - On success → write both caches
-  - On failure + disk cache exists → `{ ok: false, error, models: cachedModels, stale: true }`
-  - On failure + no cache → `{ ok: false, error, models: [] }`
-- [x] Extend `POST /gateway/restart` (`plugins/models/index.ts:647`):
-  - After successful restart, call `setModelsCache(null)` + `clearPersistedCache()`
-- [x] Extend `tests/plugins/models/routes.test.ts` — `/refresh` happy + failure paths; cache-clear on gateway restart
-- [x] Checkpoint: `pnpm tsc --noEmit` + `pnpm vitest run` clean
-- [x] Commit: `feat(models): manual refresh endpoint + invalidate cache on gateway restart`
+- [ ] New file `plugins/health/lib/health-check-registry.ts`
+- [ ] Exports: `registerHealthCheck` / `getHealthCheck` / `listHealthChecks` / `unregisterHealthCheck` / `unregisterPluginHealthChecks` / `registerPluginHealthCheck`
+- [ ] No builtin seeding (plugin-contributions-only)
+- [ ] New test `tests/plugins/health/health-check-registry.test.ts` — mirror `notification-channel-registry.test.ts`
+- [ ] Checkpoint: `pnpm tsc --noEmit` + `pnpm vitest run tests/plugins/health/` clean
+- [ ] Commit: `feat(health): health-check-registry with plugin namespacing + teardown`
 
-## T3 — refactor(models): delete fallbackModels + MODEL_CATALOG dead code
+## T3 — feat(core): wire registerHealthCheck through plugin-registry
 
-- [x] Remove `fallbackModels()` from `plugins/models/index.ts:252-259`
-- [x] Remove `MODEL_CATALOG` + `ModelCatalogEntry` from `plugins/models/types.ts:45-58`
-- [x] Verify greps all return zero:
-  - [ ] `grep -rn 'fallbackModels' plugins/models/` → 0 hits
-  - [ ] `grep -rn 'MODEL_CATALOG' plugins/` → 0 hits
-  - [ ] `grep -rn 'ModelCatalogEntry' plugins/` → 0 hits
-- [x] Checkpoint: `pnpm tsc --noEmit` + `pnpm vitest run` clean
-- [x] Commit: `refactor(models): remove fallbackModels + MODEL_CATALOG dead code`
+- [ ] Import `registerPluginHealthCheck` + `unregisterPluginHealthChecks` in `src/lib/plugin-registry.ts`
+- [ ] Add `healthCheckIds: string[]` to `PluginState` + both construction sites
+- [ ] Replace T1 stub at production site with real impl (try/catch + log + push)
+- [ ] Add `unregisterPluginHealthChecks(pluginId)` at teardown site `:372`
+- [ ] Checkpoint: `pnpm tsc --noEmit` + full `pnpm vitest run` clean
+- [ ] Commit: `feat(core): wire registerHealthCheck through plugin-registry`
 
-## T4 — feat(models): curated catalog data module
+## T4 — feat(health): list hooks + REST route
 
-- [x] New file `plugins/models/data/known-models.ts` — interfaces + arrays + helpers
-- [x] `KnownModel` with: id, name, description?, bestFor?, tier?, contextWindow?, costRange?, kind, brandIconSlug?
-- [x] `KnownProvider` with: id, label, brandIconSlug?, brandColor?
-- [x] Seed:
-  - [ ] 4 Anthropic LLMs (haiku 4.5, sonnet 4.5, sonnet 4.6, opus 4.6)
-  - [ ] 3 OpenAI LLMs (gpt-5.4, gpt-5, gpt-4o)
-  - [ ] 2 Google LLMs (gemini 2.5 pro, gemini 2.5 flash)
-  - [ ] 2 Ollama LLMs (llama 3.3, qwen 2.5)
-  - [ ] 5 image: DALL-E 3, Imagen 4, Flux (pro), SDXL, Midjourney v6.1
-  - [ ] 5 video: Seedance, Kling 1.6, Runway Gen-3 Alpha, Sora, Veo 2
-  - [ ] 10 providers covering every model's `providerFromId` output with `brandIconSlug` + `brandColor`
-- [x] `getKnownModel(id)` — exact match, fallback to date-suffix-strip retry (`id.replace(/-\d{8}$/, '')`)
-- [x] `getKnownProvider(id)` — exact match only
-- [x] New test `tests/plugins/models/known-models.test.ts` — 5+ cases
-- [x] Checkpoint: `pnpm tsc --noEmit` + `pnpm vitest run tests/plugins/models/` clean
-- [x] Commit: `feat(models): curated catalog of 22 popular models + providers`
+- [ ] Register `health.listChecks` + `health.getCheck` hooks in `plugins/health/index.ts:activate()`
+- [ ] Register `GET /checks` route returning `{ checks: [{ id, name, pluginId, autoFix }] }` (strip `run`)
+- [ ] New test `tests/plugins/health/checks-route.test.ts` — empty registry + populated case
+- [ ] Checkpoint: `pnpm tsc --noEmit` + `pnpm vitest run` clean
+- [ ] Commit: `feat(health): expose registered checks via hooks + REST route`
 
-## T5 — feat(models): enrich AvailableModel from catalog
+## T5 — feat(core): run plugin health checks in runDiagnostics
 
-- [x] Extend `AvailableModel` in `plugins/models/types.ts` with optional: description, bestFor, costRange, kind, brandIconSlug, providerLabel, providerBrandIconSlug, providerBrandColor
-- [x] Update `.map(...)` block in `loadConfiguredModelsFromOpenClaw` (around `plugins/models/index.ts:213`) to merge `getKnownModel(id)` + `getKnownProvider(providerFromId(id))`
-- [x] Extend `tests/plugins/models/routes.test.ts` with an enrichment regression — fixture OpenClaw response containing a known id produces enriched shape; unknown id falls back to `tierFromId` with no enrichment fields
-- [x] Checkpoint: `pnpm tsc --noEmit` + `pnpm vitest run` clean
-- [x] Commit: `feat(models): enrich AvailableModel with curated catalog metadata`
+- [ ] Import `listHealthChecks` in `src/core/doctor.ts`
+- [ ] Append plugin-check Promise.all loop to `runDiagnostics()` with per-check try/catch
+- [ ] Synthetic error result on throws, never crashes the sweep
+- [ ] New test file `tests/core/doctor-plugin-checks.test.ts` — happy path, sync throw, async reject, alongside-builtins assertion
+- [ ] Checkpoint: `pnpm tsc --noEmit` + `pnpm vitest run` clean
+- [ ] Commit: `feat(core): run plugin health checks in runDiagnostics`
 
-## T6 — feat(models): BrandIcon + simple-icons dep
+## T6 — refactor(workflows): migrate 3 workflow checks out of core
 
-- [x] `pnpm add simple-icons`
-- [x] Verify deep import works: `cat node_modules/simple-icons/icons/openai.js` — should export `{ title, slug, path, hex, source }`
-- [x] New file `plugins/models/components/brand-icon.tsx`
-- [x] Import map of 10 brands: anthropic, openai, google, ollama, runway, stability, midjourney, bytedance, kuaishou, blackforestlabs
-- [x] Props: `slug?`, `fallbackText?`, `fallbackColor?`, `size?`, `className?`
-- [x] Known slug → SVG with `<path d={icon.path}/>` inside a `<svg viewBox="0 0 24 24">`
-- [x] Unknown slug / missing → first-letter chip with `fallbackColor` bg
-- [x] New test `tests/plugins/models/brand-icon.test.tsx` — 4 cases (known, unknown, empty, color-applied)
-- [x] Checkpoint: `pnpm tsc --noEmit` clean; bundle not catastrophically larger (eyeball only)
-- [x] Commit: `feat(models): BrandIcon component with simple-icons + first-letter fallback`
+- [ ] New file `plugins/workflows/lib/health-checks.ts`
+- [ ] Move `checkWorkflowDefinitions` (doctor.ts:1139) — internalize `listDefinitions` hook call
+- [ ] Move `checkStaleWorkflowInstances` (doctor.ts:1175) — internalize `listInstances` hook; internalize `autoFix` setting read; keep `tasks.readTaskboard` as hook (cross-plugin)
+- [ ] Move `checkWorkflowSkills` (doctor.ts:1102) — sync, no internalization needed
+- [ ] Inline `ok` / `warn` / `fixed` helpers at top of new file
+- [ ] Register all 3 via `ctx.registerHealthCheck` in `plugins/workflows/index.ts:activate()`
+- [ ] Delete 3 function definitions from `src/core/doctor.ts`
+- [ ] Delete 3 `results.push(...)` calls in `runDiagnostics()`
+- [ ] New test `tests/plugins/workflows/health-checks.test.ts` — fixture-based regression, shape-identical to pre-migration
+- [ ] Grep verification: `checkWorkflowDefinitions|checkStaleWorkflowInstances|checkWorkflowSkills` in `src/core/doctor.ts` → 0 hits
+- [ ] Checkpoint: `pnpm tsc --noEmit` + `pnpm vitest run` clean
+- [ ] Commit: `refactor(workflows): migrate workflow health checks out of core/doctor.ts`
 
-## T7 — feat(models): models-page UI — Refresh, cache-age, banner, enriched cards
+## T7 — test(health): orchestrator isolation + migration regression
 
-- [x] Surgical edits inside `tab === 'available'` block (`plugins/models/components/models-page.tsx:590-640`)
-- [x] Mount-time fetch for `GET /gateway/status`; render amber banner when `restartNeeded: true`
-- [x] Top of tab: Refresh button (calls `POST /refresh`; disables during in-flight) + `Last refreshed: X ago` indicator
-- [x] Provider header: `<BrandIcon slug={providerBrandIconSlug} fallbackText={providerLabel ?? provider} fallbackColor={providerBrandColor} />` + label
-- [x] Model row: enriched layout when catalog fields present (description, bestFor badge, contextWindow, costRange), plain layout otherwise
-- [x] Loading state when fetch in-flight AND no cache yet: spinner + "Querying OpenClaw gateway — this can take up to 30 seconds on first load"
-- [x] Error state when fetch failed AND no cache: error message + Retry button
-- [x] Smoke: load `/models/?tab=available` → enriched cards for Anthropic/OpenAI; plain rows for anything else
-- [x] Other tabs (agents, aliases, profiles) render unchanged
-- [x] Checkpoint: `pnpm tsc --noEmit` + `pnpm vitest run` clean
-- [x] Commit: `feat(models): enriched cards + Refresh button + cache-age + gateway-sync banner`
+- [ ] Integration: activate workflows + health together, assert 3 workflow-owned checks appear in `runDiagnostics()` output
+- [ ] Isolation: one plugin throws, another returns results — both contribute to the final list
+- [ ] End-to-end shape regression for the health-page consumer
+- [ ] Checkpoint: full `pnpm vitest run` + `pnpm tsc --noEmit` clean
+- [ ] Commit: `test(health): regression guards + migration isolation`
 
-## T8 — test(models): regression guards
+## T8 — Ship
 
-- [x] Extend `tests/plugins/models/routes.test.ts`: `/refresh` path, `/available` stale flag, gateway-restart cache-clear
-- [x] New `tests/plugins/models/enrichment.test.ts`: enriched `AvailableModel[]` for known ids, plain for unknown, date-suffix-strip match end-to-end
-- [x] New `tests/plugins/models/models-page.test.tsx`: cache-age indicator renders, Refresh button triggers `/refresh`, loading state with no cache, error state on fetch fail, gateway-sync banner renders on flag
-- [x] All required mocks per CLAUDE.md (content-dir, logger, watcher, openclaw-client, tasks/flow-store, cross-plugin hooks)
-- [x] Grep verifications repeat (zero hits): fallbackModels, MODEL_CATALOG, ModelCatalogEntry
-- [x] Checkpoint: full `pnpm vitest run` + `pnpm tsc --noEmit` clean (ignore pre-existing dagre failures)
-- [x] Commit: `test(models): regression guards for cache + enrichment + loading UI`
-
-## T9 — Ship
-
-- [x] `git push -u origin issue-129-models-loading-ux`
-- [x] Open PR #131 against `main`, reference #129, link spec + plugin-system one-pager
-- [ ] Manual smoke on the other machine (cache wipe → loading → refresh → banner flow)
-- [ ] Merge when smoke passes
-- [ ] Close #129 with before/after summary
-- [ ] Archive `tasks/plan.md` + `tasks/todo.md` → `.claude/tasks/issue-129-{plan,todo}.md`
+- [ ] `git push -u origin issue-137-health-checks-registry`
+- [ ] Open PR against `main` — reference #137 + spec + 2 follow-up plans
+- [ ] Quick manual smoke: `bakin doctor` output looks unchanged from pre-migration
+- [ ] File 2 follow-up issues:
+  - `chore(core): collapse DiagnosticResult into HealthCheckResult after all checks migrate`
+  - `chore: hook-name parity pass — rename all list{Noun} hooks to {namespace}.list`
+- [ ] Merge when green
+- [ ] Close #137 with before/after summary
+- [ ] Archive `tasks/plan.md` + `tasks/todo.md` → `.claude/tasks/issue-137-{plan,todo}.md`

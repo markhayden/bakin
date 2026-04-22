@@ -44,4 +44,7 @@ export type {
   PluginNodeTypeInput,
   PluginNotificationChannelInput,
   NotificationChannelDef,
+  HealthCheckResult,
+  PluginHealthCheckInput,
+  HealthCheckDef,
 } from '@bakin/core/plugin-types'
