@@ -22,7 +22,6 @@ import asset_assets_main_js from '../../dist/main.js' with { type: 'file' }
 import asset_index_html from '../../public/index.html' with { type: 'file' }
 import asset_globals_css from '../../public/globals.css' with { type: 'file' }
 import asset_vendor_sdk_ui_js from '../../public/vendor/sdk-ui.js' with { type: 'file' }
-import asset_vendor_react_dom_client_js from '../../public/vendor/react-dom-client.js' with { type: 'file' }
 import asset_vendor_react_js from '../../public/vendor/react.js' with { type: 'file' }
 import asset_vendor_jsx_runtime_js from '../../public/vendor/jsx-runtime.js' with { type: 'file' }
 import asset_vendor_sdk_utils_js from '../../public/vendor/sdk-utils.js' with { type: 'file' }
@@ -64,7 +63,6 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/index.html', asset_index_html],
   ['/globals.css', asset_globals_css],
   ['/vendor/sdk-ui.js', asset_vendor_sdk_ui_js],
-  ['/vendor/react-dom-client.js', asset_vendor_react_dom_client_js],
   ['/vendor/react.js', asset_vendor_react_js],
   ['/vendor/jsx-runtime.js', asset_vendor_jsx_runtime_js],
   ['/vendor/sdk-utils.js', asset_vendor_sdk_utils_js],
@@ -99,4 +97,4 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/api/plugins/messaging/assets/index.js', asset_api_plugins_messaging_assets_index_js],
 ])
 
-export const EMBEDDED_ASSET_COUNT = 37
+export const EMBEDDED_ASSET_COUNT = 36
