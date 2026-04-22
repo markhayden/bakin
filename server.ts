@@ -38,7 +38,6 @@ import * as antfly from './src/core/antfly'
 import * as antflyServer from './src/core/antfly-server'
 import { migrateIfNeeded } from './src/core/search-migration'
 import * as agents from './src/core/agents'
-import * as pluginInstaller from './src/core/plugin-installer'
 import * as doctor from './src/core/doctor'
 import { handleMcpRequest } from './src/core/mcp-server'
 import * as mcporter from './src/core/mcporter'
@@ -53,6 +52,7 @@ import * as memoryLogRoute from './packages/host/src/api/memory/log'
 import * as pluginSettingsIdRoute from './packages/host/src/api/plugin-settings/[pluginId]'
 import * as pluginSettingsSchemasRoute from './packages/host/src/api/plugin-settings/schemas'
 import * as pluginsInstallRoute from './packages/host/src/api/plugins/install'
+import * as pluginsRemoveRoute from './packages/host/src/api/plugins/remove'
 
 const log = createLogger('server')
 
@@ -309,10 +309,7 @@ app.prepare().then(async () => {
     }
 
     if (url.pathname === '/api/plugins/remove' && req.method === 'POST') {
-      handleJsonPost(req, res, async (body) => {
-        const { pluginId } = body as { pluginId: string }
-        return pluginInstaller.removePlugin(pluginId, process.cwd())
-      })
+      dispatchWebHandler(req, res, pluginsRemoveRoute.post)
       return
     }
 
