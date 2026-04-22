@@ -1,5 +1,12 @@
-import { NextResponse, type NextRequest } from 'next/server'
-import { readFileSync, existsSync, statSync } from 'fs'
+/**
+ * GET /api/assets/{...path} — serve user assets by filename (single
+ * segment, filename-as-identity resolved via the assets plugin) or by
+ * legacy multi-segment path. Supports HTTP range reads for video seeking.
+ *
+ * Migrated from src/app/api/assets/[...path]/route.ts for Phase B of
+ * #147. `path[]` is derived from url.pathname (segments after /api/assets/).
+ */
+import { readFileSync, existsSync, statSync, openSync, readSync, closeSync } from 'fs'
 import { join, extname } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { getHookRegistry } from '@/lib/plugin-registry'
@@ -18,15 +25,17 @@ const MIME_TYPES: Record<string, string> = {
   '.gif': 'image/gif',
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  const { path } = await params
+export async function get(req: Request, url: URL): Promise<Response> {
+  // /api/assets/{...path} — parse the catch-all segments from the url.
+  // Strip the leading "/api/assets/" prefix; everything after is the catch-all.
+  const prefix = '/api/assets/'
+  const tail = url.pathname.startsWith(prefix) ? url.pathname.slice(prefix.length) : ''
+  // Decode each segment to mirror Next.js's decoded params array.
+  const path = tail.split('/').filter(Boolean).map((seg) => decodeURIComponent(seg))
 
   // Security: prevent path traversal
-  if (path.some(seg => seg.includes('..'))) {
-    return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
+  if (path.some((seg) => seg.includes('..'))) {
+    return Response.json({ error: 'Invalid path' }, { status: 400 })
   }
 
   // Filename-as-identity: single-segment paths derive their location from
@@ -43,7 +52,7 @@ export async function GET(
   const fullPath = join(CONTENT_DIR, relPath)
 
   if (!existsSync(fullPath)) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return Response.json({ error: 'Not found' }, { status: 404 })
   }
 
   const ext = extname(fullPath).toLowerCase()
@@ -60,11 +69,11 @@ export async function GET(
     const chunkSize = end - start + 1
 
     const buffer = Buffer.alloc(chunkSize)
-    const fd = require('fs').openSync(fullPath, 'r')
-    require('fs').readSync(fd, buffer, 0, chunkSize, start)
-    require('fs').closeSync(fd)
+    const fd = openSync(fullPath, 'r')
+    readSync(fd, buffer, 0, chunkSize, start)
+    closeSync(fd)
 
-    return new Response(buffer, {
+    return new Response(new Uint8Array(buffer), {
       status: 206,
       headers: {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
@@ -76,7 +85,7 @@ export async function GET(
   }
 
   const file = readFileSync(fullPath)
-  return new Response(file, {
+  return new Response(new Uint8Array(file), {
     headers: {
       'Content-Type': mimeType,
       'Content-Length': fileSize.toString(),
