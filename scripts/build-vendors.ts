@@ -38,8 +38,11 @@ interface VendorTarget {
 // already ESM in source).
 const targets: VendorTarget[] = [
   { specifier: 'react', name: 'react', entrypoint: './scripts/vendor-entries/react.ts' },
+  // One bundle for the whole react-dom surface — the import map points both
+  // `react-dom` and `react-dom/client` at this file (see public/index.html).
+  // Splitting them would give each bundle its own copy of react-dom's
+  // internal state.
   { specifier: 'react-dom', name: 'react-dom', entrypoint: './scripts/vendor-entries/react-dom.ts' },
-  { specifier: 'react-dom/client', name: 'react-dom-client', entrypoint: './scripts/vendor-entries/react-dom-client.ts' },
   { specifier: 'react/jsx-runtime', name: 'jsx-runtime', entrypoint: './scripts/vendor-entries/jsx-runtime.ts' },
   { specifier: 'react/jsx-dev-runtime', name: 'jsx-dev-runtime', entrypoint: './scripts/vendor-entries/jsx-dev-runtime.ts' },
   { specifier: '@bakin/sdk', name: 'sdk-index', entrypoint: './packages/sdk/src/index.ts' },
@@ -51,14 +54,29 @@ const targets: VendorTarget[] = [
   { specifier: '@bakin/sdk/utils', name: 'sdk-utils', entrypoint: './packages/sdk/src/utils/index.ts' },
 ]
 
+// Every non-`react` vendor bundle must externalize `react` so the browser
+// ends up with exactly one React instance resolved through the import map.
+// Inlining React into react-dom would give react one dispatcher and the
+// shell another — hooks then throw "Invalid hook call" at render time.
+// The SDK bundles additionally externalize their own siblings so SDK
+// subpath imports don't duplicate code between bundles.
+const SDK_SPECIFIERS = ['@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks', '@bakin/sdk/components', '@bakin/sdk/slots', '@bakin/sdk/types', '@bakin/sdk/utils']
+
+function externalsFor(target: VendorTarget): string[] {
+  const isReactItself = target.specifier === 'react'
+  const react = isReactItself ? [] : ['react']
+  const sdk = target.specifier.startsWith('@bakin/sdk')
+    ? SDK_SPECIFIERS.filter((s) => s !== target.specifier)
+    : []
+  return [...react, ...sdk].flatMap((s) => ['--external', s])
+}
+
 // Use subprocess per target — Bun.build() in-process state has trouble
 // with N serial invocations under certain module-resolution patterns
 // (see notes in README). Subprocess isolation avoids it entirely.
 for (const t of targets) {
   console.log(`  building ${t.specifier} → ${t.name}.js`)
-  const externalArgs = t.specifier.startsWith('@bakin/sdk')
-    ? ['--external', 'react', '--external', 'react-dom', '--external', 'react-dom/client', '--external', 'react/jsx-runtime', '--external', 'react/jsx-dev-runtime']
-    : []
+  const externalArgs = externalsFor(t)
 
   const proc = Bun.spawn([
     'bun', 'build',
