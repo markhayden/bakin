@@ -25,6 +25,7 @@ import { Route as MemoryRoute } from './routes/memory'
 import { Route as MessagingIndexRoute } from './routes/messaging.index'
 import { Route as MessagingCalendarRoute } from './routes/messaging.calendar'
 import { Route as MessagingBrainstormRoute } from './routes/messaging.brainstorm'
+import { Route as ModelsRoute } from './routes/models'
 
 const routeTree = RootRoute.addChildren([
   IndexRoute,
@@ -45,6 +46,7 @@ const routeTree = RootRoute.addChildren([
   MessagingIndexRoute,
   MessagingCalendarRoute,
   MessagingBrainstormRoute,
+  ModelsRoute,
 ])
 
 export const router = createRouter({
