@@ -19,6 +19,7 @@
  */
 import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 
 const EXTERNAL = [
@@ -28,6 +29,36 @@ const EXTERNAL = [
   '@bakin/sdk/components', '@bakin/sdk/slots',
   '@bakin/sdk/types', '@bakin/sdk/utils',
 ]
+
+interface RunResult {
+  exitCode: number
+  stderr: string
+}
+
+/**
+ * Portable subprocess runner. We use Node's child_process (not Bun.spawn)
+ * so the builder works under both Bun (production) and Node (vitest).
+ * Passing the binary through `spawn` with an argv array avoids shell
+ * interpolation and path-traversal tricks.
+ */
+function runSubprocess(cmd: string, args: string[], cwd?: string): Promise<RunResult> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const stderrChunks: Buffer[] = []
+    proc.stdout?.on('data', () => { /* discard */ })
+    proc.stderr?.on('data', (chunk: Buffer) => { stderrChunks.push(chunk) })
+    proc.once('error', reject)
+    proc.once('close', (code: number | null) => {
+      resolve({
+        exitCode: code ?? 0,
+        stderr: Buffer.concat(stderrChunks).toString('utf-8'),
+      })
+    })
+  })
+}
 
 /**
  * Walk `dir` and return the newest mtime (in ms) of any file found.
@@ -125,15 +156,9 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
         (pkg.dependencies && Object.keys(pkg.dependencies).length > 0) ||
         (pkg.devDependencies && Object.keys(pkg.devDependencies).length > 0)
       if (hasDeps) {
-        const installProc = Bun.spawn(['bun', 'install'], {
-          cwd: pluginDir,
-          stdout: 'pipe',
-          stderr: 'pipe',
-        })
-        const installExit = await installProc.exited
-        if (installExit !== 0) {
-          const err = await new Response(installProc.stderr).text()
-          throw new Error(`bun install failed in ${pluginDir}:\n${err}`)
+        const installResult = await runSubprocess('bun', ['install'], pluginDir)
+        if (installResult.exitCode !== 0) {
+          throw new Error(`bun install failed in ${pluginDir}:\n${installResult.stderr}`)
         }
       }
     } catch (err) {
@@ -145,34 +170,30 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
   }
 
   // Server entry — target=bun, keep node_modules external.
-  const serverProc = Bun.spawn([
-    'bun', 'build', serverEntry,
+  const serverResult = await runSubprocess('bun', [
+    'build', serverEntry,
     '--outdir', distDir,
     '--target', 'bun',
     '--format', 'esm',
     '--entry-naming', 'index.[ext]',
     '--packages', 'external',
     ...EXTERNAL.flatMap(e => ['--external', e]),
-  ], { stdout: 'pipe', stderr: 'pipe' })
-  const serverExit = await serverProc.exited
-  if (serverExit !== 0) {
-    const err = await new Response(serverProc.stderr).text()
-    throw new Error(`Failed to build server entry for ${pluginDir}:\n${err}`)
+  ])
+  if (serverResult.exitCode !== 0) {
+    throw new Error(`Failed to build server entry for ${pluginDir}:\n${serverResult.stderr}`)
   }
 
   if (hasClient) {
-    const clientProc = Bun.spawn([
-      'bun', 'build', clientEntry,
+    const clientResult = await runSubprocess('bun', [
+      'build', clientEntry,
       '--outdir', distDir,
       '--target', 'browser',
       '--format', 'esm',
       '--entry-naming', 'client.[ext]',
       ...EXTERNAL.flatMap(e => ['--external', e]),
-    ], { stdout: 'pipe', stderr: 'pipe' })
-    const clientExit = await clientProc.exited
-    if (clientExit !== 0) {
-      const err = await new Response(clientProc.stderr).text()
-      throw new Error(`Failed to build client entry for ${pluginDir}:\n${err}`)
+    ])
+    if (clientResult.exitCode !== 0) {
+      throw new Error(`Failed to build client entry for ${pluginDir}:\n${clientResult.stderr}`)
     }
   }
 }
