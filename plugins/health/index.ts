@@ -12,6 +12,11 @@ import { getSettings } from '../../src/core/settings'
 import { getContentDir } from '../../src/core/content-dir'
 import { getSearchHealth } from '../../src/core/search-registry'
 import { getUsageFeed, getErrorCount, getStatsByMs, WINDOW_MS, type UsageKind, type WindowKey } from '../../src/core/usage'
+import {
+  listHealthChecks,
+  getHealthCheck,
+  type HealthCheckDef,
+} from './lib/health-check-registry'
 // Registry accessors live on globalThis because Next.js API routes get
 // separate webpack-compiled module instances with empty Maps. The custom
 // server (server.ts) registers the real accessors after plugin init.
@@ -55,6 +60,32 @@ const healthPlugin: BakinPlugin = {
   contentFiles: [],
 
   activate(ctx: PluginContext) {
+    // ─── Health-check registry hooks + route ─────────────────────────
+    // `run` is not serializable and isn't useful to consumers that only
+    // want registry metadata. Strip it at the boundary.
+    const stripRun = (def: HealthCheckDef) => ({
+      id: def.id,
+      name: def.name,
+      pluginId: def.pluginId,
+      autoFix: !!def.autoFix,
+    })
+
+    ctx.hooks.register('health.listChecks', () => listHealthChecks().map(stripRun))
+    ctx.hooks.register('health.getCheck', (d: Record<string, unknown>) => {
+      const def = getHealthCheck(d.id as string)
+      return def ? stripRun(def) : null
+    })
+
+    ctx.registerRoute({
+      path: '/checks',
+      method: 'GET',
+      description: 'List registered plugin health checks (metadata only; does not execute them).',
+      handler: async () => new Response(
+        JSON.stringify({ checks: listHealthChecks().map(stripRun) }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    })
+
     // Aggregated health summary
     ctx.registerRoute({
       path: '/summary',

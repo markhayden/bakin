@@ -231,6 +231,52 @@ export interface NotificationChannelDef extends PluginNotificationChannelInput {
   pluginId?: string
 }
 
+// ---------------------------------------------------------------------------
+// Health check registration
+// ---------------------------------------------------------------------------
+
+/**
+ * Canonical result shape for a single doctor check row. Shape-identical to
+ * the existing `DiagnosticResult` in `src/core/doctor.ts` — they will be
+ * collapsed into this one name once all builtin checks migrate out of core
+ * (see follow-up tracked alongside #137).
+ */
+export interface HealthCheckResult {
+  check: string
+  status: 'ok' | 'warn' | 'error' | 'fixed'
+  message: string
+  autoFixable: boolean
+}
+
+/**
+ * Input shape plugins pass to `ctx.registerHealthCheck`. The plugin id is
+ * auto-namespaced as `{pluginId}.{id}`. `run()` returns an array so one
+ * registered check can contribute multiple result rows (mirrors how the
+ * existing `checkPersonas` returns one per agent).
+ */
+export interface PluginHealthCheckInput {
+  id: string
+  name: string
+  /**
+   * Runs the check, returns any number of result rows. Throws/rejects are
+   * caught by the doctor orchestrator and converted to a synthetic error
+   * result — a single bad handler never crashes the sweep.
+   */
+  run: () => Promise<HealthCheckResult[]>
+  /**
+   * Advisory flag for admin UIs: `true` if `run()` may perform safe
+   * auto-fixes internally. Pure metadata in v1 — the orchestrator always
+   * invokes every registered check regardless of this value. Plugins that
+   * do internal auto-fixes gate on `getSettings().doctor.*` themselves.
+   */
+  autoFix?: boolean
+}
+
+export interface HealthCheckDef extends PluginHealthCheckInput {
+  runtime: 'plugin'
+  pluginId: string
+}
+
 export interface PluginContext {
   storage: StorageAdapter
   events: EventBus
@@ -265,6 +311,13 @@ export interface PluginContext {
    * via the registry module's lazy self-seed.
    */
   registerNotificationChannel(def: PluginNotificationChannelInput): string
+  /**
+   * Register a health check owned by this plugin. The id is auto-namespaced
+   * to `{pluginId}.{id}`. `run()` is invoked during every `runDiagnostics()`
+   * sweep — throws are isolated, a single bad check never crashes the
+   * doctor. Returns the namespaced id.
+   */
+  registerHealthCheck(def: PluginHealthCheckInput): string
   watchFiles(patterns: string[]): void
   /** Read this plugin's persisted settings */
   getSettings<T = Record<string, unknown>>(): T

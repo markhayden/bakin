@@ -118,6 +118,10 @@ describe('MCP server tool registration', () => {
           addExecTool(tool)
         },
         registerSkill: () => {},
+        registerWorkflow: () => {},
+        registerNodeType: (def: { kind: string }) => `${plugin.id}.${def.kind}`,
+        registerNotificationChannel: (def: { id: string }) => `${plugin.id}.${def.id}`,
+        registerHealthCheck: (def: { id: string }) => `${plugin.id}.${def.id}`,
         watchFiles: () => {},
         getSettings: () => ({}),
         updateSettings: () => {},

@@ -158,6 +158,7 @@ function ensureInitialized() {
       registerWorkflow: () => {},
       registerNodeType: (def) => `${plugin.id}.${def.kind}`,
       registerNotificationChannel: (def) => `${plugin.id}.${def.id}`,
+      registerHealthCheck: (def) => `${plugin.id}.${def.id}`,
       watchFiles: () => {},
       ...buildCtxExtras(plugin.id, registerRoute),
     }
@@ -225,6 +226,7 @@ function buildContext(pluginId: string): PluginContext {
     registerWorkflow: () => {},
     registerNodeType: (def) => `${pluginId}.${def.kind}`,
     registerNotificationChannel: (def) => `${pluginId}.${def.id}`,
+    registerHealthCheck: (def) => `${pluginId}.${def.id}`,
     watchFiles: () => {},
     ...buildCtxExtras(pluginId, noopRegisterRoute),
   }
