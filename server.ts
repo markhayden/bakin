@@ -1,14 +1,13 @@
 /**
  * Bakin — Multi-Agent Orchestration Server
  * Version: 1.0.0
- * Last updated: 2026-03-28
  *
- * Main entry point for the Bakin server. Bootstraps Next.js,
- * registers plugins, and starts the HTTP server with API routing.
+ * Main entry point for the Bakin server. Runs on Bun, serves the packages/host
+ * client bundle + API handlers. Plugin registry initialization + subsystem
+ * boot happen before the HTTP server begins accepting traffic.
  */
 
 import { createServer } from 'http'
-import next from 'next'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 
@@ -59,6 +58,7 @@ import * as pluginsMemoryWorkspaceRoute from './packages/host/src/api/plugins/me
 import * as stateRoute from './packages/host/src/api/state'
 import * as assetsRoute from './packages/host/src/api/assets/[...path]'
 import * as pluginCatchAllRoute from './packages/host/src/api/plugins/[pluginId]/[[...path]]'
+import { serveHostClient } from './packages/host/src/api/_static'
 
 const log = createLogger('server')
 
@@ -66,12 +66,8 @@ import { APP_VERSION } from './packages/core/src/constants'
 
 const BAKIN_VERSION = APP_VERSION
 
-const dev = process.env.NODE_ENV !== 'production'
 const port = Number(process.env.PORT || 3737)
 const CONTENT_DIR = getContentDir()
-
-const app = next({ dev })
-const handle = app.getRequestHandler()
 
 // Ensure required directories exist
 for (const dir of [CONTENT_DIR, join(CONTENT_DIR, 'heartbeats'), join(CONTENT_DIR, 'inbox')]) {
@@ -82,7 +78,7 @@ for (const dir of [CONTENT_DIR, join(CONTENT_DIR, 'heartbeats'), join(CONTENT_DI
 const storage = new MarkdownStorageAdapter(CONTENT_DIR)
 const eventBus = new BakinEventBus(broadcast)
 
-app.prepare().then(async () => {
+;(async () => {
   // Initialize vault (load credentials from disk)
   vault.initialize()
 
@@ -476,8 +472,9 @@ app.prepare().then(async () => {
       }
     }
 
-    // Let Next.js handle everything else (pages only now — all /api/* handled above)
-    handle(req, res)
+    // Serve the packages/host client bundle + SPA fallback for any unmatched
+    // path. TanStack Router handles route dispatch client-side.
+    serveHostClient(req, res, url)
   })
 
   // Setup mcporter (install if needed + sync per-agent config)
@@ -512,4 +509,4 @@ app.prepare().then(async () => {
 
   // Audit system init
   appendAudit(CONTENT_DIR, 'system.init', 'system', {})
-})
+})()
