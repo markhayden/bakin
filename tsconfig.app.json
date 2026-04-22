@@ -2,6 +2,9 @@
   "extends": "./tsconfig.json",
   "include": [
     "next-env.d.ts",
+    "bun-env.d.ts",
+    "packages/host/**/*.ts",
+    "packages/host/**/*.tsx",
     "src/**/*.ts",
     "src/**/*.tsx",
     "plugins/**/*.ts",
