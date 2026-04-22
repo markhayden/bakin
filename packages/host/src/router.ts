@@ -12,6 +12,7 @@ import { Route as TasksRoute } from './routes/tasks'
 import { Route as TeamIndexRoute } from './routes/team.index'
 import { Route as TeamIdRoute } from './routes/team.$id'
 import { Route as ProjectsIndexRoute } from './routes/projects.index'
+import { Route as ProjectsNewRoute } from './routes/projects.new'
 
 const routeTree = RootRoute.addChildren([
   IndexRoute,
@@ -19,6 +20,7 @@ const routeTree = RootRoute.addChildren([
   TeamIndexRoute,
   TeamIdRoute,
   ProjectsIndexRoute,
+  ProjectsNewRoute,
 ])
 
 export const router = createRouter({
