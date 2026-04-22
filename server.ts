@@ -59,6 +59,7 @@ import * as stateRoute from './packages/host/src/api/state'
 import * as assetsRoute from './packages/host/src/api/assets/[...path]'
 import * as pluginCatchAllRoute from './packages/host/src/api/plugins/[pluginId]/[[...path]]'
 import { serveHostClient } from './packages/host/src/api/_static'
+import { buildAllUserPlugins } from './packages/host/src/plugin-host/user-plugin-builder'
 
 const log = createLogger('server')
 
@@ -81,6 +82,15 @@ const eventBus = new BakinEventBus(broadcast)
 ;(async () => {
   // Initialize vault (load credentials from disk)
   vault.initialize()
+
+  // Rebuild any stale user plugin dist/ before the registry imports them.
+  // The registry dynamic-imports `<pluginDir>/<server-entry>` (typically
+  // `index.ts` as-is for core plugins in the repo, but user plugins
+  // installed from a tarball / GitHub clone need to be bundled first).
+  // Failures inside `buildAllUserPlugins` are logged; they don't block
+  // startup — the registry will surface a clearer error on import.
+  const userPluginsDir = join(CONTENT_DIR, 'plugins')
+  await buildAllUserPlugins(userPluginsDir, log)
 
   // Initialize plugin registry
   log.info('Loading plugins...')

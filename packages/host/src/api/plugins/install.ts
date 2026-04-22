@@ -17,6 +17,7 @@ import { join, basename, resolve, isAbsolute } from 'path'
 import { execFileSync } from 'child_process'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
+import { buildUserPlugin } from '../../plugin-host/user-plugin-builder'
 
 const log = createLogger('plugin-install')
 
@@ -100,6 +101,25 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       }
       cpSync(stagingDir, targetDir, { recursive: true })
       rmSync(stagingDir, { recursive: true, force: true })
+
+      // Compile the plugin to dist/ so the runtime loader (Phase F) and
+      // the server-side dynamic import (plugin-registry) have built
+      // artifacts ready on next boot. Failures here are fatal for the
+      // install request — shipping an installed-but-unbuilt plugin would
+      // crash startup instead of surfacing the error to the user now.
+      try {
+        await buildUserPlugin(targetDir)
+      } catch (buildErr) {
+        // Build failed — clean up the installed files so the install
+        // appears atomic from the user's perspective.
+        rmSync(targetDir, { recursive: true, force: true })
+        const message = buildErr instanceof Error ? buildErr.message : String(buildErr)
+        log.error('Plugin install build step failed', buildErr as Error, { id })
+        return Response.json({
+          ok: false,
+          error: `Installed "${id}" but failed to build it: ${message}`,
+        }, { status: 500 })
+      }
 
       log.info(`Installed plugin "${id}"`, { source: body.source, type: body.type })
 
