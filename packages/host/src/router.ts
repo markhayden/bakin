@@ -15,6 +15,7 @@ import { Route as ProjectsIndexRoute } from './routes/projects.index'
 import { Route as ProjectsNewRoute } from './routes/projects.new'
 import { Route as ProjectsIdIndexRoute } from './routes/projects.$id.index'
 import { Route as ProjectsIdEditRoute } from './routes/projects.$id.edit'
+import { Route as WorkflowsIndexRoute } from './routes/workflows.index'
 
 const routeTree = RootRoute.addChildren([
   IndexRoute,
@@ -25,6 +26,7 @@ const routeTree = RootRoute.addChildren([
   ProjectsNewRoute,
   ProjectsIdIndexRoute,
   ProjectsIdEditRoute,
+  WorkflowsIndexRoute,
 ])
 
 export const router = createRouter({
