@@ -57,6 +57,7 @@ import * as pluginsMemoryAuditRoute from './packages/host/src/api/plugins/memory
 import * as pluginsMemoryGatewayRoute from './packages/host/src/api/plugins/memory/gateway'
 import * as pluginsMemoryWorkspaceRoute from './packages/host/src/api/plugins/memory/workspace'
 import * as stateRoute from './packages/host/src/api/state'
+import * as assetsRoute from './packages/host/src/api/assets/[...path]'
 
 const log = createLogger('server')
 
@@ -436,6 +437,14 @@ app.prepare().then(async () => {
 
     if (url.pathname === '/api/state' && req.method === 'GET') {
       dispatchWebHandler(req, res, stateRoute.get)
+      return
+    }
+
+    // /api/assets/{...path} — catch-all asset serving (filename-as-identity,
+    // range support for video). Must be below narrower /api/assets endpoints
+    // (currently none), and before Next.js fallthrough.
+    if (url.pathname.startsWith('/api/assets/') && req.method === 'GET') {
+      dispatchWebHandler(req, res, assetsRoute.get)
       return
     }
 
