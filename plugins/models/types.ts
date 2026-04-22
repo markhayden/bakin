@@ -30,32 +30,41 @@ export interface AvailableModel {
   configured?: boolean
   isDefault?: boolean
   fallbackIndex?: number | null
+  // ── Enrichment from the curated catalog (plugins/models/data/known-models.ts) ──
+  // All optional — unknown models render without them.
+  /** Display-ready description shown under the model name. */
+  description?: string
+  /** Short purpose hint rendered next to the tier badge. */
+  bestFor?: string
+  /** Display-only cost summary, e.g. '$3 in / $15 out per 1M'. */
+  costRange?: string
+  /** Display-only context-window string override (e.g. '200K', '1M'). Distinct
+   *  from the numeric `contextWindow` which is OpenClaw-sourced. */
+  contextWindowDisplay?: string
+  /** 'llm' | 'image' | 'video' — gives the UI a reason to cluster differently. */
+  kind?: 'llm' | 'image' | 'video'
+  /** simple-icons slug for the model's primary brand (usually the provider's). */
+  brandIconSlug?: string
+  /** Resolved provider metadata — pre-joined server-side so the client doesn't
+   *  need a second registry lookup. */
+  providerLabel?: string
+  providerBrandIconSlug?: string
+  providerBrandColor?: string
 }
 
 export interface AvailableModelsResponse {
   models: AvailableModel[]
   cached: boolean
   cachedAt: number | null
+  /** True when cached data is older than the TTL; UI should trigger a background refresh. */
+  stale?: boolean
+  /** Populated when the live OpenClaw fetch failed AND no cache is available. */
+  error?: string
 }
 
 export interface AliasesResponse {
   aliases: Record<string, string>
 }
-
-export interface ModelCatalogEntry {
-  id: string
-  name: string
-  tier: 'budget' | 'standard' | 'premium'
-  bestFor: string
-  contextWindow: string
-}
-
-export const MODEL_CATALOG: ModelCatalogEntry[] = [
-  { id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', tier: 'budget', bestFor: 'Simple tasks, heartbeat, routing', contextWindow: '200K' },
-  { id: 'anthropic/claude-sonnet-4-5', name: 'Claude Sonnet 4.5', tier: 'standard', bestFor: 'Content creation, reasoning', contextWindow: '200K' },
-  { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', tier: 'standard', bestFor: 'General purpose, current default', contextWindow: '200K' },
-  { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', tier: 'premium', bestFor: 'Complex coding, planning, analysis', contextWindow: '200K' },
-]
 
 /** Editable task-to-model mapping (stored in plugin settings) */
 export interface TaskProfile {

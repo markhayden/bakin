@@ -13,6 +13,12 @@ import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { tryGetMainAgentId } from '@bakin/core/main-agent'
 import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
+import {
+  readPersistedCache,
+  writePersistedCache,
+  clearPersistedCache,
+} from './lib/models-cache'
+import { getKnownModel, getKnownProvider } from './data/known-models'
 
 const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
 const OPENCLAW_BIN = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
@@ -214,11 +220,14 @@ async function loadConfiguredModelsFromOpenClaw(): Promise<AvailableModel[]> {
       const id = normalizeModelId(model.key!)
       const tags = model.tags ?? []
       const fallbackIndex = fallbackModels.indexOf(id)
+      const provider = providerFromId(id)
+      const known = getKnownModel(id)
+      const knownProvider = getKnownProvider(provider)
       return {
         id,
-        name: model.name || id,
-        tier: tierFromId(id),
-        provider: providerFromId(id),
+        name: known?.name ?? model.name ?? id,
+        tier: known?.tier ?? tierFromId(id),
+        provider,
         input: model.input,
         contextWindow: model.contextWindow,
         local: model.local,
@@ -227,35 +236,60 @@ async function loadConfiguredModelsFromOpenClaw(): Promise<AvailableModel[]> {
         configured: tags.includes('configured'),
         isDefault: id === defaultModel,
         fallbackIndex: fallbackIndex >= 0 ? fallbackIndex : null,
+        // Enrichment from the curated catalog (plugins/models/data/known-models.ts).
+        // Unknown models get none of these and render plain in the UI.
+        description: known?.description,
+        bestFor: known?.bestFor,
+        costRange: known?.costRange,
+        contextWindowDisplay: known?.contextWindow,
+        kind: known?.kind,
+        brandIconSlug: known?.brandIconSlug,
+        providerLabel: knownProvider?.label,
+        providerBrandIconSlug: knownProvider?.brandIconSlug,
+        providerBrandColor: knownProvider?.brandColor,
       }
     })
     .sort(sortModels)
 }
 
-async function fetchAvailableModels(): Promise<{ models: AvailableModel[]; cached: boolean; cachedAt: number | null }> {
-  const cached = getModelsCache()
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
-    return { models: cached.models, cached: true, cachedAt: cached.fetchedAt }
+interface FetchResult {
+  models: AvailableModel[]
+  cached: boolean
+  cachedAt: number | null
+  stale: boolean
+  error?: string
+}
+
+async function fetchAvailableModels(): Promise<FetchResult> {
+  // 1. Hot read — in-memory cache (fresh by TTL)
+  const memCached = getModelsCache()
+  if (memCached && Date.now() - memCached.fetchedAt < CACHE_TTL) {
+    return { models: memCached.models, cached: true, cachedAt: memCached.fetchedAt, stale: false }
   }
 
+  // 2. Persistent cache hydration — survives server restart even when
+  //    in-memory is empty. Always returns last-known-good; `stale` tells
+  //    the client whether to kick off a background refresh.
+  const diskCached = memCached ? null : readPersistedCache()
+  if (diskCached) {
+    setModelsCache({ models: diskCached.models, fetchedAt: diskCached.fetchedAt })
+    const stale = Date.now() - diskCached.fetchedAt >= CACHE_TTL
+    return { models: diskCached.models, cached: true, cachedAt: diskCached.fetchedAt, stale }
+  }
+
+  // 3. No cache → live fetch. On success: write both caches. On failure:
+  //    honest empty state — no fake data.
   try {
     const models = await loadConfiguredModelsFromOpenClaw()
     const now = Date.now()
     setModelsCache({ models, fetchedAt: now })
-    return { models, cached: false, cachedAt: now }
+    writePersistedCache({ models, fetchedAt: now, source: 'openclaw' })
+    return { models, cached: false, cachedAt: now, stale: false }
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     console.error('Failed to fetch models from OpenClaw:', err)
-    return { models: fallbackModels(), cached: false, cachedAt: null }
+    return { models: [], cached: false, cachedAt: null, stale: false, error: message }
   }
-}
-
-function fallbackModels(): AvailableModel[] {
-  return [
-    { id: 'openai-codex/gpt-5.4', name: 'GPT-5.4', tier: 'premium', provider: 'openai-codex', configured: true, isDefault: true, fallbackIndex: null, tags: ['default', 'configured'] },
-    { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', tier: 'standard', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: 0, tags: ['fallback#1', 'configured'] },
-    { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', tier: 'premium', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: null, tags: ['configured'] },
-    { id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', tier: 'budget', provider: 'anthropic', configured: true, isDefault: false, fallbackIndex: null, tags: ['configured'] },
-  ]
 }
 
 // ---------------------------------------------------------------------------
@@ -380,6 +414,49 @@ const modelsPlugin: BakinPlugin = {
           return Response.json(result)
         } catch (err) {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // -------------------------------------------------------------------
+    // POST /api/plugins/models/refresh
+    // -------------------------------------------------------------------
+    // Force a fresh fetch, bypassing both cache layers. Used by the
+    // manual Refresh button on the models page and by the stale-auto-
+    // refresh path. On OpenClaw failure we fall back to the last-known-
+    // good cache (if any) — never fake data.
+    ctx.registerRoute({
+      path: '/refresh',
+      method: 'POST',
+      description: 'Bypass cache and fetch the model list fresh from OpenClaw',
+      handler: async () => {
+        try {
+          const models = await loadConfiguredModelsFromOpenClaw()
+          const now = Date.now()
+          setModelsCache({ models, fetchedAt: now })
+          writePersistedCache({ models, fetchedAt: now, source: 'openclaw' })
+          return Response.json({ ok: true, models, cached: false, cachedAt: now, stale: false })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          const fallbackCache = readPersistedCache()
+          if (fallbackCache) {
+            return Response.json({
+              ok: false,
+              error: message,
+              models: fallbackCache.models,
+              cached: true,
+              cachedAt: fallbackCache.fetchedAt,
+              stale: true,
+            }, { status: 502 })
+          }
+          return Response.json({
+            ok: false,
+            error: message,
+            models: [],
+            cached: false,
+            cachedAt: null,
+            stale: false,
+          }, { status: 502 })
         }
       },
     })
@@ -654,6 +731,10 @@ const modelsPlugin: BakinPlugin = {
               resolve(Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 }))
             } else {
               markGatewayRestarted()
+              // Gateway restart invalidates both cache layers — the user
+              // expects fresh data on the next /available hit.
+              setModelsCache(null)
+              clearPersistedCache()
               ctx.activity.audit('gateway.restarted', 'system')
               ctx.activity.log('system', 'OpenClaw gateway restarted', { category: 'models' })
               resolve(Response.json({ ok: true, message: 'Restart initiated' }))
