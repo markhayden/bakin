@@ -2,44 +2,44 @@
 
 import { useState, useEffect } from 'react'
 import { Pencil, Trash2, MoreHorizontal, Check, X, Calendar, Clock, Hash, MessageSquare, Undo2 } from 'lucide-react'
-import { BakinDrawer } from '@/components/bakin-drawer'
-import { AgentAvatar } from '@/components/agent-avatar'
-import { AgentSelect } from '@/components/agent-select'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Separator } from '@/components/ui/separator'
+import { BakinDrawer } from "@bakin/sdk/components"
+import { AgentAvatar } from "@bakin/sdk/components"
+import { AgentSelect } from "@bakin/sdk/components"
+import { Badge } from "@bakin/sdk/ui"
+import { Button } from "@bakin/sdk/ui"
+import { Input } from "@bakin/sdk/ui"
+import { Textarea } from "@bakin/sdk/ui"
+import { Separator } from "@bakin/sdk/ui"
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+} from "@bakin/sdk/ui"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
+} from "@bakin/sdk/ui"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
+} from "@bakin/sdk/ui"
 import type { CalendarItem, ContentTone } from '../types'
 import { DISCORD_GENERAL } from '../types'
 import { TONE_LABELS, STATUS_BADGE } from '../constants'
-import { useAgent, useAgentIds } from '@bakin/team/hooks/use-agent-store'
+import { useAgent, useAgentIds } from "@bakin/sdk/hooks"
 import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
 import {
   useNotificationChannels,
   getChannelLabel,
-} from '@bakin/workflows/hooks/use-notification-channels'
-import { ChannelIcon } from '@bakin/workflows/hooks/channel-icon'
+} from "@bakin/sdk/hooks"
+import { ChannelIcon } from "@bakin/sdk/components"
 
 interface Props {
   item: CalendarItem | null

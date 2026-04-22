@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Loader2, Upload, X, ChevronRight } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
-import { ModelSelect } from '@/components/model-select'
-import type { AvailableModel } from '@bakin/models/types'
+import { Button } from "@bakin/sdk/ui"
+import { Input } from "@bakin/sdk/ui"
+import { Label } from "@bakin/sdk/ui"
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@bakin/sdk/ui"
+import { ModelSelect } from "@bakin/sdk/components"
+import type { AvailableModel } from "@bakin/sdk/types"
 
 export interface AgentFormData {
   id: string

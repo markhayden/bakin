@@ -1,13 +1,13 @@
 'use client'
 
 import { Suspense } from 'react'
-import { TeamGrid } from '@bakin/team/components/team-grid'
+import { Slot } from '@bakin/sdk/slots'
 
-export default function TeamPage() {
+export default function Page() {
   return (
     <div className="flex flex-col h-full min-w-0 overflow-hidden">
       <Suspense>
-        <TeamGrid />
+        <Slot name="page:/team" />
       </Suspense>
     </div>
   )

@@ -1,17 +1,18 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { ProjectDetail } from '@bakin/projects/components/project-detail'
+import { Slot } from '@bakin/sdk/slots'
 
-export default function NewProjectPage() {
+export default function Page() {
   const router = useRouter()
 
   return (
     <div className="p-6 flex flex-col h-full min-h-0">
-      <ProjectDetail
+      <Slot
+        name="page:/projects/new"
         onBack={() => router.push('/projects')}
         initialEdit
-        onEditChange={(editing) => {
+        onEditChange={(editing: boolean) => {
           if (!editing) router.push('/projects')
         }}
       />

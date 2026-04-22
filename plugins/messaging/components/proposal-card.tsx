@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
+import { Button } from "@bakin/sdk/ui"
+import { Badge } from "@bakin/sdk/ui"
+import { Input } from "@bakin/sdk/ui"
 import { Check, X, Pencil } from 'lucide-react'
 import type { ProposedItem, ProposalStatus } from '../types'
 

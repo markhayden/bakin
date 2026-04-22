@@ -1,7 +1,7 @@
 'use client'
 
 import { AgentAvatar } from '@/components/agent-avatar'
-import { useAgentList } from '@bakin/team/hooks/use-agent-store'
+import { useAgentList } from '@bakin/sdk/hooks'
 import {
   Select,
   SelectContent,

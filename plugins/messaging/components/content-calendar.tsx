@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from "@bakin/sdk/ui"
+import { Input } from "@bakin/sdk/ui"
 import {
   ChevronLeft,
   ChevronRight,
@@ -22,12 +22,12 @@ import {
   ImageIcon,
   MessageSquare,
 } from 'lucide-react'
-import { PluginHeader } from '@/components/plugin-header'
-import { FacetFilter } from '@/components/facet-filter'
-import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/empty-state'
-import { AgentFilter } from '@/components/agent-filter'
-import { AgentAvatar } from '@/components/agent-avatar'
+import { PluginHeader } from "@bakin/sdk/components"
+import { FacetFilter } from "@bakin/sdk/components"
+import { Skeleton } from "@bakin/sdk/ui"
+import { EmptyState } from "@bakin/sdk/components"
+import { AgentFilter } from "@bakin/sdk/components"
+import { AgentAvatar } from "@bakin/sdk/components"
 import {
   Table,
   TableHeader,
@@ -35,15 +35,15 @@ import {
   TableRow,
   TableHead,
   TableCell,
-} from '@/components/ui/table'
-import { SortableHead, type SortDir } from '@/components/sortable-head'
-import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
+} from "@bakin/sdk/ui"
+import { SortableHead, type SortDir } from "@bakin/sdk/components"
+import { useQueryState, useQueryArrayState } from "@bakin/sdk/hooks"
 import type { CalendarItem } from '../types'
 import { STATUS_BADGE } from '../constants'
-import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
+import { useAgentIds } from "@bakin/sdk/hooks"
 import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
-import { useNotificationChannels } from '@bakin/workflows/hooks/use-notification-channels'
-import { ChannelIcon } from '@bakin/workflows/hooks/channel-icon'
+import { useNotificationChannels } from "@bakin/sdk/hooks"
+import { ChannelIcon } from "@bakin/sdk/components"
 import { ItemDetailDrawer } from './item-detail-drawer'
 import { CalendarWeek } from './calendar-week'
 

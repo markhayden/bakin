@@ -2,11 +2,11 @@
 
 import { use, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { WorkflowCanvasEditor } from '@bakin/workflows/components/workflow-canvas-editor'
-import { Skeleton } from '@/components/ui/skeleton'
-import type { WorkflowDefinition } from '@bakin/workflows/types'
+import { Skeleton } from '@bakin/sdk/ui'
+import { Slot } from '@bakin/sdk/slots'
+import type { WorkflowDefinition } from '@bakin/sdk/types'
 
-export default function EditWorkflowRoute({ params }: { params: Promise<{ id: string }> }) {
+export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null)
@@ -53,12 +53,13 @@ export default function EditWorkflowRoute({ params }: { params: Promise<{ id: st
   }
 
   return (
-    <WorkflowCanvasEditor
+    <Slot
+      name="page:/workflows/[id]/edit"
       mode="edit"
       initialId={id}
       initialDefinition={definition}
       source={source}
-      onSaved={(savedId) => router.push(`/workflows/${savedId}`)}
+      onSaved={(savedId: string) => router.push(`/workflows/${savedId}`)}
       onDeleted={() => router.push('/workflows')}
       onCancel={() => router.push(`/workflows/${id}`)}
     />

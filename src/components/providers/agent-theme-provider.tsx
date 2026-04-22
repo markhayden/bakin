@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useAgentStore, hexToMuted } from '@bakin/team/hooks/use-agent-store'
+import { useAgentStore, hexToMuted } from '@bakin/sdk/hooks'
 
 /**
  * Fetches agent data on mount and injects per-agent CSS custom properties

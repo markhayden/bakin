@@ -1,21 +1,21 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { BakinDrawer } from '@/components/bakin-drawer'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Separator } from '@/components/ui/separator'
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { BakinDrawer } from "@bakin/sdk/components"
+import { Button } from "@bakin/sdk/ui"
+import { Input } from "@bakin/sdk/ui"
+import { Textarea } from "@bakin/sdk/ui"
+import { Separator } from "@bakin/sdk/ui"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@bakin/sdk/ui"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@bakin/sdk/ui"
 import { Send, Check, X, RefreshCw, MoreHorizontal, Copy, Trash2, Pencil, Loader2 } from 'lucide-react'
-import { MarkdownContent } from '@/components/markdown-content'
-import { TaskAssets } from '@bakin/assets/components/task-assets'
-import { AgentAvatar } from '@/components/agent-avatar'
-import { AgentSelect } from '@/components/agent-select'
-import { useAgent } from '@bakin/team/hooks/use-agent-store'
+import { MarkdownContent } from "@bakin/sdk/components"
+import { Slot } from '@bakin/sdk/slots'
+import { AgentAvatar } from "@bakin/sdk/components"
+import { AgentSelect } from "@bakin/sdk/components"
+import { useAgent } from "@bakin/sdk/hooks"
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
-import { toast } from '@/hooks/use-toast'
+import { toast } from "@bakin/sdk/hooks"
 import type { Task, ColumnId } from '../types'
 
 /** Normalize step output — handles string (possibly JSON), object, or unexpected types. */
@@ -849,7 +849,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
           )}
           {gateApprovalJSX}
 
-          {!isCreate && task && <TaskAssets taskId={task.id} />}
+          {!isCreate && task && <Slot name="task-assets" taskId={task.id} />}
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={isCreate ? onClose : onCancelEdit}>
@@ -952,7 +952,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
           </div>
         )}
 
-        <TaskAssets taskId={task.id} readOnly />
+        <Slot name="task-assets" taskId={task.id} readOnly />
 
         <Separator />
 

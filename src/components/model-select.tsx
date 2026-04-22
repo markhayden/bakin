@@ -3,7 +3,7 @@
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel,
 } from '@/components/ui/select'
-import type { AvailableModel } from '@bakin/models/types'
+import type { AvailableModel } from '@bakin/sdk/types'
 
 export type { AvailableModel }
 

@@ -1,12 +1,12 @@
 'use client'
 
 import { Suspense } from 'react'
-import { HealthPage } from '@bakin/health/components/health-page'
+import { Slot } from '@bakin/sdk/slots'
 
 export default function Page() {
   return (
     <Suspense>
-      <HealthPage />
+      <Slot name="page:/health" />
     </Suspense>
   )
 }

@@ -2,20 +2,20 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import { Button } from '@/components/ui/button'
+import { Button } from "@bakin/sdk/ui"
 import { Plus } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
-import { PluginHeader } from '@/components/plugin-header'
-import { AgentAvatar } from '@/components/agent-avatar'
-import { AgentFilter } from '@/components/agent-filter'
-import { useQueryState } from '@/hooks/use-query-state'
-import { useSearch } from '@/hooks/use-search'
-import { useAgentList, useAgentIds } from '@bakin/team/hooks/use-agent-store'
+} from "@bakin/sdk/ui"
+import { PluginHeader } from "@bakin/sdk/components"
+import { AgentAvatar } from "@bakin/sdk/components"
+import { AgentFilter } from "@bakin/sdk/components"
+import { useQueryState } from "@bakin/sdk/hooks"
+import { useSearch } from "@bakin/sdk/hooks"
+import { useAgentList, useAgentIds } from "@bakin/sdk/hooks"
 import { SessionList } from './session-list'
 import { PlanningLayout } from './planning-layout'
 import { NewSessionDialog } from './new-session-dialog'
