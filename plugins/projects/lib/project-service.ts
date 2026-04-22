@@ -3,14 +3,14 @@
  * Wraps parser operations with side effects: audit, SSE broadcast,
  * in-memory index, auto-check on task completion.
  */
-import { generateTaskId } from '../../tasks/lib/ids'
+import { generateTaskId } from '@bakin/core/ids'
 import { readProject, readAllProjects, writeProject, deleteProjectFile, computeProgress, nextTaskItemId } from './parser'
-import { readTaskboard } from '../../tasks/lib/flow-store'
 import { createTaskWithEffects } from '../../../src/core/task-service'
 import { appendAudit } from '../../../src/core/audit'
 import { getContentDir } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
 import { getMainAgentId } from '../../../src/core/main-agent'
+import { getHookRegistry } from '../../../src/lib/plugin-registry'
 import type { Project, ProjectTask, ProjectStatus } from '../types'
 
 const log = createLogger('projects')
@@ -423,8 +423,9 @@ export interface ResolvedAsset {
   missing?: boolean
 }
 
-export function resolveLinkedTaskStatuses(project: Project): Project & { resolvedTasks: Record<string, { column: string; title: string } | null>; resolvedAssets: ResolvedAsset[] } {
-  const { columns } = readTaskboard()
+export async function resolveLinkedTaskStatuses(project: Project): Promise<Project & { resolvedTasks: Record<string, { column: string; title: string } | null>; resolvedAssets: ResolvedAsset[] }> {
+  const board = await getHookRegistry().invoke<{ columns: Record<string, Array<{ id: string; title: string }>> }>('tasks.readTaskboard', {})
+  const columns = board?.columns ?? {}
   const resolved: Record<string, { column: string; title: string } | null> = {}
 
   for (const item of project.tasks) {
