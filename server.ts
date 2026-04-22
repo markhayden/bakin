@@ -58,6 +58,7 @@ import * as pluginsMemoryGatewayRoute from './packages/host/src/api/plugins/memo
 import * as pluginsMemoryWorkspaceRoute from './packages/host/src/api/plugins/memory/workspace'
 import * as stateRoute from './packages/host/src/api/state'
 import * as assetsRoute from './packages/host/src/api/assets/[...path]'
+import * as pluginCatchAllRoute from './packages/host/src/api/plugins/[pluginId]/[[...path]]'
 
 const log = createLogger('server')
 
@@ -463,7 +464,19 @@ app.prepare().then(async () => {
       }
     }
 
-    // Let Next.js handle everything else (legacy src/app/api/* + pages)
+    // Plugin catch-all — /api/plugins/:pluginId/:path* dispatches to each
+    // plugin's registered route handlers. Must come LAST among /api/plugins/*
+    // dispatches so the more-specific install/remove/memory/* routes above win.
+    if (url.pathname.startsWith('/api/plugins/') && url.pathname !== '/api/plugins/install' && url.pathname !== '/api/plugins/remove') {
+      const method = req.method?.toLowerCase() ?? 'get'
+      const handler = pluginCatchAllRoute[method === 'delete' ? 'del' : method as 'get' | 'post' | 'put' | 'patch' | 'del']
+      if (handler) {
+        dispatchWebHandler(req, res, handler)
+        return
+      }
+    }
+
+    // Let Next.js handle everything else (pages only now — all /api/* handled above)
     handle(req, res)
   })
 
