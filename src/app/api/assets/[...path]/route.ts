@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { readFileSync, existsSync, statSync } from 'fs'
 import { join, extname } from 'path'
 import { getContentDir } from '@/core/content-dir'
-import { pathForFilename } from '@bakin/assets/lib/path-for-filename'
+import { getHookRegistry } from '@/lib/plugin-registry'
 
 const CONTENT_DIR = getContentDir()
 
@@ -34,7 +34,7 @@ export async function GET(
   // legacy URL forms embedded in historical task descriptions.
   let relPath: string
   if (path.length === 1 && !path[0].includes('/')) {
-    const derived = pathForFilename(path[0])
+    const derived = await getHookRegistry().invoke<string | null>('assets.pathForFilename', { filename: path[0] })
     relPath = derived ?? join('assets', ...path)
   } else {
     relPath = path.join('/')

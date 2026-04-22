@@ -136,28 +136,6 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 // Stub every lucide icon with a noop span. List names imported by
 // brainstorm-view + session-list so destructured imports resolve.
-vi.mock('lucide-react', () => {
-  const Icon = () => <span />
-  return {
-    Plus: Icon,
-    MessageSquare: Icon,
-    CheckCircle: Icon,
-    MoreHorizontal: Icon,
-    Trash2: Icon,
-    ChevronLeft: Icon,
-    ChevronRight: Icon,
-    List: Icon,
-    CalendarDays: Icon,
-    CalendarRange: Icon,
-    Check: Icon,
-    X: Icon,
-    ListFilter: Icon,
-    Link2: Icon,
-    Search: Icon,
-    ArrowUpDown: Icon,
-  }
-})
-
 vi.mock('@/components/ui/table', () => ({
   Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
   TableHeader: ({ children }: { children: React.ReactNode }) => <thead>{children}</thead>,

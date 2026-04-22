@@ -3,7 +3,7 @@
 import type { CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { X } from 'lucide-react'
-import { AgentAvatar } from '@/components/agent-avatar'
+import { AgentAvatar } from "@bakin/sdk/components"
 import { STATUS_BADGE_STYLES } from '../constants'
 import type { Task, ColumnId } from '../types'
 

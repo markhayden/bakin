@@ -1,23 +1,23 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { AgentAvatar } from '@/components/agent-avatar'
+import { Button } from "@bakin/sdk/ui"
+import { Input } from "@bakin/sdk/ui"
+import { Badge } from "@bakin/sdk/ui"
+import { Skeleton } from "@bakin/sdk/ui"
+import { AgentAvatar } from "@bakin/sdk/components"
 import { ArrowLeft, PanelRight, PanelRightClose, Pencil, Check, X, MoreHorizontal, Trash2 } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
+} from "@bakin/sdk/ui"
 import { SessionChat } from './session-chat'
 import { ReviewPanel } from './review-panel'
 import { DeleteSessionDialog } from './delete-session-dialog'
 import type { PlanningSession, ProposedItem } from '../types'
-import { useAgent } from '@bakin/team/hooks/use-agent-store'
+import { useAgent } from "@bakin/sdk/hooks"
 
 interface Props {
   sessionId: string

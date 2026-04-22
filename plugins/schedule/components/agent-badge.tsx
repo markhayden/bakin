@@ -1,7 +1,7 @@
 'use client'
 
-import { useAgent } from '@bakin/team/hooks/use-agent-store'
-import { AgentAvatar } from '@/components/agent-avatar'
+import { useAgent } from '@bakin/sdk/hooks'
+import { AgentAvatar } from '@bakin/sdk/components'
 import { Shell } from 'lucide-react'
 
 type BadgeSize = 'sm' | 'md' | 'lg'

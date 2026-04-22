@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import { Pause, Play } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import type { ScheduleJob } from '@/hooks/use-schedule'
+import { Button } from "@bakin/sdk/ui"
+import { Input } from "@bakin/sdk/ui"
+import { Label } from "@bakin/sdk/ui"
+import type { ScheduleJob } from "@bakin/sdk/hooks"
 
 export function PauseControls({
   job,

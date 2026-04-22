@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-} from '@/components/ui/table'
-import { SortableHead, type SortDir } from '@/components/sortable-head'
-import { EmptyState } from '@/components/empty-state'
-import { Skeleton } from '@/components/ui/skeleton'
+} from "@bakin/sdk/ui"
+import { SortableHead, type SortDir } from "@bakin/sdk/components"
+import { EmptyState } from "@bakin/sdk/components"
+import { Skeleton } from "@bakin/sdk/ui"
 import { ClipboardList } from 'lucide-react'
 import { STATUS_BADGE_STYLES } from '../constants'
-import { useAgent } from '@bakin/team/hooks/use-agent-store'
-import { AgentAvatar } from '@/components/agent-avatar'
+import { useAgent } from "@bakin/sdk/hooks"
+import { AgentAvatar } from "@bakin/sdk/components"
 import type { FlatTask } from '../hooks/use-task-filters'
 import type { TaskScoreInfo } from './task-card'
 import type { ColumnId } from '../types'

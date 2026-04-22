@@ -2,16 +2,16 @@
 
 import { useState } from 'react'
 import { Plus, Trash2, Users } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/empty-state'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Button } from "@bakin/sdk/ui"
+import { EmptyState } from "@bakin/sdk/components"
+import { Input } from "@bakin/sdk/ui"
+import { Label } from "@bakin/sdk/ui"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
+} from "@bakin/sdk/ui"
 import { useAgentStore } from '../hooks/use-agent-store'
 import type { OrgTeam } from '../types'
 

@@ -3,13 +3,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Send, Loader2, Paperclip, X, FileText, Image, Film, Music, File, Sparkles, ChevronDown, Search, Pencil, Trash2 } from 'lucide-react'
-import { useAgent, useMainAgentId } from '@bakin/team/hooks/use-agent-store'
-import { AgentSelect } from '@/components/agent-select'
-import { AssetDetailModal } from '@bakin/assets/components/asset-detail'
+import { useAgent, useMainAgentId } from "@bakin/sdk/hooks"
+import { AgentSelect } from "@bakin/sdk/components"
+import { Slot } from '@bakin/sdk/slots'
 import { ProjectChecklist } from './project-checklist'
 import { ProjectEditor } from './project-editor'
-import { MarkdownContent } from '@/components/markdown-content'
-import { Skeleton } from '@/components/ui/skeleton'
+import { MarkdownContent } from "@bakin/sdk/components"
+import { Skeleton } from "@bakin/sdk/ui"
 import type { ProjectStatus } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -841,9 +841,10 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
 
       </div>
 
-      {/* Asset preview overlay */}
+      {/* Asset preview overlay — routed through the assets plugin slot */}
       {previewFilename && (
-        <AssetDetailModal
+        <Slot
+          name="asset-detail-modal"
           filename={previewFilename}
           onClose={() => setPreviewFilename(null)}
         />

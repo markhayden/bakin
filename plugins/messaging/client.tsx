@@ -1,8 +1,10 @@
 /**
  * Messaging plugin — client entry point.
- * Nav items registered here.
  */
 import type { NavItem } from '../../src/lib/plugin-types'
+import { registerSlot } from '@bakin/sdk/slots'
+import { ContentCalendar } from './components/content-calendar'
+import { BrainstormView } from './components/brainstorm-view'
 
 export const navItems: NavItem[] = [
   {
@@ -18,3 +20,6 @@ export const navItems: NavItem[] = [
     ],
   },
 ]
+
+registerSlot('page:/messaging/calendar', ContentCalendar)
+registerSlot('page:/messaging/brainstorm', BrainstormView)

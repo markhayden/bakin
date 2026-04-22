@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo } from 'react'
-import { useSearch, reorderBySearchResults, type SearchResult } from '@/hooks/use-search'
+import { useSearch, reorderBySearchResults, type SearchResult } from "@bakin/sdk/hooks"
 import type { Task, TaskColumns, ColumnId } from '../types'
 
 export interface FlatTask extends Task {

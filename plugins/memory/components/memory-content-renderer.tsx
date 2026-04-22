@@ -16,7 +16,7 @@
  * Callers can override detection via `format` when they already know — turn
  * `tool_call` rows, for example, are always JSON-stringified toolCall blocks.
  */
-import { MarkdownContent } from '@/components/markdown-content'
+import { MarkdownContent } from "@bakin/sdk/components"
 
 export type ContentFormat = 'json' | 'markdown' | 'text'
 

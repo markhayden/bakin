@@ -7,8 +7,8 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+} from "@bakin/sdk/ui"
+import { Button } from "@bakin/sdk/ui"
 
 interface DeleteTaskDialogProps {
   title: { id: string; title: string } | null

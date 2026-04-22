@@ -47,15 +47,6 @@ vi.mock('@/components/agent-avatar', () => ({
   ),
 }))
 
-vi.mock('lucide-react', () => ({
-  Plus: () => <span />,
-  MessageSquare: () => <span />,
-  CheckCircle: () => <span data-testid="check-circle" />,
-  MoreHorizontal: () => <span />,
-  Trash2: () => <span />,
-  ArrowUpDown: () => <span />,
-}))
-
 vi.mock('@/components/ui/table', () => ({
   Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
   TableHeader: ({ children }: { children: React.ReactNode }) => <thead>{children}</thead>,

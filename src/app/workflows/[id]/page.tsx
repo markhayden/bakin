@@ -2,14 +2,15 @@
 
 import { use } from 'react'
 import { useRouter } from 'next/navigation'
-import { WorkflowDetail } from '@bakin/workflows/components/workflow-detail'
+import { Slot } from '@bakin/sdk/slots'
 
-export default function WorkflowPage({ params }: { params: Promise<{ id: string }> }) {
+export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
 
   return (
-    <WorkflowDetail
+    <Slot
+      name="page:/workflows/[id]"
       workflowId={id}
       onBack={() => router.push('/workflows')}
     />

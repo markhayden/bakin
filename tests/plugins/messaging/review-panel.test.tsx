@@ -38,15 +38,6 @@ vi.mock('@/components/ui/input', () => ({
   Input: (props: Record<string, unknown>) => <input {...props} />,
 }))
 
-vi.mock('lucide-react', () => ({
-  Check: () => <span />,
-  X: () => <span />,
-  XIcon: () => <span />,
-  Pencil: () => <span />,
-  CheckCircle: () => <span data-testid="check-circle" />,
-  Loader2: () => <span data-testid="loader" />,
-}))
-
 vi.mock('@/components/ui/textarea', () => ({
   Textarea: (props: Record<string, unknown>) => <textarea {...props} />,
 }))

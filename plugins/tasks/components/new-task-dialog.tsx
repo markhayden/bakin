@@ -7,16 +7,16 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
-import { AgentAvatar } from '@/components/agent-avatar'
-import { useAgent, useAgentList } from '@bakin/team/hooks/use-agent-store'
+} from "@bakin/sdk/ui"
+import { Button } from "@bakin/sdk/ui"
+import { Input } from "@bakin/sdk/ui"
+import { Textarea } from "@bakin/sdk/ui"
+import { Label } from "@bakin/sdk/ui"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@bakin/sdk/ui"
+import { AgentAvatar } from "@bakin/sdk/components"
+import { useAgent, useAgentList } from "@bakin/sdk/hooks"
 import { Plus } from 'lucide-react'
-import { toast } from '@/hooks/use-toast'
+import { toast } from "@bakin/sdk/hooks"
 
 interface WorkflowOption {
   name: string

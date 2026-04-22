@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
-import { AgentAvatar } from '@/components/agent-avatar'
+import { Button } from "@bakin/sdk/ui"
+import { Textarea } from "@bakin/sdk/ui"
+import { Badge } from "@bakin/sdk/ui"
+import { AgentAvatar } from "@bakin/sdk/components"
 import { Send, Loader2 } from 'lucide-react'
 import type { PlanningSession, ProposedItem, SessionMessage } from '../types'
-import { useAgent, useAgentColor } from '@bakin/team/hooks/use-agent-store'
+import { useAgent, useAgentColor } from "@bakin/sdk/hooks"
 
 /**
  * Strip ```json proposal blocks from text so users don't see raw JSON.

@@ -3,22 +3,22 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Save, Loader2, Camera, Trash2 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge } from "@bakin/sdk/ui"
+import { Button } from "@bakin/sdk/ui"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { AgentAvatar } from '@/components/agent-avatar'
-import { Skeleton } from '@/components/ui/skeleton'
-import { MarkdownContent } from '@/components/markdown-content'
-import { ModelSelect } from '@/components/model-select'
-import { useGatewayStatus } from '@/hooks/use-gateway-status'
-import type { AvailableModel } from '@bakin/models/types'
+} from "@bakin/sdk/ui"
+import { AgentAvatar } from "@bakin/sdk/components"
+import { Skeleton } from "@bakin/sdk/ui"
+import { MarkdownContent } from "@bakin/sdk/components"
+import { ModelSelect } from "@bakin/sdk/components"
+import { useGatewayStatus } from "@bakin/sdk/hooks"
+import type { AvailableModel } from "@bakin/sdk/types"
 import { useAgentStore, useAgentColor, useMainAgentId } from '../hooks/use-agent-store'
-import { useQueryState } from '@/hooks/use-query-state'
+import { useQueryState } from "@bakin/sdk/hooks"
 import type { AgentProfile, SkillSummary } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
 

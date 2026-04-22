@@ -10,15 +10,15 @@
  * Callers pass in the merged result set plus the active query; the
  * component handles its own loading / error / empty states.
  */
-import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ErrorBanner } from '@/components/error-banner'
-import { EmptyState } from '@/components/empty-state'
+import { Card } from "@bakin/sdk/ui"
+import { Badge } from "@bakin/sdk/ui"
+import { Button } from "@bakin/sdk/ui"
+import { Skeleton } from "@bakin/sdk/ui"
+import { ErrorBanner } from "@bakin/sdk/components"
+import { EmptyState } from "@bakin/sdk/components"
 import { Search, Clock, Bug } from 'lucide-react'
-import type { SearchResult } from '@/hooks/use-search'
-import { useDebug } from '@/hooks/use-debug'
+import type { SearchResult } from "@bakin/sdk/hooks"
+import { useDebug } from "@bakin/sdk/hooks"
 import { tierStyle } from './tier-colors'
 
 interface Props {

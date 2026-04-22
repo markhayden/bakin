@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
-import { useDebug } from '@/hooks/use-debug'
-import { useSearch } from '@/hooks/use-search'
-import { useAssets, useTrash } from '@/hooks/use-assets'
+import { useQueryState, useQueryArrayState } from "@bakin/sdk/hooks"
+import { useDebug } from "@bakin/sdk/hooks"
+import { useSearch } from "@bakin/sdk/hooks"
+import { useAssets, useTrash } from "@bakin/sdk/hooks"
 import { AssetsGrid } from './assets-grid'
 import { AssetsList, type SortField, type SortDir } from './assets-list'
 import { TrashGrid } from './trash-grid'
@@ -13,7 +13,7 @@ import { AssetDetail } from './asset-detail'
 import { AssetFilters } from './asset-filters'
 import { AssetPagination } from './asset-pagination'
 import { UploadDialog } from './upload-dialog'
-import type { AssetMeta } from '@/types'
+import type { AssetMeta } from "@bakin/sdk/types"
 
 const DEFAULT_PAGE_SIZE = 24
 const STORAGE_KEY = 'assets-page-size'

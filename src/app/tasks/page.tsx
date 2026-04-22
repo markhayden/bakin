@@ -1,13 +1,13 @@
 'use client'
 
 import { Suspense } from 'react'
-import { KanbanBoard } from '@bakin/tasks/components/kanban-board'
+import { Slot } from '@bakin/sdk/slots'
 
-export default function TasksPage() {
+export default function Page() {
   return (
     <div className="p-[5px] flex flex-col h-full min-w-0 overflow-hidden">
       <Suspense>
-        <KanbanBoard />
+        <Slot name="page:/tasks" />
       </Suspense>
     </div>
   )

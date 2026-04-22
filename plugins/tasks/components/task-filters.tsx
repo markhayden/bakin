@@ -1,8 +1,8 @@
 'use client'
 
-import { AgentFilter } from '@/components/agent-filter'
-import { FacetFilter } from '@/components/facet-filter'
-import { useAgentIds } from '@bakin/team/hooks/use-agent-store'
+import { AgentFilter } from "@bakin/sdk/components"
+import { FacetFilter } from "@bakin/sdk/components"
+import { useAgentIds } from "@bakin/sdk/hooks"
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import type { ColumnId } from '../types'
 
