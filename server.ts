@@ -55,6 +55,7 @@ import * as pluginsInstallRoute from './packages/host/src/api/plugins/install'
 import * as pluginsRemoveRoute from './packages/host/src/api/plugins/remove'
 import * as pluginsMemoryAuditRoute from './packages/host/src/api/plugins/memory/audit'
 import * as pluginsMemoryGatewayRoute from './packages/host/src/api/plugins/memory/gateway'
+import * as pluginsMemoryWorkspaceRoute from './packages/host/src/api/plugins/memory/workspace'
 
 const log = createLogger('server')
 
@@ -424,6 +425,11 @@ app.prepare().then(async () => {
 
     if (url.pathname === '/api/plugins/memory/gateway' && req.method === 'GET') {
       dispatchWebHandler(req, res, pluginsMemoryGatewayRoute.get)
+      return
+    }
+
+    if (url.pathname === '/api/plugins/memory/workspace' && req.method === 'GET') {
+      dispatchWebHandler(req, res, pluginsMemoryWorkspaceRoute.get)
       return
     }
 

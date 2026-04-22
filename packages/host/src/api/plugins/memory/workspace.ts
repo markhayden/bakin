@@ -1,4 +1,11 @@
-import { NextResponse, type NextRequest } from 'next/server'
+/**
+ * GET /api/plugins/memory/workspace?agentId=... — bundle of the agent's
+ * core OpenClaw workspace files (SOUL/AGENTS/IDENTITY/USER/TOOLS) plus
+ * the last 7 daily memory files.
+ *
+ * Migrated from src/app/api/plugins/memory/workspace/route.ts for
+ * Phase B of #147.
+ */
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
@@ -18,14 +25,14 @@ function readFileSafe(path: string): string | null {
   return null
 }
 
-export async function GET(req: NextRequest) {
-  const agentId = req.nextUrl.searchParams.get('agentId')
-  if (!agentId) return NextResponse.json({ error: 'agentId required' }, { status: 400 })
+export async function get(_req: Request, url: URL): Promise<Response> {
+  const agentId = url.searchParams.get('agentId')
+  if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
 
   const workspaceDir = getAgentWorkspacePath(agentId)
 
   if (!existsSync(workspaceDir)) {
-    return NextResponse.json({ files: {}, memoryFiles: {} })
+    return Response.json({ files: {}, memoryFiles: {} })
   }
 
   // Read core files
@@ -41,7 +48,7 @@ export async function GET(req: NextRequest) {
   if (existsSync(memoryDir)) {
     try {
       const entries = readdirSync(memoryDir)
-        .filter(f => f.endsWith('.md'))
+        .filter((f) => f.endsWith('.md'))
         .sort()
         .reverse()
         .slice(0, 7) // last 7 days
@@ -52,5 +59,5 @@ export async function GET(req: NextRequest) {
     } catch { /* */ }
   }
 
-  return NextResponse.json({ files, memoryFiles })
+  return Response.json({ files, memoryFiles })
 }
