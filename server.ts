@@ -51,6 +51,7 @@ import * as agentsSettingsRoute from './packages/host/src/api/agents/settings'
 import * as agentsActionRoute from './packages/host/src/api/agents/[action]'
 import * as memoryLogRoute from './packages/host/src/api/memory/log'
 import * as pluginSettingsIdRoute from './packages/host/src/api/plugin-settings/[pluginId]'
+import * as pluginSettingsSchemasRoute from './packages/host/src/api/plugin-settings/schemas'
 
 const log = createLogger('server')
 
@@ -412,6 +413,11 @@ app.prepare().then(async () => {
 
     if (url.pathname === '/api/memory/log' && req.method === 'POST') {
       dispatchWebHandler(req, res, memoryLogRoute.post)
+      return
+    }
+
+    if (url.pathname === '/api/plugin-settings/schemas' && req.method === 'GET') {
+      dispatchWebHandler(req, res, pluginSettingsSchemasRoute.get)
       return
     }
 
