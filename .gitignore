@@ -63,3 +63,6 @@ public/headshots/full/
 dev/openclaw-home/
 dev/docker/.env
 dev/docker/auth-profiles.backup.json
+
+# Nested node_modules (pnpm workspace symlinks)
+**/node_modules/
