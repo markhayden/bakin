@@ -2,34 +2,84 @@
 
 ## Overview
 
-Bakin uses a custom plugin architecture where functionality is organized into self-contained plugins. Each plugin registers routes, MCP tools, UI navigation, hooks, and skills through a context object provided during activation. Cross-plugin communication is handled exclusively through the HookRegistry — no direct imports between plugins or between core and plugins.
+Bakin's plugin system is three things working in concert:
+
+1. A **runtime contract** — every plugin exports a `BakinPlugin` with an
+   `activate(ctx)` that runs once during server boot, and a client
+   module that calls `registerPlugin({ id, navItems, slots })` during
+   browser boot.
+2. A **build pipeline** — every plugin builds to `dist/{index.js, client.js}`
+   via `Bun.build()`. Core plugins build at repo-build time
+   (`scripts/build-plugins.ts`); user plugins build in-binary
+   (`packages/host/src/plugin-host/user-plugin-builder.ts`) on install.
+3. A **shared runtime identity** — plugins mark `react` and
+   `@bakin/sdk/*` as externals. The browser import map
+   (`packages/host/public/index.html` + `scripts/build-vendors.ts`)
+   points those specifiers at singleton vendor bundles, so every
+   plugin shares one React and one SDK with the shell.
+
+Cross-plugin communication never goes through direct imports. On the
+server it goes through the HookRegistry
+(`packages/core/src/hooks/hook-registry.ts`). On the client it goes
+through `@bakin/sdk/hooks` (data hooks) and slots.
+
+## Core vs user plugins
+
+Structurally identical, different source locations and install paths:
+
+| | Core plugins | User plugins |
+|---|---|---|
+| Source | `plugins/<id>/` in repo | `~/.bakin/plugins/<id>/` |
+| Build timing | Build-time (`scripts/build-plugins.ts`) | Install-time (`buildUserPlugin()`) |
+| Registration | `bakin.config.ts` enables them | Scanned from `~/.bakin/plugins/` at boot |
+| Override | User plugins override cores of the same id | — |
+| Dependencies | Share the repo's `node_modules` | Get their own `bun install` when declared |
+
+The runtime plugin loader doesn't care which bucket a plugin came from.
+Same manifest shape, same `dist/` layout, same `activate` contract.
 
 ## Plugin Lifecycle
 
 ```
-bakin.config.ts defines enabled plugins
+Server boot (server.ts)
     ↓
-PluginRegistryImpl.initialize():
-  1. Read all bakin-plugin.json manifests (get dependencies)
-  2. Topological sort (Kahn's algorithm) — respects dependencies
+bakin.config.ts → registerCorePlugins(CORE_PLUGIN_IMPORTS)
+Scan ~/.bakin/plugins/ → merge user plugins (override cores by id)
+    ↓
+PluginRegistry.initialize():
+  1. Read every bakin-plugin.json (pull dependencies list)
+  2. Topological sort (Kahn's algorithm)
   3. Cycle detection → log error, skip cycle
   4. Missing dependency → log warning, load anyway (soft)
     ↓
 For each plugin (in sorted order):
-  dynamic import → extract BakinPlugin → run migrations → create PluginContext → call activate(ctx)
-    ↓
-After built-in plugins: scan ~/.bakin/plugins/ for user plugins (override by ID)
+  dynamic import → extract BakinPlugin → run migrations →
+    create PluginContext → call activate(ctx)
     ↓
 All registrations stored in PluginState per plugin
     ↓
 pluginRegistry.onAllReady() → calls plugin.onReady() on each plugin
     ↓
-On shutdown (SIGTERM): pluginRegistry.shutdownAll() → calls plugin.onShutdown() in reverse order
+HTTP server begins accepting traffic
+    ↓
+On shutdown (SIGTERM): pluginRegistry.shutdownAll() →
+  calls plugin.onShutdown() in reverse order
+
+Browser boot (packages/host/src/main.tsx)
+    ↓
+ReactDOM renders <PluginHost><Shell/></PluginHost>
+    ↓
+PluginHost.useEffect:
+  1. fetch('/api/plugins/manifest')
+  2. Promise.all(manifest.plugins.map(loadPluginClient))
+  3. loadPluginClient = dynamic import of /api/plugins/<id>/assets/client.js
+  4. Each plugin's client.js runs registerPlugin({...}) as a side effect
+  5. setReady(true) → shell re-renders, pulls nav items + slots from registry
 ```
 
 ## Core Interfaces
 
-### BakinPlugin (`packages/core/src/plugin-types.ts`, re-exported via `src/lib/plugin-types.ts`)
+### BakinPlugin (`packages/core/src/plugin-types.ts`)
 ```typescript
 interface BakinPlugin {
   id: string
@@ -40,25 +90,27 @@ interface BakinPlugin {
   onShutdown?(): void | Promise<void>                   // graceful shutdown (reverse order)
   onSettingsChange?(settings: Record<string, unknown>): void | Promise<void>
   settingsSchema?: PluginSettingsSchema                  // auto-rendered settings UI
-  navItems?: NavItem[]
+  navItems?: NavItem[]                                   // optional; typically set from client via registerPlugin
   contentFiles?: ContentFile[]
 }
 ```
 
 ### PluginContext (`packages/core/src/plugin-types.ts`)
-Provided to `activate()`. This is the plugin's only interface to the system:
+Provided to `activate()`. The plugin's only interface to the system:
 
 | Method | Purpose |
 |--------|---------|
 | `storage: StorageAdapter` | Read/write markdown files in `~/.bakin/` |
 | `events: EventBus` | Pub/sub with pattern matching |
 | `pluginId: string` | This plugin's ID |
-| `registerNav(items)` | Add sidebar navigation items |
+| `registerNav(items)` | Add sidebar navigation items (server-side) |
 | `registerRoute(route)` | Add HTTP API route at `/api/plugins/{id}/{path}` |
-| `registerSlot(reg)` | Register React component for a named UI slot |
+| `registerSlot(reg)` | Register React component for a named UI slot (server-side) |
 | `registerExecTool(tool)` | Register MCP execution tool (agent-callable) |
-| `registerSkill(skill)` | Register AI skill definition |
-| `registerWorkflow(def, opts?)` | Register a plugin-shipped workflow definition. Falls back to `slug(def.name)` when `def.id` is omitted. User definitions in `~/.bakin/workflows/definitions/` always win on collision; cross-plugin id collisions are logged but do not throw out of `activate()`. Same-plugin re-registration is idempotent (hot reload). Plugins should ship their YAML under `defaults/workflows/` and load it during `activate()`. |
+| `registerSkill(skill)` | Register AI skill definition (S-A, in-memory) |
+| `registerWorkflow(def, opts?)` | Register a plugin-shipped workflow definition. User definitions in `~/.bakin/workflows/definitions/` always win on collision; cross-plugin id collisions are logged but do not throw out of `activate()`. Same-plugin re-registration is idempotent. |
+| `registerNodeType(def)` | Register a custom xyflow node kind for the workflow canvas (namespaced to `{pluginId}.{kind}`) |
+| `registerNotificationChannel(def)` | Register a notification channel (namespaced to `{pluginId}.{id}`) |
 | `watchFiles(patterns)` | Request file watcher notifications |
 | `getSettings<T>()` | Read this plugin's persisted settings from `plugin-settings/{id}.json` |
 | `updateSettings(patch)` | Merge partial update into settings, persist, notify `onSettingsChange` |
@@ -67,12 +119,17 @@ Provided to `activate()`. This is the plugin's only interface to the system:
 | `hooks.register(name, handler)` | Register a hook handler (returns unsubscribe fn) |
 | `hooks.has(name)` | Check if any handlers registered for a hook |
 | `hooks.invoke<R>(name, data)` | Invoke a hook and get its result (RPC-style) |
-| `search.registerContentType(def)` | Register a searchable content type (call during `activate()`). Use this for non-filesystem-backed plugins (SQLite, OpenClaw, etc.) — the plugin owns its own sync calls. |
-| `search.registerFileBackedContentType(def)` | File-backed variant that auto-wires watcher sync/unlink hooks AND schedules a startup mtime reconcile. Default for plugins whose source of truth is files under `~/.bakin/`. See `search-plugin-guide.md`. |
+| `search.registerContentType(def)` | Register a searchable content type. Non-filesystem-backed path — plugin owns its own sync. |
+| `search.registerFileBackedContentType(def)` | File-backed variant: auto-wires watcher sync/unlink hooks AND schedules a startup mtime reconcile. |
 | `search.index(key, doc)` | Upsert a document into the Antfly index (fire-and-forget safe) |
 | `search.remove(key)` | Remove a document from the index |
 | `search.transform(key, ops)` | Atomic metadata update without re-embedding |
 | `search.query(params)` | Search this plugin's content type |
+
+Both `search.registerContentType` and `search.registerFileBackedContentType`
+auto-register a `GET /search` route on the plugin's router so callers can
+hit `/api/plugins/{id}/search?q=...` without the plugin writing the
+handler by hand.
 
 ### PluginSettingsSchema
 ```typescript
@@ -90,7 +147,11 @@ interface PluginSettingsSchema {
 }
 ```
 
-All 10 plugins define `settingsSchema`. The settings page at `/settings` fetches schemas from `GET /api/plugin-settings/schemas` and renders them via `PluginSettingsRenderer`. Values are persisted at `~/.bakin/plugin-settings/{pluginId}.json` via `GET/PUT /api/plugin-settings/{pluginId}`.
+All 10 core plugins define `settingsSchema`. The settings page at
+`/settings` fetches schemas from `GET /api/plugin-settings/schemas` and
+renders them via `PluginSettingsRenderer`. Values persist at
+`~/.bakin/plugin-settings/{pluginId}.json` via
+`GET/PUT /api/plugin-settings/{pluginId}`.
 
 ### PluginManifest (`bakin-plugin.json`)
 ```typescript
@@ -98,31 +159,178 @@ interface PluginManifest {
   id: string
   name: string
   version: string
-  bakin: string               // semver range for compatibility
+  bakin: string                // semver range for compatibility
   description: string
-  entry: { server: string; client?: string }
+  server: string               // path to server bundle (e.g. "dist/index.js")
+  client?: string              // path to client bundle (e.g. "dist/client.js")
   contentFiles?: string[]
   secrets?: string[]           // vault keys this plugin needs
   tests?: string
   dependencies?: string[]      // other plugin IDs — drives topological sort
-  permissions?: string[]       // storage.read, storage.write, events.emit
+  permissions?: string[]       // storage.read, storage.write, events.emit — declared, not yet enforced (#142)
 }
 ```
 
-## HookRegistry — Cross-Plugin Communication
+## Runtime Plugin Loader (browser)
 
-`packages/core/src/hooks/hook-registry.ts` — singleton shared across all plugins and core.
+`packages/host/src/plugin-host/PluginHost.tsx` wraps the shell tree.
+On mount:
 
-### GlobalThis Backing
-The hook registry singleton is backed by `globalThis.__bakinHookRegistry` to survive Next.js webpack module re-evaluation during HMR. Without this, the singleton reference would be lost on hot reload, breaking all hook-based operations (task creation, moves, etc.). The same pattern is used for the plugin registry (`globalThis.__bakinPluginRegistry`), SSE broadcasting (`globalThis.__bakinBroadcast`), and settings cache (`globalThis.__bakinSettingsCache` + `__bakinOpenClawMtime` + `__bakinOpenClawAgents`). See `src/lib/plugin-registry.ts` and `packages/core/src/settings.ts` for implementations.
+```
+1. GET /api/plugins/manifest
+   → { plugins: [{ id, name, version, clientEntry }, ...] }
+   → clientEntry = "/api/plugins/<id>/assets/client.js"
+2. Promise.all(plugins.map(p => import(p.clientEntry)))
+3. Each dynamic import evaluates the plugin's client.js, which runs
+   `registerPlugin({...})` as a module side-effect.
+4. `assertReactInstance(pluginId, module.React)` — optional runtime
+   check that catches plugins that accidentally bundled their own
+   React (broken hooks). Plugins aren't required to export React;
+   the lack of an export is a non-event.
+5. setReady(true) → the shell re-renders. AppSidebar reads
+   `getAllNavItems()`; slot consumers re-evaluate.
+```
+
+Failures in one plugin are logged and skipped — they never block the
+others. While plugins are loading, the sidebar is briefly empty and
+slots return `null` for uncontributed names. Acceptable for a
+single-user LAN app on cold boot.
+
+Binary mode is identical at the loader level: the same
+`/api/plugins/<id>/assets/client.js` URL, just served from embedded
+bytes instead of disk.
+
+## Build Pipeline
+
+### Core plugins — `scripts/build-plugins.ts`
+
+For each of the 10 core plugins:
+
+```
+bun build plugins/<id>/index.ts
+  --outdir plugins/<id>/dist
+  --target bun --format esm
+  --entry-naming index.[ext]
+  --packages external                ← keep node_modules out of the bundle
+  --external react --external react-dom ...
+  --external @bakin/sdk --external @bakin/sdk/ui ...
+
+bun build plugins/<id>/client.tsx    (if it exists)
+  --outdir plugins/<id>/dist
+  --target browser --format esm
+  --entry-naming client.[ext]
+  --external react --external react-dom ...
+  --external @bakin/sdk --external @bakin/sdk/ui ...
+```
+
+Server entries use `--packages=external` because the host has every
+node_modules dep already installed — the plugin bundle is a thin
+adapter, not a standalone binary. Client entries only externalize
+react + sdk; everything else (lucide icons, zustand, shadcn primitives)
+bundles in so the plugin is self-contained from the browser's POV.
+
+### User plugins — `buildUserPlugin()`
+
+`packages/host/src/plugin-host/user-plugin-builder.ts` runs the same
+shape inside the Bakin binary when the user runs `bakin plugins install`:
+
+1. Compare source mtimes to `dist/` mtimes — skip if up-to-date.
+2. If `package.json` declares deps beyond `@bakin/sdk` / `react` peers,
+   run `bun install` in the plugin dir.
+3. `Bun.build()` server entry with `packages=external` + externals.
+4. `Bun.build()` client entry with browser target + externals.
+
+Portable subprocess wrapping uses Node's `child_process.spawn` so the
+builder works under both Bun (production) and Node (vitest). The
+output layout is identical to core plugins — the runtime loader
+reads from `dist/` either way.
+
+### Vendor bundles — `scripts/build-vendors.ts`
+
+Produces the bundles that the browser import map points at:
+
+```
+packages/host/public/vendor/
+  react.js, react-dom.js, react-dom-client.js
+  jsx-runtime.js, jsx-dev-runtime.js
+  sdk-index.js, sdk-ui.js, sdk-hooks.js, sdk-components.js,
+  sdk-slots.js, sdk-types.js, sdk-utils.js
+```
+
+The `<script type="importmap">` in `packages/host/public/index.html`
+maps `react`, `react-dom`, `@bakin/sdk`, `@bakin/sdk/ui`, etc. to those
+files. Changes to either file must happen in lockstep — the
+specifier list is duplicated because the map is static HTML and the
+build script is the generator.
+
+## @bakin/sdk Surface
+
+Plugin authors import from `@bakin/sdk/*`. Full sub-path map:
+
+| Path | What it exports |
+|------|-----------------|
+| `@bakin/sdk` | `registerPlugin`, `getAllNavItems`, `NavItem` type |
+| `@bakin/sdk/ui` | shadcn primitives (Button, Card, Dialog, Input, Select, Table, Tabs, Tooltip, ...) |
+| `@bakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
+| `@bakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ChannelIcon`, `BakinDrawer`, ...) |
+| `@bakin/sdk/slots` | `Slot`, `registerSlot`, `__clearSlot` |
+| `@bakin/sdk/types` | Full type re-exports (`PluginContext`, `BakinPlugin`, `AssetMeta`, `Task`, `WorkflowDefinition`, ...) |
+| `@bakin/sdk/utils` | `cn`, `formatAge`, `formatSize`, `isStale` |
+
+Published to npm as `@bakin/sdk`. `scripts/publish-sdk.ts` pushes on the
+release workflow. Lint rules block direct imports from `@/components/*`,
+`@/hooks/*`, `@/lib/*`, and other plugins — the SDK is the only
+surface plugin authors should see.
+
+## Slot System
+
+Slots are the named extension points plugins render into. The registry
+backs them via a globalThis-backed `Map<name, Array<{Component, order}>>`
+(survives HMR). Lower `order` wins; default is 100.
+
+```ts
+import { registerSlot, Slot } from '@bakin/sdk/slots'
+
+// Contribute
+registerSlot('asset-preview', MyRenderer, 50)
+
+// Consume
+<Slot name="asset-preview" asset={asset} />
+```
+
+Core-registered slots:
+
+| Slot | Props | Registered by |
+|------|-------|---------------|
+| `asset-preview` | `{ asset: AssetMeta }` | assets plugin |
+| `asset-detail-modal` | `{ filename?, assetPath?, onClose }` | assets plugin |
+| `task-assets` | `{ taskId, readOnly? }` | assets plugin |
+| `page:/<route>` | component-defined | per-plugin — mounted at that URL by TanStack Router |
+
+The `page:/<route>` convention binds a slot to a router path. The host
+shell's routes (`packages/host/src/routes/*.tsx`) render
+`<Slot name="page:/xyz" />` at `/xyz`, and plugins contribute the
+component by registering against that slot name.
+
+## HookRegistry — Cross-Plugin Server Communication
+
+`packages/core/src/hooks/hook-registry.ts` — singleton shared across all
+plugins and core modules. Backed by `globalThis.__bakinHookRegistry` so
+hot reload + Bun's module re-evaluation don't lose handler references.
+Same pattern is used for the plugin registry
+(`globalThis.__bakinPluginRegistry`), SSE broadcast
+(`globalThis.__bakinBroadcast`), and settings cache
+(`globalThis.__bakinSettingsCache`).
 
 ### How it works
-1. Plugins register hooks in `activate()` via `ctx.hooks.register(name, handler)`
-2. Core modules and other plugins invoke hooks via `getHookRegistry().invoke<R>(name, data)`
-3. Hooks are RPC-style: one handler per hook name, returns a result
+1. Plugins register hooks in `activate()` via `ctx.hooks.register(name, handler)`.
+2. Core modules and other plugins invoke hooks via
+   `getHookRegistry().invoke<R>(name, data)`.
+3. Hooks are RPC-style: one handler per hook name, returns a result.
 
 ### Hook naming convention
-`{pluginId}.{operation}` — e.g., `tasks.readTaskboard`, `workflows.getCurrentStep`, `projects.readProject`
+`{pluginId}.{operation}` — e.g., `tasks.readTaskboard`,
+`workflows.getCurrentStep`, `projects.readProject`.
 
 ### Current hook registrations
 
@@ -142,40 +350,26 @@ const hooks = getHookRegistry()
 const board = await hooks.invoke<TaskBoard>('tasks.readTaskboard', {})
 ```
 
-### Hook parameter conventions
-- Task mutation hooks use `identifier` (not `taskId`) for `blockTask`, `addTaskLog`, `moveTask`, `deleteTask`, `updateTask`
-- `setDependency`/`clearDependency` use `taskId` and `dependsOnId`
-- Workflow hooks use `taskId`, `contentDir`, `agentId` etc.
-
-### Exec tool registrations by plugin
-
-8 plugins register exec tools, 2 don't (memory, models):
-
-| Plugin | Exec tools |
-|--------|-----------|
-| tasks | 11 |
-| workflows | 10 |
-| assets | 9 |
-| schedule | 10 |
-| messaging | 15 |
-| projects | 15 |
-| team | 8 |
-| health | 2 |
-| scripts (non-plugin) | 5 |
-| **Total** | **77** (72 plugin + 5 script) |
-
-**Critical:** No direct imports between plugins or from core → plugins. All cross-boundary calls go through hooks. **Exception:** `scripts/lib/generate-image.ts` imports `saveAsset` from `plugins/assets/lib/save-asset` directly (asset pipeline is a shared utility, not a plugin-to-plugin dependency).
+**Critical:** No direct imports between plugins or from core → plugins.
+All cross-boundary calls go through hooks. The sole exception is
+`scripts/lib/generate-image.ts` which imports `saveAsset` from
+`plugins/assets/lib/save-asset` directly — the asset pipeline is a
+shared utility, not a plugin-to-plugin dependency.
 
 ## Exec Tool Registry
 
 ### How it works
-1. `scripts/lib/registry.ts` — global `Map<string, ExecToolDefinition>`
-2. Core tools self-register at import time (files in `scripts/lib/*.ts`)
-3. Plugin tools register via `ctx.registerExecTool()` → calls `addExecTool()` with `source: 'plugin:{id}'`
-4. `src/core/mcp-server.ts` imports core tool files, then calls `getAllExecTools()` to register all tools with the MCP server
+1. `scripts/lib/registry.ts` — global `Map<string, ExecToolDefinition>`.
+2. Core scripts self-register at import time (`scripts/lib/*.ts`).
+3. Plugin tools register via `ctx.registerExecTool()` →
+   `addExecTool()` with `source: 'plugin:{id}'`.
+4. `src/core/mcp-server.ts` imports core tool files, then calls
+   `getAllExecTools()` to register all tools with the MCP server at
+   startup.
 
 ### PluginToolContext
-When the MCP server executes a tool handler, it builds a `PluginToolContext` via `getToolContext(toolName)`:
+When the MCP server executes a tool handler, it builds a
+`PluginToolContext` via `getToolContext(toolName)`:
 
 ```typescript
 interface PluginToolContext {
@@ -190,10 +384,8 @@ interface PluginToolContext {
 
 Tool handlers receive it as an optional third argument:
 ```typescript
-handler: (params: Record<string, unknown>, agent: string, ctx?: PluginToolContext) => Promise<ExecToolResult>
+handler: (params, agent, ctx?) => Promise<ExecToolResult>
 ```
-
-The `getToolContext()` function in `scripts/lib/registry.ts` uses `eval('require')` to prevent Next.js webpack from tracing runtime-only imports (it's only called from the custom Node server's MCP handler, never from Next.js routes).
 
 ### ExecToolDefinition fields
 
@@ -201,17 +393,22 @@ The `getToolContext()` function in `scripts/lib/registry.ts` uses `eval('require
 interface ExecToolDefinition {
   name: string                    // bakin_exec_{pluginId}_{action}
   description: string             // MCP tool description
-  label?: string                  // Human-readable action phrase for activity feed (e.g., "Created a task")
-  activityDuplicate?: boolean     // true = handler already emits a domain audit event; auto-audit tagged duplicate
-  parameters: ZodRawShape           // strict — every value must be a z.* schema, enforced at compile time
+  label?: string                  // Human-readable past-tense phrase for activity feed
+  activityDuplicate?: boolean     // true = handler already emits a domain audit event
+  parameters: ZodRawShape         // strict — every value must be a z.* schema
   handler: (params, agent, ctx?) => Promise<ExecToolResult>
   source?: string                 // 'plugin:{id}' or 'script'
 }
 ```
 
-**`label`**: Short past-tense phrase displayed as primary text in the activity feed. Without it, `humanizeExecName()` derives a label from the tool name (strips `bakin_exec_` prefix, splits on `_`, capitalizes). Every exec tool should have an explicit label.
-
-**`activityDuplicate`**: Set `true` only when the handler (or an effect function it calls) already emits a meaningful domain event (e.g., `task.created`, `asset.deleted`) via `ctx.activity.audit()` or `appendAudit()`. The auto-audit event from `mcp-server.ts` is tagged `duplicate: true` and hidden by default in the activity feed. Do NOT set this flag on tools where the auto-audit is the only activity event.
+- `label` — short past-tense phrase displayed as primary text in the
+  activity feed. Without it, `humanizeExecName()` derives from the tool
+  name. Every exec tool should have an explicit label.
+- `activityDuplicate` — set `true` only when the handler (or an effect
+  function it calls) already emits a meaningful domain event via
+  `ctx.activity.audit()` or `appendAudit()`. The auto-audit event from
+  `mcp-server.ts` is tagged `duplicate: true` and hidden by default in
+  the activity feed.
 
 ### Activity event flow for exec tools
 
@@ -222,15 +419,16 @@ Agent calls MCP tool
   → mcp-server.ts auto-appends audit: exec.{tool.name}.{ok|fail}
     with { label: tool.label, duplicate: tool.activityDuplicate }
   → SSE broadcasts both events
-  → mapAuditMessage() reads data.label for exec.* events (humanizeExecName fallback)
   → Activity feed shows label as primary text, raw event name as muted mono text
   → Duplicate events hidden by default (Bug icon toggle to show)
 ```
 
-**Important**: Exec tool handlers should NOT call `ctx.activity.log()` — the auto-audit from `mcp-server.ts` with the tool's `label` replaces that pattern. Use `ctx.activity.audit()` for domain events that carry semantic meaning beyond "tool X was called."
+Handlers should NOT call `ctx.activity.log()` — the auto-audit from
+`mcp-server.ts` with the tool's `label` replaces that pattern.
 
 ### Naming convention
-`bakin_exec_{pluginId}_{action}` — e.g., `bakin_exec_project_list`, `bakin_exec_schedule_fire`
+`bakin_exec_{pluginId}_{action}` — e.g., `bakin_exec_project_list`,
+`bakin_exec_schedule_fire`.
 
 ### Adding a new core tool
 1. Create `scripts/lib/{tool-name}.ts`
@@ -240,14 +438,15 @@ Agent calls MCP tool
 ## Route Handling
 
 ### Server-side registration
-Plugins register routes in `activate()`:
+Plugins register routes in `activate()`. Handlers take a Web `Request`
+and return a Web `Response`:
+
 ```typescript
 ctx.registerRoute({
   path: '/',
   method: 'POST',
-  handler: async (req, ctx) => {
+  handler: async (req) => {
     const body = await req.json()
-    // ... do work ...
     return Response.json({ ok: true })
   },
   description: 'Create a new item',
@@ -256,48 +455,45 @@ ctx.registerRoute({
 ctx.registerRoute({
   path: '/:taskId',
   method: 'DELETE',
-  handler: async (req) => {
-    // ... delete item ...
-    return Response.json({ ok: true })
-  },
+  handler: async (req) => Response.json({ ok: true }),
   description: 'Delete an item by ID',
 })
 ```
 
 ### Parameterized routes
-Paths can include `:param` segments for RESTful naming:
-```typescript
-ctx.registerRoute({
-  path: '/definitions/:name',
-  method: 'GET',
-  handler: async (req) => {
-    const url = new URL(req.url)
-    const name = url.searchParams.get('name') // injected from path param
-    // ...
-  },
-})
-```
+Paths can include `:param` segments for RESTful naming. The catch-all
+router extracts path params and injects them into the request URL's
+`searchParams` so handlers read them the same way as query params.
 
-### Catch-all router
-`src/app/api/plugins/[pluginId]/[[...path]]/route.ts` handles all plugin API requests.
-The router's `matchRoute()` tries exact match first, then falls back to segment-by-segment `:param` matching. Extracted path params are injected into the request URL's `searchParams` so handlers read them the same way as query params.
+### Catch-all dispatch
+`packages/host/src/api/plugins/[pluginId]/[[...path]].ts` handles every
+plugin API request. Server.ts dispatches to it via `dispatchWebHandler`.
+The router's `matchRoute()` tries exact match first, then falls back to
+segment-by-segment `:param` matching.
 
-Request to `/api/plugins/workflows/definitions/my-workflow` → extracts `pluginId=workflows`, `path=/definitions/my-workflow` → matches route `/definitions/:name` → injects `name=my-workflow` into searchParams.
+Request to `/api/plugins/workflows/definitions/my-workflow` → extracts
+`pluginId=workflows`, `path=/definitions/my-workflow` → matches route
+`/definitions/:name` → injects `name=my-workflow` into searchParams.
 
-## Client-Side Plugin Manifest
+## Plugin `defaults/` Conventions
 
-`src/lib/plugin-manifest.ts` — static imports of all plugin `client.tsx` files:
-```typescript
-import { navItems as taskNav } from '../../plugins/tasks/client'
-// ... all plugins
-export const allNavItems: NavItem[] = [...taskNav, ...].sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
-```
+A plugin may ship three sibling directories under `defaults/`. The
+plugin loader handles each one automatically — plugin code only needs
+to drop files in place.
 
-This is NOT dynamic — new plugins must be added here manually.
+| Directory | Loader | Behavior |
+|-----------|--------|----------|
+| `defaults/workflows/*.yaml` | The owning plugin's `activate()` (workflows plugin uses `lib/load-defaults.ts`) | Each YAML is parsed and registered via `ctx.registerWorkflow(def, { readOnly: true })`. User copies under `~/.bakin/workflows/definitions/` always shadow these. |
+| `defaults/workflow-skills/*.md` | `src/lib/plugin-skill-loader.ts`, invoked by the plugin loader after every `activate()` | Each `.md` is parsed (YAML frontmatter for `name` + `output_schema`; body is the instruction) and registered via `ctx.registerSkill()`. In-memory only — no filesystem install. |
+| `defaults/openclaw-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `~/.openclaw/skills/{name}/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
+
+The first two are S-A (workflow-step skills, in-memory). The third is
+S-B (OpenClaw runtime skills, on disk). See
+`.claude/knowledge/workflows-plugin.md` for the full breakdown.
 
 ## Storage Adapter
 
-`src/lib/storage/markdown-adapter.ts` — `MarkdownStorageAdapter` implementing `StorageAdapter`:
+`packages/core/src/storage/markdown-adapter.ts` — `MarkdownStorageAdapter`:
 
 | Method | Behavior |
 |--------|----------|
@@ -311,43 +507,45 @@ All paths relative to `~/.bakin/` (resolved via `getContentDir()`).
 
 ## Event Bus
 
-`src/lib/events/event-bus.ts` — `BakinEventBus` implementing `EventBus`:
+`packages/core/src/events/event-bus.ts` — `BakinEventBus`:
 
 - `emit(event, data)` — broadcast to all matching subscribers
-- `on(pattern, handler)` — subscribe with exact match or prefix glob (`task.*` matches `task.created`)
+- `on(pattern, handler)` — subscribe with exact match or prefix glob
+  (`task.*` matches `task.created`)
 - `once(pattern, handler)` — one-time subscription
 
-The event bus is used by the workflows plugin for notifications. Most cross-plugin communication uses the HookRegistry instead.
-
-## Plugin `defaults/` Conventions
-
-A plugin may ship three sibling directories under `defaults/`. The plugin loader handles each one automatically — plugin code only needs to drop the files in.
-
-| Directory | Loader | Behavior |
-|-----------|--------|----------|
-| `defaults/workflows/*.yaml` | The owning plugin's `activate()` (workflows plugin uses `lib/load-defaults.ts`) | Each YAML is parsed and registered via `ctx.registerWorkflow(def, { readOnly: true })`. User copies under `~/.bakin/workflows/definitions/` always shadow these. |
-| `defaults/workflow-skills/*.md` | `src/lib/plugin-skill-loader.ts`, invoked by the plugin loader after every `activate()` | Each `.md` is parsed (YAML frontmatter for `name` + `output_schema`; body is the instruction) and registered via `ctx.registerSkill()`. Generic across all plugins. **In-memory only — no filesystem install.** |
-| `defaults/openclaw-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `~/.openclaw/skills/{name}/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
-
-The first two are S-A (workflow-step skills, in-memory). The third is S-B (OpenClaw runtime skills, on disk). See `.claude/knowledge/workflows-plugin.md` for the full breakdown.
+Used by the workflows plugin for notifications. Most cross-plugin
+communication goes through the HookRegistry instead.
 
 ## User Plugin Override
 
-`~/.bakin/plugins/` is scanned after built-in plugins. If a user plugin has the same ID as a built-in, it replaces it. This allows users to fork and customize any core plugin without modifying the repo.
+`~/.bakin/plugins/` is scanned after built-in plugins. If a user plugin
+has the same id as a built-in, it replaces it. This lets users fork
+and customize any core plugin without modifying the repo.
+
+## Permissions (declared, not yet enforced)
+
+The `permissions` manifest field is logged at activation but not yet
+enforced at runtime. Tracked in issue #142. When enforced, it will
+gate `storage.*` and `events.emit` calls at the `ctx` boundary.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `packages/core/src/plugin-types.ts` | All interfaces (BakinPlugin, PluginContext, HookAPI, SettingsSchema, etc.) |
+| `packages/core/src/plugin-types.ts` | All interfaces (BakinPlugin, PluginContext, HookAPI, SettingsSchema, ...) |
 | `packages/core/src/hooks/hook-registry.ts` | HookRegistry class (register, invoke, has) |
-| `src/lib/plugin-types.ts` | Re-export shim for backward compat |
-| `src/lib/plugin-registry.ts` | Singleton registry, plugin loading, topo sort, hook registry, route/nav/slot lookups |
-| `src/lib/plugin-manifest.ts` | Client-side static imports, allNavItems |
-| `bakin.config.ts` | Plugin enable list |
-| `scripts/lib/registry.ts` | Exec tool registry (addExecTool, getAllExecTools, getToolContext) |
-| `src/core/mcp-server.ts` | MCP server, tool registration, core tool imports |
-| `src/app/api/plugins/[pluginId]/[[...path]]/route.ts` | Catch-all API router |
-| `src/app/api/plugin-settings/schemas/route.ts` | Serves all plugin settings schemas |
-| `src/app/api/plugin-settings/[pluginId]/route.ts` | GET/PUT per-plugin settings values |
-| `src/components/plugin-settings-renderer.tsx` | Auto-renders settings UI from schema |
+| `packages/sdk/src/register.ts` | `registerPlugin`, `getAllNavItems` (browser-global registry) |
+| `packages/sdk/src/slots/index.tsx` | Slot + registerSlot primitive |
+| `packages/host/src/plugin-host/PluginHost.tsx` | Runtime plugin loader |
+| `packages/host/src/plugin-host/user-plugin-builder.ts` | In-binary `bun install` + `Bun.build()` for user plugins |
+| `packages/host/src/api/plugins/manifest.ts` | `GET /api/plugins/manifest` for the loader |
+| `packages/host/src/api/plugins/assets.ts` | Serves the plugin `client.js` bundle |
+| `packages/host/src/api/plugins/[pluginId]/[[...path]].ts` | Catch-all plugin API router |
+| `src/lib/plugin-registry.ts` | Plugin loading singleton, topo sort, route/nav/slot lookups |
+| `src/lib/plugin-static-imports.ts` | Core plugin import table consumed by server.ts |
+| `bakin.config.ts` | Core plugin enable list |
+| `scripts/build-plugins.ts` | Core plugin build pipeline |
+| `scripts/build-vendors.ts` | Import-map vendor bundles |
+| `scripts/lib/registry.ts` | Exec tool registry |
+| `src/core/mcp-server.ts` | MCP server, tool registration |
