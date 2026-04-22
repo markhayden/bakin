@@ -1,9 +1,13 @@
-import { NextResponse } from 'next/server'
+/**
+ * GET /api/agents/health — enriched heartbeat roll-up with staleness.
+ *
+ * Migrated from src/app/api/agents/health/route.ts for Phase B of #147.
+ */
 import { readHeartbeats } from '@/lib/content'
 
 const STALE_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
 
-export async function GET() {
+export async function get(_req: Request, _url: URL): Promise<Response> {
   const raw = readHeartbeats()
   const now = Date.now()
 
@@ -20,5 +24,5 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json(enriched)
+  return Response.json(enriched)
 }

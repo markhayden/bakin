@@ -46,6 +46,7 @@ import { trackResponse } from './src/core/rest-tracking'
 import { dispatchWebHandler } from './packages/host/src/api/_adapter'
 import * as activityRoute from './packages/host/src/api/activity'
 import * as agentsAvatarRoute from './packages/host/src/api/agents/avatar'
+import * as agentsHealthRoute from './packages/host/src/api/agents/health'
 
 const log = createLogger('server')
 
@@ -318,6 +319,12 @@ app.prepare().then(async () => {
     // Agent avatar route (must be before the agent catch-all; migrated — see Phase B block below)
     if (url.pathname === '/api/agents/avatar' && req.method === 'GET') {
       dispatchWebHandler(req, res, agentsAvatarRoute.get)
+      return
+    }
+
+    // Migrated: /api/agents/health (must be before agent catch-all)
+    if (url.pathname === '/api/agents/health' && req.method === 'GET') {
+      dispatchWebHandler(req, res, agentsHealthRoute.get)
       return
     }
 
