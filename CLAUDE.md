@@ -6,7 +6,7 @@ Runs on a Mac mini, accessed via Tailscale. No database, no SaaS dependencies.
 
 ## Architecture
 
-- **Server:** Custom Node.js HTTP server wrapping Next.js 16 (App Router), port 3737
+- **Runtime + server:** Bun (>=1.2.0) — custom HTTP server wrapping Next.js 16 (App Router) during the Phase A+B migration to `Bun.serve()`. Port 3737. Migration tracked at #147.
 - **Frontend:** React 19, Tailwind CSS 4, shadcn v4 (Base UI), Zustand for state
 - **Storage:** Markdown files in `~/.bakin/`, no database
 - **Real-time:** Server-Sent Events (SSE) push updates to all connected browsers
@@ -205,7 +205,7 @@ All MCP tool calls, REST requests, and agent lifecycle events flow through one i
 Two layers fix the cold-start problem where `openclaw models list --all --json` takes 15–20 s and would otherwise show fake data in the UI (issue #129). (1) **Persistent disk cache** at `~/.bakin/plugin-settings/models/available.json` via `plugins/models/lib/models-cache.ts` (atomic tmp+rename write, zod-validated reads, silent drop on corruption/schema drift). Flow in `fetchAvailableModels`: in-memory hit → disk hydrate → live fetch → honest empty-with-error (never `fallbackModels()`). The response includes `stale: boolean` so the client can surface cached data immediately and kick off a background `POST /api/plugins/models/refresh` when stale. `POST /api/plugins/models/gateway/restart` clears both cache layers. (2) **Curated catalog** at `plugins/models/data/known-models.ts` — Bakin-maintained lookup of ~22 popular models (frontier + OSS, LLM + image + video) with descriptions, tier, cost range, and brand-icon slugs. Merged into each OpenClaw-sourced `AvailableModel` at server-time via `getKnownModel()` / `getKnownProvider()`. Unknown models render plain — no fabrication. Brand icons render via `<BrandIcon>` which inlines SVG paths from simple-icons.org (CC0) for the 5 brands we have logos for (Anthropic, Google, Ollama, ByteDance, Kuaishou); unknown slugs render a first-letter chip with the provider's brand color. Add a catalog entry by PR'ing `known-models.ts`; add a brand logo by inlining the SVG path in `brand-icon.tsx`.
 
 ### OpenClaw Home Directory
-All OpenClaw paths resolved through `getOpenClawHome()` / `getOpenClawPath()` in `packages/core/src/openclaw-home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/` fallback. For development without OpenClaw: `npm run dev:mock` starts the Imitation Crab mock (`dev/imitation-crab/`), which seeds `~/.imitationcrab/` and sets both `OPENCLAW_HOME` and `BAKIN_HOME` automatically. To reseed fixtures manually, run `pnpm mock:seed --force`.
+All OpenClaw paths resolved through `getOpenClawHome()` / `getOpenClawPath()` in `packages/core/src/openclaw-home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/` fallback. For development without OpenClaw: `bun run dev:mock` starts the Imitation Crab mock (`dev/imitation-crab/`), which seeds `~/.imitationcrab/` and sets both `OPENCLAW_HOME` and `BAKIN_HOME` automatically. To reseed fixtures manually, run `bun run mock:seed --force`.
 
 ### Content Directory
 All paths resolved through `getContentDir()` in `src/core/content-dir.ts`. Resolution: `BAKIN_HOME` env → `~/.bakin/` → `./content/` fallback. Well-known paths via `getBakinPaths()`.
