@@ -27,6 +27,7 @@ import { Route as MessagingCalendarRoute } from './routes/messaging.calendar'
 import { Route as MessagingBrainstormRoute } from './routes/messaging.brainstorm'
 import { Route as ModelsRoute } from './routes/models'
 import { Route as ScheduleRoute } from './routes/schedule'
+import { Route as SettingsRoute } from './routes/settings'
 
 const routeTree = RootRoute.addChildren([
   IndexRoute,
@@ -49,6 +50,7 @@ const routeTree = RootRoute.addChildren([
   MessagingBrainstormRoute,
   ModelsRoute,
   ScheduleRoute,
+  SettingsRoute,
 ])
 
 export const router = createRouter({
