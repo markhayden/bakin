@@ -234,6 +234,9 @@ class PluginRegistryImpl {
           return `${pluginId}.${def.id}`
         }
       },
+      // T3 wires this through the real registry. Interim stub keeps the
+      // PluginContext interface satisfied so T1/T2 commits build cleanly.
+      registerHealthCheck: (def) => `${pluginId}.${def.id}`,
       watchFiles: (patterns: string[]) => { state.watchPatterns.push(...patterns) },
       getSettings: <T = Record<string, unknown>>(): T => {
         const settingsPath = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
