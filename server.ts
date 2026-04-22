@@ -62,6 +62,7 @@ import * as pluginsManifestRoute from './packages/host/src/api/plugins/manifest'
 import * as pluginsAssetsRoute from './packages/host/src/api/plugins/assets'
 import { serveHostClient } from './packages/host/src/api/_static'
 import { buildAllUserPlugins } from './packages/host/src/plugin-host/user-plugin-builder'
+import { dispatchCli } from './src/core/cli'
 
 const log = createLogger('server')
 
@@ -69,20 +70,15 @@ import { APP_VERSION } from './packages/core/src/constants'
 
 const BAKIN_VERSION = APP_VERSION
 
-// Minimal argv dispatch for the compiled binary entry point (#147 TG1).
-// Full subcommand surface lands in TG2 via src/core/cli.ts — for now we
-// only handle `version` and `--help` so the binary's smoke test passes.
+// Parse argv and run one-shot subcommands (`version`, `stop`, `status`,
+// `plugins ...`, `update`, `--help`) before touching the filesystem.
+// Only `start` (the default) continues past this point. See
+// src/core/cli.ts for the command table.
 {
-  const firstArg = process.argv[2]
-  if (firstArg === 'version' || firstArg === '--version' || firstArg === '-v') {
-    console.log(APP_VERSION)
-    process.exit(0)
+  const cliResult = await dispatchCli(process.argv)
+  if (!cliResult.startServer) {
+    process.exit(cliResult.exitCode)
   }
-  if (firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
-    console.log(`Usage: bakin <command>\n\nRun \`bakin start\` (or no args) to start the server.`)
-    process.exit(0)
-  }
-  // Any other non-start subcommand is handled by src/core/cli.ts after TG2.
 }
 
 const port = Number(process.env.PORT || 3737)
