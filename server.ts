@@ -10,7 +10,7 @@
 import { createServer } from 'http'
 import next from 'next'
 import { join } from 'path'
-import { existsSync, mkdirSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 
 import { MarkdownStorageAdapter } from './src/lib/storage/markdown-adapter'
 import { BakinEventBus } from './src/lib/events/event-bus'
@@ -45,6 +45,7 @@ import * as mcporter from './src/core/mcporter'
 import { trackResponse } from './src/core/rest-tracking'
 import { dispatchWebHandler } from './packages/host/src/api/_adapter'
 import * as activityRoute from './packages/host/src/api/activity'
+import * as agentsAvatarRoute from './packages/host/src/api/agents/avatar'
 
 const log = createLogger('server')
 
@@ -314,26 +315,9 @@ app.prepare().then(async () => {
       return
     }
 
-    // Agent avatar route (must be before the agent catch-all)
+    // Agent avatar route (must be before the agent catch-all; migrated — see Phase B block below)
     if (url.pathname === '/api/agents/avatar' && req.method === 'GET') {
-      const agentId = url.searchParams.get('id')
-      if (!agentId) {
-        jsonResponse(res, 400, { error: 'Missing id param' })
-        return
-      }
-      const avatarPath = join(CONTENT_DIR, 'agents', agentId, 'avatar.jpg')
-      if (!existsSync(avatarPath)) {
-        res.writeHead(404)
-        res.end()
-        return
-      }
-      const data = readFileSync(avatarPath)
-      res.writeHead(200, {
-        'Content-Type': 'image/jpeg',
-        'Content-Length': data.length,
-        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
-      })
-      res.end(data)
+      dispatchWebHandler(req, res, agentsAvatarRoute.get)
       return
     }
 
