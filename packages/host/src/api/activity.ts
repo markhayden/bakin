@@ -1,4 +1,10 @@
-import { NextResponse } from 'next/server'
+/**
+ * GET /api/activity — unified activity feed combining audit events + task logs.
+ *
+ * Migrated from src/app/api/activity/route.ts (Next.js App Router) as the
+ * pilot for Phase B of the Bun migration. Returns up to 50 most-recent
+ * events sorted by timestamp descending.
+ */
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
@@ -11,13 +17,11 @@ const AUDIT_PATH = join(getContentDir(), 'audit.jsonl')
 
 /** Normalize old truncated UTC timestamps (e.g. "2026-03-21 21:37") to proper ISO 8601 */
 function normalizeTimestamp(ts: string): string {
-  // Already a proper ISO timestamp (has T and/or Z)
   if (ts.includes('T')) return ts
-  // Old format: "YYYY-MM-DD HH:MM" — was UTC but stored without indicator
   return ts.replace(' ', 'T') + ':00Z'
 }
 
-export async function GET() {
+export async function get(_req: Request): Promise<Response> {
   const events: ActivityEvent[] = []
 
   // 1. Parse audit.jsonl
@@ -71,5 +75,5 @@ export async function GET() {
 
   // Sort newest first, cap at 50
   events.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
-  return NextResponse.json({ events: events.slice(0, 50) })
+  return Response.json({ events: events.slice(0, 50) })
 }

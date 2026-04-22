@@ -43,6 +43,8 @@ import * as doctor from './src/core/doctor'
 import { handleMcpRequest } from './src/core/mcp-server'
 import * as mcporter from './src/core/mcporter'
 import { trackResponse } from './src/core/rest-tracking'
+import { dispatchWebHandler } from './packages/host/src/api/_adapter'
+import * as activityRoute from './packages/host/src/api/activity'
 
 const log = createLogger('server')
 
@@ -388,7 +390,14 @@ app.prepare().then(async () => {
       }
     }
 
-    // Let Next.js handle everything else
+    // ─── Migrated API routes (packages/host/src/api/*) ────────────────
+    // These were Next.js App Router route.ts files; migrated in Phase B of #147.
+    if (url.pathname === '/api/activity' && req.method === 'GET') {
+      dispatchWebHandler(req, res, activityRoute.get)
+      return
+    }
+
+    // Let Next.js handle everything else (legacy src/app/api/* + pages)
     handle(req, res)
   })
 
