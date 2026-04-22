@@ -14,13 +14,12 @@ import { PluginHeader } from "@bakin/sdk/components"
 import { TaskFilters } from './task-filters'
 import { TaskLogTable } from './task-log-table'
 import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
-import { WithLoading } from '@/components/layout/skeleton-loader'
 import { useContentStore } from "@bakin/sdk/hooks"
 import { useDebug } from "@bakin/sdk/hooks"
 import { useQueryState, useQueryArrayState } from "@bakin/sdk/hooks"
 import { toast } from "@bakin/sdk/hooks"
 import { useGateStatus } from '../hooks/use-gate-status'
-import { Button } from "@bakin/sdk/ui"
+import { Button, Skeleton } from "@bakin/sdk/ui"
 import { Kanban, Table2, Plus } from 'lucide-react'
 import type { TaskScoreInfo } from './task-card'
 import type { Task, TaskColumns, ColumnId } from '../types'
@@ -134,6 +133,7 @@ export function KanbanBoard() {
   const searchParams = useSearchParams()
   const [boardData, setBoardData] = useState<{ columns: TaskColumns; timestamp?: string }>({ columns: emptyBoard })
   const taskboardVersion = useContentStore((s) => s.taskboardVersion)
+  const loading = useContentStore((s) => s.loading)
 
   const fetchBoard = useCallback(async () => {
     try {
@@ -391,8 +391,26 @@ export function KanbanBoard() {
     router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }, [pathname, router, searchParams])
 
+  if (loading) {
+    return (
+      <div className="p-6 space-y-4">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-3 w-32" />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="rounded-lg border border-border bg-surface p-3 space-y-3">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <WithLoading>
+    <>
       <div className="flex flex-col h-full min-w-0 min-h-0">
         <div className="hidden md:block px-6 pt-[25px] pb-2 border-b border-border/50">
           <TaskMetrics columns={columns} timestamp={timestamp} />
@@ -555,6 +573,6 @@ export function KanbanBoard() {
           }}
         />
       </div>
-    </WithLoading>
+    </>
   )
 }

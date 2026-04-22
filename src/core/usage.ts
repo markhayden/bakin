@@ -6,8 +6,9 @@
  * See `.claude/specs/health-plugin-overhaul.md` for the design motivation.
  */
 
-// Why: shared state on globalThis so Next.js webpack re-evaluation doesn't
-// duplicate the store. Same pattern as src/core/sse.ts.
+// Why: shared state on globalThis so repeat evaluations (server entry vs.
+// dynamically loaded plugin bundles) don't duplicate the store. Same
+// pattern as src/core/sse.ts.
 const g = globalThis as unknown as { __bakinUsage?: UsageState }
 
 export type UsageKind = 'mcp' | 'rest' | 'agent'

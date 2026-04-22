@@ -24,7 +24,8 @@ const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
 const OPENCLAW_BIN = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
 
 // ---------------------------------------------------------------------------
-// Gateway sync tracking (survives Next.js webpack re-evaluation)
+// Gateway sync tracking (globalThis-backed so every reach into this module
+// reads the same instance)
 // ---------------------------------------------------------------------------
 interface GatewaySync { lastConfigChangeAt: number | null; lastRestartAt: number | null }
 const gw = globalThis as typeof globalThis & { __bakinGatewaySync?: GatewaySync }
@@ -153,7 +154,8 @@ async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Available models cache (globalThis-backed to survive Next.js webpack re-evaluation)
+// Available models cache (globalThis-backed so every reach into this module
+// shares one cache instance)
 // ---------------------------------------------------------------------------
 interface ModelsCache { models: AvailableModel[]; fetchedAt: number }
 const mc = globalThis as typeof globalThis & { __bakinModelsCache?: ModelsCache | null }

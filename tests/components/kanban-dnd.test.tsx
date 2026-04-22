@@ -167,10 +167,6 @@ vi.mock('@/components/plugin-header', () => ({
   PluginHeader: () => null,
 }))
 
-vi.mock('@/components/layout/skeleton-loader', () => ({
-  WithLoading: ({ children }: any) => <div>{children}</div>,
-}))
-
 vi.mock('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: any) => <div>{agentId}</div>,
 }))
