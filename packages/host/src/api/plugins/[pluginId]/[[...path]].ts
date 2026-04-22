@@ -1,0 +1,248 @@
+/**
+ * Catch-all handler for /api/plugins/:pluginId/:path*.
+ *
+ * Dispatches to the plugin's registered route handler (via
+ * `ctx.registerRoute` during plugin activation). Supports `:param` segments
+ * in registered route paths.
+ *
+ * Previously this lived at src/app/api/plugins/[pluginId]/[[...path]]/route.ts
+ * as a Next.js App Router catch-all. That file had to lazy-activate all 10
+ * plugins in its own module context because Next.js API routes run in
+ * isolated webpack-compiled contexts that don't share state with server.ts.
+ *
+ * Post-TB18 we just use the real `pluginRegistry` from the server scope —
+ * plugins are activated once at boot, routes are already registered, ctx
+ * lookups go through the real globals. ~170 lines of duplication removed.
+ */
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from 'fs'
+import { join } from 'path'
+import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
+import { BakinEventBus } from '@/lib/events/event-bus'
+import { getContentDir } from '@/core/content-dir'
+import { createLogger } from '@/core/logger'
+import { buildSearchAPI } from '@/core/search-registry'
+import { appendAudit } from '@/core/audit'
+import { pluginRegistry } from '@/lib/plugin-registry'
+import type { PluginContext, APIRoute } from '@/lib/plugin-types'
+
+const log = createLogger('plugin-route')
+
+/**
+ * Rebuild a per-request PluginContext. The activate-time registration APIs
+ * (registerRoute/Nav/Slot/etc.) are no-ops here — everything was already
+ * registered at plugin-registry initialize. The dynamic surfaces
+ * (settings, activity, hooks, search) read/write through the real globals.
+ */
+function buildCtx(pluginId: string): PluginContext {
+  const storage = new MarkdownStorageAdapter()
+  const events = new BakinEventBus((data) => {
+    const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as
+      | ((data: Record<string, unknown>) => void)
+      | undefined
+    if (broadcastFn) broadcastFn(data as Record<string, unknown>)
+  })
+  const noopRegisterRoute = () => {}
+  return {
+    storage,
+    events,
+    pluginId,
+    registerNav: () => {},
+    registerRoute: noopRegisterRoute,
+    registerSlot: () => {},
+    registerExecTool: () => {},
+    registerSkill: () => {},
+    registerWorkflow: () => {},
+    registerNodeType: (def) => `${pluginId}.${def.kind}`,
+    registerNotificationChannel: (def) => `${pluginId}.${def.id}`,
+    registerHealthCheck: (def) => `${pluginId}.${def.id}`,
+    watchFiles: () => {},
+    getSettings: <T = Record<string, unknown>>(): T => {
+      const p = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
+      try { if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf-8')) as T } catch {}
+      return {} as T
+    },
+    updateSettings: (patch: Record<string, unknown>) => {
+      const dir = join(getContentDir(), 'plugin-settings')
+      const p = join(dir, `${pluginId}.json`)
+      let cur: Record<string, unknown> = {}
+      try { if (existsSync(p)) cur = JSON.parse(readFileSync(p, 'utf-8')) } catch {}
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+      writeFileSync(p, JSON.stringify({ ...cur, ...patch }, null, 2))
+    },
+    activity: {
+      log: (agent, message, opts) => {
+        const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as
+          | ((data: Record<string, unknown>) => void)
+          | undefined
+        if (broadcastFn) {
+          broadcastFn({
+            type: 'activity',
+            agent,
+            message,
+            ts: new Date().toISOString(),
+            pluginId,
+            ...(opts?.taskId ? { taskId: opts.taskId } : {}),
+            ...(opts?.category ? { category: opts.category } : {}),
+          })
+        }
+      },
+      audit: (event, agent, data) => {
+        const contentDir = getContentDir()
+        const entry = JSON.stringify({
+          ts: new Date().toISOString(),
+          event: `${pluginId}.${event}`,
+          agent,
+          ...(data || {}),
+        })
+        const auditPath = join(contentDir, 'audit.jsonl')
+        try { appendFileSync(auditPath, entry + '\n') } catch { /* best-effort */ }
+        const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as
+          | ((data: Record<string, unknown>) => void)
+          | undefined
+        if (broadcastFn) {
+          broadcastFn({ type: 'audit', event: `${pluginId}.${event}`, agent, ...data })
+        }
+      },
+    },
+    search: buildSearchAPI(pluginId, { registerRoute: noopRegisterRoute, skipFileBackedWiring: true }),
+    hooks: {
+      register: (name, handler) => {
+        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
+          | { register: (n: string, h: (data: unknown) => unknown) => () => void }
+          | undefined
+        if (registry) return registry.register(name, handler as (data: unknown) => unknown)
+        return () => {}
+      },
+      has: (name) => {
+        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
+          | { has: (n: string) => boolean }
+          | undefined
+        return registry ? registry.has(name) : false
+      },
+      invoke: async <R>(name: string, data: unknown) => {
+        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
+          | { invoke: <R>(n: string, d: unknown) => Promise<R | undefined> }
+          | undefined
+        return registry ? registry.invoke<R>(name, data) : undefined
+      },
+    },
+  }
+}
+
+/**
+ * Match a request path against a plugin's registered routes, supporting
+ * `:param` segments. Exact matches take priority over parameterized ones.
+ */
+function matchRoute(
+  routes: APIRoute[],
+  path: string,
+  method: string,
+): { route: APIRoute; params: Record<string, string> } | null {
+  const upperMethod = method.toUpperCase()
+
+  const exact = routes.find(r => r.path === path && r.method === upperMethod)
+  if (exact) return { route: exact, params: {} }
+
+  const reqSegments = path.split('/').filter(Boolean)
+  for (const route of routes) {
+    if (route.method !== upperMethod) continue
+    const routeSegments = route.path.split('/').filter(Boolean)
+    if (routeSegments.length !== reqSegments.length) continue
+
+    const params: Record<string, string> = {}
+    let match = true
+    for (let i = 0; i < routeSegments.length; i++) {
+      if (routeSegments[i].startsWith(':')) {
+        params[routeSegments[i].slice(1)] = reqSegments[i]
+      } else if (routeSegments[i] !== reqSegments[i]) {
+        match = false
+        break
+      }
+    }
+    if (match) return { route, params }
+  }
+
+  return null
+}
+
+async function handle(req: Request, url: URL): Promise<Response> {
+  // Parse /api/plugins/<pluginId>/<subpath>* from url.pathname
+  const match = url.pathname.match(/^\/api\/plugins\/([^/]+)(\/.*)?$/)
+  if (!match) {
+    return Response.json({ error: 'Invalid plugin route path' }, { status: 404 })
+  }
+  const [, pluginId, subpathRaw] = match
+  const subpath = subpathRaw || '/'
+  const method = req.method
+
+  const state = pluginRegistry.getPluginState(pluginId)
+  if (!state) {
+    return Response.json({ error: `Plugin "${pluginId}" not registered` }, { status: 404 })
+  }
+
+  const routeMatch = matchRoute(state.routes, subpath, method)
+  if (!routeMatch) {
+    return Response.json(
+      { error: `No ${method} handler for ${pluginId}${subpath}` },
+      { status: 404 },
+    )
+  }
+
+  const startedAt = Date.now()
+  const actor = req.headers.get('x-bakin-agent') || 'human'
+
+  try {
+    // Inject :param extractions into handlerReq's searchParams so handlers
+    // can read them the same way as query params.
+    let handlerReq = req
+    if (Object.keys(routeMatch.params).length > 0) {
+      const newUrl = new URL(req.url)
+      for (const [key, value] of Object.entries(routeMatch.params)) {
+        if (!newUrl.searchParams.has(key)) newUrl.searchParams.set(key, value)
+      }
+      handlerReq = new Request(newUrl.toString(), {
+        method: req.method,
+        headers: req.headers,
+        body: req.body,
+        // @ts-expect-error duplex is needed for streaming request bodies
+        duplex: 'half',
+      })
+    }
+
+    const ctx = buildCtx(pluginId)
+    const res = await routeMatch.route.handler(handlerReq, ctx)
+
+    // Audit write methods + any failure.
+    const durationMs = Date.now() - startedAt
+    const isWrite = method !== 'GET' && method !== 'HEAD'
+    const isError = res.status >= 400
+    if (isWrite || isError) {
+      const tag = isError ? 'fail' : 'ok'
+      appendAudit(
+        getContentDir(),
+        `rest.${pluginId}.${method.toLowerCase()}.${tag}`,
+        actor,
+        { path: subpath, status: res.status, durationMs, duplicate: true },
+        'rest',
+      )
+    }
+    return res
+  } catch (err) {
+    const durationMs = Date.now() - startedAt
+    log.error('Plugin route error', err, { pluginId, subpath, method })
+    appendAudit(
+      getContentDir(),
+      `rest.${pluginId}.${method.toLowerCase()}.error`,
+      actor,
+      { path: subpath, status: 500, durationMs, error: err instanceof Error ? err.message : String(err) },
+      'rest',
+    )
+    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+  }
+}
+
+export const get = handle
+export const post = handle
+export const put = handle
+export const patch = handle
+export const del = handle
