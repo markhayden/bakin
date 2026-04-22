@@ -1,19 +1,24 @@
-import { NextResponse, type NextRequest } from 'next/server'
+/**
+ * GET /api/plugins/memory/gateway — paginated OpenClaw gateway log
+ * (`/tmp/openclaw/openclaw-{date}.log`) view.
+ *
+ * Migrated from src/app/api/plugins/memory/gateway/route.ts for Phase B
+ * of #147.
+ */
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import { homedir } from 'os'
 
 const LOG_DIR = '/tmp/openclaw'
 
-export async function GET(req: NextRequest) {
-  const date = req.nextUrl.searchParams.get('date') || new Date().toISOString().slice(0, 10)
-  const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0', 10)
-  const limit = parseInt(req.nextUrl.searchParams.get('limit') || '100', 10)
+export async function get(_req: Request, url: URL): Promise<Response> {
+  const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10)
+  const offset = parseInt(url.searchParams.get('offset') || '0', 10)
+  const limit = parseInt(url.searchParams.get('limit') || '100', 10)
 
   const logPath = join(LOG_DIR, `openclaw-${date}.log`)
 
   if (!existsSync(logPath)) {
-    return NextResponse.json({ entries: [], total: 0, hasMore: false })
+    return Response.json({ entries: [], total: 0, hasMore: false })
   }
 
   try {
@@ -40,8 +45,8 @@ export async function GET(req: NextRequest) {
     const total = entries.length
     const page = entries.slice(offset, offset + limit)
 
-    return NextResponse.json({ entries: page, total, hasMore: offset + limit < total })
+    return Response.json({ entries: page, total, hasMore: offset + limit < total })
   } catch {
-    return NextResponse.json({ entries: [], total: 0, hasMore: false })
+    return Response.json({ entries: [], total: 0, hasMore: false })
   }
 }
