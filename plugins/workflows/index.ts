@@ -35,6 +35,7 @@ import {
   getActiveAgents,
   isGateNotified,
   markGateNotified,
+  cancelInstance,
   type GateDecisionRecord,
 } from './lib/runtime'
 import { matchWorkflow } from './lib/matcher'
@@ -447,6 +448,9 @@ const workflowsPlugin: BakinPlugin = {
     ctx.hooks.register('workflows.isGateNotified', (d: Record<string, unknown>) => isGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined))
     ctx.hooks.register('workflows.markGateNotified', (d: Record<string, unknown>) => markGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined))
     ctx.hooks.register('workflows.validateStepOutput', (d: Record<string, unknown>) => validateStepOutput(d.schema as Record<string, unknown> | undefined, d.output as Record<string, unknown>))
+    ctx.hooks.register('workflows.cancelInstance', (d: Record<string, unknown>) => {
+      cancelInstance(d.taskId as string, d.contentDir as string | undefined)
+    })
 
     // ─── Notification Channel Registry Hooks ─────────────────────────
     ctx.hooks.register('workflows.listNotificationChannels', () => listNotificationChannels())
