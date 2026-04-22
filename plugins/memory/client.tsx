@@ -1,12 +1,18 @@
 /**
  * Memory plugin — client entry point.
  */
-import type { NavItem } from '../../src/lib/plugin-types'
-import { registerSlot } from '@bakin/sdk/slots'
+import { registerPlugin } from '@bakin/sdk'
+import type { NavItem } from '@bakin/sdk'
 import { MemoryShell } from './components/memory-shell'
 
-export const navItems: NavItem[] = [
+const navItems: NavItem[] = [
   { id: 'memory', label: 'Memory', icon: 'Brain', href: '/memory', order: 50 },
 ]
 
-registerSlot('page:/memory', MemoryShell)
+registerPlugin({
+  id: 'memory',
+  navItems,
+  slots: {
+    'page:/memory': MemoryShell,
+  },
+})
