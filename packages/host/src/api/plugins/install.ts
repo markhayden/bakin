@@ -1,4 +1,17 @@
-import { NextResponse, type NextRequest } from 'next/server'
+/**
+ * POST /api/plugins/install — install a plugin from a local directory or
+ * GitHub URL into ~/.bakin/plugins/<id>/.
+ *
+ * Migrated from src/app/api/plugins/install/route.ts for Phase B of #147.
+ *
+ * Notes:
+ * - A Bakin restart is required for the plugin's UI (nav items, pages,
+ *   slot registrations) to take effect. The server-side plugin loader will
+ *   pick up the new manifest on next boot. This is an accepted constraint
+ *   — the runtime client-side loader is deferred (tracked in the spec).
+ * - Never run with a source path outside the user's home or the current
+ *   working directory — prevents path-traversal write attempts.
+ */
 import { existsSync, readFileSync, mkdirSync, cpSync, rmSync } from 'fs'
 import { join, basename, resolve, isAbsolute } from 'path'
 import { execFileSync } from 'child_process'
@@ -12,31 +25,19 @@ interface InstallBody {
   type: 'local' | 'github'
 }
 
-/**
- * POST /api/plugins/install — install a plugin from a local directory or
- * GitHub URL into ~/.bakin/plugins/<id>/.
- *
- * Notes:
- * - A Bakin restart is required for the plugin's UI (nav items, pages,
- *   slot registrations) to take effect. The server-side plugin loader will
- *   pick up the new manifest on next boot. This is an accepted constraint
- *   — the runtime client-side loader is deferred (tracked in the spec).
- * - Never run with a source path outside the user's home or the current
- *   working directory — prevents path-traversal write attempts.
- */
-export async function POST(req: NextRequest): Promise<NextResponse> {
+export async function post(req: Request, _url: URL): Promise<Response> {
   let body: InstallBody
   try {
     body = await req.json()
   } catch {
-    return NextResponse.json({ ok: false, error: 'Invalid JSON body' }, { status: 400 })
+    return Response.json({ ok: false, error: 'Invalid JSON body' }, { status: 400 })
   }
 
   if (!body.source || typeof body.source !== 'string') {
-    return NextResponse.json({ ok: false, error: 'Missing source' }, { status: 400 })
+    return Response.json({ ok: false, error: 'Missing source' }, { status: 400 })
   }
   if (body.type !== 'local' && body.type !== 'github') {
-    return NextResponse.json({ ok: false, error: 'Invalid type; must be "local" or "github"' }, { status: 400 })
+    return Response.json({ ok: false, error: 'Invalid type; must be "local" or "github"' }, { status: 400 })
   }
 
   const pluginsRoot = join(getContentDir(), 'plugins')
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         const src = isAbsolute(body.source) ? body.source : resolve(process.cwd(), body.source)
         if (!existsSync(src)) {
           rmSync(stagingDir, { recursive: true, force: true })
-          return NextResponse.json({ ok: false, error: `Source path does not exist: ${src}` }, { status: 400 })
+          return Response.json({ ok: false, error: `Source path does not exist: ${src}` }, { status: 400 })
         }
         cpSync(src, stagingDir, { recursive: true, dereference: false })
       } else {
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const manifestPath = join(stagingDir, 'bakin-plugin.json')
       if (!existsSync(manifestPath)) {
         rmSync(stagingDir, { recursive: true, force: true })
-        return NextResponse.json({
+        return Response.json({
           ok: false,
           error: 'Plugin source is missing bakin-plugin.json',
         }, { status: 400 })
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
       } catch {
         rmSync(stagingDir, { recursive: true, force: true })
-        return NextResponse.json({ ok: false, error: 'Invalid bakin-plugin.json' }, { status: 400 })
+        return Response.json({ ok: false, error: 'Invalid bakin-plugin.json' }, { status: 400 })
       }
 
       const id = typeof manifest.id === 'string' && manifest.id.length > 0
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       if (!/^[a-z0-9][a-z0-9-_]{0,39}$/i.test(id)) {
         rmSync(stagingDir, { recursive: true, force: true })
-        return NextResponse.json({
+        return Response.json({
           ok: false,
           error: `Invalid plugin id "${id}" — must match /^[a-z0-9][a-z0-9-_]{0,39}$/i`,
         }, { status: 400 })
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       log.info(`Installed plugin "${id}"`, { source: body.source, type: body.type })
 
-      return NextResponse.json({
+      return Response.json({
         ok: true,
         id,
         message: `Installed "${id}". Restart Bakin to load the plugin.`,
@@ -114,6 +115,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.error('Plugin install failed', err as Error, { source: body.source })
-    return NextResponse.json({ ok: false, error: message }, { status: 500 })
+    return Response.json({ ok: false, error: message }, { status: 500 })
   }
 }

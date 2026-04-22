@@ -52,6 +52,7 @@ import * as agentsActionRoute from './packages/host/src/api/agents/[action]'
 import * as memoryLogRoute from './packages/host/src/api/memory/log'
 import * as pluginSettingsIdRoute from './packages/host/src/api/plugin-settings/[pluginId]'
 import * as pluginSettingsSchemasRoute from './packages/host/src/api/plugin-settings/schemas'
+import * as pluginsInstallRoute from './packages/host/src/api/plugins/install'
 
 const log = createLogger('server')
 
@@ -301,15 +302,9 @@ app.prepare().then(async () => {
       return
     }
 
-    // Plugin install/remove endpoints
+    // Plugin install/remove endpoints (migrated — see Phase B block below for install)
     if (url.pathname === '/api/plugins/install' && req.method === 'POST') {
-      handleJsonPost(req, res, async (body) => {
-        const { source, type } = body as { source: string; type: 'local' | 'github' }
-        if (type === 'github') {
-          return pluginInstaller.installFromGithub(source, process.cwd())
-        }
-        return pluginInstaller.installFromPath(source, process.cwd())
-      })
+      dispatchWebHandler(req, res, pluginsInstallRoute.post)
       return
     }
 
