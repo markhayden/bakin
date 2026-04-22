@@ -48,6 +48,7 @@ import * as activityRoute from './packages/host/src/api/activity'
 import * as agentsAvatarRoute from './packages/host/src/api/agents/avatar'
 import * as agentsHealthRoute from './packages/host/src/api/agents/health'
 import * as agentsSettingsRoute from './packages/host/src/api/agents/settings'
+import * as agentsActionRoute from './packages/host/src/api/agents/[action]'
 
 const log = createLogger('server')
 
@@ -349,6 +350,12 @@ app.prepare().then(async () => {
         log.error('List agents failed', err)
         jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
       })
+      return
+    }
+
+    // Migrated: /api/agents/{action} — POST start/stop/restart
+    if (req.method === 'POST' && /^\/api\/agents\/(start|stop|restart)$/.test(url.pathname)) {
+      dispatchWebHandler(req, res, agentsActionRoute.post)
       return
     }
 
