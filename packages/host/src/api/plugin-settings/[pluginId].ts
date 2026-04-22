@@ -1,4 +1,9 @@
-import { NextResponse } from 'next/server'
+/**
+ * GET/PUT /api/plugin-settings/{pluginId} — per-plugin settings.
+ *
+ * Migrated from src/app/api/plugin-settings/[pluginId]/route.ts for
+ * Phase B of #147. The {pluginId} segment is parsed from url.pathname.
+ */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
@@ -8,28 +13,28 @@ function getSettingsPath(pluginId: string): string {
   return join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
 }
 
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ pluginId: string }> },
-) {
-  const { pluginId } = await params
+function extractPluginId(url: URL): string {
+  // /api/plugin-settings/{pluginId}
+  const segments = url.pathname.split('/').filter(Boolean)
+  return segments[segments.length - 1] || ''
+}
+
+export async function get(_req: Request, url: URL): Promise<Response> {
+  const pluginId = extractPluginId(url)
   const path = getSettingsPath(pluginId)
   if (!existsSync(path)) {
-    return NextResponse.json({})
+    return Response.json({})
   }
   try {
     const data = JSON.parse(readFileSync(path, 'utf-8'))
-    return NextResponse.json(data)
+    return Response.json(data)
   } catch {
-    return NextResponse.json({})
+    return Response.json({})
   }
 }
 
-export async function PUT(
-  req: Request,
-  { params }: { params: Promise<{ pluginId: string }> },
-) {
-  const { pluginId } = await params
+export async function put(req: Request, url: URL): Promise<Response> {
+  const pluginId = extractPluginId(url)
   const body = await req.json()
   const path = getSettingsPath(pluginId)
   const dir = join(getContentDir(), 'plugin-settings')
@@ -43,5 +48,5 @@ export async function PUT(
   // Notify the plugin of settings change
   pluginRegistry.notifySettingsChange(pluginId, body).catch(() => {})
 
-  return NextResponse.json({ ok: true })
+  return Response.json({ ok: true })
 }

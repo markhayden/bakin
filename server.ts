@@ -50,6 +50,7 @@ import * as agentsHealthRoute from './packages/host/src/api/agents/health'
 import * as agentsSettingsRoute from './packages/host/src/api/agents/settings'
 import * as agentsActionRoute from './packages/host/src/api/agents/[action]'
 import * as memoryLogRoute from './packages/host/src/api/memory/log'
+import * as pluginSettingsIdRoute from './packages/host/src/api/plugin-settings/[pluginId]'
 
 const log = createLogger('server')
 
@@ -412,6 +413,21 @@ app.prepare().then(async () => {
     if (url.pathname === '/api/memory/log' && req.method === 'POST') {
       dispatchWebHandler(req, res, memoryLogRoute.post)
       return
+    }
+
+    // /api/plugin-settings/{pluginId} — exclude /schemas (own route)
+    {
+      const psMatch = url.pathname.match(/^\/api\/plugin-settings\/([^/]+)$/)
+      if (psMatch && psMatch[1] !== 'schemas') {
+        if (req.method === 'GET') {
+          dispatchWebHandler(req, res, pluginSettingsIdRoute.get)
+          return
+        }
+        if (req.method === 'PUT') {
+          dispatchWebHandler(req, res, pluginSettingsIdRoute.put)
+          return
+        }
+      }
     }
 
     // Let Next.js handle everything else (legacy src/app/api/* + pages)
