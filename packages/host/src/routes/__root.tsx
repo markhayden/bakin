@@ -14,6 +14,7 @@ import { Providers } from '../providers/Providers'
 import { Header } from '../components/layout/header'
 import { AppSidebar } from '../components/layout/app-sidebar'
 import { LayoutShell } from '../components/layout/layout-shell'
+import { PluginHost } from '../plugin-host/PluginHost'
 import config from '../../../../bakin.config'
 
 const themeOverrides = config.theme && Object.keys(config.theme).length > 0
@@ -32,10 +33,12 @@ function RootComponent() {
 
   return (
     <Providers>
-      <Header />
-      <LayoutShell sidebar={<AppSidebar />}>
-        <Outlet />
-      </LayoutShell>
+      <PluginHost>
+        <Header />
+        <LayoutShell sidebar={<AppSidebar />}>
+          <Outlet />
+        </LayoutShell>
+      </PluginHost>
     </Providers>
   )
 }
