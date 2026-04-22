@@ -169,7 +169,7 @@ const projectsPlugin: BakinPlugin = {
       if (!id) return json({ error: 'Missing id parameter' }, 400)
       const project = readProject(id)
       if (!project) return json({ error: 'Project not found' }, 404)
-      return json({ project: resolveLinkedTaskStatuses(project) })
+      return json({ project: await resolveLinkedTaskStatuses(project) })
     }
     ctx.registerRoute({ path: '/:projectId', method: 'GET', description: 'Get project by ID', handler: getHandler })
 
@@ -434,7 +434,7 @@ const projectsPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>) => {
         const project = readProject(params.projectId as string)
         if (!project) return { ok: false, error: `Project not found: ${params.projectId}` }
-        return { ok: true, project: resolveLinkedTaskStatuses(project) }
+        return { ok: true, project: await resolveLinkedTaskStatuses(project) }
       },
     })
 
