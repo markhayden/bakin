@@ -109,7 +109,7 @@ Higher-numbered paths exist as backstops for the lower ones.
 | `packages/core/src/plugin-types.ts` | `SearchAPI`, `SearchContentTypeDefinition`, `SearchIndexDefinition` interfaces |
 | `plugins/assets/lib/content-extractor.ts` | Server-side text extraction for PDFs (pdf-parse) and plain text formats |
 | `plugins/assets/lib/asset-url.ts` | `buildAssetFileUrl()` — produces `file://` URLs for CLIP's visual index |
-| `src/hooks/use-search.ts` | Client-side hook for search queries (`useSearch`, types `SearchResult` / `SearchResponse` / `UseSearchOptions` / `UseSearchReturn`) + `reorderBySearchResults` utility |
+| `src/hooks/use-search.ts` | Client-side hook for search queries (`useSearch`, types `SearchResult` / `SearchResponse` / `UseSearchOptions` / `UseSearchReturn`) + `reorderBySearchResults` utility. Plugins import this via `@bakin/sdk/hooks`, which re-exports it under the canonical author surface. |
 | `src/core/api-search-handler.ts` | Cross-plugin `/api/search` request handler (extracted from `server.ts` for testability) |
 
 ## Table Naming

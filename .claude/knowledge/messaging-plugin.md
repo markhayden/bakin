@@ -9,6 +9,10 @@ The messaging plugin (formerly "calendar") handles content planning and scheduli
 
 The parent `/messaging` route redirects to `/messaging/calendar`.
 
+## Client Entry
+
+`plugins/messaging/client.tsx` calls `registerPlugin({ id: 'messaging', navItems, slots: { 'page:/messaging/calendar': ContentCalendar, 'page:/messaging/brainstorm': BrainstormView } })`. The shell's TanStack routes render `<Slot name="page:/messaging/calendar" />` (etc.) so the plugin's components mount at those URLs. Server-side routes are plain Bun-shape handlers exposed via `ctx.registerRoute(...)` in `plugins/messaging/index.ts`.
+
 ## Sidebar Sub-Navigation
 
 The messaging plugin uses `NavItem.children` (added in `packages/core/src/plugin-types.ts`) for sub-nav. It also sets `NavItem.alwaysExpanded: true` so the chevron toggle is hidden and children are always visible under the parent in the expanded sidebar. In the collapsed sidebar (icon-only mode), hovering the messaging icon opens a Base UI Popover flyout containing the sub-nav links — so the children remain reachable without expanding the whole sidebar. The flyout uses `openOnHover` with a 120ms delay, and `nativeButton={false}` on the trigger so Base UI accepts the `<Link>` render.
