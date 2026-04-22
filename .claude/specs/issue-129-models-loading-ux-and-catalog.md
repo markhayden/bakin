@@ -1,6 +1,6 @@
 # Models Loading UX + Curated Catalog (#129)
 
-**Status:** Draft
+**Status:** Implemented (PR #131, commits `c01b66c..b7cc50b` on `issue-129-models-loading-ux`)
 **Tracking issue:** [#129](https://github.com/madeinwyo/bakin/issues/129)
 **Replaces:** closed #128 (plugin-contributed models registry — premature abstraction)
 
