@@ -2,16 +2,18 @@
  * GET /api/plugins/:pluginId/assets/:path* — serves a plugin's client bundle.
  *
  * Resolution order:
- *   1. ~/.bakin/plugins/<id>/dist/<path>   (user-installed)
- *   2. plugins/<id>/dist/<path>            (repo core plugins)
+ *   1. ~/.bakin/plugins/<id>/dist/<path>   (user-installed; always on disk)
+ *   2. EMBEDDED_ASSETS map                 (core plugins embedded at build time)
+ *   3. plugins/<id>/dist/<path>            (repo core plugins, dev fallback)
  *
- * Phase G embeds the core dist/ trees into the compiled binary via
- * `Bun.embeddedFiles`; until then we read from disk. User plugins always
- * live on disk under ~/.bakin/.
+ * In the compiled binary the EMBEDDED_ASSETS lookup wins for every core
+ * plugin. User plugins still live on disk under ~/.bakin/ because they're
+ * installed post-launch.
  */
 import { readFileSync, existsSync, statSync } from 'fs'
 import { join, extname } from 'path'
 import { getContentDir } from '@/core/content-dir'
+import { EMBEDDED_ASSETS } from '../_embedded-assets'
 
 const MIME: Record<string, string> = {
   '.js': 'application/javascript; charset=utf-8',
@@ -19,6 +21,10 @@ const MIME: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+}
+
+function mimeFor(path: string): string {
+  return MIME[extname(path).toLowerCase()] ?? 'application/octet-stream'
 }
 
 function parsePath(url: URL): { pluginId: string; relPath: string } | null {
@@ -38,23 +44,48 @@ export async function get(_req: Request, url: URL): Promise<Response> {
 
   const { pluginId, relPath } = parsed
 
-  const candidates = [
-    join(getContentDir(), 'plugins', pluginId, 'dist', relPath),
-    join(process.cwd(), 'plugins', pluginId, 'dist', relPath),
-  ]
-
-  for (const candidate of candidates) {
-    if (!existsSync(candidate)) continue
-    const stat = statSync(candidate)
-    if (!stat.isFile()) continue
-
-    const mime = MIME[extname(candidate).toLowerCase()] ?? 'application/octet-stream'
-    const body = readFileSync(candidate)
+  // 1) User-installed plugin — always on disk.
+  const userPath = join(getContentDir(), 'plugins', pluginId, 'dist', relPath)
+  if (existsSync(userPath) && statSync(userPath).isFile()) {
+    const body = readFileSync(userPath)
     return new Response(body, {
       status: 200,
       headers: {
-        'Content-Type': mime,
-        'Content-Length': stat.size.toString(),
+        'Content-Type': mimeFor(userPath),
+        'Content-Length': statSync(userPath).size.toString(),
+        'Cache-Control': 'public, max-age=300',
+      },
+    })
+  }
+
+  // 2) Embedded core plugin (compiled binary wins here; dev mode lands on
+  //    the same absolute on-disk path and works identically).
+  const embeddedPath = EMBEDDED_ASSETS.get(url.pathname)
+  if (embeddedPath) {
+    const file = Bun.file(embeddedPath)
+    if (await file.exists()) {
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          'Content-Type': mimeFor(relPath),
+          'Content-Length': String(bytes.length),
+          'Cache-Control': 'public, max-age=300',
+        },
+      })
+    }
+  }
+
+  // 3) Dev fallback — repo core plugin that wasn't in the embed map yet
+  //    (e.g. generator hasn't re-run since last dist rebuild).
+  const repoPath = join(process.cwd(), 'plugins', pluginId, 'dist', relPath)
+  if (existsSync(repoPath) && statSync(repoPath).isFile()) {
+    const body = readFileSync(repoPath)
+    return new Response(body, {
+      status: 200,
+      headers: {
+        'Content-Type': mimeFor(repoPath),
+        'Content-Length': statSync(repoPath).size.toString(),
         'Cache-Control': 'public, max-age=300',
       },
     })

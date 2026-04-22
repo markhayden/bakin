@@ -69,6 +69,22 @@ import { APP_VERSION } from './packages/core/src/constants'
 
 const BAKIN_VERSION = APP_VERSION
 
+// Minimal argv dispatch for the compiled binary entry point (#147 TG1).
+// Full subcommand surface lands in TG2 via src/core/cli.ts — for now we
+// only handle `version` and `--help` so the binary's smoke test passes.
+{
+  const firstArg = process.argv[2]
+  if (firstArg === 'version' || firstArg === '--version' || firstArg === '-v') {
+    console.log(APP_VERSION)
+    process.exit(0)
+  }
+  if (firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
+    console.log(`Usage: bakin <command>\n\nRun \`bakin start\` (or no args) to start the server.`)
+    process.exit(0)
+  }
+  // Any other non-start subcommand is handled by src/core/cli.ts after TG2.
+}
+
 const port = Number(process.env.PORT || 3737)
 const CONTENT_DIR = getContentDir()
 
@@ -499,7 +515,13 @@ const eventBus = new BakinEventBus(broadcast)
 
     // Serve the packages/host client bundle + SPA fallback for any unmatched
     // path. TanStack Router handles route dispatch client-side.
-    serveHostClient(req, res, url)
+    serveHostClient(req, res, url).catch((err) => {
+      log.error('Static serve failed', err, { path: url.pathname })
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' })
+        res.end('Internal server error')
+      }
+    })
   })
 
   // Setup mcporter (install if needed + sync per-agent config)
