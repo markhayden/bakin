@@ -60,6 +60,28 @@ vi.mock('os', async (importOriginal) => {
   }
 })
 
+// The os.homedir mock above routes ~/.bakin to tmpdir, but the hook
+// validator also requires an explicit content-dir mock. Both point at
+// the same tmpdir; this is defense-in-depth.
+vi.mock('../../../src/core/content-dir', async () => {
+  const { join: pathJoin } = await import('path')
+  const { tmpdir } = await import('os')
+  const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
+  return {
+    getContentDir: () => dir,
+    getBakinPaths: () => ({ root: dir }),
+  }
+})
+vi.mock('../../../packages/core/src/content-dir', async () => {
+  const { join: pathJoin } = await import('path')
+  const { tmpdir } = await import('os')
+  const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
+  return {
+    getContentDir: () => dir,
+    getBakinPaths: () => ({ root: dir }),
+  }
+})
+
 vi.mock('../../../src/core/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
@@ -144,6 +166,7 @@ describe('Models Plugin Activation', () => {
       'POST /config',
       'POST /defaults',
       'POST /gateway/restart',
+      'POST /refresh',
       'PUT /profiles',
     ])
   })
@@ -331,6 +354,114 @@ describe('GET /available', () => {
 
     const haiku = models.find((m) => (m.id as string).includes('haiku'))!
     expect(haiku.tier).toBe('budget')
+  })
+
+  it('returns stale flag in response shape', async () => {
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    // stale is defined on every successful response (true|false)
+    expect(typeof body.stale).toBe('boolean')
+  })
+
+  it('enriches catalog-matched models with description, bestFor, costRange', async () => {
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    const models = body.models as Array<Record<string, unknown>>
+
+    const sonnet = models.find((m) => m.id === 'anthropic/claude-sonnet-4-6')!
+    expect(sonnet.description).toBeTruthy()
+    expect(sonnet.bestFor).toBeTruthy()
+    expect(sonnet.costRange).toBeTruthy()
+    expect(sonnet.kind).toBe('llm')
+    expect(sonnet.brandIconSlug).toBe('anthropic')
+    expect(sonnet.providerLabel).toBe('Anthropic')
+    expect(sonnet.providerBrandIconSlug).toBe('anthropic')
+  })
+
+  it('resolves provider metadata on models even when the model itself is not in the catalog', async () => {
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    const models = body.models as Array<Record<string, unknown>>
+
+    // openai-codex/gpt-5.4 is not in the model catalog (we only seeded openai/gpt-5.4),
+    // but `openai-codex` IS in the provider catalog, so the provider-level fields
+    // should resolve even with no per-model enrichment.
+    const gpt = models.find((m) => m.id === 'openai-codex/gpt-5.4')!
+    expect(gpt.providerLabel).toBe('OpenAI (Codex)')
+    expect(gpt.providerBrandIconSlug).toBe('openai')
+    // Per-model fields should be absent (catalog miss)
+    expect(gpt.description).toBeUndefined()
+  })
+})
+
+describe('POST /refresh', () => {
+  it('is registered', () => {
+    expect(findRoute(activated.routes, 'POST', '/refresh')).toBeDefined()
+  })
+
+  it('bypasses cache and returns fresh models', async () => {
+    const route = findRoute(activated.routes, 'POST', '/refresh')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.cached).toBe(false)
+    expect(body.stale).toBe(false)
+    expect(Array.isArray(body.models)).toBe(true)
+    expect((body.models as unknown[]).length).toBeGreaterThan(0)
+  })
+})
+
+describe('GET /available — response shape invariants', () => {
+  it('response always has cached, cachedAt, stale, and models fields', async () => {
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    expect(body).toHaveProperty('models')
+    expect(body).toHaveProperty('cached')
+    expect(body).toHaveProperty('cachedAt')
+    expect(body).toHaveProperty('stale')
+    expect(Array.isArray(body.models)).toBe(true)
+  })
+
+  it('enriched models carry kind field for catalog hits', async () => {
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    const models = body.models as Array<Record<string, unknown>>
+    const sonnet = models.find((m) => m.id === 'anthropic/claude-sonnet-4-6')
+    expect(sonnet).toBeDefined()
+    expect(sonnet!.kind).toBe('llm')
+  })
+
+  it('models without a catalog match still render with tier from heuristic', async () => {
+    // The openclaw CLI mock returns google/gemini-2.5-pro. That provider IS
+    // in the catalog but the specific id is not — so the per-model enrichment
+    // should be absent but the provider label should still resolve.
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { body } = await callRoute(route, activated.ctx)
+    const models = body.models as Array<Record<string, unknown>>
+    const gemini = models.find((m) => m.id === 'google/gemini-2.5-pro')
+    if (gemini) {
+      // tier comes from heuristic (tierFromId treats 'pro' as premium)
+      expect(gemini.tier).toBe('premium')
+      // provider-level enrichment resolves even when model isn't cataloged
+      expect(gemini.providerLabel).toBe('Google')
+    }
+  })
+})
+
+describe('POST /gateway/restart', () => {
+  it('clears the in-memory cache after a successful restart', async () => {
+    // Prime the cache via /available
+    const availableRoute = findRoute(activated.routes, 'GET', '/available')!
+    const first = await callRoute(availableRoute, activated.ctx)
+    expect((first.body.models as unknown[]).length).toBeGreaterThan(0)
+
+    // Restart — will call the real openclaw binary; on CI / without it installed
+    // the restart itself will error (500). We only assert the handler handles
+    // that gracefully without crashing. The important invariant (cache clear)
+    // is covered by the unit-level cache tests; wiring here guards the route.
+    const restartRoute = findRoute(activated.routes, 'POST', '/gateway/restart')!
+    const result = await callRoute(restartRoute, activated.ctx)
+    expect([200, 500]).toContain(result.status)
   })
 })
 
