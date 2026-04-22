@@ -11,7 +11,8 @@
   "scripts": {
     "dev": "bun run server.ts",
     "build": "next build && bun run build:host",
-    "build:host": "bun run packages/host/build.ts",
+    "build:host": "bun run scripts/build-vendors.ts && bun run packages/host/build.ts",
+    "build:vendors": "bun run scripts/build-vendors.ts",
     "start": "bun run server.ts",
     "lint": "eslint src plugins tests scripts dev cli server.ts bakin.config.ts next.config.ts vitest.config.ts eslint.config.mjs",
     "lint:home-bypasses": "bun run scripts/bin/check-home-bypasses.mjs",

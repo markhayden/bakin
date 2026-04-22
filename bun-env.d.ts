@@ -57,4 +57,25 @@ declare namespace Bun {
   }
 
   function build(config: BuildConfig): Promise<BuildResult>
+
+  interface Subprocess {
+    readonly exited: Promise<number>
+    readonly stdout: ReadableStream<Uint8Array>
+    readonly stderr: ReadableStream<Uint8Array>
+    readonly stdin: WritableStream<Uint8Array> | null
+    readonly pid: number
+    kill(signal?: number | string): void
+  }
+
+  interface SpawnOptions {
+    stdin?: 'inherit' | 'pipe' | 'ignore'
+    stdout?: 'inherit' | 'pipe' | 'ignore'
+    stderr?: 'inherit' | 'pipe' | 'ignore'
+    cwd?: string
+    env?: Record<string, string | undefined>
+  }
+
+  function spawn(cmd: string[], options?: SpawnOptions): Subprocess
+
+  function resolveSync(specifier: string, from: string): string
 }
