@@ -1,14 +1,20 @@
 /**
  * Team plugin — client entry point.
  */
-import type { NavItem } from '../../src/lib/plugin-types'
-import { registerSlot } from '@bakin/sdk/slots'
+import { registerPlugin } from '@bakin/sdk'
+import type { NavItem } from '@bakin/sdk'
 import { TeamGrid } from './components/team-grid'
 import { AgentDetail } from './components/agent-detail'
 
-export const navItems: NavItem[] = [
+const navItems: NavItem[] = [
   { id: 'team', label: 'Team', icon: 'Users', href: '/team', order: 60 },
 ]
 
-registerSlot('page:/team', TeamGrid)
-registerSlot('page:/team/[id]', AgentDetail)
+registerPlugin({
+  id: 'team',
+  navItems,
+  slots: {
+    'page:/team': TeamGrid,
+    'page:/team/[id]': AgentDetail,
+  },
+})
