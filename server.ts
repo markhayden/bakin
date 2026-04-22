@@ -54,6 +54,7 @@ import * as pluginSettingsSchemasRoute from './packages/host/src/api/plugin-sett
 import * as pluginsInstallRoute from './packages/host/src/api/plugins/install'
 import * as pluginsRemoveRoute from './packages/host/src/api/plugins/remove'
 import * as pluginsMemoryAuditRoute from './packages/host/src/api/plugins/memory/audit'
+import * as pluginsMemoryGatewayRoute from './packages/host/src/api/plugins/memory/gateway'
 
 const log = createLogger('server')
 
@@ -418,6 +419,11 @@ app.prepare().then(async () => {
     // routes now served directly (they shadow the plugin catch-all).
     if (url.pathname === '/api/plugins/memory/audit' && req.method === 'GET') {
       dispatchWebHandler(req, res, pluginsMemoryAuditRoute.get)
+      return
+    }
+
+    if (url.pathname === '/api/plugins/memory/gateway' && req.method === 'GET') {
+      dispatchWebHandler(req, res, pluginsMemoryGatewayRoute.get)
       return
     }
 
