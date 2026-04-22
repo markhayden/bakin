@@ -1,18 +1,17 @@
 /**
- * Client entry for the Bakin host. Mounts the React root into #root.
- *
- * The real routing + shell come in TC2/TC3. For TC1 this is just proof
- * of the Bun.build() → browser pipeline.
+ * Client entry for the Bakin host. Mounts the React root with the
+ * TanStack Router provider at #root.
  */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { App } from './App'
+import { RouterProvider } from '@tanstack/react-router'
+import { router } from './router'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root element missing from index.html')
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <RouterProvider router={router} />
   </StrictMode>,
 )
