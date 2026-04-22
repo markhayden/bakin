@@ -33,19 +33,15 @@ vi.mock('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
 
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  readTaskboard: () => ({
-    columns: {
-      todo: [{ id: 'board01', title: 'Board Task 1' }],
-      inProgress: [],
-      review: [],
-      done: [{ id: 'board02', title: 'Done Task' }],
-      archived: [],
-      blocked: [],
-      backlog: [],
-    },
-  }),
-}))
+const mockTaskboardColumns = {
+  todo: [{ id: 'board01', title: 'Board Task 1' }],
+  inProgress: [],
+  review: [],
+  done: [{ id: 'board02', title: 'Done Task' }],
+  archived: [],
+  blocked: [],
+  backlog: [],
+}
 
 // Suppress broadcast
 ;(globalThis as any).__bakinBroadcast = vi.fn()
@@ -76,18 +72,27 @@ import {
   resolveLinkedTaskStatuses,
 } from '../../../plugins/projects/lib/project-service'
 import { readProject } from '../../../plugins/projects/lib/parser'
+import { getHookRegistry } from '../../../src/lib/plugin-registry'
 
 // ---------------------------------------------------------------------------
 // Setup / Teardown
 // ---------------------------------------------------------------------------
 
+let unregisterTaskboardHook: (() => void) | null = null
+
 beforeEach(() => {
   mkdirSync(projectsDir, { recursive: true })
   clearIndex()
   mockCreateTask.mockClear()
+  unregisterTaskboardHook = getHookRegistry().register(
+    'tasks.readTaskboard',
+    () => ({ columns: mockTaskboardColumns }),
+  )
 })
 
 afterEach(() => {
+  if (unregisterTaskboardHook) unregisterTaskboardHook()
+  unregisterTaskboardHook = null
   rmSync(testDir, { recursive: true, force: true })
 })
 
@@ -395,7 +400,7 @@ describe('resolveLinkedTaskStatuses', () => {
     await linkChecklistItem(id, 't002', 'missing99')
 
     const project = readProject(id)!
-    const resolved = resolveLinkedTaskStatuses(project)
+    const resolved = await resolveLinkedTaskStatuses(project)
 
     expect(resolved.resolvedTasks['board01']).toEqual({ column: 'todo', title: 'Board Task 1' })
     expect(resolved.resolvedTasks['missing99']).toBeNull() // not found on board

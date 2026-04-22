@@ -9,12 +9,9 @@ import Database from 'better-sqlite3'
 import { existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
-import { cancelInstance } from '../../workflows/lib/runtime'
-import { generateTaskId } from './ids'
+import { generateTaskId } from '@bakin/core/ids'
+import { getHookRegistry } from '../../../src/lib/plugin-registry'
 import type { Task, TaskColumns, TaskBoard, ColumnId, TaskLogEntry } from '../types'
-
-// Re-export for convenience (consumers expect these from the store module)
-export { generateTaskId } from './ids'
 
 const BAKIN_OWNER_PREFIX = 'bakin:task:'
 
@@ -425,6 +422,7 @@ export function moveTask(identifier: string, to: string, from?: string, channel?
     if (!toCol) throw new Error(`Invalid column: ${to}`)
 
     const isHuman = channel === 'human'
+    let flowIdToCancel: string | null = null
 
     withDb(db => {
       const flow = findFlowRow(db, identifier)
@@ -498,11 +496,17 @@ export function moveTask(identifier: string, to: string, from?: string, channel?
         flow.flow_id,
       )
 
-      // Cancel active workflow instances when task leaves in-progress
+      // Cancel active workflow instances when task leaves in-progress — fire after withDb
       if ((toCol === 'done' || toCol === 'blocked') && currentCol === 'inProgress') {
-        try { cancelInstance(flow.flow_id) } catch { /* best effort */ }
+        flowIdToCancel = flow.flow_id
       }
     })
+
+    if (flowIdToCancel) {
+      void getHookRegistry()
+        .invoke('workflows.cancelInstance', { taskId: flowIdToCancel })
+        .catch(() => { /* best effort */ })
+    }
 
     broadcastChange()
     return Promise.resolve()
@@ -543,7 +547,9 @@ export function deleteTask(identifier: string): Promise<void> {
     })
 
     // Cancel any active workflow instances
-    try { cancelInstance(flowId) } catch { /* best effort */ }
+    void getHookRegistry()
+      .invoke('workflows.cancelInstance', { taskId: flowId })
+      .catch(() => { /* best effort */ })
 
     broadcastChange()
     return Promise.resolve()

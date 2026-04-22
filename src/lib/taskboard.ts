@@ -4,7 +4,6 @@
  * continues to work without changes.
  */
 export {
-  generateTaskId,
   readTaskboard,
   createTask,
   moveTask,

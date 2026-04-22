@@ -22,6 +22,7 @@ export default defineConfig({
       '@bakin/core/main-agent': path.resolve(__dirname, 'packages/core/src/main-agent.ts'),
       '@bakin/core/content-dir': path.resolve(__dirname, 'packages/core/src/content-dir.ts'),
       '@bakin/core/settings': path.resolve(__dirname, 'packages/core/src/settings.ts'),
+      '@bakin/core/ids': path.resolve(__dirname, 'packages/core/src/ids.ts'),
       '@bakin/core': path.resolve(__dirname, 'packages/core/src/index.ts'),
       '@bakin/tasks': path.resolve(__dirname, 'plugins/tasks'),
       '@bakin/memory': path.resolve(__dirname, 'plugins/memory'),
