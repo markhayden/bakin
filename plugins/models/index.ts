@@ -260,6 +260,12 @@ interface FetchResult {
   error?: string
 }
 
+// In-flight promise dedupe — two concurrent /available requests on a
+// cold-cold start would otherwise both spawn `openclaw models list`,
+// a 15-20 second CLI process. With this, the second caller awaits
+// the first's result.
+let inflightFetch: Promise<FetchResult> | null = null
+
 async function fetchAvailableModels(): Promise<FetchResult> {
   // 1. Hot read — in-memory cache (fresh by TTL)
   const memCached = getModelsCache()
@@ -277,19 +283,26 @@ async function fetchAvailableModels(): Promise<FetchResult> {
     return { models: diskCached.models, cached: true, cachedAt: diskCached.fetchedAt, stale }
   }
 
-  // 3. No cache → live fetch. On success: write both caches. On failure:
+  // 3. No cache → live fetch. Dedupe concurrent callers against one
+  //    in-flight promise. On success: write both caches. On failure:
   //    honest empty state — no fake data.
-  try {
-    const models = await loadConfiguredModelsFromOpenClaw()
-    const now = Date.now()
-    setModelsCache({ models, fetchedAt: now })
-    writePersistedCache({ models, fetchedAt: now, source: 'openclaw' })
-    return { models, cached: false, cachedAt: now, stale: false }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error('Failed to fetch models from OpenClaw:', err)
-    return { models: [], cached: false, cachedAt: null, stale: false, error: message }
-  }
+  if (inflightFetch) return inflightFetch
+  inflightFetch = (async (): Promise<FetchResult> => {
+    try {
+      const models = await loadConfiguredModelsFromOpenClaw()
+      const now = Date.now()
+      setModelsCache({ models, fetchedAt: now })
+      writePersistedCache({ models, fetchedAt: now, source: 'openclaw' })
+      return { models, cached: false, cachedAt: now, stale: false }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('Failed to fetch models from OpenClaw:', err)
+      return { models: [], cached: false, cachedAt: null, stale: false, error: message }
+    } finally {
+      inflightFetch = null
+    }
+  })()
+  return inflightFetch
 }
 
 // ---------------------------------------------------------------------------

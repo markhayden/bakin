@@ -6,6 +6,11 @@ import { Separator } from '@/components/ui/separator'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { useAgent } from '@bakin/team/hooks/use-agent-store'
 import {
+  useNotificationChannels,
+  getChannelLabel,
+} from '../hooks/use-notification-channels'
+import { ChannelIcon } from '../hooks/channel-icon'
+import {
   User,
   ShieldCheck,
   Megaphone,
@@ -177,6 +182,7 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
 }
 
 function GateStepDetail({ step }: { step: GateStep }) {
+  const channels = useNotificationChannels()
   return (
     <div className="space-y-6">
       {/* Description */}
@@ -215,7 +221,10 @@ function GateStepDetail({ step }: { step: GateStep }) {
           <div className="space-y-2">
             {step.notify.map((ch, i) => (
               <div key={i} className="flex items-center gap-2 rounded-lg bg-surface p-3">
-                <Badge variant="outline" className="text-[10px]">{ch.channel}</Badge>
+                <Badge variant="outline" className="text-[10px] inline-flex items-center gap-1">
+                  <ChannelIcon channelId={ch.channel} className="size-3" />
+                  {getChannelLabel(ch.channel, channels)}
+                </Badge>
                 <span className="text-sm font-mono text-muted-foreground">{ch.target}</span>
               </div>
             ))}
