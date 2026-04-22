@@ -78,4 +78,35 @@ declare namespace Bun {
   function spawn(cmd: string[], options?: SpawnOptions): Subprocess
 
   function resolveSync(specifier: string, from: string): string
+
+  interface BunFile {
+    exists(): Promise<boolean>
+    text(): Promise<string>
+    arrayBuffer(): Promise<ArrayBuffer>
+    bytes(): Promise<Uint8Array>
+    readonly size: number
+    readonly type: string
+  }
+
+  function file(path: string): BunFile
+  function write(path: string, data: string | ArrayBuffer | Uint8Array | BunFile): Promise<number>
+
+  const embeddedFiles: readonly BunFile[]
 }
+
+// Bun exposes `import.meta.dir` for the directory of the current module.
+// The TS lib ships ImportMeta with only `url`; extend it here.
+interface ImportMeta {
+  readonly dir: string
+}
+
+/**
+ * Files imported with `with { type: 'file' }` resolve to a string path.
+ * In dev that's an absolute on-disk path; in binaries compiled via
+ * `bun build --compile`, it's a `/$bunfs/...` virtual path. Readable via
+ * `Bun.file(path)` in both modes.
+ *
+ * The generated `_embedded-assets.ts` uses `// @ts-nocheck` to bypass
+ * TypeScript's static resolution of these non-module files — Bun handles
+ * the import at runtime / compile time.
+ */

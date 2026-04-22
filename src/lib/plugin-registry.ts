@@ -43,6 +43,7 @@ import { appendAudit } from '../core/audit'
 import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 import { buildSearchAPI } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
+import { CORE_PLUGIN_IMPORTS } from './plugin-static-imports'
 
 const log = createLogger('plugin-registry')
 
@@ -314,8 +315,20 @@ class PluginRegistryImpl {
 
   private async loadPlugin(pluginPath: string, storage: StorageAdapter, events: EventBus): Promise<void> {
     try {
-      const mod = await import(/* webpackIgnore: true */ `../../${pluginPath}`)
-      const plugin: BakinPlugin = mod.default || mod.plugin || mod
+      // Core plugins are statically imported (see plugin-static-imports.ts)
+      // so `bun build --compile` can trace and embed their source. Fall
+      // back to dynamic import for any entry that isn't in the static map
+      // (user plugins use loadUserPlugins, not this function, so the
+      // fallback only fires for future non-core config entries).
+      let plugin: BakinPlugin | undefined = CORE_PLUGIN_IMPORTS[pluginPath]
+      if (!plugin) {
+        const mod = await import(/* webpackIgnore: true */ `../../${pluginPath}`)
+        plugin = mod.default || mod.plugin || mod
+      }
+      if (!plugin) {
+        console.warn(`Plugin at ${pluginPath} returned no export — skipping`)
+        return
+      }
 
       if (!plugin.id || !plugin.activate) {
         console.warn(`Plugin at ${pluginPath} missing id or activate — skipping`)
