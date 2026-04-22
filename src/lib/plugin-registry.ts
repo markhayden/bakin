@@ -43,7 +43,20 @@ import { appendAudit } from '../core/audit'
 import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 import { buildSearchAPI } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
-import { CORE_PLUGIN_IMPORTS } from './plugin-static-imports'
+
+/**
+ * Optional static core-plugin table. Set from server.ts on startup so
+ * `bun build --compile` can trace each plugin's module graph from the
+ * entry point. In test environments this stays empty, so test modules
+ * that import the registry don't transitively drag every plugin
+ * (and every plugin's side effects) into their module graph.
+ *
+ * Shape: { 'plugins/team': BakinPluginInstance, ... }
+ */
+let corePluginTable: Readonly<Record<string, BakinPlugin>> = {}
+export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>): void {
+  corePluginTable = table
+}
 
 const log = createLogger('plugin-registry')
 
@@ -315,12 +328,12 @@ class PluginRegistryImpl {
 
   private async loadPlugin(pluginPath: string, storage: StorageAdapter, events: EventBus): Promise<void> {
     try {
-      // Core plugins are statically imported (see plugin-static-imports.ts)
-      // so `bun build --compile` can trace and embed their source. Fall
-      // back to dynamic import for any entry that isn't in the static map
-      // (user plugins use loadUserPlugins, not this function, so the
-      // fallback only fires for future non-core config entries).
-      let plugin: BakinPlugin | undefined = CORE_PLUGIN_IMPORTS[pluginPath]
+      // Core plugins come from the static table `server.ts` registers
+      // via `registerCorePlugins` — this is what lets `bun build --compile`
+      // trace and embed each plugin's module graph. In tests the table
+      // stays empty, so we fall back to dynamic import by path (which
+      // is how the registry worked before TG1).
+      let plugin: BakinPlugin | undefined = corePluginTable[pluginPath]
       if (!plugin) {
         const mod = await import(/* webpackIgnore: true */ `../../${pluginPath}`)
         plugin = mod.default || mod.plugin || mod

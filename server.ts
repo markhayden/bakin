@@ -13,8 +13,16 @@ import { existsSync, mkdirSync } from 'fs'
 
 import { MarkdownStorageAdapter } from './src/lib/storage/markdown-adapter'
 import { BakinEventBus } from './src/lib/events/event-bus'
-import { pluginRegistry } from './src/lib/plugin-registry'
+import { pluginRegistry, registerCorePlugins } from './src/lib/plugin-registry'
+import { CORE_PLUGIN_IMPORTS } from './src/lib/plugin-static-imports'
 import config from './bakin.config'
+
+// Give the registry the static core-plugin table. Done here, not in
+// plugin-registry.ts, so the plugins only live in server.ts's module
+// graph — tests that import the registry don't drag every plugin +
+// every plugin-level side effect (watchers, OpenClaw path access) into
+// their module load.
+registerCorePlugins(CORE_PLUGIN_IMPORTS)
 
 import { createLogger } from './src/core/logger'
 import { getSettings } from './src/core/settings'
@@ -63,6 +71,13 @@ import * as pluginsAssetsRoute from './packages/host/src/api/plugins/assets'
 import { serveHostClient } from './packages/host/src/api/_static'
 import { buildAllUserPlugins } from './packages/host/src/plugin-host/user-plugin-builder'
 import { dispatchCli } from './src/core/cli'
+import { setEmbeddedAssets } from './packages/host/src/api/_embedded-assets'
+// Generated module — pulls in every core asset via `with { type: 'file' }`
+// so `bun build --compile` embeds their bytes. Only imported from server.ts
+// so tests don't drag these imports through vite's transform pipeline.
+import { EMBEDDED_ASSETS_STATIC } from './packages/host/src/api/_embedded-assets-static'
+
+setEmbeddedAssets(EMBEDDED_ASSETS_STATIC)
 
 const log = createLogger('server')
 
