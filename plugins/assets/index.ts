@@ -22,6 +22,7 @@ import { relinkAsset } from './lib/relink'
 import { retypeAsset } from './lib/retype'
 import { buildIndex, upsertAsset, removeAsset, detectVariant, listAssets } from './lib/asset-index'
 import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
+import { pathForFilename } from './lib/path-for-filename'
 import { ASSET_TYPES } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
 import { saveAsset } from './lib/save-asset'
@@ -312,6 +313,7 @@ const assetsPlugin: BakinPlugin = {
     ctx.hooks.register('assets.createStub', (d: Record<string, unknown>) => createStub(d.assetPath as string))
     ctx.hooks.register('assets.detectVariant', (d: Record<string, unknown>) => detectVariant(d.filename as string))
     ctx.hooks.register('assets.getAssetTypes', () => ASSET_TYPES)
+    ctx.hooks.register('assets.pathForFilename', (d: Record<string, unknown>) => pathForFilename(d.filename as string))
 
     // Purge clipboard-source assets when a task completes (if enabled)
     ctx.hooks.register('assets.purgeClipboardForTask', async (d: Record<string, unknown>) => {

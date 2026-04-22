@@ -50,3 +50,4 @@ export type {
 
 // Cross-plugin types
 export type { AvailableModel } from '@bakin/models/types'
+export type { WorkflowDefinition, WorkflowInstance, WorkflowStep, WorkflowTemplate } from '@bakin/workflows/types'
