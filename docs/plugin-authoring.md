@@ -184,7 +184,7 @@ Core-registered slots:
 | `asset-preview` | `{ asset: AssetMeta }` | Inline thumbnail for an asset. Built-in renderer handles common image/text/video types. Narrow on `asset.type` in your renderer and return null when you don't match — the registry falls through to the next. |
 | `asset-detail-modal` | `{ filename?: string; assetPath?: string; onClose: () => void }` | Full-screen asset viewer. Consumed by tasks, projects, anywhere a filename is click-to-preview. |
 | `task-assets` | `{ taskId: string; readOnly?: boolean }` | Renders all assets linked to a task. Used inside the task detail drawer. |
-| `page:/<route>` | component-defined | Any slot whose name starts with `page:/` is mounted at that URL by the shell's TanStack Router. Your component owns the page. |
+| `page:/<route>` | component-defined | Filled at existing routes (`/tasks`, `/projects`, `/assets`, etc.). The shell's TanStack Router tree is hard-coded in `packages/host/src/router.ts`; registering a new top-level path currently requires adding a route file there, not just a `page:/` slot. |
 | `task-sidebar`, `home-widget` | reserved | Not wired in yet; reserved names. |
 
 Multiple plugins may register against the same slot name. Lower `order`
@@ -233,7 +233,11 @@ What happens under the hood:
    `packages/host/src/plugin-host/user-plugin-builder.ts` runs
    `bun install` (only if the plugin declares deps beyond the SDK
    peerDeps) and then `Bun.build()` on `index.ts` + `client.tsx` with
-   the shared externals (`react`, `@bakin/sdk/*`).
+   the shared externals (`react`, `react-dom`, `react-dom/client`,
+   `react/jsx-runtime`, `react/jsx-dev-runtime`, `@tanstack/react-router`,
+   and every `@bakin/sdk/*`). These are resolved at runtime via the
+   browser import map so the plugin shares the shell's singletons — never
+   inline your own copy of them.
 3. Server-side `activate(ctx)` runs on the next Bakin restart
    (`bakin stop && bakin start`). Routes, hooks, exec tools, search
    content types, and health checks activate at boot.
