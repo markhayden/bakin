@@ -10,15 +10,16 @@
  *   - `home-widget`    — dashboard tiles
  *
  * Design:
- *   - `registerSlot(name, Component, order?)` mutates a browser-global Map.
- *     Namespaced under `__bakinSlotRegistry` so HMR / module dedup doesn't
- *     wipe the registrations.
+ *   - `registerSlot(name, Component, order?, owner?)` mutates a browser-
+ *     global Map. Namespaced under `__bakinSlotRegistry` so HMR / module
+ *     dedup doesn't wipe the registrations. `owner` is the pluginId that
+ *     registered the entry — used by `unregisterPlugin` to clean up only
+ *     that plugin's entries during hot-swap.
  *   - `<Slot name="..." {...props} />` reads the registry at render time and
  *     renders every matched component in `order` sequence.
  *
  * Registration happens at plugin client-module load time (import side effect).
- * For core plugins this runs during Bakin's boot; for user plugins it'll run
- * when the Phase 4 client loader dynamic-imports the plugin's `client.mjs`.
+ * Test-only helpers are not exported — tests use the public unregister path.
  */
 
 import type { ComponentType, JSX } from 'react'
@@ -26,6 +27,7 @@ import type { ComponentType, JSX } from 'react'
 interface SlotEntry {
   component: ComponentType<Record<string, unknown>>
   order: number
+  owner?: string
 }
 
 function getRegistry(): Map<string, SlotEntry[]> {
@@ -39,15 +41,17 @@ function getRegistry(): Map<string, SlotEntry[]> {
 /**
  * Register a component for a named slot. Lower `order` renders first; entries
  * with the same order render in registration order. Default `order` is 100.
+ * `owner` is the pluginId for teardown-on-hot-swap; omit in test setups.
  */
 export function registerSlot<TProps>(
   name: string,
   component: ComponentType<TProps>,
   order = 100,
+  owner?: string,
 ): void {
   const reg = getRegistry()
   const entries = reg.get(name) ?? []
-  entries.push({ component: component as ComponentType<Record<string, unknown>>, order })
+  entries.push({ component: component as ComponentType<Record<string, unknown>>, order, owner })
   entries.sort((a, b) => a.order - b.order)
   reg.set(name, entries)
 }
@@ -60,10 +64,18 @@ export function getSlotEntries(name: string): ReadonlyArray<SlotEntry> {
 }
 
 /**
- * Clear a slot's registrations. Intended for test teardown only.
+ * Remove every slot entry owned by the given plugin. Used by
+ * `unregisterPlugin` during v2 hot-swap. Entries without an `owner`
+ * (test registrations, pre-v2 legacy registrations) survive — callers
+ * that want to wipe unowned entries should re-register them after.
  */
-export function __clearSlot(name: string): void {
-  getRegistry().delete(name)
+export function clearSlotsOwnedBy(pluginId: string): void {
+  const reg = getRegistry()
+  for (const [name, entries] of reg.entries()) {
+    const filtered = entries.filter((e) => e.owner !== pluginId)
+    if (filtered.length === 0) reg.delete(name)
+    else reg.set(name, filtered)
+  }
 }
 
 interface SlotProps {

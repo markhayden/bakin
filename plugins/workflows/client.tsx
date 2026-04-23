@@ -8,7 +8,7 @@
  *   `subflowGroup`); plugin-owned kinds arrive pre-namespaced as
  *   `{pluginId}.{kind}`.
  */
-import { registerPlugin } from '@bakin/sdk'
+import { registerPlugin, registerPluginCleanup } from '@bakin/sdk'
 import type { NavItem } from '@bakin/sdk'
 
 import { TriggerNode } from './components/nodes/trigger-node'
@@ -21,7 +21,12 @@ import { SubflowGroupNode } from './components/nodes/subflow-group-node'
 import { WorkflowsPage } from './components/workflows-page'
 import { WorkflowDetail } from './components/workflow-detail'
 import { WorkflowCanvasEditor } from './components/workflow-canvas-editor'
-import { registerNodeRenderer } from './lib/node-renderer-registry'
+import {
+  registerNodeRenderer,
+  unregisterNodeRenderer,
+  listNodeRendererKinds,
+} from './lib/node-renderer-registry'
+import { unregisterPluginDefinitions } from './lib/source-registry'
 
 const navItems: NavItem[] = [
   { id: 'workflows', label: 'Workflows', icon: 'Workflow', href: '/workflows', order: 40 },
@@ -47,3 +52,14 @@ registerNodeRenderer('parallel', ParallelNode)
 registerNodeRenderer('output', OutputNode)
 registerNodeRenderer('workflow', WorkflowNode)
 registerNodeRenderer('subflowGroup', SubflowGroupNode)
+
+// v2 dev hot-swap teardown: the SDK's unregisterPlugin clears nav + slots,
+// but the node-renderer + workflow-source registries are plugin-local and
+// need their own sweep. Today workflows is the only plugin registering
+// into either, so clearing every entry here is safe.
+registerPluginCleanup('workflows', () => {
+  for (const kind of listNodeRendererKinds()) {
+    unregisterNodeRenderer(kind)
+  }
+  unregisterPluginDefinitions('workflows')
+})
