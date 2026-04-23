@@ -370,10 +370,27 @@ openclaw skills list
 git clone git@github.com:markhayden/bakin.git
 cd bakin
 bun install
-bun run start     # builds css + vendors + plugins + shell + manifest, then boots
+bun run dev       # watch mode — rebuilds on change, hot-swaps plugins
 ```
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full development setup, build pipeline, and test rules, and [`CLAUDE.md`](./CLAUDE.md) for code conventions and architectural invariants.
+`bun run dev` watches repo source (shell, plugins, SDK, CSS) and pushes updates to the browser over a dedicated dev SSE channel:
+
+- Edit `packages/host/src/**` → full page reload (~2 s)
+- Edit `plugins/<id>/**` → that plugin remounts without a reload; shell, other plugins, URL, scroll, and SSE connection all survive
+- Edit Tailwind-scanned CSS → link-tag swap, no reload (input focus preserved)
+- Build error → red overlay at the top; stale bundle keeps running; overlay clears on fix
+
+Server-side code (`src/core/**`, `server.ts`, plugins' `index.ts`) still requires a manual Ctrl-C + `bun run dev` restart.
+
+Other entry points:
+
+```bash
+bun run start     # one-shot build + serve (production-style preview)
+bun run server    # serve current dist/ without rebuilding
+bun run build     # full build including the distributable binary
+```
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full development setup, build pipeline, and test rules; [`CLAUDE.md`](./CLAUDE.md) for code conventions; and [`.claude/knowledge/dev-loop.md`](./.claude/knowledge/dev-loop.md) for the dev-mode architecture deep-dive.
 
 For mock dev without a real OpenClaw:
 

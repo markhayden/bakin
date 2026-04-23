@@ -1,0 +1,240 @@
+# Dev Loop — Deep Reference
+
+How `bun run dev` works under the hood. Reference for future work on the
+dev experience or on anything that touches the plugin registry,
+`_static.ts`, or the dev SSE channel.
+
+Spec: `.claude/specs/hmr-dev-loop.md`.
+Plan: `.claude/specs/hmr-dev-loop-PLAN.md`.
+
+## Tiers
+
+v1 (live-reload) and v2 (plugin hot-swap) both ship today. The user-
+visible difference is what happens when you save a plugin file:
+
+- **v1 behavior (retained for shell / SDK / CSS):** save a file → full
+  page reload (or link-tag swap for CSS). Everything mounts fresh.
+- **v2 behavior (added for plugins):** save a plugin file → only that
+  plugin's subtree remounts. Shell (sidebar, routing, zustand stores),
+  other plugins, URL, scroll position, focus, the `/api/events` SSE
+  connection — all survive.
+
+Not yet shipped:
+
+- **v3 (deferred):** React Fast Refresh — preserve `useState` across a
+  component edit. Requires a `Bun.plugin()` loader for
+  `react-refresh/babel` + the runtime hooked into every plugin bundle.
+  Revisit if v2's "plugin-wide remount" feels insufficient in practice.
+- **v4 (deferred):** server-side reload on `src/core/**`, `server.ts`,
+  and plugin `index.ts` edits. Today requires manual Ctrl-C + rerun.
+- **v5 (deferred):** LAN/Tailscale-accessible dev mode so OpenClaw can
+  run on a separate machine. Would need auth-token gating on
+  `/api/dev/{events,notify}`.
+
+## Architecture
+
+```
+bun run dev
+    │
+    ▼
+scripts/dev.ts (process.env.BAKIN_DEV = '1')
+    │
+    ├── Initial prestart build (css, vendors, plugins, host-shell)
+    ├── Bun.build(dev-client.ts → public/__bakin-dev/client.js)
+    ├── Spawn bunx @tailwindcss/cli --watch   (child process)
+    ├── chokidar watchers:
+    │     • packages/host/src/**         → rebuild shell → dev:reload
+    │     • plugins/<id>/<devWatch>       → rebuildOnePlugin(id) → dev:hot-swap
+    │     • packages/sdk/src/**           → rebuild vendors → dev:reload
+    │     • public/globals.css mtime      → dev:css
+    └── await import('../server')  ← boots HTTP + MCP + SSE + content watcher
+          │                            in the same process; broadcastDev()
+          │                            writes directly to the dev SSE client
+          │                            Set (no HTTP round-trip)
+          ▼
+    /api/dev/events (SSE)  ←────── dev client's EventSource connects here
+                                    (404 when BAKIN_DEV unset)
+
+Browser:
+    packages/host/public/index.html  (_static.ts injects dev-client script
+                                       before </body> when BAKIN_DEV=1)
+        │
+        ├── /assets/main.js   (shell bundle)
+        ├── /vendor/*.js       (react, tanstack-router, @bakin/sdk/*)
+        ├── /__bakin-dev/client.js   (dev client — dev-only, disk-only)
+        └── /api/plugins/<id>/assets/client.js   (each plugin's bundle)
+
+    Dev client:
+        EventSource('/api/dev/events')
+            on 'dev:css'      → <link> swap with cache-bust
+            on 'dev:reload'   → location.reload()
+            on 'dev:hot-swap' → window.__bakinHotSwapPlugin(id, url, version)
+            on 'dev:error'    → render red overlay
+            on 'dev:recover'  → dismiss overlay
+```
+
+## Gates (defense in depth)
+
+Three env-checks ensure `BAKIN_DEV` never leaks into the compiled binary:
+
+1. **`scripts/dev.ts`** is the only place that sets `process.env.BAKIN_DEV = '1'`. The compiled binary never runs this script; the `bakin start` entry point goes straight through `server.ts`.
+2. **Handlers** at `packages/host/src/api/dev/{events,notify}.ts` both return 404 when `BAKIN_DEV !== '1'`.
+3. **`_static.ts`'s `transformIndexHtmlForDev`** is a no-op (returns the input `Buffer` by reference) when `BAKIN_DEV !== '1'`. No dev-client script tag. Verified by `tests/api/host-static.test.ts`.
+
+The dev-client bundle itself is disk-only — written to `packages/host/public/__bakin-dev/client.js`, gitignored, naturally excluded from `scripts/generate-embedded-assets.ts` (which only descends into explicitly-walked subdirectories under `public/`). It can never ship in a compiled binary.
+
+## One-React-instance invariant
+
+The shell and every plugin share React via the import map:
+
+```
+/vendor/react.js           ← single React instance, loaded once per page
+/vendor/react-dom.js       ← single react-dom instance, uses /vendor/react.js
+/vendor/sdk-*.js           ← @bakin/sdk bundles, externalize react
+```
+
+The dev watcher preserves this:
+
+- **Shell rebuild** regenerates `packages/host/dist/main.js`. Does NOT touch `/vendor/`. React is the same instance across the reload.
+- **Plugin rebuild** regenerates `plugins/<id>/dist/client.js`. Does NOT touch `/vendor/`. New module's `import React from 'react'` resolves via import map to the same `/vendor/react.js` the browser already loaded.
+- **SDK rebuild** regenerates the `sdk-*.js` bundles in `/vendor/`. `react*` bundles aren't rebuilt — their inputs didn't change. Triggers a full reload so the new SDK bundles are picked up cleanly.
+- **CSS swap** doesn't touch JS. Nothing React-related moves.
+
+Any future change that rebuilds a vendor bundle keyed on React **must** trigger a full reload. A plugin or SDK change that naively re-imports a React-containing module would create a second React instance and break hooks globally. The dev watcher never does this; v3 Fast Refresh work would need to preserve the invariant.
+
+## Hot-swap mechanism (v2)
+
+When a plugin file changes:
+
+1. `scripts/dev.ts` calls `buildOnePlugin(id)`. On success, captures `mtime` of the new `plugins/<id>/dist/client.js` and broadcasts `{ type: 'dev:hot-swap', scope: 'plugin', id, version: mtime }`.
+2. Dev client debounces events per-plugin (100 ms), picks the latest, calls `window.__bakinHotSwapPlugin(id, '/api/plugins/<id>/assets/client.js', version)`.
+3. `PluginHost` (in the shell bundle) runs:
+   a. `unregisterPlugin(id)` from `@bakin/sdk`:
+      - Runs enrolled cleanup fns (`cleanupByPlugin.get(id)`). Workflows plugin uses this to sweep its node-renderer and workflow-source registries.
+      - Drops nav items keyed on `id`.
+      - Calls `clearSlotsOwnedBy(id)` — sweeps slot entries where `entry.owner === id`. Unowned entries (test registrations, pre-v2 legacy) survive.
+      - Bumps `registry.version` + notifies subscribers.
+   b. Swaps the plugin's `<link data-bakin-plugin-css="<id>">` with a cache-busted href (if present). Old link removes on new link's `onload`.
+   c. `await import(clientEntry + '?v=' + version)` — browser fetches the new bundle, new module instance runs `registerPlugin({...})` as a side effect, re-populating nav + slots. Registry version bumps again.
+4. Shell re-renders via `useSyncExternalStore(subscribeRegistry, getRegistryVersion)` in `PluginHost.tsx`. `<Slot>` consumers and the sidebar read from the registry and pick up the new components.
+
+### Why the old module doesn't break
+
+- Old module's exports (React components) were rendered into the DOM. After `unregisterPlugin`, the shell re-renders without those components — React unmounts the subtrees. The exports become garbage.
+- Browser's ES module cache keeps the old module object alive (keyed on the old URL). That's a small memory leak proportional to `(plugin size × edits)`. See "Safety valve" below.
+- `registerPlugin` re-running with the same `id` is not an error — the registry `Map.set`s, which overwrites cleanly.
+- One React instance is preserved: both the old and new module import `'react'`, which resolves via import map to the same `/vendor/react.js` loaded at page open.
+
+## Safety valve (v2 memory bound)
+
+Every hot-swap adds a cached ES module entry keyed on `?v=<hash>`. Browsers have no `import.cache.delete()` API, so old modules stay cached for the tab's lifetime.
+
+Math: each hot-swap costs (plugin bytecode + React tree references it holds). For a 200 KB core plugin across 100 edits, ~20 MB of cached bytecode. Plus any closures the old module's functions still capture (should be zero if every registered API has a paired teardown).
+
+The dev client counts hot-swaps in `sessionStorage['bakin-dev-hotswap-count']` and forces `location.reload()` every 100. Rationale for `sessionStorage`:
+- **tab-scoped** (matches the lifetime of the module cache we're bounding)
+- **persists across user-initiated reloads** (so the count doesn't reset to 0 when the user hits Cmd+R, which would allow the cache to grow unbounded)
+- **not shared across tabs** (each tab has its own cache; no cross-contamination)
+
+Acceptance criterion from the plan: heap growth < 100 MB after 100 swaps. If a plugin exceeds that cutoff, the registry cleanup is leaking (not passive caching) and needs to be fixed before shipping — don't just raise the cutoff.
+
+## Isolation from the content watcher
+
+Two chokidar instances, zero overlap:
+
+- **Content watcher** (`src/core/watcher.ts`): roots at `getContentDir()` — an absolute path under `~/.bakin/`.
+- **Dev watcher** (`scripts/dev.ts`): roots relative to `process.cwd()` — the repo tree (`packages/host/src`, `plugins/`, etc.).
+
+Both instances have non-overlapping ignore filters (`node_modules`, `.git`, `dist`). A file save in `~/.bakin/` never triggers a rebuild; a file save in `packages/host/src/` never fires a content event.
+
+## Registration APIs and their teardown paths
+
+v2 hot-swap is correct iff every client-side registration API has a paired teardown. Current inventory:
+
+| Registration API | Where | Owner key | Teardown |
+|---|---|---|---|
+| `registerPlugin({id, navItems, slots})` | `packages/sdk/src/register.ts` | `id` | `unregisterPlugin(id)` |
+| `registerSlot(name, component, order, owner)` | `packages/sdk/src/slots/index.tsx` | `owner` (pluginId) | `clearSlotsOwnedBy(pluginId)` — called by `unregisterPlugin` |
+| `registerNodeRenderer(kind, component)` | `plugins/workflows/lib/node-renderer-registry.ts` | `kind` | `unregisterNodeRenderer(kind)` — swept by `registerPluginCleanup('workflows', …)` |
+| `registerPluginDefinition(pluginId, id, def)` | `plugins/workflows/lib/source-registry.ts` | `pluginId` | `unregisterPluginDefinitions(pluginId)` — same cleanup hook |
+
+Server-side registrations (`ctx.registerExecTool`, `ctx.hooks.register`, `ctx.registerRoute`, `ctx.search.registerContentType`, etc.) are **not** in scope for hot-swap teardown. Those persist until server restart — v2 doesn't touch the server's plugin registry.
+
+## Adding a new scope to the dev watcher
+
+To wire a new source tree into the watch/rebuild/broadcast cycle:
+
+1. Add a new `startXxxWatcher()` in `scripts/dev.ts` — follow the pattern of `startShellWatcher()`: chokidar on the directory, extension/path filter in the handler, schedule via `scheduleRebuild`.
+2. Add a new scope string to the `DevScope` union in `packages/host/src/api/dev/events.ts`.
+3. Add a handler arm to the dev client's `switch (event.type)`.
+4. Broadcast `dev:building` on start and either `dev:reload` / `dev:hot-swap` on success or `dev:error` on failure. Use `emitSuccess()` / `emitError()` to get dev:recover emission on success-after-error.
+5. Update the matrix in `CONTRIBUTING.md` and this doc.
+
+## Adding a new registration API to `@bakin/sdk`
+
+If a plugin needs a new client-side registry beyond nav + slots, the teardown contract is:
+
+1. Expose the registry as a module with `register` + `unregister` (or `clear`) primitives. Key entries by whatever makes sense for the registry — for plugin-owned entries, include a `pluginId` tag.
+2. In the plugin's `client.tsx`, after the `registerPlugin` call:
+   ```ts
+   import { registerPluginCleanup } from '@bakin/sdk'
+
+   registerPluginCleanup('my-plugin', () => {
+     // Sweep whatever you registered
+     myRegistry.clearOwnedBy('my-plugin')
+   })
+   ```
+3. Test the teardown: after `unregisterPlugin('my-plugin')`, the new registry has no entries for that id. Re-registration works.
+
+If you skip step 2, hot-swap leaks memory every edit. The 100-swap safety-valve reload hides it, but the passive-caching math from above will rot sooner than that. Don't.
+
+## Plugin module-load contract
+
+Plugin `client.tsx` files must do only two things at module load:
+
+1. Sanctioned SDK API calls: `registerPlugin(...)`, `registerSlot(...)`, `registerPluginCleanup(...)`, and plugin-local registry registrations (workflows' `registerNodeRenderer` / `registerPluginDefinition` — both of which are swept via `registerPluginCleanup`).
+2. Imports of components + types.
+
+**Do not** at module load:
+
+- `window.addEventListener(...)` — the listener survives hot-swap; memory leak + double-fire
+- `document.body.*` or `document.head.*` mutations — same
+- `setInterval` / `setTimeout` at top level — same
+- `fetch(...)` — fires every hot-swap; can be racy
+- `globalThis.*` writes outside the SDK registries — bypasses the teardown path
+
+Audit command for finding violations across every core plugin:
+
+```sh
+for f in plugins/*/client.tsx; do
+  echo "=== $f ==="
+  grep -E "addEventListener|setInterval|setTimeout|document\.|window\.|fetch\(|globalThis\." "$f" || echo "  (clean)"
+done
+```
+
+All 10 core plugins were audited clean as of commit 8 of the HMR rollout.
+
+## Troubleshooting
+
+**Save didn't trigger a rebuild.**
+Check `/tmp/bakin-dev.log` (or wherever you're capturing stdout) for `[dev]` lines. Silent = chokidar didn't see the event. Possible causes:
+- File is outside every watcher's root (e.g., `src/core/**` is intentionally not watched).
+- Plugin source is outside the plugin's `devWatch` globs. Check `bakin-plugin.json` and the default globs in `scripts/dev.ts`.
+- `node_modules`/`.git`/`dist` — ignored on purpose.
+
+**Browser didn't reload after a rebuild succeeded.**
+Open DevTools → Network. Confirm the EventSource on `/api/dev/events` is open (persistent connection, `text/event-stream`). If it's closed, the EventSource auto-reconnects but there's a ~2 s gap where events are lost. The dev client logs reconnect warnings to the console.
+
+**Hot-swap fallback to reload.**
+If `window.__bakinHotSwapPlugin` is missing at swap time, the dev client logs a warning and falls back to `location.reload()`. Causes:
+- `BAKIN_DEV` wasn't set at server boot (check `process.env.BAKIN_DEV` in the dev log).
+- Shell didn't mount or didn't reach the `useEffect` that sets the window handle.
+- Production build (compiled binary) — handle is undefined by design.
+
+**Overlay stays after fixing the error.**
+The overlay clears on a `dev:recover` event, which fires on the first successful rebuild after a failed one (per-scope tracking in `scripts/dev.ts`). If the overlay persists:
+- Check which scope errored vs. which scope succeeded — they need to match for recover to fire. Fix a plugin error by editing that plugin, not by editing the shell.
+- Click the overlay to dismiss manually; it's purely cosmetic at that point.
+
+**Memory growing across many hot-swaps.**
+Expected up to ~100 MB over 100 swaps of the same plugin — safety-valve reload fires and resets. If you hit the cutoff faster, something in the plugin's registration isn't being torn down. Add a test in `tests/sdk/register.test.ts` that exercises the teardown and confirms no residual state.

@@ -36,13 +36,49 @@ bun x vitest run
 ## Common commands
 
 ```bash
-bun run dev          # start Bakin in dev mode
-bun run build        # production build
+bun run dev          # watch mode: rebuild on change, hot-swap plugins in the browser
+bun run start        # one-shot prestart build + boot (production-style preview)
+bun run server       # boot without rebuilding (use when dist/ is fresh)
+bun run build        # full production build (ends with bun build --compile)
 bun run typecheck    # tsc --noEmit
 bun x vitest run     # full test suite
 bun x vitest watch   # watch mode
 bun run lint         # ESLint
 ```
+
+## Development loop
+
+`bun run dev` is what you use daily. It sets `BAKIN_DEV=1`, runs the same prestart build as `bun run start`, then starts a watcher coordinator + the server in the same process.
+
+What it watches, and what happens when you save:
+
+| You edit | What rebuilds | What the browser does |
+|---|---|---|
+| `packages/host/src/**` (.ts/.tsx/.css) | shell bundle | full reload (~2 s) |
+| `plugins/<id>/` client source | that plugin only | hot-swap — the plugin subtree remounts, shell + other plugins + URL + scroll + SSE connection survive (~1.5 s) |
+| `packages/host/public/globals.css` (driven by Tailwind's `--watch` child) | — | swap the `<link>` tag's href, no reload (focus / input state preserved) |
+| `packages/sdk/src/**` | vendor SDK bundles (`sdk-*.js`; `react*` untouched) | full reload (~3 s) |
+| A plugin's `index.ts` (server entry) | nothing — v1 doesn't auto-restart the server | no-op; manually Ctrl-C and rerun `bun run dev` |
+| `src/core/**`, `server.ts`, `scripts/**` | nothing — not watched | same; Ctrl-C + rerun |
+
+A build error surfaces as a red overlay at the top of the viewport with the scope, message, and truncated stderr. The stale bundle keeps running underneath, so the app remains interactive while you fix it. The overlay clears on the next successful build.
+
+The watcher writes the dev-client bundle to `packages/host/public/__bakin-dev/client.js` (gitignored, never embedded in the compiled binary). The binary's attack surface is identical to before — `/api/dev/events` and `/api/dev/notify` 404 whenever `BAKIN_DEV` is unset, regardless of code path.
+
+For the architectural deep-dive (one-React-instance invariant, hot-swap mechanism, v3/v4/v5 deferrals), see [`.claude/knowledge/dev-loop.md`](./.claude/knowledge/dev-loop.md).
+
+## Plugin devWatch
+
+If your plugin has a non-standard layout, override the watcher's glob set via `bakin-plugin.json`:
+
+```json
+{
+  "id": "my-plugin",
+  "devWatch": ["client.tsx", "components/**", "hooks/**", "lib/**", "*.ts"]
+}
+```
+
+Default when absent: `['client.tsx', 'components/**', 'lib/**', '*.ts']`. `index.ts` is always excluded from the client-side watcher (server-entry edits take the restart path). Invalid entries log a warning and fall back to the default.
 
 ## Build pipeline order
 
