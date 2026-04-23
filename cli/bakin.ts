@@ -1,4 +1,4 @@
-#!/usr/bin/env npx tsx
+#!/usr/bin/env bun
 /**
  * Bakin CLI — command-line interface for Bakin orchestration platform.
  * All commands are thin wrappers around the Bakin HTTP API.
