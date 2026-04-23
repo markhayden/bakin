@@ -117,9 +117,16 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
     return true
   }
 
-  // Dev-client bundle — served only when BAKIN_DEV=1, from disk, never
-  // embedded. scripts/dev.ts builds it to packages/host/public/__bakin-dev/.
-  if (pathname.startsWith('/__bakin-dev/') && process.env.BAKIN_DEV === '1') {
+  // Dev-client bundle — served from disk when BAKIN_DEV=1, 404 otherwise.
+  // The unconditional 404 when unset keeps production from falling through
+  // to the SPA fallback (which would return index.html with a 200 for an
+  // asset request). scripts/dev.ts builds this to packages/host/public/__bakin-dev/.
+  if (pathname.startsWith('/__bakin-dev/')) {
+    if (process.env.BAKIN_DEV !== '1') {
+      res.writeHead(404, { 'Content-Type': 'text/plain' })
+      res.end('Not found')
+      return true
+    }
     const rel = pathname.slice('/__bakin-dev/'.length)
     if (sendDiskFile(res, join(PUBLIC_DIR, '__bakin-dev', rel))) return true
     res.writeHead(404, { 'Content-Type': 'text/plain' })
