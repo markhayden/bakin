@@ -81,14 +81,17 @@ async function buildDevClient(): Promise<void> {
 let tailwindChild: ChildProcess | null = null
 
 function startTailwindWatch(): void {
-  console.log('[dev] starting tailwind --watch...')
+  console.log('[dev] starting tailwind --watch=always...')
+  // --watch=always keeps the watcher alive when stdin is closed (we use
+  // stdio:'ignore' for stdin). Plain --watch exits on stdin close and
+  // silently stops emitting output.
   tailwindChild = nodeSpawn(
     'bunx',
     [
       '@tailwindcss/cli',
       '-i', './packages/host/src/globals.css',
       '-o', './packages/host/public/globals.css',
-      '--watch',
+      '--watch=always',
     ],
     { stdio: ['ignore', 'inherit', 'inherit'], cwd: REPO_ROOT },
   )
@@ -242,7 +245,10 @@ function readPluginDevWatch(id: string): string[] {
 // chokidar v5 dropped native glob support in .watch() — watch directories
 // and filter in the handler. We watch wide, filter narrow.
 
-const SHELL_SRC_RE = /\.(ts|tsx|css)$/
+// CSS is intentionally excluded — .css edits go through tailwind --watch → CSS
+// watcher → dev:css link-swap (no reload). Including .css here would race the
+// shell rebuild ahead of the link-swap and reload the page.
+const SHELL_SRC_RE = /\.(ts|tsx)$/
 const SDK_SRC_RE = /\.(ts|tsx)$/
 const DEV_CLIENT_RE = /dev-client[\\/]/
 const IGNORED_RE = /(node_modules|[\\/]\.git[\\/]|[\\/]dist[\\/])/
