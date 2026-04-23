@@ -1,331 +1,350 @@
 # Bakin
 
-Multi-agent mission control for [OpenClaw](https://openclaw.dev). A plugin-based dashboard and backend that coordinates AI agents — task management, content calendars, real-time activity feeds, health checks, and search.
+Multi-agent mission control for [OpenClaw](https://openclaw.dev). A self-hosted dashboard + backend that coordinates AI agents — tasks, workflows, asset management, scheduling, content calendars, memory observability, and hybrid full-text + semantic search — all driven by markdown files on the filesystem and pushed to the browser over Server-Sent Events.
 
-Built with Next.js, TypeScript, and Tailwind CSS. Runs alongside the OpenClaw gateway.
+Built on [Bun](https://bun.sh) end to end: runtime, bundler, package manager, and binary compiler. Distributed as a single-file executable (~69 MB on macOS arm64) with every core plugin and static asset embedded. Runs alongside the OpenClaw gateway on a Mac mini, accessed over Tailscale.
 
 ---
 
-## Quick Start
+## Install
 
-### First-run onboarding
-
-New to Bakin? Run the onboarding flow to set everything up:
+**One-liner (recommended):**
 
 ```bash
-pnpm install
-pnpm run cli onboard
-pnpm dev
+curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | bash
 ```
 
-`bakin onboard` walks you through: creating `~/.bakin/`, seeding settings, checking for OpenClaw, installing AntflyDB + Termite ML models, syncing mcporter, and verifying LLM + channel config. At the end it writes a `~/.bakin/.onboarded` marker so `bakin doctor` knows the machine is ready.
+Detects your platform (Mac arm64, Linux x64, Linux arm64), verifies the sha256 against the release's `checksums.txt`, and drops the binary at `/usr/local/bin/bakin` (or `~/.local/bin` fallback).
 
-For CI or scripted installs, use `--yes` (auto-approve) and `--json` (structured output):
+**Manual install:**
+
+Grab the binary for your platform from [releases](https://github.com/markhayden/bakin/releases), `chmod +x`, and put it on your PATH.
+
+**Self-update:**
 
 ```bash
-pnpm run cli onboard --yes --json
+bakin update
 ```
 
-Individual commands are available for piecemeal use:
+Replaces the running binary with the latest release. Uses the same sha256 verification as `install.sh`.
+
+---
+
+## First-time setup
+
+```bash
+bakin onboard
+```
+
+Walks you through creating `~/.bakin/`, seeding `settings.json`, checking for the OpenClaw binary + config, installing AntflyDB + Termite ML models, syncing mcporter, and verifying at least one LLM provider and one messaging channel. Writes `~/.bakin/.onboarded` so `bakin doctor` knows the machine is ready.
+
+For CI or scripted installs:
+
+```bash
+bakin onboard --yes --json
+```
+
+Individual commands for piecemeal use:
 
 | Command | Purpose |
 |---|---|
-| `bakin mkdir` | Create/verify `~/.bakin/` directory tree |
+| `bakin mkdir` | Create/verify the `~/.bakin/` directory tree |
 | `bakin settings init` | Seed default `settings.json` |
 | `bakin check openclaw` | Detect OpenClaw binary + config |
 | `bakin check llm` | Verify at least one LLM provider |
 | `bakin check channels` | Verify at least one messaging channel |
-| `bakin check all` | Run all checks, report each |
+| `bakin check all` | Run every check, report each |
 | `bakin install antfly` | Install AntflyDB via Homebrew |
-| `bakin install models` | Download Termite ML models (~1.5GB) |
+| `bakin install models` | Download Termite ML models (~1.5 GB) |
 | `bakin install mcporter` | Install mcporter + sync per-agent config |
 
-### Existing install
-
-If you're already set up:
+## Start the server
 
 ```bash
-npm install
-npm run dev
-open http://localhost:3737
+bakin start        # foreground (Ctrl-C to stop)
+bakin stop         # SIGTERM a running bakin process
+bakin status       # dispatch + server + doctor status
 ```
 
-The server auto-creates a `~/.bakin/` directory on first run with default settings and required subdirectories.
-
-### Mock Dev
-
-For local development without a real OpenClaw install, use the Imitation Crab mock:
-
-```bash
-# Reseed the mock home with fresh fixtures
-pnpm mock:seed --force
-
-# Start the mock gateway and Bakin together
-pnpm dev:mock
-```
-
-The mock seeds `~/.imitationcrab/` and uses it for both `BAKIN_HOME` and `OPENCLAW_HOME`.
-
-If you want to start Bakin separately after reseeding:
-
-```bash
-BAKIN_HOME=~/.imitationcrab OPENCLAW_HOME=~/.imitationcrab OPENCLAW_PATH=~/.imitationcrab/bin/openclaw npm run dev
-```
-
-### CI Contract
-
-The repo now uses a workspace-level CI contract built for monorepo growth:
-
-- every app/package should define `lint`, `typecheck`, `test`, and `build` when those tasks apply
-- pull requests run affected checks through Turbo
-- pushes to `main` run the full workspace safety-net checks
-
-Today the required CI lane focuses on `test` and `build`, while `lint` and `typecheck` remain available for packages that are ready to enforce them.
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3737` | Server port |
-| `BAKIN_URL` | `http://localhost:3737` | Used by the CLI to reach the server |
+Server listens on port **3737** by default (`PORT=` to override). Open `http://localhost:3737` in a browser.
 
 ---
 
 ## Architecture
 
 ```
-bakin/
-├── server.ts              # Custom HTTP server (Next.js + API routes + subsystems)
-├── bakin.config.ts         # Plugin configuration
-├── cli/bakin.ts            # CLI tool
-├── skill/SKILL.md          # OpenClaw skill (agent instructions)
-├── src/
-│   ├── app/                # Next.js pages (dashboard UI)
-│   ├── core/               # Backend subsystems
-│   │   ├── settings.ts     # Centralized settings (~/.bakin/settings.json)
-│   │   ├── openclaw-client.ts  # HTTP client for OpenClaw gateway
-│   │   ├── dispatch.ts     # Task dispatch loop
-│   │   ├── watchdog.ts     # Stuck task detection + alerts
-│   │   ├── doctor.ts       # Health checks, auto-repair, skill sync
-│   │   ├── watcher.ts      # File watcher (chokidar) + Antfly sync
-│   │   ├── sse.ts          # Server-Sent Events (real-time updates)
-│   │   ├── antfly.ts       # Optional vector DB integration
-│   │   ├── vault.ts        # Credential management
-│   │   ├── audit.ts        # Structured audit logging
-│   │   ├── logger.ts       # Structured logging
-│   │   ├── messaging-cron.ts    # Scheduled content execution
-│   │   ├── continuation.ts     # Task dependency resolution
-│   │   ├── lifecycle.ts        # Graceful shutdown
-│   │   ├── middleware.ts       # Request validation
-│   │   ├── api-docs.ts         # Self-documenting API
-│   │   ├── agents.ts           # Agent status + communication
-│   │   ├── mcp-server.ts       # MCP tool server (Streamable HTTP + SSE)
-│   │   ├── discord-gateway.ts  # Discord WebSocket gateway (interaction buttons)
-│   │   ├── migrations.ts       # Plugin data migrations
-│   │   └── plugin-installer.ts # Plugin install/remove
-│   ├── lib/                # Shared utilities (plugin system, storage, event bus)
-│   ├── components/         # React components
-│   └── context/            # React context providers
-├── plugins/                # Plugin packages
-│   ├── tasks/              # Kanban task management
-│   ├── workflows/          # Workflow execution engine
-│   ├── assets/             # Asset management
-│   ├── projects/           # Project tracking
-│   ├── schedule/           # Cron job scheduling
-│   ├── messaging/          # Content calendar + brainstorm
-│   ├── memory/             # Observability dashboard over 7 memory tiers (unified bakin_memory table)
-│   ├── models/             # AI model configuration
-│   ├── team/               # Agent team management
-│   └── health/             # System health dashboard
-├── scripts/lib/            # MCP exec tools (self-registering)
-└── tests/                  # Vitest test suites
+server.ts                  HTTP entry. Node's http.createServer under Bun's
+                           node-compat; dispatches to Web Fetch-style
+                           handlers at packages/host/src/api/**.
+
+packages/
+  core/                    @bakin/core — shared types + utilities (content-dir
+                           resolver, logger, settings, vault, hook registry,
+                           OpenClaw path + config helpers).
+  sdk/                     @bakin/sdk — the plugin-author surface. Sub-paths
+                           @bakin/sdk/{ui,hooks,components,slots,types,utils}.
+                           Published to npm at release time.
+  host/                    @bakin/host — React 19 shell built with Bun.build,
+                           TanStack Router routes under packages/host/src/
+                           routes/, Web Fetch API handlers under
+                           packages/host/src/api/**, and the runtime plugin
+                           loader at packages/host/src/plugin-host/.
+
+plugins/                   10 core plugins (tasks, workflows, assets, projects,
+                           schedule, messaging, memory, models, team, health).
+                           Each compiles to plugins/<id>/dist/{index.js,
+                           client.js}; both are embedded in the binary.
+
+src/
+  core/                    Server-side subsystems with side effects (MCP
+                           server, dispatch, watchdog, doctor, file watcher,
+                           SSE broadcaster, audit log, CLI dispatcher,
+                           onboarding steps, self-update).
+  lib/                     Shared, side-effect-free code (plugin registry,
+                           storage adapter, event bus, markdown parsers).
+
+scripts/                   Build + infrastructure (build-vendors, build-
+                           plugins, build-binary, generate-embedded-assets,
+                           publish-sdk). `lib/` holds self-registering MCP
+                           exec tools (log progress, gen_image, post_discord,
+                           heartbeat, get_paths).
+
+cli/                       Thin legacy CLI wrapper. Most commands go through
+                           src/core/cli.ts inside the compiled binary.
+
+dev/imitation-crab/        OpenClaw mock — seeds ~/.imitationcrab/ with
+                           fixtures and runs a mock gateway on :18789 for
+                           local dev without a real OpenClaw install.
+```
+
+### Runtime data (`~/.bakin/`)
+
+Created on first run. Per-installation state, never in the repo.
+
+```
+~/.bakin/
+  settings.json            Runtime config (dispatch, watchdog, antfly, alerts)
+  plugin-settings/<id>.json Per-plugin settings
+  plugins/<id>/            Installed user plugins (source + compiled dist/)
+  agents/<id>/             UI data (avatars)
+  assets/, projects/,      Plugin-owned markdown + sidecars
+  workflows/, schedule/,
+  team/, heartbeats/
+  MEMORY-LOG.md            Agent memory log
+  audit.jsonl              Append-only audit trail
+  logs/server.log          Rotating server log
 ```
 
 ### Subsystems
 
-On startup, the server initializes these subsystems:
+On boot:
 
-| Subsystem | Purpose | Default Interval |
-|-----------|---------|-----------------|
+| Subsystem | Purpose | Interval |
+|---|---|---|
 | **Dispatch** | Assigns TODO tasks to agents via OpenClaw | 5 min |
-| **Watchdog** | Detects stuck tasks, alerts via Discord | 5 min |
-| **Doctor** | Health checks, auto-repair, skill sync | 30 min |
-| **File Watcher** | Monitors `~/.bakin/` for changes, broadcasts SSE events | Real-time |
-| **SSE** | Real-time event stream to dashboard clients | 30s keepalive |
+| **Watchdog** | Detects stuck tasks + MCP outages, alerts via Discord | 5 min |
+| **Doctor** | Health checks + safe auto-repair | 30 min |
+| **File Watcher** | `~/.bakin/` chokidar, syncs to Antfly, broadcasts SSE | Real-time |
+| **SSE** | Real-time event stream to the dashboard | 30 s keepalive |
+| **MCP Server** | Tool server (Streamable HTTP + SSE) for agents | n/a |
 
-All subsystems shut down gracefully on SIGTERM/SIGINT.
+All shut down gracefully on SIGTERM/SIGINT.
 
 ---
 
 ## Plugins
 
-Plugins are configured in `bakin.config.ts` and loaded at startup. Each plugin can register API routes, navigation items, exec tools, event handlers, and **workflows + skills**: drop YAMLs under `defaults/workflows/`, in-memory skill instructions under `defaults/workflow-skills/`, and OpenClaw runtime skills under `defaults/openclaw-skills/{name}/`. The first two are auto-registered at activation; the third is installed via `bakin install plugin-assets` and surfaced by `bakin doctor`. See `.claude/knowledge/workflows-plugin.md` for the authoring contract.
+Every plugin ships as a source tree with a `bakin-plugin.json` manifest, an `index.ts` (server entry: `BakinPlugin` with `activate(ctx: PluginContext)`), and a `client.tsx` (browser entry: one `registerPlugin({ id, navItems, slots })` call). User plugins are built on install via `bun build` inside the Bakin binary; core plugins are pre-built at release time and embedded.
 
-| Plugin | Description | Key Routes |
-|--------|-------------|------------|
-| **tasks** | Kanban board with drag-and-drop | `/api/plugins/tasks/` (CRUD + move, log, block) |
-| **workflows** | Workflow execution engine with gates | `/api/plugins/workflows/` |
-| **assets** | Asset management with sidecar metadata | `/api/plugins/assets/` |
-| **projects** | Project tracking with checklists | `/api/plugins/projects/` |
-| **schedule** | Cron job scheduling | `/api/plugins/schedule/` |
-| **messaging** | Content calendar + brainstorm sessions | `/api/plugins/messaging/` |
-| **memory** | Read-only observability over all 7 memory tiers (sessions, turns, checkpoints, daily notes, dreams, durable, audit) | `/api/plugins/memory/` |
-| **models** | Agent model assignments | `/api/plugins/models/` |
-| **team** | Agent team management (OpenClaw adapter) | `/api/plugins/team/` |
-| **health** | System health dashboard | `/api/plugins/health/` |
+| Plugin | Purpose |
+|---|---|
+| **tasks** | Kanban board with drag-and-drop, backed by SQLite via `bun:sqlite` |
+| **workflows** | Workflow execution engine with gates + xyflow canvas |
+| **assets** | Asset management with sidecar metadata, month-sharded storage |
+| **projects** | Project tracking with checklists |
+| **schedule** | Cron jobs bridged into OpenClaw |
+| **messaging** | Content calendar + brainstorm planning sessions |
+| **memory** | Read-only observability over all 7 OpenClaw memory tiers + Bakin audit log (one unified `bakin_memory` table) |
+| **models** | Agent ↔ model assignments with curated catalog |
+| **team** | Agent team management (OpenClaw adapter layer) |
+| **health** | System health dashboard |
 
----
+See [`docs/plugin-authoring.md`](./docs/plugin-authoring.md) for authoring a plugin end to end, and [`.claude/knowledge/plugin-system.md`](./.claude/knowledge/plugin-system.md) for the deep reference.
 
-## API
+### Managing plugins
 
-Bakin exposes a REST API on the same port as the dashboard. Full documentation is:
-
-- **Auto-generated** at startup → written to `~/.bakin/docs/API.md`
-- **Served as JSON** at `GET /api/docs`
-- **Viewable in the CLI** via `bakin docs`
-
-### Core Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/events` | SSE event stream (file changes, task events, alerts) |
-| `GET` | `/api/version` | Server version |
-| `GET` | `/api/dispatch` | Dispatch timer state |
-| `POST` | `/api/dispatch` | Trigger immediate dispatch |
-| `GET` | `/api/settings` | Current settings |
-| `POST` | `/api/settings` | Update settings (partial merge) |
-| `GET` | `/api/paths` | Content directory paths (`?key=<k>` for a single path) |
-| `GET` | `/api/agents` | List all agents with status |
-| `GET` | `/api/agents/:id/status` | Detailed agent status |
-| `POST` | `/api/agents/:id/message` | Send message to agent |
-| `GET` | `/api/agents/:id/tasks` | Tasks assigned to agent |
-| `GET` | `/api/agents/avatar` | Agent avatar image (`?id=<agentId>`) |
-| `GET` | `/api/plugins/health/doctor` | Run health checks (`?fresh=true` to force re-run) |
-| `GET` | `/api/search` | Search indexed content (`?q=<query>&table=&agent=&limit=&facets=`) |
-| `GET` | `/api/plugins/health/antfly-status` | Search table stats and document counts |
-| `POST` | `/api/reindex` | Reindex content to Antfly (`?table=&rebuild=true`) |
-| `GET` | `/api/docs` | API documentation (JSON) |
-| `POST` | `/api/activity/emit` | Emit activity event |
-| `POST` | `/mcp` | MCP tool server (Streamable HTTP + SSE) |
-
-API docs are regenerated automatically every time the server starts.
+```bash
+bakin plugins list                          # installed plugins + versions
+bakin plugins install ./my-plugin           # from local path
+bakin plugins install github:user/repo      # from GitHub
+bakin plugins remove my-plugin              # refuses to remove core plugins
+bakin plugins scaffold <name>               # starter plugin at ./<name>/
+```
 
 ---
 
-## CLI
+## CLI reference
 
-The `bakin` CLI wraps the HTTP API for terminal use. All commands hit `http://localhost:3737` (or `$BAKIN_URL`).
+All commands hit the local HTTP API (`http://localhost:3737` or `$BAKIN_URL`).
 
 ```bash
 # System
-bakin status                        # Health overview
-bakin doctor                        # Run health checks
-bakin dispatch                      # Trigger task dispatch
-bakin start                         # Start Bakin (setup mcporter + launch server)
-bakin stop                          # Stop Bakin server
-bakin reboot                        # Restart Bakin server
-bakin logs                          # Tail audit log
-bakin logs mcp                      # Filter logs by type
-bakin paths                         # Show content directory paths
+bakin start                            # boot the server
+bakin stop                             # graceful shutdown
+bakin status                           # dispatch + server + doctor status
+bakin version                          # print version
+bakin update                           # replace binary with latest release
+bakin doctor                           # run health checks
+bakin dispatch                         # trigger task dispatch now
+bakin logs                             # tail audit log
+bakin logs mcp                         # filter by type
+bakin paths                            # content directory paths
 
 # Tasks
-bakin tasks list                    # All tasks
-bakin tasks list --column=todo      # Filter by column
-bakin tasks create "Fix the bug"    # Create task
-bakin tasks move abc123 done        # Move task
-bakin tasks log abc123 "progress"   # Log progress on task
-bakin tasks block abc123 "reason"   # Block a task
-bakin tasks complete abc123 "done"  # Mark task done
+bakin tasks list [--column=<col>]
+bakin tasks create "Fix the bug"
+bakin tasks move <id> done
+bakin tasks log <id> "progress"
+bakin tasks block <id> "reason"
+bakin tasks complete <id> "done"
 
 # Workflows
-bakin workflows list                # List workflow definitions
-bakin workflows start <taskId> <wfId>  # Start workflow
-bakin workflows step <taskId>       # Get current step
-bakin workflows submit <taskId> <stepId> '{}'  # Submit step output
+bakin workflows list
+bakin workflows start <taskId> <workflowId>
+bakin workflows step <taskId>
+bakin workflows submit <taskId> <stepId> '{...}'
 
 # Agents
-bakin agents list                   # All agents + status
-bakin agents status patch           # Detailed status
-bakin agents tasks patch            # Tasks for agent
-bakin agents send patch "Hey"       # Message an agent
-bakin agent-rules --check           # Check orchestrator rules
-bakin agent-rules --apply           # Apply orchestrator rules
+bakin agents list
+bakin agents status <agent>
+bakin agents tasks <agent>
+bakin agents send <agent> "Hey"
+bakin agent-rules --check | --apply
 
 # Schedule
-bakin schedule                      # List scheduled jobs
-bakin schedule add "name" "0 9 * * *"  # Create job
-bakin schedule pause <jobId>        # Pause job
-bakin schedule resume <jobId>       # Resume job
-bakin schedule run <jobId>          # Trigger immediate run
-bakin schedule runs <jobId>         # View run history
-bakin schedule remove <jobId>       # Delete job
+bakin schedule [add|pause|resume|run|runs|remove]
 
 # Messaging
-bakin messaging                     # List messaging items
-bakin messaging create "Post title" agent --channels=discord
-bakin messaging approve <id>        # Approve item
-bakin messaging sessions            # List brainstorm sessions
-bakin messaging session-create <agentId> "Topic"
-bakin messaging message <sessionId> "Let's plan this"
-bakin messaging confirm <sessionId> # Confirm plan → create items
+bakin messaging create "Title" <agent> --channels=discord
+bakin messaging approve <id>
+bakin messaging sessions
+bakin messaging session-create <agent> "Topic"
+bakin messaging confirm <sessionId>
 
 # Assets
-bakin trash                         # List trashed assets
-bakin trash restore <filename>      # Restore trashed asset
-bakin trash empty                   # Permanently delete all trash
+bakin trash [list|restore|empty]
 
 # Settings
-bakin settings get                  # All settings
-bakin settings get dispatch.intervalMs
-bakin settings set watchdog.stuckThresholdMs 3600000
+bakin settings get [key]
+bakin settings set <key> <value>
 
-# Plugins
-bakin plugins list                  # Installed plugins
-bakin plugins install ./my-plugin   # Install from path
-bakin plugins install github:user/repo  # Install from GitHub
-bakin plugins remove my-plugin      # Remove plugin
+# Search + docs
+bakin search "runway video"
+bakin search "shots" --table=assets --agent=patch --limit=20
+bakin search:stats
+bakin docs
+bakin reindex [--table=<t> --rebuild]
 
-# Search & Docs
-bakin search "runway video"                    # Search all indexed content
-bakin search "shots" --table=assets            # Filter by table
-bakin search "deploy fix" --agent=patch        # Filter by agent
-bakin search:stats                             # Antfly health + doc counts
-bakin docs                                     # Print API docs
-bakin reindex                                  # Reindex content to Antfly
-bakin reindex --table=assets --rebuild         # Rebuild single table
-
-# Service
-bakin setup service                 # Install macOS LaunchAgent
-bakin setup service --uninstall     # Remove LaunchAgent
+# Service (macOS)
+bakin setup service [--uninstall]
 ```
+
+---
+
+## REST API
+
+Self-documenting: written to `~/.bakin/docs/API.md` on boot and served as JSON at `GET /api/docs`.
+
+Core endpoints:
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/events` | SSE event stream (file changes, tasks, audit, alerts) |
+| `GET` | `/api/version` | Server version |
+| `GET`/`POST` | `/api/dispatch` | Dispatch state / trigger dispatch |
+| `GET`/`POST` | `/api/settings` | Settings (partial-merge on POST) |
+| `GET` | `/api/paths?key=<k>` | Content directory paths |
+| `GET` | `/api/agents` | List agents with status |
+| `GET` | `/api/agents/:id/{status,tasks}` | Per-agent data |
+| `POST` | `/api/agents/:id/message` | Send a message to an agent |
+| `GET` | `/api/agents/avatar?id=<agent>` | Avatar image |
+| `GET` | `/api/search` | Full-text + semantic search (`?q=&table=&agent=&limit=&facets=`) |
+| `POST` | `/api/reindex` | Reindex content to Antfly |
+| `GET` | `/api/plugins/manifest` | Plugin manifest for the runtime loader |
+| `GET` | `/api/plugins/:id/assets/:path*` | Serve a plugin's compiled client bundle |
+| `POST` | `/mcp` | MCP tool server (Streamable HTTP + SSE) |
+
+Each plugin can register additional routes under `/api/plugins/:id/*`.
 
 ---
 
 ## Doctor
 
-Bakin Doctor runs on startup and every 30 minutes to keep systems healthy. It runs checks across several categories:
+`bakin doctor` runs on startup and every 30 minutes. Checks cluster across:
 
-| Category | Checks | Auto-Fix? |
-|----------|--------|-----------|
+| Category | Checks | Auto-fix? |
+|---|---|---|
 | **Infrastructure** | content-dir, gateway, antfly, search-tables, service | Mixed |
-| **Agents** | agent-roster, personas, orchestrator-rules, mcporter, agent-* managed blocks | Mixed |
-| **Tasks** | taskboard, task-consistency, tasks.order_integrity, skill-exec-tools | Mixed |
-| **Workflows** | skill-sync, workflow-skills, workflow-definitions, workflow-instances | Yes |
+| **Agents** | roster, personas, orchestrator-rules, mcporter, managed blocks | Mixed |
+| **Tasks** | taskboard, consistency, order integrity, skill exec tools | Mixed |
+| **Workflows** | skill-sync, definitions, instances, workflow-skills | Yes |
 | **Content** | assets, schedule-sync | No |
 
-**Auto-fix policy:**
-- **Safe** (auto-fix): Creating files/directories, syncing skills and rules, cleaning stale workflow instances
-- **Unsafe** (notify): Roster mismatches, gateway down, task DB issues — issues requiring human judgment are reported via OpenClaw
+**Safe** (auto-fix): creating missing dirs/files, syncing skills + rules, cleaning stale workflow instances.
+**Unsafe** (notify): roster mismatches, gateway down, taskDB inconsistencies — reported to OpenClaw as alerts.
 
-Run manually: `bakin doctor` or `GET /api/plugins/health/doctor?fresh=true`
+Run manually: `bakin doctor` or `GET /api/plugins/health/doctor?fresh=true`.
 
 ---
 
-## OpenClaw Skill
+## Search (Antfly)
 
-Bakin includes a skill file at `skill/SKILL.md` that teaches OpenClaw agents how to interact with Bakin. The skill covers task lifecycle rules, required API calls, logging requirements, and content locations.
+[AntflyDB](https://antfly.dev) provides hybrid search (full-text BM25 + semantic vector) across every plugin's content. Enabled by default. Bakin auto-starts it as a child process on boot, creates tables, keeps them indexed via the file watcher, and shuts it down with SIGTERM.
 
-Doctor automatically installs this skill to `~/.openclaw/workspace/skills/bakin/` and keeps it in sync as you update it. Verify with:
+- **Text embeddings:** `BAAI/bge-small-en-v1.5` (Termite ONNX backend, local)
+- **Image embeddings:** `openai/clip-vit-base-patch32` (also local) — assets table carries side-by-side `assets_text` + `assets_visual` indexes
+- **Reranker:** `mxbai-rerank-base-v1` on single-modality queries
+- **Content extraction:** PDFs via `pdf-parse`, text formats via `fs.readFileSync`, into a `content` field before indexing
+
+```bash
+bakin search "runway video clips"
+bakin search "landscape shots" --table=assets
+bakin search:stats
+curl "http://localhost:3737/api/search?q=runway+video&table=assets&limit=5"
+```
+
+See [`.claude/knowledge/search-system.md`](./.claude/knowledge/search-system.md) for the full architecture and [`multimodal-search.md`](./.claude/knowledge/multimodal-search.md) for the PDF/image pipeline.
+
+---
+
+## Settings
+
+All config at `~/.bakin/settings.json`. Created with defaults on first run.
+
+```bash
+bakin settings get                                # view all
+bakin settings set dispatch.intervalMs 600000     # every 10 minutes
+```
+
+Key defaults:
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `dispatch.intervalMs` | 300000 (5 m) | Task dispatch interval |
+| `dispatch.maxDispatched` | 500 | Max in-flight tasks |
+| `watchdog.stuckThresholdMs` | 1800000 (30 m) | Alert if no step progress |
+| `doctor.intervalMs` | 1800000 (30 m) | Health check interval |
+| `doctor.autoFixSkill` | true | Auto-fix safe issues |
+| `antfly.enabled` | true | Enable Antfly search |
+| `sse.maxClients` | 50 | Max SSE connections |
+
+---
+
+## OpenClaw skill
+
+Bakin ships a skill file at `skill/SKILL.md` that teaches OpenClaw agents how to interact with Bakin — task lifecycle rules, required API calls, logging requirements, content locations.
+
+Doctor auto-installs it to `~/.openclaw/workspace/skills/bakin/` and keeps it in sync. Verify with:
 
 ```bash
 openclaw skills list
@@ -333,162 +352,35 @@ openclaw skills list
 
 ---
 
-## Antfly (Vector Search)
+## Environment
 
-[AntflyDB](https://antfly.dev) provides hybrid search (full-text BM25 + semantic vector) across all content. Enabled by default — Bakin auto-manages the entire lifecycle: starts the server, creates tables with embeddings, indexes content, and stops it on shutdown. Bakin still works without it (set `antfly.enabled` to `false` for file-only mode).
-
-### Setup
-
-Antfly is enabled by default. The onboarding flow handles installation:
-
-```bash
-bakin install antfly    # Install AntflyDB via Homebrew
-bakin install models    # Download Termite ML models (~1.5GB)
-```
-
-Or install manually:
-
-```bash
-brew install --cask antflydb/antfly/antfly
-```
-
-On next server start, Bakin auto-starts Antfly, creates tables, and indexes existing content. To backfill manually:
-
-```bash
-bakin reindex
-```
-
-### How It Works
-
-- **Auto-start:** Bakin spawns `antfly swarm` as a child process on boot (port 8080)
-- **Auto-stop:** Killed gracefully on Bakin shutdown (SIGTERM, force after 5s)
-- **Auto-tables:** 7 tables created on first run — tasks, assets, projects, workflows, schedule, team, memory (unified 7-tier observability table)
-- **Multimodal indexing:** Text content indexed via BAAI/bge-small-en-v1.5, image content via OpenAI CLIP (clip-vit-base-patch32), both running locally through Antfly's Termite ML subsystem. The assets table uses two embedding indexes side by side (`assets_text` + `assets_visual`) so text and visual queries hit the right modality automatically.
-- **Server-side content extraction:** PDFs and text formats (.md, .txt, .json, .csv, .yaml) are extracted to a `content` field in Bakin before indexing — pdf-parse handles PDFs, fs.readFileSync handles plain text. See `.claude/knowledge/multimodal-search.md` for the pipeline.
-- **Cross-encoder reranker:** Single-modality tables get a post-retrieval rerank pass via mxbai-rerank-base-v1 for sharper relevance. Multimodal tables (assets) skip reranking — see `search-system.md` for why.
-- **Schema migration:** Bumping `SCHEMA_VERSION` in `src/core/search-migration.ts` drops and recreates all bakin_* tables on next boot, with background reindex. Embedder and schema changes happen transparently.
-- **Dual-write sync:** File watcher indexes content to Antfly on every write
-- **Fire-and-forget:** All indexing is non-blocking with exponential-backoff retries on transient shard-startup errors — file writes succeed even if Antfly is down
-- **External Antfly:** If Antfly is already running on port 8080 (started externally), Bakin detects it and skips spawning a child process
-
-For the full architecture see `.claude/knowledge/search-system.md`. For the multimodal pipeline specifically see `.claude/knowledge/multimodal-search.md`.
-
-### What Gets Indexed
-
-| Table | Source | Indexed When |
-|-------|--------|-------------|
-| `bakin_tasks` | Completed tasks | On move to Done |
-| `bakin_memory` | `audit.jsonl` + OpenClaw sessions/workspace/memory dirs | On file change (offset-driven) |
-| `bakin_assets` | Generated assets | On create |
-| `bakin_projects` | Project files | On file write |
-| `bakin_workflows` | Workflow instances | On state change |
-| `bakin_schedule` | Scheduled jobs | On create/update |
-| `bakin_team` | Agent profiles | On profile change |
-
-### Search
-
-```bash
-bakin search "runway video clips"                    # All tables
-bakin search "landscape shots" --table=assets        # Single table
-bakin search "deploy fix" --agent=patch              # By agent
-bakin search "portraits" --table=assets --limit=20   # Combined filters
-bakin search:stats                                   # Table health + doc counts
-
-# API
-curl "http://localhost:3737/api/search?q=runway+video&table=assets&limit=5"
-```
-
-### Antfly Dashboard
-
-When running, Antfly serves its own dashboard at `http://localhost:11433` for inspecting tables, shards, and indexes directly.
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `3737` | Server port |
+| `BAKIN_URL` | `http://localhost:3737` | Base URL the CLI uses |
+| `BAKIN_HOME` | `~/.bakin/` | Data directory override |
+| `OPENCLAW_HOME` | `~/.openclaw/` | OpenClaw data directory |
+| `OPENCLAW_PATH` | `/opt/homebrew/bin/openclaw` | OpenClaw binary |
 
 ---
 
-## Settings
-
-All configuration lives in `~/.bakin/settings.json`. Created with defaults on first run. Update via API or CLI.
+## Developing
 
 ```bash
-bakin settings get                  # View all
-bakin settings set dispatch.intervalMs 600000   # 10 min dispatch
+git clone git@github.com:markhayden/bakin.git
+cd bakin
+bun install
+bun run start     # builds css + vendors + plugins + shell + manifest, then boots
 ```
 
-Key defaults:
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full development setup, build pipeline, and test rules, and [`CLAUDE.md`](./CLAUDE.md) for code conventions and architectural invariants.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `dispatch.intervalMs` | `300000` (5m) | Task dispatch interval |
-| `dispatch.maxDispatched` | `500` | Max tasks in flight |
-| `watchdog.stuckThresholdMs` | `1800000` (30m) | Alert if task has no progress |
-| `doctor.intervalMs` | `1800000` (30m) | Health check interval |
-| `doctor.autoFixSkill` | `true` | Auto-fix safe issues |
-| `antfly.enabled` | `true` | Enable Antfly search |
-| `sse.maxClients` | `50` | Max SSE connections |
-
----
-
-## Testing
+For mock dev without a real OpenClaw:
 
 ```bash
-npm test                  # Run all tests
-npm run test:watch        # Watch mode
-npm run test:coverage     # With coverage report
+bun run dev:mock          # seeds + launches Imitation Crab mock + Bakin
+bun run mock:seed --force # reseed fixtures
 ```
-
-Tests use [Vitest](https://vitest.dev) and cover core modules, plugins, library utilities, and selected React components. Test files are in `tests/`.
-
-- `pnpm test` — full suite
-- `pnpm test:components` — React component tests
-
-Component tests live in `tests/components/**/*.test.tsx` and use a per-file `// @vitest-environment jsdom` annotation plus Testing Library.
-
----
-
-## OpenClaw Communication
-
-Bakin communicates with the OpenClaw gateway via HTTP (not CLI exec). The gateway runs on port `18789` by default.
-
-- **Send messages to agents:** `POST /v1/chat/completions`
-- **Invoke tools:** `POST /tools/invoke`
-- **Channel messages (Discord):** CLI fallback for channel routing
-
-Configure the gateway connection:
-
-```bash
-bakin settings set openclaw.gatewayUrl http://127.0.0.1
-bakin settings set openclaw.gatewayPort 18789
-```
-
----
-
-## SSE (Real-Time Events)
-
-The dashboard and external clients can subscribe to real-time events:
-
-```bash
-curl -N http://localhost:3737/api/events
-```
-
-Events include file changes, task updates, audit entries, activity logs, and system alerts. SSE supports reconnection via `Last-Event-ID` header with a 200-event replay buffer.
-
----
-
-## Development
-
-```bash
-npm run dev       # Start dev server with hot reload
-npm test          # Run tests
-npm run lint      # Lint
-npm run build     # Production build
-```
-
-### Project Conventions
-
-- **TypeScript strict mode** with path aliases (`@/` → `src/`, `@bakin/*` → `plugins/*`)
-- **Hybrid storage** — tasks in OpenClaw SQLite, projects and assets as files in `~/.bakin/`
-- **Plugin architecture** — extend via `plugins/` directory and `bakin.config.ts`
-- **Structured audit logging** — all state changes logged to `~/.bakin/audit.jsonl`
-- **OpenClaw HTTP client** — no CLI exec; all agent communication goes through the gateway API
 
 ---
 
