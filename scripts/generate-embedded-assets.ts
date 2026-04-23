@@ -85,6 +85,9 @@ function collectAssets(): AssetSource[] {
     }
     // Vendor bundles — served under /vendor/*
     walk(join(publicDir, 'vendor'), '/vendor', assets)
+    // NOTE: __bakin-dev/ is naturally excluded (we only descend into
+    // the subdirectories we explicitly walk). Keep it that way — the
+    // dev-client bundle must never land in the compiled binary.
   }
 
   // Core plugin dist — served under /api/plugins/<id>/assets/*
