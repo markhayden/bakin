@@ -5,8 +5,8 @@
  *
  * Verifies registration accumulation, Slot rendering, ordering, prop pass-
  * through, and the empty-registration fallback. The registry is a browser-
- * global Map keyed on slot name, so between-test isolation requires
- * __clearSlot() on every name used in a test.
+ * global Map keyed on slot name, so between-test isolation uses
+ * `clearSlotsOwnedBy` with a test-scoped owner id.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
@@ -33,7 +33,9 @@ vi.mock('../../packages/core/src/content-dir', async () => {
   }
 })
 
-import { Slot, registerSlot, getSlotEntries, __clearSlot } from '@bakin/sdk/slots'
+import { Slot, registerSlot, getSlotEntries, clearSlotsOwnedBy } from '@bakin/sdk/slots'
+
+const TEST_OWNER = '__test_slots'
 
 function Caption({ text }: { text: string }) {
   return <span data-testid="caption">{text}</span>
@@ -44,8 +46,7 @@ function Alt({ text }: { text: string }) {
 }
 
 afterEach(() => {
-  __clearSlot('test.caption')
-  __clearSlot('test.empty')
+  clearSlotsOwnedBy(TEST_OWNER)
   cleanup()
 })
 
@@ -55,8 +56,8 @@ describe('@bakin/sdk/slots — registry', () => {
   })
 
   it('accumulates registrations and sorts by order', () => {
-    registerSlot('test.caption', Caption, 50)
-    registerSlot('test.caption', Alt, 10)
+    registerSlot('test.caption', Caption, 50, TEST_OWNER)
+    registerSlot('test.caption', Alt, 10, TEST_OWNER)
     const entries = getSlotEntries('test.caption')
     expect(entries).toHaveLength(2)
     expect(entries[0].component).toBe(Alt)      // order 10 renders first
@@ -64,7 +65,7 @@ describe('@bakin/sdk/slots — registry', () => {
   })
 
   it('defaults order to 100', () => {
-    registerSlot('test.caption', Caption)
+    registerSlot('test.caption', Caption, undefined, TEST_OWNER)
     expect(getSlotEntries('test.caption')[0].order).toBe(100)
   })
 })
@@ -76,14 +77,14 @@ describe('@bakin/sdk/slots — <Slot>', () => {
   })
 
   it('renders every registered entry with the passed props', () => {
-    registerSlot('test.caption', Caption)
+    registerSlot('test.caption', Caption, 100, TEST_OWNER)
     render(<Slot name="test.caption" text="hello" />)
     expect(screen.getByTestId('caption').textContent).toBe('hello')
   })
 
   it('renders multiple entries in ascending order', () => {
-    registerSlot('test.caption', Caption, 50)
-    registerSlot('test.caption', Alt, 10)
+    registerSlot('test.caption', Caption, 50, TEST_OWNER)
+    registerSlot('test.caption', Alt, 10, TEST_OWNER)
     render(<Slot name="test.caption" text="x" />)
     const alt = screen.getByTestId('alt')
     const cap = screen.getByTestId('caption')
@@ -95,10 +96,33 @@ describe('@bakin/sdk/slots — <Slot>', () => {
     function Echo(props: Record<string, unknown>) {
       return <span data-testid="echo">{JSON.stringify(props)}</span>
     }
-    registerSlot('test.caption', Echo)
+    registerSlot('test.caption', Echo, 100, TEST_OWNER)
     render(<Slot name="test.caption" foo="bar" count={42} />)
     const body = screen.getByTestId('echo').textContent!
     expect(body).toContain('"foo":"bar"')
     expect(body).toContain('"count":42')
+  })
+})
+
+describe('@bakin/sdk/slots — clearSlotsOwnedBy', () => {
+  it('removes only entries owned by the given plugin', () => {
+    registerSlot('test.caption', Caption, 50, 'plugin-a')
+    registerSlot('test.caption', Alt, 60, 'plugin-b')
+    clearSlotsOwnedBy('plugin-a')
+    const entries = getSlotEntries('test.caption')
+    expect(entries).toHaveLength(1)
+    expect(entries[0].component).toBe(Alt)
+    // Cleanup for next tests
+    clearSlotsOwnedBy('plugin-b')
+  })
+
+  it('leaves unowned entries in place', () => {
+    registerSlot('test.caption', Caption, 50)           // no owner
+    registerSlot('test.caption', Alt, 60, 'plugin-a')
+    clearSlotsOwnedBy('plugin-a')
+    const entries = getSlotEntries('test.caption')
+    expect(entries).toHaveLength(1)
+    expect(entries[0].component).toBe(Caption)
+    // No test-owner cleanup needed; no TEST_OWNER registrations
   })
 })
