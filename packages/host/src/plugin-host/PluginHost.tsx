@@ -13,9 +13,12 @@
  *   4. Flips a `ready` flag to re-render the shell with nav items + slots
  *      populated from the registry.
  *
- * While plugins are loading, children render against the (initially empty)
- * slot/nav registry. That means sidebar nav briefly shows nothing on cold
- * boot — acceptable for a single-user LAN app.
+ * Children don't render until every plugin has finished loading. The nav +
+ * slot registries read from globalThis at render time and don't subscribe
+ * to changes, so rendering the shell before plugins register would leave
+ * the sidebar empty and every `<Slot name="page:/..." />` would return null
+ * — and React would not re-render them when plugins finally finish loading.
+ * A ~200ms blank shell on cold boot is fine for a single-user LAN app.
  *
  * Phase G replaces the disk-backed asset route with Bun.embeddedFiles
  * inside the compiled binary; the PluginHost path doesn't change.
@@ -78,11 +81,6 @@ export function PluginHost({ children }: { children: ReactNode }) {
     return () => { cancelled = true }
   }, [])
 
-  // Render children regardless — the slot/nav registry is already being
-  // read reactively by the shell. Before `ready`, the sidebar is empty
-  // and slots return null for uncontributed names; after, everything
-  // flips. We do trigger a re-render by updating state, which is why
-  // `ready` exists even though we don't gate rendering on it.
-  void ready
+  if (!ready) return null
   return <>{children}</>
 }
