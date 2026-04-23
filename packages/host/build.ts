@@ -38,6 +38,7 @@ await Bun.build({
     'react-dom/client',
     'react/jsx-runtime',
     'react/jsx-dev-runtime',
+    '@tanstack/react-router',
     '@bakin/sdk',
     '@bakin/sdk/ui',
     '@bakin/sdk/hooks',
