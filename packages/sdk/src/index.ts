@@ -20,5 +20,13 @@
  * is a single React instance and a single SDK.
  */
 export * from './types'
-export { registerPlugin, getAllNavItems, getPluginNavItems } from './register'
+export {
+  registerPlugin,
+  unregisterPlugin,
+  registerPluginCleanup,
+  getRegistryVersion,
+  subscribeRegistry,
+  getAllNavItems,
+  getPluginNavItems,
+} from './register'
 export type { NavItem, PluginRegistration } from './register'

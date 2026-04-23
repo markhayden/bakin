@@ -98,6 +98,9 @@ declare namespace Bun {
 // The TS lib ships ImportMeta with only `url`; extend it here.
 interface ImportMeta {
   readonly dir: string
+  /** True when this module is the process entry point (Bun equivalent of
+   *  Node's `require.main === module`). False when imported from elsewhere. */
+  readonly main: boolean
 }
 
 /**
