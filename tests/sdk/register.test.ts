@@ -6,7 +6,7 @@
  * The registry is browser-global, so between-test isolation explicitly
  * unregisters any plugin ids used by the test.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // Defensive content-dir mock per CLAUDE.md test-isolation rules.
 vi.mock('../../src/core/content-dir', async () => {
