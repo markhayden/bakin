@@ -39,6 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
+# Next.js leftovers (pre-Bun-migration #148; nothing current generates these,
+# but IDE integrations occasionally resurface them)
+.next/
+next-env.d.ts
+
 # beacon runtime data (unique per installation)
 /content/
 mc-server.log
