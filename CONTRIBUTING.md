@@ -56,7 +56,7 @@ What it watches, and what happens when you save:
 |---|---|---|
 | `packages/host/src/**` (.ts/.tsx/.css) | shell bundle | full reload (~2 s) |
 | `plugins/<id>/` client source | that plugin only | hot-swap — the plugin subtree remounts, shell + other plugins + URL + scroll + SSE connection survive (~1.5 s) |
-| `packages/host/public/globals.css` (driven by Tailwind's `--watch` child) | — | swap the `<link>` tag's href, no reload (focus / input state preserved) |
+| CSS (via Tailwind's `--watch=always` child — any `.css` source or Tailwind-scanned `.tsx`) | — | swap the `<link>` tag's href, no reload (focus / input state preserved) |
 | `packages/sdk/src/**` | vendor SDK bundles (`sdk-*.js`; `react*` untouched) | full reload (~3 s) |
 | A plugin's `index.ts` (server entry) | nothing — v1 doesn't auto-restart the server | no-op; manually Ctrl-C and rerun `bun run dev` |
 | `src/core/**`, `server.ts`, `scripts/**` | nothing — not watched | same; Ctrl-C + rerun |

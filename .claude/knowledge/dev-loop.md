@@ -41,7 +41,7 @@ scripts/dev.ts (process.env.BAKIN_DEV = '1')
     │
     ├── Initial prestart build (css, vendors, plugins, host-shell)
     ├── Bun.build(dev-client.ts → public/__bakin-dev/client.js)
-    ├── Spawn bunx @tailwindcss/cli --watch   (child process)
+    ├── Spawn bunx @tailwindcss/cli --watch=always   (child process)
     ├── chokidar watchers:
     │     • packages/host/src/**         → rebuild shell → dev:reload
     │     • plugins/<id>/<devWatch>       → rebuildOnePlugin(id) → dev:hot-swap
@@ -116,7 +116,7 @@ When a plugin file changes:
       - Bumps `registry.version` + notifies subscribers.
    b. Swaps the plugin's `<link data-bakin-plugin-css="<id>">` with a cache-busted href (if present). Old link removes on new link's `onload`.
    c. `await import(clientEntry + '?v=' + version)` — browser fetches the new bundle, new module instance runs `registerPlugin({...})` as a side effect, re-populating nav + slots. Registry version bumps again.
-4. Shell re-renders via `useSyncExternalStore(subscribeRegistry, getRegistryVersion)` in `PluginHost.tsx`. `<Slot>` consumers and the sidebar read from the registry and pick up the new components.
+4. Registry consumers (`<Slot>` in `packages/sdk/src/slots/index.tsx`, `<AppSidebar>` in `packages/host/src/components/layout/app-sidebar.tsx`) subscribe to `subscribeRegistry` via `useSyncExternalStore`. Each bumped version triggers a re-render at every subscribed consumer independently. The subscription lives at the consumer, **not** at `PluginHost` — a parent's store re-render doesn't force descendants with unchanged props to re-execute, so any component that reads the registry at render time has to own its own subscription.
 
 ### Why the old module doesn't break
 
@@ -159,6 +159,32 @@ v2 hot-swap is correct iff every client-side registration API has a paired teard
 | `registerPluginDefinition(pluginId, id, def)` | `plugins/workflows/lib/source-registry.ts` | `pluginId` | `unregisterPluginDefinitions(pluginId)` — same cleanup hook |
 
 Server-side registrations (`ctx.registerExecTool`, `ctx.hooks.register`, `ctx.registerRoute`, `ctx.search.registerContentType`, etc.) are **not** in scope for hot-swap teardown. Those persist until server restart — v2 doesn't touch the server's plugin registry.
+
+## Gotchas that bit us during the initial rollout
+
+These all surfaced during hands-on testing and are the most likely places a well-intentioned refactor re-introduces a bug.
+
+### Asset Cache-Control in dev = `no-store`
+
+Both `_static.ts` (shell, vendor, globals.css, favicon) and `api/plugins/assets.ts` (plugin client bundles) set `Cache-Control: no-store` when `BAKIN_DEV=1`; the prod path keeps `public, max-age=300`. Without this, `location.reload()` refetches `index.html` (which is already `no-cache`) but the browser's HTTP cache serves the stale `main.js` / `client.js` from its cache for up to 5 minutes, and the visible change never appears. User symptom is "page flickered like it reloaded, but my edit didn't show up."
+
+The helper is `cacheControlFor(urlOrPath, status)` — exported for testing. Unit tests in `tests/api/host-static.test.ts` lock the policy in.
+
+### Tailwind CLI v4: `--watch=always`, not bare `--watch`
+
+We spawn the Tailwind CLI with `stdio: ['ignore', 'inherit', 'inherit']`, which closes the child's stdin immediately. Tailwind's v4 CLI exits its watch loop silently when stdin closes — which looks indistinguishable from "watching but no source changes." The fix is the documented `--watch=always` flag that keeps the loop alive across stdin-close. Without it, the CSS path goes dark after the first build and CSS edits never produce output.
+
+### Shell watcher excludes `.css` deliberately
+
+The shell watcher's extension regex is `/\.(ts|tsx)$/`, not `/\.(ts|tsx|css)$/`. Including `.css` would trigger a full shell rebuild (and a `dev:reload` page reload) on every CSS edit, racing ahead of and winning against the link-swap path. CSS edits go exclusively through Tailwind's `--watch=always` child → output file mtime change → CSS watcher → `dev:css` → link swap, with no page reload and all JS state preserved.
+
+### `/__bakin-dev/*` 404s in production, not SPA-fallback 200
+
+In `_static.ts`, the `/__bakin-dev/*` path check runs **unconditionally** and returns 404 when `BAKIN_DEV !== '1'`. If it fell through to the SPA fallback, `GET /__bakin-dev/client.js` in production would return `index.html` with a 200 status — benign (no dev-client bytes leak) but semantically wrong. Tests in `tests/api/dev-routes.test.ts` + binary-launch acceptance at the end of the rollout verify all dev routes 404 cleanly in the compiled binary.
+
+### `scripts/dev-build-one-plugin.ts` uses `node:child_process.spawn`, not `Bun.spawn`
+
+vitest runs on Node, so `Bun.spawn` is undefined in test context. The helper uses `node:child_process.spawn` (which Bun implements API-compatibly) so both production (under Bun) and the test suite exercise the same code path. Matches the pattern in `packages/host/src/plugin-host/user-plugin-builder.ts`.
 
 ## Adding a new scope to the dev watcher
 
