@@ -20,6 +20,8 @@
 
 import asset_assets_main_js from '../../dist/main.js' with { type: 'file' }
 import asset_index_html from '../../public/index.html' with { type: 'file' }
+import asset_bakin_logo_svg from '../../public/bakin-logo.svg' with { type: 'file' }
+import asset_bakin_hop_svg from '../../public/bakin-hop.svg' with { type: 'file' }
 import asset_globals_css from '../../public/globals.css' with { type: 'file' }
 import asset_vendor_sdk_ui_js from '../../public/vendor/sdk-ui.js' with { type: 'file' }
 import asset_vendor_react_js from '../../public/vendor/react.js' with { type: 'file' }
@@ -61,6 +63,8 @@ import asset_api_plugins_messaging_assets_index_js from '../../../../plugins/mes
 export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/assets/main.js', asset_assets_main_js],
   ['/index.html', asset_index_html],
+  ['/bakin-logo.svg', asset_bakin_logo_svg],
+  ['/bakin-hop.svg', asset_bakin_hop_svg],
   ['/globals.css', asset_globals_css],
   ['/vendor/sdk-ui.js', asset_vendor_sdk_ui_js],
   ['/vendor/react.js', asset_vendor_react_js],
@@ -97,4 +101,4 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/api/plugins/messaging/assets/index.js', asset_api_plugins_messaging_assets_index_js],
 ])
 
-export const EMBEDDED_ASSET_COUNT = 36
+export const EMBEDDED_ASSET_COUNT = 38
