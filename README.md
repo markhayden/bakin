@@ -185,12 +185,14 @@ bakin plugins scaffold <name>               # starter plugin at ./<name>/
 
 ## CLI reference
 
-All commands hit the local HTTP API (`http://localhost:3737` or `$BAKIN_URL`).
+Most commands hit the local HTTP API (`http://localhost:3737` or `$BAKIN_URL`). Lifecycle commands (`start`, `stop`, `restart`, `dev`) operate on the server itself.
 
 ```bash
 # System
 bakin start                            # boot the server
 bakin stop                             # graceful shutdown
+bakin restart                          # stop + start
+bakin dev                              # watch-mode dev loop (HMR) — source-tree only
 bakin status                           # dispatch + server + doctor status
 bakin version                          # print version
 bakin update                           # replace binary with latest release
@@ -370,10 +372,27 @@ openclaw skills list
 git clone git@github.com:madeinwyo/bakin.git
 cd bakin
 bun install
-bun run start     # builds css + vendors + plugins + shell + manifest, then boots
+bun run dev       # or `bakin dev` if the CLI is on your PATH
 ```
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full development setup, build pipeline, and test rules, and [`CLAUDE.md`](./CLAUDE.md) for code conventions and architectural invariants.
+Both `bun run dev` and `bakin dev` launch the same watch-mode coordinator. Edits flow through a dev SSE channel:
+
+- Edit `packages/host/src/**` → full page reload (~2 s)
+- Edit `plugins/<id>/**` → that plugin remounts without a reload; shell, other plugins, URL, scroll, and SSE connection all survive
+- Edit Tailwind-scanned CSS → link-tag swap, no reload (input focus preserved)
+- Build error → red overlay at the top; stale bundle keeps running; overlay clears on fix
+
+Server-side code (`src/core/**`, `server.ts`, plugins' `index.ts`) still requires a manual Ctrl-C + `bun run dev` restart.
+
+Other entry points:
+
+```bash
+bun run start     # one-shot build + serve (production-style preview)
+bun run server    # serve current dist/ without rebuilding
+bun run build     # full build including the distributable binary
+```
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full development setup, build pipeline, and test rules; [`CLAUDE.md`](./CLAUDE.md) for code conventions; and [`.claude/knowledge/dev-loop.md`](./.claude/knowledge/dev-loop.md) for the dev-mode architecture deep-dive.
 
 For mock dev without a real OpenClaw:
 

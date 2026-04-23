@@ -22,7 +22,7 @@
  *      embedded-assets generator during inner dev loops.
  */
 import type { IncomingMessage, ServerResponse } from 'http'
-import { createReadStream, existsSync, statSync } from 'fs'
+import { createReadStream, existsSync, readFileSync, statSync } from 'fs'
 import { join, extname, resolve } from 'path'
 
 import { EMBEDDED_ASSETS } from './_embedded-assets'
@@ -32,6 +32,25 @@ import { EMBEDDED_ASSETS } from './_embedded-assets'
 // covers everything these dirs would have held.
 const DIST_DIR = resolve(process.cwd(), 'packages/host/dist')
 const PUBLIC_DIR = resolve(process.cwd(), 'packages/host/public')
+
+const DEV_CLIENT_TAG = '<script type="module" src="/__bakin-dev/client.js"></script>'
+
+/**
+ * Inject the dev-client script before `</body>` when BAKIN_DEV=1, else
+ * return the input bytes unchanged (reference equality preserved). Exported
+ * so tests can exercise both branches without spinning up a server.
+ */
+export function transformIndexHtmlForDev(bytes: Buffer): Buffer {
+  if (process.env.BAKIN_DEV !== '1') return bytes
+  const html = bytes.toString('utf-8')
+  const idx = html.toLowerCase().lastIndexOf('</body>')
+  if (idx === -1) {
+    console.warn('[bakin-dev] index.html has no </body> — skipping dev-client injection')
+    return bytes
+  }
+  const injected = html.slice(0, idx) + DEV_CLIENT_TAG + html.slice(idx)
+  return Buffer.from(injected, 'utf-8')
+}
 
 const MIME: Record<string, string> = {
   '.js': 'application/javascript; charset=utf-8',
@@ -51,6 +70,22 @@ function mimeFor(path: string): string {
   return MIME[extname(path).toLowerCase()] ?? 'application/octet-stream'
 }
 
+/**
+ * Pick the Cache-Control header for a response. In dev we force no-store on
+ * every asset — the watcher rebuilds main.js / client.js / vendor bundles
+ * in place, and location.reload() won't pick up the new bytes if the
+ * browser's HTTP cache says the old ones are still fresh. In production
+ * the binary's assets never change at runtime, so the 5-minute cache is
+ * fine and cuts the number of HEAD requests the browser makes. Exported
+ * for unit-testing.
+ */
+export function cacheControlFor(urlOrPath: string, status: number): string {
+  if (status !== 200) return 'public, max-age=300'
+  if (process.env.BAKIN_DEV === '1') return 'no-store'
+  if (urlOrPath.endsWith('.html')) return 'no-cache'
+  return 'public, max-age=300'
+}
+
 async function sendEmbedded(res: ServerResponse, urlPath: string, status = 200): Promise<boolean> {
   const embeddedPath = EMBEDDED_ASSETS.get(urlPath)
   if (!embeddedPath) return false
@@ -61,7 +96,7 @@ async function sendEmbedded(res: ServerResponse, urlPath: string, status = 200):
     res.writeHead(status, {
       'Content-Type': mimeFor(urlPath),
       'Content-Length': String(bytes.length),
-      'Cache-Control': status === 200 && urlPath.endsWith('.html') ? 'no-cache' : 'public, max-age=300',
+      'Cache-Control': cacheControlFor(urlPath, status),
     })
     res.end(bytes)
     return true
@@ -77,7 +112,7 @@ function sendDiskFile(res: ServerResponse, path: string, status = 200): boolean 
   res.writeHead(status, {
     'Content-Type': mimeFor(path),
     'Content-Length': stat.size,
-    'Cache-Control': status === 200 && path.endsWith('.html') ? 'no-cache' : 'public, max-age=300',
+    'Cache-Control': cacheControlFor(path, status),
   })
   createReadStream(path).pipe(res)
   return true
@@ -95,6 +130,23 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
   if (pathname.includes('..')) {
     res.writeHead(400, { 'Content-Type': 'text/plain' })
     res.end('Bad request')
+    return true
+  }
+
+  // Dev-client bundle — served from disk when BAKIN_DEV=1, 404 otherwise.
+  // The unconditional 404 when unset keeps production from falling through
+  // to the SPA fallback (which would return index.html with a 200 for an
+  // asset request). scripts/dev.ts builds this to packages/host/public/__bakin-dev/.
+  if (pathname.startsWith('/__bakin-dev/')) {
+    if (process.env.BAKIN_DEV !== '1') {
+      res.writeHead(404, { 'Content-Type': 'text/plain' })
+      res.end('Not found')
+      return true
+    }
+    const rel = pathname.slice('/__bakin-dev/'.length)
+    if (sendDiskFile(res, join(PUBLIC_DIR, '__bakin-dev', rel))) return true
+    res.writeHead(404, { 'Content-Type': 'text/plain' })
+    res.end('Not found')
     return true
   }
 
@@ -126,11 +178,38 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
   }
 
   // SPA fallback — every other GET returns index.html so TanStack Router
-  // handles the route client-side.
-  if (await sendEmbedded(res, '/index.html')) return true
-  if (sendDiskFile(res, join(PUBLIC_DIR, 'index.html'))) return true
+  // handles the route client-side. In dev the bytes are transformed to
+  // inject the dev-client script; in prod they pass through unchanged.
+  const indexBytes = await loadIndexHtml()
+  if (indexBytes) {
+    const body = transformIndexHtmlForDev(indexBytes)
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Length': String(body.length),
+      'Cache-Control': 'no-cache',
+    })
+    res.end(body)
+    return true
+  }
 
   res.writeHead(500, { 'Content-Type': 'text/plain' })
   res.end('Host bundle not built — run `bun run build:host`')
   return true
+}
+
+async function loadIndexHtml(): Promise<Buffer | null> {
+  const embedded = EMBEDDED_ASSETS.get('/index.html')
+  if (embedded) {
+    try {
+      const file = Bun.file(embedded)
+      if (await file.exists()) {
+        return Buffer.from(await file.arrayBuffer())
+      }
+    } catch { /* fall through to disk */ }
+  }
+  const diskPath = join(PUBLIC_DIR, 'index.html')
+  if (existsSync(diskPath)) {
+    return readFileSync(diskPath)
+  }
+  return null
 }

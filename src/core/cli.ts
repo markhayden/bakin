@@ -21,16 +21,45 @@ const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
 const USAGE = `Usage: bakin <command> [options]
 
-Commands:
+Lifecycle:
   start                      Start the Bakin server (default command)
   stop                       Stop a running Bakin server
+  restart                    Stop + start
   status                     Show dispatch + server status
+  dev                        Run the watch-mode dev loop (HMR)
+                             — only works from a bakin source tree
   version                    Print the Bakin version
   update                     Replace this binary with the latest release
-  plugins list               List installed plugins (requires a running server)
+  doctor                     Run health checks
+
+Tasks + workflows:
+  dispatch                   Trigger immediate task dispatch
+  tasks {list,get,create,move,log,block,depend,complete}
+  workflows {list,start,step,submit}
+  agents {list,status,tasks,send}
+
+Schedule + messaging:
+  schedule {list,add,pause,resume,run,runs,remove}
+  messaging {list,get,create,update,delete,approve,reject}
+
+Assets + search:
+  trash {list,restore,empty}
+  search <query>
+  search:stats
+  reindex [--table=<name>] [--rebuild]
+
+Plugins:
+  plugins list               List installed plugins
   plugins install <src>      Install a plugin (local path or github:user/repo)
   plugins remove <id>        Remove a plugin
   plugins scaffold <name>    Create a starter plugin in ./<name>/
+
+Setup + config:
+  settings {get,set}
+  setup service              macOS launchd service install/uninstall
+  onboard                    First-time setup (mkdir, settings, checks)
+  init                       Re-run onboarding
+
   --help, -h                 Show this message
 
 Environment:
@@ -202,6 +231,45 @@ async function cmdHelp(): Promise<number> {
   return 0
 }
 
+/**
+ * `bakin dev` — run the watch-mode dev loop against the bakin source tree.
+ * Only makes sense from a source clone; the compiled binary has no
+ * packages/host/src/ to watch, so it errors out with a clear pointer.
+ * Exported so the legacy cli/bakin.ts entry point can delegate here.
+ */
+export async function cmdDev(): Promise<number> {
+  // Source mode: this file resolves from the on-disk repo layout so we can
+  // locate the sibling scripts/dev.ts. In the compiled binary the module
+  // lives under the `/$bunfs/` virtual filesystem, which doesn't contain
+  // scripts/ — detection is "does a scripts/dev.ts sibling exist next to
+  // my resolved location on a real fs?".
+  const { fileURLToPath } = await import('node:url')
+  const { existsSync } = await import('node:fs')
+  const { join, dirname, resolve } = await import('node:path')
+
+  let here: string
+  try { here = fileURLToPath(import.meta.url) } catch { here = '' }
+  // Walk up from src/core/cli.ts to the repo root and probe.
+  const repoRoot = here ? resolve(dirname(here), '..', '..') : process.cwd()
+  const devScript = join(repoRoot, 'scripts', 'dev.ts')
+  if (!existsSync(devScript)) {
+    console.error('`bakin dev` only runs from a bakin source tree.')
+    console.error('Clone https://github.com/madeinwyo/bakin and run `bakin dev` from the repo root.')
+    return 1
+  }
+
+  const { spawn } = await import('node:child_process')
+  const proc = spawn('bun', ['run', devScript], { stdio: 'inherit', cwd: repoRoot })
+  return await new Promise<number>((resolvePromise) => {
+    proc.once('close', (code: number | null) => resolvePromise(code ?? 0))
+    proc.once('error', (err) => {
+      console.error('Failed to spawn dev:', err instanceof Error ? err.message : String(err))
+      resolvePromise(1)
+    })
+  })
+}
+
+
 export interface CliResult {
   /** Whether to continue booting the server after dispatch returns. */
   startServer: boolean
@@ -242,6 +310,12 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
       case 'update':
         return { startServer: false, exitCode: await cmdUpdate() }
 
+      case 'dev':
+        return { startServer: false, exitCode: await cmdDev() }
+
+      // `restart` falls through to the legacy delegation below so there's
+      // a single implementation (cmdReboot in cli/bakin.ts).
+
       case 'plugins': {
         if (!sub) {
           console.error('Usage: bakin plugins <list|install|remove|scaffold>')
@@ -273,10 +347,16 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
         return { startServer: false, exitCode: 1 }
       }
 
-      default:
-        console.error(`Unknown command: ${cmd}`)
-        console.error(USAGE)
-        return { startServer: false, exitCode: 1 }
+      default: {
+        // Delegate to the legacy CLI (doctor, tasks, workflows, agents,
+        // schedule, messaging, search, settings, trash, paths, reindex,
+        // onboard, setup, init, logs, agent-rules, etc.). The legacy
+        // handler calls process.exit internally on success/failure, so
+        // we don't return here.
+        const { main: runLegacyCli } = await import(/* @vite-ignore */ '../../cli/bakin' as string) as { main: () => Promise<void> }
+        await runLegacyCli()
+        return { startServer: false, exitCode: 0 }
+      }
     }
   } catch (err) {
     console.error(`Error: ${err instanceof Error ? err.message : String(err)}`)

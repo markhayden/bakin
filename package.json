@@ -9,7 +9,7 @@
     "bakin": "./cli/bakin.ts"
   },
   "scripts": {
-    "dev": "bun run prestart && bun run server.ts",
+    "dev": "bun run scripts/dev.ts",
     "build": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:binary",
     "build:host": "bun run build:css && bun run build:vendors && bun run build:host-shell",
     "build:css": "bunx @tailwindcss/cli -i ./packages/host/src/globals.css -o ./packages/host/public/globals.css",
