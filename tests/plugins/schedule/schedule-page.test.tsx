@@ -152,12 +152,6 @@ vi.mock('@bakin/team/hooks/use-agent-store', () => ({
   useAgentDisplayName: () => undefined,
 }))
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-  usePathname: () => '/schedule',
-  useSearchParams: () => new URLSearchParams(),
-}))
-
 vi.mock('@/components/plugin-header', () => ({
   PluginHeader: ({ title, count }: { title: string; count?: number }) => (
     <div data-testid="plugin-header">

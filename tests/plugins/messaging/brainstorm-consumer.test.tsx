@@ -85,13 +85,6 @@ vi.mock('@/hooks/use-query-state', async () => {
   }
 })
 
-// next/navigation — minimal shims
-vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-  usePathname: () => '/messaging/brainstorm',
-}))
-
 // Heavy / unrelated children
 vi.mock('@/components/plugin-header', () => ({
   PluginHeader: ({ title, search }: { title: string; search?: { value: string; onChange: (v: string) => void; placeholder?: string } }) => (
