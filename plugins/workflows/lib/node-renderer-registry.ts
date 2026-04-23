@@ -24,15 +24,28 @@ import type { ComponentType } from 'react'
 export type NodeRenderer = ComponentType<NodeProps>
 
 const registry = new Map<string, NodeRenderer>()
+const listeners = new Set<() => void>()
+let version = 0
+
+function notify(): void {
+  version++
+  for (const l of listeners) l()
+}
+
+/** Monotonic counter bumped on every register/unregister. Stable snapshot for useSyncExternalStore. */
+export function getNodeRendererVersion(): number {
+  return version
+}
 
 /** Register a renderer for a node kind. Newest wins on re-registration. */
 export function registerNodeRenderer(kind: string, component: NodeRenderer): void {
   registry.set(kind, component)
+  notify()
 }
 
 /** Remove a renderer. Used at plugin teardown (hot reload). */
 export function unregisterNodeRenderer(kind: string): void {
-  registry.delete(kind)
+  if (registry.delete(kind)) notify()
 }
 
 /** Look up a renderer by kind. */
@@ -52,4 +65,14 @@ export function getAllNodeRenderers(): NodeTypes {
 /** List registered kinds — used by the palette to enumerate available node types. */
 export function listNodeRendererKinds(): string[] {
   return [...registry.keys()]
+}
+
+/**
+ * Subscribe to registry mutations. Returns an unsubscribe function.
+ * Used with React's `useSyncExternalStore` so canvases pick up node
+ * kinds registered after first render (lazy plugin load, hot install).
+ */
+export function subscribeNodeRenderers(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
 }
