@@ -25,7 +25,7 @@
  * while leaving `react` itself as the bare specifier (so Bun externalizes
  * and the import map resolves it to /vendor/react.js).
  */
-import { rmSync, mkdirSync, writeFileSync } from 'node:fs'
+import { rmSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 const VENDOR_DIR = './packages/host/public/vendor'
@@ -176,6 +176,27 @@ for (const t of targets) {
 // Remove the tmp entries after the builds — they'd otherwise be picked
 // up by generate-embedded-assets and served by the static handler.
 rmSync(TMP_DIR, { recursive: true, force: true })
+
+// ---------------------------------------------------------------------------
+// Post-process: patch immutable ESM namespace imports into mutable bindings.
+//
+// React's CJS source (react-jsx-runtime.development.js) does
+// `var React = require('react'); ...; React = { react_stack_bottom_frame };`
+// Bun bundles `require('react')` into `import * as React from "react"` when
+// react is externalized — but ESM namespace imports are const, so the later
+// `React = { ... }` throws `TypeError: Assignment to constant variable` at
+// module load time. We rewrite every top-level `import * as X from "..."`
+// into `import * as X__ns from "..."; var X = X__ns;` so the CJS-style
+// reassignment works against a mutable `var` binding.
+// ---------------------------------------------------------------------------
+const NS_IMPORT_RE = /^import \* as ([A-Za-z_$][A-Za-z0-9_$]*) from (["'][^"']+["']);$/gm
+for (const file of readdirSync(VENDOR_DIR)) {
+  if (!file.endsWith('.js')) continue
+  const path = join(VENDOR_DIR, file)
+  const src = readFileSync(path, 'utf-8')
+  const patched = src.replace(NS_IMPORT_RE, 'import * as $1__ns from $2; var $1 = $1__ns;')
+  if (patched !== src) writeFileSync(path, patched)
+}
 
 console.log(`packages/host/public/vendor: ${targets.length} bundles built`)
 
