@@ -44,16 +44,18 @@ bun x vitest watch   # watch mode
 bun run lint         # ESLint
 ```
 
-## Build pipeline order (post-migration to Bun)
+## Build pipeline order
 
 `bun run build` runs these stages in sequence:
 
-1. **`bun run build:vendors`** — builds the import-map externals (React + `@bakin/sdk/*`) under `packages/host/public/vendor/`. Source of truth for specifier mapping: `scripts/build-vendors.ts` + `packages/host/public/index.html`'s `<script type="importmap">`. Keep those two in lockstep.
-2. **`bun run build:plugins`** — *Phase E, #147.* Each `plugins/<id>/` builds to `plugins/<id>/dist/` with `react` + `@bakin/sdk/*` marked external.
-3. **`bun run build:host-shell`** — `packages/host/` → `packages/host/dist/main.js` + `main.css`. Externalizes react + sdk.
-4. **`bun build --compile`** — *Phase G, #147.* `dist/bakin-{darwin-arm64,linux-x64,linux-arm64}` single-file binaries.
+1. **`bun run build:css`** — compiles the Tailwind v4 source at `packages/host/src/globals.css` to `packages/host/public/globals.css` via `@tailwindcss/cli`.
+2. **`bun run build:vendors`** — builds the import-map externals (React, `@tanstack/react-router`, `@bakin/sdk/*`) under `packages/host/public/vendor/`. Source of truth for specifier mapping: `scripts/build-vendors.ts` + `packages/host/public/index.html`'s `<script type="importmap">`. Keep those two in lockstep.
+3. **`bun run build:plugins`** — each `plugins/<id>/` builds to `plugins/<id>/dist/` with `react`, `@tanstack/react-router`, and `@bakin/sdk/*` marked external.
+4. **`bun run build:host-shell`** — `packages/host/` → `packages/host/dist/main.js`. Externalizes react, tanstack-router, and sdk.
+5. **`bun run build:assets-manifest`** — regenerates `packages/host/src/api/_embedded-assets-static.ts` from whatever's currently on disk under `public/`, `public/vendor/`, and `plugins/<id>/dist/`.
+6. **`bun build --compile`** — produces `dist/bakin-{darwin-arm64,linux-x64,linux-arm64}` single-file binaries with every asset from step 5 embedded.
 
-Stage 1 must run before stages 3/4 so externals resolve at bundle time. Stages 2 and 3 are independent. Stage 4 requires all prior.
+Stages 1–2 must run before stages 4/6 so externals resolve at bundle time. `bun run start` chains 1–5 before booting `server.ts`, so a fresh checkout works with `bun run start` alone — no manual build sequence needed. Use `bun run server` to skip the build chain when iterating and you know assets are current.
 
 ## Branch strategy
 
