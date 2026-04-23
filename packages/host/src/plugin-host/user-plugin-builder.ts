@@ -11,8 +11,9 @@
  * the disk layout is identical for core vs user plugins — the runtime
  * loader doesn't care which bucket a plugin came from.
  *
- * Externals held: react + @bakin/sdk/* so the host shell and plugin share
- * the singletons wired in via the browser import map.
+ * Externals held: react, @tanstack/react-router, and @bakin/sdk/* so the
+ * host shell and plugin share the singletons wired in via the browser
+ * import map.
  *
  * Rebuild skip: if every dist output is newer than every source entry,
  * the build is a no-op. This keeps server boot fast when nothing changed.
@@ -25,6 +26,7 @@ import { join } from 'node:path'
 const EXTERNAL = [
   'react', 'react-dom', 'react-dom/client',
   'react/jsx-runtime', 'react/jsx-dev-runtime',
+  '@tanstack/react-router',
   '@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks',
   '@bakin/sdk/components', '@bakin/sdk/slots',
   '@bakin/sdk/types', '@bakin/sdk/utils',
