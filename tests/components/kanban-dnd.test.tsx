@@ -13,10 +13,6 @@ const { queryStateDefaults } = vi.hoisted(() => ({
   queryStateDefaults: {} as Record<string, string>,
 }))
 
-const { replaceSpy } = vi.hoisted(() => ({
-  replaceSpy: vi.fn(),
-}))
-
 let capturedProviderProps: Record<string, any> = {}
 
 const COLUMN_IDS = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as const
@@ -118,15 +114,6 @@ vi.mock('@dnd-kit/react', () => ({
 
 vi.mock('@dnd-kit/react/sortable', () => ({
   useSortable: (...args: unknown[]) => mockUseSortable(...args),
-}))
-
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({
-    replace: replaceSpy,
-    push: vi.fn(),
-  }),
-  usePathname: () => '/tasks',
-  useSearchParams: () => new URLSearchParams(),
 }))
 
 vi.mock('../../plugins/tasks/components/kanban-column', () => ({

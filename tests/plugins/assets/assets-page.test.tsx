@@ -164,17 +164,6 @@ vi.mock('@/hooks/use-assets', () => ({
   }),
 }))
 
-// ─── next/navigation stub ─────────────────────────────────────────────────
-
-const searchParamsState = new URLSearchParams()
-const routerReplace = vi.fn()
-
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: routerReplace, push: vi.fn() }),
-  usePathname: () => '/assets',
-  useSearchParams: () => searchParamsState,
-}))
-
 // ─── Child component stubs ────────────────────────────────────────────────
 // Each is `() => null` except AssetsGrid which captures its props so we
 // can assert what the page passed.
@@ -250,7 +239,6 @@ function resetState() {
   useAssetsState.assets = []
   useAssetsState.total = 0
   useAssetsState.loading = true
-  routerReplace.mockClear()
   assetsGridProps.current = {}
 }
 
