@@ -1,50 +1,129 @@
 /**
  * Build vendor bundles for the browser import map.
  *
- * Produces standalone ESM bundles that the shell + every plugin resolves to
- * at runtime via the import map emitted in packages/host/public/index.html
- * (TD3). One copy of each externalized module lives under
+ * Produces standalone ESM bundles that the shell + every plugin resolve to
+ * at runtime via the import map emitted in packages/host/public/index.html.
+ * One copy of each externalized module lives under
  * `packages/host/public/vendor/` and is served by the static file handler.
  *
- * The paths here match exactly the `imports` map keys in index.html — any
- * change to the naming here requires an index.html update.
+ * The paths here must match the `imports` map keys in index.html.
  *
- * Phase G embeds these in the binary via `Bun.embeddedFiles`. For dev + this
- * phase we write to disk.
+ * ## Why the wrappers are generated instead of checked-in .ts files
+ *
+ * React, react-dom, and the jsx runtimes are CJS upstream. Passing their
+ * package entrypoints directly to Bun.build produces `export default
+ * require_react()` and nothing else — every `import { useState } from 'react'`
+ * fails at runtime. Fix: wrapper files that import the default and
+ * explicitly re-export every name in the package's CJS exports list.
+ *
+ * But wrappers can't be checked-in .ts files doing `import X from 'react'`
+ * when we also need `--external react` to prevent the bundle from inlining
+ * a second React copy. Bun's `--external react` is a prefix match — it
+ * also externalizes `react/jsx-runtime`, so the jsx-runtime wrapper ends
+ * up import-map-self-referencing. We generate the wrappers on the fly
+ * with the OWN specifier resolved to an absolute path (so Bun inlines it)
+ * while leaving `react` itself as the bare specifier (so Bun externalizes
+ * and the import map resolves it to /vendor/react.js).
  */
-import { rmSync, mkdirSync } from 'node:fs'
+import { rmSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const VENDOR_DIR = './packages/host/public/vendor'
+const TMP_DIR = './packages/host/public/vendor/.tmp-entries'
 
 rmSync(VENDOR_DIR, { recursive: true, force: true })
 mkdirSync(VENDOR_DIR, { recursive: true })
+mkdirSync(TMP_DIR, { recursive: true })
 
 interface VendorTarget {
   /** Module specifier the import map will redirect (e.g. 'react'). */
   specifier: string
-  /** Output filename under vendor/ (without the .mjs). */
+  /** Output filename under vendor/ (without the extension). */
   name: string
-  /** Path to an entry module to build. Must be a file path or bare specifier
-   *  that Bun.build can resolve from the repo root. */
+  /** Absolute on-disk path to a generated or existing entry module. */
   entrypoint: string
 }
 
-// React + react-dom + jsx-runtime are CJS modules upstream. Passing the
-// package's own entrypoint to Bun.build produces a bundle with only a
-// default export — `import { useState } from 'react'` then fails at
-// runtime. The wrappers under scripts/vendor-entries/*.ts import the
-// default and explicitly re-export every named API, forcing Bun to emit
-// those names on the bundle. The SDK entrypoints stay as-is (they're
-// already ESM in source).
+// ---------------------------------------------------------------------------
+// React-family wrapper content. Each string is written to a temp .ts file
+// with the OWN specifier rewritten to an absolute path. React-family sub-
+// specifiers (react/jsx-runtime, etc.) must NOT be externalized — only
+// `react` is. Everything else gets inlined so the browser only needs to
+// load the import-map-pointed bundle and its single `react` dependency.
+// ---------------------------------------------------------------------------
+const REACT_ABS = Bun.resolveSync('react', process.cwd())
+const REACT_DOM_ABS = Bun.resolveSync('react-dom', process.cwd())
+const REACT_DOM_CLIENT_ABS = Bun.resolveSync('react-dom/client', process.cwd())
+const JSX_RUNTIME_ABS = Bun.resolveSync('react/jsx-runtime', process.cwd())
+const JSX_DEV_RUNTIME_ABS = Bun.resolveSync('react/jsx-dev-runtime', process.cwd())
+
+function writeEntry(name: string, content: string): string {
+  const path = join(TMP_DIR, `${name}.ts`)
+  writeFileSync(path, content, 'utf-8')
+  return path
+}
+
+const reactEntry = writeEntry('react', `
+// GENERATED — see scripts/build-vendors.ts. Enumerates every react.cjs
+// export so Bun preserves them as named exports in the bundle output.
+import React from '${REACT_ABS}'
+export const {
+  __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+  __COMPILER_RUNTIME,
+  Activity, Children, Component, Fragment, Profiler, PureComponent,
+  StrictMode, Suspense,
+  act, cache, cacheSignal, captureOwnerStack,
+  cloneElement, createContext, createElement, createRef, forwardRef,
+  isValidElement, lazy, memo, startTransition, use,
+  unstable_useCacheRefresh, version,
+  useActionState, useCallback, useContext, useDebugValue, useDeferredValue,
+  useEffect, useEffectEvent, useId, useImperativeHandle, useInsertionEffect,
+  useLayoutEffect, useMemo, useOptimistic, useReducer, useRef, useState,
+  useSyncExternalStore, useTransition,
+} = React
+export default React
+`)
+
+const reactDomEntry = writeEntry('react-dom', `
+// GENERATED. Consolidates react-dom + react-dom/client into one bundle
+// so react-dom's shared internal state only exists once. Both import-map
+// entries for these specifiers point at this file. React is left as a
+// bare specifier so Bun externalizes it.
+import ReactDOM from '${REACT_DOM_ABS}'
+import * as ReactDOMClient from '${REACT_DOM_CLIENT_ABS}'
+export const {
+  __DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+  createPortal, flushSync, preconnect, prefetchDNS, preinit, preinitModule,
+  preload, preloadModule, requestFormReset, unstable_batchedUpdates,
+  useFormState, useFormStatus,
+} = ReactDOM
+export const { createRoot, hydrateRoot, version } = ReactDOMClient
+export default ReactDOM
+`)
+
+const jsxRuntimeEntry = writeEntry('jsx-runtime', `
+// GENERATED. Absolute path for the jsx-runtime itself so Bun's prefix-
+// matched '--external react' doesn't catch it; 'react' inside the inlined
+// source stays externalized and resolves through the import map.
+import JsxRuntime from '${JSX_RUNTIME_ABS}'
+export const { jsx, jsxs, Fragment } = JsxRuntime
+export default JsxRuntime
+`)
+
+const jsxDevRuntimeEntry = writeEntry('jsx-dev-runtime', `
+// GENERATED. Same rationale as jsx-runtime.
+import JsxDevRuntime from '${JSX_DEV_RUNTIME_ABS}'
+export const { jsxDEV, Fragment } = JsxDevRuntime
+export default JsxDevRuntime
+`)
+
 const targets: VendorTarget[] = [
-  { specifier: 'react', name: 'react', entrypoint: './scripts/vendor-entries/react.ts' },
+  { specifier: 'react', name: 'react', entrypoint: reactEntry },
   // One bundle for the whole react-dom surface — the import map points both
   // `react-dom` and `react-dom/client` at this file (see public/index.html).
-  // Splitting them would give each bundle its own copy of react-dom's
-  // internal state.
-  { specifier: 'react-dom', name: 'react-dom', entrypoint: './scripts/vendor-entries/react-dom.ts' },
-  { specifier: 'react/jsx-runtime', name: 'jsx-runtime', entrypoint: './scripts/vendor-entries/jsx-runtime.ts' },
-  { specifier: 'react/jsx-dev-runtime', name: 'jsx-dev-runtime', entrypoint: './scripts/vendor-entries/jsx-dev-runtime.ts' },
+  { specifier: 'react-dom', name: 'react-dom', entrypoint: reactDomEntry },
+  { specifier: 'react/jsx-runtime', name: 'jsx-runtime', entrypoint: jsxRuntimeEntry },
+  { specifier: 'react/jsx-dev-runtime', name: 'jsx-dev-runtime', entrypoint: jsxDevRuntimeEntry },
   { specifier: '@bakin/sdk', name: 'sdk-index', entrypoint: './packages/sdk/src/index.ts' },
   { specifier: '@bakin/sdk/ui', name: 'sdk-ui', entrypoint: './packages/sdk/src/ui/index.ts' },
   { specifier: '@bakin/sdk/hooks', name: 'sdk-hooks', entrypoint: './packages/sdk/src/hooks/index.ts' },
@@ -54,17 +133,14 @@ const targets: VendorTarget[] = [
   { specifier: '@bakin/sdk/utils', name: 'sdk-utils', entrypoint: './packages/sdk/src/utils/index.ts' },
 ]
 
-// Every non-`react` vendor bundle must externalize `react` so the browser
-// ends up with exactly one React instance resolved through the import map.
-// Inlining React into react-dom would give react one dispatcher and the
-// shell another — hooks then throw "Invalid hook call" at render time.
-// The SDK bundles additionally externalize their own siblings so SDK
-// subpath imports don't duplicate code between bundles.
 const SDK_SPECIFIERS = ['@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks', '@bakin/sdk/components', '@bakin/sdk/slots', '@bakin/sdk/types', '@bakin/sdk/utils']
 
 function externalsFor(target: VendorTarget): string[] {
-  const isReactItself = target.specifier === 'react'
-  const react = isReactItself ? [] : ['react']
+  // Every non-react bundle externalizes `react` so the browser ends up
+  // with exactly one React instance resolved through the import map.
+  // SDK bundles also externalize their siblings to avoid duplicating
+  // code across @bakin/sdk subpath bundles.
+  const react = target.specifier === 'react' ? [] : ['react']
   const sdk = target.specifier.startsWith('@bakin/sdk')
     ? SDK_SPECIFIERS.filter((s) => s !== target.specifier)
     : []
@@ -72,8 +148,8 @@ function externalsFor(target: VendorTarget): string[] {
 }
 
 // Use subprocess per target — Bun.build() in-process state has trouble
-// with N serial invocations under certain module-resolution patterns
-// (see notes in README). Subprocess isolation avoids it entirely.
+// with N serial invocations under certain module-resolution patterns.
+// Subprocess isolation avoids it entirely.
 for (const t of targets) {
   console.log(`  building ${t.specifier} → ${t.name}.js`)
   const externalArgs = externalsFor(t)
@@ -96,6 +172,10 @@ for (const t of targets) {
     process.exit(1)
   }
 }
+
+// Remove the tmp entries after the builds — they'd otherwise be picked
+// up by generate-embedded-assets and served by the static handler.
+rmSync(TMP_DIR, { recursive: true, force: true })
 
 console.log(`packages/host/public/vendor: ${targets.length} bundles built`)
 
