@@ -13,17 +13,18 @@
  *   4. Flips a `ready` flag to re-render the shell with nav items + slots
  *      populated from the registry.
  *
- * Children don't render until every plugin has finished loading. The nav +
- * slot registries read from globalThis at render time and don't subscribe
- * to changes, so rendering the shell before plugins register would leave
- * the sidebar empty and every `<Slot name="page:/..." />` would return null
- * — and React would not re-render them when plugins finally finish loading.
- * A ~200ms blank shell on cold boot is fine for a single-user LAN app.
+ * Re-render on registry change: subscribes to `getRegistryVersion()` via
+ * `useSyncExternalStore`. When a plugin registers or unregisters (v2 hot-
+ * swap), every <Slot> + sidebar consumer re-reads the registry.
  *
- * Phase G replaces the disk-backed asset route with Bun.embeddedFiles
- * inside the compiled binary; the PluginHost path doesn't change.
+ * Dev hot-swap bridge: when the dev-client script is present in the
+ * document, PluginHost exposes `window.__bakinHotSwapPlugin(id, clientEntry,
+ * version)` so scripts/dev.ts can trigger a per-plugin remount without a
+ * full page reload. Production builds never ship the dev client, so the
+ * window handle stays undefined there.
  */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { getRegistryVersion, subscribeRegistry, unregisterPlugin } from '@bakin/sdk'
 import { assertReactInstance } from '../lib/react-identity'
 
 interface ManifestPlugin {
@@ -43,15 +44,34 @@ interface LoadedPluginModule {
   default?: unknown
 }
 
+function pluginCssLink(pluginId: string): HTMLLinkElement | null {
+  return document.head.querySelector<HTMLLinkElement>(
+    `link[data-bakin-plugin-css="${pluginId}"]`,
+  )
+}
+
 function injectPluginCss(plugin: ManifestPlugin): void {
   if (!plugin.clientCss) return
-  const attr = `data-bakin-plugin-css="${plugin.id}"`
-  if (document.head.querySelector(`link[${attr}]`)) return
+  if (pluginCssLink(plugin.id)) return
   const link = document.createElement('link')
   link.rel = 'stylesheet'
   link.href = plugin.clientCss
   link.setAttribute('data-bakin-plugin-css', plugin.id)
   document.head.appendChild(link)
+}
+
+function swapPluginCss(plugin: ManifestPlugin, version: string): void {
+  if (!plugin.clientCss) return
+  const existing = pluginCssLink(plugin.id)
+  const next = document.createElement('link')
+  next.rel = 'stylesheet'
+  next.href = `${plugin.clientCss}?v=${version}`
+  next.setAttribute('data-bakin-plugin-css', plugin.id)
+  next.addEventListener('load', () => existing?.remove(), { once: true })
+  document.head.appendChild(next)
+  if (!existing) {
+    // Nothing to replace — treat as a fresh inject.
+  }
 }
 
 async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
@@ -70,8 +90,29 @@ async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
   }
 }
 
+// Manifest kept module-scoped so hotSwapPlugin can look up clientCss
+// without re-fetching. Populated by PluginHost on mount.
+let latestManifest: Manifest | null = null
+
+async function hotSwapPlugin(id: string, clientEntry: string, version: string): Promise<void> {
+  const manifest = latestManifest
+  const plugin = manifest?.plugins.find((p) => p.id === id)
+  unregisterPlugin(id)
+  if (plugin) swapPluginCss(plugin, version)
+  await import(/* @vite-ignore */ `${clientEntry}?v=${version}`)
+}
+
+function isDevModeActive(): boolean {
+  return !!document.querySelector('script[src="/__bakin-dev/client.js"]')
+}
+
 export function PluginHost({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
+
+  // Re-render whenever the registry version bumps (plugin register /
+  // unregister / hot-swap). Slots + sidebar consumers read from the
+  // registry at render time, so this is the single subscription point.
+  useSyncExternalStore(subscribeRegistry, getRegistryVersion, getRegistryVersion)
 
   useEffect(() => {
     let cancelled = false
@@ -84,6 +125,7 @@ export function PluginHost({ children }: { children: ReactNode }) {
           return
         }
         const manifest = (await res.json()) as Manifest
+        latestManifest = manifest
         await Promise.all(manifest.plugins.map(loadPluginClient))
       } catch (err) {
         console.error('[bakin] Plugin host boot failed:', err)
@@ -92,6 +134,19 @@ export function PluginHost({ children }: { children: ReactNode }) {
       }
     })()
     return () => { cancelled = true }
+  }, [])
+
+  // Expose the hot-swap handle to the dev client. Keyed on the script
+  // tag's presence — production builds never have it, so the handle
+  // stays undefined and no external caller can reach unregisterPlugin
+  // through this bridge.
+  useEffect(() => {
+    if (!isDevModeActive()) return
+    ;(window as unknown as { __bakinHotSwapPlugin?: typeof hotSwapPlugin })
+      .__bakinHotSwapPlugin = hotSwapPlugin
+    return () => {
+      delete (window as unknown as { __bakinHotSwapPlugin?: unknown }).__bakinHotSwapPlugin
+    }
   }, [])
 
   if (!ready) return null
