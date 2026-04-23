@@ -27,6 +27,16 @@ function mimeFor(path: string): string {
   return MIME[extname(path).toLowerCase()] ?? 'application/octet-stream'
 }
 
+/**
+ * Dev-mode forces no-store so location.reload() picks up rebuilt plugin
+ * bundles that overwrite the same URL path. v2 hot-swap uses ?v=<mtime>
+ * cache-bust, so this only matters for the initial load after a reload
+ * — but it matters a lot when a shell reload follows a plugin rebuild.
+ */
+function cacheControl(): string {
+  return process.env.BAKIN_DEV === '1' ? 'no-store' : 'public, max-age=300'
+}
+
 function parsePath(url: URL): { pluginId: string; relPath: string } | null {
   const match = url.pathname.match(/^\/api\/plugins\/([^/]+)\/assets\/(.+)$/)
   if (!match) return null
@@ -53,7 +63,7 @@ export async function get(_req: Request, url: URL): Promise<Response> {
       headers: {
         'Content-Type': mimeFor(userPath),
         'Content-Length': statSync(userPath).size.toString(),
-        'Cache-Control': 'public, max-age=300',
+        'Cache-Control': cacheControl(),
       },
     })
   }
@@ -70,7 +80,7 @@ export async function get(_req: Request, url: URL): Promise<Response> {
         headers: {
           'Content-Type': mimeFor(relPath),
           'Content-Length': String(bytes.length),
-          'Cache-Control': 'public, max-age=300',
+          'Cache-Control': cacheControl(),
         },
       })
     }
@@ -86,7 +96,7 @@ export async function get(_req: Request, url: URL): Promise<Response> {
       headers: {
         'Content-Type': mimeFor(repoPath),
         'Content-Length': statSync(repoPath).size.toString(),
-        'Cache-Control': 'public, max-age=300',
+        'Cache-Control': cacheControl(),
       },
     })
   }

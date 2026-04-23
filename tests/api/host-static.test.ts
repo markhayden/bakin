@@ -78,3 +78,40 @@ describe('transformIndexHtmlForDev', () => {
     expect(output.toString('utf-8')).not.toContain('__bakin-dev')
   })
 })
+
+/**
+ * cacheControlFor — picks the Cache-Control header for asset responses.
+ * Dev forces no-store so location.reload() picks up rebuilt bundles;
+ * prod keeps the 5-minute cache.
+ */
+import { cacheControlFor } from '../../packages/host/src/api/_static'
+
+describe('cacheControlFor', () => {
+  const prev = process.env.BAKIN_DEV
+  afterEach(() => {
+    if (prev === undefined) delete process.env.BAKIN_DEV
+    else process.env.BAKIN_DEV = prev
+  })
+
+  it('returns no-store for any 200 response when BAKIN_DEV=1', () => {
+    process.env.BAKIN_DEV = '1'
+    expect(cacheControlFor('/assets/main.js', 200)).toBe('no-store')
+    expect(cacheControlFor('/vendor/react.js', 200)).toBe('no-store')
+    expect(cacheControlFor('/globals.css', 200)).toBe('no-store')
+    expect(cacheControlFor('/index.html', 200)).toBe('no-store')
+  })
+
+  it('returns no-cache for HTML and public, max-age=300 for other 200s when BAKIN_DEV is unset', () => {
+    delete process.env.BAKIN_DEV
+    expect(cacheControlFor('/index.html', 200)).toBe('no-cache')
+    expect(cacheControlFor('/assets/main.js', 200)).toBe('public, max-age=300')
+    expect(cacheControlFor('/vendor/react.js', 200)).toBe('public, max-age=300')
+  })
+
+  it('falls back to the prod policy for non-200 responses regardless of env', () => {
+    process.env.BAKIN_DEV = '1'
+    expect(cacheControlFor('/missing.js', 404)).toBe('public, max-age=300')
+    delete process.env.BAKIN_DEV
+    expect(cacheControlFor('/missing.js', 404)).toBe('public, max-age=300')
+  })
+})
