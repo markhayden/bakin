@@ -9,7 +9,7 @@
     "bakin": "./cli/bakin.ts"
   },
   "scripts": {
-    "dev": "bun run server.ts",
+    "dev": "bun run prestart && bun run server.ts",
     "build": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:binary",
     "build:host": "bun run build:css && bun run build:vendors && bun run build:host-shell",
     "build:css": "bunx @tailwindcss/cli -i ./packages/host/src/globals.css -o ./packages/host/public/globals.css",
@@ -18,7 +18,9 @@
     "build:plugins": "bun run scripts/build-plugins.ts",
     "build:assets-manifest": "bun run scripts/generate-embedded-assets.ts",
     "build:binary": "bun run scripts/build-binary.ts",
-    "start": "bun run server.ts",
+    "prestart": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:assets-manifest",
+    "start": "bun run prestart && bun run server.ts",
+    "server": "bun run server.ts",
     "lint": "eslint src packages plugins tests scripts dev cli server.ts bakin.config.ts vitest.config.ts eslint.config.mjs",
     "lint:home-bypasses": "bun run scripts/bin/check-home-bypasses.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
