@@ -24,7 +24,7 @@ import {
 } from "@bakin/sdk/ui"
 import { BakinDrawer } from "@bakin/sdk/components"
 import { useGatewayStatus } from "@bakin/sdk/hooks"
-import { useAgentStore, useAgentColor, useMainAgentId } from '../hooks/use-agent-store'
+import { useAgentStore, useAgentColor, useMainAgentId } from '@bakin/sdk/hooks'
 import { buildGraph } from '../lib/build-graph'
 import { AgentForm, type AgentFormData } from './agent-form'
 import { TeamManager } from './team-manager'

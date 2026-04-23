@@ -17,7 +17,7 @@ import { MarkdownContent } from "@bakin/sdk/components"
 import { ModelSelect } from "@bakin/sdk/components"
 import { useGatewayStatus } from "@bakin/sdk/hooks"
 import type { AvailableModel } from "@bakin/sdk/types"
-import { useAgentStore, useAgentColor, useMainAgentId } from '../hooks/use-agent-store'
+import { useAgentStore, useAgentColor, useMainAgentId } from '@bakin/sdk/hooks'
 import { useQueryState } from "@bakin/sdk/hooks"
 import type { AgentProfile, SkillSummary } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
