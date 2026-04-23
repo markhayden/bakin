@@ -26,7 +26,7 @@ Runs on a Mac mini, accessed via Tailscale. No database (except OpenClaw's task 
 
 ### Dev Mode
 
-`bun run dev` runs `scripts/dev.ts` — a watcher coordinator that sets `BAKIN_DEV=1`, primes the dist/ tree, compiles the dev client, spawns `@tailwindcss/cli --watch`, wires chokidar on `packages/host/src/**`, per-plugin source, and `packages/sdk/src/**`, then imports `server.ts` in-process. Rebuilds emit events over a dedicated dev SSE channel at `/api/dev/events`; the dev client (injected into `index.html` by `_static.ts` when `BAKIN_DEV=1`) handles each event:
+`bun run dev` runs `scripts/dev.ts` — a watcher coordinator that sets `BAKIN_DEV=1`, primes the dist/ tree, compiles the dev client, spawns `@tailwindcss/cli --watch=always`, wires chokidar on `packages/host/src/**` (ts/tsx only — `.css` goes through tailwind), per-plugin source, and `packages/sdk/src/**`, then imports `server.ts` in-process. Rebuilds emit events over a dedicated dev SSE channel at `/api/dev/events`; the dev client (injected into `index.html` by `_static.ts` when `BAKIN_DEV=1`) handles each event:
 - Shell / SDK edit → `location.reload()`
 - Plugin edit → `window.__bakinHotSwapPlugin(id, clientEntry, version)` — `unregisterPlugin(id)` + cache-busted re-import; no page reload, shell + other plugins + URL + scroll + SSE all survive
 - CSS edit → `<link>` href swap, no reload
