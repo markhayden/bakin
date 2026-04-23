@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import { useSearchParams, useRouter, usePathname } from '@bakin/sdk/hooks'
 import { List, CalendarDays, CalendarRange, Clock, Plus } from 'lucide-react'
 import { Button } from "@bakin/sdk/ui"
 import { BakinDrawer } from "@bakin/sdk/components"

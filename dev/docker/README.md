@@ -5,13 +5,13 @@ Run OpenClaw in a Docker container so it's never exposed on your host network. B
 ## Prerequisites
 
 - Docker Desktop (or OrbStack)
-- Node.js 22, pnpm 10
+- Bun >= 1.2.0
 
 ## First-Time Setup
 
 ```bash
 # 1. Install dependencies
-pnpm install
+bun install
 
 # 2. Create your .env and set your LLM provider
 cp dev/docker/.env.example dev/docker/.env

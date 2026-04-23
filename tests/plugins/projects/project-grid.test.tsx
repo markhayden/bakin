@@ -57,22 +57,6 @@ afterAll(() => {
 // Stubs for client-only integrations
 // ---------------------------------------------------------------------------
 
-const pushMock = vi.fn()
-const replaceMock = vi.fn()
-
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: pushMock,
-    replace: replaceMock,
-    prefetch: vi.fn(),
-    back: vi.fn(),
-    forward: vi.fn(),
-    refresh: vi.fn(),
-  }),
-  useSearchParams: () => new URLSearchParams(),
-  usePathname: () => '/projects',
-}))
-
 // useQueryState: simple controllable [value, setter] pair per key.
 const queryState: Record<string, string> = {}
 const querySetters: Record<string, (v: string) => void> = {}
@@ -199,7 +183,6 @@ beforeEach(() => {
   stubSearchResults = []
   searchSpy.mockClear()
   clearSpy.mockClear()
-  pushMock.mockClear()
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock
   ;(fetchMock as unknown as { mockClear: () => void }).mockClear?.()
 })

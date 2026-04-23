@@ -48,7 +48,7 @@ The first two paths are in-memory only — every reboot rebuilds them from disk.
 
 ## Source Registry
 
-`plugins/workflows/lib/source-registry.ts`. Backed by `globalThis.__bakinWorkflowSources` so state survives Next.js webpack re-evaluation.
+`plugins/workflows/lib/source-registry.ts`. Backed by `globalThis.__bakinWorkflowSources` so state survives Bun HMR and module re-evaluation.
 
 ```typescript
 registerPluginDefinition(pluginId, id, definition)   // throws if a *different* plugin owns id; same plugin overwrite is allowed (hot reload)
@@ -95,8 +95,9 @@ The canvas editor's palette fetches `GET /api/plugins/workflows/node-types` on m
 
 Plugin registration goes through `ctx.registerNodeType`, which:
 1. Calls `registerPluginNodeType(pluginId, def)` — namespaces the kind to `{pluginId}.{kind}` and stores `runtime: 'plugin'`.
-2. Aggregates the plugin's `nodeRenderers` into the client `NodeRendererRegistry` so the canvas can render non-builtin kinds without a core change.
-3. Registers a `workflows.executeNode.{namespacedKind}` hook; `runtime.ts` looks this up when it encounters a step whose `type` isn't a builtin.
+2. Registers a `workflows.executeNode.{namespacedKind}` hook; `runtime.ts` looks this up when it encounters a step whose `type` isn't a builtin.
+
+The client-side node renderer map is owned by the workflows plugin's `lib/node-renderer-registry.ts`. Plugins that ship custom kinds call `registerNodeRenderer(kind, Component)` from the workflows plugin's registry in their own `client.tsx` — there is no cross-plugin `nodeRenderers` export. The workflows plugin itself does this for the 7 builtins (see `plugins/workflows/client.tsx`).
 
 ## Notification Channel Registry
 

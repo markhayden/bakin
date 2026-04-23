@@ -83,9 +83,10 @@ vi.mock('@antfly/sdk', () => {
   }
 })
 
-// Bakin's antfly module uses globalThis to survive Next.js webpack
-// re-evaluation. In tests we reset those keys between cases so the next
-// initialize() call creates a fresh client pointed at our current mock.
+// Bakin's antfly module caches its client on globalThis so every reach into
+// the module shares one instance. In tests we reset those keys between
+// cases so the next initialize() call creates a fresh client pointed at
+// our current mock.
 async function resetAndInitAntfly() {
   const g = globalThis as unknown as Record<string, unknown>
   delete g.__bakinAntflyClient

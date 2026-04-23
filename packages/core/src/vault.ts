@@ -102,8 +102,8 @@ function loadFromAuthProfiles(): void {
 
 /**
  * Get a credential by key. Returns null if not found.
- * Auto-initializes if not yet loaded (handles Next.js webpack re-evaluation
- * where the module instance differs from the custom server).
+ * Auto-initializes on first call, so any entry point (server, MCP, plugin
+ * handler) can use it without explicit setup.
  */
 export function get(key: string): string | null {
   if (!initialized) initialize()

@@ -2,7 +2,7 @@
 
 ## Color Theme
 
-Bakin uses a warm dark theme with neon pink as the primary accent and electric yellow as the secondary/selection color. All colors are defined as CSS custom properties in `src/app/globals.css` and mapped to Tailwind via the `@theme inline` block.
+Bakin uses a warm dark theme with neon pink as the primary accent and electric yellow as the secondary/selection color. All colors are defined as CSS custom properties in `packages/host/src/globals.css` (compiled to `packages/host/public/globals.css` by `bun run build:css`) and mapped to Tailwind via the `@theme inline` block.
 
 ### Surface Hierarchy (darkest → lightest)
 

@@ -17,13 +17,13 @@ State that is transient and not meaningful to bookmark (e.g., open modals, drag 
 Filters, search, view mode, pagination. These are ephemeral and combinable. Use `useQueryState` / `useQueryArrayState`.
 
 ### Path segments — for addressable resources
-Individual items (`/projects/abc123`) and their modes (`/projects/abc123/edit`, `/projects/new`). These are Next.js file-system routes under `src/app/`. Path-based routing is the target pattern for all plugins — see `.claude/specs/06-routing-refactor.md` for migration status.
+Individual items (`/projects/abc123`) and their modes (`/projects/abc123/edit`, `/projects/new`). These are TanStack Router code-based routes under `packages/host/src/routes/` — each route renders `<Slot name="page:/route" />` so the owning plugin can register the page component via `registerPlugin({ slots: { ... } })`. Path-based routing is the target pattern for all plugins — see `.claude/specs/06-routing-refactor.md` for migration status.
 
 **Current state:** Projects and Workflows use path segments. Other plugins still use query params (`?taskId=`, `?jobId=`, etc.) — migration tracked in spec 06.
 
 ## Hook: `useQueryState` / `useQueryArrayState`
 
-Located at `src/hooks/use-query-state.ts`. Two hooks:
+Located at `src/hooks/use-query-state.ts` (re-exported from `@bakin/sdk/hooks` for plugin authors). The implementation wraps TanStack Router's `useNavigate` + `useSearch` under the hood. Two hooks:
 
 ```tsx
 // Single string value ↔ query param
@@ -42,20 +42,25 @@ const [status, setStatus] = useQueryArrayState('status')
 
 ## Suspense Requirement
 
-Any page component that uses `useSearchParams` (directly or via `useQueryState`) must be wrapped in `<Suspense>` in the page route file. Next.js App Router requires this for client-side search params access.
+Any page component that reads query params (directly via TanStack Router's `useSearch`, or indirectly through `useQueryState` / `useQueryArrayState`) must be wrapped in `<Suspense>`. This convention predates the Bun migration but still applies — the router may re-render under a Suspense boundary during navigation, and the plugin's slot component needs to handle the loading state cleanly:
 
 ```tsx
-// src/app/tasks/page.tsx
 import { Suspense } from 'react'
-import { KanbanBoard } from '@bakin/tasks/components/kanban-board'
+import { registerPlugin } from '@bakin/sdk'
+import { KanbanBoard } from './components/kanban-board'
 
-export default function TasksPage() {
+function TasksPage() {
   return (
     <Suspense>
       <KanbanBoard />
     </Suspense>
   )
 }
+
+registerPlugin({
+  id: 'tasks',
+  slots: { 'page:/tasks': TasksPage },
+})
 ```
 
 ## Query Param Conventions

@@ -11,6 +11,7 @@ const config: BakinConfig = {
     { path: 'plugins/assets' },
     { path: 'plugins/schedule' },
     { path: 'plugins/projects' },
+    { path: 'plugins/health' },
   ],
   theme: {},
 }

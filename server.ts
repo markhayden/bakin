@@ -1,21 +1,28 @@
 /**
  * Bakin — Multi-Agent Orchestration Server
  * Version: 1.0.0
- * Last updated: 2026-03-28
  *
- * Main entry point for the Bakin server. Bootstraps Next.js,
- * registers plugins, and starts the HTTP server with API routing.
+ * Main entry point for the Bakin server. Runs on Bun, serves the packages/host
+ * client bundle + API handlers. Plugin registry initialization + subsystem
+ * boot happen before the HTTP server begins accepting traffic.
  */
 
 import { createServer } from 'http'
-import next from 'next'
 import { join } from 'path'
-import { existsSync, mkdirSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 
 import { MarkdownStorageAdapter } from './src/lib/storage/markdown-adapter'
 import { BakinEventBus } from './src/lib/events/event-bus'
-import { pluginRegistry } from './src/lib/plugin-registry'
+import { pluginRegistry, registerCorePlugins } from './src/lib/plugin-registry'
+import { CORE_PLUGIN_IMPORTS } from './src/lib/plugin-static-imports'
 import config from './bakin.config'
+
+// Give the registry the static core-plugin table. Done here, not in
+// plugin-registry.ts, so the plugins only live in server.ts's module
+// graph — tests that import the registry don't drag every plugin +
+// every plugin-level side effect (watchers, OpenClaw path access) into
+// their module load.
+registerCorePlugins(CORE_PLUGIN_IMPORTS)
 
 import { createLogger } from './src/core/logger'
 import { getSettings } from './src/core/settings'
@@ -38,11 +45,39 @@ import * as antfly from './src/core/antfly'
 import * as antflyServer from './src/core/antfly-server'
 import { migrateIfNeeded } from './src/core/search-migration'
 import * as agents from './src/core/agents'
-import * as pluginInstaller from './src/core/plugin-installer'
 import * as doctor from './src/core/doctor'
 import { handleMcpRequest } from './src/core/mcp-server'
 import * as mcporter from './src/core/mcporter'
 import { trackResponse } from './src/core/rest-tracking'
+import { dispatchWebHandler } from './packages/host/src/api/_adapter'
+import * as activityRoute from './packages/host/src/api/activity'
+import * as agentsAvatarRoute from './packages/host/src/api/agents/avatar'
+import * as agentsHealthRoute from './packages/host/src/api/agents/health'
+import * as agentsSettingsRoute from './packages/host/src/api/agents/settings'
+import * as agentsActionRoute from './packages/host/src/api/agents/[action]'
+import * as memoryLogRoute from './packages/host/src/api/memory/log'
+import * as pluginSettingsIdRoute from './packages/host/src/api/plugin-settings/[pluginId]'
+import * as pluginSettingsSchemasRoute from './packages/host/src/api/plugin-settings/schemas'
+import * as pluginsInstallRoute from './packages/host/src/api/plugins/install'
+import * as pluginsRemoveRoute from './packages/host/src/api/plugins/remove'
+import * as pluginsMemoryAuditRoute from './packages/host/src/api/plugins/memory/audit'
+import * as pluginsMemoryGatewayRoute from './packages/host/src/api/plugins/memory/gateway'
+import * as pluginsMemoryWorkspaceRoute from './packages/host/src/api/plugins/memory/workspace'
+import * as stateRoute from './packages/host/src/api/state'
+import * as assetsRoute from './packages/host/src/api/assets/[...path]'
+import * as pluginCatchAllRoute from './packages/host/src/api/plugins/[pluginId]/[[...path]]'
+import * as pluginsManifestRoute from './packages/host/src/api/plugins/manifest'
+import * as pluginsAssetsRoute from './packages/host/src/api/plugins/assets'
+import { serveHostClient } from './packages/host/src/api/_static'
+import { buildAllUserPlugins } from './packages/host/src/plugin-host/user-plugin-builder'
+import { dispatchCli } from './src/core/cli'
+import { setEmbeddedAssets } from './packages/host/src/api/_embedded-assets'
+// Generated module — pulls in every core asset via `with { type: 'file' }`
+// so `bun build --compile` embeds their bytes. Only imported from server.ts
+// so tests don't drag these imports through vite's transform pipeline.
+import { EMBEDDED_ASSETS_STATIC } from './packages/host/src/api/_embedded-assets-static'
+
+setEmbeddedAssets(EMBEDDED_ASSETS_STATIC)
 
 const log = createLogger('server')
 
@@ -50,12 +85,19 @@ import { APP_VERSION } from './packages/core/src/constants'
 
 const BAKIN_VERSION = APP_VERSION
 
-const dev = process.env.NODE_ENV !== 'production'
+// Parse argv and run one-shot subcommands (`version`, `stop`, `status`,
+// `plugins ...`, `update`, `--help`) before touching the filesystem.
+// Only `start` (the default) continues past this point. See
+// src/core/cli.ts for the command table.
+{
+  const cliResult = await dispatchCli(process.argv)
+  if (!cliResult.startServer) {
+    process.exit(cliResult.exitCode)
+  }
+}
+
 const port = Number(process.env.PORT || 3737)
 const CONTENT_DIR = getContentDir()
-
-const app = next({ dev })
-const handle = app.getRequestHandler()
 
 // Ensure required directories exist
 for (const dir of [CONTENT_DIR, join(CONTENT_DIR, 'heartbeats'), join(CONTENT_DIR, 'inbox')]) {
@@ -66,9 +108,18 @@ for (const dir of [CONTENT_DIR, join(CONTENT_DIR, 'heartbeats'), join(CONTENT_DI
 const storage = new MarkdownStorageAdapter(CONTENT_DIR)
 const eventBus = new BakinEventBus(broadcast)
 
-app.prepare().then(async () => {
+;(async () => {
   // Initialize vault (load credentials from disk)
   vault.initialize()
+
+  // Rebuild any stale user plugin dist/ before the registry imports them.
+  // The registry dynamic-imports `<pluginDir>/<server-entry>` (typically
+  // `index.ts` as-is for core plugins in the repo, but user plugins
+  // installed from a tarball / GitHub clone need to be bundled first).
+  // Failures inside `buildAllUserPlugins` are logged; they don't block
+  // startup — the registry will surface a clearer error on import.
+  const userPluginsDir = join(CONTENT_DIR, 'plugins')
+  await buildAllUserPlugins(userPluginsDir, log)
 
   // Initialize plugin registry
   log.info('Loading plugins...')
@@ -292,47 +343,39 @@ app.prepare().then(async () => {
       return
     }
 
-    // Plugin install/remove endpoints
+    // Plugin install/remove endpoints (migrated — see Phase B block below for install)
     if (url.pathname === '/api/plugins/install' && req.method === 'POST') {
-      handleJsonPost(req, res, async (body) => {
-        const { source, type } = body as { source: string; type: 'local' | 'github' }
-        if (type === 'github') {
-          return pluginInstaller.installFromGithub(source, process.cwd())
-        }
-        return pluginInstaller.installFromPath(source, process.cwd())
-      })
+      dispatchWebHandler(req, res, pluginsInstallRoute.post)
       return
     }
 
     if (url.pathname === '/api/plugins/remove' && req.method === 'POST') {
-      handleJsonPost(req, res, async (body) => {
-        const { pluginId } = body as { pluginId: string }
-        return pluginInstaller.removePlugin(pluginId, process.cwd())
-      })
+      dispatchWebHandler(req, res, pluginsRemoveRoute.post)
       return
     }
 
-    // Agent avatar route (must be before the agent catch-all)
+    // Agent avatar route (must be before the agent catch-all; migrated — see Phase B block below)
     if (url.pathname === '/api/agents/avatar' && req.method === 'GET') {
-      const agentId = url.searchParams.get('id')
-      if (!agentId) {
-        jsonResponse(res, 400, { error: 'Missing id param' })
-        return
-      }
-      const avatarPath = join(CONTENT_DIR, 'agents', agentId, 'avatar.jpg')
-      if (!existsSync(avatarPath)) {
-        res.writeHead(404)
-        res.end()
-        return
-      }
-      const data = readFileSync(avatarPath)
-      res.writeHead(200, {
-        'Content-Type': 'image/jpeg',
-        'Content-Length': data.length,
-        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
-      })
-      res.end(data)
+      dispatchWebHandler(req, res, agentsAvatarRoute.get)
       return
+    }
+
+    // Migrated: /api/agents/health (must be before agent catch-all)
+    if (url.pathname === '/api/agents/health' && req.method === 'GET') {
+      dispatchWebHandler(req, res, agentsHealthRoute.get)
+      return
+    }
+
+    // Migrated: /api/agents/settings (must be before agent catch-all)
+    if (url.pathname === '/api/agents/settings') {
+      if (req.method === 'GET') {
+        dispatchWebHandler(req, res, agentsSettingsRoute.get)
+        return
+      }
+      if (req.method === 'PUT') {
+        dispatchWebHandler(req, res, agentsSettingsRoute.put)
+        return
+      }
     }
 
     // Agent API routes
@@ -343,6 +386,12 @@ app.prepare().then(async () => {
         log.error('List agents failed', err)
         jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
       })
+      return
+    }
+
+    // Migrated: /api/agents/{action} — POST start/stop/restart
+    if (req.method === 'POST' && /^\/api\/agents\/(start|stop|restart)$/.test(url.pathname)) {
+      dispatchWebHandler(req, res, agentsActionRoute.post)
       return
     }
 
@@ -388,8 +437,102 @@ app.prepare().then(async () => {
       }
     }
 
-    // Let Next.js handle everything else
-    handle(req, res)
+    // ─── Migrated API routes (packages/host/src/api/*) ────────────────
+    // These were Next.js App Router route.ts files; migrated in Phase B of #147.
+    if (url.pathname === '/api/activity' && req.method === 'GET') {
+      dispatchWebHandler(req, res, activityRoute.get)
+      return
+    }
+
+    if (url.pathname === '/api/memory/log' && req.method === 'POST') {
+      dispatchWebHandler(req, res, memoryLogRoute.post)
+      return
+    }
+
+    if (url.pathname === '/api/plugin-settings/schemas' && req.method === 'GET') {
+      dispatchWebHandler(req, res, pluginSettingsSchemasRoute.get)
+      return
+    }
+
+    // /api/plugins/memory/{audit,gateway,workspace} — former standalone
+    // routes now served directly (they shadow the plugin catch-all).
+    if (url.pathname === '/api/plugins/memory/audit' && req.method === 'GET') {
+      dispatchWebHandler(req, res, pluginsMemoryAuditRoute.get)
+      return
+    }
+
+    if (url.pathname === '/api/plugins/memory/gateway' && req.method === 'GET') {
+      dispatchWebHandler(req, res, pluginsMemoryGatewayRoute.get)
+      return
+    }
+
+    if (url.pathname === '/api/plugins/memory/workspace' && req.method === 'GET') {
+      dispatchWebHandler(req, res, pluginsMemoryWorkspaceRoute.get)
+      return
+    }
+
+    if (url.pathname === '/api/state' && req.method === 'GET') {
+      dispatchWebHandler(req, res, stateRoute.get)
+      return
+    }
+
+    // /api/assets/{...path} — catch-all asset serving (filename-as-identity,
+    // range support for video). Must be below narrower /api/assets endpoints
+    // (currently none), and before Next.js fallthrough.
+    if (url.pathname.startsWith('/api/assets/') && req.method === 'GET') {
+      dispatchWebHandler(req, res, assetsRoute.get)
+      return
+    }
+
+    // /api/plugin-settings/{pluginId} — exclude /schemas (own route)
+    {
+      const psMatch = url.pathname.match(/^\/api\/plugin-settings\/([^/]+)$/)
+      if (psMatch && psMatch[1] !== 'schemas') {
+        if (req.method === 'GET') {
+          dispatchWebHandler(req, res, pluginSettingsIdRoute.get)
+          return
+        }
+        if (req.method === 'PUT') {
+          dispatchWebHandler(req, res, pluginSettingsIdRoute.put)
+          return
+        }
+      }
+    }
+
+    // Manifest + asset endpoints for the runtime plugin loader (TF1/TF2).
+    // These MUST match before the plugin catch-all (which would otherwise
+    // eat `/api/plugins/manifest` as `{pluginId: 'manifest'}`).
+    if (url.pathname === '/api/plugins/manifest' && req.method === 'GET') {
+      dispatchWebHandler(req, res, pluginsManifestRoute.get)
+      return
+    }
+    if (/^\/api\/plugins\/[^/]+\/assets\//.test(url.pathname) && req.method === 'GET') {
+      dispatchWebHandler(req, res, pluginsAssetsRoute.get)
+      return
+    }
+
+    // Plugin catch-all — /api/plugins/:pluginId/:path* dispatches to each
+    // plugin's registered route handlers. Must come LAST among /api/plugins/*
+    // dispatches so the more-specific install/remove/memory/*/manifest/assets
+    // routes above win.
+    if (url.pathname.startsWith('/api/plugins/') && url.pathname !== '/api/plugins/install' && url.pathname !== '/api/plugins/remove') {
+      const method = req.method?.toLowerCase() ?? 'get'
+      const handler = pluginCatchAllRoute[method === 'delete' ? 'del' : method as 'get' | 'post' | 'put' | 'patch' | 'del']
+      if (handler) {
+        dispatchWebHandler(req, res, handler)
+        return
+      }
+    }
+
+    // Serve the packages/host client bundle + SPA fallback for any unmatched
+    // path. TanStack Router handles route dispatch client-side.
+    serveHostClient(req, res, url).catch((err) => {
+      log.error('Static serve failed', err, { path: url.pathname })
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' })
+        res.end('Internal server error')
+      }
+    })
   })
 
   // Setup mcporter (install if needed + sync per-agent config)
@@ -424,4 +567,4 @@ app.prepare().then(async () => {
 
   // Audit system init
   appendAudit(CONTENT_DIR, 'system.init', 'system', {})
-})
+})()

@@ -8,9 +8,9 @@ import { getSettings } from './settings'
 
 const log = createLogger('sse')
 
-// Shared state lives on globalThis so that if this module is evaluated multiple
-// times (custom server vs Next.js webpack bundle), all instances share the same
-// client set, event buffer, and counter.  The first evaluation creates them;
+// Shared state lives on globalThis so every reach into this module (server
+// entry, plugin handlers, runtime-loaded plugin bundles) sees the same
+// client set, event buffer, and counter. The first evaluation creates them;
 // subsequent evaluations reuse them.
 const g = globalThis as any
 const clients: Set<ServerResponse> = g.__bakinSSEClients ?? (g.__bakinSSEClients = new Set<ServerResponse>())

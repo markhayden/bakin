@@ -1,12 +1,18 @@
 /**
  * Health plugin — client entry point.
  */
-import type { NavItem } from '../../src/lib/plugin-types'
-import { registerSlot } from '@bakin/sdk/slots'
+import { registerPlugin } from '@bakin/sdk'
+import type { NavItem } from '@bakin/sdk'
 import { HealthPage } from './components/health-page'
 
-export const navItems: NavItem[] = [
+const navItems: NavItem[] = [
   { id: 'health', label: 'Health', icon: 'Activity', href: '/health', order: 85 },
 ]
 
-registerSlot('page:/health', HealthPage)
+registerPlugin({
+  id: 'health',
+  navItems,
+  slots: {
+    'page:/health': HealthPage,
+  },
+})

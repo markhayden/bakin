@@ -2,60 +2,150 @@
 
 ## Overview
 
-Bakin is a monorepo with a pnpm workspace. The main application (Next.js + custom HTTP server) lives at the repo root. Shared types and utilities are extracted into `@bakin/core` at `packages/core/`. Plugins live in `plugins/` as directories (not separate packages).
+Bakin is a single Bun workspace. The repo is three named packages under
+`packages/{core,sdk,host}`, ten first-party plugins under `plugins/<id>/`,
+a small server-side core under `src/`, and a handful of scripts. The
+whole thing compiles via `bun build --compile` into a single-file
+binary that ships per platform.
 
-## Monorepo Layout
+Bun is the runtime, the bundler, and the package manager. There is no
+Node.js, no pnpm, no Next.js. `server.ts` still uses Node's
+`http.createServer` (Bun is fully node-compat for this) — but every
+build command, every test command, and every dev command runs through
+Bun.
+
+## Top-Level Layout
 
 ```
 /                              ← root package (name: "bakin")
+├── server.ts                  ← HTTP server entry — argv → CLI dispatch → boot
+├── bakin.config.ts            ← Core plugin enable list
+├── package.json               ← Root workspace with scripts
+├── bun.lock                   ← Bun lockfile (replaces pnpm-lock.yaml)
+├── .bun-version               ← Pinned Bun version
+├── tsconfig.json              ← Path aliases + root config
+├── vitest.config.ts           ← Test config (mirrors the path aliases)
 ├── packages/
-│   └── core/                  ← @bakin/core — shared types, utilities, settings
-│       └── src/
-│           ├── index.ts       ← barrel export (all public APIs)
-│           ├── constants.ts   ← APP_NAME, APP_SLUG, APP_HOME_DEFAULT, etc.
-│           ├── plugin-types.ts← BakinPlugin, PluginContext, StorageAdapter, EventBus
-│           ├── content-dir.ts ← getContentDir(), getBakinPaths(), initBakinHome()
-│           ���── settings.ts    ← BakinSettings, getSettings(), updateSettings()
-│           ├── main-agent.ts  ← getMainAgentId() runtime resolution
-│           ├── logger.ts      ← createLogger()
-│           ├── vault.ts       ← secret storage
-│           ├── format.ts      ← formatAge(), isStale()
-│           ├── storage/       ← MarkdownStorageAdapter
-│           └── events/        ← BakinEventBus
-├── plugins/                   ← 10 core plugins (NOT workspace packages)
-���   ├── tasks/
-│   ├── workflows/
-│   ├── assets/
-│   ├── projects/
-│   ├── schedule/
-│   ├── memory/
-│   ├── messaging/
-│   ├── models/
-│   └── health/
+│   ├── core/                  ← @bakin/core — shared types, utilities, settings
+│   ├── sdk/                   ← @bakin/sdk — plugin author SDK (published to npm)
+│   └── host/                  ← @bakin/host — client shell + API handlers
+├── plugins/                   ← 10 first-party plugins (each has bakin-plugin.json)
+│   ├── tasks/      workflows/   assets/      projects/   schedule/
+│   ├── memory/     messaging/   models/      team/       health/
 ├── src/
-│   ├── core/                  ← server-side modules (NOT in @bakin/core)
-│   ├── lib/                   ← shared code (client + server safe)
-│   ├── app/                   ← Next.js App Router pages
-│   └── components/            ← React components
-├── scripts/lib/               ← MCP exec tools (self-registering)
-├── cli/                       ← CLI tool (bakin.ts)
-├── server.ts                  ← HTTP server entry point
-├── bakin.config.ts            ← plugin enable list
-├── pnpm-workspace.yaml        ← workspace: packages/*
-└── tsconfig.json              ← path aliases for @/* and @bakin/*
+│   ├── core/                  ← server-only modules with side effects
+│   └── lib/                   ← shared code (client + server safe)
+├── scripts/                   ← build + infrastructure
+│   ├── build-vendors.ts       ← import-map vendor bundles
+│   ├── build-plugins.ts       ← core plugin dist/ builder
+│   ├── build-binary.ts        ← cross-platform `bun build --compile`
+│   ├── generate-embedded-assets.ts
+│   ├── publish-sdk.ts
+│   └── lib/                   ← MCP exec tools (self-registering)
+├── cli/                       ← thin legacy CLI wrapper
+├── dev/imitation-crab/        ← OpenClaw mock for dev without real OpenClaw
+├── tests/                     ← vitest suite (bunx vitest run)
+└── docs/                      ← plugin-authoring.md and other human-facing docs
 ```
 
-## @bakin/core Package
+## Packages
 
-**Location:** `packages/core/`
-**Workspace:** Listed in `pnpm-workspace.yaml` under `packages/*`
-**Dependency:** Root `package.json` has `"@bakin/core": "workspace:*"`
+### `packages/core/` — `@bakin/core`
 
-Contains modules that are safe to share across plugins, server, and potentially CLI — no React, no Next.js, no side effects at import time (except logger).
+Shared types, utilities, and settings that are safe to import from
+**anywhere** — server, plugins, CLI. No React, no browser APIs, no
+side effects at import time (except logger module init).
 
-### What's in core vs. what's not
+```
+packages/core/src/
+├── index.ts                ← barrel export
+├── constants.ts            ← APP_NAME, APP_SLUG, APP_VERSION, branding
+├── content-dir.ts          ← getContentDir(), getBakinPaths(), initBakinHome()
+├── openclaw-home.ts        ← getOpenClawHome(), getOpenClawPath()
+├── openclaw-config.ts      ← mtime-cached openclaw.json reader
+├── settings.ts             ← BakinSettings, getSettings(), updateSettings()
+├── main-agent.ts           ← getMainAgentId(), tryGetMainAgentId()
+├── plugin-types.ts         ← BakinPlugin, PluginContext, StorageAdapter, EventBus
+├── logger.ts               ← createLogger()
+├── format.ts               ← formatAge(), isStale()
+├── vault.ts                ← secret storage
+├── hooks/hook-registry.ts  ← cross-plugin hook RPC
+├── storage/                ← MarkdownStorageAdapter
+└── events/                 ← BakinEventBus
+```
 
-| In `@bakin/core` | NOT in core (stays in `src/core/`) |
+### `packages/sdk/` — `@bakin/sdk`
+
+Plugin author SDK. Published to npm as `@bakin/sdk` via
+`scripts/publish-sdk.ts` on release. Plugin authors `bun install`
+this package to get types; the actual runtime implementation is
+injected via the browser import map so every plugin and the shell
+share one SDK instance.
+
+```
+packages/sdk/src/
+├── index.ts                ← registerPlugin, NavItem re-export
+├── register.ts             ← registerPlugin + nav/slot browser-global registry
+├── ui/                     ← shadcn primitives (Button, Card, Dialog, ...)
+├── hooks/                  ← useAgent, useSSE, useSearch, useQueryState, ...
+├── components/             ← PluginHeader, FacetFilter, AgentAvatar, ...
+├── slots/                  ← Slot, registerSlot primitive
+├── types/                  ← Full type re-exports
+└── utils/                  ← cn, formatAge, formatSize, isStale
+```
+
+Sub-paths are declared via `exports` in `packages/sdk/package.json`:
+`@bakin/sdk/ui`, `@bakin/sdk/hooks`, `@bakin/sdk/components`,
+`@bakin/sdk/slots`, `@bakin/sdk/types`, `@bakin/sdk/utils`.
+
+### `packages/host/` — `@bakin/host`
+
+Client shell + server API handlers. The shell builds to
+`packages/host/dist/main.js`; the API handlers are imported directly
+by `server.ts`.
+
+```
+packages/host/
+├── build.ts                ← Bun.build() for the shell → dist/main.js
+├── public/
+│   ├── index.html          ← shell HTML with <script type="importmap">
+│   ├── globals.css
+│   └── vendor/             ← prebuilt react/sdk bundles (from build-vendors.ts)
+├── dist/                   ← generated (main.js, main.css); not checked in
+└── src/
+    ├── main.tsx            ← client entry (ReactDOM.createRoot)
+    ├── router.ts           ← TanStack Router root
+    ├── routes/             ← code-based route modules, one per URL
+    │   ├── __root.tsx      ← shell layout + <PluginHost>
+    │   ├── index.tsx       ← dashboard /
+    │   ├── tasks.tsx       ← /tasks → <Slot name="page:/tasks" />
+    │   ├── team.$id.tsx    ← /team/:id → <Slot name="page:/team/[id]" />
+    │   ├── workflows.$id.index.tsx / workflows.$id.edit.tsx
+    │   └── ...             ← one file per plugin page
+    ├── plugin-host/
+    │   ├── PluginHost.tsx  ← runtime plugin loader
+    │   └── user-plugin-builder.ts — in-binary Bun.build for ~/.bakin/plugins/
+    ├── api/                ← Web Fetch-style handlers (Request → Response)
+    │   ├── _adapter.ts     ← Node req/res ↔ Web Request/Response bridge
+    │   ├── _static.ts      ← host-shell static serve (hashed main.js + vendor)
+    │   ├── _embedded-assets.ts / _embedded-assets-static.ts
+    │   ├── activity.ts, state.ts, memory/log.ts, agents/*.ts, ...
+    │   ├── plugin-settings/[pluginId].ts, plugin-settings/schemas.ts
+    │   └── plugins/
+    │       ├── manifest.ts        ← GET /api/plugins/manifest
+    │       ├── assets.ts          ← serves plugin dist/client.js
+    │       ├── install.ts, remove.ts
+    │       └── [pluginId]/[[...path]].ts — catch-all plugin router
+    ├── components/layout/  ← app shell (sidebar, header, layout-shell)
+    ├── providers/          ← Providers, AgentThemeProvider
+    ├── context/            ← SidebarContext, ActivityContext
+    ├── hooks/use-pathname.ts
+    └── lib/react-identity.ts — catch plugins that bundled their own React
+```
+
+### What lives in `src/core/` vs `packages/core/`
+
+| In `@bakin/core` | In `src/core/` |
 |---|---|
 | Types: BakinPlugin, PluginContext, StorageAdapter, EventBus | task-service.ts (side effects, SSE) |
 | Constants: APP_NAME, APP_SLUG, etc. | audit.ts (append-only writes) |
@@ -65,12 +155,19 @@ Contains modules that are safe to share across plugins, server, and potentially 
 | Storage: MarkdownStorageAdapter | mcp-server.ts (tool registration) |
 | Events: BakinEventBus | agents.ts (OpenClaw integration) |
 | Vault, format utilities | antfly.ts (search indexing) |
+| Hook registry | cli.ts (binary CLI dispatcher) |
+|  | plugin-scaffold.ts, self-update.ts |
+|  | onboarding/ (8 components) |
 
-**Rule of thumb:** If a module has external side effects (writes files, opens connections, uses globalThis) it stays in `src/core/`. If it's a pure type, utility, or configurable service, it goes in `@bakin/core`.
+**Rule of thumb:** If a module has external side effects (writes files,
+opens connections, uses globalThis) it stays in `src/core/`. If it's a
+pure type, utility, or configurable service, it goes in `@bakin/core`.
 
-## Re-export Shim Pattern
+### Re-export shim pattern
 
-Original module locations (`src/core/*.ts`, `src/lib/*.ts`) are kept as thin re-export shims pointing to the actual implementations in `packages/core/src/`. This preserves backward compatibility for existing imports throughout the codebase.
+Original module locations (`src/core/*.ts`, `src/lib/*.ts`) are kept as
+thin re-export shims pointing at `packages/core/src/`. This preserves
+existing imports across the codebase:
 
 ```typescript
 // src/core/logger.ts (shim)
@@ -80,35 +177,34 @@ export { createLogger } from '../../packages/core/src/logger'
 export { getContentDir, getBakinPaths, ... } from '../../packages/core/src/content-dir'
 ```
 
-**Why direct relative paths instead of `@bakin/core`?** tsx runtime doesn't reliably resolve `@bakin/core` re-exports through shim files under parallel module loading. Direct paths work consistently across vitest, tsc, and tsx.
-
-**Shim files:**
-- `src/core/logger.ts` → `packages/core/src/logger`
-- `src/core/content-dir.ts` → `packages/core/src/content-dir`
-- `src/core/settings.ts` → `packages/core/src/settings`
-- `src/core/main-agent.ts` → `packages/core/src/main-agent`
-- `src/core/vault.ts` → `packages/core/src/vault`
-- `src/lib/plugin-types.ts` → `packages/core/src/plugin-types`
-- `src/lib/format.ts` → `packages/core/src/format`
-- `src/lib/core-constants.ts` → `packages/core/src/constants`
-- `src/lib/events/event-bus.ts` → `packages/core/src/events/event-bus`
-- `src/lib/storage/markdown-adapter.ts` → `packages/core/src/storage/markdown-adapter`
+Tests **must** mock both paths (see `CLAUDE.md` testing rules) because
+either path may be imported and a missed mock leaks writes to
+`~/.bakin/`.
 
 ## Plugin Import Rules
 
-Plugins are NOT pnpm workspace packages (no `package.json`). They import via relative paths:
+Plugins live under `plugins/<id>/` and are NOT Bun workspace packages.
+They have their own `package.json` (for `@bakin/sdk` + `react`
+devDependencies) but are not declared under the root workspace.
+
+From a core plugin:
 
 ```typescript
 // From plugins/X/index.ts (depth 2)
 import type { BakinPlugin } from '../../src/lib/plugin-types'
 import { createLogger } from '../../src/core/logger'
-import { appendAudit } from '../../src/core/audit'        // direct, not in core
+import { appendAudit } from '../../src/core/audit'
 
 // From plugins/X/lib/file.ts (depth 3)
 import { getContentDir } from '../../../src/core/content-dir'
+
+// Client files import from the SDK
+import { registerPlugin, type NavItem } from '@bakin/sdk'
+import { PluginHeader } from '@bakin/sdk/components'
 ```
 
-**Why not workspace packages?** Plugin `package.json` files created ESM package boundaries that broke relative imports crossing the boundary during dynamic `import()` at runtime. Removing them fixed all plugin loading issues.
+Plugin authors (outside the repo) never use the `../../src/*` paths —
+they only see `@bakin/sdk/*`. The lint rule enforces this.
 
 ## TypeScript Path Aliases
 
@@ -116,77 +212,159 @@ Defined in `tsconfig.json`, mirrored in `vitest.config.ts`:
 
 | Alias | Resolves to | Used by |
 |---|---|---|
-| `@/*` | `./src/*` | App code (pages, components, core modules) |
+| `@/*` | `./src/*` | Server code + packages/host internals |
 | `@bakin/core` | `./packages/core/src/index.ts` | Workspace dependency |
-| `@bakin/tasks` | `./plugins/tasks` | Cross-plugin imports in tests/app |
-| `@bakin/workflows` | `./plugins/workflows` | Cross-plugin imports in tests/app |
-| `@bakin/{plugin}` | `./plugins/{plugin}` | All 9 plugins |
+| `@bakin/sdk` + sub-paths | `./packages/sdk/src/*` | Plugin client entries |
+| `@bakin/tasks` ... `@bakin/health` | `./plugins/<id>` | App + test code (never cross-plugin) |
+
+## Build Pipeline
+
+`bun run build` chains four stages in sequence. `CONTRIBUTING.md` owns
+the detailed command reference; the summary:
+
+1. **`bun run build:vendors`** — `scripts/build-vendors.ts` builds
+   standalone ESM bundles of `react`, `react-dom`, `react/jsx-runtime`,
+   and every `@bakin/sdk/*` sub-path to
+   `packages/host/public/vendor/*.js`. The import map in
+   `packages/host/public/index.html` points at these files.
+2. **`bun run build:plugins`** — `scripts/build-plugins.ts` builds
+   each `plugins/<id>/{index.ts, client.tsx}` to `plugins/<id>/dist/`
+   with `react` + `@bakin/sdk/*` externalized.
+3. **`bun run build:host-shell`** — `packages/host/build.ts` builds
+   `packages/host/src/main.tsx` → `packages/host/dist/main.js` (+ `.css`)
+   with the same externals.
+4. **`bun build --compile`** — `scripts/build-binary.ts` compiles
+   `server.ts` for each target triple
+   (`bun-darwin-arm64`, `bun-linux-x64`, `bun-linux-arm64`) into
+   single-file binaries under `dist/bakin-<platform>-<arch>`.
+
+Stage 1 must run before stage 3/4 so externals resolve at bundle time.
+Stages 2 and 3 are independent. Stage 4 requires all prior.
+
+### Embedded assets for the binary
+
+Stage 4 needs every runtime asset (host shell bundle, public/ statics,
+plugin dist/ trees) visible to `bun build --compile`. The approach:
+`scripts/generate-embedded-assets.ts` walks `packages/host/dist/`,
+`packages/host/public/`, and every `plugins/*/dist/`, then writes
+`packages/host/src/api/_embedded-assets-static.ts` with one
+`import … with { type: 'file' }` per asset. Bun's `--compile` sees
+those imports and embeds the file bytes into the binary. At runtime,
+`setEmbeddedAssets(EMBEDDED_ASSETS_STATIC)` makes them addressable by
+the static handler.
+
+## Request Flow
+
+```
+Browser →  HTTP request → Bakin (server.ts)
+  ↓
+  Node http.createServer((req, res) => ...)
+  Dispatch by URL prefix:
+    /api/sse           → handleSSE                   (streams)
+    /api/*             → dispatchWebHandler(handler) (Web Fetch shape)
+    /mcp               → handleMcpRequest            (SSE + Streamable HTTP)
+    /api/plugins/<id>/<path> → plugin catch-all router
+    /vendor/*          → static handler (from public/vendor or embedded)
+    /assets/*          → plugin asset router
+    (anything else)    → serveHostClient = SPA fallback (index.html)
+  ↓
+  index.html loads vendor/*.js + main.js
+  ↓
+  React mounts <PluginHost><Shell/></PluginHost>
+  ↓
+  PluginHost fetches /api/plugins/manifest
+  PluginHost dynamic-imports each plugin's /api/plugins/<id>/assets/client.js
+  Each plugin module runs registerPlugin({ id, navItems, slots }) as a side effect
+  ↓
+  TanStack Router matches the URL to a route file in packages/host/src/routes/
+  Route renders <Slot name="page:/foo" /> → pulls the plugin-registered component
+```
 
 ## Testing Layout
 
 Vitest covers both server-side modules and selected React components.
+Run: `bunx vitest run` (CI) or `bunx vitest watch` (dev).
 
-- `tests/**/*.test.ts` — default Node-environment tests for core modules, routes, plugin logic, and utilities
-- `tests/components/**/*.test.tsx` — component tests using Testing Library
+- `tests/**/*.test.ts` — default Node-environment tests for core
+  modules, routes, plugin logic, and utilities
+- `tests/components/**/*.test.tsx` — component tests using Testing
+  Library, with a per-file `// @vitest-environment jsdom` annotation
 
-### Component Test Pattern
+`tests/plugins/test-helpers.ts` owns `activatePlugin`, `callRoute`,
+`callTool` — the canonical way to run a plugin in a mocked
+`PluginContext` without touching `~/.bakin/`.
 
-Component tests use a per-file environment annotation instead of switching the whole suite to a browser-like runtime:
-
-```tsx
-// @vitest-environment jsdom
-```
-
-This keeps the existing Node-focused tests fast and stable while allowing targeted `jsdom` coverage for interactive client components.
-
-## src/core/ vs. src/lib/
-
-| Directory | Constraints | Examples |
-|---|---|---|
-| `src/core/` | Server-only, may have side effects, Node.js APIs | audit.ts, sse.ts, dispatch.ts, watcher.ts |
-| `src/lib/` | Shared (client + server safe), no side effects | plugin-types.ts, constants.ts, parsers/, agents-data.ts |
+Every test **must** mock both `src/core/content-dir` and
+`packages/core/src/content-dir` — see the testing rules in
+`CLAUDE.md`.
 
 ## Runtime Data (`~/.bakin/`)
 
-Created by `bakin init` or `initBakinHome()`.
+Created by `bakin onboard` or `initBakinHome()`.
 
 ```
 ~/.bakin/
-├── settings.json          ← runtime config (deep-merged with defaults)
-├── MEMORY-LOG.md          ← agent memory log
-├── audit.jsonl            ← append-only audit trail
-├── messaging.json         ← messaging / content calendar events
-├── assets/                ← content files by type
-│   ├── text/
-│   ├── images/
-│   ├── video/
-│   ├─��� audio/
-│   ├── plans/
-│   ├── data/
-│   ├── other/
-│   └── .trash/
-├─��� projects/              ← project markdown files
+├── settings.json             ← runtime config (deep-merged with defaults)
+├── .onboarded                ← marker the doctor gates on
+├── MEMORY-LOG.md             ← agent memory log
+├── audit.jsonl               ← append-only audit trail
+├── messaging.json            ← messaging / content calendar events
+├── assets/
+│   ├── store/                ← canonical assets, flat, sharded by month
+│   ├── inbox/                ← drop-zone for manual ingestion
+│   └── .trash/               ← soft-delete with 7-day TTL
+├── projects/                 ← project markdown files
 ├── workflows/
-│   ├── definitions/       ← workflow YAML templates
-│   ├── instances/         ← running workflow state
-│   └── skills/            ← skill markdown files
-├── heartbeats/            ← agent heartbeat JSON files
-├── inbox/                 ← incoming items
-├── team/
-│   └── personas/          ← agent persona files
-├── schedule/              ← cron job state
-├── plugins/               ← user addon plugins (override by ID)
-└── docs/                  ← generated API docs
+│   ├── definitions/          ← YAML templates (user-owned)
+│   ├── instances/            ← running workflow state
+│   └── skills/               ← skill markdown files
+├── heartbeats/               ← agent heartbeat JSON files
+├── inbox/                    ← incoming items
+├── team/personas/            ← agent persona files
+├── schedule/                 ← cron job state
+├── plugin-settings/          ← per-plugin settings JSON
+├── plugins/<id>/             ← installed user plugins (source + generated dist/)
+└── logs/server.log           ← rotating server log (10 MB, single backup)
 ```
 
 ## Key Entry Points
 
 | What | File | How it starts |
 |---|---|---|
-| HTTP server | `server.ts` | `npx tsx server.ts` or `bakin start` |
-| CLI | `cli/bakin.ts` | `bakin <command>` (globally linked via npm) |
-| Plugin config | `bakin.config.ts` | Imported by server.ts, lists enabled plugins |
-| Plugin loading | `src/lib/plugin-registry.ts` | Called by server.ts during startup |
+| HTTP server | `server.ts` | `bakin start` (binary) or `bun run dev` |
+| Binary CLI | `src/core/cli.ts` | argv parsed in `server.ts` before boot; dispatches `start/stop/status/version/update/plugins/...` |
+| Core plugin config | `bakin.config.ts` | Imported by `server.ts` + `registerCorePlugins` |
+| Plugin loading | `src/lib/plugin-registry.ts` | Called by `server.ts` during startup |
 | MCP tools | `src/core/mcp-server.ts` | Imports `scripts/lib/*.ts` + plugin exec tools. Supports Streamable HTTP and SSE transports. |
-| Discord gateway | `src/core/discord-gateway.ts` | WebSocket client for Discord interaction events (gate approve/reject buttons). Uses Node.js 22 native WebSocket, globalThis-backed state. |
-| Next.js pages | `src/app/*/page.tsx` | Served by server.ts wrapping Next.js |
+| Discord gateway | `src/core/discord-gateway.ts` | WebSocket client for Discord interaction events |
+| TanStack router | `packages/host/src/router.ts` | Boots on client, matches URL to `routes/*.tsx` |
+| Runtime plugin loader | `packages/host/src/plugin-host/PluginHost.tsx` | Dynamic-imports every plugin's `client.js` on mount |
+| Binary build | `scripts/build-binary.ts` | Runs `bun build --compile` per target triple |
+
+## Binary Packaging
+
+`bun build --compile --target=bun-<platform>-<arch> server.ts -o dist/bakin-<platform>-<arch>`
+produces a single-file executable that contains:
+
+- The Bun runtime
+- `server.ts` + everything reachable through its import graph
+- Every asset imported via `with { type: 'file' }` in
+  `packages/host/src/api/_embedded-assets-static.ts` — that's the host
+  shell bundle, `public/` static files, and every core plugin's
+  `dist/`
+
+User plugins are **not** baked in. They live at runtime in
+`~/.bakin/plugins/` and are built in-binary by the user-plugin-builder
+the first time they load.
+
+Binaries ship under 120 MB per target. The release pipeline
+(`.github/workflows/release.yml`) fires on `v*` tags, builds all three
+targets, computes checksums, and publishes `@bakin/sdk` to npm.
+
+## Related docs
+
+- `../../CLAUDE.md` — project-level conventions + every key pattern
+- `../../CONTRIBUTING.md` — dev setup + build command reference
+- `../../docs/plugin-authoring.md` — plugin author walkthrough
+- `plugin-system.md` — plugin runtime deep reference
+- `storage-model.md` — content-dir layout + sidecar conventions

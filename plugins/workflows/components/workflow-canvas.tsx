@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import {
   ReactFlow,
   Background,
@@ -26,14 +26,8 @@ const RESET_NODE_STYLES = `
   }
 `
 
-// Importing the plugin manifest for its side effects — populates the
-// node renderer registry at module load so `getAllNodeRenderers()`
-// below returns the full set of builtin + plugin renderers.
-import '@/lib/plugin-manifest'
-import { getAllNodeRenderers } from '../lib/node-renderer-registry'
+import { getAllNodeRenderers, getNodeRendererVersion, subscribeNodeRenderers } from '../lib/node-renderer-registry'
 import type { WorkflowDefinition, WorkflowStep } from '../types'
-
-const nodeTypes: NodeTypes = getAllNodeRenderers()
 
 const NODE_WIDTH = 280
 const NODE_HEIGHT = 100
@@ -310,6 +304,12 @@ function buildGraph(
 }
 
 export function WorkflowCanvas({ definition, subWorkflows, onNodeClick }: WorkflowCanvasProps) {
+  // Subscribe to registry mutations so late-arriving kinds (lazy plugin
+  // load, hot install) trigger a re-render — ESM hoisting means a
+  // module-scope snapshot would be empty, and a one-shot mount-time memo
+  // would miss anything registered after the canvas mounts.
+  const rendererVersion = useSyncExternalStore(subscribeNodeRenderers, getNodeRendererVersion, getNodeRendererVersion)
+  const nodeTypes = useMemo<NodeTypes>(() => getAllNodeRenderers(), [rendererVersion])
   const { nodes: initialNodes, edges } = useMemo(
     () => buildGraph(definition, subWorkflows),
     [definition, subWorkflows],

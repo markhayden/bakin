@@ -236,9 +236,9 @@ const DEFAULTS: BakinSettings = {
   },
 }
 
-// Use globalThis to survive Next.js webpack module re-evaluation.
-// Without this, resetSettingsCache() in a plugin route handler wouldn't
-// bust the cache seen by the custom server's /api/settings handler.
+// Use globalThis so the settings cache is shared across every reach into
+// this module. Without this, resetSettingsCache() from a plugin route
+// handler wouldn't bust the cache seen by the server's /api/settings.
 const _g = globalThis as typeof globalThis & {
   __bakinSettingsCache?: BakinSettings | null
 }

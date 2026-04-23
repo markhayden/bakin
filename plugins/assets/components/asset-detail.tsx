@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { Link } from '@tanstack/react-router'
 import {
   Dialog,
   DialogContent,
@@ -311,12 +312,13 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
                 </div>
               ) : displayAsset.metadata.taskId ? (
                 <>
-                  <a
-                    href={`/tasks?taskId=${displayAsset.metadata.taskId}`}
+                  <Link
+                    to="/tasks"
+                    search={{ taskId: displayAsset.metadata.taskId }}
                     className="text-blue-400 hover:text-blue-300"
                   >
                     {displayAsset.metadata.taskId.slice(0, 8)}...
-                  </a>
+                  </Link>
                   <button onClick={() => { setNewTaskId(displayAsset.metadata.taskId || ''); setEditingTask(true) }} className="text-muted-foreground hover:text-foreground" title="Edit task link">
                     <Pencil className="size-3" />
                   </button>
@@ -400,13 +402,14 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
             {/* Actions */}
             <div className="border-t border-border pt-3 mt-auto flex flex-col gap-2">
               {showOpenInAssets && (
-                <a
-                  href={`/assets?asset=${encodeURIComponent(displayAsset.path)}`}
+                <Link
+                  to="/assets"
+                  search={{ asset: displayAsset.path }}
                   className="flex items-center justify-center gap-1.5 text-xs text-foreground bg-zinc-800 hover:bg-zinc-700 rounded-md px-3 py-1.5 transition-colors"
                 >
                   <ExternalLink className="size-3.5" />
                   View in Assets
-                </a>
+                </Link>
               )}
 
               <a

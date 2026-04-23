@@ -44,10 +44,26 @@ import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 import { buildSearchAPI } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
 
+/**
+ * Optional static core-plugin table. Set from server.ts on startup so
+ * `bun build --compile` can trace each plugin's module graph from the
+ * entry point. In test environments this stays empty, so test modules
+ * that import the registry don't transitively drag every plugin
+ * (and every plugin's side effects) into their module graph.
+ *
+ * Shape: { 'plugins/team': BakinPluginInstance, ... }
+ */
+let corePluginTable: Readonly<Record<string, BakinPlugin>> = {}
+export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>): void {
+  corePluginTable = table
+}
+
 const log = createLogger('plugin-registry')
 
 /** Singleton hook registry shared across all plugins and core modules.
- *  Backed by globalThis to survive Next.js webpack re-evaluation. */
+ *  Backed by globalThis so a single process has exactly one hook map, even
+ *  when this module is reached from both the shell entry and dynamically
+ *  imported plugin bundles. */
 const hookRegistry: HookRegistry = (globalThis as any).__bakinHookRegistry ??= new HookRegistry()
 
 /** Access the hook registry from core modules to call hooks */
@@ -314,8 +330,20 @@ class PluginRegistryImpl {
 
   private async loadPlugin(pluginPath: string, storage: StorageAdapter, events: EventBus): Promise<void> {
     try {
-      const mod = await import(/* webpackIgnore: true */ `../../${pluginPath}`)
-      const plugin: BakinPlugin = mod.default || mod.plugin || mod
+      // Core plugins come from the static table `server.ts` registers
+      // via `registerCorePlugins` — this is what lets `bun build --compile`
+      // trace and embed each plugin's module graph. In tests the table
+      // stays empty, so we fall back to dynamic import by path (which
+      // is how the registry worked before TG1).
+      let plugin: BakinPlugin | undefined = corePluginTable[pluginPath]
+      if (!plugin) {
+        const mod = await import(/* webpackIgnore: true */ `../../${pluginPath}`)
+        plugin = mod.default || mod.plugin || mod
+      }
+      if (!plugin) {
+        console.warn(`Plugin at ${pluginPath} returned no export — skipping`)
+        return
+      }
 
       if (!plugin.id || !plugin.activate) {
         console.warn(`Plugin at ${pluginPath} missing id or activate — skipping`)
@@ -548,8 +576,9 @@ class PluginRegistryImpl {
   }
 }
 
-// Use globalThis to survive Next.js webpack re-evaluation — without this,
-// API routes get a separate module instance with an empty registry.
+// Backed by globalThis so every caller (shell, API handler, runtime-loaded
+// plugin bundle) sees the same registry instance even if this module is
+// evaluated more than once in a single process.
 const g = globalThis as unknown as { __bakinPluginRegistry?: PluginRegistryImpl }
 if (!g.__bakinPluginRegistry) {
   g.__bakinPluginRegistry = new PluginRegistryImpl()

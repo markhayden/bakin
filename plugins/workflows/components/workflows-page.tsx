@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@bakin/sdk/hooks'
 import { PluginHeader } from "@bakin/sdk/components"
 import { EmptyState } from "@bakin/sdk/components"
 import { Skeleton } from "@bakin/sdk/ui"

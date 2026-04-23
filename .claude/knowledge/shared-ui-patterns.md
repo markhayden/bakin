@@ -1,8 +1,17 @@
 # Shared UI Patterns
 
+All shared UI primitives in this doc are re-exported from `@bakin/sdk/components` (plus `@bakin/sdk/ui` for shadcn primitives and `@bakin/sdk/hooks` for React hooks). Plugin authors should always import via the SDK, never directly from `packages/host/src/components/*` or the legacy `src/components/*` shims:
+
+```tsx
+import { BakinDrawer, PluginHeader, FacetFilter, AgentAvatar } from '@bakin/sdk/components'
+import { useSearch, useGatewayStatus } from '@bakin/sdk/hooks'
+```
+
+Core plugins use the same imports. The path-style `src/components/*.tsx` entries in the tables below are the source-of-truth locations inside the repo — plugins never reach them directly.
+
 ## BakinDrawer
 
-`src/components/bakin-drawer.tsx` — Resizable right-side drawer used by all detail views.
+`src/components/bakin-drawer.tsx` — Resizable right-side drawer used by all detail views. Exposed to plugins as `BakinDrawer` from `@bakin/sdk/components`.
 
 ### Props
 
@@ -262,7 +271,7 @@ Options are grouped by provider (`anthropic`, `openai-codex`, `google`, etc.), n
 
 ### How It Works
 
-Server tracks `lastConfigChangeAt` and `lastRestartAt` timestamps via `globalThis.__bakinGatewaySync` (survives Next.js webpack re-evaluation). The hook fetches `GET /api/plugins/models/gateway/status` on mount and shows the amber restart banner if out of sync.
+Server tracks `lastConfigChangeAt` and `lastRestartAt` timestamps via `globalThis.__bakinGatewaySync` (survives Bun HMR and module re-evaluation). The hook fetches `GET /api/plugins/models/gateway/status` on mount and shows the amber restart banner if out of sync.
 
 ### Where Used
 
