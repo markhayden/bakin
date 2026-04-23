@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bakin/sdk/ui"
-import { useAgentStore } from '../hooks/use-agent-store'
+import { useAgentStore } from '@bakin/sdk/hooks'
 import type { OrgTeam } from '../types'
 
 export function TeamManager() {
