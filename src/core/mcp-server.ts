@@ -257,8 +257,10 @@ export async function handleMcpRequest(
     // The endpoint is where the SSE client will POST messages back.
     // Use /mcp with a sessionId query param so we can route them.
     const transport = new SSEServerTransport(`/mcp`, res)
+    // server.connect(transport) internally calls transport.start() — calling
+    // start() again here throws "SSEServerTransport already started" from
+    // the MCP SDK.
     await server.connect(transport)
-    await transport.start()
 
     const sid = transport.sessionId
     sseSessions.set(sid, { server, transport, agentId, createdAt: Date.now() })
