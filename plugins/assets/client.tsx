@@ -31,8 +31,8 @@ registerPlugin({
     // assets linked to a task plus an Add button. User plugins can override
     // by registering their own `task-assets` slot with a lower `order`.
     'task-assets': TaskAssets,
-    // Top-level /assets page — rendered by the Next.js route wrapper via
-    // <Slot name="page:/assets" />. See src/app/assets/page.tsx.
+    // Top-level /assets page — rendered by the shell's TanStack Router
+    // route at packages/host/src/routes/assets.tsx via <Slot name="page:/assets" />.
     'page:/assets': AssetsPage,
   },
 })

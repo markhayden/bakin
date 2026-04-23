@@ -1,14 +1,9 @@
 /**
  * Router hooks — TanStack Router wrappers exposed through `@bakin/sdk/hooks`.
  *
- * Shape-compatible with the Next.js `next/navigation` API we migrated off
- * of: `useRouter()` returns `{ push, replace, refresh, back, forward }`,
- * `useSearchParams()` returns a `URLSearchParams`, `usePathname()` returns
- * a string.
- *
- * Added in TC25 of the Bun migration (#147). Plugin components must import
- * these from `@bakin/sdk/hooks` — never `next/navigation`, which exits the
- * repo entirely in Phase I.
+ * `useRouter()` returns `{ push, replace, refresh, back, forward }`,
+ * `useSearchParams()` returns a `URLSearchParams`, and `usePathname()`
+ * returns a string. These are the only router hooks plugins should use.
  */
 import {
   useNavigate,
@@ -18,29 +13,28 @@ import {
 import { useMemo } from 'react'
 
 /**
- * Second argument mirrors Next.js's `NavigateOptions` ({ scroll?: boolean }).
- * TanStack preserves scroll by default on navigate, so the flag is
- * accepted-and-ignored — we keep the shape for drop-in source compat with
- * existing `router.push(url, { scroll: false })` call sites.
+ * `NavigateOptions` accepts `{ scroll?: boolean }` for call-site
+ * readability; TanStack preserves scroll by default, so the flag is
+ * accepted-and-ignored.
  */
-interface NextLikeRouter {
+interface Router {
   push: (url: string, _opts?: { scroll?: boolean }) => void
   replace: (url: string, _opts?: { scroll?: boolean }) => void
   back: () => void
   forward: () => void
   refresh: () => void
-  /** Next.js no-op compat. TanStack prefetches on intent automatically. */
+  /** No-op — TanStack prefetches on intent via `defaultPreload`. */
   prefetch: (_url: string) => void
 }
 
 /**
- * Next.js-shaped `useRouter()` over TanStack Router. Accepts absolute URL
- * strings; bypasses TanStack's typed-path safety on purpose because plugin
- * authors pass paths as plain strings through slots.
+ * `useRouter()` over TanStack Router. Accepts plain URL strings and
+ * bypasses TanStack's typed-path safety on purpose — plugin authors
+ * pass paths as strings through slots.
  */
-export function useRouter(): NextLikeRouter {
+export function useRouter(): Router {
   const navigate = useNavigate()
-  return useMemo<NextLikeRouter>(() => ({
+  return useMemo<Router>(() => ({
     push: (url) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       navigate({ to: url as any })
@@ -71,9 +65,8 @@ export function usePathname(): string {
 }
 
 /**
- * Parsed query-string as a `URLSearchParams`. Next.js returned a
- * `ReadonlyURLSearchParams`; we return plain `URLSearchParams` which is
- * API-compatible for `.get()`, `.has()`, `.getAll()`, iteration, etc.
+ * Parsed query-string as a plain `URLSearchParams` — use `.get()`,
+ * `.has()`, `.getAll()`, iteration, etc.
  */
 export function useSearchParams(): URLSearchParams {
   const location = useLocation()
