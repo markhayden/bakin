@@ -19,6 +19,7 @@ import {
   MessageSquare,
   Sparkles,
 } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { getAllNavItems } from '@bakin/sdk'
 import type { NavItem } from '@bakin/sdk'
 import { useSidebarContext } from '@/context/sidebar-context'
@@ -132,14 +133,14 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                     <ChevronRight className={`size-3 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`} />
                   </button>
                 )}
-                <a
-                  href={item.children![0].href}
+                <Link
+                  to={item.children![0].href ?? '/'}
                   onClick={onNavigate}
                   className="flex items-center gap-3 flex-1 min-w-0"
                 >
                   {Icon && <Icon className="size-4 shrink-0" />}
                   <span>{item.label}</span>
-                </a>
+                </Link>
               </div>
               {expanded && (
                 <div className="flex flex-col gap-0.5 ml-7 mt-0.5">
@@ -147,9 +148,9 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                     const ChildIcon = child.icon ? ICONS[child.icon] : undefined
                     const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
                     return (
-                      <a
+                      <Link
                         key={child.id}
-                        href={child.href}
+                        to={child.href ?? '/'}
                         onClick={onNavigate}
                         className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                           childActive
@@ -159,7 +160,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                       >
                         {ChildIcon && <ChildIcon className="size-3.5 shrink-0" />}
                         <span>{child.label}</span>
-                      </a>
+                      </Link>
                     )
                   })}
                 </div>
@@ -180,8 +181,8 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                   closeDelay={120}
                   nativeButton={false}
                   render={
-                    <a
-                      href={item.children![0].href}
+                    <Link
+                      to={item.children![0].href ?? '/'}
                       onClick={onNavigate}
                       className={`flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                         active
@@ -190,7 +191,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                       }`}
                     >
                       {Icon && <Icon className="size-4 shrink-0" />}
-                    </a>
+                    </Link>
                   }
                 />
                 <PopoverContent
@@ -207,9 +208,9 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                       const ChildIcon = child.icon ? ICONS[child.icon] : undefined
                       const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
                       return (
-                        <a
+                        <Link
                           key={child.id}
-                          href={child.href}
+                          to={child.href ?? '/'}
                           onClick={onNavigate}
                           className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                             childActive
@@ -219,7 +220,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                         >
                           {ChildIcon && <ChildIcon className="size-3.5 shrink-0" />}
                           <span>{child.label}</span>
-                        </a>
+                        </Link>
                       )
                     })}
                   </div>
@@ -231,8 +232,8 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
           return (
             <Tooltip key={item.id}>
               <TooltipTrigger render={<div />}>
-                <a
-                  href={item.children![0].href}
+                <Link
+                  to={item.children![0].href ?? '/'}
                   onClick={onNavigate}
                   className={`flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                     active
@@ -241,7 +242,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                   }`}
                 >
                   {Icon && <Icon className="size-4 shrink-0" />}
-                </a>
+                </Link>
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={8}>
                 {item.label}
@@ -252,9 +253,9 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
 
         // Flat item (no children)
         const linkContent = (
-          <a
+          <Link
             key={item.id}
-            href={item.href}
+            to={item.href ?? '/'}
             onClick={onNavigate}
             className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
               collapsed ? 'justify-center px-0' : ''
@@ -266,7 +267,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
           >
             {Icon && <Icon className="size-4 shrink-0" />}
             {!collapsed && <span>{item.label}</span>}
-          </a>
+          </Link>
         )
 
         if (collapsed) {
@@ -287,8 +288,8 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Settings — pinned to bottom */}
       <div className="mt-auto border-t border-border -mx-2 px-2 pt-2">
-        <a
-          href="/settings"
+        <Link
+          to="/settings"
           onClick={onNavigate}
           className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
             collapsed ? 'justify-center px-0' : ''
@@ -300,7 +301,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
         >
           <Settings className="size-4 shrink-0" />
           {!collapsed && <span>Settings</span>}
-        </a>
+        </Link>
       </div>
     </nav>
   )
