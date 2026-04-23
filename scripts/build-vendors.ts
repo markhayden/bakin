@@ -56,6 +56,7 @@ const REACT_DOM_ABS = Bun.resolveSync('react-dom', process.cwd())
 const REACT_DOM_CLIENT_ABS = Bun.resolveSync('react-dom/client', process.cwd())
 const JSX_RUNTIME_ABS = Bun.resolveSync('react/jsx-runtime', process.cwd())
 const JSX_DEV_RUNTIME_ABS = Bun.resolveSync('react/jsx-dev-runtime', process.cwd())
+const TANSTACK_ROUTER_ABS = Bun.resolveSync('@tanstack/react-router', process.cwd())
 
 function writeEntry(name: string, content: string): string {
   const path = join(TMP_DIR, `${name}.ts`)
@@ -117,6 +118,15 @@ export const { jsxDEV, Fragment } = JsxDevRuntime
 export default JsxDevRuntime
 `)
 
+const tanstackRouterEntry = writeEntry('tanstack-router', `
+// GENERATED. Native ESM package, so \`export *\` preserves every name
+// cleanly. Must be externalized from every other bundle so the shell's
+// <RouterProvider> and the plugins' useLocation/useNavigate share one
+// RouterContext instance — otherwise hook reads throw "Cannot read
+// properties of null (reading 'isServer')".
+export * from '${TANSTACK_ROUTER_ABS}'
+`)
+
 const targets: VendorTarget[] = [
   { specifier: 'react', name: 'react', entrypoint: reactEntry },
   // One bundle for the whole react-dom surface — the import map points both
@@ -124,6 +134,7 @@ const targets: VendorTarget[] = [
   { specifier: 'react-dom', name: 'react-dom', entrypoint: reactDomEntry },
   { specifier: 'react/jsx-runtime', name: 'jsx-runtime', entrypoint: jsxRuntimeEntry },
   { specifier: 'react/jsx-dev-runtime', name: 'jsx-dev-runtime', entrypoint: jsxDevRuntimeEntry },
+  { specifier: '@tanstack/react-router', name: 'tanstack-router', entrypoint: tanstackRouterEntry },
   { specifier: '@bakin/sdk', name: 'sdk-index', entrypoint: './packages/sdk/src/index.ts' },
   { specifier: '@bakin/sdk/ui', name: 'sdk-ui', entrypoint: './packages/sdk/src/ui/index.ts' },
   { specifier: '@bakin/sdk/hooks', name: 'sdk-hooks', entrypoint: './packages/sdk/src/hooks/index.ts' },
@@ -144,7 +155,11 @@ function externalsFor(target: VendorTarget): string[] {
   const sdk = target.specifier.startsWith('@bakin/sdk')
     ? SDK_SPECIFIERS.filter((s) => s !== target.specifier)
     : []
-  return [...react, ...sdk].flatMap((s) => ['--external', s])
+  // Every bundle except the tanstack-router bundle itself externalizes
+  // tanstack-router so the shell's <RouterProvider> and every consumer
+  // read from the single context instance.
+  const tanstack = target.specifier === '@tanstack/react-router' ? [] : ['@tanstack/react-router']
+  return [...react, ...sdk, ...tanstack].flatMap((s) => ['--external', s])
 }
 
 // Use subprocess per target — Bun.build() in-process state has trouble

@@ -33,6 +33,7 @@ import asset_vendor_sdk_index_js from '../../public/vendor/sdk-index.js' with { 
 import asset_vendor_sdk_slots_js from '../../public/vendor/sdk-slots.js' with { type: 'file' }
 import asset_vendor_sdk_components_js from '../../public/vendor/sdk-components.js' with { type: 'file' }
 import asset_vendor_sdk_hooks_js from '../../public/vendor/sdk-hooks.js' with { type: 'file' }
+import asset_vendor_tanstack_router_js from '../../public/vendor/tanstack-router.js' with { type: 'file' }
 import asset_vendor_jsx_dev_runtime_js from '../../public/vendor/jsx-dev-runtime.js' with { type: 'file' }
 import asset_api_plugins_schedule_assets_client_js from '../../../../plugins/schedule/dist/client.js' with { type: 'file' }
 import asset_api_plugins_schedule_assets_index_js from '../../../../plugins/schedule/dist/index.js' with { type: 'file' }
@@ -76,6 +77,7 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/sdk-slots.js', asset_vendor_sdk_slots_js],
   ['/vendor/sdk-components.js', asset_vendor_sdk_components_js],
   ['/vendor/sdk-hooks.js', asset_vendor_sdk_hooks_js],
+  ['/vendor/tanstack-router.js', asset_vendor_tanstack_router_js],
   ['/vendor/jsx-dev-runtime.js', asset_vendor_jsx_dev_runtime_js],
   ['/api/plugins/schedule/assets/client.js', asset_api_plugins_schedule_assets_client_js],
   ['/api/plugins/schedule/assets/index.js', asset_api_plugins_schedule_assets_index_js],
@@ -101,4 +103,4 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/api/plugins/messaging/assets/index.js', asset_api_plugins_messaging_assets_index_js],
 ])
 
-export const EMBEDDED_ASSET_COUNT = 38
+export const EMBEDDED_ASSET_COUNT = 39
