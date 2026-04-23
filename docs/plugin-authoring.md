@@ -270,11 +270,112 @@ see Bakin's `CLAUDE.md` "Testing Rules" section. Run with
 For slot-based UI tests, call `__clearSlot('slot-name')` between cases
 to reset registrations.
 
+## Dev-mode contract
+
+Plugins iterate fast via `bun run dev` — editing a file in your plugin's
+client source triggers a rebuild and a hot-swap in the browser without
+a full page reload. The shell stays mounted; only your plugin's subtree
+remounts.
+
+### Which files trigger a rebuild
+
+Default watch globs, relative to your plugin root:
+
+```
+client.tsx
+components/**
+lib/**
+*.ts
+```
+
+`index.ts` (your server entry) is always excluded — changing server-side
+code still requires a Ctrl-C + rerun of `bun run dev`.
+
+Override the defaults via `bakin-plugin.json`:
+
+```json
+{
+  "id": "my-plugin",
+  "devWatch": ["client.tsx", "components/**", "hooks/**", "lib/**", "*.ts"]
+}
+```
+
+Invalid entries (paths containing `..`, non-string values) log a warning
+and fall back to the defaults.
+
+### Module-load contract
+
+Your `client.tsx` runs as a side-effect import — once at page load, and
+once per hot-swap. For the hot-swap to leave no residue, **every module-
+load side effect must be reversible through a registered teardown path**.
+
+**Do:**
+
+```ts
+import { registerPlugin, registerPluginCleanup } from '@bakin/sdk'
+
+registerPlugin({
+  id: 'my-plugin',
+  navItems: [...],
+  slots: { 'asset-preview': MyRenderer },
+})
+```
+
+`registerPlugin` is tracked by plugin id, so `unregisterPlugin('my-plugin')`
+during hot-swap cleanly drops nav items and owned slot entries.
+
+If your plugin has its own client-side registry (like the workflows
+plugin's node-renderer registry), wire it through `registerPluginCleanup`
+so it participates in the teardown:
+
+```ts
+import { registerPlugin, registerPluginCleanup } from '@bakin/sdk'
+import { registerMyThing, clearMyThingsOwnedBy } from './lib/my-registry'
+
+registerPlugin({ id: 'my-plugin', ... })
+registerMyThing('thing-a', ThingA)
+registerMyThing('thing-b', ThingB)
+
+registerPluginCleanup('my-plugin', () => {
+  clearMyThingsOwnedBy('my-plugin')
+})
+```
+
+**Don't:**
+
+```ts
+// Module-load side effects with no cleanup path — leak across hot-swaps
+window.addEventListener('scroll', onScroll)        // NO
+document.body.classList.add('my-plugin-active')    // NO
+setInterval(tick, 1000)                            // NO
+fetch('/api/some-endpoint')                        // NO — fires every edit
+globalThis.__myPluginState = {}                    // NO — bypasses cleanup
+```
+
+If you need global listeners or timers, move them into a component and
+use `useEffect` with a cleanup function. React unmounts the component
+during hot-swap and the effect's cleanup runs.
+
+### What the browser looks like after a save
+
+Shell (sidebar, header, routing) stays mounted. Your plugin's subtree
+remounts — any `useState` inside your components resets. Scroll
+position, URL, input focus (outside your plugin), and the SSE activity
+feed all survive.
+
+If a component inside your plugin holds state you want preserved across
+edits (e.g., a half-filled form), it resets. That's v2's tradeoff —
+full React Fast Refresh is deferred to v3. See
+`.claude/knowledge/dev-loop.md` for the full architecture.
+
 ## Future work (not yet supported)
 
-- **File-watcher dev loop.** Today plugin install is a one-shot copy +
-  build; changes require re-running `bakin plugins install` and
-  restarting. A watch-mode flag is on the backlog.
+- **React Fast Refresh (v3).** Preserve `useState` across a component
+  edit. Requires wiring `react-refresh/babel` into Bun.build via a
+  plugin loader + the runtime into every bundle.
+- **Server-side reload (v4).** Edit your plugin's `index.ts` (or any
+  `src/core/**`) and have the server reload without Ctrl-C. Today
+  requires a manual restart.
 - **Runtime permission enforcement.** The `permissions` manifest field
   is logged but not enforced. Tracked in issue #142.
 - **Plugin registry / marketplace.** `bakin plugins install github:...`
