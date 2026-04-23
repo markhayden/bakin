@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import {
   CheckSquare,
   Calendar,
@@ -20,7 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
-import { getAllNavItems } from '@bakin/sdk'
+import { getAllNavItems, getRegistryVersion, subscribeRegistry } from '@bakin/sdk'
 import type { NavItem } from '@bakin/sdk'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { usePathname } from '../../hooks/use-pathname'
@@ -57,6 +57,10 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   const { collapsed } = useSidebarContext()
+  // Subscribe to registry mutations so the sidebar re-renders when a
+  // plugin hot-swaps (v2 dev mode) — PluginHost's own subscription only
+  // forces PluginHost itself to re-render; consumers below need their own.
+  useSyncExternalStore(subscribeRegistry, getRegistryVersion, getRegistryVersion)
   // Runtime registry (populated by each plugin's client.mjs via registerPlugin
   // after the PluginHost dynamic-imports them). Fetched per render so
   // newly-registered plugins surface on the next re-render cycle.
