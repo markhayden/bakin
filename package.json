@@ -10,8 +10,9 @@
   },
   "scripts": {
     "dev": "bun run server.ts",
-    "build": "bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:binary",
-    "build:host": "bun run build:vendors && bun run build:host-shell",
+    "build": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:binary",
+    "build:host": "bun run build:css && bun run build:vendors && bun run build:host-shell",
+    "build:css": "bunx @tailwindcss/cli -i ./packages/host/src/globals.css -o ./packages/host/public/globals.css",
     "build:host-shell": "bun run packages/host/build.ts",
     "build:vendors": "bun run scripts/build-vendors.ts",
     "build:plugins": "bun run scripts/build-plugins.ts",
@@ -73,6 +74,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@tailwindcss/cli": "^4.2.4",
     "@tailwindcss/postcss": "^4.2.2",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

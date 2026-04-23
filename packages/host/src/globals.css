@@ -7,9 +7,9 @@
  * the host bundle pulls JSX from across the monorepo. Explicitly enumerate
  * every tree that contains utility classes we want generated.
  *
- * Paths are resolved relative to this file (packages/host/public/globals.css).
+ * Paths are resolved relative to this file (packages/host/src/globals.css).
  */
-@source "../src/**/*.{ts,tsx}";
+@source "./**/*.{ts,tsx}";
 @source "../../sdk/src/**/*.{ts,tsx}";
 @source "../../../src/**/*.{ts,tsx}";
 @source "../../../plugins/**/*.{ts,tsx}";
