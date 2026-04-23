@@ -68,6 +68,8 @@ import * as assetsRoute from './packages/host/src/api/assets/[...path]'
 import * as pluginCatchAllRoute from './packages/host/src/api/plugins/[pluginId]/[[...path]]'
 import * as pluginsManifestRoute from './packages/host/src/api/plugins/manifest'
 import * as pluginsAssetsRoute from './packages/host/src/api/plugins/assets'
+import { handleDevSse } from './packages/host/src/api/dev/events'
+import * as devNotifyRoute from './packages/host/src/api/dev/notify'
 import { serveHostClient } from './packages/host/src/api/_static'
 import { buildAllUserPlugins } from './packages/host/src/plugin-host/user-plugin-builder'
 import { dispatchCli } from './src/core/cli'
@@ -217,6 +219,18 @@ const eventBus = new BakinEventBus(broadcast)
     // SSE endpoint
     if (url.pathname === '/api/events') {
       handleSSE(req, res)
+      return
+    }
+
+    // Dev-only routes. Handlers own the BAKIN_DEV gate and return 404
+    // when unset — paths are dispatched unconditionally so production
+    // gets a clean 404 instead of falling through to the SPA shell.
+    if (url.pathname === '/api/dev/events' && req.method === 'GET') {
+      handleDevSse(req, res)
+      return
+    }
+    if (url.pathname === '/api/dev/notify' && req.method === 'POST') {
+      dispatchWebHandler(req, res, devNotifyRoute.post)
       return
     }
 
