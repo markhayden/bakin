@@ -14,7 +14,7 @@
  * without special-casing.
  */
 
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   ReactFlow,
   Background,
@@ -38,7 +38,7 @@ import { Copy, LayoutGrid, Save, Trash2 } from 'lucide-react'
 import { Button } from "@bakin/sdk/ui"
 import { Input } from "@bakin/sdk/ui"
 
-import { getAllNodeRenderers } from '../lib/node-renderer-registry'
+import { getAllNodeRenderers, getNodeRendererVersion, subscribeNodeRenderers } from '../lib/node-renderer-registry'
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
 import { canConnect } from '../lib/edge-rules'
@@ -219,9 +219,9 @@ export function WorkflowCanvasEditor({
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
 
-  // Read registry on first render — see note in workflow-canvas.tsx: ESM
-  // hoisting means module-scope snapshots run before client.tsx registers.
-  const nodeTypes = useMemo<NodeTypes>(() => getAllNodeRenderers(), [])
+  // Subscribe to registry mutations — see note in workflow-canvas.tsx.
+  const rendererVersion = useSyncExternalStore(subscribeNodeRenderers, getNodeRendererVersion, getNodeRendererVersion)
+  const nodeTypes = useMemo<NodeTypes>(() => getAllNodeRenderers(), [rendererVersion])
   const nodes = useMemo(() => deriveNodes(state), [state])
   const edges = state.edges
 
