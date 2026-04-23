@@ -1,5 +1,5 @@
-import { useSidebarContext } from '../../context/sidebar-context'
-import { useActivityContext } from '../../context/activity-context'
+import { useSidebarContext } from '@/context/sidebar-context'
+import { useActivityContext } from '@/context/activity-context'
 import { ActivityFeed } from '@/components/tasks/activity-feed'
 
 export function LayoutShell({
