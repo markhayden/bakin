@@ -134,7 +134,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                   </button>
                 )}
                 <Link
-                  to={item.children![0].href ?? '/'}
+                  to={item.children![0].href}
                   onClick={onNavigate}
                   className="flex items-center gap-3 flex-1 min-w-0"
                 >
@@ -150,7 +150,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                     return (
                       <Link
                         key={child.id}
-                        to={child.href ?? '/'}
+                        to={child.href}
                         onClick={onNavigate}
                         className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                           childActive
@@ -182,7 +182,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                   nativeButton={false}
                   render={
                     <Link
-                      to={item.children![0].href ?? '/'}
+                      to={item.children![0].href}
                       onClick={onNavigate}
                       className={`flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                         active
@@ -210,7 +210,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                       return (
                         <Link
                           key={child.id}
-                          to={child.href ?? '/'}
+                          to={child.href}
                           onClick={onNavigate}
                           className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                             childActive
@@ -233,7 +233,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
             <Tooltip key={item.id}>
               <TooltipTrigger render={<div />}>
                 <Link
-                  to={item.children![0].href ?? '/'}
+                  to={item.children![0].href}
                   onClick={onNavigate}
                   className={`flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                     active
@@ -255,7 +255,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
         const linkContent = (
           <Link
             key={item.id}
-            to={item.href ?? '/'}
+            to={item.href}
             onClick={onNavigate}
             className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
               collapsed ? 'justify-center px-0' : ''
