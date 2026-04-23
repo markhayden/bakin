@@ -138,6 +138,22 @@ function broadcast(event: DevEvent): void {
   broadcastDev(event)
 }
 
+// Track per-scope "last was error" so we can emit dev:recover before the
+// dev:reload that clears the browser overlay.
+const erroredScopes = new Set<DevScope>()
+
+function emitSuccess(scope: DevScope, successEvent: DevEvent): void {
+  if (erroredScopes.delete(scope)) {
+    broadcast({ type: 'dev:recover', scope })
+  }
+  broadcast(successEvent)
+}
+
+function emitError(scope: DevScope, message: string, stderr: string): void {
+  erroredScopes.add(scope)
+  broadcast({ type: 'dev:error', scope, message, stderr })
+}
+
 async function rebuildShell(): Promise<void> {
   broadcast({ type: 'dev:building', scope: 'shell' })
   const proc = Bun.spawn(['bun', 'run', 'packages/host/build.ts'], {
@@ -145,11 +161,11 @@ async function rebuildShell(): Promise<void> {
   })
   const code = await proc.exited
   if (code === 0) {
-    broadcast({ type: 'dev:reload', scope: 'shell' })
+    emitSuccess('shell', { type: 'dev:reload', scope: 'shell' })
     console.log('[dev] shell rebuilt')
   } else {
     const stderr = await new Response(proc.stderr).text()
-    broadcast({ type: 'dev:error', scope: 'shell', message: 'shell build failed', stderr })
+    emitError('shell', 'shell build failed', stderr)
     console.error('[dev] shell rebuild failed:\n' + stderr)
   }
 }
@@ -158,10 +174,10 @@ async function rebuildPlugin(id: string): Promise<void> {
   broadcast({ type: 'dev:building', scope: 'plugin' })
   const result = await buildOnePlugin(id, { external: EXTERNAL })
   if (result.ok) {
-    broadcast({ type: 'dev:reload', scope: 'plugin' })
+    emitSuccess('plugin', { type: 'dev:reload', scope: 'plugin' })
     console.log(`[dev] plugin ${id} rebuilt`)
   } else {
-    broadcast({ type: 'dev:error', scope: 'plugin', message: `plugin ${id} build failed`, stderr: result.stderr })
+    emitError('plugin', `plugin ${id} build failed`, result.stderr)
     console.error(`[dev] plugin ${id} rebuild failed:\n${result.stderr}`)
   }
 }
@@ -173,11 +189,11 @@ async function rebuildSdk(): Promise<void> {
   })
   const code = await proc.exited
   if (code === 0) {
-    broadcast({ type: 'dev:reload', scope: 'sdk' })
+    emitSuccess('sdk', { type: 'dev:reload', scope: 'sdk' })
     console.log('[dev] sdk (vendor bundles) rebuilt')
   } else {
     const stderr = await new Response(proc.stderr).text()
-    broadcast({ type: 'dev:error', scope: 'sdk', message: 'sdk build failed', stderr })
+    emitError('sdk', 'sdk build failed', stderr)
     console.error('[dev] sdk rebuild failed:\n' + stderr)
   }
 }
@@ -281,10 +297,16 @@ function startSdkWatcher(): void {
 }
 
 function startCssWatcher(): void {
-  const cssOutput = join(REPO_ROOT, 'packages/host/public/globals.css')
+  // Watch the parent directory + filter by path; watching a single file
+  // directly misses atomic-rename writes that Tailwind's --watch produces.
+  const publicDir = join(REPO_ROOT, 'packages/host/public')
+  const cssOutput = join(publicDir, 'globals.css')
   let lastMtime = existsSync(cssOutput) ? statSync(cssOutput).mtimeMs : 0
-  const watcher = chokidar.watch(cssOutput, { ignoreInitial: true })
-  watcher.on('change', () => {
+  const watcher = chokidar.watch(publicDir, { ignoreInitial: true, depth: 0 })
+  watcher.on('all', (event, path) => {
+    if (path !== cssOutput) return
+    if (event !== 'change' && event !== 'add') return
+    if (!existsSync(cssOutput)) return
     const m = statSync(cssOutput).mtimeMs
     if (m === lastMtime) return
     lastMtime = m
