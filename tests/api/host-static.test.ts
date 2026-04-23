@@ -7,25 +7,27 @@
  *      the compiled binary serves production index.html byte-identical.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { join } from 'path'
-import { tmpdir } from 'os'
-
-const testDir = vi.hoisted(() => {
-  const { join } = require('path')
-  const { tmpdir } = require('os')
-  return join(tmpdir(), `bakin-test-host-static-${Date.now()}`)
-})
 
 // Per CLAUDE.md testing rules — mock content-dir even when the test
 // doesn't appear to need storage. Transitive imports can surprise you.
-vi.mock('../../src/core/content-dir', () => ({
-  getContentDir: () => testDir,
-  getBakinPaths: () => ({ root: testDir }),
-}))
-vi.mock('../../packages/core/src/content-dir', () => ({
-  getContentDir: () => testDir,
-  getBakinPaths: () => ({ root: testDir }),
-}))
+vi.mock('../../src/core/content-dir', async () => {
+  const { join } = await import('path')
+  const { tmpdir } = await import('os')
+  const testDir = join(tmpdir(), `bakin-test-host-static-${Date.now()}`)
+  return {
+    getContentDir: () => testDir,
+    getBakinPaths: () => ({ root: testDir }),
+  }
+})
+vi.mock('../../packages/core/src/content-dir', async () => {
+  const { join } = await import('path')
+  const { tmpdir } = await import('os')
+  const testDir = join(tmpdir(), `bakin-test-host-static-${Date.now()}`)
+  return {
+    getContentDir: () => testDir,
+    getBakinPaths: () => ({ root: testDir }),
+  }
+})
 
 import { transformIndexHtmlForDev } from '../../packages/host/src/api/_static'
 
