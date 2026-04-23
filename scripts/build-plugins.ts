@@ -1,8 +1,7 @@
 /**
- * Build core plugins — each plugin's server entry (index.ts) + client
- * entry (client.tsx) compiled to plugins/<id>/dist/ with externals for
- * react + @bakin/sdk/*. Phase F's runtime loader reads from these dist
- * directories; Phase G embeds them in the binary.
+ * Build every core plugin — iterates CORE_PLUGINS and delegates each id to
+ * buildOnePlugin. The helper handles the subprocess-spawn mechanics; this
+ * script owns the list of plugins and the externals list.
  *
  * Server entries use --target=bun and --packages=external so node_modules
  * deps (better-sqlite3, chokidar, zod, js-yaml, @antfly/sdk, etc.) stay
@@ -13,8 +12,7 @@
  * primitives) bundle into client.js so the plugin is self-contained
  * from the browser's point of view.
  */
-import { rmSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { buildOnePlugin } from './dev-build-one-plugin'
 
 const CORE_PLUGINS = [
   'tasks', 'team', 'workflows', 'projects', 'assets',
@@ -31,51 +29,11 @@ const EXTERNAL = [
 ]
 
 for (const id of CORE_PLUGINS) {
-  const pluginDir = join('plugins', id)
-  const distDir = join(pluginDir, 'dist')
-  rmSync(distDir, { recursive: true, force: true })
-
-  const clientEntry = join(pluginDir, 'client.tsx')
-  const hasClient = existsSync(clientEntry)
-
-  // Server entry — runs on Bun (Node-compatible). Used by Phase F's dynamic import.
-  // --packages=external keeps all node_modules deps out of the bundle — this is a
-  // PLUGIN, not a standalone binary. The host process has them installed.
-  const serverProc = Bun.spawn([
-    'bun', 'build', join(pluginDir, 'index.ts'),
-    '--outdir', distDir,
-    '--target', 'bun',
-    '--format', 'esm',
-    '--entry-naming', 'index.[ext]',
-    '--packages', 'external',
-    ...EXTERNAL.flatMap(e => ['--external', e]),
-  ], { stdout: 'pipe', stderr: 'pipe' })
-  const serverExit = await serverProc.exited
-  if (serverExit !== 0) {
-    const err = await new Response(serverProc.stderr).text()
-    console.error(`Failed to build server entry for ${id}:\n${err}`)
+  const result = await buildOnePlugin(id, { external: EXTERNAL })
+  if (!result.ok) {
+    console.error(`Failed to build ${result.stderr}`)
     process.exit(1)
   }
-
-  // Client entry — browser target; externalizes vendor bundles (react + sdk).
-  // Everything else bundles in.
-  if (hasClient) {
-    const clientProc = Bun.spawn([
-      'bun', 'build', clientEntry,
-      '--outdir', distDir,
-      '--target', 'browser',
-      '--format', 'esm',
-      '--entry-naming', 'client.[ext]',
-      ...EXTERNAL.flatMap(e => ['--external', e]),
-    ], { stdout: 'pipe', stderr: 'pipe' })
-    const clientExit = await clientProc.exited
-    if (clientExit !== 0) {
-      const err = await new Response(clientProc.stderr).text()
-      console.error(`Failed to build client entry for ${id}:\n${err}`)
-      process.exit(1)
-    }
-  }
-
   console.log(`  built plugins/${id}/dist/`)
 }
 
