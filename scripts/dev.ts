@@ -174,8 +174,19 @@ async function rebuildPlugin(id: string): Promise<void> {
   broadcast({ type: 'dev:building', scope: 'plugin' })
   const result = await buildOnePlugin(id, { external: EXTERNAL })
   if (result.ok) {
-    emitSuccess('plugin', { type: 'dev:reload', scope: 'plugin' })
-    console.log(`[dev] plugin ${id} rebuilt`)
+    // v2: emit dev:hot-swap with the new client.js's mtime as the cache-bust
+    // version. v1 clients would fall through to location.reload(); v2 dev
+    // client (packages/host/src/dev-client/client.ts) calls
+    // window.__bakinHotSwapPlugin to remount just this plugin's subtree.
+    const clientJs = join(PLUGINS_DIR, id, 'dist', 'client.js')
+    const version = existsSync(clientJs)
+      ? String(statSync(clientJs).mtimeMs)
+      : String(Date.now())
+    if (erroredScopes.delete('plugin')) {
+      broadcast({ type: 'dev:recover', scope: 'plugin' })
+    }
+    broadcast({ type: 'dev:hot-swap', scope: 'plugin', id, version })
+    console.log(`[dev] plugin ${id} rebuilt → hot-swap ${version}`)
   } else {
     emitError('plugin', `plugin ${id} build failed`, result.stderr)
     console.error(`[dev] plugin ${id} rebuild failed:\n${result.stderr}`)
