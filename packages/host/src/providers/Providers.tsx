@@ -1,12 +1,10 @@
 import { useEffect } from 'react'
-import { useSSE } from '@/hooks/use-sse'
+import { useSSE, useContentStore, useSidebar } from '@bakin/sdk/hooks'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '../components/layout/toaster'
 import { SidebarContext } from '@/context/sidebar-context'
 import { ActivityProvider } from '@/context/activity-context'
-import { useSidebar } from '@/hooks/use-sidebar'
 import { AgentThemeProvider } from './AgentThemeProvider'
-import { useContentStore } from '@/hooks/use-content-store'
 
 function SSEProvider({ children }: { children: React.ReactNode }) {
   useSSE()
