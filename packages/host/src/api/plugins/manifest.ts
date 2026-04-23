@@ -30,11 +30,15 @@ interface ManifestResponse {
   plugins: ManifestPlugin[]
 }
 
-/** Resolution mirrors assets.ts: user dir → embedded map → repo dist. */
+/**
+ * Check each asset-resolution layer. In a compiled binary the embedded
+ * map wins for every core plugin, so probe it first to avoid a syscall
+ * for each plugin on every manifest fetch.
+ */
 function hasClientCss(pluginId: string): boolean {
   const relPath = 'client.css'
-  if (existsSync(join(getContentDir(), 'plugins', pluginId, 'dist', relPath))) return true
   if (EMBEDDED_ASSETS.has(`/api/plugins/${pluginId}/assets/${relPath}`)) return true
+  if (existsSync(join(getContentDir(), 'plugins', pluginId, 'dist', relPath))) return true
   if (existsSync(join(process.cwd(), 'plugins', pluginId, 'dist', relPath))) return true
   return false
 }
