@@ -38,9 +38,6 @@ import { Copy, LayoutGrid, Save, Trash2 } from 'lucide-react'
 import { Button } from "@bakin/sdk/ui"
 import { Input } from "@bakin/sdk/ui"
 
-// Side-effect import — guarantees the NodeRendererRegistry is populated
-// before we snapshot it via getAllNodeRenderers().
-import '@/lib/plugin-manifest'
 import { getAllNodeRenderers } from '../lib/node-renderer-registry'
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
@@ -65,8 +62,6 @@ const RESET_NODE_STYLES = `
 
 const NODE_WIDTH = 280
 const Y_SPACING = 130
-
-const nodeTypes: NodeTypes = getAllNodeRenderers()
 
 interface WorkflowCanvasEditorProps {
   mode: 'create' | 'edit'
@@ -224,6 +219,9 @@ export function WorkflowCanvasEditor({
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
 
+  // Read registry on first render — see note in workflow-canvas.tsx: ESM
+  // hoisting means module-scope snapshots run before client.tsx registers.
+  const nodeTypes = useMemo<NodeTypes>(() => getAllNodeRenderers(), [])
   const nodes = useMemo(() => deriveNodes(state), [state])
   const edges = state.edges
 

@@ -31,6 +31,7 @@ interface ManifestPlugin {
   name: string
   version: string
   clientEntry: string
+  clientCss?: string
 }
 
 interface Manifest {
@@ -42,7 +43,19 @@ interface LoadedPluginModule {
   default?: unknown
 }
 
+function injectPluginCss(plugin: ManifestPlugin): void {
+  if (!plugin.clientCss) return
+  const attr = `data-bakin-plugin-css="${plugin.id}"`
+  if (document.head.querySelector(`link[${attr}]`)) return
+  const link = document.createElement('link')
+  link.rel = 'stylesheet'
+  link.href = plugin.clientCss
+  link.setAttribute('data-bakin-plugin-css', plugin.id)
+  document.head.appendChild(link)
+}
+
 async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
+  injectPluginCss(plugin)
   try {
     const mod = await import(/* @vite-ignore */ plugin.clientEntry) as LoadedPluginModule
     // If the plugin exports its React instance (e.g. via `export { React }`
