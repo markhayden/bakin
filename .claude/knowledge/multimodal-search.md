@@ -198,7 +198,7 @@ The fallback works, so this is noise, not a failure. Tracked in #72 as another A
 
 ## Testing the pipeline
 
-Local smoke test against a running `pnpm dev:mock`:
+Local smoke test against a running `bun run dev:mock`:
 
 ```bash
 # 1. Drop test content
