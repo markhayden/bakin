@@ -1513,10 +1513,10 @@ async function cmdOnboard(args: string[]): Promise<void> {
     }
     console.log('')
     if (result.exitCode === 0) {
-      console.log('Onboarding complete. Run `pnpm dev` to start Bakin.')
+      console.log('Onboarding complete. Run `bakin start` to launch Bakin.')
     } else if (result.exitCode === 2) {
       console.log('Onboarding finished with warnings. Bakin will start but some features may be limited.')
-      console.log('Run `pnpm dev` to start Bakin.')
+      console.log('Run `bakin start` to launch Bakin.')
     } else {
       console.log('Onboarding failed. Fix the errors above and rerun `bakin onboard`.')
     }
