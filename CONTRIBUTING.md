@@ -37,6 +37,7 @@ bun x vitest run
 
 ```bash
 bun run dev          # watch mode: rebuild on change, hot-swap plugins in the browser
+                     # (same as `bakin dev` — either form works)
 bun run start        # one-shot prestart build + boot (production-style preview)
 bun run server       # boot without rebuilding (use when dist/ is fresh)
 bun run build        # full production build (ends with bun build --compile)

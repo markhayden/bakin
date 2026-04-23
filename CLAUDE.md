@@ -38,12 +38,22 @@ Server-side code (`src/core/**`, `server.ts`, plugins' `index.ts`) is **not** wa
 
 ### CLI
 
-The compiled binary's argv parser lives in `src/core/cli.ts` and routes via `dispatchCli` before the HTTP server boots:
+Two CLI files cooperate to provide one unified surface end users see:
+
+- `src/core/cli.ts` — binary-facing dispatcher. Handles `start`, `stop`, `status`, `version`, `update`, `plugins {list,install,remove,scaffold}`, and `dev` (source-tree only — detects binary vs source via `import.meta.url`). Unknown commands are delegated to `cli/bakin.ts`'s legacy dispatcher via a dynamic import.
+- `cli/bakin.ts` — thin HTTP-client CLI that exports its `main()` function. The top-of-file runs `main()` only when `import.meta.main === true` (i.e., when the file IS the entry point, via the npm-link at `/opt/homebrew/bin/bakin`). When `src/core/cli.ts` imports it, no auto-invoke — the binary's dispatcher drives it. Owns: `doctor`, `dispatch`, `tasks`, `workflows`, `agents`, `schedule`, `messaging`, `search`, `trash`, `settings`, `logs`, `paths`, `reindex`, `reboot`/`restart`, `docs`, `onboard`, `init`, `mkdir`, `check`, `install`, `setup service`, `agent-rules`. `dev` is delegated back to `src/core/cli.ts`'s `cmdDev` so both entry points behave identically.
+
+End users (who install the compiled binary via `install.sh`) get the full surface because `src/core/cli.ts` delegates unknown commands into `cli/bakin.ts`, which gets compiled into the binary via the import chain.
+
+Lifecycle commands seen by the user:
 
 ```
 bakin start                       # default — boot the server on PORT=3737
 bakin stop                        # SIGTERM any running bakin process
+bakin restart                     # stop + wait for port release + start
+bakin dev                         # watch-mode dev loop (HMR) — source tree only
 bakin status                      # show dispatch + server status (HTTP)
+bakin doctor                      # health checks (delegated to legacy CLI)
 bakin version                     # print version
 bakin update                      # replace this binary with the latest release
 bakin plugins list                # list installed plugins (HTTP)
@@ -51,6 +61,8 @@ bakin plugins install <src>       # local path or github:user/repo
 bakin plugins remove <id>         # refuses to remove core plugins
 bakin plugins scaffold <name>     # generate a starter plugin in ./<name>/
 ```
+
+(`--help` lists everything.)
 
 ## Directory Map
 

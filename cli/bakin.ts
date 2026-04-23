@@ -13,7 +13,14 @@ import {
 
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
-const CLI_AGENT = getMainAgentId()
+// Lazy so importing this module (e.g. from src/core/cli.ts when the
+// compiled binary delegates unknown commands here) doesn't read
+// ~/.openclaw/ at binary startup. Resolved once on first use.
+let __cliAgent: string | undefined
+function getCliAgent(): string {
+  if (__cliAgent === undefined) __cliAgent = getMainAgentId()
+  return __cliAgent
+}
 
 // ---------------------------------------------------------------------------
 // HTTP helpers
@@ -136,7 +143,7 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
 }
 
 async function cmdTasksMove(id: string, to: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to, agent: CLI_AGENT })
+  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to, agent: getCliAgent() })
   print(result)
 }
 
@@ -1016,12 +1023,12 @@ async function cmdSetupMcporter(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdTasksLog(id: string, message: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: CLI_AGENT, message })
+  const result = await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: getCliAgent(), message })
   print(result)
 }
 
 async function cmdTasksBlock(id: string, reason: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/tasks/${id}/block`, { id, reason, agent: CLI_AGENT })
+  const result = await apiPost(`/api/plugins/tasks/${id}/block`, { id, reason, agent: getCliAgent() })
   print(result)
 }
 
@@ -1032,8 +1039,8 @@ async function cmdTasksDepend(id: string, dependsOn: string): Promise<void> {
 
 async function cmdTasksComplete(id: string, summary: string): Promise<void> {
   // Log the summary, then move to done
-  await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: CLI_AGENT, message: `Task complete: ${summary}` })
-  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to: 'done', agent: CLI_AGENT })
+  await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: getCliAgent(), message: `Task complete: ${summary}` })
+  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to: 'done', agent: getCliAgent() })
   print(result)
 }
 
@@ -1080,7 +1087,7 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
     console.error('Invalid JSON for output. Usage: bakin workflows submit <taskId> <stepId> \'{"key":"value"}\'')
     process.exit(1)
   }
-  const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: CLI_AGENT, output })
+  const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: getCliAgent(), output })
   print(result)
 }
 
@@ -1525,7 +1532,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
   process.exit(result.exitCode)
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const args = process.argv.slice(2)
 
   if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
@@ -1733,6 +1740,15 @@ async function main(): Promise<void> {
         await cmdDoctor()
         break
 
+      case 'dev': {
+        // Delegate to the unified cmdDev in src/core/cli.ts so the source-
+        // tree detection + spawn logic lives in one place (and the
+        // compiled binary's `bakin dev` uses the same code path).
+        const { cmdDev } = await import('../src/core/cli')
+        process.exit(await cmdDev())
+        break  // unreachable, but eslint's no-fallthrough doesn't know that
+      }
+
       case 'reboot':
       case 'restart':
         await cmdReboot()
@@ -1902,4 +1918,10 @@ async function main(): Promise<void> {
   }
 }
 
-main()
+// Only auto-invoke when this file is the entry point (npm-linked
+// `/opt/homebrew/bin/bakin` shell invocation). When imported from the
+// compiled binary's src/core/cli.ts to delegate unknown commands,
+// import.meta.main is false and the binary's dispatcher drives us.
+if (import.meta.main) {
+  main()
+}

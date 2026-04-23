@@ -185,12 +185,14 @@ bakin plugins scaffold <name>               # starter plugin at ./<name>/
 
 ## CLI reference
 
-All commands hit the local HTTP API (`http://localhost:3737` or `$BAKIN_URL`).
+Most commands hit the local HTTP API (`http://localhost:3737` or `$BAKIN_URL`). Lifecycle commands (`start`, `stop`, `restart`, `dev`) operate on the server itself.
 
 ```bash
 # System
 bakin start                            # boot the server
 bakin stop                             # graceful shutdown
+bakin restart                          # stop + start
+bakin dev                              # watch-mode dev loop (HMR) — source-tree only
 bakin status                           # dispatch + server + doctor status
 bakin version                          # print version
 bakin update                           # replace binary with latest release
@@ -370,10 +372,10 @@ openclaw skills list
 git clone git@github.com:markhayden/bakin.git
 cd bakin
 bun install
-bun run dev       # watch mode — rebuilds on change, hot-swaps plugins
+bun run dev       # or `bakin dev` if the CLI is on your PATH
 ```
 
-`bun run dev` watches repo source (shell, plugins, SDK, CSS) and pushes updates to the browser over a dedicated dev SSE channel:
+Both `bun run dev` and `bakin dev` launch the same watch-mode coordinator. Edits flow through a dev SSE channel:
 
 - Edit `packages/host/src/**` → full page reload (~2 s)
 - Edit `plugins/<id>/**` → that plugin remounts without a reload; shell, other plugins, URL, scroll, and SSE connection all survive
