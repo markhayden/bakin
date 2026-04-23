@@ -22,7 +22,8 @@
  * Test-only helpers are not exported — tests use the public unregister path.
  */
 
-import type { ComponentType, JSX } from 'react'
+import { useSyncExternalStore, type ComponentType, type JSX } from 'react'
+import { subscribeRegistry, getRegistryVersion } from '../register'
 
 interface SlotEntry {
   component: ComponentType<Record<string, unknown>>
@@ -89,6 +90,11 @@ interface SlotProps {
  * if nothing is registered.
  */
 export function Slot({ name, ...props }: SlotProps): JSX.Element | null {
+  // Subscribe to registry mutations so hot-swap (v2) re-renders the
+  // slot with the new module's components. Without this, PluginHost's
+  // useSyncExternalStore re-renders PluginHost itself but consumers
+  // below (<Slot>, <AppSidebar>) keep reading the pre-swap registry.
+  useSyncExternalStore(subscribeRegistry, getRegistryVersion, getRegistryVersion)
   const entries = getSlotEntries(name)
   if (entries.length === 0) return null
   return (

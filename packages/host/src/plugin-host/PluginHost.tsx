@@ -13,9 +13,11 @@
  *   4. Flips a `ready` flag to re-render the shell with nav items + slots
  *      populated from the registry.
  *
- * Re-render on registry change: subscribes to `getRegistryVersion()` via
- * `useSyncExternalStore`. When a plugin registers or unregisters (v2 hot-
- * swap), every <Slot> + sidebar consumer re-reads the registry.
+ * Re-render on registry change: consumers (<Slot>, <AppSidebar>) subscribe
+ * to `getRegistryVersion()` via `useSyncExternalStore` themselves — a
+ * single subscription here in PluginHost would re-render PluginHost but
+ * not propagate to descendants whose props didn't change. Each consumer
+ * that reads the registry owns its own subscription.
  *
  * Dev hot-swap bridge: when the dev-client script is present in the
  * document, PluginHost exposes `window.__bakinHotSwapPlugin(id, clientEntry,
@@ -23,8 +25,8 @@
  * full page reload. Production builds never ship the dev client, so the
  * window handle stays undefined there.
  */
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { getRegistryVersion, subscribeRegistry, unregisterPlugin } from '@bakin/sdk'
+import { useEffect, useState, type ReactNode } from 'react'
+import { unregisterPlugin } from '@bakin/sdk'
 import { assertReactInstance } from '../lib/react-identity'
 
 interface ManifestPlugin {
@@ -108,11 +110,6 @@ function isDevModeActive(): boolean {
 
 export function PluginHost({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
-
-  // Re-render whenever the registry version bumps (plugin register /
-  // unregister / hot-swap). Slots + sidebar consumers read from the
-  // registry at render time, so this is the single subscription point.
-  useSyncExternalStore(subscribeRegistry, getRegistryVersion, getRegistryVersion)
 
   useEffect(() => {
     let cancelled = false
