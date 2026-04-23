@@ -70,6 +70,22 @@ function mimeFor(path: string): string {
   return MIME[extname(path).toLowerCase()] ?? 'application/octet-stream'
 }
 
+/**
+ * Pick the Cache-Control header for a response. In dev we force no-store on
+ * every asset — the watcher rebuilds main.js / client.js / vendor bundles
+ * in place, and location.reload() won't pick up the new bytes if the
+ * browser's HTTP cache says the old ones are still fresh. In production
+ * the binary's assets never change at runtime, so the 5-minute cache is
+ * fine and cuts the number of HEAD requests the browser makes. Exported
+ * for unit-testing.
+ */
+export function cacheControlFor(urlOrPath: string, status: number): string {
+  if (status !== 200) return 'public, max-age=300'
+  if (process.env.BAKIN_DEV === '1') return 'no-store'
+  if (urlOrPath.endsWith('.html')) return 'no-cache'
+  return 'public, max-age=300'
+}
+
 async function sendEmbedded(res: ServerResponse, urlPath: string, status = 200): Promise<boolean> {
   const embeddedPath = EMBEDDED_ASSETS.get(urlPath)
   if (!embeddedPath) return false
@@ -80,7 +96,7 @@ async function sendEmbedded(res: ServerResponse, urlPath: string, status = 200):
     res.writeHead(status, {
       'Content-Type': mimeFor(urlPath),
       'Content-Length': String(bytes.length),
-      'Cache-Control': status === 200 && urlPath.endsWith('.html') ? 'no-cache' : 'public, max-age=300',
+      'Cache-Control': cacheControlFor(urlPath, status),
     })
     res.end(bytes)
     return true
@@ -96,7 +112,7 @@ function sendDiskFile(res: ServerResponse, path: string, status = 200): boolean 
   res.writeHead(status, {
     'Content-Type': mimeFor(path),
     'Content-Length': stat.size,
-    'Cache-Control': status === 200 && path.endsWith('.html') ? 'no-cache' : 'public, max-age=300',
+    'Cache-Control': cacheControlFor(path, status),
   })
   createReadStream(path).pipe(res)
   return true
