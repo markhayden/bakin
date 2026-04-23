@@ -4,6 +4,10 @@
 
 The team plugin is Bakin's adapter layer over OpenClaw's agent roster. It derives the entire team page — every agent card, every edge, the full pyramid — from whatever `openclaw.json` reports at runtime, decorated with Bakin-owned UI data (avatars, display overrides, heartbeats). Bakin **never** copies OpenClaw state; identity, rules, tools, soul, and workspace files all stay in `{OPENCLAW_HOME}/`.
 
+## Client Entry
+
+`plugins/team/client.tsx` calls `registerPlugin({ id: 'team', navItems, slots: { 'page:/team': TeamGrid, 'page:/team/[id]': AgentDetail } })`. The shell mounts those components at `/team` and `/team/:id` respectively via TanStack Router route modules (`packages/host/src/routes/team.index.tsx` and `team.$id.tsx`), each rendering `<Slot name="page:/team..." />`.
+
 ## Canonical Main Agent Contract
 
 The orchestrator id is always the literal string `"main"` on every OpenClaw install. Display names come from `identity.name` on that entry. No detection heuristic, no settings override, no rename logic.

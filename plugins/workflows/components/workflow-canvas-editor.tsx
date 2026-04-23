@@ -14,7 +14,7 @@
  * without special-casing.
  */
 
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   ReactFlow,
   Background,
@@ -38,10 +38,7 @@ import { Copy, LayoutGrid, Save, Trash2 } from 'lucide-react'
 import { Button } from "@bakin/sdk/ui"
 import { Input } from "@bakin/sdk/ui"
 
-// Side-effect import — guarantees the NodeRendererRegistry is populated
-// before we snapshot it via getAllNodeRenderers().
-import '@/lib/plugin-manifest'
-import { getAllNodeRenderers } from '../lib/node-renderer-registry'
+import { getAllNodeRenderers, getNodeRendererVersion, subscribeNodeRenderers } from '../lib/node-renderer-registry'
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
 import { canConnect } from '../lib/edge-rules'
@@ -65,8 +62,6 @@ const RESET_NODE_STYLES = `
 
 const NODE_WIDTH = 280
 const Y_SPACING = 130
-
-const nodeTypes: NodeTypes = getAllNodeRenderers()
 
 interface WorkflowCanvasEditorProps {
   mode: 'create' | 'edit'
@@ -224,6 +219,9 @@ export function WorkflowCanvasEditor({
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
 
+  // Subscribe to registry mutations — see note in workflow-canvas.tsx.
+  const rendererVersion = useSyncExternalStore(subscribeNodeRenderers, getNodeRendererVersion, getNodeRendererVersion)
+  const nodeTypes = useMemo<NodeTypes>(() => getAllNodeRenderers(), [rendererVersion])
   const nodes = useMemo(() => deriveNodes(state), [state])
   const edges = state.edges
 

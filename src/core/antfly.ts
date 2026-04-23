@@ -15,7 +15,8 @@ import { embeddersHash } from './embedder-resolver'
 const log = createLogger('antfly')
 
 // ---------------------------------------------------------------------------
-// Singleton client (survives Next.js webpack re-evaluation)
+// Singleton client (backed by globalThis so the same instance is reused
+// across every reach into this module)
 // ---------------------------------------------------------------------------
 const _g = globalThis as typeof globalThis & {
   __bakinAntflyClient?: AntflyClient | null

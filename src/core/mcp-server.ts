@@ -63,8 +63,8 @@ const sseSessions = new Map<string, SseSession>()
 const startedAt = new Date().toISOString()
 
 // Expose MCP session state to plugin-land without an HTTP hop. The health
-// plugin reads this via globalThis to avoid bundling mcp-server.ts into the
-// Next.js webpack context. Same pattern as __bakinBroadcast.
+// plugin reads this via globalThis to avoid coupling to mcp-server.ts
+// directly — same pattern as __bakinBroadcast.
 ;(globalThis as unknown as { __bakinGetMcpSessions?: () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } }).__bakinGetMcpSessions = () => {
   const agentMap = new Map<string, { sessions: number; latestAt: number }>()
   for (const [, s] of sessions) {
@@ -257,8 +257,10 @@ export async function handleMcpRequest(
     // The endpoint is where the SSE client will POST messages back.
     // Use /mcp with a sessionId query param so we can route them.
     const transport = new SSEServerTransport(`/mcp`, res)
+    // server.connect(transport) internally calls transport.start() — calling
+    // start() again here throws "SSEServerTransport already started" from
+    // the MCP SDK.
     await server.connect(transport)
-    await transport.start()
 
     const sid = transport.sessionId
     sseSessions.set(sid, { server, transport, agentId, createdAt: Date.now() })

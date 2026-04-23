@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build binaries + release
+    runs-on: ubuntu-latest
+    env:
+      # Surface NPM_TOKEN as a job-level env so steps below can gate on it.
+      # Secrets aren't readable inside `if:` directly, but an env copy is.
+      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.3
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build vendor bundles
+        run: bun run build:vendors
+
+      - name: Build core plugins
+        run: bun run build:plugins
+
+      - name: Build host shell
+        run: bun run build:host-shell
+
+      - name: Build binaries (3 platforms)
+        run: bun run build:binary
+
+      - name: Compute checksums
+        working-directory: dist
+        run: |
+          sha256sum bakin-darwin-arm64 bakin-linux-x64 bakin-linux-arm64 > checksums.txt
+          cat checksums.txt
+
+      - name: Setup Node for npm publish
+        if: env.HAS_NPM_TOKEN == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish @bakin/sdk to npm
+        if: env.HAS_NPM_TOKEN == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          BAKIN_PUBLISH_IDEMPOTENT: '1'
+        run: bun run scripts/publish-sdk.ts
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/bakin-darwin-arm64
+            dist/bakin-linux-x64
+            dist/bakin-linux-arm64
+            dist/checksums.txt
+          generate_release_notes: true

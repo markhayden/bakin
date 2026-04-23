@@ -144,7 +144,7 @@ archived   → done, todo
 
 | File | Purpose |
 |------|---------|
-| `plugins/tasks/client.tsx` | Nav items export |
+| `plugins/tasks/client.tsx` | Client entry — calls `registerPlugin({ id: 'tasks', navItems, slots: { 'page:/tasks': KanbanBoard } })` |
 | `plugins/tasks/components/kanban-board.tsx` | Main kanban view — fetches from `/api/plugins/tasks/`, subscribes to SSE via `taskboardVersion` |
 | `plugins/tasks/components/kanban-column.tsx` | Single column rendering with task cards and footer |
 | `plugins/tasks/components/task-card.tsx` | Individual task card (avatar, title, status badge, log count) |
@@ -188,13 +188,17 @@ The board follows the official multi-list pattern:
 ### Database Access Pattern
 
 ```typescript
-// better-sqlite3 sync API with open/close per operation
-function withDb<T>(fn: (db: Database.Database) => T): T {
+// bun:sqlite sync API with open/close per operation
+import { Database } from 'bun:sqlite'
+
+function withDb<T>(fn: (db: Database) => T): T {
   const db = openDb()  // WAL mode, 5s busy_timeout
   try { return fn(db) }
   finally { db.close() }
 }
 ```
+
+`bun:sqlite` ships with Bun and exposes the same synchronous, same-shape API that `better-sqlite3` used pre-migration. Tests run under vitest on Node and use a thin shim that satisfies the subset of the API `flow-store.ts` exercises.
 
 All read operations are synchronous. All write operations return `Promise<T>` for backward compatibility with callers that chain `.then()` (workflow runtime, dispatch). Errors are caught and returned as `Promise.reject()` to ensure proper promise rejection.
 

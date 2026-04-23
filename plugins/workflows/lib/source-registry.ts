@@ -6,11 +6,9 @@
  * plugins registering the same id is a hard error; a plugin may overwrite
  * its own registration (hot reload during activate()).
  *
- * Backed by globalThis so state survives Next.js webpack re-evaluation
- * (same pattern as src/core/sse.ts and src/core/openclaw-client.ts).
- *
- * T2 ships just the data structure; T3 wires parser.ts and listDefinitions
- * to consult it.
+ * Backed by globalThis so a single process keeps one registry instance
+ * even when this module is reached from multiple entry points (same
+ * pattern as src/core/sse.ts and src/core/openclaw-client.ts).
  */
 import type { WorkflowDefinition } from '../types'
 

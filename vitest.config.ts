@@ -17,12 +17,15 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      'bun:sqlite': path.resolve(__dirname, 'tests/shims/bun-sqlite.ts'),
+      '@tanstack/react-router': path.resolve(__dirname, 'tests/shims/tanstack-router.ts'),
       '@bakin/core/openclaw-home': path.resolve(__dirname, 'packages/core/src/openclaw-home.ts'),
       '@bakin/core/openclaw-config': path.resolve(__dirname, 'packages/core/src/openclaw-config.ts'),
       '@bakin/core/main-agent': path.resolve(__dirname, 'packages/core/src/main-agent.ts'),
       '@bakin/core/content-dir': path.resolve(__dirname, 'packages/core/src/content-dir.ts'),
       '@bakin/core/settings': path.resolve(__dirname, 'packages/core/src/settings.ts'),
       '@bakin/core/ids': path.resolve(__dirname, 'packages/core/src/ids.ts'),
+      '@bakin/core/logger': path.resolve(__dirname, 'packages/core/src/logger.ts'),
       '@bakin/core': path.resolve(__dirname, 'packages/core/src/index.ts'),
       '@bakin/sdk/ui': path.resolve(__dirname, 'packages/sdk/src/ui/index.ts'),
       '@bakin/sdk/hooks': path.resolve(__dirname, 'packages/sdk/src/hooks/index.ts'),

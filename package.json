@@ -2,35 +2,40 @@
   "name": "bakin",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "pnpm@10.24.0",
-  "engines": {
-    "node": "22.13.1",
-    "pnpm": "10.24.0"
-  },
+  "workspaces": [
+    "packages/*"
+  ],
   "bin": {
     "bakin": "./cli/bakin.ts"
   },
   "scripts": {
-    "dev": "npx tsx server.ts",
-    "build": "next build",
-    "start": "npx tsx server.ts",
-    "lint": "eslint src plugins tests scripts dev cli server.ts bakin.config.ts next.config.ts vitest.config.ts eslint.config.mjs",
-    "lint:home-bypasses": "node scripts/bin/check-home-bypasses.mjs",
+    "dev": "bun run prestart && bun run server.ts",
+    "build": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:binary",
+    "build:host": "bun run build:css && bun run build:vendors && bun run build:host-shell",
+    "build:css": "bunx @tailwindcss/cli -i ./packages/host/src/globals.css -o ./packages/host/public/globals.css",
+    "build:host-shell": "bun run packages/host/build.ts",
+    "build:vendors": "bun run scripts/build-vendors.ts",
+    "build:plugins": "bun run scripts/build-plugins.ts",
+    "build:assets-manifest": "bun run scripts/generate-embedded-assets.ts",
+    "build:binary": "bun run scripts/build-binary.ts",
+    "prestart": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:assets-manifest",
+    "start": "bun run prestart && bun run server.ts",
+    "server": "bun run server.ts",
+    "lint": "eslint src packages plugins tests scripts dev cli server.ts bakin.config.ts vitest.config.ts eslint.config.mjs",
+    "lint:home-bypasses": "bun run scripts/bin/check-home-bypasses.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "test": "vitest run",
     "test:components": "vitest run tests/components",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "ci:affected": "turbo run test build --affected",
-    "ci:full": "turbo run test build",
-    "dev:mock": "npx tsx dev/imitation-crab/index.ts --with-bakin",
-    "dev:docker": "OPENCLAW_HOME=./dev/openclaw-home OPENCLAW_PATH=./dev/docker/openclaw-shim.sh BAKIN_URL=http://host.docker.internal:3737 npx tsx server.ts",
+    "dev:mock": "bun run dev/imitation-crab/index.ts --with-bakin",
+    "dev:docker": "OPENCLAW_HOME=./dev/openclaw-home OPENCLAW_PATH=./dev/docker/openclaw-shim.sh BAKIN_URL=http://host.docker.internal:3737 bun run server.ts",
     "docker:setup": "bash dev/docker/setup.sh",
     "docker:up": "docker compose -f dev/docker/docker-compose.yml up -d openclaw-gateway",
     "docker:down": "docker compose -f dev/docker/docker-compose.yml down",
-    "mock:start": "npx tsx dev/imitation-crab/index.ts",
-    "mock:seed": "npx tsx dev/imitation-crab/seed.ts",
-    "cli": "npx tsx cli/bakin.ts"
+    "mock:start": "bun run dev/imitation-crab/index.ts",
+    "mock:seed": "bun run dev/imitation-crab/seed.ts",
+    "cli": "bun run cli/bakin.ts"
   },
   "dependencies": {
     "@antfly/sdk": "^0.0.14",
@@ -43,6 +48,8 @@
     "@dnd-kit/react": "^0.3.2",
     "@hookform/resolvers": "^5.2.2",
     "@modelcontextprotocol/sdk": "^1.27.0",
+    "@tanstack/react-router": "^1.168.23",
+    "@tanstack/router-devtools": "^1.166.13",
     "@types/js-yaml": "^4.0.9",
     "@types/nodemailer": "^7.0.11",
     "@xyflow/react": "^12.10.1",
@@ -55,7 +62,6 @@
     "cron-parser": "^5.5.0",
     "js-yaml": "^4.1.1",
     "lucide-react": "^0.577.0",
-    "next": "16.2.0",
     "nodemailer": "^8.0.3",
     "pdf-parse": "^2.4.5",
     "react": "19.2.4",
@@ -69,6 +75,8 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/cli": "^4.2.4",
     "@tailwindcss/postcss": "^4.2.2",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -78,20 +86,18 @@
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.0",
     "eslint": "^9",
-    "eslint-config-next": "16.2.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^29.0.1",
     "tailwindcss": "^4",
-    "tsx": "^4.21.0",
-    "turbo": "^2.9.5",
     "typescript": "^5",
+    "typescript-eslint": "^8.59.0",
     "vitest": "^4.1.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3"
-    ],
-    "patchedDependencies": {
-      "@antfly/sdk@0.0.14": "patches/@antfly__sdk@0.0.14.patch"
-    }
-  }
+  "patchedDependencies": {
+    "@antfly/sdk@0.0.14": "patches/@antfly__sdk@0.0.14.patch"
+  },
+  "trustedDependencies": [
+    "better-sqlite3"
+  ]
 }

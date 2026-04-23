@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bakin</title>
+    <link rel="icon" href="/bakin-logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/globals.css" />
+    <!--
+      Import map (TD3 of #147) — resolves the externals the shell + plugins
+      share at runtime. Keep ordering consistent with the externals list in
+      packages/host/build.ts and scripts/build-vendors.ts.
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "/vendor/react.js",
+          "react-dom": "/vendor/react-dom.js",
+          "react-dom/client": "/vendor/react-dom.js",
+          "react/jsx-runtime": "/vendor/jsx-runtime.js",
+          "react/jsx-dev-runtime": "/vendor/jsx-dev-runtime.js",
+          "@tanstack/react-router": "/vendor/tanstack-router.js",
+          "@bakin/sdk": "/vendor/sdk-index.js",
+          "@bakin/sdk/ui": "/vendor/sdk-ui.js",
+          "@bakin/sdk/hooks": "/vendor/sdk-hooks.js",
+          "@bakin/sdk/components": "/vendor/sdk-components.js",
+          "@bakin/sdk/slots": "/vendor/sdk-slots.js",
+          "@bakin/sdk/types": "/vendor/sdk-types.js",
+          "@bakin/sdk/utils": "/vendor/sdk-utils.js"
+        }
+      }
+    </script>
+  </head>
+  <body class="bg-background text-foreground">
+    <div id="root"></div>
+    <script type="module" src="/assets/main.js"></script>
+  </body>
+</html>

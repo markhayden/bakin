@@ -19,8 +19,8 @@ const log = createLogger('openclaw')
 // indicator than agent-written heartbeat files (no agent currently
 // writes those).
 //
-// globalThis-backed so the map survives Next.js webpack re-evaluation
-// of this module (same pattern as src/core/sse.ts).
+// globalThis-backed so the map is a single instance across every reach into
+// this module (same pattern as src/core/sse.ts).
 // ---------------------------------------------------------------------------
 
 declare global {

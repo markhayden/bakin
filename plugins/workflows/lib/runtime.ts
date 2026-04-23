@@ -37,7 +37,7 @@ import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkfl
 import { getContentDir } from './content-dir'
 import { isPluginKind } from './node-type-registry'
 import { getHookRegistry } from '../../../src/lib/plugin-registry'
-import { createLogger } from '@/core/logger'
+import { createLogger } from '@bakin/core/logger'
 
 const log = createLogger('workflow-runtime')
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import { useSearchParams, useRouter, usePathname } from '@bakin/sdk/hooks'
 import { Button } from "@bakin/sdk/ui"
 import { Plus } from 'lucide-react'
 import {

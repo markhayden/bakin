@@ -26,10 +26,6 @@ vi.mock('../../../src/core/content-dir', () => ({
   getBakinPaths: () => ({}),
 }))
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-}))
-
 // useQueryState is what we're actually pinning.  The factory reads a global
 // seed that each test sets so we can simulate different URLs without touching
 // jsdom's window.location.

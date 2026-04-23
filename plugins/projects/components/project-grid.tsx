@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@bakin/sdk/hooks'
 import { Plus, ListFilter, FolderKanban } from 'lucide-react'
 import { Button } from "@bakin/sdk/ui"
 import { PluginHeader } from "@bakin/sdk/components"

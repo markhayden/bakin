@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useCallback, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@bakin/sdk/hooks'
 import { Plus, Users, Settings2, Loader2 } from 'lucide-react'
 import {
   ReactFlow,
@@ -24,7 +24,7 @@ import {
 } from "@bakin/sdk/ui"
 import { BakinDrawer } from "@bakin/sdk/components"
 import { useGatewayStatus } from "@bakin/sdk/hooks"
-import { useAgentStore, useAgentColor, useMainAgentId } from '../hooks/use-agent-store'
+import { useAgentStore, useAgentColor, useMainAgentId } from '@bakin/sdk/hooks'
 import { buildGraph } from '../lib/build-graph'
 import { AgentForm, type AgentFormData } from './agent-form'
 import { TeamManager } from './team-manager'
