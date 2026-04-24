@@ -244,3 +244,34 @@
   from { background-position: 0 0; }
   to { background-position: 12px 0; }
 }
+
+/*
+ * xyflow (React Flow) dark theme — applied globally wherever <ReactFlow> appears.
+ * Uses `.react-flow .react-flow__X` compound selectors to beat the default
+ * xyflow stylesheet (which is injected after globals.css by each plugin bundle).
+ */
+.react-flow .react-flow__controls {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  border-radius: calc(var(--radius) * 0.6);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.react-flow .react-flow__controls-button {
+  background: var(--surface-container);
+  border-bottom-color: var(--border);
+  color: var(--muted-foreground);
+}
+.react-flow .react-flow__controls-button:hover {
+  background: var(--surface-high);
+  color: var(--foreground);
+}
+.react-flow .react-flow__controls-button svg,
+.react-flow .react-flow__controls-button svg path {
+  fill: currentColor;
+}
+.react-flow .react-flow__minimap {
+  background: var(--surface-container);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 0.6);
+  overflow: hidden;
+}
