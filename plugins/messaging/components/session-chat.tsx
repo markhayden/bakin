@@ -7,7 +7,7 @@ import { Badge } from "@bakin/sdk/ui"
 import { AgentAvatar } from "@bakin/sdk/components"
 import { Send, Loader2 } from 'lucide-react'
 import type { PlanningSession, ProposedItem, SessionMessage } from '../types'
-import { useAgent, useAgentColor } from "@bakin/sdk/hooks"
+import { useAgent, useAgentColor, useVerticalResize } from "@bakin/sdk/hooks"
 
 /**
  * Strip ```json proposal blocks from text so users don't see raw JSON.
@@ -86,6 +86,12 @@ export function SessionChat({
   const agentColor = useAgentColor(agentId)
   const agentName = agent?.name ?? agentId
   const agentBorderStyle = useMemo(() => ({ borderLeftColor: `${agentColor}80` }), [agentColor])
+  const { height: inputHeight, handleProps: resizeHandleProps } = useVerticalResize({
+    defaultHeight: 130,
+    minHeight: 100,
+    maxHeight: 500,
+    storageKey: 'messaging-session-chat-input',
+  })
 
   useEffect(() => {
     if (scrollRef.current && typeof scrollRef.current.scrollIntoView === 'function') {
@@ -378,13 +384,23 @@ export function SessionChat({
 
       {/* Input */}
       {!isCompleted && (
-        <div className="p-4 border-t border-border">
+        <div
+          className="relative shrink-0 border-t border-border"
+          style={{ height: inputHeight }}
+        >
+          <div
+            {...resizeHandleProps}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize chat input"
+            className="absolute inset-x-0 top-0 h-1.5 -translate-y-1/2 cursor-row-resize hover:bg-accent/50 active:bg-accent transition-colors z-10"
+          />
           <form
             onSubmit={(e) => {
               e.preventDefault()
               handleSend()
             }}
-            className="flex gap-2 items-start"
+            className="flex gap-2 items-stretch h-full p-4"
           >
             <Textarea
               value={input}
@@ -396,10 +412,10 @@ export function SessionChat({
                 }
               }}
               placeholder={`Ask ${agentName} for content ideas...`}
-              className="bg-surface min-h-[80px] resize-none"
+              className="bg-surface h-full resize-none"
               disabled={streaming.isStreaming}
             />
-            <Button type="submit" disabled={streaming.isStreaming || !input.trim()} className="shrink-0 cursor-pointer disabled:cursor-not-allowed">
+            <Button type="submit" disabled={streaming.isStreaming || !input.trim()} className="shrink-0 self-start disabled:cursor-not-allowed">
               <Send className="w-4 h-4" />
             </Button>
           </form>
