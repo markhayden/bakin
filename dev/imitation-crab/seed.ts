@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, cpSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { homedir } from 'os'
+import { Database } from 'bun:sqlite'
 import { initBakinHome } from '../../packages/core/src/content-dir'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -74,17 +75,12 @@ export function seed(force = false): void {
 }
 
 function seedDatabase(): void {
-  try {
-    const Database = require('better-sqlite3')
-    const dbPath = join(MOCK_HOME, 'flows', 'registry.sqlite')
-    const db = new Database(dbPath)
-    const sql = readFileSync(join(FIXTURES_DIR, 'seed.sql'), 'utf-8')
-    db.exec(sql)
-    db.close()
-    console.log('[seed] SQLite database seeded')
-  } catch (err) {
-    console.warn('[seed] Could not seed SQLite (better-sqlite3 may not be available):', (err as Error).message)
-  }
+  const dbPath = join(MOCK_HOME, 'flows', 'registry.sqlite')
+  const db = new Database(dbPath)
+  const sql = readFileSync(join(FIXTURES_DIR, 'seed.sql'), 'utf-8')
+  db.exec(sql)
+  db.close()
+  console.log('[seed] SQLite database seeded')
 }
 
 function seedGatewayLog(): void {
