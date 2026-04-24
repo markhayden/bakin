@@ -165,10 +165,12 @@ describe('IntegratedBrainstorm — onCustom passthrough', () => {
     const fake = createFakeOnSend()
     const received: Array<{ name: string; data: unknown }> = []
     // Wrap the fake to tap onCustom at the onSend callsite.
-    const wrappedOnSend = mock(async (prompt, history, ctx) => {
-      ctx.onCustom = (name, data) => received.push({ name, data })
-      return fake.onSend(prompt, history, ctx)
-    })
+    const wrappedOnSend = mock(
+      async (prompt: string, history: BrainstormMessage[], ctx: Parameters<typeof fake.onSend>[2]) => {
+        ctx.onCustom = (name: string, data: unknown) => received.push({ name, data })
+        return fake.onSend(prompt, history, ctx)
+      },
+    )
     const Harness2 = () => {
       const [messages, setMessages] = useState<BrainstormMessage[]>([])
       return (
