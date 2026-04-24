@@ -7,7 +7,7 @@ import { Badge } from "@bakin/sdk/ui"
 import { AgentAvatar } from "@bakin/sdk/components"
 import { Send, Check, X, Loader2 } from 'lucide-react'
 import { DISCORD_GENERAL } from '../types'
-import { useAgent, useAgentList, useAgentIds } from "@bakin/sdk/hooks"
+import { useAgent, useAgentList, useAgentIds, useVerticalResize } from "@bakin/sdk/hooks"
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -39,6 +39,12 @@ export function BrainstormPanel({ onItemCreated }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const currentAgent = useAgent(agent)
   const agentName = currentAgent?.name ?? agent
+  const { height: inputHeight, handleProps: resizeHandleProps } = useVerticalResize({
+    defaultHeight: 130,
+    minHeight: 100,
+    maxHeight: 500,
+    storageKey: 'messaging-brainstorm-input',
+  })
 
   useEffect(() => {
     if (!agent && agentIds.length > 0) setAgent(agentIds[0])
@@ -280,14 +286,24 @@ export function BrainstormPanel({ onItemCreated }: Props) {
         <div ref={scrollRef} />
       </div>
 
-      {/* Input — taller textarea for multi-line */}
-      <div className="p-4 border-t border-border">
+      {/* Input — drag the top edge up/down to resize */}
+      <div
+        className="relative shrink-0 border-t border-border"
+        style={{ height: inputHeight }}
+      >
+        <div
+          {...resizeHandleProps}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize chat input"
+          className="absolute inset-x-0 top-0 h-1.5 -translate-y-1/2 cursor-row-resize hover:bg-accent/50 active:bg-accent transition-colors z-10"
+        />
         <form
           onSubmit={(e) => {
             e.preventDefault()
             handleSend()
           }}
-          className="flex gap-2 items-start"
+          className="flex gap-2 items-stretch h-full p-4"
         >
           <Textarea
             value={input}
@@ -299,10 +315,10 @@ export function BrainstormPanel({ onItemCreated }: Props) {
               }
             }}
             placeholder={`Ask ${agentName} for content ideas...`}
-            className="bg-surface min-h-[80px] resize-none"
+            className="bg-surface h-full resize-none"
             disabled={loading}
           />
-          <Button type="submit" disabled={loading || !input.trim()} className="shrink-0">
+          <Button type="submit" disabled={loading || !input.trim()} className="shrink-0 self-start">
             <Send className="w-4 h-4" />
           </Button>
         </form>

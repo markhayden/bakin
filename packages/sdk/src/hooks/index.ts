@@ -21,6 +21,7 @@ export type { SearchResult, SearchResponse, UseSearchOptions, UseSearchReturn } 
 export { useSidebar } from '@/hooks/use-sidebar'
 export { useSSE } from '@/hooks/use-sse'
 export { toast, useToastStore } from '@/hooks/use-toast'
+export { useVerticalResize } from '@/hooks/use-vertical-resize'
 
 // Group 2: Agent data (from team plugin)
 export {

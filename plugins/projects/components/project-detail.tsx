@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from '@bakin/sdk/hooks'
 import { ArrowLeft, Send, Loader2, Paperclip, X, FileText, Image, Film, Music, File, Sparkles, ChevronDown, Search, Pencil, Trash2 } from 'lucide-react'
-import { useAgent, useMainAgentId } from "@bakin/sdk/hooks"
+import { useAgent, useMainAgentId, useVerticalResize } from "@bakin/sdk/hooks"
 import { AgentSelect } from "@bakin/sdk/components"
 import { Slot } from '@bakin/sdk/slots'
 import { ProjectChecklist } from './project-checklist'
@@ -129,6 +129,12 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   const [brainstormMessages, setBrainstormMessages] = useState<Array<{ role: 'user' | 'agent'; agent?: string; content: string }>>([])
   const brainstormEndRef = useRef<HTMLDivElement>(null)
   const brainstormAgentMeta = useAgent(brainstormAgent)
+  const { height: brainstormHistoryHeight, handleProps: brainstormResizeHandleProps } = useVerticalResize({
+    defaultHeight: 280,
+    minHeight: 160,
+    maxHeight: 720,
+    storageKey: 'projects-brainstorm-history',
+  })
 
   // Dropdowns
   const [statusOpen, setStatusOpen] = useState(false)
@@ -615,7 +621,16 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
           </div>
 
           {/* ── Brainstorm — pinned at bottom ── */}
-          <div className="shrink-0 border-t border-[rgba(255,255,255,0.06)] pt-3 pb-1 flex flex-col">
+          <div className="relative shrink-0 border-t border-[rgba(255,255,255,0.06)] pt-3 pb-1 flex flex-col">
+            {brainstormOpen && brainstormMessages.length > 0 && (
+              <div
+                {...brainstormResizeHandleProps}
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Resize brainstorm history"
+                className="absolute inset-x-0 top-0 h-1.5 -translate-y-1/2 cursor-row-resize hover:bg-accent/50 active:bg-accent transition-colors z-10"
+              />
+            )}
             <button
               onClick={() => setBrainstormOpen(!brainstormOpen)}
               className="flex items-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors mb-2"
@@ -632,7 +647,10 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
               <div className="flex flex-col">
                 {/* Conversation history */}
                 {brainstormMessages.length > 0 && (
-                  <div className="max-h-[280px] overflow-y-auto mb-2 space-y-2 pr-1" style={{ scrollbarGutter: 'stable' }}>
+                  <div
+                    className="overflow-y-auto mb-2 space-y-2 pr-1"
+                    style={{ scrollbarGutter: 'stable', height: brainstormHistoryHeight }}
+                  >
                     {brainstormMessages.map((msg, i) => {
                       if (msg.role === 'user') {
                         return (
