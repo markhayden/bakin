@@ -78,6 +78,26 @@ Calendar items have `ContentStatus = 'draft' | 'scheduled' | 'executing' | 'wait
 
 The unapprove action is surfaced as a button in `ItemDetailDrawer` when `status === 'scheduled'`. Delete is confirmed via a proper `<Dialog>` — not an in-menu two-click pattern (the earlier pattern broke because `DropdownMenu.onOpenChange` reset the confirm state when the menu closed).
 
+### Security: agentId validation
+
+Every messaging path that accepts an `agentId` from a request body validates it
+before touching the filesystem. Validation is two-stage, inside `validateAgentId`
+in `plugins/messaging/index.ts`:
+
+1. **Shape guard** — `/^[a-z0-9-]+$/`. Load-bearing. Blocks path-traversal
+   primitives (`../`, `/etc/passwd`, URL-encoded dots, null bytes, Unicode, etc.).
+   A request whose `agentId` fails the regex returns `400 { error: 'invalid agentId' }`
+   without any read.
+2. **Roster check** — `team.getAgentIds` hook. Defense-in-depth. Rejects
+   shape-valid ids that aren't in the current OpenClaw roster (orphan refs).
+   When the team plugin is unavailable or the hook throws, the shape guard
+   alone gates the request and messaging stays functional.
+
+Persona files (`~/.bakin/team/personas/{agentId}.md`) are loaded inside
+`resolvePromptOptions`, *after* validation. `prompt-builder.ts` is pure —
+`persona` is a required caller-supplied string on `PromptBuilderOptions`, not
+a side-effect read. The regression suite is `tests/plugins/messaging/agentid-validation.test.ts`.
+
 ### List View Scope
 
 `ContentCalendar`'s month/week views fetch only the current month (`?month=YYYY-MM`). The list view fetches **all** items and supports column sorting via `SortableHead` (date, agent, type, title, status). The view toggle drives the fetch scope in `fetchItems`.
