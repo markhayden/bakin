@@ -159,13 +159,9 @@
   --status-blocked: #ef4444;
   /* Agent accent colors (overridden at runtime by AgentThemeProvider) */
   --agent-main: #60a5fa;
-  --agent-basil: #4ade80;
   --agent-pixel: #a78bfa;
   --agent-rolo: #fb923c;
   --agent-patch: #a1a1aa;
-  --agent-scout: #34d399;
-  --agent-nemo: #22d3ee;
-  --agent-zen: #fbbf24;
 }
 
 @layer base {
