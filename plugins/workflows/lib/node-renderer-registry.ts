@@ -12,10 +12,10 @@
  * plugin-owned kinds arrive pre-namespaced as `{pluginId}.{kind}`.
  *
  * This module is client-only (imports xyflow types) so it's safe to ship
- * through `'use client'` renderers and plugin manifests that are statically
- * imported by `src/lib/plugin-manifest.ts`. Registration is idempotent —
- * re-registering the same kind replaces the renderer (newest wins), which
- * is what you want for hot-reload.
+ * through `'use client'` renderers in plugin client bundles loaded at
+ * runtime by `PluginHost`. Registration is idempotent — re-registering
+ * the same kind replaces the renderer (newest wins), which is what you
+ * want for hot-reload.
  */
 import type { NodeProps, NodeTypes } from '@xyflow/react'
 import type { ComponentType } from 'react'
