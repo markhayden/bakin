@@ -1908,9 +1908,15 @@ export async function main(): Promise<void> {
         process.exit(1)
     }
   } catch (err) {
-    if (err instanceof Error && err.message.includes('ECONNREFUSED')) {
+    if (
+      err instanceof Error &&
+      (err.message.includes('ECONNREFUSED') ||
+        err.message.includes('Unable to connect') ||
+        err.message.includes('fetch failed'))
+    ) {
       console.error('Error: Cannot connect to Bakin. Is the server running?')
       console.error(`  Tried: ${BASE_URL}`)
+      console.error(`  Run \`bakin start\` to launch the server.`)
     } else {
       console.error('Error:', err instanceof Error ? err.message : String(err))
     }
