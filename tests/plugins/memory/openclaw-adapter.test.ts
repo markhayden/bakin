@@ -74,14 +74,6 @@ function writeFile(rel: string, content: string): void {
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(openclawDir, { recursive: true })
-  // Seed openclaw.json so the real `tryGetMainAgentId()` returns 'main'
-  // even when mock.module('@bakin/core/main-agent') isn't honored by the
-  // runtime (bun 1.2.0 on CI vs 1.3.x locally). Belt-and-suspenders.
-  writeFileSync(
-    join(openclawDir, 'openclaw.json'),
-    JSON.stringify({ agents: { list: [{ id: 'main', identity: { name: 'Main' } }] } }),
-    'utf-8',
-  )
 })
 
 afterAll(() => {
