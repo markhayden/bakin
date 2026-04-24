@@ -12,6 +12,12 @@ import { tmpdir } from 'os'
 
 const testDir = mkdtempSync(join(tmpdir(), 'bakin-test-models-cache-'))
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),

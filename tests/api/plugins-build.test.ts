@@ -27,6 +27,17 @@ const testDir = (() => {
   return join(tmpdir(), `bakin-test-plugin-build-${Date.now()}`)
 })()
 
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),

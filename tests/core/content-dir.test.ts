@@ -12,6 +12,12 @@ process.env.HOME = '/tmp/bakin-test-content-dir-guard-fake'
 // Satisfy the test-mock hook — the test file imports via @bakin/workflows
 // alias and has 'openclaw' in a comment, so the hook flags flow-store and
 // openclaw-home as required even though this test never touches either.
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../plugins/tasks/lib/flow-store', () => ({}))
 mock.module('../../packages/core/src/openclaw-home', () => ({
   getOpenClawHome: () => '/tmp/bakin-test-content-dir-guard-fake',
@@ -19,7 +25,7 @@ mock.module('../../packages/core/src/openclaw-home', () => ({
   resetOpenClawHome: mock(),
 }))
 
-import { getContentDir, resetContentDir, initBakinHome } from '@bakin/workflows/lib/content-dir'
+const { getContentDir, resetContentDir, initBakinHome } = require('@bakin/workflows/lib/content-dir') as typeof import('@bakin/workflows/lib/content-dir')
 
 describe('content-dir', () => {
   const testDir = join(tmpdir(), `bakin-test-contentdir-${Date.now()}`)

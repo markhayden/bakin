@@ -25,6 +25,12 @@ const testDir = join(tmpdir(), `bakin-test-workflows-search-${Date.now()}`)
 
 // ─── Mocks (must be declared before any plugin imports) ────────────────────
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),

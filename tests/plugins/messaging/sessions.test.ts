@@ -14,9 +14,20 @@ const testDir = (() => {
   return join(tmpdir(), `bakin-test-sessions-${Date.now()}`)
 })()
 
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
 // ---------------------------------------------------------------------------
 // Mocks — must be before any plugin imports
 // ---------------------------------------------------------------------------
+
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -80,7 +91,7 @@ mock.module('@bakin/core/openclaw-home', () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import messagingPlugin from '../../../plugins/messaging/index'
+const messagingPlugin = require('../../../plugins/messaging/index').default as typeof import('../../../plugins/messaging/index').default
 import {
   activatePlugin,
   findRoute,
@@ -99,7 +110,7 @@ let plugin: ActivatedPlugin
 beforeAll(async () => {
   mkdirSync(testDir, { recursive: true })
   // Seed empty messaging.json for calendar item storage
-  const { writeFileSync } = await import('fs')
+  const { writeFileSync } = require('fs') as typeof import('fs')
   writeFileSync(join(testDir, 'messaging.json'), '[]')
   plugin = await activatePlugin(messagingPlugin, testDir)
 })
@@ -362,7 +373,7 @@ describe('Session routes', () => {
       const sessionId = (createBody.session as Record<string, unknown>).id as string
 
       const msgRoute = findRoute(plugin.routes, 'POST', '/sessions/:id/messages')!
-      const { makeRequest } = await import('../test-helpers')
+      const { makeRequest } = require('../test-helpers') as typeof import('../test-helpers')
       const req = makeRequest('/sessions/:id/messages', {
         method: 'POST',
         body: { message: 'Plan some content for next week' },

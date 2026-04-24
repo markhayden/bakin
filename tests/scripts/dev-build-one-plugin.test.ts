@@ -13,18 +13,18 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-mock.module('../../src/core/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../src/core/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-dev-buildone-noop')
   return {
     getContentDir: () => base,
     getBakinPaths: () => ({ root: base }),
   }
 })
-mock.module('../../packages/core/src/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../packages/core/src/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-dev-buildone-noop')
   return {
     getContentDir: () => base,

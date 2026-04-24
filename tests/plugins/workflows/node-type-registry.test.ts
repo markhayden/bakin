@@ -6,6 +6,12 @@ import { tmpdir } from 'os'
 // but we mock the storage modules so a future change to the registry can't
 // silently start touching ~/.bakin/ or ~/.openclaw/.
 const testDir = join(tmpdir(), `bakin-test-node-type-registry-${Date.now()}`)
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),

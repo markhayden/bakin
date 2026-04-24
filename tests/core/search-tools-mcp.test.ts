@@ -20,6 +20,12 @@ const TEST_DIR = join(tmpdir(), `bakin-test-mcp-search-${process.pid}-${Date.now
 // Mandatory test isolation mocks
 // ---------------------------------------------------------------------------
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => TEST_DIR,
   getBakinPaths: () => ({
@@ -137,6 +143,7 @@ mock.module('../../src/core/search-registry', () => ({
   getSearchHealth: getSearchHealthMock,
   getContentTypes: getContentTypesMock,
   getTableForPlugin: getTableForPluginMock,
+  buildSearchAPI: mock(() => ({})),
 }))
 
 // ---------------------------------------------------------------------------
@@ -173,7 +180,7 @@ afterAll(() => {
 async function getTool(name: string) {
   // Importing search-tools triggers self-registration via addExecTool.
   await import('../../scripts/lib/search-tools')
-  const { getExecTool } = await import('../../scripts/lib/registry')
+  const { getExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
   const tool = getExecTool(name)
   if (!tool) throw new Error(`Tool ${name} not registered`)
   return tool

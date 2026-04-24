@@ -14,7 +14,13 @@ const testHome = (() => {
   return { home, openclaw }
 })()
 
-mock.module('@bakin/core/openclaw-home', async () => {
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@bakin/core/openclaw-home', () => {
   const { join } = require('path')
   const resolve = () => process.env.OPENCLAW_HOME || testHome.openclaw
   return {

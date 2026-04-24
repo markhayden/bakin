@@ -14,6 +14,12 @@ import path from 'path'
 const TEST_CONTENT_DIR = path.join(process.cwd(), 'test-content-onboarding-settings')
 const SETTINGS_FILE = path.join(TEST_CONTENT_DIR, 'settings.json')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
     info: mock(),

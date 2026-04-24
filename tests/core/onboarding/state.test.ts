@@ -14,6 +14,9 @@ let testDir: string
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({

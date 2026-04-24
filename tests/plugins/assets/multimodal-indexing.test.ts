@@ -33,6 +33,12 @@ const MD_FILENAME = '20260411-notes-dddddddd.md'
 // Mocks (must be defined before importing the plugin)
 // ---------------------------------------------------------------------------
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({

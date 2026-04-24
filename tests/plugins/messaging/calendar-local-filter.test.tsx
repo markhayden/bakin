@@ -17,6 +17,12 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-messaging-calfilter-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
@@ -43,8 +49,8 @@ mock.module('@/core/openclaw-client', () => ({
 // ---------------------------------------------------------------------------
 // useQueryState — back with React.useState so updates are reactive
 // ---------------------------------------------------------------------------
-mock.module('@/hooks/use-query-state', async () => {
-  const { useState } = await import('react')
+mock.module('@/hooks/use-query-state', () => {
+  const { useState } = require('react') as typeof import('react')
   return {
     useQueryState: (_key: string, defaultValue?: string) => {
       const [value, setValue] = useState(defaultValue ?? '')

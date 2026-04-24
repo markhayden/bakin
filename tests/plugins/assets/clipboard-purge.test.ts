@@ -10,6 +10,12 @@ import { activatePlugin, type ActivatedPlugin } from '../test-helpers'
 const testDir = join(tmpdir(), `bakin-test-clipboard-purge-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ assets: join(testDir, 'assets') }),

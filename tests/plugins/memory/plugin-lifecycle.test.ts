@@ -22,18 +22,24 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-memory-lifecycle-${Date.now()}`)
 
-mock.module('../../../src/core/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-lifecycle-mock`)
   return {
     getContentDir: () => base,
     getBakinPaths: () => ({ root: base, plugins: j(base, 'plugin-settings') }),
   }
 })
-mock.module('../../../packages/core/src/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('../../../packages/core/src/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-lifecycle-mock`)
   return {
     getContentDir: () => base,
@@ -45,9 +51,9 @@ mock.module('../../../src/core/logger', () => ({
 }))
 mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
 mock.module('../../../src/core/openclaw-client', () => ({ sendMessage: mock() }))
-mock.module('../../../packages/core/src/openclaw-home', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('../../../packages/core/src/openclaw-home', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-lifecycle-mock`, 'openclaw')
   return {
     getOpenClawHome: () => base,

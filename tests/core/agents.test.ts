@@ -9,6 +9,12 @@ const mockColumns: Record<string, typeof mockTasks> = {
   backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [],
 }
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@bakin/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({ columns: mockColumns }),
 }))

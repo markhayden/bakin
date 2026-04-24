@@ -13,6 +13,12 @@ import {
   getStoredDrawerWidth,
 } from '@/components/bakin-drawer'
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/components/ui/sheet', () => ({
   Sheet: ({ children }: { children: React.ReactNode }) => <div data-testid="sheet">{children}</div>,
   SheetContent: ({ children, style, className }: { children: React.ReactNode; style?: React.CSSProperties; className?: string }) => (

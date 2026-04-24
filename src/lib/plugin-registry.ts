@@ -337,7 +337,11 @@ class PluginRegistryImpl {
       // is how the registry worked before TG1).
       let plugin: BakinPlugin | undefined = corePluginTable[pluginPath]
       if (!plugin) {
-        const mod = await import(/* webpackIgnore: true */ `../../${pluginPath}`)
+        // Absolute paths (used by tests + user plugins under ~/.bakin/plugins/)
+        // resolve directly. Relative paths (used by core plugins in
+        // bakin.config.ts) resolve relative to this file.
+        const importTarget = pluginPath.startsWith('/') ? pluginPath : `../../${pluginPath}`
+        const mod = await import(/* webpackIgnore: true */ importTarget)
         plugin = mod.default || mod.plugin || mod
       }
       if (!plugin) {
@@ -573,6 +577,13 @@ class PluginRegistryImpl {
     } catch (err) {
       log.error(`onSettingsChange failed for plugin "${pluginId}"`, err)
     }
+  }
+
+  /** Reset internal state. Tests use this between cases since `bun:test`
+   *  has no `vi.resetModules()` equivalent to rebuild the singleton. */
+  _resetForTests(): void {
+    this.plugins.clear()
+    this.initialized = false
   }
 }
 

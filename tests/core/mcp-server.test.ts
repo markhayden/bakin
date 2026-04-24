@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test'
 
 // Mock all service layer functions
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/task-service', () => ({
   logProgress: mock(() => Promise.resolve()),
   moveTaskWithEffects: mock(() => Promise.resolve()),
@@ -17,7 +23,10 @@ mock.module('@/core/content-dir', () => ({
   getBakinPaths: mock(() => ({
     home: '/tmp/test',
     assets: '/tmp/test/assets',
-  })),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+})),
 }))
 
 mock.module('@/core/audit', () => ({
@@ -55,12 +64,12 @@ describe('MCP Server', () => {
   })
 
   it('should start with no active sessions', async () => {
-    const { getActiveSessions } = await import('@/core/mcp-server')
+    const { getActiveSessions } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
     expect(getActiveSessions()).toEqual([])
   })
 
   it('should reject requests without agent param and no session ID', async () => {
-    const { handleMcpRequest } = await import('@/core/mcp-server')
+    const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
 
     const req = createMockRequest('POST', '/mcp', null)
     const res = createMockResponse()
@@ -72,7 +81,7 @@ describe('MCP Server', () => {
   })
 
   it('should return 404 for unknown Streamable HTTP session ID', async () => {
-    const { handleMcpRequest } = await import('@/core/mcp-server')
+    const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
 
     const req = createMockRequest('POST', '/mcp', {}, { 'mcp-session-id': 'nonexistent' })
     const res = createMockResponse()
@@ -83,7 +92,7 @@ describe('MCP Server', () => {
   })
 
   it('should reject GET without session ID', async () => {
-    const { handleMcpRequest } = await import('@/core/mcp-server')
+    const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
 
     const req = createMockRequest('GET', '/mcp', null)
     const res = createMockResponse()

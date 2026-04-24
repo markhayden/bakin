@@ -22,6 +22,12 @@ mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawPath: (...segments: string[]) => join(fakeHome, ...segments),
 }))
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
     info: mock(),

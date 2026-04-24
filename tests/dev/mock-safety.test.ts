@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach, mock, spyOn, type Mock } from 'bun:test'
 
 // Mock fs.existsSync to control binary/config detection
-mock.module('fs', async () => {
-  const actual = await import('fs')
+mock.module('fs', () => {
+  const actual = require('fs') as typeof import('fs')
   return { ...actual, existsSync: mock(() => false) }
 })
 
@@ -25,7 +25,7 @@ describe('mock safety gate', () => {
     mockExistsSync.mockReturnValue(false)
     spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
 
-    const { checkSafety } = await import('../../dev/imitation-crab/safety')
+    const { checkSafety } = require('../../dev/imitation-crab/safety') as typeof import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
     expect(result.safe).toBe(true)
     expect(result.reasons).toHaveLength(0)
@@ -37,7 +37,7 @@ describe('mock safety gate', () => {
     })
     spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
 
-    const { checkSafety } = await import('../../dev/imitation-crab/safety')
+    const { checkSafety } = require('../../dev/imitation-crab/safety') as typeof import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
     expect(result.safe).toBe(false)
     expect(result.reasons.some(r => r.includes('binary'))).toBe(true)
@@ -49,7 +49,7 @@ describe('mock safety gate', () => {
     })
     spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
 
-    const { checkSafety } = await import('../../dev/imitation-crab/safety')
+    const { checkSafety } = require('../../dev/imitation-crab/safety') as typeof import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
     expect(result.safe).toBe(false)
     expect(result.reasons.some(r => r.includes('config'))).toBe(true)
@@ -59,7 +59,7 @@ describe('mock safety gate', () => {
     mockExistsSync.mockReturnValue(false)
     spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
 
-    const { checkSafety } = await import('../../dev/imitation-crab/safety')
+    const { checkSafety } = require('../../dev/imitation-crab/safety') as typeof import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
     expect(result.safe).toBe(false)
     expect(result.reasons.some(r => r.includes('Gateway'))).toBe(true)
@@ -70,7 +70,7 @@ describe('mock safety gate', () => {
     mockExistsSync.mockReturnValue(true)
     spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
 
-    const { checkSafety } = await import('../../dev/imitation-crab/safety')
+    const { checkSafety } = require('../../dev/imitation-crab/safety') as typeof import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
     expect(result.safe).toBe(true)
   })

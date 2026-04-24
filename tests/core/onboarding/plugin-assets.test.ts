@@ -18,6 +18,12 @@ const testDir = join(tmpdir(), `bakin-test-plugin-assets-${Date.now()}`)
 const openclawHome = join(testDir, 'openclaw')
 const bakinHome = join(testDir, 'bakin')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => bakinHome,
   getBakinPaths: () => ({ workflows: join(bakinHome, 'workflows') }),

@@ -56,8 +56,14 @@ function clearTestDb() {
 // Mocks
 // ---------------------------------------------------------------------------
 
-mock.module('os', async () => {
-  const actual = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('os', () => {
+  const actual = require('os') as typeof import('os')
   return { ...actual, homedir: () => testHome }
 })
 

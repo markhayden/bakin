@@ -12,6 +12,12 @@ const testHome = (() => {
   return { home, openclaw }
 })()
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testHome.home,
   getBakinPaths: () => ({

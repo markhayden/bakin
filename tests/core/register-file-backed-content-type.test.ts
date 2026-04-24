@@ -3,6 +3,12 @@ import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
 const syncHooks: Array<(rel: string, content: string) => void | Promise<void>> = []
 const unlinkHooks: Array<(rel: string) => void | Promise<void>> = []
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/watcher', () => ({
   registerSyncHook: mock((cb: (rel: string, content: string) => void | Promise<void>) => {
     syncHooks.push(cb)
@@ -273,6 +279,7 @@ describe('registerFileBackedContentType', () => {
       ],
     }))
 
-    await expect(syncHooks[0]('projects/foo.md', 'x')).resolves.not.toThrow()
+    // bun:test doesn't compose `resolves.not.toThrow` — await directly
+    await syncHooks[0]('projects/foo.md', 'x')
   })
 })

@@ -17,12 +17,26 @@ import type { ActivatedPlugin } from '../test-helpers'
 const testDir = join(tmpdir(), `bakin-test-schedule-routes-${Date.now()}`)
 const sidecarDir = join(testDir, 'schedule')
 
+// ES imports are hoisted above mock.module — set env so the guards don't trip
+// when plugin modules call getContentDir/getOpenClawHome at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before imports that use them
 // ---------------------------------------------------------------------------
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -105,7 +119,8 @@ mock.module('@bakin/schedule/lib/cron-parser', () => ({
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool, callSearchRoute } from '../test-helpers'
-import schedulePlugin from '@bakin/schedule/index'
+// Dynamic require — ES imports are hoisted above top-level env setup above.
+const schedulePlugin = require('@bakin/schedule/index').default as typeof import('@bakin/schedule/index').default
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 
 // ---------------------------------------------------------------------------

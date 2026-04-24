@@ -13,6 +13,12 @@ import { tmpdir } from 'os'
 // surfaces whatever text the library returns. pdf-parse v2 exports a
 // PDFParse class with getText() and destroy() methods, so the mock
 // stands up a matching class.
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('pdf-parse', () => {
   class MockPDFParse {
     private byteLen: number

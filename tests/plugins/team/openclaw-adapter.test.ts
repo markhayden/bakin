@@ -23,6 +23,11 @@ const testDir = (() => {
   return join(tmpdir(), `bakin-test-team-adapter-${Date.now()}`)
 })()
 
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
@@ -115,11 +120,13 @@ mock.module('@bakin/core/openclaw-config', () => ({
 // Import after mocks are declared
 // ---------------------------------------------------------------------------
 
-import {
+// Dynamic require — ES imports are hoisted above the IIFE that sets env,
+// so openclaw-adapter would call getOpenClawHome before OPENCLAW_HOME is set.
+const {
   listAgents, addAgent, removeAgent, removeFromAllowLists,
   openclawExec, synthesizeIdentityMd, addToAllowLists,
   setSubagentPermissions, parseIdentityMd, updateAgentIdentity,
-} from '../../../plugins/team/lib/openclaw-adapter'
+} = require('../../../plugins/team/lib/openclaw-adapter') as typeof import('../../../plugins/team/lib/openclaw-adapter')
 
 // ---------------------------------------------------------------------------
 // Helpers

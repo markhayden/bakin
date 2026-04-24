@@ -19,17 +19,16 @@ import { mock, setSystemTime, spyOn } from 'bun:test'
 
 GlobalRegistrator.register()
 
-const mainAgentMock = {
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}
-
-mock.module('@bakin/core/main-agent', () => mainAgentMock)
+// NOTE: we don't register a global main-agent stub here — bun:test has no
+// per-path unmock, and the main-agent.test.ts file exercises the real
+// resolution logic. Tests that want the stub add their own
+// `mock.module('@bakin/core/main-agent', ...)` at the top of the file.
 
 // TanStack Router shim — component tests run outside a <RouterProvider>
 // context; the real hooks throw. See tests/shims/tanstack-router.ts.
-mock.module('@tanstack/react-router', () => import('./shims/tanstack-router'))
+// Sync factory via require — async factories (returning a Promise) hang
+// bun:test and segfault in some React component tests.
+mock.module('@tanstack/react-router', () => require('./shims/tanstack-router'))
 
 // ---------------------------------------------------------------------------
 // `vi` compatibility shim
@@ -47,10 +46,18 @@ const stubbedGlobals = new Map<string, { present: boolean; value: unknown }>()
 // so we simulate by advancing Date.now via setSystemTime + running pending
 // micro/macrotasks manually).
 let fakeTime: number | null = null
-const pendingTimers: Array<{ fn: () => void; at: number; id: number }> = []
+const pendingTimers: Array<{ fn: () => void; at: number; id: number; interval?: number }> = []
 let nextTimerId = 1
 let realSetTimeout: typeof setTimeout | null = null
 let realClearTimeout: typeof clearTimeout | null = null
+let realSetInterval: typeof setInterval | null = null
+let realClearInterval: typeof clearInterval | null = null
+
+// vi.mock shim — bun:test's mock.module hangs on async factories for node
+// builtins, so tests that need partial-mock ("spread actual, override a few
+// methods") use mock.module with a sync factory + require() directly. Our
+// shim just delegates straight to mock.module.
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 const vi = {
   // Mock constructors
@@ -58,10 +65,25 @@ const vi = {
   spyOn,
   mock: mock.module,
   doMock: mock.module,
-  unmock: (_path: string) => { /* bun:test doesn't expose per-path unmock; no-op */ },
+  unmock: (path: string) => {
+    // Re-register the path with the real module so test overrides fall through.
+    try {
+      const real = require(path)
+      mock.module(path, () => real)
+    } catch {
+      // Path may not be requirable (ESM-only, alias not yet resolved); skip.
+    }
+  },
   mocked: <T>(x: T): T => x,
   hoisted: <T>(fn: () => T): T => fn(),
-  importActual: async (path: string) => await import(path),
+  importActual: async <T = unknown>(path: string): Promise<T> => {
+    // Try require first (works for CJS + Node builtins); fall back to dynamic import
+    try {
+      return require(path) as T
+    } catch {
+      return (await import(path)) as T
+    }
+  },
   clearAllMocks: () => mock.clearAllMocks(),
   restoreAllMocks: () => mock.restore(),
   resetModules: () => { /* bun test handles modules differently — no-op */ },
@@ -74,6 +96,8 @@ const vi = {
     setSystemTime(fakeTime)
     realSetTimeout = globalThis.setTimeout as typeof setTimeout
     realClearTimeout = globalThis.clearTimeout as typeof clearTimeout
+    realSetInterval = globalThis.setInterval as typeof setInterval
+    realClearInterval = globalThis.clearInterval as typeof clearInterval
     const fakeSetTimeout = ((fn: () => void, ms: number) => {
       const id = nextTimerId++
       pendingTimers.push({ fn, at: (fakeTime ?? 0) + ms, id })
@@ -83,15 +107,30 @@ const vi = {
       const idx = pendingTimers.findIndex(t => t.id === id)
       if (idx >= 0) pendingTimers.splice(idx, 1)
     }) as typeof clearTimeout
+    const fakeSetInterval = ((fn: () => void, ms: number) => {
+      const id = nextTimerId++
+      pendingTimers.push({ fn, at: (fakeTime ?? 0) + ms, id, interval: ms })
+      return id as unknown as ReturnType<typeof setInterval>
+    }) as typeof setInterval
+    const fakeClearInterval = ((id: number) => {
+      const idx = pendingTimers.findIndex(t => t.id === id)
+      if (idx >= 0) pendingTimers.splice(idx, 1)
+    }) as typeof clearInterval
     globalThis.setTimeout = fakeSetTimeout
     globalThis.clearTimeout = fakeClearTimeout
+    globalThis.setInterval = fakeSetInterval
+    globalThis.clearInterval = fakeClearInterval
   },
   useRealTimers: () => {
     if (!realSetTimeout) return
     globalThis.setTimeout = realSetTimeout
     globalThis.clearTimeout = realClearTimeout!
+    globalThis.setInterval = realSetInterval!
+    globalThis.clearInterval = realClearInterval!
     realSetTimeout = null
     realClearTimeout = null
+    realSetInterval = null
+    realClearInterval = null
     fakeTime = null
     pendingTimers.length = 0
     setSystemTime() // restore real clock
@@ -111,20 +150,50 @@ const vi = {
     if (fakeTime === null) return
     fakeTime += ms
     setSystemTime(fakeTime)
-    runDueTimers()
-    // allow microtasks to flush
-    await new Promise(resolve => queueMicrotask(() => resolve(undefined)))
+    // Run due timers + any new timers enqueued by their callbacks (including
+    // re-enqueued interval timers) up to the new fakeTime. Microtask flushes
+    // between fires let awaited callbacks register their next setTimeout.
+    for (let guard = 0; guard < 10_000; guard++) {
+      const due = pendingTimers.filter(t => t.at <= fakeTime!)
+      if (due.length === 0) {
+        await flushMicrotasks(4)
+        const again = pendingTimers.filter(t => t.at <= fakeTime!)
+        if (again.length === 0) return
+      }
+      due.sort((a, b) => a.at - b.at)
+      for (const t of due) {
+        const idx = pendingTimers.findIndex(p => p.id === t.id)
+        if (idx >= 0) pendingTimers.splice(idx, 1)
+        t.fn()
+        if (t.interval !== undefined) {
+          pendingTimers.push({ fn: t.fn, at: (fakeTime ?? 0) + t.interval, id: t.id, interval: t.interval })
+        }
+        await flushMicrotasks(4)
+      }
+    }
   },
   runAllTimersAsync: async () => {
     if (fakeTime === null) return
-    // Run all due timers, then anything new they enqueued
-    while (pendingTimers.length > 0) {
-      const next = pendingTimers.shift()!
+    // Pop and fire one-shot timers one at a time, draining microtasks between
+    // each so retry-with-backoff loops can enqueue their *next* setTimeout.
+    // Intervals are NOT fired (would infinite loop).
+    for (let guard = 0; guard < 10_000; guard++) {
+      let oneShot = pendingTimers.filter(t => t.interval === undefined)
+      if (oneShot.length === 0) {
+        await flushMicrotasks(4)
+        oneShot = pendingTimers.filter(t => t.interval === undefined)
+        if (oneShot.length === 0) return
+      }
+      oneShot.sort((a, b) => a.at - b.at)
+      const next = oneShot[0]
+      const idx = pendingTimers.findIndex(p => p.id === next.id)
+      if (idx >= 0) pendingTimers.splice(idx, 1)
       fakeTime = next.at
       setSystemTime(fakeTime)
       next.fn()
-      await new Promise(resolve => queueMicrotask(() => resolve(undefined)))
+      await flushMicrotasks(4)
     }
+    throw new Error('runAllTimersAsync exceeded 10000 iterations (likely infinite timer loop)')
   },
 
   // Global stubs
@@ -144,7 +213,9 @@ const vi = {
     stubbedGlobals.clear()
   },
 
-  // Async wait — poll until predicate is truthy or timeout
+  // Async wait — poll until fn either returns successfully (vitest semantics)
+  // or times out. Matches vitest behavior: a successful return — including
+  // void from an expect() — counts as a pass.
   waitFor: async <T>(fn: () => T | Promise<T>, opts: { timeout?: number; interval?: number } = {}): Promise<T> => {
     const timeout = opts.timeout ?? 1000
     const interval = opts.interval ?? 10
@@ -152,8 +223,7 @@ const vi = {
     let lastErr: unknown = null
     while (Date.now() - start < timeout) {
       try {
-        const result = await fn()
-        if (result) return result
+        return await fn()
       } catch (err) {
         lastErr = err
       }
@@ -165,11 +235,27 @@ const vi = {
 
 function runDueTimers(): void {
   if (fakeTime === null) return
-  const due = pendingTimers.filter(t => t.at <= fakeTime!)
-  for (const t of due) {
-    const idx = pendingTimers.findIndex(p => p.id === t.id)
-    if (idx >= 0) pendingTimers.splice(idx, 1)
-    t.fn()
+  // Fire iteratively — setInterval timers re-enqueue on fire. Use a guard to
+  // catch runaway schedules.
+  for (let guard = 0; guard < 10_000; guard++) {
+    const due = pendingTimers.filter(t => t.at <= fakeTime!)
+    if (due.length === 0) return
+    due.sort((a, b) => a.at - b.at)
+    for (const t of due) {
+      const idx = pendingTimers.findIndex(p => p.id === t.id)
+      if (idx >= 0) pendingTimers.splice(idx, 1)
+      t.fn()
+      if (t.interval !== undefined) {
+        // Re-enqueue for the next period
+        pendingTimers.push({ fn: t.fn, at: (fakeTime ?? 0) + t.interval, id: t.id, interval: t.interval })
+      }
+    }
+  }
+}
+
+async function flushMicrotasks(n: number): Promise<void> {
+  for (let i = 0; i < n; i++) {
+    await new Promise<void>(resolve => queueMicrotask(() => resolve()))
   }
 }
 

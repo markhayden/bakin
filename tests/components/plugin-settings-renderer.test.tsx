@@ -7,6 +7,12 @@ import type { PluginSettingsSchema } from '@/lib/plugin-types'
 
 const testDir = join(tmpdir(), `bakin-test-settings-renderer-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),

@@ -119,7 +119,7 @@ describe('dispatch', () => {
         lastRun: 1000,
         serverStart: 500,
         dispatched: ['t1', 't2'],
-        failedDispatches: { t3: { lastAttempt: 900, count: 2 } },
+        failedDispatches: { t3: { lastAttempt: 900, count: 2, kind: 'structural' } },
       }))
 
       const state = loadDispatchState(tempDir)
@@ -343,7 +343,7 @@ describe('dispatch', () => {
     })
 
     it('audit event carries the classified kind', async () => {
-      const { appendAudit } = await import('../../src/core/audit')
+      const { appendAudit } = require('../../src/core/audit') as typeof import('../../src/core/audit')
       vi.mocked(appendAudit).mockClear()
 
       setupTodoTask({ id: 't-audit', title: 'Audit carries kind' })

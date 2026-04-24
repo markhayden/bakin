@@ -4,6 +4,12 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import type { FSWatcher } from 'chokidar'
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
     info: mock(),
@@ -61,7 +67,9 @@ describe('watcher', () => {
 
     it('stop is idempotent', async () => {
       await stop()
-      await expect(stop()).resolves.not.toThrow()
+      // second call should not throw; bun:test's toThrow matcher doesn't
+      // compose with an async resolves, so await directly and assert no throw.
+      await stop()
     })
   })
 

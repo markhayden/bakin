@@ -12,6 +12,12 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-channel-rendering-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),

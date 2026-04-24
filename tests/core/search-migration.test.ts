@@ -5,6 +5,12 @@ import path from 'path'
 const testDir = path.join(process.cwd(), 'test-content-search-migration')
 const stateFile = path.join(testDir, '.search-state.json')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
@@ -144,7 +150,7 @@ describe('search-migration', () => {
     it('continues migration even when one drop fails', async () => {
       antflyState.tables = [{ name: 'bakin_tasks' }, { name: 'bakin_assets' }]
       // Fail only on the first drop
-      const { dropTable } = await import('../../src/core/antfly')
+      const { dropTable } = require('../../src/core/antfly') as typeof import('../../src/core/antfly')
       let calls = 0
       vi.mocked(dropTable).mockImplementation(async (name: string) => {
         calls++

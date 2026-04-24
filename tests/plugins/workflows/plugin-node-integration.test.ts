@@ -7,6 +7,12 @@ import { z } from 'zod'
 const testDir = join(tmpdir(), `bakin-test-plugin-node-${Date.now()}`)
 
 // ─── CRITICAL: Mock content-dir (project rule) ─────────────────────────────
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),

@@ -14,6 +14,11 @@ import type { ActivatedPlugin } from '../test-helpers'
 const testDir = join(tmpdir(), 'bakin-test-models-routes')
 const mockOpenclawDir = join(testDir, '.openclaw')
 
+// ES imports are hoisted above mock.module — set env so the guards don't trip
+// when plugin modules call getContentDir/getOpenClawHome at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = mockOpenclawDir
+
 const mockOpenclawConfig = {
   agents: {
     defaults: {
@@ -51,9 +56,15 @@ const mockOpenclawConfig = {
 // Mock the openclaw.json path by replacing the constants module-level reads
 // We redirect the file reads to our test directory
 const openclawJsonPath = join(mockOpenclawDir, 'openclaw.json')
-vi.mock('os', async (importOriginal: <T = any>() => Promise<T>) => {
-  const os = await importOriginal<typeof import('os')>()
-  const { join: pathJoin } = await import('path')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('os', () => {
+  const os = require('os') as typeof import('os')
+  const { join: pathJoin } = require('path') as typeof import('path')
   return {
     ...os,
     homedir: () => pathJoin(os.tmpdir(), 'bakin-test-models-routes'),
@@ -63,18 +74,18 @@ vi.mock('os', async (importOriginal: <T = any>() => Promise<T>) => {
 // The os.homedir mock above routes ~/.bakin to tmpdir, but the hook
 // validator also requires an explicit content-dir mock. Both point at
 // the same tmpdir; this is defense-in-depth.
-mock.module('../../../src/core/content-dir', async () => {
-  const { join: pathJoin } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../../src/core/content-dir', () => {
+  const { join: pathJoin } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
   return {
     getContentDir: () => dir,
     getBakinPaths: () => ({ root: dir }),
   }
 })
-mock.module('../../../packages/core/src/content-dir', async () => {
-  const { join: pathJoin } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../../packages/core/src/content-dir', () => {
+  const { join: pathJoin } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
   return {
     getContentDir: () => dir,
@@ -121,7 +132,8 @@ mock.module('child_process', () => ({
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool, makeRequest } from '../test-helpers'
-import modelsPlugin from '../../../plugins/models'
+// Dynamic require — ES imports are hoisted above the `process.env` setup above.
+const modelsPlugin = require('../../../plugins/models').default as typeof import('../../../plugins/models').default
 
 // ---------------------------------------------------------------------------
 // Setup

@@ -19,6 +19,12 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-cli-plugin-assets-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
@@ -39,21 +45,21 @@ describe('CLI: bakin install/check plugin-assets', () => {
   })
 
   it('the onboarding component exposes the OnboardingComponent shape', async () => {
-    const { pluginAssetsComponent } = await import('@/core/onboarding/plugin-assets')
+    const { pluginAssetsComponent } = require('@/core/onboarding/plugin-assets') as typeof import('@/core/onboarding/plugin-assets')
     expect(pluginAssetsComponent.name).toBe('plugin-assets')
     expect(typeof pluginAssetsComponent.check).toBe('function')
     expect(typeof pluginAssetsComponent.install).toBe('function')
   })
 
   it('check() returns ok with "0 plugin assets" when nothing ships S-B skills', async () => {
-    const { pluginAssetsComponent } = await import('@/core/onboarding/plugin-assets')
+    const { pluginAssetsComponent } = require('@/core/onboarding/plugin-assets') as typeof import('@/core/onboarding/plugin-assets')
     const result = await pluginAssetsComponent.check()
     expect(result.status).toBe('ok')
     expect(result.message).toMatch(/0 plugin assets/i)
   })
 
   it('install() returns noop when nothing needs installing', async () => {
-    const { pluginAssetsComponent } = await import('@/core/onboarding/plugin-assets')
+    const { pluginAssetsComponent } = require('@/core/onboarding/plugin-assets') as typeof import('@/core/onboarding/plugin-assets')
     const result = await pluginAssetsComponent.install({
       interactive: false,
       autoApprove: true,

@@ -21,6 +21,12 @@ import yaml from 'js-yaml'
 
 const testDir = join(tmpdir(), `bakin-test-yaml-roundtrip-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),

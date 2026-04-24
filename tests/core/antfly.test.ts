@@ -46,9 +46,15 @@ const {
   }
 })()
 
-mock.module('@/core/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-antfly-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })
@@ -301,7 +307,7 @@ describe('antfly', () => {
   // failures as transient so the 5-step backoff covers the gap.
   describe('retryTransientBatch — connect-level failures', () => {
     async function withEnabled<T>(fn: () => Promise<T>): Promise<T> {
-      const { getSettings } = await import('@/core/settings')
+      const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const mocked = vi.mocked(getSettings)
       const prev = mocked.getMockImplementation()
       mocked.mockReturnValue({

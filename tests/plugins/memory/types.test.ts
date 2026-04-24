@@ -5,6 +5,12 @@ import { describe, it, expect, mock } from 'bun:test'
 
 // Mandatory mocks (CLAUDE.md test isolation). Types-only test, no FS touch,
 // but the mock enforcement hook requires these regardless.
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => '/tmp/bakin-types-test',
   getBakinPaths: () => ({}),

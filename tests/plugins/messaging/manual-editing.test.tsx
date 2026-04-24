@@ -3,6 +3,12 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, ...props }: Record<string, unknown>) => (
     <button onClick={onClick as () => void} disabled={disabled as boolean} {...props}>

@@ -28,6 +28,12 @@ const projectsDir = join(testDir, 'projects')
 // Mocks — must be declared before any plugin imports
 // ---------------------------------------------------------------------------
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getBakinPaths: () => ({ projects: projectsDir }),
   getContentDir: () => testDir,
@@ -51,8 +57,8 @@ mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
 
-vi.mock('../../../plugins/tasks/lib/flow-store', async (importOriginal: <T = any>() => Promise<T>) => {
-  const actual = await importOriginal<typeof import('../../../plugins/tasks/lib/flow-store')>()
+mock.module('../../../plugins/tasks/lib/flow-store', () => {
+  const actual = require('../../../plugins/tasks/lib/flow-store') as typeof import('../../../plugins/tasks/lib/flow-store')
   return {
     ...actual,
   readTaskboard: () => ({
@@ -748,7 +754,7 @@ describe('Exec Tools', () => {
       const result = await callTool(tool, { title: 'Agent Owner' }, 'pixel')
       expect(result.ok).toBe(true)
       // The owner should be 'pixel' (passed as agent param)
-      const { readProject } = await import('../../../plugins/projects/lib/parser')
+      const { readProject } = require('../../../plugins/projects/lib/parser') as typeof import('../../../plugins/projects/lib/parser')
       const project = readProject(result.id as string)
       expect(project!.owner).toBe('pixel')
     })

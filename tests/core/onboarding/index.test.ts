@@ -46,6 +46,12 @@ function makeMock(name: (typeof COMPONENT_NAMES)[number]): OnboardingComponent {
   }
 }
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/onboarding/mkdir', () => ({ mkdirComponent: makeMock('mkdir') }))
 mock.module('../../../src/core/onboarding/settings', () => ({ settingsComponent: makeMock('settings') }))
 mock.module('../../../src/core/onboarding/openclaw', () => ({ openclawComponent: makeMock('openclaw') }))

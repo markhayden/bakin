@@ -23,8 +23,8 @@ mock.module('../../src/core/content-dir', () => ({
   resetContentDir: () => {},
 }))
 
-vi.mock('fs', async (importOriginal: <T = any>() => Promise<T>) => {
-  const actual = await importOriginal<typeof import('fs')>()
+mock.module('fs', () => {
+  const actual = require('fs') as typeof import('fs')
   return { ...actual, readFileSync: mock(), statSync: mock() }
 })
 
@@ -47,7 +47,6 @@ function mockFile(mtimeMs: number, content: string): void {
 
 describe('openclaw-config', () => {
   beforeEach(async () => {
-    vi.resetModules()
     mock.clearAllMocks()
     vi.mocked(readFileSync).mockImplementation(() => { throw new Error('ENOENT') })
     vi.mocked(statSync).mockImplementation(() => { throw new Error('ENOENT') })
@@ -58,6 +57,8 @@ describe('openclaw-config', () => {
     getAgentIds = mod.getAgentIds
     findAgentById = mod.findAgentById
     resetOpenClawConfigCache = mod.resetOpenClawConfigCache
+    // bun:test has no vi.resetModules equivalent; use the module's own cache reset
+    resetOpenClawConfigCache()
   })
 
   describe('readOpenClawConfig', () => {

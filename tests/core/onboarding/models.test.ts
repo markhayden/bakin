@@ -59,6 +59,12 @@ function virtualInstall(modelDir: string) {
   virtualSizes.set(weightsPath, 42)
 }
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/antfly-server', () => ({
   findBinary: () => antflyBinary,
 }))
@@ -72,8 +78,8 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-mock.module('fs', async () => {
-  const actual = await import('fs')
+mock.module('fs', () => {
+  const actual = require('fs') as typeof import('fs')
   return {
     ...actual,
     existsSync: (p: unknown) => existingPaths.has(String(p)),

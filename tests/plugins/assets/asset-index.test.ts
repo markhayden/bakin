@@ -7,8 +7,17 @@ const testDir = join(tmpdir(), `bakin-test-index-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 const storeRoot = join(assetsRoot, 'store')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({

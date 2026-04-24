@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
 import type { Server } from 'http'
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
     info: mock(),
@@ -70,10 +76,11 @@ describe('lifecycle', () => {
     spyOn(process, 'exit').mockImplementation(() => undefined as never)
     vi.useFakeTimers()
 
-    // Reset module to get fresh shutdownInProgress state
-    vi.resetModules()
     const mod = await import('../../src/core/lifecycle')
     registerShutdownHandlers = mod.registerShutdownHandlers
+    // bun:test has no vi.resetModules; reset the shutdownInProgress flag
+    // via the module's test hook.
+    mod._resetShutdownStateForTests()
   })
 
   afterEach(() => {

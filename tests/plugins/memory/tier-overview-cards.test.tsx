@@ -13,18 +13,24 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 
 // Defensive isolation per CLAUDE.md.
-mock.module('../../../src/core/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-overview-mock`)
   return {
     getContentDir: () => base,
     getBakinPaths: () => ({ root: base, plugins: j(base, 'plugin-settings') }),
   }
 })
-mock.module('../../../packages/core/src/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('../../../packages/core/src/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-overview-mock`)
   return {
     getContentDir: () => base,

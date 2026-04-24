@@ -6,8 +6,17 @@ import { tmpdir } from 'os'
 // Mock content-dir to return our test directory
 const testDir = join(tmpdir(), `bakin-test-schedule-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({

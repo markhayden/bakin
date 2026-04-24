@@ -23,6 +23,12 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-workflows-page-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
@@ -53,8 +59,8 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
 const routerPush = mock()
-vi.mock('@bakin/sdk/hooks', async (importOriginal: <T = any>() => Promise<T>) => {
-  const actual = await importOriginal() as Record<string, unknown>
+mock.module('@bakin/sdk/hooks', () => {
+  const actual = require('@/core/content-dir') as Record<string, unknown>
   return {
     ...actual,
     useRouter: () => ({

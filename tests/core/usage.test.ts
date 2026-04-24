@@ -6,6 +6,12 @@ const testDir = join(tmpdir(), `bakin-usage-test-${Date.now()}`)
 
 // Usage recorder is pure in-memory — no filesystem access. This mock is a
 // defensive safeguard per CLAUDE.md's absolute test isolation rule.
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({

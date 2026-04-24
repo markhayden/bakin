@@ -116,6 +116,9 @@ mock.module('@/core/audit', () => ({
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: mock(),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 
 mock.module('@/core/migrations', () => ({
@@ -165,6 +168,11 @@ describe('PluginRegistryImpl', () => {
     pluginRegistry = mod.pluginRegistry
     getHookRegistry = mod.getHookRegistry
     getPluginSkills = mod.getPluginSkills
+    // bun:test has no vi.resetModules; reset the singleton via its own API
+    pluginRegistry._resetForTests()
+    // Also clear the hook registry — it's a separate globalThis singleton
+    const hookReg = getHookRegistry?.()
+    hookReg?.clearAll?.()
   })
 
   afterEach(() => {

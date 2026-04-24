@@ -25,6 +25,12 @@ import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapte
 const testDir = join(tmpdir(), `bakin-test-projects-sync-${Date.now()}`)
 const projectsDir = join(testDir, 'projects')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getBakinPaths: () => ({ projects: projectsDir }),
   getContentDir: () => testDir,

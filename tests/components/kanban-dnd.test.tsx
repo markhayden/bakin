@@ -85,6 +85,12 @@ mockUseSortable.mockImplementation(() => ({
   isDropTarget: false,
 }))
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@dnd-kit/dom', () => {
   class MockPointerSensor {
     static configure() {
@@ -266,7 +272,7 @@ describe('KanbanBoard drag and drop', () => {
       return { ok: true, json: async () => boardResponse } as Response
     }))
 
-    const { KanbanBoard } = await import('../../plugins/tasks/components/kanban-board')
+    const { KanbanBoard } = require('../../plugins/tasks/components/kanban-board') as typeof import('../../plugins/tasks/components/kanban-board')
 
     await act(async () => {
       render(<KanbanBoard />)
@@ -635,7 +641,7 @@ describe('TaskCard rendering', () => {
       isDropTarget: false,
     })
 
-    const { TaskCard } = await import('../../plugins/tasks/components/task-card')
+    const { TaskCard } = require('../../plugins/tasks/components/task-card') as typeof import('../../plugins/tasks/components/task-card')
 
     const task = makeTask('task-1', 'Test Task')
     const { container } = render(
@@ -664,7 +670,7 @@ describe('TaskCard rendering', () => {
       isDropTarget: false,
     })
 
-    const { TaskCard } = await import('../../plugins/tasks/components/task-card')
+    const { TaskCard } = require('../../plugins/tasks/components/task-card') as typeof import('../../plugins/tasks/components/task-card')
 
     const task = makeTask('task-1', 'Test Task')
     const { container } = render(

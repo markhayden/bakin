@@ -15,18 +15,24 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 // Defensive isolation per CLAUDE.md — this component never reads from disk,
 // but keeping these in place guarantees no accidental regression can ever
 // write into ~/.bakin/ or ~/.openclaw/ from this test file.
-mock.module('../../../src/core/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-search-results-mock`)
   return {
     getContentDir: () => base,
     getBakinPaths: () => ({ root: base, plugins: j(base, 'plugin-settings') }),
   }
 })
-mock.module('../../../packages/core/src/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('../../../packages/core/src/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-search-results-mock`)
   return {
     getContentDir: () => base,

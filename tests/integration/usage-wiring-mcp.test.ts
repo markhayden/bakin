@@ -13,6 +13,12 @@ import { z } from 'zod'
 
 const testDir = join(tmpdir(), `bakin-usage-wiring-mcp-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
@@ -84,14 +90,14 @@ function makeMockServer(): { server: any; captured: Map<string, ToolHandler> } {
 
 describe('MCP usage wiring (integration)', () => {
   beforeEach(async () => {
-    const { clearUsage } = await import('../../src/core/usage')
+    const { clearUsage } = require('../../src/core/usage') as typeof import('../../src/core/usage')
     clearUsage()
   })
 
   it('records a successful tool invocation as an mcp usage entry', async () => {
-    const { addExecTool } = await import('../../scripts/lib/registry')
-    const { registerTools } = await import('../../src/core/mcp-server')
-    const { getUsageFeed } = await import('../../src/core/usage')
+    const { addExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
+    const { getUsageFeed } = require('../../src/core/usage') as typeof import('../../src/core/usage')
 
     const toolName = `test_dummy_success_${Date.now()}`
     addExecTool({
@@ -122,9 +128,9 @@ describe('MCP usage wiring (integration)', () => {
   })
 
   it('records a not-ok handler result as an error entry', async () => {
-    const { addExecTool } = await import('../../scripts/lib/registry')
-    const { registerTools } = await import('../../src/core/mcp-server')
-    const { getUsageFeed } = await import('../../src/core/usage')
+    const { addExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
+    const { getUsageFeed } = require('../../src/core/usage') as typeof import('../../src/core/usage')
 
     const toolName = `test_dummy_notok_${Date.now()}`
     addExecTool({
@@ -148,9 +154,9 @@ describe('MCP usage wiring (integration)', () => {
   })
 
   it('records a thrown handler exception as an error entry', async () => {
-    const { addExecTool } = await import('../../scripts/lib/registry')
-    const { registerTools } = await import('../../src/core/mcp-server')
-    const { getUsageFeed } = await import('../../src/core/usage')
+    const { addExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
+    const { getUsageFeed } = require('../../src/core/usage') as typeof import('../../src/core/usage')
 
     const toolName = `test_dummy_throws_${Date.now()}`
     addExecTool({
@@ -176,9 +182,9 @@ describe('MCP usage wiring (integration)', () => {
   })
 
   it('regression sentinel: three invocations produce count=3, errors=2', async () => {
-    const { clearUsage, getUsageFeed } = await import('../../src/core/usage')
-    const { addExecTool } = await import('../../scripts/lib/registry')
-    const { registerTools } = await import('../../src/core/mcp-server')
+    const { clearUsage, getUsageFeed } = require('../../src/core/usage') as typeof import('../../src/core/usage')
+    const { addExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
 
     clearUsage()
 

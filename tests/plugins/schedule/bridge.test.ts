@@ -11,8 +11,17 @@ const openclawDir = join(testDir, 'openclaw')
 const openclawCronDir = join(openclawDir, 'cron')
 
 // Mock external deps
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 
 mock.module('@bakin/core/openclaw-home', () => ({

@@ -15,12 +15,25 @@ import type { ActivatedPlugin } from '../test-helpers'
 
 const testDir = join(tmpdir(), `bakin-test-health-routes-${Date.now()}`)
 
+// ES imports are hoisted above mock.module — set env so the guards don't trip.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before imports that use them
 // ---------------------------------------------------------------------------
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -89,7 +102,8 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({}))
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool } from '../test-helpers'
-import healthPlugin from '../../../plugins/health'
+// Dynamic require — ES imports are hoisted above top-level env setup above.
+const healthPlugin = require('../../../plugins/health').default as typeof import('../../../plugins/health').default
 import { recordUsage, clearUsage } from '../../../src/core/usage'
 
 let activated: ActivatedPlugin
@@ -278,7 +292,7 @@ describe('Health Plugin Routes', () => {
     })
 
     it('runs fresh diagnostics when ?fresh=true', async () => {
-      const { runDiagnostics } = await import('../../../src/core/doctor')
+      const { runDiagnostics } = require('../../../src/core/doctor') as typeof import('../../../src/core/doctor')
       const route = findRoute(activated.routes, 'GET', '/doctor')!
 
       const { status, body } = await callRoute(route, activated.ctx, {
@@ -332,7 +346,7 @@ describe('Health Exec Tools', () => {
     })
 
     it('runs fresh diagnostics when fresh=true', async () => {
-      const { runDiagnostics } = await import('../../../src/core/doctor')
+      const { runDiagnostics } = require('../../../src/core/doctor') as typeof import('../../../src/core/doctor')
       const tool = findTool(activated.execTools, 'bakin_exec_health_doctor')!
 
       const result = await callTool(tool, { fresh: true })

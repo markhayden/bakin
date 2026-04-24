@@ -21,8 +21,17 @@ import {
 
 const testDir = join(process.cwd(), 'test-content-tasks-routes')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -113,6 +122,16 @@ afterAll(() => {
 
 beforeEach(() => {
   mock.clearAllMocks()
+  // bun:test's clearAllMocks only clears call history; reset implementations
+  // so a previous test's mockRejectedValue doesn't leak into the next.
+  for (const m of [
+    mockReadTaskboard, mockCreateTask, mockDeleteTask, mockAssignTask,
+    mockAddTaskLog, mockBlockTask, mockUpdateTask, mockMoveTask,
+    mockSetDependency, mockClearDependency, mockReorderTasks,
+    mockMoveTaskWithEffects, mockBlockTaskWithEffects, mockCreateTaskWithEffects,
+    mockReportComplete, mockSetDependencyWithEffects, mockGetTaskDetails,
+    mockLogProgress, mockTriggerDispatch,
+  ]) m.mockReset()
 })
 
 // ─── Route Registration ────────────────────────────────────────────────────

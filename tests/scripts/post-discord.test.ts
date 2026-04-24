@@ -3,6 +3,12 @@ import { mkdtempSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../scripts/lib/registry', () => ({
   addExecTool: mock(),
 }))
@@ -170,8 +176,8 @@ describe('postDiscord', () => {
     const vidRel = 'assets/store/2026-04/20260401-clip-e5f6a7b8.mp4'
     const imgAbs = join(tmpDir, imgRel)
     const vidAbs = join(tmpDir, vidRel)
-    const { mkdirSync } = await import('fs')
-    const { dirname } = await import('path')
+    const { mkdirSync } = require('fs') as typeof import('fs')
+    const { dirname } = require('path') as typeof import('path')
     mkdirSync(dirname(imgAbs), { recursive: true })
     mkdirSync(dirname(vidAbs), { recursive: true })
     writeFileSync(imgAbs, 'fake-image')

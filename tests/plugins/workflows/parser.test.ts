@@ -8,6 +8,12 @@ const defsDir = join(testDir, 'workflows', 'definitions')
 
 // CLAUDE.md hard rule — content-dir must be mocked to a temp dir so the parser
 // can never walk out of the sandbox.
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
