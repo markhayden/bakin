@@ -63,12 +63,6 @@ mock.module('@xyflow/react', () => ({
   applyEdgeChanges: (_c: unknown, eds: unknown) => eds,
 }))
 
-// Side-effect import guard — plugin-manifest pulls in lots of plugins.
-// Stubbed to a no-op so the canvas editor can import it safely.
-mock.module('@/lib/plugin-manifest', () => ({
-  allNavItems: [],
-}))
-
 // Stub palette + drawer — they have their own dedicated tests. Keeps
 // canvas-editor tests focused on the save pipeline.
 mock.module('../../../plugins/workflows/components/node-type-palette', () => ({
