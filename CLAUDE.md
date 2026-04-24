@@ -266,22 +266,22 @@ Required mocks for any test that touches the filesystem:
 ```typescript
 const testDir = join(tmpdir(), `bakin-test-${Date.now()}`)
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => { /* return paths under testDir */ },
 }))
-vi.mock('../../packages/core/src/content-dir', () => ({
+mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => { /* return paths under testDir */ },
 }))
 ```
 
-Run the full suite with `bunx vitest run` (CI) or `bunx vitest watch` (dev). Individual file: `bunx vitest run tests/path/to/foo.test.ts`.
+Run the full suite with `bun test --isolate` (CI) or `bun test --watch --isolate` (dev). Individual file: `bun test tests/path/to/foo.test.ts --isolate`. `--isolate` gives each test file a fresh global so `mock.module` overlays don't leak across files.
 
 Additional mandatory rules:
 - **Always clean up:** `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`
-- **Mock the logger:** `vi.mock('../../src/core/logger', ...)` — prevents noise and avoids side effects
-- **Mock the watcher:** `vi.mock('../../src/core/watcher', ...)` — prevents chokidar from watching real dirs
+- **Mock the logger:** `mock.module('../../src/core/logger', ...)` — prevents noise and avoids side effects
+- **Mock the watcher:** `mock.module('../../src/core/watcher', ...)` — prevents chokidar from watching real dirs
 - **Mock openclaw-client:** Prevents tests from sending real messages to agents
 - **Never hardcode `~/.bakin/`** or `process.env.HOME` in test fixtures
 - **Use `tests/plugins/test-helpers.ts`** (`activatePlugin`, `callRoute`, `callTool`) for plugin tests — these provide properly isolated mock contexts

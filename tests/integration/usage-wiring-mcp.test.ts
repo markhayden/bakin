@@ -6,14 +6,20 @@
  * the real `getUsageFeed()` output so any regression that removes or bypasses
  * `recordUsage()` fails this test.
  */
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { z } from 'zod'
 
 const testDir = join(tmpdir(), `bakin-usage-wiring-mcp-${Date.now()}`)
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
@@ -23,39 +29,39 @@ vi.mock('../../src/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/watcher', () => ({
+mock.module('../../src/core/watcher', () => ({
   createInboxHandler: () => () => {},
   default: { createInboxHandler: () => () => {} },
-  watch: vi.fn(),
-  watchFiles: vi.fn(),
-  registerWatchPattern: vi.fn(),
-  start: vi.fn(),
-  stop: vi.fn(),
-  registerSyncHook: vi.fn(() => () => {}),
-  registerUnlinkHook: vi.fn(() => () => {}),
+  watch: mock(),
+  watchFiles: mock(),
+  registerWatchPattern: mock(),
+  start: mock(),
+  stop: mock(),
+  registerSyncHook: mock(() => () => {}),
+  registerUnlinkHook: mock(() => () => {}),
 }))
 
-vi.mock('../../src/core/openclaw-client', () => ({
-  openclaw: { sendMessage: vi.fn().mockResolvedValue(undefined) },
-  sendChannelMessage: vi.fn(async () => ({ ok: true })),
-  sendMessage: vi.fn(async () => ({ ok: true })),
-  isHealthy: vi.fn(async () => true),
-  callGateway: vi.fn(async () => ({ ok: true })),
+mock.module('../../src/core/openclaw-client', () => ({
+  openclaw: { sendMessage: mock().mockResolvedValue(undefined) },
+  sendChannelMessage: mock(async () => ({ ok: true })),
+  sendMessage: mock(async () => ({ ok: true })),
+  isHealthy: mock(async () => true),
+  callGateway: mock(async () => ({ ok: true })),
 }))
 
 // Stubbing appendAudit keeps the test in-memory — otherwise tool invocations
 // would try to write to the audit jsonl under testDir.
-vi.mock('../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 afterAll(() => {
@@ -84,14 +90,14 @@ function makeMockServer(): { server: any; captured: Map<string, ToolHandler> } {
 
 describe('MCP usage wiring (integration)', () => {
   beforeEach(async () => {
-    const { clearUsage } = await import('../../src/core/usage')
+    const { clearUsage } = require('../../src/core/usage') as typeof import('../../src/core/usage')
     clearUsage()
   })
 
   it('records a successful tool invocation as an mcp usage entry', async () => {
-    const { addExecTool } = await import('../../scripts/lib/registry')
-    const { registerTools } = await import('../../src/core/mcp-server')
-    const { getUsageFeed } = await import('../../src/core/usage')
+    const { addExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
+    const { getUsageFeed } = require('../../src/core/usage') as typeof import('../../src/core/usage')
 
     const toolName = `test_dummy_success_${Date.now()}`
     addExecTool({
@@ -122,9 +128,9 @@ describe('MCP usage wiring (integration)', () => {
   })
 
   it('records a not-ok handler result as an error entry', async () => {
-    const { addExecTool } = await import('../../scripts/lib/registry')
-    const { registerTools } = await import('../../src/core/mcp-server')
-    const { getUsageFeed } = await import('../../src/core/usage')
+    const { addExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
+    const { getUsageFeed } = require('../../src/core/usage') as typeof import('../../src/core/usage')
 
     const toolName = `test_dummy_notok_${Date.now()}`
     addExecTool({
@@ -148,9 +154,9 @@ describe('MCP usage wiring (integration)', () => {
   })
 
   it('records a thrown handler exception as an error entry', async () => {
-    const { addExecTool } = await import('../../scripts/lib/registry')
-    const { registerTools } = await import('../../src/core/mcp-server')
-    const { getUsageFeed } = await import('../../src/core/usage')
+    const { addExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
+    const { getUsageFeed } = require('../../src/core/usage') as typeof import('../../src/core/usage')
 
     const toolName = `test_dummy_throws_${Date.now()}`
     addExecTool({
@@ -176,9 +182,9 @@ describe('MCP usage wiring (integration)', () => {
   })
 
   it('regression sentinel: three invocations produce count=3, errors=2', async () => {
-    const { clearUsage, getUsageFeed } = await import('../../src/core/usage')
-    const { addExecTool } = await import('../../scripts/lib/registry')
-    const { registerTools } = await import('../../src/core/mcp-server')
+    const { clearUsage, getUsageFeed } = require('../../src/core/usage') as typeof import('../../src/core/usage')
+    const { addExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
 
     clearUsage()
 

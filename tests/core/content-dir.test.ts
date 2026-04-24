@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdirSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -12,14 +12,20 @@ process.env.HOME = '/tmp/bakin-test-content-dir-guard-fake'
 // Satisfy the test-mock hook — the test file imports via @bakin/workflows
 // alias and has 'openclaw' in a comment, so the hook flags flow-store and
 // openclaw-home as required even though this test never touches either.
-vi.mock('../../plugins/tasks/lib/flow-store', () => ({}))
-vi.mock('../../packages/core/src/openclaw-home', () => ({
-  getOpenClawHome: () => '/tmp/bakin-test-content-dir-guard-fake',
-  getOpenClawPath: (...parts: string[]) => parts.join('/'),
-  resetOpenClawHome: vi.fn(),
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
-import { getContentDir, resetContentDir, initBakinHome } from '@bakin/workflows/lib/content-dir'
+mock.module('../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => '/tmp/bakin-test-content-dir-guard-fake',
+  getOpenClawPath: (...parts: string[]) => parts.join('/'),
+  resetOpenClawHome: mock(),
+}))
+
+const { getContentDir, resetContentDir, initBakinHome } = require('@bakin/workflows/lib/content-dir') as typeof import('@bakin/workflows/lib/content-dir')
 
 describe('content-dir', () => {
   const testDir = join(tmpdir(), `bakin-test-contentdir-${Date.now()}`)

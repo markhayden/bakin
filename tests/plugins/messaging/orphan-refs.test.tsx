@@ -8,31 +8,37 @@
  * gracefully — never crash.
  */
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 import { render, screen, cleanup } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { afterEach } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { ContentTypeOption } from '../../../plugins/messaging/types'
 
 const testDir = join(tmpdir(), `bakin-test-orphan-${Date.now()}`)
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-vi.mock('../../../src/core/watcher', () => ({ watchFiles: vi.fn() }))
-vi.mock('../../../src/core/openclaw-client', () => ({ sendMessage: vi.fn(), sendChannelMessage: vi.fn() }))
+mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
+mock.module('../../../src/core/openclaw-client', () => ({ sendMessage: mock(), sendChannelMessage: mock() }))
 
 // Team store returns an empty roster — any agent id is therefore orphaned.
-vi.mock('@bakin/team/hooks/use-agent-store', () => ({
+mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgent: (id: string) => (id === 'known' ? { id: 'known', name: 'Known', emoji: '✅', role: '', headshot: '' } : undefined),
   useAgentList: () => [{ id: 'known', name: 'Known', emoji: '✅', role: '', headshot: '' }],
   useAgentIds: () => ['known'],

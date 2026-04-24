@@ -13,7 +13,7 @@
  *      and re-saves a shipped workflow.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, mock } from 'bun:test'
 import { readdirSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -21,27 +21,33 @@ import yaml from 'js-yaml'
 
 const testDir = join(tmpdir(), `bakin-test-yaml-roundtrip-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  createTask: vi.fn(),
-  addTaskLog: vi.fn(),
-  moveTask: vi.fn(),
-  readTaskboard: vi.fn(() => ({ columns: {} })),
-  getTask: vi.fn(() => null),
-  getTaskWithColumn: vi.fn(() => null),
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  createTask: mock(),
+  addTaskLog: mock(),
+  moveTask: mock(),
+  readTaskboard: mock(() => ({ columns: {} })),
+  getTask: mock(() => null),
+  getTaskWithColumn: mock(() => null),
 }))
 
 import { workflowDefinitionSchema } from '../../../plugins/workflows/lib/node-type-registry'

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'bun:test'
 import { resolveEmbedder, embeddersHash } from '../../src/core/embedder-resolver'
 import type { BakinSettings } from '../../packages/core/src/settings'
 

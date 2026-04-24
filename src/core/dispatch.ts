@@ -39,7 +39,7 @@ interface DispatchState {
   lastRun: number | null
   serverStart: number
   dispatched: string[]
-  failedDispatches: Record<string, FailureRecord | number>  // number = legacy format
+  failedDispatches: Record<string, FailureRecord>
 }
 
 const TRANSIENT_CODES = new Set([
@@ -83,11 +83,8 @@ function getStateFile(contentDir: string): string {
   return join(contentDir, '.dispatch-state.json')
 }
 
-function getFailureRecord(entry: FailureRecord | number | undefined): FailureRecord | null {
+function getFailureRecord(entry: FailureRecord | undefined): FailureRecord | null {
   if (!entry) return null
-  // Migrate legacy format (plain timestamp number) — default to structural
-  // because that's the behavior legacy records were written under.
-  if (typeof entry === 'number') return { lastAttempt: entry, count: 1, kind: 'structural' }
   return { ...entry, kind: entry.kind ?? 'structural' }
 }
 
@@ -139,7 +136,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
   try {
     // Acquire state lock for the entire cycle to prevent races with dispatchSingleTask
     await withStateLock(async () => {
-    const { getTodoTasks, moveTaskToInProgress, addTaskLog } = await import('../lib/taskboard')
+    const { getTodoTasks, moveTaskToInProgress, addTaskLog } = await import('@bakin/tasks/lib/flow-store')
 
     const { todoTasks } = getTodoTasks()
     const state = loadDispatchState(contentDir)
@@ -313,7 +310,7 @@ export async function dispatchSingleTask(
       }
     }
 
-    const { moveTaskToInProgress, addTaskLog } = await import('../lib/taskboard')
+    const { moveTaskToInProgress, addTaskLog } = await import('@bakin/tasks/lib/flow-store')
 
     // Workflow-aware dispatch path
     const taskWithWorkflow = task as typeof task & { workflowId?: string }
@@ -869,7 +866,7 @@ export async function reconcileOnStartup(contentDir: string): Promise<void> {
       if (agentStale && !hasRecentLog) {
         try {
           await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'system', message: 'Recovered on server restart: agent heartbeat stale and no recent task logs.' })
-          const { moveTask: doMove } = await import('../lib/taskboard')
+          const { moveTask: doMove } = await import('@bakin/tasks/lib/flow-store')
           await doMove(task.id, 'todo')
           appendAudit(contentDir, 'task.startup_recovered', 'system', { id: task.id, title: task.title, agent: task.agent })
           recovered++

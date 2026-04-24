@@ -2,50 +2,55 @@
  * Tests for attached asset context in dispatch messages.
  * Assets are detected by scanning filesystem directories, not description URLs.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-dispatch-assets-${Date.now()}`)
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ assets: join(testDir, 'assets') }),
 }))
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/settings', () => ({
-  getSettings: vi.fn().mockReturnValue({
+mock.module('../../src/core/settings', () => ({
+  getSettings: mock().mockReturnValue({
     dispatch: { intervalMs: 1000, maxRetries: 3, failureCooldownMs: 60000, transientCooldownMs: 5000, maxDispatched: 500 },
     agents: ['main', 'pixel'],
     watchdog: { stuckThresholdMs: 30 * 60 * 1000 },
   }),
 }))
 
-vi.mock('../../src/core/audit', () => ({ appendAudit: vi.fn() }))
-vi.mock('../../src/core/openclaw-client', () => ({ sendMessage: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../src/lib/taskboard', () => ({
-  getTodoTasks: vi.fn().mockReturnValue({ todoTasks: [] }),
-  moveTaskToInProgress: vi.fn(),
-  addTaskLog: vi.fn(),
+mock.module('../../src/core/audit', () => ({ appendAudit: mock() }))
+mock.module('../../src/core/openclaw-client', () => ({ sendMessage: mock().mockResolvedValue(undefined) }))
+mock.module('@bakin/tasks/lib/flow-store', () => ({
+  getTodoTasks: mock().mockReturnValue({ todoTasks: [] }),
+  moveTaskToInProgress: mock(),
+  addTaskLog: mock(),
 }))
-vi.mock('../../src/lib/plugin-registry', () => ({
-  getHookRegistry: vi.fn().mockReturnValue({
-    invoke: vi.fn().mockResolvedValue(undefined),
-    has: vi.fn().mockReturnValue(false),
-    register: vi.fn(),
+mock.module('../../src/lib/plugin-registry', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mock().mockResolvedValue(undefined),
+    has: mock().mockReturnValue(false),
+    register: mock(),
   }),
 }))
-vi.mock('../../src/lib/format', () => ({ isStale: vi.fn().mockReturnValue(true) }))
+mock.module('../../src/lib/format', () => ({ isStale: mock().mockReturnValue(true) }))
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
 
 import { buildDispatchMessage } from '../../src/core/dispatch'
 

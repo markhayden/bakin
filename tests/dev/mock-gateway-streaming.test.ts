@@ -2,7 +2,7 @@
  * Mock gateway streaming tests — verifies SSE streaming behavior
  * when stream: true is passed in the request body.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'bun:test'
 import { handleGatewayRequest } from '../../dev/imitation-crab/gateway'
 
 describe('mock gateway streaming', () => {

@@ -1,15 +1,21 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 // path-for-filename.ts is a pure module with no fs access, but the test-isolation
 // enforcement hook requires this mock on every test that imports plugin code.
 const testDir = join(tmpdir(), `bakin-test-path-for-filename-${Date.now()}`)
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 

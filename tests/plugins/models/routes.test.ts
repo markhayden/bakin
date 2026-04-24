@@ -1,7 +1,7 @@
 /**
  * Tests for models plugin routes, exec tools, and hooks.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -13,6 +13,11 @@ import type { ActivatedPlugin } from '../test-helpers'
 
 const testDir = join(tmpdir(), 'bakin-test-models-routes')
 const mockOpenclawDir = join(testDir, '.openclaw')
+
+// ES imports are hoisted above mock.module — set env so the guards don't trip
+// when plugin modules call getContentDir/getOpenClawHome at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = mockOpenclawDir
 
 const mockOpenclawConfig = {
   agents: {
@@ -51,9 +56,15 @@ const mockOpenclawConfig = {
 // Mock the openclaw.json path by replacing the constants module-level reads
 // We redirect the file reads to our test directory
 const openclawJsonPath = join(mockOpenclawDir, 'openclaw.json')
-vi.mock('os', async (importOriginal) => {
-  const os = await importOriginal<typeof import('os')>()
-  const { join: pathJoin } = await import('path')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('os', () => {
+  const os = require('os') as typeof import('os')
+  const { join: pathJoin } = require('path') as typeof import('path')
   return {
     ...os,
     homedir: () => pathJoin(os.tmpdir(), 'bakin-test-models-routes'),
@@ -63,18 +74,18 @@ vi.mock('os', async (importOriginal) => {
 // The os.homedir mock above routes ~/.bakin to tmpdir, but the hook
 // validator also requires an explicit content-dir mock. Both point at
 // the same tmpdir; this is defense-in-depth.
-vi.mock('../../../src/core/content-dir', async () => {
-  const { join: pathJoin } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../../src/core/content-dir', () => {
+  const { join: pathJoin } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
   return {
     getContentDir: () => dir,
     getBakinPaths: () => ({ root: dir }),
   }
 })
-vi.mock('../../../packages/core/src/content-dir', async () => {
-  const { join: pathJoin } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../../packages/core/src/content-dir', () => {
+  const { join: pathJoin } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
   return {
     getContentDir: () => dir,
@@ -82,17 +93,17 @@ vi.mock('../../../packages/core/src/content-dir', async () => {
   }
 })
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('child_process', () => ({
-  execFile: vi.fn((file: string, args: string[], optionsOrCb?: unknown, maybeCb?: (err: Error | null, stdout: string, stderr: string) => void) => {
+mock.module('child_process', () => ({
+  execFile: mock((file: string, args: string[], optionsOrCb?: unknown, maybeCb?: (err: Error | null, stdout: string, stderr: string) => void) => {
     const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
     if (args[0] === 'models' && args[1] === 'list' && args.includes('--all') && args.includes('--json')) {
       cb?.(null, JSON.stringify({
@@ -121,7 +132,8 @@ vi.mock('child_process', () => ({
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool, makeRequest } from '../test-helpers'
-import modelsPlugin from '../../../plugins/models'
+// Dynamic require — ES imports are hoisted above the `process.env` setup above.
+const modelsPlugin = require('../../../plugins/models').default as typeof import('../../../plugins/models').default
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -146,7 +158,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
-  vi.restoreAllMocks()
+  mock.restore()
 })
 
 // ---------------------------------------------------------------------------
@@ -181,7 +193,7 @@ describe('Models Plugin Activation', () => {
 
   it('registers 5 hooks', () => {
     expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(5)
-    const hookNames = (activated.ctx.hooks.register as ReturnType<typeof vi.fn>).mock.calls.map(
+    const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
     expect(hookNames.sort()).toEqual([

@@ -12,23 +12,29 @@
  *   - The component exposes the OnboardingComponent shape the dispatcher expects.
  *   - `check()` returns ok with "0 plugin assets" when nothing ships S-B skills.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-cli-plugin-assets-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))
-vi.mock('@/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('@/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 describe('CLI: bakin install/check plugin-assets', () => {
@@ -39,21 +45,21 @@ describe('CLI: bakin install/check plugin-assets', () => {
   })
 
   it('the onboarding component exposes the OnboardingComponent shape', async () => {
-    const { pluginAssetsComponent } = await import('@/core/onboarding/plugin-assets')
+    const { pluginAssetsComponent } = require('@/core/onboarding/plugin-assets') as typeof import('@/core/onboarding/plugin-assets')
     expect(pluginAssetsComponent.name).toBe('plugin-assets')
     expect(typeof pluginAssetsComponent.check).toBe('function')
     expect(typeof pluginAssetsComponent.install).toBe('function')
   })
 
   it('check() returns ok with "0 plugin assets" when nothing ships S-B skills', async () => {
-    const { pluginAssetsComponent } = await import('@/core/onboarding/plugin-assets')
+    const { pluginAssetsComponent } = require('@/core/onboarding/plugin-assets') as typeof import('@/core/onboarding/plugin-assets')
     const result = await pluginAssetsComponent.check()
     expect(result.status).toBe('ok')
     expect(result.message).toMatch(/0 plugin assets/i)
   })
 
   it('install() returns noop when nothing needs installing', async () => {
-    const { pluginAssetsComponent } = await import('@/core/onboarding/plugin-assets')
+    const { pluginAssetsComponent } = require('@/core/onboarding/plugin-assets') as typeof import('@/core/onboarding/plugin-assets')
     const result = await pluginAssetsComponent.install({
       interactive: false,
       autoApprove: true,

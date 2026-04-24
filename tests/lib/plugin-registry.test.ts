@@ -1,15 +1,21 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-plugin-registry-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-vi.mock('@bakin/tasks/lib/flow-store', () => ({}))
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/tasks/lib/flow-store', () => ({}))
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))
@@ -17,22 +23,25 @@ vi.mock('@bakin/core/openclaw-home', () => ({
 // Spy on the logger so we can assert collisions are logged but contained.
 // Hoisted so it's defined before vi.mock's factory runs at import time
 // (test-helpers calls createLogger() at module load).
-const { errorLog } = vi.hoisted(() => ({ errorLog: vi.fn() }))
-vi.mock('../../src/core/logger', () => ({
+const { errorLog } = (() => ({ errorLog: mock() }))()
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
+    info: mock(),
+    warn: mock(),
     error: errorLog,
-    debug: vi.fn(),
+    debug: mock(),
   }),
 }))
 
-import {
+// Dynamic require below — test-helpers imports createLogger at module init;
+// we need mock.module('...logger') to be registered BEFORE test-helpers loads.
+// Static ES imports are hoisted above top-level code, so we use require() here.
+const {
   clearSourceRegistry,
   getDefinition,
-} from '@bakin/workflows/lib/source-registry'
+} = require('@bakin/workflows/lib/source-registry') as typeof import('@bakin/workflows/lib/source-registry')
 import type { BakinPlugin, PluginContext } from '@/lib/plugin-types'
-import { activatePlugin } from '../plugins/test-helpers'
+const { activatePlugin } = require('../plugins/test-helpers') as typeof import('../plugins/test-helpers')
 
 function makeWorkflowsPlugin(
   body: (ctx: PluginContext) => void,

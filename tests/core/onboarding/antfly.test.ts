@@ -12,7 +12,7 @@
  * This is the first component that shells out to a package manager, so
  * the mock ergonomics here will be reused by T6 (models) and T7 (mcporter).
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { EventEmitter } from 'events'
 
 // Per-test state for the mocks. Must be `let` so the mock closures can
@@ -26,7 +26,13 @@ let spawnError: Error | null
 let lastSpawnArgs: { cmd: string; args: string[]; opts: Record<string, unknown> } | null
 let askYesNoReturn: boolean
 
-vi.mock('../../../src/core/antfly-server', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/antfly-server', () => ({
   findBinary: () => {
     // Pop the next queued value; if the queue is empty, repeat the last
     // one. Lets tests set [null, '/path/to/binary'] to mean "missing on
@@ -37,17 +43,17 @@ vi.mock('../../../src/core/antfly-server', () => ({
   },
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs')
+mock.module('fs', () => {
+  const actual = require('fs') as typeof import('fs')
   return {
     ...actual,
     existsSync: (p: unknown) => {
@@ -60,7 +66,7 @@ vi.mock('fs', async () => {
   }
 })
 
-vi.mock('child_process', () => ({
+mock.module('child_process', () => ({
   spawn: (cmd: string, args: string[], opts: Record<string, unknown>) => {
     lastSpawnArgs = { cmd, args, opts }
     const child = new EventEmitter() as EventEmitter & {
@@ -82,7 +88,7 @@ vi.mock('child_process', () => ({
   },
 }))
 
-vi.mock('../../../src/core/onboarding/prompts', () => ({
+mock.module('../../../src/core/onboarding/prompts', () => ({
   askYesNo: () => Promise.resolve(askYesNoReturn),
   readLine: () => Promise.resolve(''),
 }))

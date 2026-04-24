@@ -7,25 +7,31 @@
  * + the file's mtime. All three are mocked here — no real filesystem reads
  * under ~/.openclaw/.
  */
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, utimesSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-memory-indexer-durable-${Date.now()}`)
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir, audit: join(testDir, 'audit.jsonl') }),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir, audit: join(testDir, 'audit.jsonl') }),
 }))
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-vi.mock('../../../src/core/watcher', () => ({ watchFiles: vi.fn() }))
+mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
 
 // Mock the openclaw-adapter.
 const {
@@ -34,15 +40,15 @@ const {
   mockDurableFilePath,
   mockMatchDurablePath,
   mockCanonicalFiles,
-} = vi.hoisted(() => ({
-  mockListAgentIds: vi.fn<() => string[]>(),
-  mockReadDurableFile: vi.fn<(agent: string, basename: string) => string | null>(),
-  mockDurableFilePath: vi.fn<(agent: string, basename: string) => string>(),
-  mockMatchDurablePath: vi.fn<(path: string) => { agent: string; basename: string } | null>(),
+} = (() => ({
+  mockListAgentIds: mock<() => string[]>(),
+  mockReadDurableFile: mock<(agent: string, basename: string) => string | null>(),
+  mockDurableFilePath: mock<(agent: string, basename: string) => string>(),
+  mockMatchDurablePath: mock<(path: string) => { agent: string; basename: string } | null>(),
   mockCanonicalFiles: ['SOUL.md', 'MEMORY.md'] as const,
-}))
+}))()
 
-vi.mock('../../../plugins/memory/lib/openclaw-adapter', () => ({
+mock.module('../../../plugins/memory/lib/openclaw-adapter', () => ({
   listAgentIds: mockListAgentIds,
   readDurableFile: mockReadDurableFile,
   durableFilePath: mockDurableFilePath,
@@ -53,44 +59,44 @@ vi.mock('../../../plugins/memory/lib/openclaw-adapter', () => ({
     ({ 'SOUL.md': 'soul', 'MEMORY.md': 'memory' } as Record<string, string>)[basename],
   // Skills (tier=durable, kind=skill) — stubbed so the durable indexer pass
   // doesn't try to walk a real skills/ directory during this test.
-  listAgentSkills: vi.fn(() => []),
-  readAgentSkill: vi.fn(() => null),
-  skillFilePath: vi.fn(() => ''),
-  skillFileMtime: vi.fn(() => null),
-  matchSkillPath: vi.fn(() => null),
+  listAgentSkills: mock(() => []),
+  readAgentSkill: mock(() => null),
+  skillFilePath: mock(() => ''),
+  skillFileMtime: mock(() => null),
+  matchSkillPath: mock(() => null),
   // daily-note tier (C5) — stubbed so handleWatcherEvent's fallthrough match
   // doesn't blow up in this tier's isolated tests.
-  listDailyNotes: vi.fn(() => []),
-  readDailyNote: vi.fn(() => null),
-  dailyNotePath: vi.fn(() => ''),
-  dailyNoteMtime: vi.fn(() => null),
-  dailyNoteSize: vi.fn(() => 0),
-  matchDailyNotePath: vi.fn(() => null),
+  listDailyNotes: mock(() => []),
+  readDailyNote: mock(() => null),
+  dailyNotePath: mock(() => ''),
+  dailyNoteMtime: mock(() => null),
+  dailyNoteSize: mock(() => 0),
+  matchDailyNotePath: mock(() => null),
   // session + turn tiers (C6) — same rationale.
-  readSessionStore: vi.fn(() => null),
-  sessionStorePath: vi.fn(() => ''),
-  matchSessionStorePath: vi.fn(() => null),
-  listSessionJsonlFiles: vi.fn(() => []),
-  sessionJsonlPath: vi.fn(() => ''),
-  sessionJsonlStat: vi.fn(() => null),
-  matchSessionJsonlPath: vi.fn(() => null),
+  readSessionStore: mock(() => null),
+  sessionStorePath: mock(() => ''),
+  matchSessionStorePath: mock(() => null),
+  listSessionJsonlFiles: mock(() => []),
+  sessionJsonlPath: mock(() => ''),
+  sessionJsonlStat: mock(() => null),
+  matchSessionJsonlPath: mock(() => null),
   // checkpoint tier (C7) — same rationale.
-  listCheckpointJsonlFiles: vi.fn(() => []),
-  readCheckpoint: vi.fn(() => null),
-  checkpointJsonlPath: vi.fn(() => ''),
-  checkpointJsonlStat: vi.fn(() => null),
-  matchCheckpointJsonlPath: vi.fn(() => null),
+  listCheckpointJsonlFiles: mock(() => []),
+  readCheckpoint: mock(() => null),
+  checkpointJsonlPath: mock(() => ''),
+  checkpointJsonlStat: mock(() => null),
+  matchCheckpointJsonlPath: mock(() => null),
   // dream tier (C8) — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  listPhaseDocs: vi.fn(() => []),
-  listDreamSignalFiles: vi.fn(() => []),
-  readPhaseDoc: vi.fn(() => null),
-  readDreamSignal: vi.fn(() => null),
-  matchPhaseDocPath: vi.fn(() => null),
-  matchDreamSignalPath: vi.fn(() => null),
+  listPhaseDocs: mock(() => []),
+  listDreamSignalFiles: mock(() => []),
+  readPhaseDoc: mock(() => null),
+  readDreamSignal: mock(() => null),
+  matchPhaseDocPath: mock(() => null),
+  matchDreamSignalPath: mock(() => null),
 }))
 
-vi.mock('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewayCall: vi.fn(() => Promise.reject(new Error('gateway unused'))),
+mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
+  gatewayCall: mock(() => Promise.reject(new Error('gateway unused'))),
 }))
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
@@ -106,34 +112,34 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
     pluginId: 'memory',
     storage: {} as PluginContext['storage'],
     events: {} as PluginContext['events'],
-    registerNav: vi.fn(),
-    registerRoute: vi.fn(),
-    registerSlot: vi.fn(),
-    registerExecTool: vi.fn(),
-    registerSkill: vi.fn(),
-    watchFiles: vi.fn(),
+    registerNav: mock(),
+    registerRoute: mock(),
+    registerSlot: mock(),
+    registerExecTool: mock(),
+    registerSkill: mock(),
+    watchFiles: mock(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
-    updateSettings: vi.fn(),
-    activity: { log: vi.fn(), audit: vi.fn() },
+    updateSettings: mock(),
+    activity: { log: mock(), audit: mock() },
     search: {
-      registerContentType: vi.fn(),
-      registerFileBackedContentType: vi.fn(),
-      index: vi.fn(async (key: string, doc: Record<string, unknown>) => {
+      registerContentType: mock(),
+      registerFileBackedContentType: mock(),
+      index: mock(async (key: string, doc: Record<string, unknown>) => {
         indexed.push({ key, doc })
       }),
-      remove: vi.fn(async (key: string) => {
+      remove: mock(async (key: string) => {
         removed.push(key)
       }),
-      transform: vi.fn(async () => {}),
-      query: vi.fn(async () => ({
+      transform: mock(async () => {}),
+      query: mock(async () => ({
         results: [],
         meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const },
       })),
     },
     hooks: {
-      register: vi.fn(() => () => {}),
-      has: vi.fn(() => false),
-      invoke: vi.fn(async () => undefined),
+      register: mock(() => () => {}),
+      has: mock(() => false),
+      invoke: mock(async () => undefined),
     },
   } as unknown as PluginContext
   return { ctx, indexed, removed }

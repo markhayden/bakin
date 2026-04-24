@@ -8,24 +8,30 @@
  * global Map keyed on slot name, so between-test isolation uses
  * `clearSlotsOwnedBy` with a test-scoped owner id.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
 
 // Defensive isolation per CLAUDE.md — this test is pure in-memory React but
 // the lint hook requires content-dir mocks on every test to guarantee no
 // accidental write path can reach ~/.bakin/.
-vi.mock('../../src/core/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-sdk-slots-noop')
   return {
     getContentDir: () => base,
     getBakinPaths: () => ({ root: base }),
   }
 })
-vi.mock('../../packages/core/src/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../packages/core/src/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-sdk-slots-noop')
   return {
     getContentDir: () => base,
@@ -60,8 +66,8 @@ describe('@bakin/sdk/slots — registry', () => {
     registerSlot('test.caption', Alt, 10, TEST_OWNER)
     const entries = getSlotEntries('test.caption')
     expect(entries).toHaveLength(2)
-    expect(entries[0].component).toBe(Alt)      // order 10 renders first
-    expect(entries[1].component).toBe(Caption)  // order 50 renders second
+    expect(entries[0].component).toBe(Alt as any)      // order 10 renders first
+    expect(entries[1].component).toBe(Caption as any)  // order 50 renders second
   })
 
   it('defaults order to 100', () => {
@@ -111,7 +117,7 @@ describe('@bakin/sdk/slots — clearSlotsOwnedBy', () => {
     clearSlotsOwnedBy('plugin-a')
     const entries = getSlotEntries('test.caption')
     expect(entries).toHaveLength(1)
-    expect(entries[0].component).toBe(Alt)
+    expect(entries[0].component).toBe(Alt as any)
     // Cleanup for next tests
     clearSlotsOwnedBy('plugin-b')
   })
@@ -122,7 +128,7 @@ describe('@bakin/sdk/slots — clearSlotsOwnedBy', () => {
     clearSlotsOwnedBy('plugin-a')
     const entries = getSlotEntries('test.caption')
     expect(entries).toHaveLength(1)
-    expect(entries[0].component).toBe(Caption)
+    expect(entries[0].component).toBe(Caption as any)
     // No test-owner cleanup needed; no TEST_OWNER registrations
   })
 })

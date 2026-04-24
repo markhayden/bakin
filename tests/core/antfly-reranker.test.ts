@@ -1,14 +1,20 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-antfly-reranker-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../packages/core/src/content-dir', () => ({
+mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
@@ -18,14 +24,14 @@ vi.mock('../../packages/core/src/content-dir', () => ({
 type QueryResponse = {
   responses: Array<{ hits: { hits: unknown[]; total: number }; took: number }>
 }
-const mockQuery = vi.fn<(table: string, body: Record<string, unknown>) => Promise<QueryResponse>>(
+const mockQuery = mock<(table: string, body: Record<string, unknown>) => Promise<QueryResponse>>(
   async () => ({ responses: [{ hits: { hits: [], total: 0 }, took: 0 }] }),
 )
-const mockMultiquery = vi.fn<(body: Array<Record<string, unknown>>) => Promise<QueryResponse>>(
+const mockMultiquery = mock<(body: Array<Record<string, unknown>>) => Promise<QueryResponse>>(
   async () => ({ responses: [{ hits: { hits: [], total: 0 }, took: 0 }] }),
 )
-const mockGetStatus = vi.fn(async () => ({ health: 'healthy' }))
-const mockListTables = vi.fn(async () => [])
+const mockGetStatus = mock(async () => ({ health: 'healthy' }))
+const mockListTables = mock(async () => [])
 
 // Settings factory — mutated between tests via `settingsState`
 const settingsState = {
@@ -35,8 +41,8 @@ const settingsState = {
   rerankerThreshold: 0.0 as number | undefined,
 }
 
-vi.mock('@/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('@/core/settings', () => ({
+  getSettings: mock(() => ({
     antfly: {
       enabled: true,
       url: 'http://localhost:8080/api/v1',
@@ -61,25 +67,25 @@ vi.mock('@/core/settings', () => ({
   })),
 }))
 
-vi.mock('@antfly/sdk', () => {
+mock.module('@antfly/sdk', () => {
   class MockAntflyClient {
     getStatus = mockGetStatus
     tables = {
       list: mockListTables,
-      create: vi.fn(),
-      drop: vi.fn(),
-      get: vi.fn(),
+      create: mock(),
+      drop: mock(),
+      get: mock(),
       query: mockQuery,
-      multiquery: vi.fn(),
-      batch: vi.fn(),
-      scan: vi.fn(async function* () {}),
+      multiquery: mock(),
+      batch: mock(),
+      scan: mock(async function* () {}),
     }
-    indexes = { list: vi.fn(), create: vi.fn(), drop: vi.fn() }
+    indexes = { list: mock(), create: mock(), drop: mock() }
     multiquery = mockMultiquery
   }
   return {
     AntflyClient: MockAntflyClient,
-    matchAll: vi.fn(() => ({ match_all: {} })),
+    matchAll: mock(() => ({ match_all: {} })),
   }
 })
 

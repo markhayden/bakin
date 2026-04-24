@@ -10,7 +10,7 @@
  * when saveState/clearMarker are called without touching the real
  * filesystem.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { CheckResult, InstallResult, OnboardingComponent } from '../../../src/core/onboarding/types'
 
 // ---------------------------------------------------------------------------
@@ -46,19 +46,25 @@ function makeMock(name: (typeof COMPONENT_NAMES)[number]): OnboardingComponent {
   }
 }
 
-vi.mock('../../../src/core/onboarding/mkdir', () => ({ mkdirComponent: makeMock('mkdir') }))
-vi.mock('../../../src/core/onboarding/settings', () => ({ settingsComponent: makeMock('settings') }))
-vi.mock('../../../src/core/onboarding/openclaw', () => ({ openclawComponent: makeMock('openclaw') }))
-vi.mock('../../../src/core/onboarding/antfly', () => ({ antflyComponent: makeMock('antfly') }))
-vi.mock('../../../src/core/onboarding/models', () => ({ modelsComponent: makeMock('models') }))
-vi.mock('../../../src/core/onboarding/mcporter', () => ({ mcporterComponent: makeMock('mcporter') }))
-vi.mock('../../../src/core/onboarding/plugin-assets', () => ({ pluginAssetsComponent: makeMock('plugin-assets') }))
-vi.mock('../../../src/core/onboarding/credentials', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/onboarding/mkdir', () => ({ mkdirComponent: makeMock('mkdir') }))
+mock.module('../../../src/core/onboarding/settings', () => ({ settingsComponent: makeMock('settings') }))
+mock.module('../../../src/core/onboarding/openclaw', () => ({ openclawComponent: makeMock('openclaw') }))
+mock.module('../../../src/core/onboarding/antfly', () => ({ antflyComponent: makeMock('antfly') }))
+mock.module('../../../src/core/onboarding/models', () => ({ modelsComponent: makeMock('models') }))
+mock.module('../../../src/core/onboarding/mcporter', () => ({ mcporterComponent: makeMock('mcporter') }))
+mock.module('../../../src/core/onboarding/plugin-assets', () => ({ pluginAssetsComponent: makeMock('plugin-assets') }))
+mock.module('../../../src/core/onboarding/credentials', () => ({
   llmComponent: makeMock('llm'),
   channelsComponent: makeMock('channels'),
 }))
 
-vi.mock('../../../src/core/onboarding/state', () => ({
+mock.module('../../../src/core/onboarding/state', () => ({
   saveState: (components: Record<string, string>, bakinVersion: string) => {
     saveStateCalls.push({ components, bakinVersion })
     return {
@@ -76,12 +82,12 @@ vi.mock('../../../src/core/onboarding/state', () => ({
   ONBOARDING_VERSION: 1,
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
@@ -89,7 +95,7 @@ vi.mock('../../../src/core/logger', () => ({
 // modules below are never imported. We still mock content-dir per the
 // CLAUDE.md test-isolation rule so any future test addition that pulls
 // in a real component still can't write to ~/.bakin/.
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => '/tmp/bakin-onboarding-orchestrator-test',
   getBakinPaths: () => ({}),
 }))
@@ -99,7 +105,7 @@ describe('runOnboard orchestrator', () => {
   let checkAll: typeof import('../../../src/core/onboarding/index').checkAll
   let COMPONENT_ORDER: typeof import('../../../src/core/onboarding/index').COMPONENT_ORDER
   let stdoutLines: string[]
-  let stdoutWriteSpy: ReturnType<typeof vi.spyOn>
+  let stdoutWriteSpy: ReturnType<typeof spyOn>
 
   /** Build a fresh "all green" script where every component reports ok. */
   function freshScripts(): typeof scripts {
@@ -120,7 +126,7 @@ describe('runOnboard orchestrator', () => {
     saveStateCalls = []
     clearMarkerCalls = 0
     stdoutLines = []
-    stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+    stdoutWriteSpy = spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
       stdoutLines.push(String(chunk))
       return true
     })
@@ -429,7 +435,7 @@ describe('runOnboard orchestrator', () => {
       scripts.mcporter.check = { name: 'mcporter', status: 'ok', message: 'ok' }
       // Replace the mock to make mcporter.check throw
       const mod = await import('../../../src/core/onboarding/mcporter')
-      vi.spyOn(mod.mcporterComponent, 'check').mockRejectedValueOnce(new Error('boom'))
+      spyOn(mod.mcporterComponent, 'check').mockRejectedValueOnce(new Error('boom'))
       const results = await checkAll()
       const mcp = results.find((r) => r.name === 'mcporter')
       expect(mcp?.status).toBe('error')
@@ -444,7 +450,7 @@ describe('runOnboard orchestrator', () => {
   describe('exception handling', () => {
     it('converts a thrown check() error into an error outcome', async () => {
       const mod = await import('../../../src/core/onboarding/mcporter')
-      vi.spyOn(mod.mcporterComponent, 'check').mockRejectedValueOnce(new Error('boom'))
+      spyOn(mod.mcporterComponent, 'check').mockRejectedValueOnce(new Error('boom'))
       const result = await runOnboard(opts)
       const mcp = result.outcomes.find((o) => o.name === 'mcporter')
       expect(mcp?.finalStatus).toBe('error')
@@ -455,7 +461,7 @@ describe('runOnboard orchestrator', () => {
     it('converts a thrown install() error into an error outcome', async () => {
       scripts.antfly.check = { name: 'antfly', status: 'missing', message: 'antfly missing' }
       const mod = await import('../../../src/core/onboarding/antfly')
-      vi.spyOn(mod.antflyComponent, 'install').mockRejectedValueOnce(new Error('spawn failed'))
+      spyOn(mod.antflyComponent, 'install').mockRejectedValueOnce(new Error('spawn failed'))
       const result = await runOnboard(opts)
       const antfly = result.outcomes.find((o) => o.name === 'antfly')
       expect(antfly?.finalStatus).toBe('error')

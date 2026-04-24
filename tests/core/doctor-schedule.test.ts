@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testHome = vi.hoisted(() => {
+const testHome = (() => {
   const { mkdtempSync } = require('fs')
   const { tmpdir } = require('os')
   const { join } = require('path')
@@ -12,9 +12,15 @@ const testHome = vi.hoisted(() => {
   process.env.BAKIN_HOME = home
   process.env.OPENCLAW_HOME = openclaw
   return { home, openclaw }
-})
+})()
 
-vi.mock('@bakin/core/openclaw-home', async () => {
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@bakin/core/openclaw-home', () => {
   const { join } = require('path')
   const resolve = () => process.env.OPENCLAW_HOME || testHome.openclaw
   return {
@@ -24,7 +30,7 @@ vi.mock('@bakin/core/openclaw-home', async () => {
   }
 })
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testHome.home,
   getBakinPaths: () => ({
     home: testHome.home,
@@ -50,8 +56,8 @@ vi.mock('@/core/content-dir', () => ({
 }))
 
 // Mock settings
-vi.mock('@/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('@/core/settings', () => ({
+  getSettings: mock(() => ({
     agents: ['main', 'patch', 'pixel'],
     antfly: { enabled: false },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
@@ -61,35 +67,35 @@ vi.mock('@/core/settings', () => ({
 }))
 
 // Mock openclaw-client
-vi.mock('@/core/openclaw-client', () => ({
-  ping: vi.fn(async () => false),
-  sendMessage: vi.fn(),
+mock.module('@/core/openclaw-client', () => ({
+  ping: mock(async () => false),
+  sendMessage: mock(),
 }))
 
 // Mock audit
-vi.mock('@/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('@/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 // Mock taskboard (flow-store)
-vi.mock('../../plugins/tasks/lib/flow-store', () => ({
-  readTaskboard: vi.fn(() => ({
+mock.module('../../plugins/tasks/lib/flow-store', () => ({
+  readTaskboard: mock(() => ({
     columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [] },
   })),
-  clearDependency: vi.fn(),
+  clearDependency: mock(),
 }))
 
 // Mock mcporter
-vi.mock('@/core/mcporter', () => ({
-  isMcporterInstalled: vi.fn(() => true),
-  installMcporter: vi.fn(() => true),
-  verifyConfig: vi.fn(() => ({
+mock.module('@/core/mcporter', () => ({
+  isMcporterInstalled: mock(() => true),
+  installMcporter: mock(() => true),
+  verifyConfig: mock(() => ({
     installed: true,
     configExists: true,
     agentEntries: [],
     staleEntries: [],
   })),
-  syncConfig: vi.fn(() => []),
+  syncConfig: mock(() => []),
 }))
 
 describe('doctor: schedule sync', () => {
@@ -130,9 +136,9 @@ describe('doctor: schedule sync', () => {
 
   it('should report ok when no OpenClaw cron jobs file exists', async () => {
     // Mock content-dir to our temp
-    vi.doMock('@/core/content-dir', () => ({
-      isUsingBakinHome: vi.fn(() => true),
-      getContentDir: vi.fn(() => contentDir),
+    mock.module('@/core/content-dir', () => ({
+      isUsingBakinHome: mock(() => true),
+      getContentDir: mock(() => contentDir),
     }))
 
     const doctor = await import('@/core/doctor')
@@ -145,9 +151,9 @@ describe('doctor: schedule sync', () => {
   })
 
   it('should report ok when all jobs are tracked in sidecar', async () => {
-    vi.doMock('@/core/content-dir', () => ({
-      isUsingBakinHome: vi.fn(() => true),
-      getContentDir: vi.fn(() => contentDir),
+    mock.module('@/core/content-dir', () => ({
+      isUsingBakinHome: mock(() => true),
+      getContentDir: mock(() => contentDir),
     }))
 
     // Create OpenClaw jobs file
@@ -184,9 +190,9 @@ describe('doctor: schedule sync', () => {
   })
 
   it('should detect orphaned cron jobs (no autoFix)', async () => {
-    vi.doMock('@/core/content-dir', () => ({
-      isUsingBakinHome: vi.fn(() => true),
-      getContentDir: vi.fn(() => contentDir),
+    mock.module('@/core/content-dir', () => ({
+      isUsingBakinHome: mock(() => true),
+      getContentDir: mock(() => contentDir),
     }))
 
     // Create OpenClaw jobs file with an orphan
@@ -212,13 +218,13 @@ describe('doctor: schedule sync', () => {
   })
 
   it('should auto-adopt orphaned cron jobs when autoFix is enabled', async () => {
-    vi.doMock('@/core/content-dir', () => ({
-      isUsingBakinHome: vi.fn(() => true),
-      getContentDir: vi.fn(() => contentDir),
+    mock.module('@/core/content-dir', () => ({
+      isUsingBakinHome: mock(() => true),
+      getContentDir: mock(() => contentDir),
     }))
 
-    vi.doMock('@/core/settings', () => ({
-      getSettings: vi.fn(() => ({
+    mock.module('@/core/settings', () => ({
+      getSettings: mock(() => ({
         agents: ['main', 'patch', 'pixel'],
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: true }, // autoFix enabled

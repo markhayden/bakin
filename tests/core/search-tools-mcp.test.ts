@@ -9,7 +9,7 @@
  * We mock src/core/search-registry and src/core/antfly so tools execute
  * end-to-end without an Antfly backend.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -20,7 +20,13 @@ const TEST_DIR = join(tmpdir(), `bakin-test-mcp-search-${process.pid}-${Date.now
 // Mandatory test isolation mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => TEST_DIR,
   getBakinPaths: () => ({
     home: TEST_DIR,
@@ -43,30 +49,30 @@ vi.mock('../../src/core/content-dir', () => ({
   isUsingBakinHome: () => false,
 }))
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/watcher', () => ({
-  registerSyncHook: vi.fn(() => () => {}),
-  registerUnlinkHook: vi.fn(() => () => {}),
-  watch: vi.fn(),
-  watchFiles: vi.fn(),
-  registerWatchPattern: vi.fn(),
-  start: vi.fn(),
-  stop: vi.fn(),
+mock.module('../../src/core/watcher', () => ({
+  registerSyncHook: mock(() => () => {}),
+  registerUnlinkHook: mock(() => () => {}),
+  watch: mock(),
+  watchFiles: mock(),
+  registerWatchPattern: mock(),
+  start: mock(),
+  stop: mock(),
 }))
 
-vi.mock('../../src/core/openclaw-client', () => ({
-  sendChannelMessage: vi.fn(async () => ({ ok: true })),
-  sendMessage: vi.fn(async () => ({ ok: true })),
-  isHealthy: vi.fn(async () => true),
-  callGateway: vi.fn(async () => ({ ok: true })),
+mock.module('../../src/core/openclaw-client', () => ({
+  sendChannelMessage: mock(async () => ({ ok: true })),
+  sendMessage: mock(async () => ({ ok: true })),
+  isHealthy: mock(async () => true),
+  callGateway: mock(async () => ({ ok: true })),
 }))
 
 // ---------------------------------------------------------------------------
@@ -79,7 +85,7 @@ const KNOWN_PLUGINS: Record<string, string> = {
   projects: 'bakin_projects',
 }
 
-const crossTableSearchMock = vi.fn(async (q: string, opts?: { table?: string; limit?: number; facets?: string[] }) => {
+const crossTableSearchMock = mock(async (q: string, opts?: { table?: string; limit?: number; facets?: string[] }) => {
   if (opts?.table) {
     return {
       results: [
@@ -101,7 +107,7 @@ const crossTableSearchMock = vi.fn(async (q: string, opts?: { table?: string; li
   }
 })
 
-const reindexContentTypesMock = vi.fn(async (opts?: { table?: string }) => {
+const reindexContentTypesMock = mock(async (opts?: { table?: string }) => {
   if (opts?.table) {
     return [{ table: opts.table, indexed: 5, error: null }]
   }
@@ -111,7 +117,7 @@ const reindexContentTypesMock = vi.fn(async (opts?: { table?: string }) => {
   ]
 })
 
-const getSearchHealthMock = vi.fn(async () => ({
+const getSearchHealthMock = mock(async () => ({
   enabled: true,
   tables: [
     { table: 'bakin_tasks', pluginId: 'tasks', stats: { docs: 5 }, healthy: true },
@@ -119,7 +125,7 @@ const getSearchHealthMock = vi.fn(async () => ({
   ],
 }))
 
-const getContentTypesMock = vi.fn(() => {
+const getContentTypesMock = mock(() => {
   const map = new Map<string, { pluginId: string; facets: string[]; searchableFields: string[]; chunker?: { enabled: boolean } }>()
   map.set('bakin_tasks', { pluginId: 'tasks', facets: ['status'], searchableFields: ['title'] })
   map.set('bakin_assets', { pluginId: 'assets', facets: ['type'], searchableFields: ['title'] })
@@ -127,35 +133,36 @@ const getContentTypesMock = vi.fn(() => {
   return map
 })
 
-const getTableForPluginMock = vi.fn((pluginId: string): string | null => {
+const getTableForPluginMock = mock((pluginId: string): string | null => {
   return KNOWN_PLUGINS[pluginId] ?? null
 })
 
-vi.mock('../../src/core/search-registry', () => ({
+mock.module('../../src/core/search-registry', () => ({
   crossTableSearch: crossTableSearchMock,
   reindexContentTypes: reindexContentTypesMock,
   getSearchHealth: getSearchHealthMock,
   getContentTypes: getContentTypesMock,
   getTableForPlugin: getTableForPluginMock,
+  buildSearchAPI: mock(() => ({})),
 }))
 
 // ---------------------------------------------------------------------------
 // antfly mock — search_lookup goes directly through antfly.queryTable
 // ---------------------------------------------------------------------------
 
-const getTableStatsMock = vi.fn(async (table: string) => ({ table, total: 1 }))
-const queryTableMock = vi.fn(async (_table: string, key: string) => ({
+const getTableStatsMock = mock(async (table: string) => ({ table, total: 1 }))
+const queryTableMock = mock(async (_table: string, key: string) => ({
   results: [{ id: key, title: 'hello', body: 'world' }],
   total: 1,
   took: 2,
 }))
 
-vi.mock('../../src/core/antfly', () => ({
+mock.module('../../src/core/antfly', () => ({
   enabled: () => true,
   available: () => true,
   getTableStats: getTableStatsMock,
   queryTable: queryTableMock,
-  multiQuery: vi.fn(),
+  multiQuery: mock(),
 }))
 
 // ---------------------------------------------------------------------------
@@ -173,7 +180,7 @@ afterAll(() => {
 async function getTool(name: string) {
   // Importing search-tools triggers self-registration via addExecTool.
   await import('../../scripts/lib/search-tools')
-  const { getExecTool } = await import('../../scripts/lib/registry')
+  const { getExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
   const tool = getExecTool(name)
   if (!tool) throw new Error(`Tool ${name} not registered`)
   return tool

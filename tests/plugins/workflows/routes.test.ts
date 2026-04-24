@@ -9,7 +9,7 @@
  * during `activate()`, which causes the test helper to auto-register the
  * `/search` route.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -25,60 +25,66 @@ const testDir = join(tmpdir(), `bakin-test-workflows-search-${Date.now()}`)
 
 // ─── Mocks (must be declared before any plugin imports) ────────────────────
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
-vi.mock('../../../src/core/openclaw-client', () => ({
-  sendToAgent: vi.fn(),
-  sendMessage: vi.fn(),
+mock.module('../../../src/core/openclaw-client', () => ({
+  sendToAgent: mock(),
+  sendMessage: mock(),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('../../../src/core/discord-gateway', () => ({
-  startGateway: vi.fn(),
-  stopGateway: vi.fn(),
-  onGateInteraction: vi.fn(),
-  isGatewayConnected: vi.fn(() => false),
+mock.module('../../../src/core/discord-gateway', () => ({
+  startGateway: mock(),
+  stopGateway: mock(),
+  onGateInteraction: mock(),
+  isGatewayConnected: mock(() => false),
 }))
 
-vi.mock('../../../scripts/lib/post-discord', () => ({
-  loadDiscordConfig: vi.fn(() => null),
+mock.module('../../../scripts/lib/post-discord', () => ({
+  loadDiscordConfig: mock(() => null),
 }))
 
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
-  addTaskLog: vi.fn(() => Promise.resolve()),
-  moveTask: vi.fn(() => Promise.resolve()),
-  readTaskboard: vi.fn(() => ({
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
+  addTaskLog: mock(() => Promise.resolve()),
+  moveTask: mock(() => Promise.resolve()),
+  readTaskboard: mock(() => ({
     columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [] },
   })),
-  getTask: vi.fn(() => null),
-  getTaskWithColumn: vi.fn(() => null),
+  getTask: mock(() => null),
+  getTaskWithColumn: mock(() => null),
 }))
 
-;(globalThis as unknown as { __bakinBroadcast?: unknown }).__bakinBroadcast = vi.fn()
+;(globalThis as unknown as { __bakinBroadcast?: unknown }).__bakinBroadcast = mock()
 
 // ─── Plugin import (after mocks) ───────────────────────────────────────────
 

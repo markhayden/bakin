@@ -8,7 +8,7 @@
  *   the sidecar is rewritten — so the filename key stays valid and the
  *   doc is updated in place.
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -19,26 +19,32 @@ import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapte
 const testDir = join(tmpdir(), `bakin-test-retype-preserves-${Date.now()}`)
 const assetsDir = join(testDir, 'assets')
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ assets: join(testDir, 'assets') }),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
+    info: mock(), warn: mock(), error: mock(), debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  watchFiles: vi.fn(() => ({ close: vi.fn() })),
+mock.module('../../../src/core/watcher', () => ({
+  watchFiles: mock(() => ({ close: mock() })),
 }))
 
 import assetsPlugin from '../../../plugins/assets'
@@ -74,38 +80,38 @@ function makeCtx(): Captured {
     storage,
     events,
     pluginId: 'assets',
-    registerNav: vi.fn(),
-    registerRoute: vi.fn((def: APIRoute) => {
+    registerNav: mock(),
+    registerRoute: mock((def: APIRoute) => {
       handlers[def.method] ??= {}
       handlers[def.method][def.path] = def.handler
     }),
-    registerSlot: vi.fn(),
-    registerExecTool: vi.fn(),
-    registerSkill: vi.fn(),
-    registerWorkflow: vi.fn(),
-    registerNodeType: vi.fn(() => ''),
-    registerNotificationChannel: vi.fn(() => ''),
-    registerHealthCheck: vi.fn(() => ''),
-    watchFiles: vi.fn(),
+    registerSlot: mock(),
+    registerExecTool: mock(),
+    registerSkill: mock(),
+    registerWorkflow: mock(),
+    registerNodeType: mock(() => ''),
+    registerNotificationChannel: mock(() => ''),
+    registerHealthCheck: mock(() => ''),
+    watchFiles: mock(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
-    updateSettings: vi.fn(),
-    activity: { log: vi.fn(), audit: vi.fn() },
+    updateSettings: mock(),
+    activity: { log: mock(), audit: mock() },
     search: {
-      registerContentType: vi.fn(),
-      registerFileBackedContentType: vi.fn((def: FileBackedContentTypeDefinition) => {
+      registerContentType: mock(),
+      registerFileBackedContentType: mock((def: FileBackedContentTypeDefinition) => {
         capturedDef = def
       }),
-      index: vi.fn(async (key: string, doc: Record<string, unknown>) => {
+      index: mock(async (key: string, doc: Record<string, unknown>) => {
         indexCalls.push({ key, doc })
       }),
-      remove: vi.fn(async (key: string) => { removeCalls.push(key) }),
-      transform: vi.fn(async () => {}),
-      query: vi.fn(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      remove: mock(async (key: string) => { removeCalls.push(key) }),
+      transform: mock(async () => {}),
+      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
     },
     hooks: {
-      register: vi.fn(() => () => {}),
-      has: vi.fn(() => false),
-      invoke: vi.fn(async () => undefined),
+      register: mock(() => () => {}),
+      has: mock(() => false),
+      invoke: mock(async () => undefined),
     },
   }
 

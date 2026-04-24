@@ -1,25 +1,31 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 
 // Mandatory mocks per CLAUDE.md test isolation rules — keep filesystem,
 // logger, and watcher modules from ever resolving to the real ~/.bakin.
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => '/tmp/test-use-search',
   getBakinPaths: () => ({}),
 }))
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
-vi.mock('@/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('@/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
 import { useSearch } from '@/hooks/use-search'
@@ -31,7 +37,7 @@ interface FetchCall {
   init?: RequestInit
 }
 
-let fetchMock: ReturnType<typeof vi.fn>
+let fetchMock: ReturnType<typeof mock>
 let fetchCalls: FetchCall[]
 
 function mockFetchResponse(body: unknown, init: { ok?: boolean; status?: number } = {}) {
@@ -60,7 +66,7 @@ function mockFetchAlways(body: unknown) {
 
 beforeEach(() => {
   fetchCalls = []
-  fetchMock = vi.fn()
+  fetchMock = mock()
   vi.stubGlobal('fetch', fetchMock)
 })
 
@@ -68,7 +74,7 @@ afterEach(() => {
   cleanup()
   vi.useRealTimers()
   vi.unstubAllGlobals()
-  vi.restoreAllMocks()
+  mock.restore()
 })
 
 // --- tests ----------------------------------------------------------------
@@ -103,7 +109,7 @@ describe('useSearch — debounce', () => {
 
 describe('useSearch — abort on unmount', () => {
   it('does not setState after unmount', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
 
     let resolveFetch: ((res: Response) => void) | undefined
     fetchMock.mockImplementationOnce((url: string, reqInit?: RequestInit) => {

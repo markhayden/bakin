@@ -11,7 +11,7 @@
 import { rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
 import type { AssetMeta } from '@/types'
 
@@ -44,27 +44,33 @@ import type { AssetMeta } from '@/types'
 
 const testDir = join(tmpdir(), `bakin-test-assets-search-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('@/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
-vi.mock('@/core/openclaw-client', () => ({
-  sendToAgent: vi.fn(),
+mock.module('@/core/openclaw-client', () => ({
+  sendToAgent: mock(),
 }))
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
@@ -101,7 +107,7 @@ function getQueryArray(key: string) {
   return entry
 }
 
-vi.mock('@/hooks/use-query-state', () => ({
+mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string = '') => {
     const entry = getQueryString(key, defaultValue)
     return [entry.value, entry.setValue, entry.setValue] as const
@@ -112,8 +118,8 @@ vi.mock('@/hooks/use-query-state', () => ({
   },
 }))
 
-vi.mock('@/hooks/use-debug', () => ({
-  useDebug: () => [false, vi.fn()] as const,
+mock.module('@/hooks/use-debug', () => ({
+  useDebug: () => [false, mock()] as const,
 }))
 
 interface MockSearchHook {
@@ -122,8 +128,8 @@ interface MockSearchHook {
   loading: boolean
   error: string | null
   meta: null
-  search: ReturnType<typeof vi.fn>
-  clear: ReturnType<typeof vi.fn>
+  search: ReturnType<typeof mock>
+  clear: ReturnType<typeof mock>
 }
 
 const searchHookState: MockSearchHook = {
@@ -132,11 +138,11 @@ const searchHookState: MockSearchHook = {
   loading: false,
   error: null,
   meta: null,
-  search: vi.fn(),
-  clear: vi.fn(),
+  search: mock(),
+  clear: mock(),
 }
 
-vi.mock('@/hooks/use-search', () => ({
+mock.module('@/hooks/use-search', () => ({
   useSearch: () => searchHookState,
   reorderBySearchResults: <T,>(items: T[]) => items,
 }))
@@ -147,20 +153,20 @@ const useAssetsState: { assets: AssetMeta[]; total: number; loading: boolean } =
   loading: true,
 }
 
-vi.mock('@/hooks/use-assets', () => ({
+mock.module('@/hooks/use-assets', () => ({
   useAssets: () => ({
     assets: useAssetsState.assets,
     total: useAssetsState.total,
     loading: useAssetsState.loading,
-    refresh: vi.fn(),
-    deleteAsset: vi.fn(),
+    refresh: mock(),
+    deleteAsset: mock(),
   }),
   useTrash: () => ({
     items: [],
     loading: false,
-    restoreAsset: vi.fn(),
-    permanentDeleteAsset: vi.fn(),
-    emptyTrash: vi.fn(),
+    restoreAsset: mock(),
+    permanentDeleteAsset: mock(),
+    emptyTrash: mock(),
   }),
 }))
 
@@ -170,7 +176,7 @@ vi.mock('@/hooks/use-assets', () => ({
 
 const assetsGridProps: { current: { assets?: AssetMeta[] } } = { current: {} }
 
-vi.mock('../../../plugins/assets/components/assets-grid', () => ({
+mock.module('../../../plugins/assets/components/assets-grid', () => ({
   AssetsGrid: (props: { assets: AssetMeta[] }) => {
     assetsGridProps.current = props
     return (
@@ -183,27 +189,27 @@ vi.mock('../../../plugins/assets/components/assets-grid', () => ({
   },
 }))
 
-vi.mock('../../../plugins/assets/components/assets-list', () => ({
+mock.module('../../../plugins/assets/components/assets-list', () => ({
   AssetsList: () => null,
 }))
 
-vi.mock('../../../plugins/assets/components/trash-grid', () => ({
+mock.module('../../../plugins/assets/components/trash-grid', () => ({
   TrashGrid: () => null,
 }))
 
-vi.mock('../../../plugins/assets/components/asset-detail', () => ({
+mock.module('../../../plugins/assets/components/asset-detail', () => ({
   AssetDetail: () => null,
 }))
 
-vi.mock('../../../plugins/assets/components/asset-filters', () => ({
+mock.module('../../../plugins/assets/components/asset-filters', () => ({
   AssetFilters: () => <div data-testid="asset-filters" />,
 }))
 
-vi.mock('../../../plugins/assets/components/asset-pagination', () => ({
+mock.module('../../../plugins/assets/components/asset-pagination', () => ({
   AssetPagination: () => null,
 }))
 
-vi.mock('../../../plugins/assets/components/upload-dialog', () => ({
+mock.module('../../../plugins/assets/components/upload-dialog', () => ({
   UploadDialog: () => null,
 }))
 

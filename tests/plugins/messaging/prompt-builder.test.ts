@@ -5,24 +5,35 @@
  * Agent identity and content-type taxonomy come from the caller via
  * PromptBuilderOptions; the builder stays neutral.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
-const testDir = vi.hoisted(() => {
+const testDir = (() => {
   const { join } = require('path')
   const { tmpdir } = require('os')
   return join(tmpdir(), `bakin-test-prompt-${Date.now()}`)
-})
+})()
 
-vi.mock('../../../src/core/content-dir', () => ({
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ messaging: testDir }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
+    info: mock(), warn: mock(), error: mock(), debug: mock(),
   }),
 }))
 

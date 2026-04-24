@@ -120,8 +120,6 @@ All Antfly tables use the `bakin_` prefix: `bakin_tasks`, `bakin_assets`, `bakin
 
 **Multi-index tables:** `bakin_assets` is currently the only table with more than one embedding index — it has `assets_text` (BGE over sidecar metadata + extracted PDF/text content) and `assets_visual` (CLIP over raster image pixels). All other tables use a single default embedding index named `embeddings`.
 
-**Legacy cleanup:** On startup, any `beacon_*` tables are wiped automatically. The `beacon_` prefix is from a prior naming scheme.
-
 ## SearchContentTypeDefinition
 
 ```typescript
@@ -130,7 +128,7 @@ interface SearchContentTypeDefinition {
   schema: Record<string, SearchSchemaField>  // { type: 'text' | 'keyword' | 'number' | 'boolean' | 'datetime' | 'array' }
   searchableFields: string[]                 // fields included in full-text index (x-antfly-include-in-all)
 
-  /** Used when `indexes` is NOT set — legacy single-index path. */
+  /** Used when `indexes` is NOT set — the default single-index path. */
   embeddingTemplate: string
 
   /** Optional: declare multiple vector indexes for this table. Each
@@ -282,10 +280,6 @@ Each `SearchIndexDefinition` declares an `embedderRef` string. The registry's ta
 3. Referencing the new name from a content type's `indexes[].embedderRef`
 
 No plugin code changes needed. The `visual` ref is only consumed by `bakin_assets.assets_visual` today; every other table uses `default`.
-
-### Backward compatibility
-
-`settings.antfly.embedder` (singular, legacy pre-T2) is still read on load. If present and `settings.antfly.embedders` is absent, the settings loader synthesizes `embedders.default = { ...legacy.provider, ...legacy.model }` and logs a deprecation warning. Both-set logs a warning that the legacy field is ignored. Remove the legacy field in a future cleanup once all known configs are migrated.
 
 ## Content Extraction (Server-Side)
 

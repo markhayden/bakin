@@ -42,8 +42,14 @@ export async function handleUpload(req: Request, ctx: PluginContext): Promise<Re
   // Collect all file entries
   const files: File[] = []
   for (const [key, value] of formData.entries()) {
-    if ((key === 'file' || key === 'files') && value instanceof File) {
-      files.push(value)
+    // FormDataEntryValue is `string | File`; at runtime File from happy-dom
+    // and the native File may not share an instanceof identity, so we sniff
+    // for the shape instead (name + size + arrayBuffer).
+    if ((key === 'file' || key === 'files') && typeof value !== 'string' && value !== null) {
+      const f = value as unknown as { name?: string; size?: number }
+      if (typeof f.name === 'string' && typeof f.size === 'number') {
+        files.push(value as unknown as File)
+      }
     }
   }
 

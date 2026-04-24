@@ -1,13 +1,19 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
+import { afterEach, describe, expect, it, beforeEach, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 const testDir = join(tmpdir(), `bakin-test-session-list-${Date.now()}`)
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
@@ -15,19 +21,19 @@ vi.mock('../../../src/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  watchFiles: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  watchFiles: mock(),
 }))
 
-vi.mock('../../../src/core/openclaw-client', () => ({
-  sendMessage: vi.fn(),
+mock.module('../../../src/core/openclaw-client', () => ({
+  sendMessage: mock(),
 }))
 
-vi.mock('@/components/ui/button', () => ({
+mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, ...props }: Record<string, unknown>) => (
     <button onClick={onClick as () => void} disabled={disabled as boolean} {...props}>
       {children as React.ReactNode}
@@ -35,19 +41,19 @@ vi.mock('@/components/ui/button', () => ({
   ),
 }))
 
-vi.mock('@/components/ui/badge', () => ({
+mock.module('@/components/ui/badge', () => ({
   Badge: ({ children, ...props }: Record<string, unknown>) => (
     <span data-testid="badge" {...props}>{children as React.ReactNode}</span>
   ),
 }))
 
-vi.mock('@/components/agent-avatar', () => ({
+mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => (
     <span data-testid={`avatar-${agentId}`} />
   ),
 }))
 
-vi.mock('@/components/ui/table', () => ({
+mock.module('@/components/ui/table', () => ({
   Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
   TableHeader: ({ children }: { children: React.ReactNode }) => <thead>{children}</thead>,
   TableBody: ({ children }: { children: React.ReactNode }) => <tbody>{children}</tbody>,
@@ -58,14 +64,14 @@ vi.mock('@/components/ui/table', () => ({
   TableCell: ({ children }: { children: React.ReactNode }) => <td>{children}</td>,
 }))
 
-vi.mock('@/components/ui/dropdown-menu', () => ({
+mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
   DropdownMenuTrigger: ({ children, onClick }: Record<string, unknown>) => <div onClick={onClick as () => void}>{children as React.ReactNode}</div>,
   DropdownMenuContent: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
   DropdownMenuItem: ({ children, onClick }: Record<string, unknown>) => <div onClick={onClick as () => void}>{children as React.ReactNode}</div>,
 }))
 
-vi.mock('../../../plugins/messaging/components/delete-session-dialog', () => ({
+mock.module('../../../plugins/messaging/components/delete-session-dialog', () => ({
   DeleteSessionDialog: () => null,
 }))
 
@@ -75,7 +81,7 @@ const MOCK_AGENTS = [
   { id: 'trainer', name: 'Trainer', emoji: '🏊', role: '', headshot: '' },
   { id: 'coach', name: 'Coach', emoji: '🧘', role: '', headshot: '' },
 ]
-vi.mock('@bakin/team/hooks/use-agent-store', () => ({
+mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgentList: () => MOCK_AGENTS,
   useAgentIds: () => MOCK_AGENTS.map(a => a.id),
   useAgent: (id: string) => MOCK_AGENTS.find(a => a.id === id),
@@ -122,7 +128,7 @@ const mockSessions = [
 ]
 
 function mockFetch(sessions = mockSessions) {
-  return vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+  return mock().mockImplementation((url: string, opts?: RequestInit) => {
     if (url === '/api/plugins/messaging/sessions' && (!opts || opts.method !== 'POST')) {
       return Promise.resolve({
         ok: true,
@@ -143,12 +149,12 @@ function mockFetch(sessions = mockSessions) {
 
 describe('SessionList', () => {
   beforeEach(() => {
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   it('shows empty state when no sessions', async () => {
-    globalThis.fetch = mockFetch([])
-    render(<SessionList onSelectSession={vi.fn()} />)
+    globalThis.fetch = mockFetch([]) as unknown as typeof fetch
+    render(<SessionList onSelectSession={mock()} />)
     await waitFor(() => {
       expect(screen.getByTestId('empty-state')).toBeDefined()
     })
@@ -156,8 +162,8 @@ describe('SessionList', () => {
   })
 
   it('shows agent cards in empty state', async () => {
-    globalThis.fetch = mockFetch([])
-    render(<SessionList onSelectSession={vi.fn()} />)
+    globalThis.fetch = mockFetch([]) as unknown as typeof fetch
+    render(<SessionList onSelectSession={mock()} />)
     await waitFor(() => {
       expect(screen.getByTestId('agent-card-chef')).toBeDefined()
     })
@@ -167,8 +173,8 @@ describe('SessionList', () => {
   })
 
   it('renders session entries with correct data', async () => {
-    globalThis.fetch = mockFetch()
-    render(<SessionList onSelectSession={vi.fn()} />)
+    globalThis.fetch = mockFetch() as unknown as typeof fetch
+    render(<SessionList onSelectSession={mock()} />)
     await waitFor(() => {
       expect(screen.getByText('Week 15 recipes')).toBeDefined()
     })
@@ -177,8 +183,8 @@ describe('SessionList', () => {
   })
 
   it('filters sessions by agentFilter prop', async () => {
-    globalThis.fetch = mockFetch()
-    render(<SessionList onSelectSession={vi.fn()} agentFilter="chef" />)
+    globalThis.fetch = mockFetch() as unknown as typeof fetch
+    render(<SessionList onSelectSession={mock()} agentFilter="chef" />)
     await waitFor(() => {
       expect(screen.getByTestId('session-entry-s1')).toBeDefined()
     })
@@ -187,8 +193,8 @@ describe('SessionList', () => {
   })
 
   it('shows proposal counts on entries', async () => {
-    globalThis.fetch = mockFetch()
-    render(<SessionList onSelectSession={vi.fn()} />)
+    globalThis.fetch = mockFetch() as unknown as typeof fetch
+    render(<SessionList onSelectSession={mock()} />)
     await waitFor(() => {
       expect(screen.getByText('3/5')).toBeDefined()
     })
@@ -197,8 +203,8 @@ describe('SessionList', () => {
   })
 
   it('shows active before completed (sorting)', async () => {
-    globalThis.fetch = mockFetch()
-    render(<SessionList onSelectSession={vi.fn()} />)
+    globalThis.fetch = mockFetch() as unknown as typeof fetch
+    render(<SessionList onSelectSession={mock()} />)
     await waitFor(() => {
       expect(screen.getByTestId('session-entry-s1')).toBeDefined()
     })
@@ -210,8 +216,8 @@ describe('SessionList', () => {
   })
 
   it('calls onSelectSession when clicking a session', async () => {
-    globalThis.fetch = mockFetch()
-    const onSelect = vi.fn()
+    globalThis.fetch = mockFetch() as unknown as typeof fetch
+    const onSelect = mock()
     render(<SessionList onSelectSession={onSelect} />)
     await waitFor(() => {
       expect(screen.getByTestId('session-entry-s1')).toBeDefined()
@@ -221,9 +227,9 @@ describe('SessionList', () => {
   })
 
   it('calls onCreateSession via empty state agent card', async () => {
-    globalThis.fetch = mockFetch([])
-    const onCreate = vi.fn()
-    render(<SessionList onSelectSession={vi.fn()} onCreateSession={onCreate} />)
+    globalThis.fetch = mockFetch([]) as unknown as typeof fetch
+    const onCreate = mock()
+    render(<SessionList onSelectSession={mock()} onCreateSession={onCreate} />)
     await waitFor(() => {
       expect(screen.getByTestId('agent-card-chef')).toBeDefined()
     })
@@ -232,7 +238,7 @@ describe('SessionList', () => {
   })
 
   it('reorders by Antfly score when searchResults are provided', async () => {
-    globalThis.fetch = mockFetch()
+    globalThis.fetch = mockFetch() as unknown as typeof fetch
     // s3 wins, then s1. s2 is filtered out because it's not in scoreMap.
     // Keys come in with the `brainstorm-` prefix — the component strips it.
     const searchResults = [
@@ -241,7 +247,7 @@ describe('SessionList', () => {
     ]
     render(
       <SessionList
-        onSelectSession={vi.fn()}
+        onSelectSession={mock()}
         search="tips"
         searchResults={searchResults}
       />
@@ -258,12 +264,12 @@ describe('SessionList', () => {
   })
 
   it('keeps full list visible while searchLoading and no results yet', async () => {
-    globalThis.fetch = mockFetch()
+    globalThis.fetch = mockFetch() as unknown as typeof fetch
     // Search is typed, but the hook hasn't resolved — searchLoading=true.
     // The list should stay populated instead of flashing "no matches".
     render(
       <SessionList
-        onSelectSession={vi.fn()}
+        onSelectSession={mock()}
         search="water"
         searchResults={[]}
         searchLoading={true}
@@ -278,12 +284,12 @@ describe('SessionList', () => {
   })
 
   it('falls back to local substring match when loading settles with no hits', async () => {
-    globalThis.fetch = mockFetch()
+    globalThis.fetch = mockFetch() as unknown as typeof fetch
     // Loading has settled (searchLoading=false) and Antfly returned nothing
     // — the local title/agentId substring path runs.
     render(
       <SessionList
-        onSelectSession={vi.fn()}
+        onSelectSession={mock()}
         search="outdoor"
         searchResults={[]}
         searchLoading={false}

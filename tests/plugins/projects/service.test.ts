@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -10,26 +10,32 @@ const projectsDir = join(testDir, 'projects')
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getBakinPaths: () => ({ projects: projectsDir }),
   getContentDir: () => testDir,
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-const mockCreateTask = vi.fn((_opts?: unknown) => Promise.resolve({ id: 'newtask1' }))
-vi.mock('../../../src/core/task-service', () => ({
+const mockCreateTask = mock((_opts?: unknown) => Promise.resolve({ id: 'newtask1' }))
+mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
 
@@ -44,7 +50,7 @@ const mockTaskboardColumns = {
 }
 
 // Suppress broadcast
-;(globalThis as any).__bakinBroadcast = vi.fn()
+;(globalThis as any).__bakinBroadcast = mock()
 
 // Clear project index between tests
 function clearIndex() {
@@ -280,7 +286,7 @@ describe('promoteItemToTask', () => {
     const result = await promoteItemToTask(id, 't001')
 
     expect(result.taskId).toBe('newtask1')
-    expect(mockCreateTask).toHaveBeenCalledOnce()
+    expect(mockCreateTask).toHaveBeenCalledTimes(1)
 
     const project = readProject(id)
     expect(project!.tasks[0].taskId).toBe('newtask1')

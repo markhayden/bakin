@@ -10,7 +10,7 @@
  *   5. Wires `ctx.watchFiles` with the spec-listed OpenClaw and Bakin paths.
  *   6. Keeps the existing nav item (`/memory`).
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -19,47 +19,53 @@ const testDir = join(tmpdir(), `bakin-test-memory-activation-${Date.now()}`)
 
 // Mock factories are hoisted, so they can't close over `testDir`. Inline the
 // path computation instead; they all land under the same OS tmp root.
-vi.mock('../../../src/core/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-activation-mock`)
   return {
     getContentDir: () => base,
     getBakinPaths: () => ({ root: base, plugins: j(base, 'plugin-settings') }),
   }
 })
-vi.mock('../../../packages/core/src/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('../../../packages/core/src/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-activation-mock`)
   return {
     getContentDir: () => base,
     getBakinPaths: () => ({ root: base, plugins: j(base, 'plugin-settings') }),
   }
 })
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-vi.mock('../../../src/core/watcher', () => ({
-  watchFiles: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  watchFiles: mock(),
 }))
-vi.mock('../../../src/core/openclaw-client', () => ({
-  sendMessage: vi.fn(),
+mock.module('../../../src/core/openclaw-client', () => ({
+  sendMessage: mock(),
 }))
-vi.mock('../../../packages/core/src/openclaw-home', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('../../../packages/core/src/openclaw-home', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-activation-mock`, 'openclaw')
   return {
     getOpenClawHome: () => base,
     getOpenClawPath: (...parts: string[]) => j(base, ...parts),
   }
 })
-vi.mock('../../../packages/core/src/main-agent', () => ({
+mock.module('../../../packages/core/src/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
 }))
-vi.mock('../../../src/core/settings', () => ({
+mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     openclaw: { binaryPath: '/fake/openclaw', gatewayUrl: 'http://localhost', gatewayPort: 18789 },
     antfly: { auditTtl: null },
@@ -86,7 +92,7 @@ describe('memory plugin shell (C2)', () => {
 
   it('registers exactly one search content type, and it is bakin_memory', async () => {
     const activated = await activatePlugin(memoryPlugin, testDir)
-    const reg = activated.ctx.search.registerContentType as ReturnType<typeof vi.fn>
+    const reg = activated.ctx.search.registerContentType as ReturnType<typeof mock>
 
     expect(reg).toHaveBeenCalledTimes(1)
     const def = reg.mock.calls[0][0]
@@ -96,7 +102,7 @@ describe('memory plugin shell (C2)', () => {
 
   it('registers the bakin_memory schema with the facets the spec calls for', async () => {
     const activated = await activatePlugin(memoryPlugin, testDir)
-    const reg = activated.ctx.search.registerContentType as ReturnType<typeof vi.fn>
+    const reg = activated.ctx.search.registerContentType as ReturnType<typeof mock>
     const def = reg.mock.calls[0][0]
 
     // Core fields every tier writes.
@@ -111,7 +117,7 @@ describe('memory plugin shell (C2)', () => {
 
   it('does NOT register the legacy audit table', async () => {
     const activated = await activatePlugin(memoryPlugin, testDir)
-    const reg = activated.ctx.search.registerContentType as ReturnType<typeof vi.fn>
+    const reg = activated.ctx.search.registerContentType as ReturnType<typeof mock>
     for (const call of reg.mock.calls) {
       expect(call[0].table).not.toBe('audit')
       expect(call[0].table).not.toBe('bakin_audit')
@@ -148,7 +154,7 @@ describe('memory plugin shell (C2)', () => {
 
   it('calls watchFiles with the spec-listed paths', async () => {
     const activated = await activatePlugin(memoryPlugin, testDir)
-    const watch = activated.ctx.watchFiles as ReturnType<typeof vi.fn>
+    const watch = activated.ctx.watchFiles as ReturnType<typeof mock>
     expect(watch).toHaveBeenCalled()
     const paths = watch.mock.calls.flatMap((c) => c[0] as string[])
     // Must include Bakin's audit log and at least one OpenClaw glob for each

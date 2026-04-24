@@ -5,42 +5,59 @@
  * / `workflows.get*` channel hooks are wired and the GET /notification-channels
  * route returns the seven built-in channels.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testDir = vi.hoisted(() => {
+const testDir = (() => {
   const { join } = require('path')
   const { tmpdir } = require('os')
   return join(tmpdir(), `bakin-test-channels-route-${Date.now()}`)
-})
+})()
 
-vi.mock('../../../src/core/content-dir', () => ({
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-vi.mock('../../../src/core/audit', () => ({ appendAudit: vi.fn() }))
-vi.mock('../../../src/core/openclaw-client', () => ({
-  sendMessage: vi.fn(),
-  sendChannelMessage: vi.fn(),
+mock.module('../../../src/core/audit', () => ({ appendAudit: mock() }))
+mock.module('../../../src/core/openclaw-client', () => ({
+  sendMessage: mock(),
+  sendChannelMessage: mock(),
 }))
-vi.mock('../../../src/core/watcher', () => ({ watchFiles: vi.fn() }))
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('../../../src/core/watcher', () => ({
+  watchFiles: mock(),
+  registerSyncHook: mock(() => () => {}),
+  registerUnlinkHook: mock(() => () => {}),
+  start: mock(),
+  stop: mock(),
+}))
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
 }))
-;(globalThis as any).__bakinBroadcast = vi.fn()
+;(globalThis as any).__bakinBroadcast = mock()
 
-import workflowsPlugin from '../../../plugins/workflows/index'
+const workflowsPlugin = require('../../../plugins/workflows/index').default as typeof import('../../../plugins/workflows/index').default
 import { activatePlugin, findRoute, callRoute } from '../test-helpers'
 import type { ActivatedPlugin } from '../test-helpers'
 import type { NotificationChannelDef } from '../../../plugins/workflows/lib/notification-channel-registry'

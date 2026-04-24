@@ -19,11 +19,9 @@ export type {
   SkillDefinition,
   PluginContext,
   BakinPlugin,
-  MCPlugin,
   PluginManifest,
   PluginEntry,
   BakinConfig,
-  MCConfig,
 } from '@bakin/core/plugin-types'
 
 export type { BakinSettings } from '@bakin/core/settings'

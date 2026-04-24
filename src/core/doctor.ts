@@ -197,14 +197,21 @@ async function checkGateway(): Promise<DiagnosticResult[]> {
 /**
  * Taskboard: verify flow_runs SQLite table is accessible.
  */
+function openDoctorDb(dbPath: string) {
+  const { Database } = require('bun:sqlite') as typeof import('bun:sqlite')
+  const db = new Database(dbPath)
+  db.exec('PRAGMA journal_mode = WAL')
+  db.exec('PRAGMA busy_timeout = 5000')
+  return db
+}
+
 function checkTaskboard(_contentDir: string, _autoFix: boolean): DiagnosticResult[] {
   try {
-    const Database = require('better-sqlite3')
     const dbPath = getOpenClawPath('flows', 'registry.sqlite')
     if (!existsSync(dbPath)) {
       return [warn('taskboard', 'OpenClaw flow_runs database not found at ' + dbPath)]
     }
-    const db = new Database(dbPath)
+    const db = openDoctorDb(dbPath)
     const count = db.prepare(`SELECT count(*) as n FROM flow_runs WHERE owner_key LIKE 'bakin:task:%'`).get() as { n: number }
     db.close()
     return [ok('taskboard', `${count.n} tasks in flow_runs (SQLite)`)]
@@ -1481,13 +1488,10 @@ function checkScheduleSync(autoFix: boolean): DiagnosticResult[] {
 function checkTaskPositionIntegrity(autoFix: boolean): DiagnosticResult[] {
   const CHECK = 'tasks.order_integrity'
   try {
-    const Database = require('better-sqlite3')
     const dbPath = getOpenClawPath('flows', 'registry.sqlite')
     if (!existsSync(dbPath)) return [ok(CHECK, 'No task database found (OK for fresh install)')]
 
-    const db = new Database(dbPath)
-    db.pragma('journal_mode = WAL')
-    db.pragma('busy_timeout = 5000')
+    const db = openDoctorDb(dbPath)
 
     try {
       const rows = db.prepare(
@@ -1510,7 +1514,7 @@ function checkTaskPositionIntegrity(autoFix: boolean): DiagnosticResult[] {
           case 'queued': col = state.column === 'backlog' ? 'backlog' : 'todo'; break
           case 'running': col = 'inProgress'; break
           case 'waiting': col = row.blocked_task_id ? 'blocked' : 'review'; break
-          case 'succeeded': col = (state.archived || state.confirmed) ? 'archived' : 'done'; break
+          case 'succeeded': col = state.archived ? 'archived' : 'done'; break
           default: col = 'backlog'
         }
 

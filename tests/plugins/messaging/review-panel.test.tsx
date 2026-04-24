@@ -1,14 +1,20 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-review-panel-${Date.now()}`)
 
 // Safety mock — keeps any accidental storage access off ~/.bakin/
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
@@ -20,7 +26,7 @@ vi.mock('../../../src/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('@/components/ui/button', () => ({
+mock.module('@/components/ui/button', () => ({
   Button: ({ children, disabled, onClick, ...props }: Record<string, unknown>) => (
     <button disabled={disabled as boolean} onClick={onClick as () => void} {...props}>
       {children as React.ReactNode}
@@ -28,31 +34,31 @@ vi.mock('@/components/ui/button', () => ({
   ),
 }))
 
-vi.mock('@/components/ui/badge', () => ({
+mock.module('@/components/ui/badge', () => ({
   Badge: ({ children, ...props }: Record<string, unknown>) => (
     <span data-testid="badge" {...props}>{children as React.ReactNode}</span>
   ),
 }))
 
-vi.mock('@/components/ui/input', () => ({
+mock.module('@/components/ui/input', () => ({
   Input: (props: Record<string, unknown>) => <input {...props} />,
 }))
 
-vi.mock('@/components/ui/textarea', () => ({
+mock.module('@/components/ui/textarea', () => ({
   Textarea: (props: Record<string, unknown>) => <textarea {...props} />,
 }))
 
-vi.mock('@/components/ui/label', () => ({
+mock.module('@/components/ui/label', () => ({
   Label: ({ children, ...props }: Record<string, unknown>) => <label {...props}>{children as React.ReactNode}</label>,
 }))
 
-vi.mock('@/components/bakin-drawer', () => ({
+mock.module('@/components/bakin-drawer', () => ({
   BakinDrawer: ({ children, open }: { children: React.ReactNode; open: boolean }) => (
     open ? <div data-testid="edit-drawer">{children}</div> : null
   ),
 }))
 
-vi.mock('@/components/agent-avatar', () => ({
+mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: () => <span />,
 }))
 

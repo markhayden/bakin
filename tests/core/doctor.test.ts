@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testHome = vi.hoisted(() => {
+const testHome = (() => {
   const { mkdtempSync } = require('fs')
   const { tmpdir } = require('os')
   const { join } = require('path')
@@ -12,9 +12,15 @@ const testHome = vi.hoisted(() => {
   process.env.BAKIN_HOME = home
   process.env.OPENCLAW_HOME = openclaw
   return { home, openclaw }
-})
+})()
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testHome.home,
   getBakinPaths: () => ({
     home: testHome.home,
@@ -40,8 +46,8 @@ vi.mock('@/core/content-dir', () => ({
 }))
 
 // Mock settings
-vi.mock('@/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('@/core/settings', () => ({
+  getSettings: mock(() => ({
     antfly: { enabled: false },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
     openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -50,62 +56,61 @@ vi.mock('@/core/settings', () => ({
 }))
 
 // Mock openclaw-config — owns the authoritative agent roster after T2
-vi.mock('@bakin/core/openclaw-config', () => ({
-  getAgentIds: vi.fn(() => ['main', 'patch', 'pixel']),
-  findAgentById: vi.fn((id: string) => (['main', 'patch', 'pixel'].includes(id) ? { id } : null)),
-  readOpenClawConfig: vi.fn(() => ({ agents: [{ id: 'main' }, { id: 'patch' }, { id: 'pixel' }] })),
-  resetOpenClawConfigCache: vi.fn(),
+mock.module('@bakin/core/openclaw-config', () => ({
+  getAgentIds: mock(() => ['main', 'patch', 'pixel']),
+  findAgentById: mock((id: string) => (['main', 'patch', 'pixel'].includes(id) ? { id } : null)),
+  readOpenClawConfig: mock(() => ({ agents: [{ id: 'main' }, { id: 'patch' }, { id: 'pixel' }] })),
+  resetOpenClawConfigCache: mock(),
 }))
 
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => '/tmp/doctor-test-openclaw',
   getOpenClawPath: (...parts: string[]) => ['/tmp/doctor-test-openclaw', ...parts].join('/'),
 }))
 
 // Mock openclaw-client
-vi.mock('@/core/openclaw-client', () => ({
-  ping: vi.fn(async () => false),
-  sendMessage: vi.fn(),
+mock.module('@/core/openclaw-client', () => ({
+  ping: mock(async () => false),
+  sendMessage: mock(),
 }))
 
 // Mock audit (avoid file writes in tests)
-vi.mock('@/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('@/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-// Mock better-sqlite3 so doctor checks don't touch real SQLite
-vi.mock('better-sqlite3', () => {
-  return {
-    default: vi.fn(() => ({
-      prepare: vi.fn(() => ({
-        get: vi.fn(() => ({ n: 0 })),
-      })),
-      close: vi.fn(),
+// Mock bun:sqlite so doctor checks don't touch real SQLite
+mock.module('bun:sqlite', () => ({
+  Database: mock(() => ({
+    exec: mock(),
+    prepare: mock(() => ({
+      get: mock(() => ({ n: 0 })),
     })),
-  }
-})
+    close: mock(),
+  })),
+}))
 
 // Mock onboarding state — controls the requireOnboard gate
 let mockIsOnboarded = true
-vi.mock('@/core/onboarding/state', () => ({
+mock.module('@/core/onboarding/state', () => ({
   isOnboarded: () => mockIsOnboarded,
 }))
 
 // Mock plugin-assets onboarding component — controls drift status surfaced by doctor
-const mockPluginAssetsCheck = vi.fn()
-vi.mock('@/core/onboarding/plugin-assets', () => ({
+const mockPluginAssetsCheck = mock()
+mock.module('@/core/onboarding/plugin-assets', () => ({
   pluginAssetsComponent: {
     name: 'plugin-assets',
     check: mockPluginAssetsCheck,
-    install: vi.fn(),
+    install: mock(),
   },
 }))
 
 // Mock mcporter (avoid install/config in tests)
-vi.mock('@/core/mcporter', () => ({
-  isMcporterInstalled: vi.fn(() => true),
-  installMcporter: vi.fn(() => true),
-  verifyConfig: vi.fn(() => ({
+mock.module('@/core/mcporter', () => ({
+  isMcporterInstalled: mock(() => true),
+  installMcporter: mock(() => true),
+  verifyConfig: mock(() => ({
     installed: true,
     configExists: true,
     agentEntries: [
@@ -115,7 +120,7 @@ vi.mock('@/core/mcporter', () => ({
     ],
     staleEntries: [],
   })),
-  syncConfig: vi.fn(() => []),
+  syncConfig: mock(() => []),
 }))
 
 describe('doctor', () => {
@@ -160,7 +165,7 @@ describe('doctor', () => {
     const doctor = await import('@/core/doctor')
     const results = await doctor.runDiagnostics(contentDir, tempDir)
     const tbResults = results.filter(r => r.check === 'taskboard')
-    // With mocked better-sqlite3, should get either ok or warn depending on db existence
+    // With mocked bun:sqlite, should get either ok or warn depending on db existence
     expect(tbResults.length).toBeGreaterThan(0)
   })
 
@@ -252,7 +257,7 @@ describe('doctor', () => {
 
     it('should auto-fix mismatched sidecar by merging into stub', async () => {
       // Override settings to enable autoFix
-      const { getSettings } = await import('@/core/settings')
+      const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       vi.mocked(getSettings).mockReturnValue({
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: true },
@@ -310,8 +315,8 @@ describe('doctor', () => {
   describe('requireOnboard gate', () => {
     it('returns single error when requireOnboard=true and machine is not onboarded', async () => {
       mockIsOnboarded = false
-      const { getSettings } = await import('@/core/settings')
-      const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
+      const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
+      const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
@@ -319,7 +324,7 @@ describe('doctor', () => {
         service: { enabled: false },
       })
       vi.resetModules()
-      const { runDiagnostics } = await import('@/core/doctor')
+      const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
       expect(results).toHaveLength(1)
       expect(results[0].check).toBe('onboarded')
@@ -329,8 +334,8 @@ describe('doctor', () => {
 
     it('runs normal checks when requireOnboard=true and machine IS onboarded', async () => {
       mockIsOnboarded = true
-      const { getSettings } = await import('@/core/settings')
-      const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
+      const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
+      const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
@@ -338,7 +343,7 @@ describe('doctor', () => {
         service: { enabled: false },
       })
       vi.resetModules()
-      const { runDiagnostics } = await import('@/core/doctor')
+      const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
       // Should have many results from the normal check suite, not just 1
       expect(results.length).toBeGreaterThan(1)
@@ -347,8 +352,8 @@ describe('doctor', () => {
 
     it('runs normal checks when requireOnboard=false and machine is NOT onboarded', async () => {
       mockIsOnboarded = false
-      const { getSettings } = await import('@/core/settings')
-      const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
+      const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
+      const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },
@@ -356,7 +361,7 @@ describe('doctor', () => {
         service: { enabled: false },
       })
       vi.resetModules()
-      const { runDiagnostics } = await import('@/core/doctor')
+      const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
       expect(results.length).toBeGreaterThan(1)
       expect(results.find(r => r.check === 'onboarded')).toBeUndefined()

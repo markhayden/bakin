@@ -2,7 +2,7 @@
  * Tests for tasks plugin routes and exec tools.
  * Validates all REST API endpoints and MCP exec tools registered by the plugin.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { mkdirSync, rmSync, existsSync } from 'fs'
 import type { APIRoute, ExecToolDefinition } from '../../../src/lib/plugin-types'
@@ -21,42 +21,51 @@ import {
 
 const testDir = join(process.cwd(), 'test-content-tasks-routes')
 
-vi.mock('../../../src/core/content-dir', () => ({
-  getContentDir: () => testDir,
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+}))
+
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/lib/content', () => ({
-  readContentFile: vi.fn(() => null),
-  writeContentFile: vi.fn(),
+mock.module('../../../src/lib/content', () => ({
+  readContentFile: mock(() => null),
+  writeContentFile: mock(),
 }))
 
-vi.mock('../../../plugins/workflows/lib/runtime', () => ({
-  cancelInstance: vi.fn(),
+mock.module('../../../plugins/workflows/lib/runtime', () => ({
+  cancelInstance: mock(),
 }))
 
 // Mock taskboard functions
-const mockReadTaskboard = vi.fn()
-const mockCreateTask = vi.fn()
-const mockDeleteTask = vi.fn()
-const mockAssignTask = vi.fn()
-const mockAddTaskLog = vi.fn()
-const mockBlockTask = vi.fn()
-const mockUpdateTask = vi.fn()
-const mockMoveTask = vi.fn()
-const mockSetDependency = vi.fn()
-const mockClearDependency = vi.fn()
-const mockReorderTasks = vi.fn()
+const mockReadTaskboard = mock()
+const mockCreateTask = mock()
+const mockDeleteTask = mock()
+const mockAssignTask = mock()
+const mockAddTaskLog = mock()
+const mockBlockTask = mock()
+const mockUpdateTask = mock()
+const mockMoveTask = mock()
+const mockSetDependency = mock()
+const mockClearDependency = mock()
+const mockReorderTasks = mock()
 
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   readTaskboard: (...args: unknown[]) => mockReadTaskboard(...args),
   createTask: (...args: unknown[]) => mockCreateTask(...args),
   deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
@@ -68,21 +77,21 @@ vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
   setDependency: (...args: unknown[]) => mockSetDependency(...args),
   clearDependency: (...args: unknown[]) => mockClearDependency(...args),
   reorderTasks: (...args: unknown[]) => mockReorderTasks(...args),
-  autoArchiveDoneTasks: vi.fn().mockReturnValue(0),
-  archiveOldTasks: vi.fn().mockReturnValue(0),
+  autoArchiveDoneTasks: mock().mockReturnValue(0),
+  archiveOldTasks: mock().mockReturnValue(0),
 }))
 
 // Mock task-service functions
-const mockMoveTaskWithEffects = vi.fn()
-const mockBlockTaskWithEffects = vi.fn()
-const mockCreateTaskWithEffects = vi.fn()
-const mockReportComplete = vi.fn()
-const mockSetDependencyWithEffects = vi.fn()
-const mockGetTaskDetails = vi.fn()
-const mockLogProgress = vi.fn()
-const mockTriggerDispatch = vi.fn()
+const mockMoveTaskWithEffects = mock()
+const mockBlockTaskWithEffects = mock()
+const mockCreateTaskWithEffects = mock()
+const mockReportComplete = mock()
+const mockSetDependencyWithEffects = mock()
+const mockGetTaskDetails = mock()
+const mockLogProgress = mock()
+const mockTriggerDispatch = mock()
 
-vi.mock('../../../src/core/task-service', () => ({
+mock.module('../../../src/core/task-service', () => ({
   moveTaskWithEffects: (...args: unknown[]) => mockMoveTaskWithEffects(...args),
   blockTaskWithEffects: (...args: unknown[]) => mockBlockTaskWithEffects(...args),
   createTaskWithEffects: (...args: unknown[]) => mockCreateTaskWithEffects(...args),
@@ -112,7 +121,17 @@ afterAll(() => {
 })
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  mock.clearAllMocks()
+  // bun:test's clearAllMocks only clears call history; reset implementations
+  // so a previous test's mockRejectedValue doesn't leak into the next.
+  for (const m of [
+    mockReadTaskboard, mockCreateTask, mockDeleteTask, mockAssignTask,
+    mockAddTaskLog, mockBlockTask, mockUpdateTask, mockMoveTask,
+    mockSetDependency, mockClearDependency, mockReorderTasks,
+    mockMoveTaskWithEffects, mockBlockTaskWithEffects, mockCreateTaskWithEffects,
+    mockReportComplete, mockSetDependencyWithEffects, mockGetTaskDetails,
+    mockLogProgress, mockTriggerDispatch,
+  ]) m.mockReset()
 })
 
 // ─── Route Registration ────────────────────────────────────────────────────
@@ -866,7 +885,7 @@ describe('bakin_exec_tasks_get', () => {
   it('enriches with project context when projectId is present', async () => {
     const details = { task: { id: 'abc', projectId: 'proj-1' }, column: 'todo' }
     mockGetTaskDetails.mockResolvedValue(details)
-    const mockHooksInvoke = activated.ctx.hooks.invoke as ReturnType<typeof vi.fn>
+    const mockHooksInvoke = activated.ctx.hooks.invoke as ReturnType<typeof mock>
     mockHooksInvoke.mockResolvedValueOnce({
       title: 'Project X',
       status: 'active',
@@ -886,7 +905,7 @@ describe('bakin_exec_tasks_get', () => {
   it('gracefully handles missing project plugin', async () => {
     const details = { task: { id: 'abc', projectId: 'proj-1' }, column: 'todo' }
     mockGetTaskDetails.mockResolvedValue(details)
-    const mockHooksInvoke = activated.ctx.hooks.invoke as ReturnType<typeof vi.fn>
+    const mockHooksInvoke = activated.ctx.hooks.invoke as ReturnType<typeof mock>
     mockHooksInvoke.mockRejectedValueOnce(new Error('Hook not found'))
 
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!

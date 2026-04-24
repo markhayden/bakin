@@ -2,54 +2,65 @@
  * Streaming endpoint tests — verifies SSE format, token events,
  * proposal extraction, session persistence, and error handling.
  */
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
-const testDir = vi.hoisted(() => {
+const testDir = (() => {
   const { join } = require('path')
   const { tmpdir } = require('os')
   return join(tmpdir(), `bakin-test-streaming-${Date.now()}`)
-})
+})()
+
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ messaging: testDir }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
+    info: mock(), warn: mock(), error: mock(), debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({ appendAudit: vi.fn() }))
-vi.mock('../../../src/core/watcher', () => ({ watchDir: vi.fn() }))
-vi.mock('@bakin/core/openclaw-home', () => ({
-  getOpenClawPath: vi.fn(() => '/tmp/mock-openclaw.json'),
-  getOpenClawHome: vi.fn(() => '/tmp/mock-openclaw'),
+mock.module('../../../src/core/audit', () => ({ appendAudit: mock() }))
+mock.module('../../../src/core/watcher', () => ({ watchDir: mock() }))
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawPath: mock(() => '/tmp/mock-openclaw.json'),
+  getOpenClawHome: mock(() => '/tmp/mock-openclaw'),
 }))
 
 // Mock gateway — default returns canned text, tests can override
-const mockStreamChatCompletion = vi.fn()
-const mockChatCompletion = vi.fn()
+const mockStreamChatCompletion = mock()
+const mockChatCompletion = mock()
 
-vi.mock('../../../plugins/messaging/lib/gateway', () => ({
+mock.module('../../../plugins/messaging/lib/gateway', () => ({
   streamChatCompletion: (...args: unknown[]) => mockStreamChatCompletion(...args),
   chatCompletion: (...args: unknown[]) => mockChatCompletion(...args),
 }))
 
-;(globalThis as any).__bakinBroadcast = vi.fn()
+;(globalThis as any).__bakinBroadcast = mock()
 
 // ---------------------------------------------------------------------------
 // Imports
 // ---------------------------------------------------------------------------
 
-import messagingPlugin from '../../../plugins/messaging/index'
+const messagingPlugin = require('../../../plugins/messaging/index').default as typeof import('../../../plugins/messaging/index').default
 import {
   activatePlugin,
   findRoute,
@@ -117,7 +128,7 @@ beforeEach(() => {
   const sessionsDir = join(testDir, 'messaging', 'sessions')
   if (existsSync(sessionsDir)) rmSync(sessionsDir, { recursive: true, force: true })
   writeFileSync(join(testDir, 'messaging.json'), '[]')
-  vi.clearAllMocks()
+  mock.clearAllMocks()
 })
 
 async function createTestSession(agentId = 'chef'): Promise<string> {

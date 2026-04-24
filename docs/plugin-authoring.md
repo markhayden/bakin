@@ -265,7 +265,8 @@ const { status, body } = await callRoute(routes[0], ctx, { /* ... */ })
 All tests **must** mock the content-dir resolvers (both
 `@/core/content-dir` and `@bakin/core` pathways) to a temp directory —
 see Bakin's `CLAUDE.md` "Testing Rules" section. Run with
-`bunx vitest run`.
+`bun test --isolate` (or `bun test tests/path/to/foo.test.ts --isolate`
+for a single file).
 
 For slot-based UI tests, call `__clearSlot('slot-name')` between cases
 to reset registrations.

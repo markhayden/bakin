@@ -1,12 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 
-vi.hoisted(() => {
+(() => {
   const { mkdtempSync } = require('fs')
   const { tmpdir } = require('os')
   const { join } = require('path')
   process.env.BAKIN_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
   process.env.OPENCLAW_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
-})
+})()
 
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
@@ -18,20 +18,32 @@ const sidecarDir = join(testDir, 'schedule')
 const sidecarPath = join(sidecarDir, 'sidecar.json')
 const jobsPath = join(testDir, 'jobs.json')
 
-vi.mock('../../../src/core/content-dir', () => ({
-  getContentDir: () => testDir,
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+}))
+
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-import { readOpenClawJobs, mergeJob, readMergedJobs } from '@bakin/schedule/lib/jobs-reader'
+// Dynamic require — jobs-reader.ts calls getOpenClawHome at module init.
+// ES imports are hoisted above the IIFE that sets OPENCLAW_HOME, so using
+// require() defers the load until after env is configured.
+const { readOpenClawJobs, mergeJob, readMergedJobs } = require('@bakin/schedule/lib/jobs-reader') as typeof import('@bakin/schedule/lib/jobs-reader')
 
 function writeJobs(jobs: OpenClawJobsFile) {
   writeFileSync(jobsPath, JSON.stringify(jobs))

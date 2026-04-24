@@ -1,10 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
 import { mkdtempSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-vi.mock('../../scripts/lib/registry', () => ({
-  addExecTool: vi.fn(),
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../scripts/lib/registry', () => ({
+  addExecTool: mock(),
 }))
 
 // Under filename-as-identity, the asset path is a pure function of the
@@ -12,7 +18,7 @@ vi.mock('../../scripts/lib/registry', () => ({
 // materialize the file at `assets/store/{YYYY-MM}/{filename}` so the
 // existsSync check in post-discord passes.
 let mockContentDir = tmpdir()
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => mockContentDir,
   getBakinPaths: () => ({ assets: join(mockContentDir, 'assets') }),
 }))
@@ -37,7 +43,7 @@ describe('postDiscord', () => {
   afterEach(() => {
     process.env = { ...originalEnv }
     _resetChannelCache()
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   /**
@@ -47,7 +53,7 @@ describe('postDiscord', () => {
    */
   function mockFetchWithDiscovery(msgResponse?: { id: string; channel_id: string }) {
     const msg = msgResponse || { id: 'msg-1', channel_id: '111111111111' }
-    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+    return spyOn(globalThis, "fetch" as any).mockImplementation(async (url: any) => {
       const urlStr = typeof url === 'string' ? url : url.toString()
       if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
         return { ok: true, json: async () => MOCK_CHANNELS } as Response
@@ -102,7 +108,7 @@ describe('postDiscord', () => {
     expect(result.ok).toBe(true)
     expect(result.channel).toBe('#general')
     // Verify message was posted to the correct channel
-    const postCall = mockFetch.mock.calls.find(c =>
+    const postCall = mockFetch.mock.calls.find((c: any[]) =>
       (typeof c[0] === 'string' ? c[0] : c[0].toString()).includes('/channels/111111111111/messages')
     )
     expect(postCall).toBeTruthy()
@@ -125,7 +131,7 @@ describe('postDiscord', () => {
   })
 
   it('handles Discord API error response', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+    spyOn(globalThis, "fetch" as any).mockImplementation(async (url: any) => {
       const urlStr = typeof url === 'string' ? url : url.toString()
       if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
         return { ok: true, json: async () => MOCK_CHANNELS } as Response
@@ -145,7 +151,7 @@ describe('postDiscord', () => {
 
   it('handles fetch error on message post', async () => {
     let callCount = 0
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+    spyOn(globalThis, "fetch" as any).mockImplementation(async (url: any) => {
       const urlStr = typeof url === 'string' ? url : url.toString()
       if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
         return { ok: true, json: async () => MOCK_CHANNELS } as Response
@@ -170,8 +176,8 @@ describe('postDiscord', () => {
     const vidRel = 'assets/store/2026-04/20260401-clip-e5f6a7b8.mp4'
     const imgAbs = join(tmpDir, imgRel)
     const vidAbs = join(tmpDir, vidRel)
-    const { mkdirSync } = await import('fs')
-    const { dirname } = await import('path')
+    const { mkdirSync } = require('fs') as typeof import('fs')
+    const { dirname } = require('path') as typeof import('path')
     mkdirSync(dirname(imgAbs), { recursive: true })
     mkdirSync(dirname(vidAbs), { recursive: true })
     writeFileSync(imgAbs, 'fake-image')
@@ -188,7 +194,7 @@ describe('postDiscord', () => {
     })
 
     expect(result.ok).toBe(true)
-    const postCall = mockFetch.mock.calls.find(c =>
+    const postCall = mockFetch.mock.calls.find((c: any[]) =>
       (typeof c[0] === 'string' ? c[0] : c[0].toString()).includes('/channels/111111111111/messages')
     )
     expect(postCall).toBeTruthy()
@@ -212,7 +218,7 @@ describe('postDiscord', () => {
   })
 
   it('handles channel discovery failure', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+    spyOn(globalThis, "fetch" as any).mockImplementation(async (url: any) => {
       const urlStr = typeof url === 'string' ? url : url.toString()
       if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
         return { ok: false, status: 401, text: async () => 'Unauthorized' } as Response

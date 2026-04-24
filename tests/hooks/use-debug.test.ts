@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
 
 // Mock fetch globally so initialize() doesn't hit the network
-vi.stubGlobal('fetch', vi.fn(() =>
+vi.stubGlobal('fetch', mock(() =>
   Promise.resolve({ ok: false, json: () => Promise.resolve({}) }),
 ))
 
@@ -22,22 +22,24 @@ describe('useContentStore — debug state', () => {
       },
       configurable: true,
     })
+    // bun:test has no vi.resetModules; reset the zustand store state directly.
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    useContentStore.setState({ debug: false }, false)
   })
 
   afterEach(() => {
     cleanup()
     storage.clear()
-    vi.resetModules()
   })
 
   it('defaults debug to false', async () => {
-    const { useContentStore } = await import('@/hooks/use-content-store')
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
     const state = useContentStore.getState()
     expect(state.debug).toBe(false)
   })
 
   it('setDebug(true) updates state and persists to localStorage', async () => {
-    const { useContentStore } = await import('@/hooks/use-content-store')
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
 
     act(() => { useContentStore.getState().setDebug(true) })
 
@@ -46,7 +48,7 @@ describe('useContentStore — debug state', () => {
   })
 
   it('setDebug(false) updates state and persists "false" to localStorage', async () => {
-    const { useContentStore } = await import('@/hooks/use-content-store')
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
 
     act(() => { useContentStore.getState().setDebug(true) })
     act(() => { useContentStore.getState().setDebug(false) })
@@ -57,7 +59,7 @@ describe('useContentStore — debug state', () => {
 
   it('initialize() hydrates debug from localStorage when "true"', async () => {
     storage.set('bakin-debug', 'true')
-    const { useContentStore } = await import('@/hooks/use-content-store')
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
 
     await act(async () => { await useContentStore.getState().initialize() })
 
@@ -65,7 +67,7 @@ describe('useContentStore — debug state', () => {
   })
 
   it('initialize() leaves debug false when localStorage key is absent', async () => {
-    const { useContentStore } = await import('@/hooks/use-content-store')
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
 
     await act(async () => { await useContentStore.getState().initialize() })
 
@@ -74,7 +76,7 @@ describe('useContentStore — debug state', () => {
 
   it('initialize() leaves debug false when localStorage value is not "true"', async () => {
     storage.set('bakin-debug', 'false')
-    const { useContentStore } = await import('@/hooks/use-content-store')
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
 
     await act(async () => { await useContentStore.getState().initialize() })
 
@@ -92,7 +94,7 @@ describe('useContentStore — debug state', () => {
       configurable: true,
     })
 
-    const { useContentStore } = await import('@/hooks/use-content-store')
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
 
     // Should not throw
     act(() => { useContentStore.getState().setDebug(true) })
@@ -115,16 +117,18 @@ describe('useDebug hook', () => {
       },
       configurable: true,
     })
+    // bun:test has no vi.resetModules; reset the zustand store state directly.
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    useContentStore.setState({ debug: false }, false)
   })
 
   afterEach(() => {
     cleanup()
     storage.clear()
-    vi.resetModules()
   })
 
   it('returns [false, toggleFn] by default', async () => {
-    const { useDebug } = await import('@/hooks/use-debug')
+    const { useDebug } = require('@/hooks/use-debug') as typeof import('@/hooks/use-debug')
     const { result } = renderHook(() => useDebug())
 
     expect(result.current[0]).toBe(false)
@@ -132,7 +136,7 @@ describe('useDebug hook', () => {
   })
 
   it('toggleDebug flips debug from false to true', async () => {
-    const { useDebug } = await import('@/hooks/use-debug')
+    const { useDebug } = require('@/hooks/use-debug') as typeof import('@/hooks/use-debug')
     const { result } = renderHook(() => useDebug())
 
     act(() => { result.current[1]() })
@@ -142,8 +146,8 @@ describe('useDebug hook', () => {
   })
 
   it('toggleDebug flips debug from true to false', async () => {
-    const { useContentStore } = await import('@/hooks/use-content-store')
-    const { useDebug } = await import('@/hooks/use-debug')
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useDebug } = require('@/hooks/use-debug') as typeof import('@/hooks/use-debug')
 
     act(() => { useContentStore.getState().setDebug(true) })
 
@@ -171,12 +175,14 @@ describe('DebugSeed', () => {
       },
       configurable: true,
     })
+    // bun:test has no vi.resetModules; reset the zustand store state directly.
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    useContentStore.setState({ debug: false }, false)
   })
 
   afterEach(() => {
     cleanup()
     storage.clear()
-    vi.resetModules()
   })
 
   it('seeds debug from ?debug=true URL param', async () => {
@@ -187,11 +193,11 @@ describe('DebugSeed', () => {
       writable: true,
     })
 
-    const { useContentStore } = await import('@/hooks/use-content-store')
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
 
     // Import and render DebugSeed — it's a React component, so we need React
     const React = await import('react')
-    const { render: rtlRender } = await import('@testing-library/react')
+    const { render: rtlRender } = require('@testing-library/react') as typeof import('@testing-library/react')
 
     // DebugSeed uses useContentStore directly, no other providers needed
     function DebugSeed() {
@@ -217,9 +223,9 @@ describe('DebugSeed', () => {
       writable: true,
     })
 
-    const { useContentStore } = await import('@/hooks/use-content-store')
+    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
     const React = await import('react')
-    const { render: rtlRender } = await import('@testing-library/react')
+    const { render: rtlRender } = require('@testing-library/react') as typeof import('@testing-library/react')
 
     function DebugSeed() {
       const setDebug = useContentStore((s: any) => s.setDebug)

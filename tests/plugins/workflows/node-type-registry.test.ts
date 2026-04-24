@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -6,12 +6,18 @@ import { tmpdir } from 'os'
 // but we mock the storage modules so a future change to the registry can't
 // silently start touching ~/.bakin/ or ~/.openclaw/.
 const testDir = join(tmpdir(), `bakin-test-node-type-registry-${Date.now()}`)
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-vi.mock('@bakin/tasks/lib/flow-store', () => ({}))
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/tasks/lib/flow-store', () => ({}))
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))

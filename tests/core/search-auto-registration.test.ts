@@ -7,10 +7,10 @@
  * `skipFileBackedWiring` escape hatch used by the Next.js catch-all.
  *
  * Mandatory test isolation per CLAUDE.md: every filesystem-touching
- * dependency is mocked to a temp dir / vi.fn so this test never reads
+ * dependency is mocked to a temp dir / mock so this test never reads
  * or writes ~/.bakin/.
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock, type Mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { rmSync } from 'fs'
@@ -18,7 +18,7 @@ import type { APIRoute } from '../../packages/core/src/plugin-types'
 
 const testDir = join(tmpdir(), `bakin-test-search-autoreg-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
@@ -30,48 +30,48 @@ vi.mock('@/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
 // Mock watcher so registerFileBackedContentType doesn't try to attach
 // real chokidar hooks — we assert call counts to verify the
 // skipFileBackedWiring branch.
-vi.mock('@/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('@/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
 // Mock antfly so api.query() returns a deterministic stub instead of
 // hitting the real backend.
-vi.mock('@/core/antfly', () => ({
-  enabled: vi.fn(() => true),
-  available: vi.fn(() => true),
-  createTable: vi.fn(async () => true),
-  listTables: vi.fn(async () => []),
-  indexDocument: vi.fn(async () => {}),
-  removeDocument: vi.fn(async () => {}),
-  transformDocument: vi.fn(async () => {}),
-  rebuildIndexes: vi.fn(async () => {}),
-  batchIndex: vi.fn(async (_t: string, docs: Record<string, unknown>) => Object.keys(docs).length),
-  multiQuery: vi.fn(async () => ({ results: [], total: 0, took: 0 })),
-  queryTable: vi.fn(async () => ({
+mock.module('@/core/antfly', () => ({
+  enabled: mock(() => true),
+  available: mock(() => true),
+  createTable: mock(async () => true),
+  listTables: mock(async () => []),
+  indexDocument: mock(async () => {}),
+  removeDocument: mock(async () => {}),
+  transformDocument: mock(async () => {}),
+  rebuildIndexes: mock(async () => {}),
+  batchIndex: mock(async (_t: string, docs: Record<string, unknown>) => Object.keys(docs).length),
+  multiQuery: mock(async () => ({ results: [], total: 0, took: 0 })),
+  queryTable: mock(async () => ({
     results: [{ id: 'doc-1', table: 'bakin_widgets', score: 0.9, fields: { title: 'Hi' } }],
     aggregations: undefined,
     took: 7,
     total: 1,
   })),
-  getIndexHealth: vi.fn(async () => null),
-  getTableStats: vi.fn(async () => null),
+  getIndexHealth: mock(async () => null),
+  getTableStats: mock(async () => null),
 }))
 
-vi.mock('@/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('@/core/settings', () => ({
+  getSettings: mock(() => ({
     antfly: {
       enabled: true,
       url: 'http://localhost:8080/api/v1',
@@ -90,8 +90,8 @@ vi.mock('@/core/settings', () => ({
   })),
 }))
 
-vi.mock('@/core/sse', () => ({
-  broadcast: vi.fn(),
+mock.module('@/core/sse', () => ({
+  broadcast: mock(),
 }))
 
 import { buildSearchAPI, resetSearchRegistry } from '@/core/search-registry'
@@ -105,7 +105,7 @@ afterAll(() => {
 describe('search-registry buildSearchAPI auto-registration', () => {
   beforeEach(() => {
     resetSearchRegistry()
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     vi.mocked(antfly.enabled).mockReturnValue(true)
   })
 

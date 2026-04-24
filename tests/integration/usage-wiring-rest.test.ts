@@ -6,14 +6,20 @@
  * "real" wiring works — not just that trackResponse calls a spy.
  */
 
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { rmSync } from 'fs'
 
 const testDir = join(tmpdir(), `bakin-usage-wiring-rest-${Date.now()}`)
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
@@ -23,12 +29,12 @@ vi.mock('../../src/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
@@ -37,7 +43,7 @@ vi.mock('../../src/core/logger', () => ({
 // mock any time "plugins/tasks" appears in the source. Several `/api/tasks`
 // fixture URLs trip that check, so we stub flow-store to keep the hook green
 // and guarantee the tasks storage layer can never be reached from this file.
-vi.mock('../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('../../plugins/tasks/lib/flow-store', () => ({}))
 
 import { trackResponse, normalizePath } from '../../src/core/rest-tracking'
 import { getUsageFeed, clearUsage } from '../../src/core/usage'
@@ -56,7 +62,7 @@ function makeFakeReqRes(opts: FakeReqResOpts = {}) {
     headers: opts.headers ?? {},
   } as any
   const res = {
-    end: vi.fn(),
+    end: mock(),
     statusCode: opts.statusCode ?? 200,
   } as any
   return { req, res }

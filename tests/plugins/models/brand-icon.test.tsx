@@ -3,22 +3,28 @@
  * Unit tests for BrandIcon — SVG render for known slugs, first-letter
  * chip fallback for unknown / missing slugs, color application.
  */
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, mock } from 'bun:test'
 import { cleanup, render } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-brand-icon-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
@@ -55,8 +61,9 @@ describe('BrandIcon', () => {
   it('applies the fallbackColor as background on the chip', () => {
     const { container } = render(<BrandIcon slug="unknown-brand" fallbackColor="#123456" fallbackText="X" />)
     const chip = container.querySelector('span')!
-    // JSDOM normalizes hex to rgb. #123456 = rgb(18, 52, 86)
-    expect(chip.getAttribute('style')).toMatch(/rgb\(\s*18,\s*52,\s*86\s*\)/)
+    // happy-dom keeps the hex form verbatim (unlike jsdom's rgb normalization).
+    // Accept either representation so the test doesn't care about the DOM impl.
+    expect(chip.getAttribute('style')).toMatch(/#123456|rgb\(\s*18,\s*52,\s*86\s*\)/)
   })
 
   it('uses slug as fallback text when fallbackText is absent', () => {

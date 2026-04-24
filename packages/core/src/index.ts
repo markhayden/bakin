@@ -26,11 +26,9 @@ export type {
   SkillDefinition,
   PluginContext,
   BakinPlugin,
-  MCPlugin,
   PluginManifest,
   PluginEntry,
   BakinConfig,
-  MCConfig,
 } from './plugin-types'
 
 // Storage

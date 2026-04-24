@@ -17,6 +17,11 @@ const log = createLogger('lifecycle')
 
 let shutdownInProgress = false
 
+/** Tests use this between cases — bun:test has no vi.resetModules equivalent. */
+export function _resetShutdownStateForTests(): void {
+  shutdownInProgress = false
+}
+
 export function registerShutdownHandlers(server: Server, contentDir: string): void {
   const shutdown = async (signal: string) => {
     if (shutdownInProgress) return

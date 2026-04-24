@@ -1,11 +1,17 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock, type Mock } from 'bun:test'
 
-vi.mock('../../src/core/task-service', () => ({
-  logProgress: vi.fn(),
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
-vi.mock('../../scripts/lib/registry', () => ({
-  addExecTool: vi.fn(),
+mock.module('../../src/core/task-service', () => ({
+  logProgress: mock(),
+}))
+
+mock.module('../../scripts/lib/registry', () => ({
+  addExecTool: mock(),
 }))
 
 import { logProgressFormatted } from '../../scripts/lib/log-progress'

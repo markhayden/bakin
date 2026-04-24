@@ -8,23 +8,23 @@
  * (which covers buildUserPlugin, a different helper) — so failures here
  * point at this file and not the shared fixture.
  */
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-vi.mock('../../src/core/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../src/core/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-dev-buildone-noop')
   return {
     getContentDir: () => base,
     getBakinPaths: () => ({ root: base }),
   }
 })
-vi.mock('../../packages/core/src/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../packages/core/src/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-dev-buildone-noop')
   return {
     getContentDir: () => base,
