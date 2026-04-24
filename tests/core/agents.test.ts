@@ -9,7 +9,7 @@ const mockColumns: Record<string, typeof mockTasks> = {
   backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [],
 }
 
-vi.mock('../../src/lib/taskboard', () => ({
+vi.mock('@bakin/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({ columns: mockColumns }),
 }))
 

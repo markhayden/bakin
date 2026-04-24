@@ -17,13 +17,12 @@ vi.mock('../../src/core/openclaw-client', () => ({
   sendMessage: vi.fn().mockResolvedValue(undefined),
 }))
 
-// Mock the taskboard shim that gets dynamically imported by continuation.ts
-// (src/lib/taskboard re-exports from plugins/tasks/lib/flow-store)
+// Mock flow-store that gets dynamically imported by continuation.ts
 const mockReadAllColumns = vi.fn()
 const mockClearDependency = vi.fn().mockResolvedValue(undefined)
 const mockAddTaskLog = vi.fn().mockResolvedValue(undefined)
 
-vi.mock('../../src/lib/taskboard', () => ({
+vi.mock('@bakin/tasks/lib/flow-store', () => ({
   readAllColumns: mockReadAllColumns,
   clearDependency: mockClearDependency,
   addTaskLog: mockAddTaskLog,

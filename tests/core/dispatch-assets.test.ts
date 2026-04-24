@@ -33,7 +33,7 @@ vi.mock('../../src/core/settings', () => ({
 
 vi.mock('../../src/core/audit', () => ({ appendAudit: vi.fn() }))
 vi.mock('../../src/core/openclaw-client', () => ({ sendMessage: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../src/lib/taskboard', () => ({
+vi.mock('@bakin/tasks/lib/flow-store', () => ({
   getTodoTasks: vi.fn().mockReturnValue({ todoTasks: [] }),
   moveTaskToInProgress: vi.fn(),
   addTaskLog: vi.fn(),
