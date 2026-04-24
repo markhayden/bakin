@@ -9,7 +9,7 @@
  * If the bridge ever starts swallowing error text, this test fails with the
  * actual normalized payload so we can hand it back to OpenClaw.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock, spyOn } from 'bun:test'
 import { mkdirSync, existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -21,10 +21,15 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 const TEST_DIR = join(tmpdir(), `bakin-mcp-bridge-${process.pid}-${Date.now()}`)
 const ORIGINAL_BAKIN_HOME = process.env.BAKIN_HOME
 
-vi.mock('../../src/core/content-dir', async () => {
-  const actual = await vi.importActual<typeof import('../../src/core/content-dir')>(
-    '../../src/core/content-dir',
-  )
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/content-dir', () => {
+  // Require the canonical module (src/core/content-dir is a re-export shim).
+  const actual = require('../../packages/core/src/content-dir') as typeof import('../../packages/core/src/content-dir')
   return {
     ...actual,
     getContentDir: () => TEST_DIR,
@@ -50,17 +55,17 @@ vi.mock('../../src/core/content-dir', async () => {
   }
 })
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 beforeAll(() => {
@@ -78,13 +83,13 @@ const UNIQUE_ERROR_MARKER = 'BRIDGE_TEST_UNIQUE_8d3f1c0a_should_pass_through'
 
 describe('MCP bridge error passthrough', () => {
   it('forwards thrown handler error text to the client unchanged', async () => {
-    const { registerTools } = await import('../../src/core/mcp-server')
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
     const registry = await import('../../scripts/lib/registry')
     const { addExecTool } = registry
 
     // Stub getToolContext — this test only cares about handler-error
     // passthrough, not the real PluginToolContext wiring.
-    vi.spyOn(registry, 'getToolContext').mockReturnValue(undefined)
+    spyOn(registry, 'getToolContext').mockReturnValue(undefined)
 
     addExecTool({
       name: 'bakin_exec_test_throw',

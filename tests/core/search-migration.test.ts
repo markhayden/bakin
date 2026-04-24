@@ -1,12 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
 import fs from 'fs'
 import path from 'path'
 
 const testDir = path.join(process.cwd(), 'test-content-search-migration')
 const stateFile = path.join(testDir, '.search-state.json')
 
-vi.mock('../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 // Antfly mock — controlled per-test via state vars below
@@ -18,13 +24,13 @@ const antflyState = {
   dropError: null as null | Error,
 }
 
-vi.mock('../../src/core/antfly', () => ({
+mock.module('../../src/core/antfly', () => ({
   enabled: () => antflyState.enabled,
-  listTables: vi.fn(async () => {
+  listTables: mock(async () => {
     if (antflyState.listError) throw antflyState.listError
     return antflyState.tables
   }),
-  dropTable: vi.fn(async (name: string) => {
+  dropTable: mock(async (name: string) => {
     if (antflyState.dropError) throw antflyState.dropError
     antflyState.dropped.push(name)
   }),
@@ -124,7 +130,7 @@ describe('search-migration', () => {
         { name: 'bakin_tasks' },
         { name: 'bakin_assets' },
         { name: 'bakin_projects' },
-        { name: 'beacon_legacy' }, // non-bakin, should be left alone
+        { name: 'external_legacy' }, // non-bakin, should be left alone
         { name: 'other_thing' },
       ]
       // state file absent → stored version 0
@@ -144,7 +150,7 @@ describe('search-migration', () => {
     it('continues migration even when one drop fails', async () => {
       antflyState.tables = [{ name: 'bakin_tasks' }, { name: 'bakin_assets' }]
       // Fail only on the first drop
-      const { dropTable } = await import('../../src/core/antfly')
+      const { dropTable } = require('../../src/core/antfly') as typeof import('../../src/core/antfly')
       let calls = 0
       vi.mocked(dropTable).mockImplementation(async (name: string) => {
         calls++

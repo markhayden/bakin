@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 
-const { hoistedBakinHome } = vi.hoisted(() => {
+const { hoistedBakinHome } = (() => {
   const { mkdtempSync } = require('fs')
   const { tmpdir } = require('os')
   const { join } = require('path')
@@ -8,26 +8,35 @@ const { hoistedBakinHome } = vi.hoisted(() => {
   process.env.BAKIN_HOME = bakinHome
   process.env.OPENCLAW_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
   return { hoistedBakinHome: bakinHome }
-})
+})()
 
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-vi.mock('../../../src/core/content-dir', () => ({
-  getContentDir: () => hoistedBakinHome,
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => hoistedBakinHome,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+}))
+
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-import { readRuns, getLastRun } from '@bakin/schedule/lib/runs-reader'
+const { readRuns, getLastRun } = require('@bakin/schedule/lib/runs-reader') as typeof import('@bakin/schedule/lib/runs-reader')
 
 const testDir = join(tmpdir(), `bakin-test-runs-${Date.now()}`)
 

@@ -198,7 +198,7 @@ function withDb<T>(fn: (db: Database) => T): T {
 }
 ```
 
-`bun:sqlite` ships with Bun and exposes the same synchronous, same-shape API that `better-sqlite3` used pre-migration. Tests run under vitest on Node and use a thin shim that satisfies the subset of the API `flow-store.ts` exercises.
+`bun:sqlite` ships with Bun and provides the synchronous, same-shape API that `flow-store.ts` exercises. Tests run under `bun test`, which resolves `bun:sqlite` natively — no shim needed.
 
 All read operations are synchronous. All write operations return `Promise<T>` for backward compatibility with callers that chain `.then()` (workflow runtime, dispatch). Errors are caught and returned as `Promise.reject()` to ensure proper promise rejection.
 
@@ -358,4 +358,4 @@ Test files:
 - `tests/plugins/tasks/flow-store.test.ts` — Unit tests for SQLite adapter: CRUD, transitions, column mapping, archival
 - `tests/plugins/tasks/routes.test.ts` — Integration tests for REST API routes and MCP exec tools
 
-Run: `npx vitest run tests/plugins/tasks/`
+Run: `bun test --isolate tests/plugins/tasks/`

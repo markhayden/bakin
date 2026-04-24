@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -7,11 +7,20 @@ const testDir = join(tmpdir(), `bakin-test-index-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 const storeRoot = join(assetsRoot, 'store')
 
-vi.mock('../../../src/core/content-dir', () => ({
-  getContentDir: () => testDir,
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+}))
+
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
     info: () => {},
     warn: () => {},

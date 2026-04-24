@@ -1,23 +1,29 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn, type Mock } from 'bun:test'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('../../src/core/settings', () => ({
-  getSettings: vi.fn().mockReturnValue({
+mock.module('../../src/core/settings', () => ({
+  getSettings: mock().mockReturnValue({
     messaging: { intervalMs: 1000 },
   }),
 }))
@@ -38,7 +44,7 @@ describe('messaging-cron', () => {
     stop()
     vi.useRealTimers()
     rmSync(tempDir, { recursive: true, force: true })
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   function writeMessaging(items: Record<string, unknown>[]) {
@@ -74,7 +80,7 @@ describe('messaging-cron', () => {
 
   describe('executeScheduledContent', () => {
     it('does nothing when messaging.json does not exist', async () => {
-      const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      const fetchSpy = spyOn(globalThis, 'fetch')
       start(tempDir, 3737)
       await vi.advanceTimersByTimeAsync(1500)
       expect(fetchSpy).not.toHaveBeenCalled()
@@ -85,7 +91,7 @@ describe('messaging-cron', () => {
         { id: '1', title: 'Done', status: 'completed', scheduledAt: '2020-01-01T00:00:00Z', agent: 'nemo' },
         { id: '2', title: 'Executing', status: 'executing', scheduledAt: '2020-01-01T00:00:00Z', agent: 'nemo' },
       ])
-      const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      const fetchSpy = spyOn(globalThis, 'fetch')
       start(tempDir, 3737)
       await vi.advanceTimersByTimeAsync(1500)
       expect(fetchSpy).not.toHaveBeenCalled()
@@ -95,7 +101,7 @@ describe('messaging-cron', () => {
       writeMessaging([
         { id: '1', title: 'Future', status: 'scheduled', scheduledAt: '2099-01-01T00:00:00Z', agent: 'nemo' },
       ])
-      const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      const fetchSpy = spyOn(globalThis, 'fetch')
       start(tempDir, 3737)
       await vi.advanceTimersByTimeAsync(1500)
       expect(fetchSpy).not.toHaveBeenCalled()
@@ -116,7 +122,7 @@ describe('messaging-cron', () => {
         },
       ])
 
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response(JSON.stringify({ id: 'task-99' }), { status: 200 }),
       )
 
@@ -124,7 +130,7 @@ describe('messaging-cron', () => {
       await vi.advanceTimersByTimeAsync(1500)
 
       // Should have POSTed to the tasks API
-      expect(fetchSpy).toHaveBeenCalledOnce()
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
       const [url, opts] = fetchSpy.mock.calls[0]
       expect(url).toBe('http://localhost:3737/api/plugins/tasks/')
       expect(opts!.method).toBe('POST')
@@ -157,7 +163,7 @@ describe('messaging-cron', () => {
         },
       ])
 
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response(JSON.stringify({ id: 'task-100' }), { status: 200 }),
       )
 
@@ -183,7 +189,7 @@ describe('messaging-cron', () => {
         },
       ])
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response(JSON.stringify({ id: 'task-101' }), { status: 200 }),
       )
 
@@ -213,7 +219,7 @@ describe('messaging-cron', () => {
         },
       ])
 
-      vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'))
+      spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'))
 
       start(tempDir, 3737)
       // Should not throw
@@ -241,7 +247,7 @@ describe('messaging-cron', () => {
         },
       ])
 
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response(JSON.stringify({ id: 'task-200' }), { status: 200 }),
       )
 

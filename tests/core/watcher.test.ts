@@ -1,31 +1,37 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { FSWatcher } from 'chokidar'
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/sse', () => ({
-  broadcast: vi.fn(),
-  broadcastAuditEvent: vi.fn(),
+mock.module('../../src/core/sse', () => ({
+  broadcast: mock(),
+  broadcastAuditEvent: mock(),
 }))
 
-vi.mock('../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('chokidar', () => ({
-  watch: vi.fn().mockReturnValue({
-    on: vi.fn().mockReturnThis(),
-    close: vi.fn().mockResolvedValue(undefined),
+mock.module('chokidar', () => ({
+  watch: mock().mockReturnValue({
+    on: mock().mockReturnThis(),
+    close: mock().mockResolvedValue(undefined),
   }),
 }))
 
@@ -39,7 +45,7 @@ describe('watcher', () => {
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-watcher-'))
-    vi.clearAllMocks()
+    mock.clearAllMocks()
   })
 
   afterEach(async () => {
@@ -55,13 +61,15 @@ describe('watcher', () => {
     it('starts chokidar watcher', async () => {
       const chokidar = await import('chokidar')
       const eventBus = new BakinEventBus(() => {})
-      start({ contentDir: tempDir, eventBus, onInboxFile: vi.fn() })
+      start({ contentDir: tempDir, eventBus, onInboxFile: mock() })
       expect(chokidar.watch).toHaveBeenCalledWith(tempDir, expect.any(Object))
     })
 
     it('stop is idempotent', async () => {
       await stop()
-      await expect(stop()).resolves.not.toThrow()
+      // second call should not throw; bun:test's toThrow matcher doesn't
+      // compose with an async resolves, so await directly and assert no throw.
+      await stop()
     })
   })
 
@@ -71,7 +79,7 @@ describe('watcher', () => {
 
   describe('createInboxHandler', () => {
     it('sends notification for task-complete inbox messages', () => {
-      const sendNotification = vi.fn()
+      const sendNotification = mock()
       const handler = createInboxHandler({ contentDir: tempDir, sendNotification })
 
       const inboxFile = join(tempDir, 'inbox', 'report.json')
@@ -85,14 +93,14 @@ describe('watcher', () => {
 
       handler(inboxFile)
 
-      expect(sendNotification).toHaveBeenCalledOnce()
+      expect(sendNotification).toHaveBeenCalledTimes(1)
       const msg = sendNotification.mock.calls[0][0]
       expect(msg).toContain('nemo')
       expect(msg).toContain('Write blog post')
     })
 
     it('calls appendAudit for completion reports', () => {
-      const handler = createInboxHandler({ contentDir: tempDir, sendNotification: vi.fn() })
+      const handler = createInboxHandler({ contentDir: tempDir, sendNotification: mock() })
 
       const inboxFile = join(tempDir, 'inbox', 'report.json')
       mkdirSync(join(tempDir, 'inbox'), { recursive: true })
@@ -114,7 +122,7 @@ describe('watcher', () => {
     })
 
     it('ignores non task-complete messages', () => {
-      const sendNotification = vi.fn()
+      const sendNotification = mock()
       const handler = createInboxHandler({ contentDir: tempDir, sendNotification })
 
       const inboxFile = join(tempDir, 'inbox', 'other.json')
@@ -126,7 +134,7 @@ describe('watcher', () => {
     })
 
     it('handles invalid JSON gracefully', () => {
-      const sendNotification = vi.fn()
+      const sendNotification = mock()
       const handler = createInboxHandler({ contentDir: tempDir, sendNotification })
 
       const inboxFile = join(tempDir, 'inbox', 'bad.json')
@@ -164,7 +172,7 @@ describe('watcher', () => {
 
     it('processes .yaml files and broadcasts content', async () => {
       const eventBus = new BakinEventBus(() => {})
-      start({ contentDir: tempDir, eventBus, onInboxFile: vi.fn() })
+      start({ contentDir: tempDir, eventBus, onInboxFile: mock() })
 
       mkdirSync(join(tempDir, 'workflows', 'definitions'), { recursive: true })
       const yamlPath = join(tempDir, 'workflows', 'definitions', 'sample.yaml')
@@ -182,7 +190,7 @@ describe('watcher', () => {
 
     it('processes .yml files (short extension)', async () => {
       const eventBus = new BakinEventBus(() => {})
-      start({ contentDir: tempDir, eventBus, onInboxFile: vi.fn() })
+      start({ contentDir: tempDir, eventBus, onInboxFile: mock() })
 
       mkdirSync(join(tempDir, 'workflows', 'definitions'), { recursive: true })
       const ymlPath = join(tempDir, 'workflows', 'definitions', 'short.yml')
@@ -200,7 +208,7 @@ describe('watcher', () => {
 
     it('ignores unsupported extensions', async () => {
       const eventBus = new BakinEventBus(() => {})
-      start({ contentDir: tempDir, eventBus, onInboxFile: vi.fn() })
+      start({ contentDir: tempDir, eventBus, onInboxFile: mock() })
 
       const exePath = join(tempDir, 'random.exe')
       writeFileSync(exePath, 'binary content')

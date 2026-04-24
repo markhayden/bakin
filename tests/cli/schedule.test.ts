@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
 import {
   cmdScheduleList,
   cmdScheduleAdd,
@@ -14,14 +14,14 @@ import {
  * with the correct payload. We mock global fetch to intercept HTTP calls.
  */
 
-const mockFetch = vi.fn()
-const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+const mockFetch = mock()
+const consoleSpy = spyOn(console, 'log').mockImplementation(() => {})
 
 describe('CLI schedule commands', () => {
   const originalFetch = globalThis.fetch
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     globalThis.fetch = mockFetch as any
   })
 

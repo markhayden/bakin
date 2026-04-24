@@ -4,47 +4,58 @@
  * Tests the original 8 HTTP routes and 7 exec tools registered by the messaging plugin.
  * Uses a temp directory backed by the real storage module (messaging.json on disk).
  */
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testDir = vi.hoisted(() => {
+const testDir = (() => {
   const { join } = require('path')
   const { tmpdir } = require('os')
   return join(tmpdir(), `bakin-test-messaging-${Date.now()}`)
-})
+})()
+
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
 
 // ---------------------------------------------------------------------------
 // Mocks — must be before any plugin imports
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ messaging: testDir }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 // Suppress SSE broadcast
-;(globalThis as any).__bakinBroadcast = vi.fn()
+;(globalThis as any).__bakinBroadcast = mock()
 
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import messagingPlugin from '../../../plugins/messaging/index'
+const messagingPlugin = require('../../../plugins/messaging/index').default as typeof import('../../../plugins/messaging/index').default
 import type { CalendarItem } from '../../../plugins/messaging/types'
 import {
   activatePlugin,
@@ -101,7 +112,7 @@ afterAll(() => {
 beforeEach(() => {
   // Reset to empty messaging before each test
   seedItems([])
-  vi.clearAllMocks()
+  mock.clearAllMocks()
 })
 
 // ===========================================================================
@@ -322,8 +333,8 @@ describe('Calendar routes', () => {
       seedItems([makeItem({ id: 'appr-2', status: 'review', draft: { caption: 'Hello!' } })])
 
       // Mock child_process.execFile used for Discord posting
-      vi.doMock('child_process', () => ({
-        execFile: vi.fn((_cmd: string, _args: string[], cb: Function) => cb(null, '', '')),
+      mock.module('child_process', () => ({
+        execFile: mock((_cmd: string, _args: string[], cb: Function) => cb(null, '', '')),
       }))
 
       const route = findRoute(plugin.routes, 'POST', '/:itemId/approve')!
@@ -446,8 +457,8 @@ describe('Calendar routes', () => {
       }))
 
       // Mock os.homedir to point to our temp dir
-      vi.doMock('os', async () => {
-        const actual = await vi.importActual('os')
+      mock.module('os', () => {
+        const actual = require('os') as typeof import('os')
         return { ...actual, homedir: () => join(openclawDir, '..') }
       })
 
@@ -460,7 +471,7 @@ describe('Calendar routes', () => {
       }
 
       const originalFetch = globalThis.fetch
-      globalThis.fetch = vi.fn().mockResolvedValue({
+      globalThis.fetch = mock().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(llmResponse),
         text: () => Promise.resolve(JSON.stringify(llmResponse)),
@@ -491,14 +502,14 @@ describe('Calendar routes', () => {
       }
     })
 
-    // TODO: pre-existing flake on main, unrelated to issue #81. The vi.doMock('os')
+    // TODO: pre-existing flake on main, unrelated to issue #81. The mock.module('os')
     // call doesn't reliably swap homedir() after the module graph is warm, so the
     // route hangs on an outbound fetch instead of failing fast on the missing token.
     // Re-enable once the brainstorm route is refactored to inject homedir.
     it.skip('returns 500 when gateway token is missing', async () => {
       // Use a homedir with no openclaw config
-      vi.doMock('os', async () => {
-        const actual = await vi.importActual('os')
+      mock.module('os', () => {
+        const actual = require('os') as typeof import('os')
         return { ...actual, homedir: () => join(tmpdir(), 'nonexistent-dir') }
       })
 

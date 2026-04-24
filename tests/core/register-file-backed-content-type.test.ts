@@ -1,18 +1,24 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
 
 const syncHooks: Array<(rel: string, content: string) => void | Promise<void>> = []
 const unlinkHooks: Array<(rel: string) => void | Promise<void>> = []
 
-vi.mock('@/core/watcher', () => ({
-  registerSyncHook: vi.fn((cb: (rel: string, content: string) => void | Promise<void>) => {
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/watcher', () => ({
+  registerSyncHook: mock((cb: (rel: string, content: string) => void | Promise<void>) => {
     syncHooks.push(cb)
   }),
-  registerUnlinkHook: vi.fn((cb: (rel: string) => void | Promise<void>) => {
+  registerUnlinkHook: mock((cb: (rel: string) => void | Promise<void>) => {
     unlinkHooks.push(cb)
   }),
 }))
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => '/tmp/bakin-test-helper',
   getBakinPaths: () => ({
     contentDir: '/tmp/bakin-test-helper',
@@ -20,24 +26,24 @@ vi.mock('@/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('@/core/antfly', () => ({
-  enabled: vi.fn(() => true),
-  createTable: vi.fn(async () => true),
-  listTables: vi.fn(async () => []),
-  indexDocument: vi.fn(async () => {}),
-  removeDocument: vi.fn(async () => {}),
-  transformDocument: vi.fn(async () => {}),
-  scanTable: vi.fn(async function* () {}),
-  rebuildIndexes: vi.fn(async () => {}),
-  batchIndex: vi.fn(async (_t: string, docs: Record<string, unknown>) => Object.keys(docs).length),
-  multiQuery: vi.fn(async () => ({ results: [], total: 0, took: 0 })),
-  queryTable: vi.fn(async () => ({ results: [], total: 0, took: 0 })),
-  getIndexHealth: vi.fn(async () => null),
-  getTableStats: vi.fn(async () => null),
+mock.module('@/core/antfly', () => ({
+  enabled: mock(() => true),
+  createTable: mock(async () => true),
+  listTables: mock(async () => []),
+  indexDocument: mock(async () => {}),
+  removeDocument: mock(async () => {}),
+  transformDocument: mock(async () => {}),
+  scanTable: mock(async function* () {}),
+  rebuildIndexes: mock(async () => {}),
+  batchIndex: mock(async (_t: string, docs: Record<string, unknown>) => Object.keys(docs).length),
+  multiQuery: mock(async () => ({ results: [], total: 0, took: 0 })),
+  queryTable: mock(async () => ({ results: [], total: 0, took: 0 })),
+  getIndexHealth: mock(async () => null),
+  getTableStats: mock(async () => null),
 }))
 
-vi.mock('@/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('@/core/settings', () => ({
+  getSettings: mock(() => ({
     antfly: {
       enabled: true,
       url: 'http://localhost:8080/api/v1',
@@ -56,17 +62,17 @@ vi.mock('@/core/settings', () => ({
   })),
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/sse', () => ({
-  broadcast: vi.fn(),
+mock.module('@/core/sse', () => ({
+  broadcast: mock(),
 }))
 
 import { buildSearchAPI, resetSearchRegistry } from '@/core/search-registry'
@@ -78,7 +84,7 @@ describe('registerFileBackedContentType', () => {
     resetSearchRegistry()
     syncHooks.length = 0
     unlinkHooks.length = 0
-    vi.clearAllMocks()
+    mock.clearAllMocks()
   })
 
   function makeDef(overrides: Partial<FileBackedContentTypeDefinition> = {}): FileBackedContentTypeDefinition {
@@ -115,7 +121,7 @@ describe('registerFileBackedContentType', () => {
 
     await syncHooks[0]('projects/foo.md', 'foo body')
 
-    expect(antfly.indexDocument).toHaveBeenCalledOnce()
+    expect(antfly.indexDocument).toHaveBeenCalledTimes(1)
     const [tableName, key, doc] = vi.mocked(antfly.indexDocument).mock.calls[0]
     expect(tableName).toBe('bakin_projects')
     expect(key).toBe('foo')
@@ -150,11 +156,11 @@ describe('registerFileBackedContentType', () => {
     expect(antfly.indexDocument).not.toHaveBeenCalled()
 
     await syncHooks[0]('assets/image/live.jpg', '')
-    expect(antfly.indexDocument).toHaveBeenCalledOnce()
+    expect(antfly.indexDocument).toHaveBeenCalledTimes(1)
   })
 
   it('sync hook delegates to onSync escape hatch when provided', async () => {
-    const onSync = vi.fn(async () => {})
+    const onSync = mock(async () => {})
     const api = buildSearchAPI('assets')
     api.registerFileBackedContentType(makeDef({
       filePatterns: [
@@ -170,7 +176,7 @@ describe('registerFileBackedContentType', () => {
 
     await syncHooks[0]('assets/image/foo.jpg', '')
 
-    expect(onSync).toHaveBeenCalledOnce()
+    expect(onSync).toHaveBeenCalledTimes(1)
     expect(onSync).toHaveBeenCalledWith('assets/image/foo.jpg', '')
     // The standard index path is bypassed
     expect(antfly.indexDocument).not.toHaveBeenCalled()
@@ -182,7 +188,7 @@ describe('registerFileBackedContentType', () => {
 
     await unlinkHooks[0]('projects/bar.md')
 
-    expect(antfly.removeDocument).toHaveBeenCalledOnce()
+    expect(antfly.removeDocument).toHaveBeenCalledTimes(1)
     const [tableName, key] = vi.mocked(antfly.removeDocument).mock.calls[0]
     expect(tableName).toBe('bakin_projects')
     expect(key).toBe('bar')
@@ -197,7 +203,7 @@ describe('registerFileBackedContentType', () => {
   })
 
   it('unlink hook delegates to onUnlink escape hatch when provided', async () => {
-    const onUnlink = vi.fn(async () => {})
+    const onUnlink = mock(async () => {})
     const api = buildSearchAPI('assets')
     api.registerFileBackedContentType(makeDef({
       filePatterns: [
@@ -213,7 +219,7 @@ describe('registerFileBackedContentType', () => {
 
     await unlinkHooks[0]('assets/image/old.jpg')
 
-    expect(onUnlink).toHaveBeenCalledOnce()
+    expect(onUnlink).toHaveBeenCalledTimes(1)
     expect(onUnlink).toHaveBeenCalledWith('assets/image/old.jpg')
     expect(antfly.removeDocument).not.toHaveBeenCalled()
   })
@@ -235,10 +241,10 @@ describe('registerFileBackedContentType', () => {
   })
 
   it('multiple filePatterns route to the correct mapper', async () => {
-    const fileToIdA = vi.fn((rel: string) => `def:${rel}`)
-    const fileToIdB = vi.fn((rel: string) => `inst:${rel}`)
-    const fileToDocA = vi.fn(async () => ({ kind: 'definition' }))
-    const fileToDocB = vi.fn(async () => ({ kind: 'instance' }))
+    const fileToIdA = mock((rel: string) => `def:${rel}`)
+    const fileToIdB = mock((rel: string) => `inst:${rel}`)
+    const fileToDocA = mock(async () => ({ kind: 'definition' }))
+    const fileToDocB = mock(async () => ({ kind: 'instance' }))
 
     const api = buildSearchAPI('workflows')
     api.registerFileBackedContentType(makeDef({
@@ -252,11 +258,11 @@ describe('registerFileBackedContentType', () => {
     await syncHooks[0]('workflows/definitions/x.yaml', 'name: x')
     await syncHooks[0]('workflows/instances/y.json', '{}')
 
-    expect(fileToDocA).toHaveBeenCalledOnce()
-    expect(fileToDocB).toHaveBeenCalledOnce()
+    expect(fileToDocA).toHaveBeenCalledTimes(1)
+    expect(fileToDocB).toHaveBeenCalledTimes(1)
     expect(antfly.indexDocument).toHaveBeenCalledTimes(2)
     const calls = vi.mocked(antfly.indexDocument).mock.calls
-    const keys = calls.map(c => c[1])
+    const keys = calls.map((c: any[]) => c[1])
     expect(keys).toContain('def:workflows/definitions/x.yaml')
     expect(keys).toContain('inst:workflows/instances/y.json')
   })
@@ -273,6 +279,7 @@ describe('registerFileBackedContentType', () => {
       ],
     }))
 
-    await expect(syncHooks[0]('projects/foo.md', 'x')).resolves.not.toThrow()
+    // bun:test doesn't compose `resolves.not.toThrow` — await directly
+    await syncHooks[0]('projects/foo.md', 'x')
   })
 })

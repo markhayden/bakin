@@ -4,8 +4,9 @@
  * script owns the list of plugins and the externals list.
  *
  * Server entries use --target=bun and --packages=external so node_modules
- * deps (better-sqlite3, chokidar, zod, js-yaml, @antfly/sdk, etc.) stay
- * out of the plugin bundle. The host process already has them installed.
+ * deps (chokidar, zod, js-yaml, @antfly/sdk, etc.) stay out of the plugin
+ * bundle. The host process already has them installed; bun:sqlite is
+ * resolved at runtime by Bun itself.
  *
  * Client entries use --target=browser. Only react + @bakin/sdk/* are
  * externalized — other client deps (lucide-react, zustand, shadcn

@@ -11,7 +11,7 @@
  * the modules under test. The test-mock checker hook allows this via the
  * self-test exception in .claude/hooks/check-test-mocks.mjs.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -21,7 +21,8 @@ describe('leak guard — content-dir', () => {
   const origHome = process.env.HOME
 
   beforeEach(() => {
-    vi.resetModules()
+    const { resetContentDir } = require('../../packages/core/src/content-dir')
+    resetContentDir()
     delete process.env.BAKIN_HOME
     delete process.env.CONTENT_DIR
   })
@@ -32,14 +33,15 @@ describe('leak guard — content-dir', () => {
     if (origContentDir !== undefined) process.env.CONTENT_DIR = origContentDir
     else delete process.env.CONTENT_DIR
     if (origHome !== undefined) process.env.HOME = origHome
-    vi.resetModules()
+    const { resetContentDir } = require('../../packages/core/src/content-dir')
+    resetContentDir()
   })
 
   it('throws when BAKIN_HOME points at the real ~/.bakin/', async () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.BAKIN_HOME = join(process.env.HOME, '.bakin')
 
-    const { getContentDir } = await import('../../packages/core/src/content-dir')
+    const { getContentDir } = require('../../packages/core/src/content-dir') as typeof import('../../packages/core/src/content-dir')
     expect(() => getContentDir()).toThrow(/real Bakin home/)
   })
 
@@ -47,7 +49,7 @@ describe('leak guard — content-dir', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.BAKIN_HOME = join(tmpdir(), `bakin-leak-guard-safe-${Date.now()}`)
 
-    const { getContentDir } = await import('../../packages/core/src/content-dir')
+    const { getContentDir } = require('../../packages/core/src/content-dir') as typeof import('../../packages/core/src/content-dir')
     expect(() => getContentDir()).not.toThrow()
   })
 
@@ -55,7 +57,7 @@ describe('leak guard — content-dir', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.BAKIN_HOME = join(process.env.HOME, '.bakin')
 
-    const { getContentDir } = await import('../../packages/core/src/content-dir')
+    const { getContentDir } = require('../../packages/core/src/content-dir') as typeof import('../../packages/core/src/content-dir')
     try {
       getContentDir()
       throw new Error('expected throw')
@@ -88,7 +90,7 @@ describe('leak guard — openclaw-home', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(process.env.HOME, '.openclaw')
 
-    const { getOpenClawHome } = await import('../../packages/core/src/openclaw-home')
+    const { getOpenClawHome } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
     expect(() => getOpenClawHome()).toThrow(/real OpenClaw home/)
   })
 
@@ -96,7 +98,7 @@ describe('leak guard — openclaw-home', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(tmpdir(), `openclaw-leak-guard-safe-${Date.now()}`)
 
-    const { getOpenClawHome } = await import('../../packages/core/src/openclaw-home')
+    const { getOpenClawHome } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
     expect(() => getOpenClawHome()).not.toThrow()
   })
 
@@ -104,7 +106,7 @@ describe('leak guard — openclaw-home', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(process.env.HOME, '.openclaw')
 
-    const { getOpenClawPath } = await import('../../packages/core/src/openclaw-home')
+    const { getOpenClawPath } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
     expect(() => getOpenClawPath('flows', 'registry.sqlite')).toThrow(/real OpenClaw home/)
   })
 
@@ -112,7 +114,7 @@ describe('leak guard — openclaw-home', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(process.env.HOME, '.openclaw')
 
-    const { getOpenClawHome } = await import('../../packages/core/src/openclaw-home')
+    const { getOpenClawHome } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
     try {
       getOpenClawHome()
       throw new Error('expected throw')

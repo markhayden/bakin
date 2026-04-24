@@ -16,8 +16,13 @@ import { getAgentIds } from '@bakin/core/openclaw-config'
 
 const log = createLogger('mcporter')
 
-const MCPORTER_HOME = join(process.env.HOME || '~', '.mcporter')
-const MCPORTER_CONFIG = join(MCPORTER_HOME, 'mcporter.json')
+// Resolved lazily so tests can override HOME between runs.
+function mcporterHome(): string {
+  return join(process.env.HOME || '~', '.mcporter')
+}
+function mcporterConfig(): string {
+  return join(mcporterHome(), 'mcporter.json')
+}
 
 // ---------------------------------------------------------------------------
 // Installation
@@ -68,19 +73,19 @@ interface McporterConfig {
 }
 
 function readConfig(): McporterConfig {
-  if (!existsSync(MCPORTER_CONFIG)) return {}
+  if (!existsSync(mcporterConfig())) return {}
   try {
-    return JSON.parse(readFileSync(MCPORTER_CONFIG, 'utf-8'))
+    return JSON.parse(readFileSync(mcporterConfig(), 'utf-8'))
   } catch {
     return {}
   }
 }
 
 function writeConfig(config: McporterConfig): void {
-  if (!existsSync(MCPORTER_HOME)) {
-    mkdirSync(MCPORTER_HOME, { recursive: true })
+  if (!existsSync(mcporterHome())) {
+    mkdirSync(mcporterHome(), { recursive: true })
   }
-  writeFileSync(MCPORTER_CONFIG, JSON.stringify(config, null, 2) + '\n', 'utf-8')
+  writeFileSync(mcporterConfig(), JSON.stringify(config, null, 2) + '\n', 'utf-8')
 }
 
 /**
@@ -172,7 +177,7 @@ export function verifyConfig(port: number): {
 
   return {
     installed: isMcporterInstalled(),
-    configExists: existsSync(MCPORTER_CONFIG),
+    configExists: existsSync(mcporterConfig()),
     agentEntries,
     staleEntries,
   }

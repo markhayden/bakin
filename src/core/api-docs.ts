@@ -40,6 +40,11 @@ const CORE_ROUTES: RouteDoc[] = [
   { pluginId: 'core', method: 'POST', path: '/api/reindex', fullPath: '/api/reindex', description: 'Trigger full content reindex to Antfly' },
 ]
 
+/** Tests call this between cases — bun:test has no vi.resetModules equivalent. */
+export function _resetRouteDocsForTests(): void {
+  routeDocs.length = 0
+}
+
 /**
  * Register a plugin route for documentation.
  */

@@ -1,17 +1,17 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 
 /**
  * CLI tests verify that commands exist and call the correct API endpoints.
  * We mock global fetch to intercept HTTP calls.
  */
 
-const mockFetch = vi.fn()
+const mockFetch = mock()
 
 describe('CLI bakin commands', () => {
   const originalFetch = globalThis.fetch
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     globalThis.fetch = mockFetch as any
     mockFetch.mockResolvedValue({
       ok: true,

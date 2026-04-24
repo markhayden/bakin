@@ -14,25 +14,31 @@
  * Both openclaw-adapter and openclaw-gateway are mocked so these tests never
  * touch ~/.openclaw/ or open a real WebSocket.
  */
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-memory-sessions-route-${Date.now()}`)
 
-vi.mock('../../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../../packages/core/src/content-dir', () => ({
+mock.module('../../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-vi.mock('../../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../../packages/core/src/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
@@ -40,17 +46,17 @@ vi.mock('../../../../packages/core/src/openclaw-home', () => ({
 const {
   mockReadSessionStore,
   mockGatewayCall,
-} = vi.hoisted(() => ({
-  mockReadSessionStore: vi.fn<(agent: string) => unknown>(),
-  mockGatewayCall: vi.fn<(method: string, params: unknown) => Promise<unknown>>(),
-}))
+} = (() => ({
+  mockReadSessionStore: mock<(agent: string) => unknown>(),
+  mockGatewayCall: mock<(method: string, params: unknown) => Promise<unknown>>(),
+}))()
 
-vi.mock('../../../../plugins/memory/lib/openclaw-adapter', () => ({
+mock.module('../../../../plugins/memory/lib/openclaw-adapter', () => ({
   readSessionStore: mockReadSessionStore,
   sessionStorePath: (agent: string) => `/fake/${agent}/sessions.json`,
 }))
 
-vi.mock('../../../../plugins/memory/lib/openclaw-gateway', () => ({
+mock.module('../../../../plugins/memory/lib/openclaw-gateway', () => ({
   gatewayCall: mockGatewayCall,
 }))
 
@@ -78,30 +84,30 @@ function makeCtx(): CtxHarness {
     pluginId: 'memory',
     storage: {} as PluginContext['storage'],
     events: {} as PluginContext['events'],
-    registerNav: vi.fn(),
-    registerRoute: vi.fn(),
-    registerSlot: vi.fn(),
-    registerExecTool: vi.fn(),
-    registerSkill: vi.fn(),
-    watchFiles: vi.fn(),
+    registerNav: mock(),
+    registerRoute: mock(),
+    registerSlot: mock(),
+    registerExecTool: mock(),
+    registerSkill: mock(),
+    watchFiles: mock(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
-    updateSettings: vi.fn(),
-    activity: { log: vi.fn(), audit: vi.fn() },
+    updateSettings: mock(),
+    activity: { log: mock(), audit: mock() },
     search: {
-      registerContentType: vi.fn(),
-      registerFileBackedContentType: vi.fn(),
-      index: vi.fn(async () => {}),
-      remove: vi.fn(async () => {}),
-      transform: vi.fn(async () => {}),
-      query: vi.fn(async (p) => {
+      registerContentType: mock(),
+      registerFileBackedContentType: mock(),
+      index: mock(async () => {}),
+      remove: mock(async () => {}),
+      transform: mock(async () => {}),
+      query: mock(async (p) => {
         queryCalls.push(p)
         return queryResponse
       }),
     },
     hooks: {
-      register: vi.fn(() => () => {}),
-      has: vi.fn(() => false),
-      invoke: vi.fn(async () => undefined),
+      register: mock(() => () => {}),
+      has: mock(() => false),
+      invoke: mock(async () => undefined),
     },
   } as unknown as PluginContext
   return {

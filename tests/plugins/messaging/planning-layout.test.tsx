@@ -1,14 +1,20 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
+import { afterEach, describe, expect, it, beforeEach, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-planning-layout-${Date.now()}`)
 
 // Safety mock — keeps any accidental storage access off ~/.bakin/
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
@@ -21,7 +27,7 @@ vi.mock('../../../src/core/content-dir', () => ({
 }))
 
 // Mock all child components to isolate layout testing
-vi.mock('../../../plugins/messaging/components/session-chat', () => ({
+mock.module('../../../plugins/messaging/components/session-chat', () => ({
   SessionChat: ({ sessionId, agentId, isCompleted }: Record<string, unknown>) => (
     <div data-testid="session-chat" data-session={sessionId} data-agent={agentId} data-completed={String(isCompleted)}>
       Chat
@@ -29,7 +35,7 @@ vi.mock('../../../plugins/messaging/components/session-chat', () => ({
   ),
 }))
 
-vi.mock('../../../plugins/messaging/components/review-panel', () => ({
+mock.module('../../../plugins/messaging/components/review-panel', () => ({
   ReviewPanel: ({ sessionId, proposals }: Record<string, unknown>) => (
     <div data-testid="review-panel" data-session={sessionId}>
       Review ({(proposals as unknown[]).length} proposals)
@@ -37,32 +43,32 @@ vi.mock('../../../plugins/messaging/components/review-panel', () => ({
   ),
 }))
 
-vi.mock('@/components/ui/button', () => ({
+mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick, ...props }: Record<string, unknown>) => (
     <button onClick={onClick as () => void} {...props}>{children as React.ReactNode}</button>
   ),
 }))
 
-vi.mock('@/components/ui/input', () => ({
+mock.module('@/components/ui/input', () => ({
   Input: (props: Record<string, unknown>) => <input {...props} />,
 }))
 
-vi.mock('@/components/ui/badge', () => ({
+mock.module('@/components/ui/badge', () => ({
   Badge: ({ children }: Record<string, unknown>) => <span>{children as React.ReactNode}</span>,
 }))
 
-vi.mock('@/components/agent-avatar', () => ({
+mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
 }))
 
-vi.mock('@/components/ui/dropdown-menu', () => ({
+mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
   DropdownMenuTrigger: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
   DropdownMenuContent: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
   DropdownMenuItem: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
 }))
 
-vi.mock('../../../plugins/messaging/components/delete-session-dialog', () => ({
+mock.module('../../../plugins/messaging/components/delete-session-dialog', () => ({
   DeleteSessionDialog: () => null,
 }))
 
@@ -88,10 +94,10 @@ const mockSession = {
 }
 
 beforeEach(() => {
-  global.fetch = vi.fn().mockResolvedValue({
+  global.fetch = mock().mockResolvedValue({
     ok: true,
     json: () => Promise.resolve({ session: mockSession }),
-  }) as unknown as typeof fetch
+  }) as unknown as unknown as typeof fetch
 })
 
 describe('PlanningLayout', () => {

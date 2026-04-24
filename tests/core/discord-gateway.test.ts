@@ -1,19 +1,25 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
 // Defensive content-dir mock — the gateway itself doesn't touch storage,
 // but transitive imports from logger / globalThis state could in principle.
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => '/tmp/bakin-test-discord-gateway',
   getBakinPaths: () => ({}),
 }))
@@ -60,7 +66,7 @@ vi.stubGlobal('WebSocket', class extends MockWebSocket {
 })
 
 // Mock fetch for interaction responses
-const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve('') })
+const mockFetch = mock().mockResolvedValue({ ok: true, text: () => Promise.resolve('') })
 vi.stubGlobal('fetch', mockFetch)
 
 import {
@@ -118,7 +124,7 @@ describe('discord-gateway', () => {
   })
 
   it('routes button interactions to registered handler', async () => {
-    const handler = vi.fn().mockImplementation(async (interaction) => {
+    const handler = mock().mockImplementation(async (interaction) => {
       await interaction.acknowledge()
     })
     onGateInteraction(handler)
@@ -184,7 +190,7 @@ describe('discord-gateway', () => {
   })
 
   it('routes modal submit to handler with reason', async () => {
-    const handler = vi.fn().mockImplementation(async (interaction) => {
+    const handler = mock().mockImplementation(async (interaction) => {
       await interaction.acknowledge()
     })
     onGateInteraction(handler)
@@ -224,7 +230,7 @@ describe('discord-gateway', () => {
   })
 
   it('ignores non-gate custom_ids', async () => {
-    const handler = vi.fn()
+    const handler = mock()
     onGateInteraction(handler)
     startGateway(testConfig)
     await vi.waitFor(() => expect(mockWsInstance).not.toBeNull())
@@ -323,7 +329,7 @@ describe('discord-gateway', () => {
     }
 
     it('prefers member.user.global_name over username', async () => {
-      const handler = vi.fn().mockImplementation(async (i) => i.acknowledge())
+      const handler = mock().mockImplementation(async (i) => i.acknowledge())
       onGateInteraction(handler)
       startGateway(testConfig, false)
       await vi.waitFor(() => expect(mockWsInstance).not.toBeNull())
@@ -338,7 +344,7 @@ describe('discord-gateway', () => {
     })
 
     it('falls back to username when global_name absent', async () => {
-      const handler = vi.fn().mockImplementation(async (i) => i.acknowledge())
+      const handler = mock().mockImplementation(async (i) => i.acknowledge())
       onGateInteraction(handler)
       startGateway(testConfig, false)
       await vi.waitFor(() => expect(mockWsInstance).not.toBeNull())
@@ -353,7 +359,7 @@ describe('discord-gateway', () => {
     })
 
     it('falls back to data.user when member absent (DM context)', async () => {
-      const handler = vi.fn().mockImplementation(async (i) => i.acknowledge())
+      const handler = mock().mockImplementation(async (i) => i.acknowledge())
       onGateInteraction(handler)
       startGateway(testConfig, false)
       await vi.waitFor(() => expect(mockWsInstance).not.toBeNull())
@@ -368,7 +374,7 @@ describe('discord-gateway', () => {
     })
 
     it('returns unknown sentinel when both member and user absent', async () => {
-      const handler = vi.fn().mockImplementation(async (i) => i.acknowledge())
+      const handler = mock().mockImplementation(async (i) => i.acknowledge())
       onGateInteraction(handler)
       startGateway(testConfig, false)
       await vi.waitFor(() => expect(mockWsInstance).not.toBeNull())
@@ -381,7 +387,7 @@ describe('discord-gateway', () => {
     })
 
     it('extracts approver from MODAL_SUBMIT (reject path)', async () => {
-      const handler = vi.fn().mockImplementation(async (i) => i.acknowledge())
+      const handler = mock().mockImplementation(async (i) => i.acknowledge())
       onGateInteraction(handler)
       startGateway(testConfig)
       await vi.waitFor(() => expect(mockWsInstance).not.toBeNull())

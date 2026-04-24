@@ -6,22 +6,28 @@
  *   2. BAKIN_DEV unset returns the input buffer reference unchanged so
  *      the compiled binary serves production index.html byte-identical.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 // Per CLAUDE.md testing rules — mock content-dir even when the test
 // doesn't appear to need storage. Transitive imports can surprise you.
-vi.mock('../../src/core/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const testDir = join(tmpdir(), `bakin-test-host-static-${Date.now()}`)
   return {
     getContentDir: () => testDir,
     getBakinPaths: () => ({ root: testDir }),
   }
 })
-vi.mock('../../packages/core/src/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../packages/core/src/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const testDir = join(tmpdir(), `bakin-test-host-static-${Date.now()}`)
   return {
     getContentDir: () => testDir,

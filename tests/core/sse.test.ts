@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'bun:test'
 
 // We test the SSE module's event buffer and ID logic
 // by importing the module and calling broadcast/getCurrentEventId

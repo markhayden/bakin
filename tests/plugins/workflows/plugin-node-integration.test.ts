@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -7,42 +7,48 @@ import { z } from 'zod'
 const testDir = join(tmpdir(), `bakin-test-plugin-node-${Date.now()}`)
 
 // ─── CRITICAL: Mock content-dir (project rule) ─────────────────────────────
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
-  addTaskLog: vi.fn(() => Promise.resolve()),
-  moveTask: vi.fn(() => Promise.resolve()),
-  readTaskboard: vi.fn(() => ({
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
+  addTaskLog: mock(() => Promise.resolve()),
+  moveTask: mock(() => Promise.resolve()),
+  readTaskboard: mock(() => ({
     columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [] },
   })),
-  getTask: vi.fn(() => null),
-  getTaskWithColumn: vi.fn(() => null),
+  getTask: mock(() => null),
+  getTaskWithColumn: mock(() => null),
 }))
 
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => testDir,
   getOpenClawPath: (...parts: string[]) => join(testDir, ...parts),
-  resetOpenClawHome: vi.fn(),
+  resetOpenClawHome: mock(),
 }))
 
 // Imports must follow the mocks.

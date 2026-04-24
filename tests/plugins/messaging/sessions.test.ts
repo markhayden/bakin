@@ -4,45 +4,56 @@
  * Tests session CRUD routes, session exec tools, proposal lifecycle,
  * and plan confirmation (creates CalendarItems from approved proposals).
  */
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun:test'
 import { mkdirSync, rmSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 
-const testDir = vi.hoisted(() => {
+const testDir = (() => {
   const { join } = require('path')
   const { tmpdir } = require('os')
   return join(tmpdir(), `bakin-test-sessions-${Date.now()}`)
-})
+})()
+
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
 
 // ---------------------------------------------------------------------------
 // Mocks — must be before any plugin imports
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ calendar: testDir }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  watchDir: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  watchDir: mock(),
 }))
 
 // Mock the gateway module so tests don't hit a real gateway
-vi.mock('../../../plugins/messaging/lib/gateway', () => ({
-  streamChatCompletion: vi.fn(async () => {
+mock.module('../../../plugins/messaging/lib/gateway', () => ({
+  streamChatCompletion: mock(async () => {
     // Return a mock Response with SSE body
     const encoder = new TextEncoder()
     const body = new ReadableStream({
@@ -62,25 +73,25 @@ vi.mock('../../../plugins/messaging/lib/gateway', () => ({
       headers: { 'Content-Type': 'text/event-stream' },
     })
   }),
-  chatCompletion: vi.fn(async () =>
+  chatCompletion: mock(async () =>
     '[mock:Basil] Acknowledged. Task understood — working on it.'
   ),
 }))
 
 // Mock openclaw-home to prevent filesystem access
-vi.mock('@bakin/core/openclaw-home', () => ({
-  getOpenClawPath: vi.fn(() => '/tmp/mock-openclaw.json'),
-  getOpenClawHome: vi.fn(() => '/tmp/mock-openclaw'),
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawPath: mock(() => '/tmp/mock-openclaw.json'),
+  getOpenClawHome: mock(() => '/tmp/mock-openclaw'),
 }))
 
 // Suppress SSE broadcast
-;(globalThis as any).__bakinBroadcast = vi.fn()
+;(globalThis as any).__bakinBroadcast = mock()
 
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import messagingPlugin from '../../../plugins/messaging/index'
+const messagingPlugin = require('../../../plugins/messaging/index').default as typeof import('../../../plugins/messaging/index').default
 import {
   activatePlugin,
   findRoute,
@@ -99,7 +110,7 @@ let plugin: ActivatedPlugin
 beforeAll(async () => {
   mkdirSync(testDir, { recursive: true })
   // Seed empty messaging.json for calendar item storage
-  const { writeFileSync } = await import('fs')
+  const { writeFileSync } = require('fs') as typeof import('fs')
   writeFileSync(join(testDir, 'messaging.json'), '[]')
   plugin = await activatePlugin(messagingPlugin, testDir)
 })
@@ -117,7 +128,7 @@ beforeEach(() => {
   // Reset messaging.json
   const { writeFileSync } = require('fs')
   writeFileSync(join(testDir, 'messaging.json'), '[]')
-  vi.clearAllMocks()
+  mock.clearAllMocks()
 })
 
 // ===========================================================================
@@ -362,7 +373,7 @@ describe('Session routes', () => {
       const sessionId = (createBody.session as Record<string, unknown>).id as string
 
       const msgRoute = findRoute(plugin.routes, 'POST', '/sessions/:id/messages')!
-      const { makeRequest } = await import('../test-helpers')
+      const { makeRequest } = require('../test-helpers') as typeof import('../test-helpers')
       const req = makeRequest('/sessions/:id/messages', {
         method: 'POST',
         body: { message: 'Plan some content for next week' },

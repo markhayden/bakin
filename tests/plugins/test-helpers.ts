@@ -2,7 +2,6 @@
  * Shared test helpers for plugin route and exec tool testing.
  * Provides mock context creation and request/response helpers.
  */
-import { vi } from 'vitest'
 import { mkdirSync, existsSync } from 'fs'
 import type {
   PluginContext,
@@ -12,6 +11,8 @@ import type {
   SearchResult,
   SearchResponse,
   WorkflowDefinitionInput,
+  PluginHealthCheckInput,
+  SearchQueryParams,
 } from '../../src/lib/plugin-types'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
@@ -136,7 +137,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
         return `${pluginId}.${def.id}`
       }
     },
-    registerHealthCheck: vi.fn((def) => `${pluginId}.${def.id}`),
+    registerHealthCheck: vi.fn((def: PluginHealthCheckInput) => `${pluginId}.${def.id}`),
     watchFiles: vi.fn(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: vi.fn(),
@@ -154,7 +155,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
       index: vi.fn(async () => {}),
       remove: vi.fn(async () => {}),
       transform: vi.fn(async () => {}),
-      query: vi.fn(async (params) => ({
+      query: vi.fn(async (params: SearchQueryParams) => ({
         results: seededResults,
         aggregations: seededAggregations,
         meta: {

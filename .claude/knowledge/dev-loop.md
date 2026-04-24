@@ -184,7 +184,7 @@ In `_static.ts`, the `/__bakin-dev/*` path check runs **unconditionally** and re
 
 ### `scripts/dev-build-one-plugin.ts` uses `node:child_process.spawn`, not `Bun.spawn`
 
-vitest runs on Node, so `Bun.spawn` is undefined in test context. The helper uses `node:child_process.spawn` (which Bun implements API-compatibly) so both production (under Bun) and the test suite exercise the same code path. Matches the pattern in `packages/host/src/plugin-host/user-plugin-builder.ts`.
+Bun implements `node:child_process.spawn` API-compatibly; the helper uses it rather than `Bun.spawn` for a portable interface that doesn't depend on the Bun-global surface. Matches the pattern in `packages/host/src/plugin-host/user-plugin-builder.ts`.
 
 ## Adding a new scope to the dev watcher
 

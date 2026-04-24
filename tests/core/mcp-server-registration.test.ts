@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -10,10 +10,15 @@ const TEST_OPENCLAW_HOME = join(TEST_DIR, '.openclaw')
 const ORIGINAL_OPENCLAW_HOME = process.env.OPENCLAW_HOME
 const ORIGINAL_BAKIN_HOME = process.env.BAKIN_HOME
 
-vi.mock('../../src/core/content-dir', async () => {
-  const actual = await vi.importActual<typeof import('../../src/core/content-dir')>(
-    '../../src/core/content-dir',
-  )
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/content-dir', () => {
+  // Require the canonical module (src/core/content-dir is a re-export shim).
+  const actual = require('../../packages/core/src/content-dir') as typeof import('../../packages/core/src/content-dir')
   return {
     ...actual,
     getContentDir: () => TEST_DIR,
@@ -39,34 +44,33 @@ vi.mock('../../src/core/content-dir', async () => {
   }
 })
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/watcher', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/core/watcher')>()
-  return {
-    ...actual,
-    watch: vi.fn(),
-    watchFiles: vi.fn(),
-    registerWatchPattern: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
-    registerSyncHook: vi.fn(() => () => {}),
-    registerUnlinkHook: vi.fn(() => () => {}),
-  }
-})
+mock.module('../../src/core/watcher', () => ({
+  watch: mock(),
+  watchFiles: mock(),
+  registerWatchPattern: mock(),
+  start: mock(),
+  stop: mock(),
+  registerSyncHook: mock(() => () => {}),
+  registerUnlinkHook: mock(() => () => {}),
+}))
 
-vi.mock('../../src/core/openclaw-client', () => ({
-  sendChannelMessage: vi.fn(async () => ({ ok: true })),
-  sendMessage: vi.fn(async () => ({ ok: true })),
-  isHealthy: vi.fn(async () => true),
-  callGateway: vi.fn(async () => ({ ok: true })),
+mock.module('../../src/core/openclaw-client', () => ({
+  sendChannelMessage: mock(async () => ({ ok: true })),
+  sendMessage: mock(async () => ({ ok: true })),
+  isHealthy: mock(async () => true),
+  callGateway: mock(async () => ({ ok: true })),
+  restartGateway: mock(async () => true),
+  invokeTool: mock(async () => ({ ok: true })),
+  ping: mock(async () => true),
 }))
 
 beforeAll(() => {
@@ -88,15 +92,15 @@ describe('MCP server tool registration', () => {
   it('registers every script and plugin tool with valid Zod schemas', async () => {
     // 1. Importing mcp-server pulls in all six self-registering script tools.
     //    The export also gives us registerTools() so we can drive an in-process server.
-    const { registerTools } = await import('../../src/core/mcp-server')
-    const { addExecTool, getAllExecTools } = await import('../../scripts/lib/registry')
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
+    const { addExecTool, getAllExecTools } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
 
     // 2. Activate every plugin from bakin.config.ts using a context that
     //    forwards registerExecTool to the global addExecTool — exactly like
     //    the production plugin-registry does.
     const config = (await import('../../bakin.config')).default
-    const { MarkdownStorageAdapter } = await import('../../src/lib/storage/markdown-adapter')
-    const { BakinEventBus } = await import('../../src/lib/events/event-bus')
+    const { MarkdownStorageAdapter } = require('../../src/lib/storage/markdown-adapter') as typeof import('../../src/lib/storage/markdown-adapter')
+    const { BakinEventBus } = require('../../src/lib/events/event-bus') as typeof import('../../src/lib/events/event-bus')
 
     const storage = new MarkdownStorageAdapter(TEST_DIR)
     const events = new BakinEventBus(() => {})

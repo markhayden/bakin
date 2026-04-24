@@ -1,51 +1,60 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 
 // Mock all service layer functions
-vi.mock('@/core/task-service', () => ({
-  logProgress: vi.fn(() => Promise.resolve()),
-  moveTaskWithEffects: vi.fn(() => Promise.resolve()),
-  blockTaskWithEffects: vi.fn(() => Promise.resolve()),
-  createTaskWithEffects: vi.fn(() => Promise.resolve({ id: 'created-123' })),
-  reportComplete: vi.fn(() => Promise.resolve()),
-  setDependencyWithEffects: vi.fn(() => Promise.resolve()),
-  getTaskDetails: vi.fn(() => ({ task: { id: 'task-1', title: 'Test' }, column: 'inProgress' })),
-  triggerDispatch: vi.fn(),
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
-vi.mock('@/core/content-dir', () => ({
-  getContentDir: vi.fn(() => '/tmp/test'),
-  getBakinPaths: vi.fn(() => ({
+mock.module('@/core/task-service', () => ({
+  logProgress: mock(() => Promise.resolve()),
+  moveTaskWithEffects: mock(() => Promise.resolve()),
+  blockTaskWithEffects: mock(() => Promise.resolve()),
+  createTaskWithEffects: mock(() => Promise.resolve({ id: 'created-123' })),
+  reportComplete: mock(() => Promise.resolve()),
+  setDependencyWithEffects: mock(() => Promise.resolve()),
+  getTaskDetails: mock(() => ({ task: { id: 'task-1', title: 'Test' }, column: 'inProgress' })),
+  triggerDispatch: mock(),
+}))
+
+mock.module('@/core/content-dir', () => ({
+  getContentDir: mock(() => '/tmp/test'),
+  getBakinPaths: mock(() => ({
     home: '/tmp/test',
     assets: '/tmp/test/assets',
-  })),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+})),
 }))
 
-vi.mock('@/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('@/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('@bakin/workflows/lib/runtime', () => ({
-  getCurrentStep: vi.fn(() => ({
+mock.module('@bakin/workflows/lib/runtime', () => ({
+  getCurrentStep: mock(() => ({
     stepId: 'write-copy',
     label: 'Write Copy',
     instructions: 'Write engaging copy',
     output_schema: { type: 'object', properties: { text: { type: 'string' } } },
   })),
-  completeStep: vi.fn(() => ({ success: true, workflowComplete: false })),
+  completeStep: mock(() => ({ success: true, workflowComplete: false })),
 }))
 
-vi.mock('@/core/logger', () => ({
-  createLogger: vi.fn(() => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+mock.module('@/core/logger', () => ({
+  createLogger: mock(() => ({
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   })),
 }))
 
 describe('MCP Server', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
   })
 
   it('should export handleMcpRequest and getActiveSessions', async () => {
@@ -55,12 +64,12 @@ describe('MCP Server', () => {
   })
 
   it('should start with no active sessions', async () => {
-    const { getActiveSessions } = await import('@/core/mcp-server')
+    const { getActiveSessions } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
     expect(getActiveSessions()).toEqual([])
   })
 
   it('should reject requests without agent param and no session ID', async () => {
-    const { handleMcpRequest } = await import('@/core/mcp-server')
+    const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
 
     const req = createMockRequest('POST', '/mcp', null)
     const res = createMockResponse()
@@ -72,7 +81,7 @@ describe('MCP Server', () => {
   })
 
   it('should return 404 for unknown Streamable HTTP session ID', async () => {
-    const { handleMcpRequest } = await import('@/core/mcp-server')
+    const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
 
     const req = createMockRequest('POST', '/mcp', {}, { 'mcp-session-id': 'nonexistent' })
     const res = createMockResponse()
@@ -83,7 +92,7 @@ describe('MCP Server', () => {
   })
 
   it('should reject GET without session ID', async () => {
-    const { handleMcpRequest } = await import('@/core/mcp-server')
+    const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
 
     const req = createMockRequest('GET', '/mcp', null)
     const res = createMockResponse()
@@ -110,7 +119,7 @@ function createMockRequest(
       'content-type': 'application/json',
       ...headers,
     },
-    on: vi.fn((event: string, cb: (...args: any[]) => void) => {
+    on: mock((event: string, cb: (...args: any[]) => void) => {
       if (event === 'data' && body) {
         cb(Buffer.from(JSON.stringify(body)))
       }
@@ -126,8 +135,8 @@ function createMockRequest(
 function createMockResponse() {
   let bodyContent = ''
   const res: any = {
-    writeHead: vi.fn(),
-    end: vi.fn((data?: string) => {
+    writeHead: mock(),
+    end: mock((data?: string) => {
       if (data) bodyContent = data
     }),
     headersSent: false,

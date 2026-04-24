@@ -9,24 +9,30 @@
  * Selection is optional: a page without an onSelect handler still renders,
  * but the callback fires with the full SearchResult when provided.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 // Defensive isolation per CLAUDE.md — this component never reads from disk,
 // but keeping these in place guarantees no accidental regression can ever
 // write into ~/.bakin/ or ~/.openclaw/ from this test file.
-vi.mock('../../../src/core/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-search-results-mock`)
   return {
     getContentDir: () => base,
     getBakinPaths: () => ({ root: base, plugins: j(base, 'plugin-settings') }),
   }
 })
-vi.mock('../../../packages/core/src/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('../../../packages/core/src/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-search-results-mock`)
   return {
     getContentDir: () => base,
@@ -34,17 +40,17 @@ vi.mock('../../../packages/core/src/content-dir', async () => {
   }
 })
 
-vi.mock('@/components/ui/badge', () => ({
+mock.module('@/components/ui/badge', () => ({
   Badge: ({ children, ...props }: Record<string, unknown>) => (
     <span data-testid="badge" {...props}>{children as React.ReactNode}</span>
   ),
 }))
-vi.mock('@/components/ui/card', () => ({
+mock.module('@/components/ui/card', () => ({
   Card: ({ children, onClick, ...props }: Record<string, unknown>) => (
     <div data-testid="card" onClick={onClick as () => void} {...props}>{children as React.ReactNode}</div>
   ),
 }))
-vi.mock('@/components/ui/skeleton', () => ({
+mock.module('@/components/ui/skeleton', () => ({
   Skeleton: (props: Record<string, unknown>) => <div data-testid="skeleton" {...props} />,
 }))
 
@@ -141,7 +147,7 @@ describe('MemorySearchResults', () => {
   })
 
   it('fires onSelect with the full SearchResult when a row is clicked', () => {
-    const onSelect = vi.fn()
+    const onSelect = mock()
     const target = row({ id: 'session:a', title: 'Clickable' })
     render(
       <MemorySearchResults

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -11,31 +11,40 @@ const openclawDir = join(testDir, 'openclaw')
 const openclawCronDir = join(openclawDir, 'cron')
 
 // Mock external deps
-vi.mock('../../../src/core/content-dir', () => ({
-  getContentDir: () => testDir,
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+}))
+
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => openclawDir,
   getOpenClawPath: (...segments: string[]) => join(openclawDir, ...segments),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-const mockCreateTask = vi.fn((_opts?: unknown) => Promise.resolve({ id: 'task-abc', workflowId: undefined }))
-vi.mock('../../../src/core/task-service', () => ({
+const mockCreateTask = mock((_opts?: unknown) => Promise.resolve({ id: 'task-abc', workflowId: undefined }))
+mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 // Mock taskboard for overlap checks
@@ -51,41 +60,41 @@ const mockTaskboard = {
   },
 }
 
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  getTask: vi.fn((id: string) => {
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  getTask: mock((id: string) => {
     for (const col of Object.values(mockTaskboard.columns)) {
       const t = col.find(task => task.id === id)
       if (t) return t
     }
     return null
   }),
-  readTaskboard: vi.fn(() => mockTaskboard),
-  createTask: vi.fn(() => Promise.resolve({ id: 'task-abc' })),
-  addTaskLog: vi.fn(() => Promise.resolve()),
+  readTaskboard: mock(() => mockTaskboard),
+  createTask: mock(() => Promise.resolve({ id: 'task-abc' })),
+  addTaskLog: mock(() => Promise.resolve()),
 }))
 
 // Mock the hook registry so getHookRegistry().invoke() routes to the taskboard mock
 const mockHookRegistry = {
-  invoke: vi.fn(async <R>(name: string, _data: unknown): Promise<R | undefined> => {
+  invoke: mock(async <R>(name: string, _data: unknown): Promise<R | undefined> => {
     if (name === 'tasks.readTaskboard') return mockTaskboard as R
     if (name === 'tasks.createTask') return mockCreateTask(_data) as R
     return undefined
   }),
-  register: vi.fn(),
-  has: vi.fn(() => false),
+  register: mock(),
+  has: mock(() => false),
 }
 
-vi.mock('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => mockHookRegistry,
 }))
 
 // Mock OpenClaw cron wrappers
-vi.mock('@bakin/schedule/lib/openclaw-cron', () => ({
-  cronAdd: vi.fn(() => Promise.resolve('new-job')),
-  cronEdit: vi.fn(() => Promise.resolve()),
-  cronRemove: vi.fn(() => Promise.resolve()),
-  cronRun: vi.fn(() => Promise.resolve()),
-  cronList: vi.fn(() => Promise.resolve([])),
+mock.module('@bakin/schedule/lib/openclaw-cron', () => ({
+  cronAdd: mock(() => Promise.resolve('new-job')),
+  cronEdit: mock(() => Promise.resolve()),
+  cronRemove: mock(() => Promise.resolve()),
+  cronRun: mock(() => Promise.resolve()),
+  cronList: mock(() => Promise.resolve([])),
 }))
 
 import { readSidecar, writeSidecar, upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
@@ -147,16 +156,16 @@ async function callBridge(
     registerRoute: (route: { path: string; method: string; handler: (req: Request) => Promise<Response> }) => {
       if (route.path === '/bridge') bridgeHandler = route.handler
     },
-    registerExecTool: vi.fn(),
-    registerNav: vi.fn(),
-    registerSlot: vi.fn(),
-    registerSkill: vi.fn(),
-    watchFiles: vi.fn(),
+    registerExecTool: mock(),
+    registerNav: mock(),
+    registerSlot: mock(),
+    registerSkill: mock(),
+    watchFiles: mock(),
     storage: {} as any,
     events: {} as any,
     pluginId: 'schedule',
     activity: {
-      log: vi.fn((agent: string, message: string, opts?: { taskId?: string }) => {
+      log: mock((agent: string, message: string, opts?: { taskId?: string }) => {
         const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as ((...args: unknown[]) => void) | undefined
         if (broadcastFn) {
           broadcastFn({
@@ -169,23 +178,23 @@ async function callBridge(
           })
         }
       }),
-      audit: vi.fn(),
+      audit: mock(),
     },
     hooks: {
-      register: vi.fn(),
-      has: vi.fn(() => false),
+      register: mock(),
+      has: mock(() => false),
       invoke: mockHookRegistry.invoke,
     },
-    getSettings: vi.fn(() => ({ ...mockSettings })),
-    updateSettings: vi.fn((patch: Record<string, unknown>) => {
+    getSettings: mock(() => ({ ...mockSettings })),
+    updateSettings: mock((patch: Record<string, unknown>) => {
       mockSettings = { ...mockSettings, ...patch }
     }),
     search: {
-      registerContentType: vi.fn(),
-      index: vi.fn(async () => {}),
-      remove: vi.fn(async () => {}),
-      transform: vi.fn(async () => {}),
-      query: vi.fn(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      registerContentType: mock(),
+      index: mock(async () => {}),
+      remove: mock(async () => {}),
+      transform: mock(async () => {}),
+      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
     },
   }
 
@@ -209,10 +218,10 @@ async function callBridge(
 }
 
 describe('schedule/bridge', () => {
-  let mockBroadcast: ReturnType<typeof vi.fn>
+  let mockBroadcast: ReturnType<typeof mock>
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     mkdirSync(sidecarDir, { recursive: true })
     mkdirSync(openclawCronDir, { recursive: true })
     // Write a minimal OpenClaw jobs file so readMergedJobs doesn't wipe sidecar entries as stale
@@ -226,7 +235,7 @@ describe('schedule/bridge', () => {
     for (const col of Object.values(mockTaskboard.columns)) col.length = 0
 
     // Setup broadcast mock
-    mockBroadcast = vi.fn()
+    mockBroadcast = mock()
     ;(globalThis as Record<string, unknown>).__bakinBroadcast = mockBroadcast
   })
 
@@ -284,7 +293,7 @@ describe('schedule/bridge', () => {
     const { body } = await callBridge({ jobId: 'test-job', runId: 'r1', timestamp: '2026-03-27T09:00:00Z' })
     expect(body.ok).toBe(true)
     expect(body.taskId).toBe('task-abc')
-    expect(mockCreateTask).toHaveBeenCalledOnce()
+    expect(mockCreateTask).toHaveBeenCalledTimes(1)
 
     // Verify task creation args
     const args = mockCreateTask.mock.calls[0]![0] as unknown as Record<string, unknown>
@@ -386,7 +395,7 @@ describe('schedule/bridge', () => {
 
     await callBridge({ jobId: 'test-job', runId: 'r1', timestamp: '2026-03-27T09:00:00Z' })
 
-    expect(mockBroadcast).toHaveBeenCalledOnce()
+    expect(mockBroadcast).toHaveBeenCalledTimes(1)
     const event = mockBroadcast.mock.calls[0][0]
     expect(event.type).toBe('activity')
     expect(event.agent).toBe('system')

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 import {
   succeed,
   fail,
@@ -147,14 +147,14 @@ describe('resolveImageDimensions', () => {
 
 describe('withRetry', () => {
   it('returns immediately on first success', async () => {
-    const fn = vi.fn().mockResolvedValue('ok')
+    const fn = mock().mockResolvedValue('ok')
     const result = await withRetry(fn, { maxAttempts: 3, baseDelayMs: 1 })
     expect(result).toBe('ok')
     expect(fn).toHaveBeenCalledTimes(1)
   })
 
   it('retries on failure and succeeds', async () => {
-    const fn = vi.fn()
+    const fn = mock()
       .mockRejectedValueOnce(new Error('fail-1'))
       .mockResolvedValue('ok')
     const result = await withRetry(fn, { maxAttempts: 3, baseDelayMs: 1 })
@@ -163,13 +163,13 @@ describe('withRetry', () => {
   })
 
   it('throws after max attempts exhausted', async () => {
-    const fn = vi.fn().mockRejectedValue(new Error('always fails'))
+    const fn = mock().mockRejectedValue(new Error('always fails'))
     await expect(withRetry(fn, { maxAttempts: 2, baseDelayMs: 1 })).rejects.toThrow('always fails')
     expect(fn).toHaveBeenCalledTimes(2)
   })
 
   it('uses default options when none provided', async () => {
-    const fn = vi.fn().mockResolvedValue(42)
+    const fn = mock().mockResolvedValue(42)
     const result = await withRetry(fn)
     expect(result).toBe(42)
   })

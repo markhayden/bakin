@@ -24,7 +24,7 @@ Bun.
 ├── bun.lock                   ← Bun lockfile (replaces pnpm-lock.yaml)
 ├── .bun-version               ← Pinned Bun version
 ├── tsconfig.json              ← Path aliases + root config
-├── vitest.config.ts           ← Test config (mirrors the path aliases)
+├── bunfig.toml                ← Bun test config (preload + DOM env)
 ├── packages/
 │   ├── core/                  ← @bakin/core — shared types, utilities, settings
 │   ├── sdk/                   ← @bakin/sdk — plugin author SDK (published to npm)
@@ -42,9 +42,9 @@ Bun.
 │   ├── generate-embedded-assets.ts
 │   ├── publish-sdk.ts
 │   └── lib/                   ← MCP exec tools (self-registering)
-├── cli/                       ← thin legacy CLI wrapper
+├── cli/                       ← thin CLI wrapper delegated to by the binary dispatcher for HTTP-backed commands
 ├── dev/imitation-crab/        ← OpenClaw mock for dev without real OpenClaw
-├── tests/                     ← vitest suite (bunx vitest run)
+├── tests/                     ← bun:test suite (bun test --isolate)
 └── docs/                      ← plugin-authoring.md and other human-facing docs
 ```
 
@@ -208,7 +208,7 @@ they only see `@bakin/sdk/*`. The lint rule enforces this.
 
 ## TypeScript Path Aliases
 
-Defined in `tsconfig.json`, mirrored in `vitest.config.ts`:
+Defined in `tsconfig.json`; bun picks them up automatically for both runtime and `bun test`:
 
 | Alias | Resolves to | Used by |
 |---|---|---|
@@ -282,13 +282,18 @@ Browser →  HTTP request → Bakin (server.ts)
 
 ## Testing Layout
 
-Vitest covers both server-side modules and selected React components.
-Run: `bunx vitest run` (CI) or `bunx vitest watch` (dev).
+`bun test` covers both server-side modules and selected React components.
+Run: `bun test --isolate` (CI) or `bun test --watch --isolate` (dev).
 
-- `tests/**/*.test.ts` — default Node-environment tests for core
-  modules, routes, plugin logic, and utilities
+- `tests/**/*.test.ts` — default-environment tests for core modules,
+  routes, plugin logic, and utilities
 - `tests/components/**/*.test.tsx` — component tests using Testing
-  Library, with a per-file `// @vitest-environment jsdom` annotation
+  Library; the DOM comes from `@happy-dom/global-registrator`
+  registered globally in `tests/setup.ts`
+- `bunfig.toml` preloads `tests/setup.ts` for every run; that file
+  also exposes the `vi` compatibility shim (see `tests/vi-shim.d.ts`)
+  for legacy vitest-era APIs (`useFakeTimers`, `stubGlobal`,
+  `resetModules`, etc.) not mapped 1:1 by `bun:test`
 
 `tests/plugins/test-helpers.ts` owns `activatePlugin`, `callRoute`,
 `callTool` — the canonical way to run a plugin in a mocked

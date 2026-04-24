@@ -1,36 +1,46 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 // Mock dependencies before importing
-vi.mock('@/core/content-dir', () => ({
-  getContentDir: vi.fn(() => '/tmp/bakin-test'),
-  getBakinPaths: vi.fn(() => ({ home: '/tmp/bakin-test' })),
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
-vi.mock('@/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('@/core/content-dir', () => ({
+  getContentDir: mock(() => '/tmp/bakin-test'),
+  getBakinPaths: mock(() => ({ home: '/tmp/bakin-test',
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+})),
 }))
 
-vi.mock('@/core/antfly', () => ({
-  indexCompletedTask: vi.fn(() => Promise.resolve()),
+mock.module('@/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('@/core/continuation', () => ({
-  checkAndContinueDependents: vi.fn(() => Promise.resolve()),
+mock.module('@/core/antfly', () => ({
+  indexCompletedTask: mock(() => Promise.resolve()),
 }))
 
-vi.mock('@/core/openclaw-client', () => ({
-  sendMessage: vi.fn(() => Promise.resolve('')),
+mock.module('@/core/continuation', () => ({
+  checkAndContinueDependents: mock(() => Promise.resolve()),
+}))
+
+mock.module('@/core/openclaw-client', () => ({
+  sendMessage: mock(() => Promise.resolve('')),
 }))
 
 // Mock taskboard functions
-const mockAddTaskLog = vi.fn((..._args: unknown[]) => Promise.resolve())
-const mockBlockTask = vi.fn((..._args: unknown[]) => Promise.resolve())
-const mockCreateTask = vi.fn((..._args: unknown[]) => Promise.resolve({ id: 'new-task-123' }))
-const mockMoveTask = vi.fn((..._args: unknown[]) => Promise.resolve())
-const mockReadTaskboard = vi.fn((..._args: unknown[]) => ({
+const mockAddTaskLog = mock((..._args: unknown[]) => Promise.resolve())
+const mockBlockTask = mock((..._args: unknown[]) => Promise.resolve())
+const mockCreateTask = mock((..._args: unknown[]) => Promise.resolve({ id: 'new-task-123' }))
+const mockMoveTask = mock((..._args: unknown[]) => Promise.resolve())
+const mockReadTaskboard = mock((..._args: unknown[]) => ({
   columns: {
     todo: [],
     inProgress: [{ id: 'task-1', title: 'Test Task' }],
@@ -40,10 +50,10 @@ const mockReadTaskboard = vi.fn((..._args: unknown[]) => ({
     archived: [],
   }
 }))
-const mockSetDependency = vi.fn((..._args: unknown[]) => Promise.resolve())
-const mockUpdateTask = vi.fn((..._args: unknown[]) => Promise.resolve())
+const mockSetDependency = mock((..._args: unknown[]) => Promise.resolve())
+const mockUpdateTask = mock((..._args: unknown[]) => Promise.resolve())
 
-vi.mock('@bakin/tasks/lib/taskboard', () => ({
+mock.module('@bakin/tasks/lib/flow-store', () => ({
   addTaskLog: mockAddTaskLog,
   blockTask: mockBlockTask,
   createTask: mockCreateTask,
@@ -53,20 +63,20 @@ vi.mock('@bakin/tasks/lib/taskboard', () => ({
   updateTask: mockUpdateTask,
 }))
 
-const mockLoadInstance = vi.fn((..._args: unknown[]) => null)
-const mockCreateInstance = vi.fn((..._args: unknown[]) => undefined)
+const mockLoadInstance = mock((..._args: unknown[]) => null)
+const mockCreateInstance = mock((..._args: unknown[]) => undefined)
 
-vi.mock('@bakin/workflows/lib/runtime', () => ({
+mock.module('@bakin/workflows/lib/runtime', () => ({
   createInstance: (...args: unknown[]) => mockCreateInstance(...args),
   loadInstance: (...args: unknown[]) => mockLoadInstance(...args),
 }))
 
-vi.mock('@bakin/workflows/lib/matcher', () => ({
-  matchWorkflow: vi.fn(() => null),
+mock.module('@bakin/workflows/lib/matcher', () => ({
+  matchWorkflow: mock(() => null),
 }))
 
-const mockLoadDefinition = vi.fn((_data: any): Record<string, unknown> | null => ({ name: 'image-social-post', steps: [] }))
-const mockListDefinitions = vi.fn((): Array<{ name: string }> => [
+const mockLoadDefinition = mock((_data: any): Record<string, unknown> | null => ({ name: 'image-social-post', steps: [] }))
+const mockListDefinitions = mock((): Array<{ name: string }> => [
   { name: 'image-social-post' },
   { name: 'video-storyboard' },
 ])
@@ -89,26 +99,26 @@ const hookHandlers: Record<string, (...args: unknown[]) => unknown> = {
 }
 
 const mockHookRegistry = {
-  invoke: vi.fn(async <R>(name: string, data: unknown): Promise<R | undefined> => {
+  invoke: mock(async <R>(name: string, data: unknown): Promise<R | undefined> => {
     const handler = hookHandlers[name]
     if (handler) return await handler(data) as R
     return undefined
   }),
-  register: vi.fn(),
-  has: vi.fn(() => false),
+  register: mock(),
+  has: mock(() => false),
 }
 
-vi.mock('@/lib/plugin-registry', () => ({
+mock.module('@/lib/plugin-registry', () => ({
   getHookRegistry: () => mockHookRegistry,
 }))
 
 describe('task-service', () => {
   let service: typeof import('@/core/task-service')
-  let mockBroadcast: ReturnType<typeof vi.fn>
+  let mockBroadcast: ReturnType<typeof mock>
 
   beforeEach(async () => {
-    vi.clearAllMocks()
-    mockBroadcast = vi.fn()
+    mock.clearAllMocks()
+    mockBroadcast = mock()
     ;(globalThis as any).__bakinBroadcast = mockBroadcast
     service = await import('@/core/task-service')
   })
@@ -121,7 +131,7 @@ describe('task-service', () => {
     it('should broadcast via SSE and persist log', async () => {
       await service.logProgress('task-1', 'pixel', 'Generating image...')
 
-      expect(mockBroadcast).toHaveBeenCalledOnce()
+      expect(mockBroadcast).toHaveBeenCalledTimes(1)
       expect(mockBroadcast).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'activity',
@@ -136,13 +146,13 @@ describe('task-service', () => {
     it('should broadcast even if no SSE handler registered', async () => {
       delete (globalThis as any).__bakinBroadcast
       await service.logProgress('task-1', 'pixel', 'test')
-      expect(mockAddTaskLog).toHaveBeenCalledOnce()
+      expect(mockAddTaskLog).toHaveBeenCalledTimes(1)
     })
   })
 
   describe('moveTaskWithEffects', () => {
     it('should move task and append audit', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.moveTaskWithEffects('task-1', 'done', 'pixel')
 
       expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined)
@@ -156,7 +166,7 @@ describe('task-service', () => {
     })
 
     it('should trigger continuation when moved to done', async () => {
-      const { checkAndContinueDependents } = await import('@/core/continuation')
+      const { checkAndContinueDependents } = require('@/core/continuation') as typeof import('@/core/continuation')
       await service.moveTaskWithEffects('task-1', 'done', 'pixel')
 
       expect(checkAndContinueDependents).toHaveBeenCalled()
@@ -170,7 +180,7 @@ describe('task-service', () => {
     })
 
     it('should NOT trigger continuation for non-done moves', async () => {
-      const { checkAndContinueDependents } = await import('@/core/continuation')
+      const { checkAndContinueDependents } = require('@/core/continuation') as typeof import('@/core/continuation')
       await service.moveTaskWithEffects('task-1', 'inProgress', 'pixel')
 
       expect(checkAndContinueDependents).not.toHaveBeenCalled()
@@ -202,7 +212,7 @@ describe('task-service', () => {
 
   describe('blockTaskWithEffects', () => {
     it('should block task and append audit', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.blockTaskWithEffects('task-1', 'API key expired', 'pixel')
 
       expect(mockBlockTask).toHaveBeenCalledWith('task-1', 'API key expired', 'pixel')
@@ -239,7 +249,7 @@ describe('task-service', () => {
     })
 
     it('should append audit on creation', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.createTaskWithEffects({ title: 'Test', createdBy: 'cli' })
 
       expect(appendAudit).toHaveBeenCalledWith(
@@ -334,7 +344,7 @@ describe('task-service', () => {
 
   describe('setDependencyWithEffects', () => {
     it('should set dependency and append audit', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.setDependencyWithEffects('task-a', 'task-b')
 
       expect(mockSetDependency).toHaveBeenCalledWith('task-a', 'task-b')

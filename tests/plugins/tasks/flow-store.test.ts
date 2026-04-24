@@ -2,8 +2,8 @@
  * Unit tests for flow-store.ts — SQLite-backed task store.
  * Points openDb() at a temp directory so tests hit a real in-memory-like SQLite.
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
-import Database from 'better-sqlite3'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
+import { Database } from 'bun:sqlite'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -65,18 +65,24 @@ function queryRaw(flowId: string): Record<string, unknown> | undefined {
 // ---------------------------------------------------------------------------
 
 // Redirect homedir() to test directory
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('os', () => {
+  const actual = require('os') as typeof import('os')
   return { ...actual, homedir: () => testHome }
 })
 
 // Mock the workflow runtime to avoid cross-plugin dependency
-vi.mock('../../../plugins/workflows/lib/runtime', () => ({
-  cancelInstance: vi.fn(),
+mock.module('../../../plugins/workflows/lib/runtime', () => ({
+  cancelInstance: mock(),
 }))
 
 // Suppress SSE broadcasts
-;(globalThis as Record<string, unknown>).__bakinBroadcast = vi.fn()
+;(globalThis as Record<string, unknown>).__bakinBroadcast = mock()
 
 // ---------------------------------------------------------------------------
 // Import after mocks
@@ -112,7 +118,7 @@ initTestDb()
 
 beforeEach(() => {
   clearTestDb()
-  vi.clearAllMocks()
+  mock.clearAllMocks()
 })
 
 afterAll(() => {

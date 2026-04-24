@@ -6,7 +6,7 @@
  * `@/hooks/use-search`, which we stub so each test can drive the
  * `results` array deterministically.
  */
-import { describe, it, expect, vi, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, afterAll, beforeEach, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { rmSync } from 'fs'
@@ -14,45 +14,51 @@ import { renderHook, cleanup } from '@testing-library/react'
 
 const testDir = join(tmpdir(), `bakin-test-tasks-filters-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('@/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
-vi.mock('@/core/openclaw-client', () => ({
-  sendToAgent: vi.fn(async () => ({ ok: true })),
+mock.module('@/core/openclaw-client', () => ({
+  sendToAgent: mock(async () => ({ ok: true })),
 }))
 
 // flow-store is not used by use-task-filters.ts but is mocked defensively
 // per CLAUDE.md isolation rules to prevent any transitive write to ~/.bakin/.
-vi.mock('@bakin/tasks/lib/flow-store', () => ({
-  readTaskboard: vi.fn(),
-  createTask: vi.fn(),
-  deleteTask: vi.fn(),
-  assignTask: vi.fn(),
-  addTaskLog: vi.fn(),
-  blockTask: vi.fn(),
-  updateTask: vi.fn(),
-  moveTask: vi.fn(),
-  setDependency: vi.fn(),
-  clearDependency: vi.fn(),
-  reorderTasks: vi.fn(),
-  autoArchiveDoneTasks: vi.fn().mockReturnValue(0),
-  archiveOldTasks: vi.fn().mockReturnValue(0),
+mock.module('@bakin/tasks/lib/flow-store', () => ({
+  readTaskboard: mock(),
+  createTask: mock(),
+  deleteTask: mock(),
+  assignTask: mock(),
+  addTaskLog: mock(),
+  blockTask: mock(),
+  updateTask: mock(),
+  moveTask: mock(),
+  setDependency: mock(),
+  clearDependency: mock(),
+  reorderTasks: mock(),
+  autoArchiveDoneTasks: mock().mockReturnValue(0),
+  archiveOldTasks: mock().mockReturnValue(0),
 }))
 
 // ─── useSearch stub ─────────────────────────────────────────────────────────
@@ -76,10 +82,10 @@ const mockSearchState: {
   aggregations: {},
 }
 
-const searchSpy = vi.fn()
-const clearSpy = vi.fn()
+const searchSpy = mock()
+const clearSpy = mock()
 
-vi.mock('@/hooks/use-search', () => ({
+mock.module('@/hooks/use-search', () => ({
   useSearch: () => ({
     results: mockSearchState.results,
     aggregations: mockSearchState.aggregations,

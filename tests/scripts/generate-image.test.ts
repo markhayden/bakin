@@ -1,45 +1,54 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock, spyOn, type Mock } from 'bun:test'
 
-vi.hoisted(() => {
+(() => {
   const { mkdtempSync } = require('fs')
   const { tmpdir } = require('os')
   const { join } = require('path')
   process.env.BAKIN_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
   process.env.OPENCLAW_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
-})
+})()
 
-vi.mock('../../src/core/content-dir', () => ({
-  getContentDir: vi.fn(() => '/tmp/bakin-test'),
-  getBakinPaths: vi.fn(() => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/content-dir', () => ({
+  getContentDir: mock(() => '/tmp/bakin-test'),
+  getBakinPaths: mock(() => ({
     home: '/tmp/bakin-test',
     assets: '/tmp/bakin-test/assets',
     'assets.store': '/tmp/bakin-test/assets/store',
-  })),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+})),
 }))
 
-vi.mock('../../scripts/lib/registry', () => ({
-  addExecTool: vi.fn(),
+mock.module('../../scripts/lib/registry', () => ({
+  addExecTool: mock(),
 }))
 
-vi.mock('../../plugins/assets/lib/save-asset', () => ({
-  saveAsset: vi.fn(),
+mock.module('../../plugins/assets/lib/save-asset', () => ({
+  saveAsset: mock(),
 }))
 
-vi.mock('child_process', () => ({
-  execFileSync: vi.fn(() => Buffer.from('1080,1920')),
+mock.module('child_process', () => ({
+  execFileSync: mock(() => Buffer.from('1080,1920')),
 }))
 
 let mockOpenClawConfig: string | null = null
 
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>
+mock.module('fs', () => {
+  const actual = require('fs') as Record<string, unknown>
   const origReadFileSync = actual.readFileSync as Function
   return {
     ...actual,
-    existsSync: vi.fn(() => true),
-    mkdirSync: vi.fn(),
-    writeFileSync: vi.fn(),
-    readFileSync: vi.fn((...args: unknown[]) => {
+    existsSync: mock(() => true),
+    mkdirSync: mock(),
+    writeFileSync: mock(),
+    readFileSync: mock((...args: unknown[]) => {
       // Block reading openclaw config in tests unless a test explicitly provides it.
       if (typeof args[0] === 'string' && (args[0] as string).includes('openclaw.json')) {
         if (mockOpenClawConfig !== null) return mockOpenClawConfig
@@ -73,14 +82,14 @@ const mockSaveAsset = vi.mocked(saveAsset)
 
 describe('generateImage', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     mockOpenClawConfig = null
     // Set API key for tests
     process.env.GEMINI_API_KEY = 'test-key-123'
   })
 
   it('calls Gemini API and saves asset on success', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
+    spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
     mockSaveAsset.mockResolvedValue({
       ok: true,
       path: 'assets/images/task-123/20260326-test.jpg',
@@ -116,7 +125,7 @@ describe('generateImage', () => {
   })
 
   it('uses pro model when specified', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
+    spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
     mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
 
     const result = await generateImage({
@@ -136,7 +145,7 @@ describe('generateImage', () => {
   })
 
   it('uses social-square preset dimensions', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
+    spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
     mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
 
     const result = await generateImage({
@@ -153,7 +162,7 @@ describe('generateImage', () => {
   })
 
   it('caps custom dimensions at MAX_IMAGE_EDGE', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
+    spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
     mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
 
     const result = await generateImage({
@@ -201,7 +210,7 @@ describe('generateImage', () => {
       },
     })
 
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
+    spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
     mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
 
     const result = await generateImage({
@@ -219,7 +228,7 @@ describe('generateImage', () => {
   })
 
   it('returns fail when Gemini API returns error', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+    spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
       status: 429,
       text: async () => 'Rate limited',
@@ -237,7 +246,7 @@ describe('generateImage', () => {
   }, 30_000)
 
   it('returns fail when asset save fails', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
+    spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
     mockSaveAsset.mockResolvedValue({ ok: false, error: 'disk full' })
 
     const result = await generateImage({
@@ -252,7 +261,7 @@ describe('generateImage', () => {
   })
 
   it('truncates prompt in return value to 500 chars', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
+    spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
     mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
 
     const longPrompt = 'a'.repeat(1000)

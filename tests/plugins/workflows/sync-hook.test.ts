@@ -9,7 +9,7 @@
  * Each mapper is exercised directly. The watcher is not driven here — that
  * integration is covered in tests/integration/.
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -24,47 +24,53 @@ const testDir = join(tmpdir(), `bakin-test-workflows-sync-${Date.now()}`)
 const defsDir = join(testDir, 'workflows', 'definitions')
 const instancesDir = join(testDir, 'workflows', 'instances')
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('../../../src/core/discord-gateway', () => ({
-  startGateway: vi.fn(),
-  stopGateway: vi.fn(),
-  onGateInteraction: vi.fn(),
-  isGatewayConnected: vi.fn(() => false),
+mock.module('../../../src/core/discord-gateway', () => ({
+  startGateway: mock(),
+  stopGateway: mock(),
+  onGateInteraction: mock(),
+  isGatewayConnected: mock(() => false),
 }))
 
-vi.mock('../../../scripts/lib/post-discord', () => ({
-  loadDiscordConfig: vi.fn(() => null),
+mock.module('../../../scripts/lib/post-discord', () => ({
+  loadDiscordConfig: mock(() => null),
 }))
 
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
-  addTaskLog: vi.fn(() => Promise.resolve()),
-  moveTask: vi.fn(() => Promise.resolve()),
-  readTaskboard: vi.fn(() => ({
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
+  addTaskLog: mock(() => Promise.resolve()),
+  moveTask: mock(() => Promise.resolve()),
+  readTaskboard: mock(() => ({
     columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [] },
   })),
-  getTask: vi.fn(() => null),
-  getTaskWithColumn: vi.fn(() => null),
+  getTask: mock(() => null),
+  getTaskWithColumn: mock(() => null),
 }))
 
 import workflowsPlugin from '../../../plugins/workflows'
@@ -95,33 +101,33 @@ function makeCtx(): CapturedCtx {
     storage,
     events,
     pluginId: 'workflows',
-    registerNav: vi.fn(),
-    registerRoute: vi.fn(),
-    registerSlot: vi.fn(),
-    registerExecTool: vi.fn(),
-    registerSkill: vi.fn(),
-    registerWorkflow: vi.fn(),
-    registerNodeType: vi.fn(() => ''),
-    registerNotificationChannel: vi.fn(() => ''),
-    registerHealthCheck: vi.fn(() => ''),
-    watchFiles: vi.fn(),
+    registerNav: mock(),
+    registerRoute: mock(),
+    registerSlot: mock(),
+    registerExecTool: mock(),
+    registerSkill: mock(),
+    registerWorkflow: mock(),
+    registerNodeType: mock(() => ''),
+    registerNotificationChannel: mock(() => ''),
+    registerHealthCheck: mock(() => ''),
+    watchFiles: mock(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
-    updateSettings: vi.fn(),
-    activity: { log: vi.fn(), audit: vi.fn() },
+    updateSettings: mock(),
+    activity: { log: mock(), audit: mock() },
     search: {
-      registerContentType: vi.fn(),
-      registerFileBackedContentType: vi.fn((def: FileBackedContentTypeDefinition) => {
+      registerContentType: mock(),
+      registerFileBackedContentType: mock((def: FileBackedContentTypeDefinition) => {
         capturedDef = def
       }),
-      index: vi.fn(async (key, doc) => { indexCalls.push({ key, doc }) }),
-      remove: vi.fn(async (key) => { removeCalls.push(key) }),
-      transform: vi.fn(async () => {}),
-      query: vi.fn(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      index: mock(async (key, doc) => { indexCalls.push({ key, doc }) }),
+      remove: mock(async (key) => { removeCalls.push(key) }),
+      transform: mock(async () => {}),
+      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
     },
     hooks: {
-      register: vi.fn(() => () => {}),
-      has: vi.fn(() => false),
-      invoke: vi.fn(async () => undefined),
+      register: mock(() => () => {}),
+      has: mock(() => false),
+      invoke: mock(async () => undefined),
     },
   }
 
@@ -162,7 +168,7 @@ describe('workflows plugin — file-backed sync hook', () => {
   it('registers a file-backed content type with TWO filePatterns', async () => {
     const captured = makeCtx()
     await workflowsPlugin.activate(captured.ctx)
-    expect(captured.ctx.search.registerFileBackedContentType).toHaveBeenCalledOnce()
+    expect(captured.ctx.search.registerFileBackedContentType).toHaveBeenCalledTimes(1)
     expect(captured.capturedDef).not.toBeNull()
     expect(captured.capturedDef!.table).toBe('workflows')
     expect(captured.capturedDef!.filePatterns).toHaveLength(2)

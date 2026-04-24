@@ -1,20 +1,20 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 // Sandbox — registry tests don't touch disk but the isolation rule is
 // enforced globally to prevent any accidental writes to ~/.bakin/.
 const testDir = join(tmpdir(), `bakin-test-registry-${Date.now()}`)
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ content: testDir }),
 }))
 
 // Mock self-registering tool imports to prevent side-effect errors
-vi.mock('../../scripts/lib/log-progress', () => ({}))
-vi.mock('../../scripts/lib/generate-image', () => ({}))
-vi.mock('../../scripts/lib/post-discord', () => ({}))
-vi.mock('../../scripts/lib/get-paths', () => ({}))
+mock.module('../../scripts/lib/log-progress', () => ({}))
+mock.module('../../scripts/lib/generate-image', () => ({}))
+mock.module('../../scripts/lib/post-discord', () => ({}))
+mock.module('../../scripts/lib/get-paths', () => ({}))
 
 import {
   addExecTool,

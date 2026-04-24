@@ -4,59 +4,73 @@
  * Tests configurable channels on routes, exec tools, and backward compatibility
  * with the legacy single `channel` field.
  */
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testDir = vi.hoisted(() => {
+const testDir = (() => {
   const { join } = require('path')
   const { tmpdir } = require('os')
   return join(tmpdir(), `bakin-test-channels-${Date.now()}`)
-})
+})()
+
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
 
 // ---------------------------------------------------------------------------
 // Mocks — must be before any plugin imports
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ messaging: testDir }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  registerWatcher: vi.fn(),
-  unregisterWatcher: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  registerWatcher: mock(),
+  unregisterWatcher: mock(),
 }))
 
-vi.mock('../../../plugins/messaging/lib/gateway', () => ({
-  streamChatCompletion: vi.fn(async () => new Response('data: [DONE]\n\n', {
+mock.module('../../../plugins/messaging/lib/gateway', () => ({
+  streamChatCompletion: mock(async () => new Response('data: [DONE]\n\n', {
     headers: { 'Content-Type': 'text/event-stream' },
   })),
-  chatCompletion: vi.fn(async () => 'mock response'),
+  chatCompletion: mock(async () => 'mock response'),
 }))
 
 // Suppress SSE broadcast
-;(globalThis as any).__bakinBroadcast = vi.fn()
+;(globalThis as any).__bakinBroadcast = mock()
 
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import messagingPlugin from '../../../plugins/messaging/index'
+// Dynamic require — ES imports are hoisted above top-level `process.env`
+// assignments, so messaging/storage.ts would call getContentDir() before
+// BAKIN_HOME was set. require() runs in source order.
+const messagingPlugin = require('../../../plugins/messaging/index').default as typeof import('../../../plugins/messaging/index').default
 import type { CalendarItem } from '../../../plugins/messaging/types'
 import {
   activatePlugin,

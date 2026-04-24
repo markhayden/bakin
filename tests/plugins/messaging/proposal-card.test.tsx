@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 
-vi.mock('@/components/ui/button', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick, title, disabled, ...props }: Record<string, unknown>) => (
     <button onClick={onClick as () => void} title={title as string} disabled={disabled as boolean} {...props}>
       {children as React.ReactNode}
@@ -11,13 +17,13 @@ vi.mock('@/components/ui/button', () => ({
   ),
 }))
 
-vi.mock('@/components/ui/badge', () => ({
+mock.module('@/components/ui/badge', () => ({
   Badge: ({ children, ...props }: Record<string, unknown>) => (
     <span data-testid="badge" {...props}>{children as React.ReactNode}</span>
   ),
 }))
 
-vi.mock('@/components/ui/input', () => ({
+mock.module('@/components/ui/input', () => ({
   Input: (props: Record<string, unknown>) => <input data-testid="rejection-input" {...props} />,
 }))
 
@@ -75,9 +81,9 @@ describe('ProposalCard', () => {
   })
 
   it('shows approve/reject/edit buttons for proposed items', () => {
-    const onApprove = vi.fn()
-    const onReject = vi.fn()
-    const onEdit = vi.fn()
+    const onApprove = mock()
+    const onReject = mock()
+    const onEdit = mock()
     render(
       <ProposalCard
         proposal={makeProposal()}
@@ -98,14 +104,14 @@ describe('ProposalCard', () => {
   })
 
   it('calls onApprove with proposal id', () => {
-    const onApprove = vi.fn()
+    const onApprove = mock()
     render(<ProposalCard proposal={makeProposal()} onApprove={onApprove} />)
     fireEvent.click(screen.getByTitle('Approve'))
     expect(onApprove).toHaveBeenCalledWith('p1')
   })
 
   it('shows rejection note input on reject click', () => {
-    const onReject = vi.fn()
+    const onReject = mock()
     render(<ProposalCard proposal={makeProposal()} onReject={onReject} />)
     fireEvent.click(screen.getByTitle('Reject'))
     expect(screen.getByTestId('rejection-input')).toBeDefined()
@@ -122,7 +128,7 @@ describe('ProposalCard', () => {
   })
 
   it('shows Revised status chip for revised items with action buttons', () => {
-    render(<ProposalCard proposal={makeProposal({ status: 'revised' })} onApprove={vi.fn()} />)
+    render(<ProposalCard proposal={makeProposal({ status: 'revised' })} onApprove={mock()} />)
     expect(screen.getByText('Revised')).toBeDefined()
     expect(screen.getByTitle('Approve')).toBeDefined()
   })

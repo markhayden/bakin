@@ -9,42 +9,46 @@
  * Decision D6: /api/search remains as the single cross-plugin search route.
  * All other search endpoints moved to /api/plugins/{id}/search.
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { rmSync } from 'fs'
 
 const testDir = join(tmpdir(), `bakin-test-api-search-${process.pid}-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
-  watchPath: vi.fn(),
+mock.module('@/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
+  watchPath: mock(),
 }))
 
-const crossTableSearchMock = vi.fn()
+const crossTableSearchMock = mock()
 
-vi.mock('@/core/search-registry', async () => {
-  const actual = await vi.importActual<typeof import('@/core/search-registry')>(
-    '@/core/search-registry'
-  )
+mock.module('@/core/search-registry', () => {
+  const actual = require('@/core/search-registry') as typeof import('@/core/search-registry')
   return {
     ...actual,
     crossTableSearch: (...args: unknown[]) => crossTableSearchMock(...args),

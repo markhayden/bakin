@@ -11,7 +11,7 @@
  *   6. self-loops rejected
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { z } from 'zod'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -19,27 +19,33 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-edge-rules-${Date.now()}`)
 
 // CLAUDE.md — required test isolation mocks.
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  createTask: vi.fn(),
-  addTaskLog: vi.fn(),
-  moveTask: vi.fn(),
-  readTaskboard: vi.fn(() => ({ columns: {} })),
-  getTask: vi.fn(() => null),
-  getTaskWithColumn: vi.fn(() => null),
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  createTask: mock(),
+  addTaskLog: mock(),
+  moveTask: mock(),
+  readTaskboard: mock(() => ({ columns: {} })),
+  getTask: mock(() => null),
+  getTaskWithColumn: mock(() => null),
 }))
 
 import { canConnect } from '../../../plugins/workflows/lib/edge-rules'

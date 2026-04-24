@@ -1,28 +1,28 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 // Defensive content-dir mock (per CLAUDE.md test isolation rules) — this test
 // doesn't touch storage, but the rule applies to every test file.
 const testDir = join(tmpdir(), `bakin-openclaw-client-test-${Date.now()}`)
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../packages/core/src/content-dir', () => ({
+mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
 
 // Mock vault before importing openclaw-client
-vi.mock('@/core/vault', () => ({
-  get: vi.fn((key: string) => key === 'gateway-token' ? 'test-token' : null),
-  has: vi.fn(() => true),
+mock.module('@/core/vault', () => ({
+  get: mock((key: string) => key === 'gateway-token' ? 'test-token' : null),
+  has: mock(() => true),
 }))
 
 // Mock settings
-vi.mock('@/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('@/core/settings', () => ({
+  getSettings: mock(() => ({
     openclaw: {
       binaryPath: 'openclaw',
       gatewayUrl: 'http://localhost',
@@ -31,12 +31,12 @@ vi.mock('@/core/settings', () => ({
   })),
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
@@ -68,7 +68,7 @@ describe('openclaw-client', () => {
   afterEach(() => {
     vi.useRealTimers()
     global.fetch = originalFetch
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   it('exports expected functions', async () => {
@@ -82,7 +82,7 @@ describe('openclaw-client', () => {
 
   describe('sendMessage retry', () => {
     it('retries transient TypeError("fetch failed") and succeeds on attempt 3', async () => {
-      const fetchMock = vi.fn()
+      const fetchMock = mock()
         .mockRejectedValueOnce(new TypeError('fetch failed'))
         .mockRejectedValueOnce(new TypeError('fetch failed'))
         .mockResolvedValueOnce(okResponse('hello'))
@@ -98,7 +98,7 @@ describe('openclaw-client', () => {
     })
 
     it('does NOT retry on 500 response (fetch resolved, !res.ok path)', async () => {
-      const fetchMock = vi.fn().mockResolvedValue(errorResponse(500, 'boom'))
+      const fetchMock = mock().mockResolvedValue(errorResponse(500, 'boom'))
       global.fetch = fetchMock as unknown as typeof fetch
 
       const client = await import('@/core/openclaw-client')
@@ -107,7 +107,7 @@ describe('openclaw-client', () => {
     })
 
     it('does NOT retry on 4xx response', async () => {
-      const fetchMock = vi.fn().mockResolvedValue(errorResponse(401, 'unauthorized'))
+      const fetchMock = mock().mockResolvedValue(errorResponse(401, 'unauthorized'))
       global.fetch = fetchMock as unknown as typeof fetch
 
       const client = await import('@/core/openclaw-client')
@@ -116,7 +116,7 @@ describe('openclaw-client', () => {
     })
 
     it('throws after 3 transient failures', async () => {
-      const fetchMock = vi.fn().mockRejectedValue(new TypeError('fetch failed'))
+      const fetchMock = mock().mockRejectedValue(new TypeError('fetch failed'))
       global.fetch = fetchMock as unknown as typeof fetch
 
       const client = await import('@/core/openclaw-client')
@@ -136,7 +136,7 @@ describe('openclaw-client', () => {
       const econnreset = Object.assign(new Error('socket hang up'), {
         cause: { code: 'ECONNRESET' },
       })
-      const fetchMock = vi.fn()
+      const fetchMock = mock()
         .mockRejectedValueOnce(econnreset)
         .mockResolvedValueOnce(okResponse('ok'))
       global.fetch = fetchMock as unknown as typeof fetch

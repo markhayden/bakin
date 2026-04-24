@@ -7,7 +7,7 @@
  *   - content is populated server-side for text and (mocked) PDF assets
  *     via extractAssetContent, NOT via {{remotePDF}}/{{remoteText}} helpers
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -33,7 +33,13 @@ const MD_FILENAME = '20260411-notes-dddddddd.md'
 // Mocks (must be defined before importing the plugin)
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     home: testDir,
@@ -41,18 +47,18 @@ vi.mock('../../../src/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  registerSyncHook: mock(),
 }))
 
 // Mock pdf-parse so PDF tests don't require a real PDF — the extractor
 // lazy-imports the module, and this mock replaces it. pdf-parse v2
 // exports a PDFParse class, not a default function.
-vi.mock('pdf-parse', () => {
+mock.module('pdf-parse', () => {
   class MockPDFParse {
     private byteLen: number
     constructor(options: { data: Uint8Array }) {

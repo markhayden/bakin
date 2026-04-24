@@ -11,7 +11,7 @@
  *     the mock should report as existing.
  *   - Mock prompts so interactive confirmation is deterministic
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { EventEmitter } from 'events'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -59,21 +59,27 @@ function virtualInstall(modelDir: string) {
   virtualSizes.set(weightsPath, 42)
 }
 
-vi.mock('../../../src/core/antfly-server', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/antfly-server', () => ({
   findBinary: () => antflyBinary,
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs')
+mock.module('fs', () => {
+  const actual = require('fs') as typeof import('fs')
   return {
     ...actual,
     existsSync: (p: unknown) => existingPaths.has(String(p)),
@@ -90,7 +96,7 @@ vi.mock('fs', async () => {
   }
 })
 
-vi.mock('child_process', () => ({
+mock.module('child_process', () => ({
   spawn: (cmd: string, args: string[]) => {
     spawnCalls.push({ cmd, args })
     const child = new EventEmitter() as EventEmitter & {
@@ -122,7 +128,7 @@ vi.mock('child_process', () => ({
   },
 }))
 
-vi.mock('../../../src/core/onboarding/prompts', () => ({
+mock.module('../../../src/core/onboarding/prompts', () => ({
   askYesNo: () => Promise.resolve(askYesNoReturn),
   readLine: () => Promise.resolve(''),
 }))

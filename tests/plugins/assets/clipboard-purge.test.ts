@@ -1,7 +1,7 @@
 /**
  * Tests for clipboard asset purge on task completion.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -10,22 +10,28 @@ import { activatePlugin, type ActivatedPlugin } from '../test-helpers'
 const testDir = join(tmpdir(), `bakin-test-clipboard-purge-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ assets: join(testDir, 'assets') }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  registerSyncHook: mock(),
 }))
 
 import assetsPlugin from '@bakin/assets'
@@ -39,7 +45,7 @@ beforeAll(async () => {
   plugin = await activatePlugin(assetsPlugin, testDir)
 
   // Find the purge hook handler that was registered
-  const registerCalls = (plugin.ctx.hooks.register as ReturnType<typeof vi.fn>).mock.calls
+  const registerCalls = (plugin.ctx.hooks.register as ReturnType<typeof mock>).mock.calls
   const purgeCall = registerCalls.find((args: unknown[]) => args[0] === 'assets.purgeClipboardForTask')
   purgeHandler = purgeCall?.[1] as typeof purgeHandler
 })

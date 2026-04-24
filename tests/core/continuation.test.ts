@@ -1,29 +1,34 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('../../src/core/openclaw-client', () => ({
-  sendMessage: vi.fn().mockResolvedValue(undefined),
+mock.module('../../src/core/openclaw-client', () => ({
+  sendMessage: mock().mockResolvedValue(undefined),
 }))
 
-// Mock the taskboard shim that gets dynamically imported by continuation.ts
-// (src/lib/taskboard re-exports from plugins/tasks/lib/flow-store)
-const mockReadAllColumns = vi.fn()
-const mockClearDependency = vi.fn().mockResolvedValue(undefined)
-const mockAddTaskLog = vi.fn().mockResolvedValue(undefined)
+// Mock flow-store that gets dynamically imported by continuation.ts
+const mockReadAllColumns = mock()
+const mockClearDependency = mock().mockResolvedValue(undefined)
+const mockAddTaskLog = mock().mockResolvedValue(undefined)
 
-vi.mock('../../src/lib/taskboard', () => ({
+mock.module('@bakin/tasks/lib/flow-store', () => ({
   readAllColumns: mockReadAllColumns,
   clearDependency: mockClearDependency,
   addTaskLog: mockAddTaskLog,
@@ -35,7 +40,7 @@ import * as openclaw from '../../src/core/openclaw-client'
 
 describe('continuation', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
   })
 
   function mockColumns(columns: { todo?: any[]; inProgress?: any[]; blocked?: any[]; done?: any[] }) {

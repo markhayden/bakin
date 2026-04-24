@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import type { Task, TaskColumns } from '../../plugins/tasks/types'
 
-const { mockMove, mockUseSortable } = vi.hoisted(() => ({
-  mockMove: vi.fn(),
-  mockUseSortable: vi.fn(),
-}))
+const { mockMove, mockUseSortable } = (() => ({
+  mockMove: mock(),
+  mockUseSortable: mock(),
+}))()
 
-const { queryStateDefaults } = vi.hoisted(() => ({
+const { queryStateDefaults } = (() => ({
   queryStateDefaults: {} as Record<string, string>,
-}))
+}))()
 
 let capturedProviderProps: Record<string, any> = {}
 
@@ -75,17 +75,23 @@ mockMove.mockImplementation((items: TaskColumns, event: any) => {
 })
 
 mockUseSortable.mockImplementation(() => ({
-  handleRef: vi.fn(),
-  ref: vi.fn(),
-  sourceRef: vi.fn(),
-  targetRef: vi.fn(),
+  handleRef: mock(),
+  ref: mock(),
+  sourceRef: mock(),
+  targetRef: mock(),
   isDragging: false,
   isDropping: false,
   isDragSource: false,
   isDropTarget: false,
 }))
 
-vi.mock('@dnd-kit/dom', () => {
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@dnd-kit/dom', () => {
   class MockPointerSensor {
     static configure() {
       return {}
@@ -100,23 +106,23 @@ vi.mock('@dnd-kit/dom', () => {
   }
 })
 
-vi.mock('@dnd-kit/helpers', () => ({
+mock.module('@dnd-kit/helpers', () => ({
   move: (...args: unknown[]) => mockMove(...args),
 }))
 
-vi.mock('@dnd-kit/react', () => ({
+mock.module('@dnd-kit/react', () => ({
   DragDropProvider: (props: any) => {
     capturedProviderProps = props
     return <div data-testid="dnd-provider">{props.children}</div>
   },
-  useDroppable: () => ({ ref: vi.fn(), isDropTarget: false }),
+  useDroppable: () => ({ ref: mock(), isDropTarget: false }),
 }))
 
-vi.mock('@dnd-kit/react/sortable', () => ({
+mock.module('@dnd-kit/react/sortable', () => ({
   useSortable: (...args: unknown[]) => mockUseSortable(...args),
 }))
 
-vi.mock('../../plugins/tasks/components/kanban-column', () => ({
+mock.module('../../plugins/tasks/components/kanban-column', () => ({
   KanbanColumn: ({ id, tasks }: { id: string; tasks: Task[] }) => (
     <div data-testid={`column-${id}`}>
       {tasks.map((task) => (
@@ -126,43 +132,43 @@ vi.mock('../../plugins/tasks/components/kanban-column', () => ({
   ),
 }))
 
-vi.mock('../../plugins/tasks/components/delete-task-dialog', () => ({
+mock.module('../../plugins/tasks/components/delete-task-dialog', () => ({
   DeleteTaskDialog: () => null,
 }))
 
-vi.mock('../../plugins/tasks/components/block-reason-dialog', () => ({
+mock.module('../../plugins/tasks/components/block-reason-dialog', () => ({
   BlockReasonDialog: () => null,
 }))
 
-vi.mock('../../plugins/tasks/components/task-detail-dialog', () => ({
+mock.module('../../plugins/tasks/components/task-detail-dialog', () => ({
   TaskDetailDrawer: () => null,
 }))
 
-vi.mock('../../plugins/tasks/components/task-metrics', () => ({
+mock.module('../../plugins/tasks/components/task-metrics', () => ({
   TaskMetrics: () => null,
 }))
 
-vi.mock('../../plugins/tasks/components/task-filters', () => ({
+mock.module('../../plugins/tasks/components/task-filters', () => ({
   TaskFilters: () => null,
 }))
 
-vi.mock('../../plugins/tasks/components/task-log-table', () => ({
+mock.module('../../plugins/tasks/components/task-log-table', () => ({
   TaskLogTable: () => null,
 }))
 
-vi.mock('@/components/plugin-header', () => ({
+mock.module('@/components/plugin-header', () => ({
   PluginHeader: () => null,
 }))
 
-vi.mock('@/components/agent-avatar', () => ({
+mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: any) => <div>{agentId}</div>,
 }))
 
-vi.mock('@/components/ui/button', () => ({
+mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick }: any) => <button onClick={onClick}>{children}</button>,
 }))
 
-vi.mock('@/hooks/use-query-state', () => ({
+mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
     return React.useState(queryStateDefaults[_key] ?? defaultValue)
@@ -173,15 +179,16 @@ vi.mock('@/hooks/use-query-state', () => ({
   },
 }))
 
-vi.mock('@/hooks/use-content-store', () => ({
+mock.module('@/hooks/use-content-store', () => ({
   useContentStore: () => 0,
 }))
 
-vi.mock('@/hooks/use-toast', () => ({
-  toast: vi.fn(),
+mock.module('@/hooks/use-toast', () => ({
+  toast: mock(),
+  useToastStore: Object.assign(mock(() => []), { getState: () => ({ add: mock(), clear: mock() }) }),
 }))
 
-vi.mock('../../plugins/tasks/hooks/use-gate-status', () => ({
+mock.module('../../plugins/tasks/hooks/use-gate-status', () => ({
   useGateStatus: () => ({}),
 }))
 
@@ -246,13 +253,13 @@ describe('KanbanBoard drag and drop', () => {
 
   afterEach(() => {
     cleanup()
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   async function renderBoard(columns: Partial<TaskColumns>) {
     const boardResponse = makeBoardResponse(columns)
 
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    vi.stubGlobal('fetch', mock(async (url: string, init?: RequestInit) => {
       if (init?.method && init.method !== 'GET') {
         fetchCalls.push({
           url,
@@ -265,7 +272,7 @@ describe('KanbanBoard drag and drop', () => {
       return { ok: true, json: async () => boardResponse } as Response
     }))
 
-    const { KanbanBoard } = await import('../../plugins/tasks/components/kanban-board')
+    const { KanbanBoard } = require('../../plugins/tasks/components/kanban-board') as typeof import('../../plugins/tasks/components/kanban-board')
 
     await act(async () => {
       render(<KanbanBoard />)
@@ -619,31 +626,31 @@ describe('KanbanBoard drag and drop', () => {
 describe('TaskCard rendering', () => {
   afterEach(() => {
     cleanup()
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   it('renders the card with drag styling when isDragging is true', async () => {
     mockUseSortable.mockReturnValue({
-      handleRef: vi.fn(),
-      ref: vi.fn(),
-      sourceRef: vi.fn(),
-      targetRef: vi.fn(),
+      handleRef: mock(),
+      ref: mock(),
+      sourceRef: mock(),
+      targetRef: mock(),
       isDragging: true,
       isDropping: false,
       isDragSource: true,
       isDropTarget: false,
     })
 
-    const { TaskCard } = await vi.importActual<typeof import('../../plugins/tasks/components/task-card')>('../../plugins/tasks/components/task-card')
+    const { TaskCard } = require('../../plugins/tasks/components/task-card') as typeof import('../../plugins/tasks/components/task-card')
 
     const task = makeTask('task-1', 'Test Task')
     const { container } = render(
       <TaskCard
         task={task}
         columnId="todo"
-        onAssign={vi.fn()}
-        onDelete={vi.fn()}
-        onClick={vi.fn()}
+        onAssign={mock()}
+        onDelete={mock()}
+        onClick={mock()}
       />
     )
 
@@ -653,26 +660,26 @@ describe('TaskCard rendering', () => {
 
   it('renders the normal draggable card when isDragging is false', async () => {
     mockUseSortable.mockReturnValue({
-      handleRef: vi.fn(),
-      ref: vi.fn(),
-      sourceRef: vi.fn(),
-      targetRef: vi.fn(),
+      handleRef: mock(),
+      ref: mock(),
+      sourceRef: mock(),
+      targetRef: mock(),
       isDragging: false,
       isDropping: false,
       isDragSource: false,
       isDropTarget: false,
     })
 
-    const { TaskCard } = await vi.importActual<typeof import('../../plugins/tasks/components/task-card')>('../../plugins/tasks/components/task-card')
+    const { TaskCard } = require('../../plugins/tasks/components/task-card') as typeof import('../../plugins/tasks/components/task-card')
 
     const task = makeTask('task-1', 'Test Task')
     const { container } = render(
       <TaskCard
         task={task}
         columnId="todo"
-        onAssign={vi.fn()}
-        onDelete={vi.fn()}
-        onClick={vi.fn()}
+        onAssign={mock()}
+        onDelete={mock()}
+        onClick={mock()}
       />
     )
 

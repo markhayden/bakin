@@ -30,7 +30,7 @@ git clone git@github.com:madeinwyo/bakin.git
 cd bakin
 bun install
 bun run typecheck
-bun x vitest run
+bun test --isolate
 ```
 
 ## Common commands
@@ -42,8 +42,8 @@ bun run start        # one-shot prestart build + boot (production-style preview)
 bun run server       # boot without rebuilding (use when dist/ is fresh)
 bun run build        # full production build (ends with bun build --compile)
 bun run typecheck    # tsc --noEmit
-bun x vitest run     # full test suite
-bun x vitest watch   # watch mode
+bun test --isolate   # full test suite
+bun test --watch --isolate   # watch mode
 bun run lint         # ESLint
 ```
 

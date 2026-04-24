@@ -7,7 +7,7 @@
  * file mocked every stat source and passed even when the wiring was
  * broken; that is the failure mode the overhaul is meant to prevent.
  */
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -15,25 +15,38 @@ import type { ActivatedPlugin } from '../test-helpers'
 
 const testDir = join(tmpdir(), `bakin-test-health-routes-${Date.now()}`)
 
+// ES imports are hoisted above mock.module — set env so the guards don't trip.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before imports that use them
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../src/core/content-dir', () => ({
-  getContentDir: () => testDir,
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+}))
+
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('../../../src/core/settings', () => ({
+  getSettings: mock(() => ({
     openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
   })),
 }))
@@ -44,22 +57,22 @@ const mockDoctorResults = [
   { check: 'agents', status: 'error', message: 'Roster mismatch' },
 ]
 
-vi.mock('../../../src/core/doctor', () => ({
-  getLastResults: vi.fn(() => ({
+mock.module('../../../src/core/doctor', () => ({
+  getLastResults: mock(() => ({
     results: mockDoctorResults,
     timestamp: Date.now(),
   })),
-  runDiagnostics: vi.fn(async () => mockDoctorResults),
+  runDiagnostics: mock(async () => mockDoctorResults),
 }))
 
-vi.mock('../../../src/core/agent-usage', () => ({
+mock.module('../../../src/core/agent-usage', () => ({
   getAllAgentUsage: () => [
     { agent: 'patch', sessionId: 's1', model: 'claude-4', messages: 10, tokens: { total: 1000 }, cost: { total: 0.05 } },
   ],
 }))
 
-vi.mock('../../../src/core/search-registry', () => ({
-  getSearchHealth: vi.fn(async () => ({
+mock.module('../../../src/core/search-registry', () => ({
+  getSearchHealth: mock(async () => ({
     enabled: false,
     tables: [],
   })),
@@ -68,7 +81,7 @@ vi.mock('../../../src/core/search-registry', () => ({
 // Defensive stub — the test isolation hook scans for plugin refs in text
 // and flags any mention of plugins/tasks even though we never import the
 // module. Usage-feed assertions contain /api/plugins/tasks/* strings.
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({}))
 
 // Registry snapshot accessor (plugins list only — exec tool stats are gone).
 ;(globalThis as unknown as { __bakinGetRegistrySnapshot: () => unknown[] }).__bakinGetRegistrySnapshot = () => [
@@ -89,7 +102,8 @@ vi.mock('../../../plugins/tasks/lib/flow-store', () => ({}))
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool } from '../test-helpers'
-import healthPlugin from '../../../plugins/health'
+// Dynamic require — ES imports are hoisted above top-level env setup above.
+const healthPlugin = require('../../../plugins/health').default as typeof import('../../../plugins/health').default
 import { recordUsage, clearUsage } from '../../../src/core/usage'
 
 let activated: ActivatedPlugin
@@ -101,7 +115,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
-  vi.restoreAllMocks()
+  mock.restore()
 })
 
 beforeEach(() => {
@@ -278,7 +292,7 @@ describe('Health Plugin Routes', () => {
     })
 
     it('runs fresh diagnostics when ?fresh=true', async () => {
-      const { runDiagnostics } = await import('../../../src/core/doctor')
+      const { runDiagnostics } = require('../../../src/core/doctor') as typeof import('../../../src/core/doctor')
       const route = findRoute(activated.routes, 'GET', '/doctor')!
 
       const { status, body } = await callRoute(route, activated.ctx, {
@@ -332,7 +346,7 @@ describe('Health Exec Tools', () => {
     })
 
     it('runs fresh diagnostics when fresh=true', async () => {
-      const { runDiagnostics } = await import('../../../src/core/doctor')
+      const { runDiagnostics } = require('../../../src/core/doctor') as typeof import('../../../src/core/doctor')
       const tool = findTool(activated.execTools, 'bakin_exec_health_doctor')!
 
       const result = await callTool(tool, { fresh: true })

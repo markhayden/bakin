@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
 import { join } from 'path'
 
-const testHome = vi.hoisted(() => {
+const testHome = (() => {
   const { mkdtempSync } = require('fs')
   const { tmpdir } = require('os')
   const { join } = require('path')
@@ -10,9 +10,9 @@ const testHome = vi.hoisted(() => {
   process.env.BAKIN_HOME = home
   process.env.OPENCLAW_HOME = openclaw
   return { home, openclaw }
-})
+})()
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testHome.home,
   getBakinPaths: () => ({
     home: testHome.home,
@@ -37,14 +37,10 @@ vi.mock('../../src/core/content-dir', () => ({
   resetContentDir: () => {},
 }))
 
-// Unmock main-agent — global setup replaces it with a constant-returning stub,
-// but this test suite exercises the real resolution logic.
-vi.unmock('../../packages/core/src/main-agent')
-vi.unmock('@bakin/core/main-agent')
 
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>()
-  return { ...actual, readFileSync: vi.fn(), statSync: vi.fn() }
+mock.module('fs', () => {
+  const actual = require('fs') as typeof import('fs')
+  return { ...actual, readFileSync: mock(), statSync: mock() }
 })
 
 import { readFileSync, statSync } from 'fs'
@@ -64,8 +60,7 @@ function mockOpenclawFile(mtimeMs: number, content: string): void {
 
 describe('main-agent', () => {
   beforeEach(async () => {
-    vi.resetModules()
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     vi.mocked(readFileSync).mockImplementation(() => { throw new Error('ENOENT') })
     vi.mocked(statSync).mockImplementation(() => { throw new Error('ENOENT') })
 
@@ -73,6 +68,10 @@ describe('main-agent', () => {
     getMainAgentId = mod.getMainAgentId
     tryGetMainAgentId = mod.tryGetMainAgentId
     getMainAgentName = mod.getMainAgentName
+
+    // bun:test has no vi.resetModules; reset the upstream cache explicitly
+    const { resetOpenClawConfigCache } = await import('../../packages/core/src/openclaw-config')
+    resetOpenClawConfigCache()
   })
 
   describe('getMainAgentId', () => {

@@ -9,22 +9,28 @@
  * feedback surface on the /memory landing page, so render-stability on
  * partial data matters more than exhaustive prettiness.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 
 // Defensive isolation per CLAUDE.md.
-vi.mock('../../../src/core/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-overview-mock`)
   return {
     getContentDir: () => base,
     getBakinPaths: () => ({ root: base, plugins: j(base, 'plugin-settings') }),
   }
 })
-vi.mock('../../../packages/core/src/content-dir', async () => {
-  const { join: j } = await import('path')
-  const { tmpdir: t } = await import('os')
+mock.module('../../../packages/core/src/content-dir', () => {
+  const { join: j } = require('path') as typeof import('path')
+  const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-overview-mock`)
   return {
     getContentDir: () => base,
@@ -32,12 +38,12 @@ vi.mock('../../../packages/core/src/content-dir', async () => {
   }
 })
 
-vi.mock('@/components/ui/card', () => ({
+mock.module('@/components/ui/card', () => ({
   Card: ({ children, ...props }: Record<string, unknown>) => (
     <div data-testid="card" {...props}>{children as React.ReactNode}</div>
   ),
 }))
-vi.mock('@/components/ui/skeleton', () => ({
+mock.module('@/components/ui/skeleton', () => ({
   Skeleton: (props: Record<string, unknown>) => <div data-testid="skeleton" {...props} />,
 }))
 
@@ -46,7 +52,7 @@ import { TierOverviewCards } from '../../../plugins/memory/components/tier-overv
 type FetchFn = typeof global.fetch
 
 function mockFetchOnce(body: unknown, status = 200): FetchFn {
-  return vi.fn(async () => ({
+  return mock(async () => ({
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
@@ -99,7 +105,7 @@ describe('TierOverviewCards', () => {
   })
 
   it('shows skeletons before the first response', () => {
-    global.fetch = vi.fn(() => new Promise(() => {})) as unknown as FetchFn
+    global.fetch = mock(() => new Promise(() => {})) as unknown as FetchFn
     render(<TierOverviewCards />)
     expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0)
   })
@@ -135,7 +141,7 @@ describe('TierOverviewCards', () => {
   })
 
   it('renders an error state when /status fails', async () => {
-    global.fetch = vi.fn(async () => {
+    global.fetch = mock(async () => {
       throw new Error('network blip')
     }) as unknown as FetchFn
     render(<TierOverviewCards />)

@@ -10,7 +10,7 @@
  *  4. Falls back to local substring filter when useSearch.results is empty.
  *  5. Clicking a card triggers router.push.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -23,38 +23,44 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-workflows-page-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  createTask: vi.fn(),
-  addTaskLog: vi.fn(),
-  moveTask: vi.fn(),
-  readTaskboard: vi.fn(() => ({
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  createTask: mock(),
+  addTaskLog: mock(),
+  moveTask: mock(),
+  readTaskboard: mock(() => ({
     columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [] },
   })),
-  getTask: vi.fn(() => null),
-  getTaskWithColumn: vi.fn(() => null),
+  getTask: mock(() => null),
+  getTaskWithColumn: mock(() => null),
 }))
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
-const routerPush = vi.fn()
-vi.mock('@bakin/sdk/hooks', async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>
+const routerPush = mock()
+mock.module('@bakin/sdk/hooks', () => {
+  const actual = require('@/core/content-dir') as Record<string, unknown>
   return {
     ...actual,
     useRouter: () => ({
@@ -69,7 +75,7 @@ vi.mock('@bakin/sdk/hooks', async (importOriginal) => {
 })
 
 // useQueryState — back the value with React state so the input is controlled.
-vi.mock('@/hooks/use-query-state', () => ({
+mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
     return React.useState(defaultValue)
@@ -79,15 +85,15 @@ vi.mock('@/hooks/use-query-state', () => ({
 // useSearch stub — returns whatever the test sets in `searchState`.
 const searchState: {
   results: Array<{ id: string; table: string; score: number; fields: Record<string, unknown> }>
-  search: ReturnType<typeof vi.fn>
-  clear: ReturnType<typeof vi.fn>
+  search: ReturnType<typeof mock>
+  clear: ReturnType<typeof mock>
 } = {
   results: [],
-  search: vi.fn(),
-  clear: vi.fn(),
+  search: mock(),
+  clear: mock(),
 }
 
-vi.mock('@/hooks/use-search', () => ({
+mock.module('@/hooks/use-search', () => ({
   useSearch: () => ({
     results: searchState.results,
     aggregations: {},
@@ -100,7 +106,7 @@ vi.mock('@/hooks/use-search', () => ({
 }))
 
 // PluginHeader — render only the parts we need to inspect.
-vi.mock('@/components/plugin-header', () => ({
+mock.module('@/components/plugin-header', () => ({
   PluginHeader: ({
     title,
     search,
@@ -123,7 +129,7 @@ vi.mock('@/components/plugin-header', () => ({
 }))
 
 // WorkflowCard — emit a clickable element with the template name.
-vi.mock('@bakin/workflows/components/workflow-card', () => ({
+mock.module('@bakin/workflows/components/workflow-card', () => ({
   WorkflowCard: ({
     template,
     onClick,
@@ -182,7 +188,7 @@ beforeEach(() => {
 
   vi.stubGlobal(
     'fetch',
-    vi.fn(() =>
+    mock(() =>
       Promise.resolve(
         new Response(JSON.stringify({ templates: TEMPLATES }), {
           status: 200,
@@ -203,7 +209,7 @@ afterEach(() => {
 describe('WorkflowsPage', () => {
   it('renders the loading state initially', () => {
     // Pin fetch to a never-resolving promise so we stay in loading.
-    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    vi.stubGlobal('fetch', mock(() => new Promise(() => {})))
 
     const { container } = render(<WorkflowsPage />)
 

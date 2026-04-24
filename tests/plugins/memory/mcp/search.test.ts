@@ -6,23 +6,29 @@
  * ctx.search.query, parse meta JSON so the response is ergonomic, and
  * degrade gracefully when the underlying search throws.
  */
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-memory-mcp-search-${Date.now()}`)
 
-vi.mock('../../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../../packages/core/src/content-dir', () => ({
+mock.module('../../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 import { createMemorySearchTool } from '../../../../plugins/memory/mcp/search'
@@ -34,22 +40,22 @@ function makeCtx(results: SearchResponse['results'] = []): { ctx: PluginContext;
     pluginId: 'memory',
     storage: {} as PluginContext['storage'],
     events: {} as PluginContext['events'],
-    registerNav: vi.fn(),
-    registerRoute: vi.fn(),
-    registerSlot: vi.fn(),
-    registerExecTool: vi.fn(),
-    registerSkill: vi.fn(),
-    watchFiles: vi.fn(),
+    registerNav: mock(),
+    registerRoute: mock(),
+    registerSlot: mock(),
+    registerExecTool: mock(),
+    registerSkill: mock(),
+    watchFiles: mock(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
-    updateSettings: vi.fn(),
-    activity: { log: vi.fn(), audit: vi.fn() },
+    updateSettings: mock(),
+    activity: { log: mock(), audit: mock() },
     search: {
-      registerContentType: vi.fn(),
-      registerFileBackedContentType: vi.fn(),
-      index: vi.fn(async () => {}),
-      remove: vi.fn(async () => {}),
-      transform: vi.fn(async () => {}),
-      query: vi.fn(async (p) => {
+      registerContentType: mock(),
+      registerFileBackedContentType: mock(),
+      index: mock(async () => {}),
+      remove: mock(async () => {}),
+      transform: mock(async () => {}),
+      query: mock(async (p) => {
         calls.push(p)
         return {
           results,
@@ -57,7 +63,7 @@ function makeCtx(results: SearchResponse['results'] = []): { ctx: PluginContext;
         } satisfies SearchResponse
       }),
     },
-    hooks: { register: vi.fn(() => () => {}), has: vi.fn(() => false), invoke: vi.fn(async () => undefined) },
+    hooks: { register: mock(() => () => {}), has: mock(() => false), invoke: mock(async () => undefined) },
   } as unknown as PluginContext
   return { ctx, calls }
 }
@@ -139,7 +145,7 @@ describe('memory_search MCP tool — handler', () => {
 
   it('degrades gracefully when ctx.search.query throws', async () => {
     const { ctx } = makeCtx()
-    ;(ctx.search.query as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'))
+    ;(ctx.search.query as ReturnType<typeof mock>).mockRejectedValueOnce(new Error('boom'))
     const tool = createMemorySearchTool(ctx)
     const res = await tool.handler({ query: 'x' }, 'scout')
     expect(res.ok).toBe(false)

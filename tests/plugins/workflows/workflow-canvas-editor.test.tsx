@@ -9,7 +9,7 @@
  * internals here, just the wiring layer.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -17,34 +17,40 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-canvas-editor-${Date.now()}`)
 
 // CLAUDE.md — content-dir mock even for pure UI tests.
-vi.mock('@/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  createTask: vi.fn(),
-  addTaskLog: vi.fn(),
-  moveTask: vi.fn(),
-  readTaskboard: vi.fn(() => ({ columns: {} })),
-  getTask: vi.fn(() => null),
-  getTaskWithColumn: vi.fn(() => null),
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  createTask: mock(),
+  addTaskLog: mock(),
+  moveTask: mock(),
+  readTaskboard: mock(() => ({ columns: {} })),
+  getTask: mock(() => null),
+  getTaskWithColumn: mock(() => null),
 }))
 
 // Stub xyflow so we render in jsdom without pulling its real DOM layer.
 // The scaffold we're testing only cares about the Save button in the
 // toolbar — `nodes` / `edges` plumbing is ReactFlow's problem once the
 // library is loaded, not ours.
-vi.mock('@xyflow/react', () => ({
+mock.module('@xyflow/react', () => ({
   __esModule: true,
   ReactFlow: ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="react-flow-stub">{children}</div>
@@ -59,17 +65,17 @@ vi.mock('@xyflow/react', () => ({
 
 // Side-effect import guard — plugin-manifest pulls in lots of plugins.
 // Stubbed to a no-op so the canvas editor can import it safely.
-vi.mock('@/lib/plugin-manifest', () => ({
+mock.module('@/lib/plugin-manifest', () => ({
   allNavItems: [],
 }))
 
 // Stub palette + drawer — they have their own dedicated tests. Keeps
 // canvas-editor tests focused on the save pipeline.
-vi.mock('../../../plugins/workflows/components/node-type-palette', () => ({
+mock.module('../../../plugins/workflows/components/node-type-palette', () => ({
   NodeTypePalette: () => null,
   PALETTE_DRAG_MIME_TYPE: 'application/x-bakin-node-kind',
 }))
-vi.mock('../../../plugins/workflows/components/node-config-drawer', () => ({
+mock.module('../../../plugins/workflows/components/node-config-drawer', () => ({
   NodeConfigDrawer: () => null,
 }))
 
@@ -93,10 +99,10 @@ const sampleDefinition: WorkflowDefinition = {
   },
 }
 
-let fetchMock: ReturnType<typeof vi.fn>
+let fetchMock: ReturnType<typeof mock>
 
 beforeEach(() => {
-  fetchMock = vi.fn(() =>
+  fetchMock = mock(() =>
     Promise.resolve(
       new Response(JSON.stringify({ id: 'video-script', source: 'user' }), {
         status: 200,

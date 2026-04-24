@@ -81,15 +81,6 @@ export interface BakinSettings {
       }
     }
     /**
-     * @deprecated Use `embedders.default` instead. Still read for backward
-     * compat — if present, its value is copied into `embedders.default` on
-     * load and a deprecation warning is logged.
-     */
-    embedder?: {
-      provider: string
-      model: string
-    }
-    /**
      * Per-index embedder configs. `default` is the text embedder used by
      * every content type that doesn't declare an override. `visual` is the
      * multimodal (CLIP) embedder used by the assets plugin's visual index.
@@ -291,20 +282,6 @@ export function getSettings(): BakinSettings {
     DEFAULTS as unknown as Record<string, unknown>,
     overrides
   ) as unknown as BakinSettings
-
-  // Legacy embedder field — migrate to embedders.default if the user
-  // set it directly without also setting embedders.default. This is
-  // detected by inspecting the raw overrides, not the merged settings,
-  // since defaults alone never populate the legacy field.
-  const overrideAntfly = (overrides as { antfly?: Record<string, unknown> }).antfly
-  const legacyEmbedder = overrideAntfly && (overrideAntfly as { embedder?: { provider: string; model: string } }).embedder
-  const hasEmbedders = overrideAntfly && 'embedders' in overrideAntfly
-  if (legacyEmbedder && !hasEmbedders) {
-    settings.antfly.embedders.default = { provider: legacyEmbedder.provider, model: legacyEmbedder.model }
-    log.warn('settings.antfly.embedder is deprecated — migrate to settings.antfly.embedders.default')
-  } else if (legacyEmbedder && hasEmbedders) {
-    log.warn('settings.antfly.embedder is deprecated and ignored — using settings.antfly.embedders instead')
-  }
 
   setCachedSettings(settings)
   return settings

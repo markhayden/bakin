@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
 
 // Use vi.hoisted so mock variables survive vi.mock hoisting
 const {
@@ -6,19 +6,19 @@ const {
   mockTablesGet, mockTablesQuery, mockTablesBatch, mockTablesScan,
   mockIndexesList, mockIndexesCreate, mockIndexesDrop, mockMultiquery,
   mockClientInstance,
-} = vi.hoisted(() => {
-  const mockGetStatus = vi.fn()
-  const mockTablesList = vi.fn(async () => [])
-  const mockTablesCreate = vi.fn()
-  const mockTablesDrop = vi.fn()
-  const mockTablesGet = vi.fn()
-  const mockTablesQuery = vi.fn()
-  const mockTablesBatch = vi.fn()
-  const mockTablesScan = vi.fn(async function* () {})
-  const mockIndexesList = vi.fn(async () => ({}))
-  const mockIndexesCreate = vi.fn()
-  const mockIndexesDrop = vi.fn()
-  const mockMultiquery = vi.fn()
+} = (() => {
+  const mockGetStatus = mock()
+  const mockTablesList = mock(async () => [])
+  const mockTablesCreate = mock()
+  const mockTablesDrop = mock()
+  const mockTablesGet = mock()
+  const mockTablesQuery = mock()
+  const mockTablesBatch = mock()
+  const mockTablesScan = mock(async function* () {})()
+  const mockIndexesList = mock(async () => ({}))
+  const mockIndexesCreate = mock()
+  const mockIndexesDrop = mock()
+  const mockMultiquery = mock()
   const mockClientInstance = {
     getStatus: mockGetStatus,
     tables: {
@@ -27,7 +27,7 @@ const {
       drop: mockTablesDrop,
       get: mockTablesGet,
       query: mockTablesQuery,
-      multiquery: vi.fn(),
+      multiquery: mock(),
       batch: mockTablesBatch,
       scan: mockTablesScan,
     },
@@ -44,17 +44,23 @@ const {
     mockIndexesList, mockIndexesCreate, mockIndexesDrop, mockMultiquery,
     mockClientInstance,
   }
-})
+})()
 
-vi.mock('@/core/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('@/core/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-antfly-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })
 
-vi.mock('@/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('@/core/settings', () => ({
+  getSettings: mock(() => ({
     antfly: {
       enabled: false,
       url: 'http://localhost:8080/api/v1',
@@ -74,18 +80,18 @@ vi.mock('@/core/settings', () => ({
   })),
 }))
 
-vi.mock('@antfly/sdk', () => ({
-  default: vi.fn().mockImplementation(() => mockClientInstance),
-  AntflyClient: vi.fn().mockImplementation(() => mockClientInstance),
-  matchAll: vi.fn(() => ({ match_all: {} })),
+mock.module('@antfly/sdk', () => ({
+  default: mock().mockImplementation(() => mockClientInstance),
+  AntflyClient: mock().mockImplementation(() => mockClientInstance),
+  matchAll: mock(() => ({ match_all: {} })),
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
@@ -105,7 +111,7 @@ function resetAntflyGlobals() {
 
 describe('antfly', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     resetAntflyGlobals()
   })
 
@@ -165,13 +171,6 @@ describe('antfly', () => {
   it('should NOT define a legacy audit table (owned by memory plugin as bakin_memory)', async () => {
     const antfly = await import('@/core/antfly')
     expect((antfly.TABLES as Record<string, string>).audit).toBeUndefined()
-  })
-
-  it('should not have legacy beacon_ table names', async () => {
-    const antfly = await import('@/core/antfly')
-    const tableValues = Object.values(antfly.TABLES)
-    expect(tableValues.every(t => t.startsWith('bakin_'))).toBe(true)
-    expect(tableValues.some(t => t.startsWith('beacon_'))).toBe(false)
   })
 
   // ── getIndexHealth ─────────────────────────────────────────────────
@@ -308,7 +307,7 @@ describe('antfly', () => {
   // failures as transient so the 5-step backoff covers the gap.
   describe('retryTransientBatch — connect-level failures', () => {
     async function withEnabled<T>(fn: () => Promise<T>): Promise<T> {
-      const { getSettings } = await import('@/core/settings')
+      const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const mocked = vi.mocked(getSettings)
       const prev = mocked.getMockImplementation()
       mocked.mockReturnValue({

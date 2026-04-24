@@ -5,41 +5,47 @@
  *   GET  /daily-notes/:agent/:filename          → { agent, file, content }
  *   POST /daily-notes/compare-search            → { antfly: [...], lancedb: [...] }
  */
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-memory-daily-notes-route-${Date.now()}`)
 
-vi.mock('../../../../src/core/content-dir', () => ({
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../../packages/core/src/content-dir', () => ({
+mock.module('../../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 const {
   mockListDailyNotes,
   mockReadDailyNote,
   mockMemorySearch,
-} = vi.hoisted(() => ({
-  mockListDailyNotes: vi.fn<(agent: string) => string[]>(),
-  mockReadDailyNote: vi.fn<(agent: string, filename: string) => string | null>(),
-  mockMemorySearch: vi.fn<(q: string, opts?: unknown) => Promise<unknown>>(),
-}))
+} = (() => ({
+  mockListDailyNotes: mock<(agent: string) => string[]>(),
+  mockReadDailyNote: mock<(agent: string, filename: string) => string | null>(),
+  mockMemorySearch: mock<(q: string, opts?: unknown) => Promise<unknown>>(),
+}))()
 
-vi.mock('../../../../plugins/memory/lib/openclaw-adapter', () => ({
+mock.module('../../../../plugins/memory/lib/openclaw-adapter', () => ({
   listDailyNotes: mockListDailyNotes,
   readDailyNote: mockReadDailyNote,
 }))
 
-vi.mock('../../../../plugins/memory/lib/openclaw-cli', () => ({
+mock.module('../../../../plugins/memory/lib/openclaw-cli', () => ({
   memorySearch: mockMemorySearch,
   MemoryCliError: class MemoryCliError extends Error {
     constructor(msg: string, public cause?: unknown, public stderr?: string) {
@@ -64,22 +70,22 @@ function makeCtx(antflyResults: Record<string, unknown>[] = []): { ctx: PluginCo
     pluginId: 'memory',
     storage: {} as PluginContext['storage'],
     events: {} as PluginContext['events'],
-    registerNav: vi.fn(),
-    registerRoute: vi.fn(),
-    registerSlot: vi.fn(),
-    registerExecTool: vi.fn(),
-    registerSkill: vi.fn(),
-    watchFiles: vi.fn(),
+    registerNav: mock(),
+    registerRoute: mock(),
+    registerSlot: mock(),
+    registerExecTool: mock(),
+    registerSkill: mock(),
+    watchFiles: mock(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
-    updateSettings: vi.fn(),
-    activity: { log: vi.fn(), audit: vi.fn() },
+    updateSettings: mock(),
+    activity: { log: mock(), audit: mock() },
     search: {
-      registerContentType: vi.fn(),
-      registerFileBackedContentType: vi.fn(),
-      index: vi.fn(async () => {}),
-      remove: vi.fn(async () => {}),
-      transform: vi.fn(async () => {}),
-      query: vi.fn(async (params: SearchQueryParams) => {
+      registerContentType: mock(),
+      registerFileBackedContentType: mock(),
+      index: mock(async () => {}),
+      remove: mock(async () => {}),
+      transform: mock(async () => {}),
+      query: mock(async (params: SearchQueryParams) => {
         recorder.queries.push(params)
         return {
           results: antflyResults.map((fields, i) => ({
@@ -93,9 +99,9 @@ function makeCtx(antflyResults: Record<string, unknown>[] = []): { ctx: PluginCo
       }),
     },
     hooks: {
-      register: vi.fn(() => () => {}),
-      has: vi.fn(() => false),
-      invoke: vi.fn(async () => undefined),
+      register: mock(() => () => {}),
+      has: mock(() => false),
+      invoke: mock(async () => undefined),
     },
   } as unknown as PluginContext
   return { ctx, recorder }
