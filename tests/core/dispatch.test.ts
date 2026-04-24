@@ -342,36 +342,6 @@ describe('dispatch', () => {
       expect(openclaw.sendMessage).not.toHaveBeenCalled()
     })
 
-    it('normalizes legacy number entries to kind="structural"', async () => {
-      setupTodoTask(
-        { id: 't-legacy', title: 'Legacy format' },
-        {
-          failedDispatches: {
-            // legacy plain-number format — 5 minutes ago
-            't-legacy': Date.now() - 5 * 60_000,
-          },
-        },
-      )
-      vi.mocked(openclaw.sendMessage).mockClear()
-
-      // 5 minutes < 30m structural cooldown → should still be skipped
-      await dispatchTasks(tempDir, 3737)
-      expect(openclaw.sendMessage).not.toHaveBeenCalled()
-
-      // Now drive another failure so the record gets rewritten in new shape
-      const state = readState()
-      state.failedDispatches['t-legacy'] = Date.now() - 45 * 60_000  // past structural cooldown
-      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state))
-      vi.mocked(openclaw.sendMessage).mockRejectedValueOnce(new TypeError('fetch failed'))
-      await dispatchTasks(tempDir, 3737)
-
-      const after = readState()
-      expect(typeof after.failedDispatches['t-legacy']).toBe('object')
-      expect(after.failedDispatches['t-legacy'].kind).toBe('transient')
-      // count should be 2: legacy migrated to count=1, then incremented on this failure
-      expect(after.failedDispatches['t-legacy'].count).toBe(2)
-    })
-
     it('audit event carries the classified kind', async () => {
       const { appendAudit } = await import('../../src/core/audit')
       vi.mocked(appendAudit).mockClear()
@@ -407,7 +377,7 @@ describe('dispatch', () => {
       expect(state.failedDispatches['t-unknown'].kind).toBe('structural')
     })
 
-    it('workflow dispatch failure writes FailureRecord shape (not legacy number)', async () => {
+    it('workflow dispatch failure writes FailureRecord shape', async () => {
       const columns = {
         todo: [{ id: 'wf-fail', title: 'Failing workflow task', workflowId: 'img-flow', agent: 'pixel' }],
         inProgress: [], done: [], archived: [],
