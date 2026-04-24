@@ -38,10 +38,8 @@ interface RunResult {
 }
 
 /**
- * Portable subprocess runner. We use Node's child_process (not Bun.spawn)
- * so the builder works under both Bun (production) and Node (vitest).
- * Passing the binary through `spawn` with an argv array avoids shell
- * interpolation and path-traversal tricks.
+ * Portable subprocess runner. Passing the binary through `spawn` with an
+ * argv array avoids shell interpolation and path-traversal tricks.
  */
 function runSubprocess(cmd: string, args: string[], cwd?: string): Promise<RunResult> {
   return new Promise((resolve, reject) => {

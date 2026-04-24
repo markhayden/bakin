@@ -6,9 +6,6 @@
  * logic. The batch builder still owns CORE_PLUGINS and the EXTERNAL list
  * (passed in) — this helper is only the "build one id" primitive.
  *
- * Uses node:child_process.spawn (not Bun.spawn) so the helper works in
- * vitest as well as under Bun. Bun's child_process is API-compatible.
- *
  * Returns a result object instead of process.exit-ing so the dev watcher
  * can surface the stderr in a browser overlay rather than killing itself.
  */
