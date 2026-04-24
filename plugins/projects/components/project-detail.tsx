@@ -129,11 +129,11 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   const [brainstormMessages, setBrainstormMessages] = useState<Array<{ role: 'user' | 'agent'; agent?: string; content: string }>>([])
   const brainstormEndRef = useRef<HTMLDivElement>(null)
   const brainstormAgentMeta = useAgent(brainstormAgent)
-  const { height: brainstormHistoryHeight, handleProps: brainstormResizeHandleProps } = useVerticalResize({
-    defaultHeight: 280,
-    minHeight: 160,
+  const { height: brainstormPanelHeight, handleProps: brainstormResizeHandleProps } = useVerticalResize({
+    defaultHeight: 320,
+    minHeight: 180,
     maxHeight: 720,
-    storageKey: 'projects-brainstorm-history',
+    storageKey: 'projects-brainstorm-panel',
   })
 
   // Dropdowns
@@ -621,19 +621,22 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
           </div>
 
           {/* ── Brainstorm — pinned at bottom ── */}
-          <div className="relative shrink-0 border-t border-[rgba(255,255,255,0.06)] pt-3 pb-1 flex flex-col">
-            {brainstormOpen && brainstormMessages.length > 0 && (
+          <div
+            className="relative shrink-0 border-t border-[rgba(255,255,255,0.06)] pt-3 pb-1 flex flex-col"
+            style={brainstormOpen ? { height: brainstormPanelHeight } : undefined}
+          >
+            {brainstormOpen && (
               <div
                 {...brainstormResizeHandleProps}
                 role="separator"
                 aria-orientation="horizontal"
-                aria-label="Resize brainstorm history"
+                aria-label="Resize brainstorm panel"
                 className="absolute inset-x-0 top-0 h-1.5 -translate-y-1/2 cursor-row-resize hover:bg-accent/50 active:bg-accent transition-colors z-10"
               />
             )}
             <button
               onClick={() => setBrainstormOpen(!brainstormOpen)}
-              className="flex items-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors mb-2"
+              className="flex items-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors mb-2 shrink-0"
             >
               <Sparkles className="size-3.5" />
               <span className="font-medium">Brainstorm</span>
@@ -644,12 +647,12 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
             </button>
 
             {brainstormOpen && (
-              <div className="flex flex-col">
+              <div className="flex flex-col flex-1 min-h-0">
                 {/* Conversation history */}
                 {brainstormMessages.length > 0 && (
                   <div
-                    className="overflow-y-auto mb-2 space-y-2 pr-1"
-                    style={{ scrollbarGutter: 'stable', height: brainstormHistoryHeight }}
+                    className="flex-1 min-h-0 overflow-y-auto mb-2 space-y-2 pr-1"
+                    style={{ scrollbarGutter: 'stable' }}
                   >
                     {brainstormMessages.map((msg, i) => {
                       if (msg.role === 'user') {
@@ -678,7 +681,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
                 )}
 
                 {/* Input row */}
-                <div className="flex items-end gap-2">
+                <div className="flex items-end gap-2 shrink-0">
                   <AgentSelect
                     value={brainstormAgent}
                     onValueChange={setBrainstormAgent}
