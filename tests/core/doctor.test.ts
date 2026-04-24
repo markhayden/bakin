@@ -73,17 +73,16 @@ mock.module('@/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-// Mock better-sqlite3 so doctor checks don't touch real SQLite
-mock.module('better-sqlite3', () => {
-  return {
-    default: mock(() => ({
-      prepare: mock(() => ({
-        get: mock(() => ({ n: 0 })),
-      })),
-      close: mock(),
+// Mock bun:sqlite so doctor checks don't touch real SQLite
+mock.module('bun:sqlite', () => ({
+  Database: mock(() => ({
+    exec: mock(),
+    prepare: mock(() => ({
+      get: mock(() => ({ n: 0 })),
     })),
-  }
-})
+    close: mock(),
+  })),
+}))
 
 // Mock onboarding state — controls the requireOnboard gate
 let mockIsOnboarded = true
@@ -160,7 +159,7 @@ describe('doctor', () => {
     const doctor = await import('@/core/doctor')
     const results = await doctor.runDiagnostics(contentDir, tempDir)
     const tbResults = results.filter(r => r.check === 'taskboard')
-    // With mocked better-sqlite3, should get either ok or warn depending on db existence
+    // With mocked bun:sqlite, should get either ok or warn depending on db existence
     expect(tbResults.length).toBeGreaterThan(0)
   })
 

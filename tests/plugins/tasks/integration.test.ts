@@ -3,7 +3,7 @@
  * position ordering, two-tier permissions, and state transitions.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import Database from 'better-sqlite3'
+import { Database } from 'bun:sqlite'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
