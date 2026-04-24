@@ -35,7 +35,7 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
-mock.module('../../../src/core/openclaw-client', () => ({ sendMessage: mock(), sendChannelMessage: mock() }))
+mock.module('../../../src/core/openclaw-client', () => ({ sendMessage: mock(), sendChannelMessage: mock(), streamMessage: mock(), chatCompletion: mock() }))
 
 // Team store returns an empty roster — any agent id is therefore orphaned.
 mock.module('@bakin/team/hooks/use-agent-store', () => ({

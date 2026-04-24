@@ -90,17 +90,12 @@ describe('SessionChat', () => {
 
   it('shows input area for active sessions', () => {
     render(<SessionChat sessionId="s1" agentId="coach" />)
-    const input = screen.getByTestId('chat-input')
+    const input = screen.getByLabelText(/Ask Coach/)
     expect(input).toBeDefined()
-    expect(input.getAttribute('placeholder')).toContain('Coach')
   })
 
-  it('disables input when no text entered', () => {
+  it('hides send button when no text entered (embedded-in-textarea pattern)', () => {
     render(<SessionChat sessionId="s1" agentId="trainer" />)
-    // The send button is the only submit button in the chat form.
-    const sendButton = screen
-      .getAllByRole('button')
-      .find(b => b.getAttribute('type') === 'submit')
-    expect(sendButton?.hasAttribute('disabled')).toBe(true)
+    expect(screen.queryByLabelText('Send')).toBeNull()
   })
 })
