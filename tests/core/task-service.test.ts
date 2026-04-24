@@ -43,7 +43,7 @@ const mockReadTaskboard = vi.fn((..._args: unknown[]) => ({
 const mockSetDependency = vi.fn((..._args: unknown[]) => Promise.resolve())
 const mockUpdateTask = vi.fn((..._args: unknown[]) => Promise.resolve())
 
-vi.mock('@bakin/tasks/lib/taskboard', () => ({
+vi.mock('@bakin/tasks/lib/flow-store', () => ({
   addTaskLog: mockAddTaskLog,
   blockTask: mockBlockTask,
   createTask: mockCreateTask,

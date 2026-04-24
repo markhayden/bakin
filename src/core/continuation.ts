@@ -18,7 +18,7 @@ export async function checkAndContinueDependents(
   contentDir: string,
   port: number
 ): Promise<void> {
-  const { readAllColumns, clearDependency, addTaskLog } = await import('../lib/taskboard')
+  const { readAllColumns, clearDependency, addTaskLog } = await import('@bakin/tasks/lib/flow-store')
   const columns = readAllColumns()
 
   const columnsToScan = [columns.inProgress, columns.todo, columns.blocked]

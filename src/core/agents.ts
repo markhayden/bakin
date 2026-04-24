@@ -7,7 +7,7 @@ import { join } from 'path'
 import { createLogger } from './logger'
 import { getAgentIds } from '@bakin/core/openclaw-config'
 import * as openclaw from './openclaw-client'
-import { readTaskboard } from '../lib/taskboard'
+import { readTaskboard } from '@bakin/tasks/lib/flow-store'
 
 const log = createLogger('agents')
 

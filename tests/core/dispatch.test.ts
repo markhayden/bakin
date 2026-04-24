@@ -47,7 +47,7 @@ vi.mock('../../src/core/openclaw-client', () => ({
   sendMessage: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('../../src/lib/taskboard', () => ({
+vi.mock('@bakin/tasks/lib/flow-store', () => ({
   getTodoTasks: vi.fn().mockReturnValue({ todoTasks: [] }),
   moveTaskToInProgress: vi.fn(),
   addTaskLog: vi.fn(),
@@ -81,7 +81,7 @@ vi.mock('@bakin/core/openclaw-home', () => ({
 import { loadDispatchState, start, stop, getDispatchInfo } from '../../src/core/dispatch'
 import { dispatchTasks } from '../../src/core/dispatch'
 import * as openclaw from '../../src/core/openclaw-client'
-import * as taskboard from '../../src/lib/taskboard'
+import * as taskboard from '@bakin/tasks/lib/flow-store'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import type { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 

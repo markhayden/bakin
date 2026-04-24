@@ -150,7 +150,7 @@ describe('T2.3 agent usage wiring', () => {
       resetOpenClawConfigCache: () => {},
     }))
     // Stub taskboard lib used via dynamic import inside dispatch.
-    vi.doMock('../../src/lib/taskboard', () => ({
+    vi.doMock('@bakin/tasks/lib/flow-store', () => ({
       moveTaskToInProgress: vi.fn().mockResolvedValue(undefined),
       addTaskLog: vi.fn().mockResolvedValue(undefined),
     }))
