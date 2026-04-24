@@ -256,7 +256,10 @@ export function makeRequest(
 }
 
 /**
- * Call a route handler and parse the JSON response.
+ * Call a route handler. Returns { status, body } by default (body parsed as
+ * JSON). Pass `rawResponse: true` to also receive the unconsumed Response —
+ * essential for streaming endpoints where the caller needs to read the body
+ * themselves.
  */
 export async function callRoute(
   route: APIRoute,
@@ -265,8 +268,9 @@ export async function callRoute(
     path?: string
     body?: unknown
     searchParams?: Record<string, string>
+    rawResponse?: boolean
   } = {}
-): Promise<{ status: number; body: Record<string, unknown> }> {
+): Promise<{ status: number; body: Record<string, unknown>; response: Response }> {
   const req = makeRequest(opts.path || route.path, {
     method: route.method,
     body: opts.body,
@@ -274,13 +278,16 @@ export async function callRoute(
   })
 
   const res = await route.handler(req, ctx)
+  if (opts.rawResponse) {
+    return { status: res.status, body: {}, response: res }
+  }
   let body: Record<string, unknown> = {}
   try {
     body = await res.json()
   } catch {
     // Some responses may not have JSON body
   }
-  return { status: res.status, body }
+  return { status: res.status, body, response: res }
 }
 
 /**

@@ -35,9 +35,9 @@ The brainstorm chat uses SSE streaming (`POST /api/plugins/messaging/sessions/:i
 
 2. **Server streaming** (`index.ts`): During SSE streaming, the server watches for completed ` ```json ``` ` blocks. Each time one closes, it's immediately parsed, upserted via `upsertProposals()`, and emitted as a `proposal` SSE event.
 
-3. **Client rendering** (`session-chat.tsx`): The `stripAndSplit()` function splits streaming text at JSON block boundaries into separate segments. Each segment renders as its own chat bubble during streaming, giving visual feedback as the agent works through each proposal.
+3. **Client rendering** (`session-chat.tsx`): The component is a thin adapter around `<IntegratedBrainstorm>` from `@bakin/sdk/components` (see `.claude/knowledge/shared-ui-patterns.md` → IntegratedBrainstorm). SessionChat converts `SessionMessage[]` to `BrainstormMessage[]`, opens the SSE stream, forwards tokens via `ctx.onToken`, and when it sees a `proposal` event it calls `onProposalsReceived` (the callback `PlanningLayout` uses to populate the review panel). A `transformAssistantReply` function strips complete/partial ` ```json ``` ` blocks from the assistant text before rendering and surfaces the extracted count as an "N items proposed" badge below the bubble.
 
-4. **Message splitting**: When the stream completes, the server saves each text segment between JSON blocks as a separate assistant message. The `done` SSE event includes a `segments` array so the client renders them as individual bubbles.
+4. **Message splitting**: The server still returns a `segments` array in the `done` event, but the client now collapses the full assistant reply into a single bubble — `transformAssistantReply` handles the visual cleanup. If you want multi-bubble rendering back, revisit.
 
 ### SSE Events
 

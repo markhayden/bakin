@@ -121,33 +121,32 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
           return (
             <div key={item.id} className="flex flex-col">
               <div
-                className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+                className={`flex items-center rounded-md text-sm transition-colors duration-150 ${
                   active
-                    ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
+                    ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
                     : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
                 }`}
               >
-                {alwaysExpanded ? (
-                  <span className="shrink-0 -ml-1 p-0.5 size-3" aria-hidden />
-                ) : (
-                  <button
-                    onClick={() => toggleExpand(item.id)}
-                    className="shrink-0 -ml-1 p-0.5 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors"
-                  >
-                    <ChevronRight className={`size-3 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`} />
-                  </button>
-                )}
                 <Link
                   to={item.children![0].href}
                   onClick={onNavigate}
-                  className="flex items-center gap-3 flex-1 min-w-0"
+                  className="flex items-center gap-3 flex-1 min-w-0 px-3 py-1.5"
                 >
                   {Icon && <Icon className="size-4 shrink-0" />}
                   <span>{item.label}</span>
                 </Link>
+                {!alwaysExpanded && (
+                  <button
+                    onClick={() => toggleExpand(item.id)}
+                    className="shrink-0 mr-1.5 p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors"
+                    aria-label={expanded ? 'Collapse' : 'Expand'}
+                  >
+                    <ChevronRight className={`size-3 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`} />
+                  </button>
+                )}
               </div>
               {expanded && (
-                <div className="flex flex-col gap-0.5 ml-7 mt-0.5">
+                <div className="mt-1 mb-1 py-1 rounded-md bg-[rgba(255,255,255,0.04)] flex flex-col overflow-hidden">
                   {item.children!.map((child) => {
                     const ChildIcon = child.icon ? ICONS[child.icon] : undefined
                     const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
@@ -156,10 +155,10 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                         key={child.id}
                         to={child.href}
                         onClick={onNavigate}
-                        className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+                        className={`flex items-center gap-2.5 pl-6 pr-3 py-1.5 text-xs transition-colors duration-150 ${
                           childActive
-                            ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
+                            ? 'text-foreground bg-[rgba(255,255,255,0.10)]'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.06)]'
                         }`}
                       >
                         {ChildIcon && <ChildIcon className="size-3.5 shrink-0" />}
@@ -190,7 +189,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                       onClick={onNavigate}
                       className={`flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                         active
-                          ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
+                          ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
                           : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
                       }`}
                     >
@@ -241,7 +240,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                   onClick={onNavigate}
                   className={`flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                     active
-                      ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
+                      ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
                       : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
                   }`}
                 >
@@ -265,7 +264,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
               collapsed ? 'justify-center px-0' : ''
             } ${
               active
-                ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
+                ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
                 : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
             }`}
           >

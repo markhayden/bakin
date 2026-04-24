@@ -17,6 +17,14 @@ export { ErrorBanner } from '@/components/error-banner'
 export { ErrorState } from '@/components/error-state'
 export { FacetFilter } from '@/components/facet-filter'
 export type { FacetOption } from '@/components/facet-filter'
+export { IntegratedBrainstorm } from '@/components/integrated-brainstorm'
+export type {
+  BrainstormMessage,
+  IntegratedBrainstormProps,
+  BrainstormOnSend,
+  SendContext,
+  AssistantTransformed,
+} from '@/components/integrated-brainstorm'
 export { MarkdownContent } from '@/components/markdown-content'
 export { MarkdownEditor } from '@/components/markdown-editor'
 export { ModelSelect } from '@/components/model-select'

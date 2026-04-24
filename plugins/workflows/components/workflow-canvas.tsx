@@ -345,15 +345,8 @@ export function WorkflowCanvas({ definition, subWorkflows, onNodeClick }: Workfl
         }}
       >
         <Background variant={BackgroundVariant.Dots} color="#3f3f46" gap={24} size={1.5} />
-        <Controls
-          showInteractive={false}
-          className="[&>button]:border-zinc-700 [&>button]:bg-zinc-900 [&>button]:text-zinc-400 [&>button]:hover:bg-zinc-800"
-        />
-        <MiniMap
-          nodeColor="#3f3f46"
-          maskColor="rgba(0,0,0,0.7)"
-          className="rounded-lg border border-zinc-800 bg-zinc-900"
-        />
+        <Controls showInteractive={false} />
+        <MiniMap nodeColor="#3f3f46" maskColor="rgba(0,0,0,0.7)" />
       </ReactFlow>
     </div>
   )

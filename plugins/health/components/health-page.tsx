@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@bakin/sdk/ui"
 import { Badge } from "@bakin/sdk/ui"
 import { Button } from "@bakin/sdk/ui"
 import { Input } from "@bakin/sdk/ui"
+import { Skeleton } from "@bakin/sdk/ui"
 import { PluginHeader } from "@bakin/sdk/components"
 import { UnderlineTabs } from "@bakin/sdk/components"
 import { ExternalLink, Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
@@ -288,7 +289,7 @@ function UsageBarsPanel({
                 onClick={() => hasErrors && setExpanded(isExpanded ? null : row.name)}
                 disabled={!hasErrors}
                 aria-expanded={isExpanded}
-                className={`w-full text-left group ${hasErrors ? 'cursor-pointer' : 'cursor-default'}`}
+                className="w-full text-left group"
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className={`text-xs font-mono truncate mr-2 ${hasErrors ? 'text-foreground group-hover:text-accent' : 'text-muted-foreground'}`}>
@@ -481,8 +482,18 @@ export function HealthPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <p className="text-muted-foreground text-sm">Loading health data...</p>
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-8 w-24" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-64 w-full" />
       </div>
     )
   }
@@ -623,7 +634,6 @@ export function HealthPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="cursor-pointer"
                   disabled={!searchHealth.enabled || reindexing}
                   onClick={async () => {
                     clearReindexProgress()

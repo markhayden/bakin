@@ -26,7 +26,7 @@ import {
   confirmSession,
 } from './lib/sessions'
 import { buildMessages } from './lib/prompt-builder'
-import { streamChatCompletion, chatCompletion } from './lib/gateway'
+import { streamMessage, chatCompletion } from '@/core/openclaw-client'
 import {
   buildDoc as buildBrainstormDoc,
   parseSessionFile,
@@ -716,7 +716,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
               let gwResponse: Response | null = null
 
               try {
-                gwResponse = await streamChatCompletion({
+                gwResponse = await streamMessage({
                   messages,
                   agentId: session.agentId,
                   sessionKey,

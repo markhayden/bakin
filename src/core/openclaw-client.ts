@@ -130,6 +130,74 @@ export async function sendMessage(agentId: string, message: string): Promise<str
   return reply
 }
 
+interface ChatOpts {
+  agentId: string
+  messages: Array<{ role: string; content: string }>
+  signal?: AbortSignal
+  sessionKey?: string
+  model?: string
+  maxTokens?: number
+}
+
+function buildChatRequest(opts: ChatOpts, stream: boolean): { url: string; init: RequestInit } {
+  const baseUrl = getBaseUrl()
+  const headers: Record<string, string> = {
+    ...getHeaders(),
+    'x-openclaw-agent-id': opts.agentId,
+  }
+  if (opts.sessionKey) headers['x-openclaw-session-key'] = opts.sessionKey
+
+  return {
+    url: `${baseUrl}/v1/chat/completions`,
+    init: {
+      method: 'POST',
+      signal: opts.signal,
+      headers,
+      body: JSON.stringify({
+        model: opts.model ?? 'openclaw:main',
+        max_tokens: opts.maxTokens ?? 2048,
+        stream,
+        messages: opts.messages,
+      }),
+    },
+  }
+}
+
+/**
+ * Streaming variant of sendMessage — returns the raw fetch Response with SSE
+ * body so the caller owns the reader loop. Use for any chat surface that
+ * streams tokens to a user (brainstorm, planning sessions, etc.).
+ *
+ * Unlike sendMessage, this does not retry on transient failures: a mid-stream
+ * reconnect is semantically messy, and the initial fetch failing is rare
+ * enough that the caller can surface the error.
+ */
+export async function streamMessage(opts: ChatOpts): Promise<Response> {
+  const { url, init } = buildChatRequest(opts, true)
+  const response = await fetch(url, init)
+  if (!response.ok) {
+    const err = await response.text()
+    throw new Error(`OpenClaw streamMessage failed (${response.status}): ${err}`)
+  }
+  return response
+}
+
+/**
+ * Multi-turn non-streaming chat completion. Use when you have a full
+ * conversation history to send and just want the final reply. For single-
+ * prompt calls, sendMessage() is simpler.
+ */
+export async function chatCompletion(opts: ChatOpts): Promise<string> {
+  const { url, init } = buildChatRequest(opts, false)
+  const response = await fetch(url, init)
+  if (!response.ok) {
+    const err = await response.text()
+    throw new Error(`OpenClaw chatCompletion failed (${response.status}): ${err}`)
+  }
+  const data = await response.json()
+  return data?.choices?.[0]?.message?.content || ''
+}
+
 /**
  * Invoke a tool directly via the tools API.
  * Replaces: various openclaw CLI tool calls

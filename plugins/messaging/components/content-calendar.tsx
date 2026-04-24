@@ -394,7 +394,7 @@ export function ContentCalendar() {
                       key={item.id}
                       role="button"
                       onClick={(e) => { e.stopPropagation(); openItem(item) }}
-                      className="text-[10px] leading-tight px-1 py-0.5 rounded border cursor-pointer hover:brightness-125 transition-all flex items-center gap-0.5"
+                      className="text-[10px] leading-tight px-1 py-0.5 rounded border hover:brightness-125 transition-all flex items-center gap-0.5"
                       style={agentColorStyle(item.agent)}
                     >
                       {item.sessionId && (
