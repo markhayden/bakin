@@ -288,7 +288,7 @@ function UsageBarsPanel({
                 onClick={() => hasErrors && setExpanded(isExpanded ? null : row.name)}
                 disabled={!hasErrors}
                 aria-expanded={isExpanded}
-                className={`w-full text-left group ${hasErrors ? 'cursor-pointer' : 'cursor-default'}`}
+                className="w-full text-left group"
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className={`text-xs font-mono truncate mr-2 ${hasErrors ? 'text-foreground group-hover:text-accent' : 'text-muted-foreground'}`}>
@@ -623,7 +623,6 @@ export function HealthPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="cursor-pointer"
                   disabled={!searchHealth.enabled || reindexing}
                   onClick={async () => {
                     clearReindexProgress()
