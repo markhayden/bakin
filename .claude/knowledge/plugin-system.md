@@ -240,10 +240,11 @@ shape inside the Bakin binary when the user runs `bakin plugins install`:
 3. `Bun.build()` server entry with `packages=external` + externals.
 4. `Bun.build()` client entry with browser target + externals.
 
-Portable subprocess wrapping uses Node's `child_process.spawn` so the
-builder works under both Bun (production) and Node (vitest). The
-output layout is identical to core plugins — the runtime loader
-reads from `dist/` either way.
+Portable subprocess wrapping uses Node's `child_process.spawn` (which
+Bun implements API-compatibly) so the builder's subprocess behavior
+is stable across Bun's evolving surface. The output layout is
+identical to core plugins — the runtime loader reads from `dist/`
+either way.
 
 ### Vendor bundles — `scripts/build-vendors.ts`
 
