@@ -90,7 +90,7 @@ describe('orphaned references — agents in prompt builder', () => {
     const prompt = buildSystemPrompt(
       'orphaned-agent',
       makeSession({ agentId: 'orphaned-agent' }),
-      { contentTypes: [{ id: 'post', label: 'Post' }], contentDir: testDir },
+      { contentTypes: [{ id: 'post', label: 'Post' }], persona: '' },
     )
     // Identity line uses the raw id when name unknown — never throws.
     expect(prompt).toContain('You are orphaned-agent')
@@ -101,7 +101,7 @@ describe('orphaned references — agents in prompt builder', () => {
     const prompt = buildSystemPrompt(
       'x',
       makeSession({ agentId: 'x' }),
-      { contentTypes: [], contentDir: testDir },
+      { contentTypes: [], persona: '' },
     )
     expect(prompt).toContain('contentType: one of a content type id of your choosing')
   })

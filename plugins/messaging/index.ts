@@ -37,7 +37,7 @@ import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { sendChannelMessage } from '../../src/core/openclaw-client'
 import * as vault from '../../src/core/vault'
-import { existsSync, readdirSync } from 'fs'
+import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import type { PlanningSession } from './types'
 
@@ -60,14 +60,55 @@ async function readBody<T>(req: Request): Promise<T> {
 
 interface AgentMetaLike { id: string; name?: string }
 
+const AGENT_ID_SHAPE = /^[a-z0-9-]+$/
+
 /**
- * Resolve the prompt-builder options for a given agent by pulling the
- * display name from the team plugin (via HookRegistry) and the current
- * content-type taxonomy from this plugin's settings. Both degrade to
- * safe defaults when the hook throws, the team plugin isn't active, or
- * settings return nothing — callers can always build a prompt.
+ * Validates an agentId against a strict shape allowlist + live team roster.
+ *
+ * - Shape guard (load-bearing): blocks path traversal. A regex-valid id
+ *   cannot escape `~/.bakin/team/personas/`.
+ * - Roster check (defense-in-depth): filters orphan references — shape-valid
+ *   ids that aren't in the current OpenClaw roster. Best-effort: when the
+ *   team plugin is unavailable or the hook throws, the shape guard alone
+ *   suffices and messaging stays functional.
+ */
+async function validateAgentId(ctx: PluginContext, agentId: string): Promise<boolean> {
+  if (!agentId || !AGENT_ID_SHAPE.test(agentId)) return false
+  try {
+    const knownIds = await ctx.hooks.invoke<string[]>('team.getAgentIds', {})
+    if (Array.isArray(knownIds) && knownIds.length > 0 && !knownIds.includes(agentId)) {
+      return false
+    }
+  } catch (err) {
+    log.warn('team.getAgentIds hook failed during validation; relying on shape guard', {
+      agentId,
+      err: err instanceof Error ? err.message : String(err),
+    })
+  }
+  return true
+}
+
+/**
+ * Resolve the prompt-builder options for a given agent. Pulls the display
+ * name from the team plugin, the content-type taxonomy from this plugin's
+ * settings, and the persona markdown from disk — but only after the agentId
+ * clears `validateAgentId`. Invalid ids return an empty persona; callers
+ * that care about the distinction should gate with validateAgentId directly.
  */
 async function resolvePromptOptions(ctx: PluginContext, agentId: string) {
+  const valid = await validateAgentId(ctx, agentId)
+  let persona = ''
+  if (valid) {
+    const personaPath = join(getContentDir(), 'team', 'personas', `${agentId}.md`)
+    if (existsSync(personaPath)) {
+      try {
+        persona = readFileSync(personaPath, 'utf-8')
+      } catch (err) {
+        log.warn('failed to read persona file', { agentId, err: err instanceof Error ? err.message : String(err) })
+      }
+    }
+  }
+
   let agentName: string | undefined
   try {
     const agent = await ctx.hooks.invoke<AgentMetaLike | null>('team.getAgent', { id: agentId })
@@ -75,9 +116,10 @@ async function resolvePromptOptions(ctx: PluginContext, agentId: string) {
   } catch (err) {
     log.warn('team.getAgent hook failed; falling back to raw agentId', { agentId, err: err instanceof Error ? err.message : String(err) })
   }
+
   const settings = ctx.getSettings<MessagingSettings>()
   const contentTypes = settings.contentTypes ?? DEFAULT_CONTENT_TYPES
-  return { agentName, contentTypes }
+  return { agentName, contentTypes, persona }
 }
 
 // ---------------------------------------------------------------------------
@@ -426,19 +468,12 @@ const messagingPlugin: BakinPlugin = {
         if (!body.agentId || !body.message) {
           return json({ error: 'agentId and message required' }, 400)
         }
+        if (!(await validateAgentId(ctx, body.agentId))) {
+          return json({ error: 'invalid agentId' }, 400)
+        }
 
         try {
-          const { readFileSync, existsSync } = await import('fs')
-          const { join } = await import('path')
-
-          const CONTENT_DIR = getContentDir()
-          const personaPath = join(CONTENT_DIR, 'team', 'personas', `${body.agentId}.md`)
-          let persona = ''
-          if (existsSync(personaPath)) {
-            persona = readFileSync(personaPath, 'utf-8')
-          }
-
-          const { agentName: resolvedName, contentTypes: brainstormTypes } = await resolvePromptOptions(ctx, body.agentId)
+          const { agentName: resolvedName, contentTypes: brainstormTypes, persona } = await resolvePromptOptions(ctx, body.agentId)
           const agentName = resolvedName || body.agentId
           const typeList = brainstormTypes.map(t => t.id).join(', ')
 

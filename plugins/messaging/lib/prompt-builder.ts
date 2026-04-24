@@ -5,13 +5,11 @@
  * and current plan state. Returns a proper messages array (not a
  * flattened string) so the LLM can track conversational context.
  *
- * Agent identity and the content-type taxonomy are resolved by the
- * caller (who has plugin context + user settings) and passed in via
- * options, so this module stays neutral and testable.
+ * Pure module — agent identity, persona markdown, and the content-type
+ * taxonomy are all resolved by the caller (who has plugin context +
+ * roster validation + user settings) and passed in via options. No
+ * filesystem access here.
  */
-import { readFileSync, existsSync } from 'fs'
-import { join } from 'path'
-import { getContentDir } from '../../../src/core/content-dir'
 import type { PlanningSession, ContentTypeOption } from '../types'
 
 export interface PromptBuilderOptions {
@@ -19,21 +17,9 @@ export interface PromptBuilderOptions {
   agentName?: string
   /** User-configured content types — surfaces valid ids in the prompt instruction. */
   contentTypes: ContentTypeOption[]
-  contentDir?: string
-}
-
-/**
- * Load the agent persona markdown file, or return empty string if missing.
- */
-function loadPersona(agentId: string, contentDir?: string): string {
-  const dir = contentDir || getContentDir()
-  const personaPath = join(dir, 'team', 'personas', `${agentId}.md`)
-  if (!existsSync(personaPath)) return ''
-  try {
-    return readFileSync(personaPath, 'utf-8')
-  } catch {
-    return ''
-  }
+  /** Pre-loaded agent persona markdown, or empty string. The caller is responsible
+   *  for validating the agentId against the live roster before loading. */
+  persona: string
 }
 
 /**
@@ -78,7 +64,7 @@ export function buildSystemPrompt(
   options: PromptBuilderOptions,
 ): string {
   const agentName = options.agentName || agentId
-  const persona = loadPersona(agentId, options.contentDir)
+  const persona = options.persona
   const typeList = formatContentTypes(options.contentTypes)
   const exampleType1 = firstTypeId(options.contentTypes, 'post')
   const exampleType2 = options.contentTypes[1]?.id ?? exampleType1

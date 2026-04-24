@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Bakin test-mock checker. Runs as a Claude Code PostToolUse hook on Write|Edit.
 // For any file under tests/ matching *.test.{ts,tsx}, verifies:
-//   1. Every relative `vi.mock('./...', ...)` path resolves to a real file.
-//      A typo makes vi.mock silently no-op and the real module gets imported,
-//      which has previously leaked test data into ~/.bakin/ and ~/.openclaw/.
+//   1. Every relative mock-module path resolves to a real file. A typo makes
+//      the call silently no-op and the real module gets imported, which has
+//      previously leaked test data into ~/.bakin/ and ~/.openclaw/. Matches
+//      both Bun's `mock.module(...)` and Vitest's `vi.mock(...)` so the
+//      checker works through the Next.js → Bun migration and any future shift.
 //   2. The test mocks src/core/content-dir (CLAUDE.md hard rule).
 //   3. If the test touches workflows/tasks/openclaw, it also mocks flow-store
 //      and openclaw-home.
@@ -28,7 +30,8 @@ function isTestFile(p) {
   return /\/tests\/.+\.test\.tsx?$/.test(p)
 }
 
-const MOCK_RE = /vi\.mock\(\s*['"]([^'"]+)['"]/g
+// Matches both `mock.module('...', ...)` (Bun) and `vi.mock('...', ...)` (Vitest).
+const MOCK_RE = /(?:vi\.mock|mock\.module)\(\s*['"]([^'"]+)['"]/g
 
 function extractMockPaths(src) {
   const out = []
