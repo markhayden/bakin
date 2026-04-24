@@ -39,7 +39,7 @@ interface DispatchState {
   lastRun: number | null
   serverStart: number
   dispatched: string[]
-  failedDispatches: Record<string, FailureRecord | number>  // number = legacy format
+  failedDispatches: Record<string, FailureRecord>
 }
 
 const TRANSIENT_CODES = new Set([
@@ -83,11 +83,8 @@ function getStateFile(contentDir: string): string {
   return join(contentDir, '.dispatch-state.json')
 }
 
-function getFailureRecord(entry: FailureRecord | number | undefined): FailureRecord | null {
+function getFailureRecord(entry: FailureRecord | undefined): FailureRecord | null {
   if (!entry) return null
-  // Migrate legacy format (plain timestamp number) — default to structural
-  // because that's the behavior legacy records were written under.
-  if (typeof entry === 'number') return { lastAttempt: entry, count: 1, kind: 'structural' }
   return { ...entry, kind: entry.kind ?? 'structural' }
 }
 
