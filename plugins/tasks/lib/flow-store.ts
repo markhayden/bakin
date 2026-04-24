@@ -81,7 +81,7 @@ function normalizeColumn(col: string): ColumnId | null {
   if (lower === 'todo') return 'todo'
   if (lower === 'review') return 'review'
   if (lower === 'done') return 'done'
-  if (lower === 'archived' || lower === 'confirmed') return 'archived'
+  if (lower === 'archived') return 'archived'
   if (lower === 'blocked') return 'blocked'
   return null
 }
@@ -117,8 +117,6 @@ interface BakinTaskState {
   projectId?: string
   scheduleJobId?: string
   archived?: boolean
-  /** @deprecated Use `archived` — kept for backward compatibility with existing rows */
-  confirmed?: boolean
   date?: string
   log?: TaskLogEntry[]
   order?: number
@@ -134,7 +132,7 @@ function getColumn(flow: FlowRunRow): ColumnId {
     case 'waiting':
       return flow.blocked_task_id ? 'blocked' : 'review'
     case 'succeeded':
-      return (state.archived || state.confirmed) ? 'archived' : 'done'
+      return state.archived ? 'archived' : 'done'
     case 'failed':
     case 'cancelled':
       return 'done'
@@ -226,9 +224,9 @@ function getColumnWhereClause(col: ColumnId): string {
     case 'review':
       return `${base} AND status = 'waiting' AND (blocked_task_id IS NULL)`
     case 'done':
-      return `${base} AND status IN ('succeeded', 'failed', 'cancelled') AND (json_extract(state_json, '$.archived') IS NULL OR json_extract(state_json, '$.archived') = false) AND (json_extract(state_json, '$.confirmed') IS NULL OR json_extract(state_json, '$.confirmed') = false)`
+      return `${base} AND status IN ('succeeded', 'failed', 'cancelled') AND (json_extract(state_json, '$.archived') IS NULL OR json_extract(state_json, '$.archived') = false)`
     case 'archived':
-      return `${base} AND status = 'succeeded' AND (json_extract(state_json, '$.archived') = true OR json_extract(state_json, '$.confirmed') = true)`
+      return `${base} AND status = 'succeeded' AND json_extract(state_json, '$.archived') = true`
   }
 }
 
@@ -459,7 +457,6 @@ export function moveTask(identifier: string, to: string, from?: string, channel?
         state.date = localDateString()
       }
       state.archived = toCol === 'archived' ? true : undefined
-      delete state.confirmed
 
       const now = Date.now()
       let waitJson: string | null = null
@@ -683,7 +680,6 @@ export function updateTask(
           state.date = localDateString()
         }
         state.archived = updates.column === 'archived' ? true : undefined
-        delete state.confirmed
 
         if (updates.column !== 'blocked') {
           blockedTaskId = null
@@ -869,7 +865,7 @@ export function autoArchiveDoneTasks(olderThanMs: number = 24 * 60 * 60 * 1000):
   return withDb(db => {
     if (!hasFlowRunsTable(db)) return 0
     const cutoff = Date.now() - olderThanMs
-    // Find succeeded tasks that are in the "done" column (no archived/confirmed flag)
+    // Find succeeded tasks that are in the "done" column (no archived flag)
     const rows = db.prepare(`
       SELECT flow_id, state_json FROM flow_runs
       WHERE owner_key LIKE 'bakin:task:%'
@@ -877,7 +873,6 @@ export function autoArchiveDoneTasks(olderThanMs: number = 24 * 60 * 60 * 1000):
       AND ended_at IS NOT NULL
       AND ended_at < ?
       AND json_extract(state_json, '$.archived') IS NULL
-      AND json_extract(state_json, '$.confirmed') IS NULL
     `).all(cutoff) as Array<{ flow_id: string; state_json: string | null }>
 
     if (rows.length === 0) return 0
@@ -891,7 +886,6 @@ export function autoArchiveDoneTasks(olderThanMs: number = 24 * 60 * 60 * 1000):
       for (const row of rows) {
         const state = parseStateJson(row.state_json)
         state.archived = true
-        delete state.confirmed
         state.order = nextOrder
         nextOrder++
         stmt.run(JSON.stringify(state), now, row.flow_id)
