@@ -124,7 +124,7 @@ describe('search-migration', () => {
         { name: 'bakin_tasks' },
         { name: 'bakin_assets' },
         { name: 'bakin_projects' },
-        { name: 'beacon_legacy' }, // non-bakin, should be left alone
+        { name: 'external_legacy' }, // non-bakin, should be left alone
         { name: 'other_thing' },
       ]
       // state file absent → stored version 0
