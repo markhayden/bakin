@@ -49,9 +49,11 @@ mock.module('@bakin/core/openclaw-home', () => ({
 const mockStreamChatCompletion = mock()
 const mockChatCompletion = mock()
 
-mock.module('../../../plugins/messaging/lib/gateway', () => ({
-  streamChatCompletion: (...args: unknown[]) => mockStreamChatCompletion(...args),
+mock.module('../../../src/core/openclaw-client', () => ({
+  streamMessage: (...args: unknown[]) => mockStreamChatCompletion(...args),
   chatCompletion: (...args: unknown[]) => mockChatCompletion(...args),
+  sendMessage: mock(),
+  sendChannelMessage: mock(),
 }))
 
 ;(globalThis as any).__bakinBroadcast = mock()

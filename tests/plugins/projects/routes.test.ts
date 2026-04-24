@@ -76,9 +76,55 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => {
 })
 
 const mockSendMessage = mock((..._args: unknown[]) => Promise.resolve('Agent reply here'))
+const mockStreamMessage = mock()
+const mockChatCompletion = mock((..._args: unknown[]) => Promise.resolve('Agent reply here'))
 mock.module('../../../src/core/openclaw-client', () => ({
   sendMessage: (...args: unknown[]) => mockSendMessage(...args),
+  sendChannelMessage: mock(),
+  streamMessage: (...args: unknown[]) => mockStreamMessage(...args),
+  chatCompletion: (...args: unknown[]) => mockChatCompletion(...args),
 }))
+
+/** Build a canned streaming gateway Response emitting OpenAI-style SSE chunks. */
+function streamingResponseFor(tokens: string[]): Response {
+  const encoder = new TextEncoder()
+  const body = new ReadableStream({
+    start(controller) {
+      for (const token of tokens) {
+        const chunk = JSON.stringify({ choices: [{ delta: { content: token } }] })
+        controller.enqueue(encoder.encode(`data: ${chunk}\n\n`))
+      }
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+      controller.close()
+    },
+  })
+  return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+}
+
+/** Consume an SSE Response body into a list of {event, data} records. */
+async function consumeSSE(res: Response): Promise<Array<{ event: string; data: unknown }>> {
+  const reader = res.body!.getReader()
+  const decoder = new TextDecoder()
+  const events: Array<{ event: string; data: unknown }> = []
+  let buffer = ''
+  let currentEvent = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7).trim()
+      } else if (line.startsWith('data: ') && currentEvent) {
+        events.push({ event: currentEvent, data: JSON.parse(line.slice(6)) })
+        currentEvent = ''
+      }
+    }
+  }
+  return events
+}
 
 // Suppress SSE broadcast
 ;(globalThis as any).__bakinBroadcast = mock()
@@ -591,38 +637,82 @@ describe('Routes', () => {
   // -------------------------------------------------------------------------
   // POST /:projectId/ask — agent brainstorm
   // -------------------------------------------------------------------------
-  describe('POST /:projectId/ask — agent brainstorm', () => {
-    it('sends context to the agent and returns reply', async () => {
+  describe('POST /:projectId/ask — agent brainstorm (SSE stream)', () => {
+    it('streams token events then a done event with accumulated content', async () => {
       writeProjectFixture('proj-ask', {
         title: 'Ask Project',
         tasks: [{ id: 't001', title: 'Do stuff', checked: true }],
         assets: [{ filename: '20260401-brief-abcdef12.md', label: 'Brief' }],
       })
+      mockStreamMessage.mockImplementationOnce(() =>
+        Promise.resolve(streamingResponseFor(['Hel', 'lo ', 'world'])),
+      )
 
       const route = findRoute(plugin.routes, 'POST', '/:projectId/ask')!
-      expect(route).toBeDefined()
-      const { status, body } = await callRoute(route, plugin.ctx, {
+      const { response } = await callRoute(route, plugin.ctx, {
         body: { projectId: 'proj-ask', prompt: 'What should we do next?' },
+        rawResponse: true,
       })
-      expect(status).toBe(200)
-      expect(body.ok).toBe(true)
-      expect(body.reply).toBe('Agent reply here')
-      expect(mockSendMessage).toHaveBeenCalledWith('main', expect.stringContaining('Ask Project'))
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toBe('text/event-stream')
+
+      const events = await consumeSSE(response)
+      const tokens = events.filter((e) => e.event === 'token').map((e) => (e.data as { text: string }).text)
+      expect(tokens).toEqual(['Hel', 'lo ', 'world'])
+      const doneEvent = events.find((e) => e.event === 'done')
+      expect(doneEvent).toBeDefined()
+      expect((doneEvent!.data as { content: string }).content).toBe('Hello world')
+
+      // Context was built with project metadata
+      expect(mockStreamMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'main',
+          messages: [expect.objectContaining({ role: 'user', content: expect.stringContaining('Ask Project') })],
+        }),
+      )
     })
 
-    it('passes custom agent and history', async () => {
+    it('uses the custom agent and includes history in the prompt', async () => {
       writeProjectFixture('proj-ask2', { title: 'Ask 2' })
+      mockStreamMessage.mockImplementationOnce(() =>
+        Promise.resolve(streamingResponseFor(['ok'])),
+      )
 
       const route = findRoute(plugin.routes, 'POST', '/:projectId/ask')!
-      await callRoute(route, plugin.ctx, {
+      const { response } = await callRoute(route, plugin.ctx, {
         body: {
           projectId: 'proj-ask2',
           prompt: 'Continue',
           agent: 'pixel',
-          history: [{ role: 'user', content: 'Start' }, { role: 'agent', content: 'OK' }],
+          history: [{ role: 'user', content: 'Start' }, { role: 'assistant', content: 'OK' }],
         },
+        rawResponse: true,
       })
-      expect(mockSendMessage).toHaveBeenCalledWith('pixel', expect.stringContaining('Previous conversation'))
+      await consumeSSE(response)
+      expect(mockStreamMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'pixel',
+          messages: [expect.objectContaining({ content: expect.stringContaining('Previous conversation') })],
+        }),
+      )
+    })
+
+    it('falls back to chatCompletion when gateway does not stream', async () => {
+      writeProjectFixture('proj-fallback', { title: 'Fallback' })
+      mockStreamMessage.mockImplementationOnce(() =>
+        Promise.resolve(new Response('{}', { headers: { 'Content-Type': 'application/json' } })),
+      )
+      mockChatCompletion.mockImplementationOnce(() => Promise.resolve('Full reply in one go'))
+
+      const route = findRoute(plugin.routes, 'POST', '/:projectId/ask')!
+      const { response } = await callRoute(route, plugin.ctx, {
+        body: { projectId: 'proj-fallback', prompt: 'Hi' },
+        rawResponse: true,
+      })
+      const events = await consumeSSE(response)
+      const tokens = events.filter((e) => e.event === 'token').map((e) => (e.data as { text: string }).text)
+      expect(tokens).toEqual(['Full reply in one go'])
+      expect(events.some((e) => e.event === 'done')).toBe(true)
     })
 
     it('returns 400 when projectId or prompt is missing', async () => {
@@ -633,7 +723,7 @@ describe('Routes', () => {
       expect(status).toBe(400)
     })
 
-    it('returns 404 when project does not exist', async () => {
+    it('returns 404 when the project does not exist', async () => {
       const route = findRoute(plugin.routes, 'POST', '/:projectId/ask')!
       const { status, body } = await callRoute(route, plugin.ctx, {
         body: { projectId: 'nonexistent', prompt: 'Hello' },
@@ -642,16 +732,20 @@ describe('Routes', () => {
       expect(body.error).toMatch(/not found/i)
     })
 
-    it('returns 500 when agent call fails', async () => {
+    it('emits an error event when both streaming and fallback fail', async () => {
       writeProjectFixture('proj-fail', { title: 'Fail Project' })
-      mockSendMessage.mockRejectedValueOnce(new Error('Agent unreachable'))
+      mockStreamMessage.mockImplementationOnce(() => Promise.reject(new Error('unreachable')))
+      mockChatCompletion.mockImplementationOnce(() => Promise.reject(new Error('gateway down')))
 
       const route = findRoute(plugin.routes, 'POST', '/:projectId/ask')!
-      const { status, body } = await callRoute(route, plugin.ctx, {
+      const { response } = await callRoute(route, plugin.ctx, {
         body: { projectId: 'proj-fail', prompt: 'Help' },
+        rawResponse: true,
       })
-      expect(status).toBe(500)
-      expect(body.error).toMatch(/unreachable/i)
+      const events = await consumeSSE(response)
+      const errEvent = events.find((e) => e.event === 'error')
+      expect(errEvent).toBeDefined()
+      expect((errEvent!.data as { message: string }).message).toMatch(/gateway down|unreachable/i)
     })
   })
 })

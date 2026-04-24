@@ -160,7 +160,7 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
   return (
     <div className="flex flex-col h-full" data-testid="planning-layout">
       {/* Session header */}
-      <div className="flex items-center gap-3 p-3 border-b border-border">
+      <div className="flex items-center gap-3 px-3 pb-3 border-b border-border">
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onBack}>
           <ArrowLeft className="w-4 h-4" />
         </Button>
@@ -247,7 +247,7 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
       </div>
 
       {/* Split layout */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden gap-6">
         {/* Chat panel */}
         <div className={`flex-1 min-w-0 ${showReview ? 'md:w-[60%]' : 'w-full'}`}>
           <SessionChat

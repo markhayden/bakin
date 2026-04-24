@@ -51,9 +51,9 @@ mock.module('../../../src/core/watcher', () => ({
   watchDir: mock(),
 }))
 
-// Mock the gateway module so tests don't hit a real gateway
-mock.module('../../../plugins/messaging/lib/gateway', () => ({
-  streamChatCompletion: mock(async () => {
+// Mock the gateway calls so tests don't hit a real gateway
+mock.module('../../../src/core/openclaw-client', () => ({
+  streamMessage: mock(async () => {
     // Return a mock Response with SSE body
     const encoder = new TextEncoder()
     const body = new ReadableStream({
@@ -76,6 +76,8 @@ mock.module('../../../plugins/messaging/lib/gateway', () => ({
   chatCompletion: mock(async () =>
     '[mock:Chef] Acknowledged. Task understood — working on it.'
   ),
+  sendMessage: mock(),
+  sendChannelMessage: mock(),
 }))
 
 // Mock openclaw-home to prevent filesystem access

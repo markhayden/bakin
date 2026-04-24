@@ -63,7 +63,7 @@ export function ActivityFeed() {
       {!open && (
         <button
           onClick={toggle}
-          className="fixed right-0 top-[calc(50%+28px)] -translate-y-1/2 z-50 flex w-8 flex-col items-center justify-center gap-2 py-4 rounded-l-md border border-r-0 border-border bg-card/95 backdrop-blur-sm transition-colors hover:bg-surface-elevated cursor-pointer"
+          className="fixed right-0 top-[calc(50%+28px)] -translate-y-1/2 z-50 flex w-8 flex-col items-center justify-center gap-2 py-4 rounded-l-md border border-r-0 border-border bg-card/95 backdrop-blur-sm transition-colors hover:bg-surface-elevated"
         >
           <span className={`h-2 w-2 rounded-full ${connected ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
           <span className="text-[10px] font-medium text-muted-foreground [writing-mode:vertical-lr]">
@@ -85,7 +85,7 @@ export function ActivityFeed() {
           <div className="flex items-center gap-1">
             <button
               onClick={toggle}
-              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] cursor-pointer"
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)]"
             >
               <ChevronRight className="size-4" />
             </button>

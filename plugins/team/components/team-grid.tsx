@@ -7,6 +7,7 @@ import {
   ReactFlow,
   Background,
   BackgroundVariant,
+  Controls,
   type Node,
   type NodeTypes,
   Position,
@@ -307,10 +308,9 @@ export function TeamGrid() {
           maxZoom={1.5}
           proOptions={{ hideAttribution: true }}
           nodesConnectable={false}
-          panOnScroll
-          zoomOnScroll={false}
         >
           <Background variant={BackgroundVariant.Dots} color="#3f3f46" gap={24} size={1.5} />
+          <Controls showInteractive={false} />
         </ReactFlow>
       </div>
 

@@ -44,6 +44,10 @@ mock.module('@/core/watcher', () => ({
 
 mock.module('@/core/openclaw-client', () => ({
   sendToAgent: mock(),
+  sendMessage: mock(),
+  sendChannelMessage: mock(),
+  streamMessage: mock(),
+  chatCompletion: mock(),
 }))
 
 // ---------------------------------------------------------------------------
