@@ -130,8 +130,8 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   const brainstormEndRef = useRef<HTMLDivElement>(null)
   const brainstormAgentMeta = useAgent(brainstormAgent)
   const { height: brainstormPanelHeight, handleProps: brainstormResizeHandleProps } = useVerticalResize({
-    defaultHeight: 320,
-    minHeight: 180,
+    defaultHeight: 180,
+    minHeight: 120,
     maxHeight: 720,
     storageKey: 'projects-brainstorm-panel',
   })
@@ -621,15 +621,11 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
           </div>
 
           {/* ── Brainstorm — pinned at bottom ── */}
-          {(() => {
-            const hasMessages = brainstormMessages.length > 0
-            const panelIsSized = brainstormOpen && hasMessages
-            return (
           <div
             className="relative shrink-0 border-t border-[rgba(255,255,255,0.06)] pt-3 pb-1 flex flex-col"
-            style={panelIsSized ? { height: brainstormPanelHeight } : undefined}
+            style={brainstormOpen ? { height: brainstormPanelHeight } : undefined}
           >
-            {panelIsSized && (
+            {brainstormOpen && (
               <div
                 {...brainstormResizeHandleProps}
                 role="separator"
@@ -644,16 +640,16 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
             >
               <Sparkles className="size-3.5" />
               <span className="font-medium">Brainstorm</span>
-              {hasMessages && (
+              {brainstormMessages.length > 0 && (
                 <span className="text-[10px] text-zinc-600 font-mono">{brainstormMessages.filter(m => m.role === 'agent').length} replies</span>
               )}
               <ChevronDown className={`size-3 transition-transform ${brainstormOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {brainstormOpen && (
-              <div className="flex flex-col flex-1 min-h-0">
+              <div className="flex flex-col flex-1 min-h-0 justify-end">
                 {/* Conversation history */}
-                {hasMessages && (
+                {brainstormMessages.length > 0 && (
                   <div
                     className="flex-1 min-h-0 overflow-y-auto mb-2 space-y-2 pr-1"
                     style={{ scrollbarGutter: 'stable' }}
@@ -710,8 +706,6 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
               </div>
             )}
           </div>
-            )
-          })()}
         </div>
 
         {/* ── Right sidebar ── */}
