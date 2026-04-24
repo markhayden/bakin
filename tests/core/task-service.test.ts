@@ -4,9 +4,19 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 // Mock dependencies before importing
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: mock(() => '/tmp/bakin-test'),
-  getBakinPaths: mock(() => ({ home: '/tmp/bakin-test' })),
+  getBakinPaths: mock(() => ({ home: '/tmp/bakin-test',
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+})),
 }))
 
 mock.module('@/core/audit', () => ({
@@ -142,7 +152,7 @@ describe('task-service', () => {
 
   describe('moveTaskWithEffects', () => {
     it('should move task and append audit', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.moveTaskWithEffects('task-1', 'done', 'pixel')
 
       expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined)
@@ -156,7 +166,7 @@ describe('task-service', () => {
     })
 
     it('should trigger continuation when moved to done', async () => {
-      const { checkAndContinueDependents } = await import('@/core/continuation')
+      const { checkAndContinueDependents } = require('@/core/continuation') as typeof import('@/core/continuation')
       await service.moveTaskWithEffects('task-1', 'done', 'pixel')
 
       expect(checkAndContinueDependents).toHaveBeenCalled()
@@ -170,7 +180,7 @@ describe('task-service', () => {
     })
 
     it('should NOT trigger continuation for non-done moves', async () => {
-      const { checkAndContinueDependents } = await import('@/core/continuation')
+      const { checkAndContinueDependents } = require('@/core/continuation') as typeof import('@/core/continuation')
       await service.moveTaskWithEffects('task-1', 'inProgress', 'pixel')
 
       expect(checkAndContinueDependents).not.toHaveBeenCalled()
@@ -202,7 +212,7 @@ describe('task-service', () => {
 
   describe('blockTaskWithEffects', () => {
     it('should block task and append audit', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.blockTaskWithEffects('task-1', 'API key expired', 'pixel')
 
       expect(mockBlockTask).toHaveBeenCalledWith('task-1', 'API key expired', 'pixel')
@@ -239,7 +249,7 @@ describe('task-service', () => {
     })
 
     it('should append audit on creation', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.createTaskWithEffects({ title: 'Test', createdBy: 'cli' })
 
       expect(appendAudit).toHaveBeenCalledWith(
@@ -334,7 +344,7 @@ describe('task-service', () => {
 
   describe('setDependencyWithEffects', () => {
     it('should set dependency and append audit', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.setDependencyWithEffects('task-a', 'task-b')
 
       expect(mockSetDependency).toHaveBeenCalledWith('task-a', 'task-b')

@@ -16,7 +16,26 @@ const testDir = (() => {
   return join(tmpdir(), `bakin-test-messaging-activate-${Date.now()}`)
 })()
 
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ messaging: testDir }),
+}))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ messaging: testDir }),
+}))
+mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ messaging: testDir }),
 }))
@@ -40,8 +59,12 @@ mock.module('../../../src/core/openclaw-client', () => ({
 
 ;(globalThis as any).__bakinBroadcast = mock()
 
-import messagingPlugin from '../../../plugins/messaging/index'
-import { DEFAULT_CONTENT_TYPES } from '../../../plugins/messaging/types'
+// Dynamic require — ES imports are hoisted above mock.module registrations, so
+// plugins/messaging/lib/storage.ts would evaluate getContentDir before the mock
+// takes effect. Using require() defers the load until after mocks are set.
+const messagingPlugin = require('../../../plugins/messaging/index').default as typeof import('../../../plugins/messaging/index').default
+const { DEFAULT_CONTENT_TYPES } = require('../../../plugins/messaging/types') as typeof import('../../../plugins/messaging/types')
+import type messagingPluginType from '../../../plugins/messaging/index'
 import type { MessagingSettings } from '../../../plugins/messaging/types'
 import { createTestContext } from '../test-helpers'
 

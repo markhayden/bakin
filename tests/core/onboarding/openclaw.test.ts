@@ -52,8 +52,8 @@ mock.module('../../../src/core/logger', () => ({
 // inside the per-test sandbox. Everything else, including whatever the
 // machine running the suite has in /opt/homebrew/, looks absent.
 // readFileSync is passed through unchanged so JSON parsing still works.
-mock.module('fs', async () => {
-  const actual = await import('fs')
+mock.module('fs', () => {
+  const actual = require('fs') as typeof import('fs')
   return {
     ...actual,
     existsSync: (p: fs.PathLike) => {

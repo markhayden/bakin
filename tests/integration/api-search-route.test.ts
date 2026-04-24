@@ -16,6 +16,12 @@ import { rmSync } from 'fs'
 
 const testDir = join(tmpdir(), `bakin-test-api-search-${process.pid}-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
@@ -41,8 +47,8 @@ mock.module('@/core/watcher', () => ({
 
 const crossTableSearchMock = mock()
 
-mock.module('@/core/search-registry', async () => {
-  const actual = await import('@/core/search-registry')
+mock.module('@/core/search-registry', () => {
+  const actual = require('@/core/search-registry') as typeof import('@/core/search-registry')
   return {
     ...actual,
     crossTableSearch: (...args: unknown[]) => crossTableSearchMock(...args),

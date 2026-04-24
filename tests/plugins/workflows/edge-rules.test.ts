@@ -19,6 +19,12 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-edge-rules-${Date.now()}`)
 
 // CLAUDE.md — required test isolation mocks.
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),

@@ -14,8 +14,16 @@ import { tmpdir } from 'os'
 
 let testDir: string
 
-mock.module('../../../src/core/content-dir', async () => {
-  const actual = await import('../../../src/core/content-dir')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/core/content-dir', () => {
+  // Require the canonical module (bypasses the mock overlay on src/core/content-dir
+  // which is just a re-export shim of this file).
+  const actual = require('../../../packages/core/src/content-dir') as typeof import('../../../packages/core/src/content-dir')
   return {
     ...actual,
     getContentDir: () => testDir,

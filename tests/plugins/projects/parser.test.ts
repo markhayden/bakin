@@ -6,6 +6,12 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-projects-parser-${Date.now()}`)
 const projectsDir = join(testDir, 'projects')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getBakinPaths: () => ({ projects: projectsDir }),
   getContentDir: () => testDir,

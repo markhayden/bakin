@@ -3,6 +3,12 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/logger', () => ({
   createLogger: () => ({
     info: mock(),

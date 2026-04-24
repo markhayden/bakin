@@ -46,6 +46,11 @@ mock.module('../../src/lib/plugin-registry', () => ({
   }),
 }))
 mock.module('../../src/lib/format', () => ({ isStale: mock().mockReturnValue(true) }))
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
 
 import { buildDispatchMessage } from '../../src/core/dispatch'
 

@@ -15,9 +15,9 @@ mock.module('@/core/logger', () => ({
 
 // Defensive content-dir redirect — audit.ts takes a contentDir arg, but the
 // isolation rule requires a mock be present so nothing downstream can leak.
-mock.module('@/core/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('@/core/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-audit-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })
@@ -46,7 +46,7 @@ describe('audit', () => {
 
   describe('appendAudit — JSONL writing', () => {
     it('appends a valid JSONL entry to audit.jsonl', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
 
       appendAudit(tmpDir, 'task.created', 'patch', { taskId: 'abc123' })
 
@@ -64,7 +64,7 @@ describe('audit', () => {
     })
 
     it('appends multiple entries as separate lines', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
 
       appendAudit(tmpDir, 'task.created', 'patch', { id: '1' })
       appendAudit(tmpDir, 'task.completed', 'scout', { id: '2' })
@@ -79,7 +79,7 @@ describe('audit', () => {
     })
 
     it('creates parent directories if they do not exist', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       const nestedDir = join(tmpDir, 'deep', 'nested', 'content')
 
       appendAudit(nestedDir, 'test.event', 'patch')
@@ -90,7 +90,7 @@ describe('audit', () => {
     })
 
     it('defaults data to empty object when omitted', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
 
       appendAudit(tmpDir, 'simple.event', 'patch')
 
@@ -99,7 +99,7 @@ describe('audit', () => {
     })
 
     it('includes channel when provided', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
 
       appendAudit(tmpDir, 'mcp.call', 'patch', { tool: 'test' }, 'mcp')
 
@@ -108,7 +108,7 @@ describe('audit', () => {
     })
 
     it('omits channel key when not provided', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
 
       appendAudit(tmpDir, 'test.event', 'patch', {})
 
@@ -117,7 +117,7 @@ describe('audit', () => {
     })
 
     it('accepts all valid channel types', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       const channels = ['mcp', 'rest', 'cli', 'system'] as const
 
       for (const ch of channels) {
@@ -131,7 +131,7 @@ describe('audit', () => {
     })
 
     it('does not throw when file write fails (logs error instead)', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
 
       // Pass a path that cannot be created (null byte in path)
       expect(() => {
@@ -146,7 +146,7 @@ describe('audit', () => {
 
   describe('appendAudit — SSE broadcast', () => {
     it('calls globalThis.__bakinBroadcastAudit when available', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       const broadcastSpy = mock()
       ;(globalThis as any).__bakinBroadcastAudit = broadcastSpy
 
@@ -164,7 +164,7 @@ describe('audit', () => {
     })
 
     it('does not throw when SSE broadcast is not registered', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       delete (globalThis as any).__bakinBroadcastAudit
 
       expect(() => {
@@ -173,7 +173,7 @@ describe('audit', () => {
     })
 
     it('broadcasts the same entry that was written to disk', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       const broadcastSpy = mock()
       ;(globalThis as any).__bakinBroadcastAudit = broadcastSpy
 
@@ -192,7 +192,7 @@ describe('audit', () => {
 
   describe('appendAudit — entry structure', () => {
     it('produces valid JSON on every line', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
 
       appendAudit(tmpDir, 'json.check', 'patch', { nested: { deep: true } })
       appendAudit(tmpDir, 'json.special', 'scout', { text: 'quotes "and" newlines\n' })
@@ -204,7 +204,7 @@ describe('audit', () => {
     })
 
     it('each line ends with newline for proper JSONL format', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
 
       appendAudit(tmpDir, 'newline.check', 'patch')
 
@@ -213,7 +213,7 @@ describe('audit', () => {
     })
 
     it('includes ts as ISO-8601 string', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
 
       appendAudit(tmpDir, 'ts.check', 'patch')
 
@@ -222,7 +222,7 @@ describe('audit', () => {
     })
 
     it('spreads data fields into the entry alongside required keys', async () => {
-      const { appendAudit } = await import('@/core/audit')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
 
       appendAudit(tmpDir, 'spread.test', 'patch', { custom: 'field', count: 42 })
 

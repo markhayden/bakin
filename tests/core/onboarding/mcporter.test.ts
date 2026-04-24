@@ -45,8 +45,8 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-mock.module('fs', async () => {
-  const actual = await import('fs')
+mock.module('fs', () => {
+  const actual = require('fs') as typeof import('fs')
   return {
     ...actual,
     existsSync: (p: unknown) => {

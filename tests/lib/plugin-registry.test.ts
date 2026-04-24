@@ -4,6 +4,12 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-plugin-registry-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
@@ -27,12 +33,15 @@ mock.module('../../src/core/logger', () => ({
   }),
 }))
 
-import {
+// Dynamic require below — test-helpers imports createLogger at module init;
+// we need mock.module('...logger') to be registered BEFORE test-helpers loads.
+// Static ES imports are hoisted above top-level code, so we use require() here.
+const {
   clearSourceRegistry,
   getDefinition,
-} from '@bakin/workflows/lib/source-registry'
+} = require('@bakin/workflows/lib/source-registry') as typeof import('@bakin/workflows/lib/source-registry')
 import type { BakinPlugin, PluginContext } from '@/lib/plugin-types'
-import { activatePlugin } from '../plugins/test-helpers'
+const { activatePlugin } = require('../plugins/test-helpers') as typeof import('../plugins/test-helpers')
 
 function makeWorkflowsPlugin(
   body: (ctx: PluginContext) => void,

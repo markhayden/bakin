@@ -10,6 +10,12 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-brand-icon-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
@@ -55,8 +61,9 @@ describe('BrandIcon', () => {
   it('applies the fallbackColor as background on the chip', () => {
     const { container } = render(<BrandIcon slug="unknown-brand" fallbackColor="#123456" fallbackText="X" />)
     const chip = container.querySelector('span')!
-    // JSDOM normalizes hex to rgb. #123456 = rgb(18, 52, 86)
-    expect(chip.getAttribute('style')).toMatch(/rgb\(\s*18,\s*52,\s*86\s*\)/)
+    // happy-dom keeps the hex form verbatim (unlike jsdom's rgb normalization).
+    // Accept either representation so the test doesn't care about the DOM impl.
+    expect(chip.getAttribute('style')).toMatch(/#123456|rgb\(\s*18,\s*52,\s*86\s*\)/)
   })
 
   it('uses slug as fallback text when fallbackText is absent', () => {

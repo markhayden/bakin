@@ -20,9 +20,19 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-team-routes-${Date.now()}`)
 
+// ES imports are hoisted above mock.module — set env so the guards do not trip.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + "-openclaw"
+
 // ---------------------------------------------------------------------------
 // Mandatory mocks — declared before any plugin import
 // ---------------------------------------------------------------------------
+
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -202,7 +212,8 @@ mock.module('../../../plugins/team/lib/openclaw-adapter', () => ({
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, callSearchRoute, callRoute } from '../test-helpers'
-import teamPlugin from '../../../plugins/team/index'
+// Dynamic require — ES imports are hoisted above top-level env setup above.
+const teamPlugin = require('../../../plugins/team/index').default as typeof import('../../../plugins/team/index').default
 import type { ActivatedPlugin } from '../test-helpers'
 
 // ---------------------------------------------------------------------------

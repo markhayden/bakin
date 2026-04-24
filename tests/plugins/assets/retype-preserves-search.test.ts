@@ -19,6 +19,12 @@ import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapte
 const testDir = join(tmpdir(), `bakin-test-retype-preserves-${Date.now()}`)
 const assetsDir = join(testDir, 'assets')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ assets: join(testDir, 'assets') }),

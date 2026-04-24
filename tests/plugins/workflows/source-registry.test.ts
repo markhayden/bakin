@@ -7,6 +7,12 @@ import type { WorkflowDefinition } from '@bakin/workflows/types'
 // in-memory registry logic but we stub storage modules so the registry can
 // never accidentally read from or write to ~/.bakin/ or ~/.openclaw/.
 const testDir = join(tmpdir(), `bakin-test-source-registry-${Date.now()}`)
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),

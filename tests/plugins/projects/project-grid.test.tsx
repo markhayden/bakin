@@ -25,6 +25,12 @@ import React from 'react'
 const testDir = join(tmpdir(), `bakin-test-projects-search-${Date.now()}`)
 mkdirSync(testDir, { recursive: true })
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),

@@ -3,6 +3,12 @@ import { mkdtempSync, rmSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
     info: mock(),
@@ -22,12 +28,12 @@ describe('api-docs', () => {
 
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-api-docs-'))
-    // Reset module to clear routeDocs array between tests
-    vi.resetModules()
     const mod = await import('../../src/core/api-docs')
     registerRouteDoc = mod.registerRouteDoc
     getAllRoutes = mod.getAllRoutes
     generateDocs = mod.generateDocs
+    // bun:test has no vi.resetModules; reset via the module's test hook
+    mod._resetRouteDocsForTests()
   })
 
   afterEach(() => {

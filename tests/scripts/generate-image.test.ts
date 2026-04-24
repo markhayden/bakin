@@ -8,13 +8,22 @@ import { describe, it, expect, beforeEach, mock, spyOn, type Mock } from 'bun:te
   process.env.OPENCLAW_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
 })()
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: mock(() => '/tmp/bakin-test'),
   getBakinPaths: mock(() => ({
     home: '/tmp/bakin-test',
     assets: '/tmp/bakin-test/assets',
     'assets.store': '/tmp/bakin-test/assets/store',
-  })),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+})),
 }))
 
 mock.module('../../scripts/lib/registry', () => ({
@@ -31,8 +40,8 @@ mock.module('child_process', () => ({
 
 let mockOpenClawConfig: string | null = null
 
-vi.mock('fs', async (importOriginal: <T = any>() => Promise<T>) => {
-  const actual = await importOriginal() as Record<string, unknown>
+mock.module('fs', () => {
+  const actual = require('fs') as Record<string, unknown>
   const origReadFileSync = actual.readFileSync as Function
   return {
     ...actual,

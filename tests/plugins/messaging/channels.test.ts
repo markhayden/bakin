@@ -15,9 +15,20 @@ const testDir = (() => {
   return join(tmpdir(), `bakin-test-channels-${Date.now()}`)
 })()
 
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
 // ---------------------------------------------------------------------------
 // Mocks — must be before any plugin imports
 // ---------------------------------------------------------------------------
+
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -56,7 +67,10 @@ mock.module('../../../plugins/messaging/lib/gateway', () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import messagingPlugin from '../../../plugins/messaging/index'
+// Dynamic require — ES imports are hoisted above top-level `process.env`
+// assignments, so messaging/storage.ts would call getContentDir() before
+// BAKIN_HOME was set. require() runs in source order.
+const messagingPlugin = require('../../../plugins/messaging/index').default as typeof import('../../../plugins/messaging/index').default
 import type { CalendarItem } from '../../../plugins/messaging/types'
 import {
   activatePlugin,

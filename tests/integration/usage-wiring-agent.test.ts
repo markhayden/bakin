@@ -66,8 +66,10 @@ mock.module('../../src/lib/plugin-registry', () => {
 })
 
 // Prevent main-agent lookup from touching files.
-mock.module('../../src/core/main-agent', () => ({
+mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'orchestrator',
+  tryGetMainAgentId: () => 'orchestrator',
+  getMainAgentName: () => 'Orchestrator',
 }))
 
 // Pin openclaw home under testDir so nothing reads real ~/.openclaw.
@@ -89,7 +91,7 @@ describe('T2.3 agent usage wiring', () => {
   it('heartbeat tool records an agent usage entry', async () => {
     // Importing the module auto-registers the exec tool via addExecTool.
     await import('../../scripts/lib/heartbeat')
-    const { getExecTool } = await import('../../scripts/lib/registry')
+    const { getExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
     const tool = getExecTool('bakin_exec_heartbeat')
     expect(tool).toBeTruthy()
 
@@ -108,7 +110,7 @@ describe('T2.3 agent usage wiring', () => {
   })
 
   it('task-service moveTaskWithEffects records a task.<status> usage entry', async () => {
-    const { moveTaskWithEffects } = await import('../../src/core/task-service')
+    const { moveTaskWithEffects } = require('../../src/core/task-service') as typeof import('../../src/core/task-service')
     const hooks = getHookRegistry()
 
     // Register minimal hook handlers so moveTaskWithEffects can run.
@@ -156,7 +158,7 @@ describe('T2.3 agent usage wiring', () => {
     }))
 
     // State file is written under testDir — provide an empty file ok.
-    const { dispatchSingleTask } = await import('../../src/core/dispatch')
+    const { dispatchSingleTask } = require('../../src/core/dispatch') as typeof import('../../src/core/dispatch')
     const hooks = getHookRegistry()
 
     hooks.register('tasks.readTaskboard', () => ({

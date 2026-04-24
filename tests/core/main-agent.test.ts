@@ -37,13 +37,9 @@ mock.module('../../src/core/content-dir', () => ({
   resetContentDir: () => {},
 }))
 
-// Unmock main-agent — global setup replaces it with a constant-returning stub,
-// but this test suite exercises the real resolution logic.
-vi.unmock('../../packages/core/src/main-agent')
-vi.unmock('@bakin/core/main-agent')
 
-vi.mock('fs', async (importOriginal: <T = any>() => Promise<T>) => {
-  const actual = await importOriginal<typeof import('fs')>()
+mock.module('fs', () => {
+  const actual = require('fs') as typeof import('fs')
   return { ...actual, readFileSync: mock(), statSync: mock() }
 })
 
@@ -64,7 +60,6 @@ function mockOpenclawFile(mtimeMs: number, content: string): void {
 
 describe('main-agent', () => {
   beforeEach(async () => {
-    vi.resetModules()
     mock.clearAllMocks()
     vi.mocked(readFileSync).mockImplementation(() => { throw new Error('ENOENT') })
     vi.mocked(statSync).mockImplementation(() => { throw new Error('ENOENT') })
@@ -73,6 +68,10 @@ describe('main-agent', () => {
     getMainAgentId = mod.getMainAgentId
     tryGetMainAgentId = mod.tryGetMainAgentId
     getMainAgentName = mod.getMainAgentName
+
+    // bun:test has no vi.resetModules; reset the upstream cache explicitly
+    const { resetOpenClawConfigCache } = await import('../../packages/core/src/openclaw-config')
+    resetOpenClawConfigCache()
   })
 
   describe('getMainAgentId', () => {

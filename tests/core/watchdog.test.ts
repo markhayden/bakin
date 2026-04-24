@@ -7,6 +7,12 @@ import { tmpdir } from 'os'
 // watchdog receives its contentDir via `start()`, but any transitive import
 // must be prevented from reading/writing ~/.bakin/.
 const contentDirMockPath = join(tmpdir(), `bakin-watchdog-test-${Date.now()}`)
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => contentDirMockPath,
   getBakinPaths: () => ({ root: contentDirMockPath }),

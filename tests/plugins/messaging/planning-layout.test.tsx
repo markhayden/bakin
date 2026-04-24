@@ -8,6 +8,12 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-planning-layout-${Date.now()}`)
 
 // Safety mock — keeps any accidental storage access off ~/.bakin/
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({

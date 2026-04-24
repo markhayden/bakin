@@ -17,6 +17,12 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-canvas-editor-${Date.now()}`)
 
 // CLAUDE.md — content-dir mock even for pure UI tests.
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),

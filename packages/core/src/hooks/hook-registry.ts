@@ -83,4 +83,9 @@ export class HookRegistry {
   getRegisteredHooks(): string[] {
     return [...this.handlers.keys()]
   }
+
+  /** Drop every registered handler. Tests use this between cases. */
+  clearAll(): void {
+    this.handlers.clear()
+  }
 }

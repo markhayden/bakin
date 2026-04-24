@@ -14,6 +14,12 @@ const testHome = (() => {
   return { home, openclaw }
 })()
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testHome.home,
   getBakinPaths: () => ({
@@ -251,7 +257,7 @@ describe('doctor', () => {
 
     it('should auto-fix mismatched sidecar by merging into stub', async () => {
       // Override settings to enable autoFix
-      const { getSettings } = await import('@/core/settings')
+      const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       vi.mocked(getSettings).mockReturnValue({
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: true },
@@ -309,7 +315,7 @@ describe('doctor', () => {
   describe('requireOnboard gate', () => {
     it('returns single error when requireOnboard=true and machine is not onboarded', async () => {
       mockIsOnboarded = false
-      const { getSettings } = await import('@/core/settings')
+      const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
         antfly: { enabled: false },
@@ -318,7 +324,7 @@ describe('doctor', () => {
         service: { enabled: false },
       })
       vi.resetModules()
-      const { runDiagnostics } = await import('@/core/doctor')
+      const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
       expect(results).toHaveLength(1)
       expect(results[0].check).toBe('onboarded')
@@ -328,7 +334,7 @@ describe('doctor', () => {
 
     it('runs normal checks when requireOnboard=true and machine IS onboarded', async () => {
       mockIsOnboarded = true
-      const { getSettings } = await import('@/core/settings')
+      const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
         antfly: { enabled: false },
@@ -337,7 +343,7 @@ describe('doctor', () => {
         service: { enabled: false },
       })
       vi.resetModules()
-      const { runDiagnostics } = await import('@/core/doctor')
+      const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
       // Should have many results from the normal check suite, not just 1
       expect(results.length).toBeGreaterThan(1)
@@ -346,7 +352,7 @@ describe('doctor', () => {
 
     it('runs normal checks when requireOnboard=false and machine is NOT onboarded', async () => {
       mockIsOnboarded = false
-      const { getSettings } = await import('@/core/settings')
+      const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
         antfly: { enabled: false },
@@ -355,7 +361,7 @@ describe('doctor', () => {
         service: { enabled: false },
       })
       vi.resetModules()
-      const { runDiagnostics } = await import('@/core/doctor')
+      const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
       expect(results.length).toBeGreaterThan(1)
       expect(results.find(r => r.check === 'onboarded')).toBeUndefined()

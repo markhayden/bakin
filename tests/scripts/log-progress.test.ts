@@ -1,5 +1,11 @@
 import { describe, it, expect, mock, type Mock } from 'bun:test'
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/task-service', () => ({
   logProgress: mock(),
 }))

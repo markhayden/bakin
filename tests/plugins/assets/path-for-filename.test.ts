@@ -5,6 +5,12 @@ import { join } from 'path'
 // path-for-filename.ts is a pure module with no fs access, but the test-isolation
 // enforcement hook requires this mock on every test that imports plugin code.
 const testDir = join(tmpdir(), `bakin-test-path-for-filename-${Date.now()}`)
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),

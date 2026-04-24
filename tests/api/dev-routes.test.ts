@@ -13,18 +13,18 @@ import type { IncomingMessage, ServerResponse } from 'http'
 // Per CLAUDE.md testing rules — defensive content-dir mocks even though
 // the dev-route handlers don't touch the filesystem. Transitive imports
 // can surprise you.
-mock.module('../../src/core/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../src/core/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-dev-routes-noop')
   return {
     getContentDir: () => base,
     getBakinPaths: () => ({ root: base }),
   }
 })
-mock.module('../../packages/core/src/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../packages/core/src/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-dev-routes-noop')
   return {
     getContentDir: () => base,

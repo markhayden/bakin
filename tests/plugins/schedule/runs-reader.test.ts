@@ -14,8 +14,17 @@ import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => hoistedBakinHome,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -27,7 +36,7 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-import { readRuns, getLastRun } from '@bakin/schedule/lib/runs-reader'
+const { readRuns, getLastRun } = require('@bakin/schedule/lib/runs-reader') as typeof import('@bakin/schedule/lib/runs-reader')
 
 const testDir = join(tmpdir(), `bakin-test-runs-${Date.now()}`)
 

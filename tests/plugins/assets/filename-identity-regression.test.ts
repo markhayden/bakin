@@ -26,6 +26,12 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-identity-regression-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ assets: assetsRoot }),

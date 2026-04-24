@@ -9,15 +9,21 @@ import { describe, it, expect, mock } from 'bun:test'
 
 // Defensive isolation: parser is pure, but any transitive import that
 // reaches content-dir must be redirected away from ~/.bakin/.
-mock.module('../../../../src/core/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../../src/core/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-audit-parser-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })
-mock.module('../../../../packages/core/src/content-dir', async () => {
-  const { join } = await import('path')
-  const { tmpdir } = await import('os')
+mock.module('../../../../packages/core/src/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
   const base = join(tmpdir(), 'bakin-test-audit-parser-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })

@@ -6,6 +6,12 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-load-defaults-${Date.now()}`)
 const fakeDefaultsDir = join(testDir, 'defaults', 'workflows')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),

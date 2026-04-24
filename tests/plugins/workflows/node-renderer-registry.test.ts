@@ -9,6 +9,12 @@ import type { ComponentType } from 'react'
 // content-dir (and not pull in real flow-store) as a safety net.
 const testDir = join(tmpdir(), `bakin-test-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),

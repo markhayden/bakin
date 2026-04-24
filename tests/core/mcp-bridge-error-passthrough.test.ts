@@ -21,8 +21,15 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 const TEST_DIR = join(tmpdir(), `bakin-mcp-bridge-${process.pid}-${Date.now()}`)
 const ORIGINAL_BAKIN_HOME = process.env.BAKIN_HOME
 
-mock.module('../../src/core/content-dir', async () => {
-  const actual = await import('../../src/core/content-dir')
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../src/core/content-dir', () => {
+  // Require the canonical module (src/core/content-dir is a re-export shim).
+  const actual = require('../../packages/core/src/content-dir') as typeof import('../../packages/core/src/content-dir')
   return {
     ...actual,
     getContentDir: () => TEST_DIR,
@@ -76,7 +83,7 @@ const UNIQUE_ERROR_MARKER = 'BRIDGE_TEST_UNIQUE_8d3f1c0a_should_pass_through'
 
 describe('MCP bridge error passthrough', () => {
   it('forwards thrown handler error text to the client unchanged', async () => {
-    const { registerTools } = await import('../../src/core/mcp-server')
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
     const registry = await import('../../scripts/lib/registry')
     const { addExecTool } = registry
 

@@ -2,6 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
     info: mock(),

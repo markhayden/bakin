@@ -12,12 +12,21 @@ const { hoistedBakinHome } = (() => {
 
 import { execFile } from 'child_process'
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('child_process', () => ({
   execFile: mock(),
 }))
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => hoistedBakinHome,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -29,7 +38,7 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-import { cronAdd, cronEdit, cronRemove, cronRun, cronList } from '@bakin/schedule/lib/openclaw-cron'
+const { cronAdd, cronEdit, cronRemove, cronRun, cronList } = require('@bakin/schedule/lib/openclaw-cron') as typeof import('@bakin/schedule/lib/openclaw-cron')
 
 const mockExecFile = vi.mocked(execFile)
 

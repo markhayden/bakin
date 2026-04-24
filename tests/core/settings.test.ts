@@ -9,7 +9,8 @@ const SETTINGS_FILE = path.join(TEST_CONTENT_DIR, 'settings.json')
 describe('Settings', () => {
   beforeEach(() => {
     resetSettingsCache()
-    process.env.CONTENT_DIR = TEST_CONTENT_DIR
+    process.env.BAKIN_HOME = TEST_CONTENT_DIR
+    delete process.env.CONTENT_DIR
     if (fs.existsSync(TEST_CONTENT_DIR)) {
       fs.rmSync(TEST_CONTENT_DIR, { recursive: true })
     }

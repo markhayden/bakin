@@ -26,6 +26,12 @@ let spawnError: Error | null
 let lastSpawnArgs: { cmd: string; args: string[]; opts: Record<string, unknown> } | null
 let askYesNoReturn: boolean
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/antfly-server', () => ({
   findBinary: () => {
     // Pop the next queued value; if the queue is empty, repeat the last
@@ -46,8 +52,8 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-mock.module('fs', async () => {
-  const actual = await import('fs')
+mock.module('fs', () => {
+  const actual = require('fs') as typeof import('fs')
   return {
     ...actual,
     existsSync: (p: unknown) => {

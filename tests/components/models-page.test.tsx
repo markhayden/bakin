@@ -4,6 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ModelsPage } from '../../plugins/models/components/models-page'
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')

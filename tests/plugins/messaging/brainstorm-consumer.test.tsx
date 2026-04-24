@@ -17,6 +17,12 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-messaging-consumer-${Date.now()}`)
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
@@ -71,8 +77,8 @@ mock.module('@/hooks/use-search', () => ({
 }))
 
 // useQueryState — back with a plain useState so the search field is reactive.
-mock.module('@/hooks/use-query-state', async () => {
-  const { useState } = await import('react')
+mock.module('@/hooks/use-query-state', () => {
+  const { useState } = require('react') as typeof import('react')
   return {
     useQueryState: (_key: string, defaultValue: string) => {
       const [value, setValue] = useState(defaultValue ?? '')

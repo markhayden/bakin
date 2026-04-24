@@ -15,9 +15,20 @@ const testDir = (() => {
   return join(tmpdir(), `bakin-test-messaging-${Date.now()}`)
 })()
 
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
 // ---------------------------------------------------------------------------
 // Mocks — must be before any plugin imports
 // ---------------------------------------------------------------------------
+
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -44,7 +55,7 @@ mock.module('../../../src/core/audit', () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import messagingPlugin from '../../../plugins/messaging/index'
+const messagingPlugin = require('../../../plugins/messaging/index').default as typeof import('../../../plugins/messaging/index').default
 import type { CalendarItem } from '../../../plugins/messaging/types'
 import {
   activatePlugin,
@@ -446,8 +457,8 @@ describe('Calendar routes', () => {
       }))
 
       // Mock os.homedir to point to our temp dir
-      mock.module('os', async () => {
-        const actual = await (await import('os'))
+      mock.module('os', () => {
+        const actual = require('os') as typeof import('os')
         return { ...actual, homedir: () => join(openclawDir, '..') }
       })
 
@@ -497,8 +508,8 @@ describe('Calendar routes', () => {
     // Re-enable once the brainstorm route is refactored to inject homedir.
     it.skip('returns 500 when gateway token is missing', async () => {
       // Use a homedir with no openclaw config
-      mock.module('os', async () => {
-        const actual = await (await import('os'))
+      mock.module('os', () => {
+        const actual = require('os') as typeof import('os')
         return { ...actual, homedir: () => join(tmpdir(), 'nonexistent-dir') }
       })
 

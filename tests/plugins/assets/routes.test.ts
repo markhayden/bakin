@@ -24,6 +24,12 @@ import {
 const testDir = join(tmpdir(), `bakin-test-assets-routes-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ assets: join(testDir, 'assets') }),
@@ -1012,7 +1018,7 @@ describe('exec tool: bakin_exec_assets_audit', () => {
 
   it('returns error when assets directory does not exist', async () => {
     // Temporarily rename assets dir
-    const { renameSync: rn } = await import('fs')
+    const { renameSync: rn } = require('fs') as typeof import('fs')
     const backup = assetsRoot + '_backup'
     rn(assetsRoot, backup)
 

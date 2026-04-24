@@ -5,6 +5,12 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 
 // Mandatory mocks per CLAUDE.md test isolation rules — keep filesystem,
 // logger, and watcher modules from ever resolving to the real ~/.bakin.
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => '/tmp/test-use-search',
   getBakinPaths: () => ({}),

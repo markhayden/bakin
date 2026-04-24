@@ -6,12 +6,12 @@ import { tmpdir } from 'os'
 // Mock the agents directory before importing
 const testDir = join(tmpdir(), `bakin-usage-test-${Date.now()}`)
 
-mock.module('os', async () => {
-  const actual = await import('os')
+mock.module('os', () => {
+  const actual = require('os') as typeof import('os')
   return { ...actual, homedir: () => testDir }
 })
 
-const { getAllAgentUsage } = await import('../../src/core/agent-usage')
+const { getAllAgentUsage } = require('../../src/core/agent-usage') as typeof import('../../src/core/agent-usage')
 
 function writeSession(agent: string, filename: string, lines: object[]) {
   const dir = join(testDir, '.openclaw', 'agents', agent, 'sessions')

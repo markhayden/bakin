@@ -18,8 +18,17 @@ const sidecarDir = join(testDir, 'schedule')
 const sidecarPath = join(sidecarDir, 'sidecar.json')
 const jobsPath = join(testDir, 'jobs.json')
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -31,7 +40,10 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-import { readOpenClawJobs, mergeJob, readMergedJobs } from '@bakin/schedule/lib/jobs-reader'
+// Dynamic require — jobs-reader.ts calls getOpenClawHome at module init.
+// ES imports are hoisted above the IIFE that sets OPENCLAW_HOME, so using
+// require() defers the load until after env is configured.
+const { readOpenClawJobs, mergeJob, readMergedJobs } = require('@bakin/schedule/lib/jobs-reader') as typeof import('@bakin/schedule/lib/jobs-reader')
 
 function writeJobs(jobs: OpenClawJobsFile) {
   writeFileSync(jobsPath, JSON.stringify(jobs))

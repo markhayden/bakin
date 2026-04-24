@@ -16,13 +16,29 @@ const testDir = (() => {
   return join(tmpdir(), `bakin-test-health-checks-route-${Date.now()}`)
 })()
 
+// ES imports are hoisted above mock.module — set env so the content-dir
+// guard doesn't trip when plugin modules call getContentDir at init.
+process.env.BAKIN_HOME = testDir
+process.env.OPENCLAW_HOME = testDir + '-openclaw'
+
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
 }))
 mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
 }))
 mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => `${testDir}/.openclaw`,
@@ -35,7 +51,13 @@ mock.module('../../../src/core/audit', () => ({ appendAudit: mock() }))
 mock.module('../../../src/core/openclaw-client', () => ({
   sendMessage: mock(), sendChannelMessage: mock(),
 }))
-mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
+mock.module('../../../src/core/watcher', () => ({
+  watchFiles: mock(),
+  registerSyncHook: mock(() => () => {}),
+  registerUnlinkHook: mock(() => () => {}),
+  start: mock(),
+  stop: mock(),
+}))
 mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
@@ -43,7 +65,7 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
 }))
 ;(globalThis as any).__bakinBroadcast = mock()
 
-import healthPlugin from '../../../plugins/health/index'
+const healthPlugin = require('../../../plugins/health/index').default as typeof import('../../../plugins/health/index').default
 import {
   registerPluginHealthCheck,
   unregisterPluginHealthChecks,

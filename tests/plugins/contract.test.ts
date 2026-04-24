@@ -11,6 +11,12 @@ const { hoistedBakinHome, hoistedOpenClawHome } = (() => {
   return { hoistedBakinHome: bakinHome, hoistedOpenClawHome: openclawHome }
 })()
 
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => hoistedBakinHome,
   getBakinPaths: () => ({
@@ -30,6 +36,8 @@ mock.module('../../src/core/content-dir', () => ({
     memoryLog: `${hoistedBakinHome}/MEMORY-LOG.md`,
   }),
   resetContentDir: () => {},
+  isUsingBakinHome: () => true,
+  initBakinHome: () => {},
 }))
 
 mock.module('../../plugins/tasks/lib/flow-store', () => ({
@@ -75,16 +83,18 @@ import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import fs from 'fs'
 
-// Import all plugins
-import tasksPlugin from '../../plugins/tasks'
-import memoryPlugin from '../../plugins/memory'
-import modelsPlugin from '../../plugins/models'
-import messagingPlugin from '../../plugins/messaging'
-import workflowsPlugin from '../../plugins/workflows'
-import assetsPlugin from '../../plugins/assets'
-import projectsPlugin from '../../plugins/projects'
-import schedulePlugin from '../../plugins/schedule'
-import healthPlugin from '../../plugins/health'
+// Import all plugins via require — ES imports are hoisted above the IIFE
+// that seeds BAKIN_HOME / OPENCLAW_HOME, so plugin modules that call
+// getContentDir/getOpenClawHome at module init would hit the guard.
+const tasksPlugin = require('../../plugins/tasks').default as typeof import('../../plugins/tasks').default
+const memoryPlugin = require('../../plugins/memory').default as typeof import('../../plugins/memory').default
+const modelsPlugin = require('../../plugins/models').default as typeof import('../../plugins/models').default
+const messagingPlugin = require('../../plugins/messaging').default as typeof import('../../plugins/messaging').default
+const workflowsPlugin = require('../../plugins/workflows').default as typeof import('../../plugins/workflows').default
+const assetsPlugin = require('../../plugins/assets').default as typeof import('../../plugins/assets').default
+const projectsPlugin = require('../../plugins/projects').default as typeof import('../../plugins/projects').default
+const schedulePlugin = require('../../plugins/schedule').default as typeof import('../../plugins/schedule').default
+const healthPlugin = require('../../plugins/health').default as typeof import('../../plugins/health').default
 
 const TEST_DIR = hoistedBakinHome
 const TEST_OPENCLAW_HOME = hoistedOpenClawHome

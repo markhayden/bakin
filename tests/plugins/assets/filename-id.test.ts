@@ -5,6 +5,12 @@ import { join } from 'path'
 // Test isolation: even though filename-id.ts is pure/in-memory, the hook
 // requires this mock to keep the enforcement blanket.
 const testDir = join(tmpdir(), `bakin-test-filename-id-${Date.now()}`)
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
