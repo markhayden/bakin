@@ -2,13 +2,13 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from '@bakin/sdk/hooks'
-import { ArrowLeft, Send, Loader2, Paperclip, X, FileText, Image, Film, Music, File, Sparkles, ChevronDown, Search, Pencil, Trash2 } from 'lucide-react'
-import { useAgent, useMainAgentId, useVerticalResize } from "@bakin/sdk/hooks"
-import { AgentSelect } from "@bakin/sdk/components"
+import { ArrowLeft, Paperclip, X, FileText, Image, Film, Music, File, ChevronDown, Search, Pencil, Trash2 } from 'lucide-react'
+import { useMainAgentId } from "@bakin/sdk/hooks"
+import { AgentSelect, IntegratedBrainstorm } from "@bakin/sdk/components"
+import type { BrainstormMessage } from "@bakin/sdk/components"
 import { Slot } from '@bakin/sdk/slots'
 import { ProjectChecklist } from './project-checklist'
 import { ProjectEditor } from './project-editor'
-import { MarkdownContent } from "@bakin/sdk/components"
 import { Skeleton } from "@bakin/sdk/ui"
 import type { ProjectStatus } from '../types'
 
@@ -122,19 +122,8 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   const [editBody, setEditBody] = useState('')
 
   // Brainstorm
-  const [brainstormOpen, setBrainstormOpen] = useState(true)
   const [brainstormAgent, setBrainstormAgent] = useState(mainAgentId)
-  const [agentPrompt, setAgentPrompt] = useState('')
-  const [agentLoading, setAgentLoading] = useState(false)
-  const [brainstormMessages, setBrainstormMessages] = useState<Array<{ role: 'user' | 'agent'; agent?: string; content: string }>>([])
-  const brainstormEndRef = useRef<HTMLDivElement>(null)
-  const brainstormAgentMeta = useAgent(brainstormAgent)
-  const { height: brainstormPanelHeight, handleProps: brainstormResizeHandleProps } = useVerticalResize({
-    defaultHeight: 100,
-    minHeight: 100,
-    maxHeight: 720,
-    storageKey: 'projects-brainstorm-panel',
-  })
+  const [brainstormMessages, setBrainstormMessages] = useState<BrainstormMessage[]>([])
 
   // Dropdowns
   const [statusOpen, setStatusOpen] = useState(false)
@@ -310,31 +299,66 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   // Brainstorm
   // ---------------------------------------------------------------------------
 
-  const handleAgentAsk = async () => {
-    if (!agentPrompt.trim() || agentLoading) return
-    const prompt = agentPrompt.trim()
-    const agent = brainstormAgent
-    setBrainstormMessages(prev => [...prev, { role: 'user', content: prompt }])
-    setAgentPrompt('')
-    setAgentLoading(true)
-    setTimeout(() => brainstormEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
-    try {
-      const history = brainstormMessages.map(m => ({ role: m.role, content: m.content }))
-      const res = await fetch(`/api/plugins/projects/${currentId}/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: currentId, prompt, agent, history }) })
-      const data = await res.json().catch(() => null)
-      if (res.ok && data?.reply) {
-        setBrainstormMessages(prev => [...prev, { role: 'agent', agent, content: data.reply }])
-        fetchProject()
-      } else {
-        setBrainstormMessages(prev => [...prev, { role: 'agent', agent, content: `Error: ${data?.error || `Agent returned ${res.status}`}` }])
+  const projectAskOnSend = useCallback(
+    async (
+      prompt: string,
+      history: BrainstormMessage[],
+      ctx: { signal: AbortSignal; onToken: (text: string) => void },
+    ): Promise<{ content: string }> => {
+      const res = await fetch(`/api/plugins/projects/${currentId}/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: ctx.signal,
+        body: JSON.stringify({
+          projectId: currentId,
+          prompt,
+          agent: brainstormAgent,
+          history: history.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      })
+      if (!res.ok || !res.body) {
+        const text = await res.text().catch(() => '')
+        throw new Error(text || `Agent returned ${res.status}`)
       }
-    } catch (err: any) {
-      setBrainstormMessages(prev => [...prev, { role: 'agent', agent, content: `Error: ${err?.message || 'Failed to reach agent'}` }])
-    } finally {
-      setAgentLoading(false)
-      setTimeout(() => brainstormEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
-    }
-  }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let currentEvent = ''
+      let accumulated = ''
+      let finalContent = ''
+      let errorMessage: string | null = null
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim()
+          } else if (line.startsWith('data: ') && currentEvent) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (currentEvent === 'token') {
+                accumulated += data.text ?? ''
+                ctx.onToken(data.text ?? '')
+              } else if (currentEvent === 'done') {
+                finalContent = data.content ?? accumulated
+              } else if (currentEvent === 'error') {
+                errorMessage = data.message ?? 'Unknown error'
+              }
+            } catch { /* skip malformed chunks */ }
+            currentEvent = ''
+          }
+        }
+      }
+      if (errorMessage) throw new Error(errorMessage)
+      // Refresh project after a reply lands — agent may have updated the spec.
+      fetchProject()
+      return { content: finalContent || accumulated }
+    },
+    [currentId, brainstormAgent, fetchProject],
+  )
 
   // ---------------------------------------------------------------------------
   // Assets
@@ -621,91 +645,14 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
           </div>
 
           {/* ── Brainstorm — pinned at bottom ── */}
-          <div
-            className="relative shrink-0 border-t border-[rgba(255,255,255,0.06)] pt-2 pb-1 flex flex-col"
-            style={brainstormOpen ? { height: brainstormPanelHeight } : undefined}
-          >
-            {brainstormOpen && (
-              <div
-                {...brainstormResizeHandleProps}
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label="Resize brainstorm panel"
-                className="absolute inset-x-0 top-0 h-1.5 -translate-y-1/2 cursor-row-resize hover:bg-accent/50 active:bg-accent transition-colors z-10"
-              />
-            )}
-            <button
-              onClick={() => setBrainstormOpen(!brainstormOpen)}
-              className={`flex items-center justify-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors shrink-0 ${brainstormOpen ? 'mb-2' : ''}`}
-            >
-              <Sparkles className="size-3.5" />
-              <span className="font-medium">Brainstorm</span>
-              {brainstormMessages.length > 0 && (
-                <span className="text-[10px] text-zinc-600 font-mono">{brainstormMessages.filter(m => m.role === 'agent').length} replies</span>
-              )}
-              <ChevronDown className={`size-3 transition-transform ${brainstormOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {brainstormOpen && (
-              <div className="flex flex-col flex-1 min-h-0 justify-end">
-                {/* Conversation history */}
-                {brainstormMessages.length > 0 && (
-                  <div
-                    className="flex-1 min-h-0 overflow-y-auto mb-2 space-y-2 pr-1"
-                    style={{ scrollbarGutter: 'stable' }}
-                  >
-                    {brainstormMessages.map((msg, i) => {
-                      if (msg.role === 'user') {
-                        return (
-                          <div key={i} className="flex justify-end">
-                            <div className="max-w-[85%] px-3 py-1.5 rounded-lg bg-[#5e6ad2]/15 border border-[#5e6ad2]/20 text-sm text-zinc-200 whitespace-pre-wrap">
-                              {msg.content}
-                            </div>
-                          </div>
-                        )
-                      }
-                      return (
-                        <BrainstormAgentMessage key={i} agentId={msg.agent || ''} content={msg.content} />
-                      )
-                    })}
-                    {agentLoading && (
-                      <div className="flex gap-2">
-                        <div className="shrink-0 text-xs pt-1">{brainstormAgentMeta?.emoji || '🤖'}</div>
-                        <div className="px-3 py-2 rounded-lg bg-zinc-900/60 border border-[rgba(255,255,255,0.04)] text-sm text-zinc-500">
-                          <Loader2 className="size-3.5 animate-spin inline-block" /> Thinking...
-                        </div>
-                      </div>
-                    )}
-                    <div ref={brainstormEndRef} />
-                  </div>
-                )}
-
-                {/* Input row */}
-                <div className="flex items-end gap-2 shrink-0">
-                  <AgentSelect
-                    value={brainstormAgent}
-                    onValueChange={setBrainstormAgent}
-                    className="h-8 w-auto min-w-[130px] text-[11px] bg-zinc-900/60 border-[rgba(255,255,255,0.06)] shrink-0 self-start"
-                  />
-                  <textarea
-                    value={agentPrompt}
-                    onChange={(e) => setAgentPrompt(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAgentAsk() } }}
-                    placeholder="Ask about this project..."
-                    rows={2}
-                    className="flex-1 text-sm bg-zinc-900/60 border border-[rgba(255,255,255,0.06)] rounded-lg px-3 py-2 text-foreground placeholder:text-zinc-500 focus:outline-none focus:border-[#5e6ad2]/40 transition-colors resize-none"
-                  />
-                  <button
-                    onClick={handleAgentAsk}
-                    disabled={!agentPrompt.trim() || agentLoading}
-                    className="px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed border border-[rgba(255,255,255,0.06)] self-start"
-                  >
-                    {agentLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <IntegratedBrainstorm
+            messages={brainstormMessages}
+            onMessagesChange={setBrainstormMessages}
+            onSend={projectAskOnSend}
+            agentId={brainstormAgent}
+            onAgentChange={setBrainstormAgent}
+            placeholder="Ask about this project..."
+          />
         </div>
 
         {/* ── Right sidebar ── */}
@@ -870,18 +817,6 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
           onClose={() => setPreviewFilename(null)}
         />
       )}
-    </div>
-  )
-}
-
-function BrainstormAgentMessage({ agentId, content }: { agentId: string; content: string }) {
-  const agentInfo = useAgent(agentId)
-  return (
-    <div className="flex gap-2">
-      <div className="shrink-0 text-xs pt-1">{agentInfo?.emoji || '🤖'}</div>
-      <div className="max-w-[90%] px-3 py-2 rounded-lg bg-zinc-900/60 border border-[rgba(255,255,255,0.04)] text-sm">
-        <MarkdownContent content={content} />
-      </div>
     </div>
   )
 }

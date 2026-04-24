@@ -31,6 +31,9 @@ mock.module('../../../src/core/watcher', () => ({
 
 mock.module('../../../src/core/openclaw-client', () => ({
   sendMessage: mock(),
+  sendChannelMessage: mock(),
+  streamMessage: mock(),
+  chatCompletion: mock(),
 }))
 
 mock.module('@/components/ui/button', () => ({

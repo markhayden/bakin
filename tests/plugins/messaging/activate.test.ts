@@ -54,7 +54,10 @@ mock.module('../../../src/core/audit', () => ({
 }))
 
 mock.module('../../../src/core/openclaw-client', () => ({
+  sendMessage: mock(),
   sendChannelMessage: mock(),
+  streamMessage: mock(),
+  chatCompletion: mock(),
 }))
 
 ;(globalThis as any).__bakinBroadcast = mock()

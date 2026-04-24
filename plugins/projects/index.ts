@@ -349,13 +349,13 @@ const projectsPlugin: BakinPlugin = {
     }
     ctx.registerRoute({ path: '/:projectId/assets/:filename', method: 'DELETE', description: 'Detach asset', handler: detachHandler })
 
-    // POST /:projectId/ask — agent brainstorm
-    ctx.registerRoute({ path: '/:projectId/ask', method: 'POST', description: 'Ask agent about project', handler: async (req: Request) => {
+    // POST /:projectId/ask — agent brainstorm (SSE stream)
+    ctx.registerRoute({ path: '/:projectId/ask', method: 'POST', description: 'Ask agent about project (streams tokens via SSE)', handler: async (req: Request) => {
         const body = await readBody<{
           projectId: string
           prompt: string
           agent?: string
-          history?: Array<{ role: 'user' | 'agent'; content: string }>
+          history?: Array<{ role: 'user' | 'agent' | 'assistant'; content: string }>
         }>(req)
         if (!body.projectId || !body.prompt) return json({ error: 'Missing projectId or prompt' }, 400)
         const project = readProject(body.projectId)
@@ -365,12 +365,12 @@ const projectsPlugin: BakinPlugin = {
           ? ['', 'Attached assets (summaries — use asset tools to read full content if needed):', ...project.assets.map(a => `- ${a.filename}${a.label ? ` — ${a.label}` : ''}`)]
           : []
 
-        // Build conversation history section
         const historyLines: string[] = []
         if (body.history && body.history.length > 0) {
           historyLines.push('', 'Previous conversation in this brainstorm session:')
           for (const msg of body.history) {
-            historyLines.push(msg.role === 'user' ? `User: ${msg.content}` : `Assistant: ${msg.content}`)
+            const speaker = msg.role === 'user' ? 'User' : 'Assistant'
+            historyLines.push(`${speaker}: ${msg.content}`)
           }
           historyLines.push('')
         }
@@ -392,15 +392,91 @@ const projectsPlugin: BakinPlugin = {
           'Respond concisely. If suggesting tasks, format them as a numbered list.',
         ].join('\n')
 
-        try {
-          const { sendMessage } = await import('../../src/core/openclaw-client')
-          const agentId = body.agent || getMainAgentId()
-          const reply = await sendMessage(agentId, context)
-          return json({ ok: true, reply })
-        } catch (err: unknown) {
-          log.error('Agent ask failed', err)
-          return json({ error: (err as Error).message || 'Failed to reach agent' }, 500)
-        }
+        const agentId = body.agent || getMainAgentId()
+        const { streamMessage, chatCompletion } = await import('../../src/core/openclaw-client')
+        const sessionKey = `projects-${body.projectId}-${Date.now()}`
+
+        const stream = new ReadableStream({
+          async start(controller) {
+            const encoder = new TextEncoder()
+            function send(event: string, data: unknown): void {
+              controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+            }
+
+            let fullContent = ''
+            let useStreaming = true
+            let gwResponse: Response | null = null
+
+            try {
+              gwResponse = await streamMessage({
+                agentId,
+                sessionKey,
+                messages: [{ role: 'user', content: context }],
+              })
+              const contentType = gwResponse.headers.get('content-type') || ''
+              if (!contentType.includes('text/event-stream')) useStreaming = false
+            } catch (err) {
+              // Fallback to non-streaming chatCompletion below. Log at warn level
+              // so a real gateway outage (4xx/5xx, network) is still debuggable —
+              // it'd be silently swallowed otherwise.
+              log.warn('streamMessage failed, falling back to chatCompletion', {
+                error: err instanceof Error ? err.message : String(err),
+                agentId,
+              })
+              useStreaming = false
+              gwResponse = null
+            }
+
+            try {
+              if (useStreaming && gwResponse?.body) {
+                const reader = gwResponse.body.getReader()
+                const decoder = new TextDecoder()
+                let buffer = ''
+                while (true) {
+                  const { done, value } = await reader.read()
+                  if (done) break
+                  buffer += decoder.decode(value, { stream: true })
+                  const lines = buffer.split('\n')
+                  buffer = lines.pop() || ''
+                  for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue
+                    const data = line.slice(6).trim()
+                    if (data === '[DONE]') continue
+                    try {
+                      const parsed = JSON.parse(data)
+                      const token = parsed.choices?.[0]?.delta?.content
+                      if (token) {
+                        fullContent += token
+                        send('token', { text: token })
+                      }
+                    } catch { /* skip malformed chunks */ }
+                  }
+                }
+              } else {
+                fullContent = await chatCompletion({
+                  agentId,
+                  sessionKey,
+                  messages: [{ role: 'user', content: context }],
+                })
+                if (fullContent) send('token', { text: fullContent })
+              }
+              send('done', { content: fullContent })
+            } catch (err: unknown) {
+              log.error('Agent ask failed', err)
+              send('error', { message: err instanceof Error ? err.message : String(err) })
+            } finally {
+              controller.close()
+            }
+          },
+        })
+
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+        })
       },
     })
 
