@@ -71,7 +71,7 @@ function walk(dir, out = []) {
     return out
   }
   for (const e of entries) {
-    if (e.name === 'node_modules' || e.name.startsWith('.')) continue
+    if (e.name === 'node_modules' || e.name === 'dist' || e.name.startsWith('.')) continue
     const full = join(dir, e.name)
     if (e.isDirectory()) {
       walk(full, out)
