@@ -167,13 +167,6 @@ describe('antfly', () => {
     expect((antfly.TABLES as Record<string, string>).audit).toBeUndefined()
   })
 
-  it('should not have legacy beacon_ table names', async () => {
-    const antfly = await import('@/core/antfly')
-    const tableValues = Object.values(antfly.TABLES)
-    expect(tableValues.every(t => t.startsWith('bakin_'))).toBe(true)
-    expect(tableValues.some(t => t.startsWith('beacon_'))).toBe(false)
-  })
-
   // ── getIndexHealth ─────────────────────────────────────────────────
 
   it('should export getIndexHealth as a function', async () => {

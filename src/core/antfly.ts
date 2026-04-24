@@ -39,15 +39,6 @@ export const TABLES = {
   team: 'bakin_team',
 } as const
 
-/** Stale beacon_ tables to wipe on startup */
-const LEGACY_TABLES = [
-  'beacon_tasks',
-  'beacon_decisions',
-  'beacon_audit',
-  'beacon_content',
-  'beacon_assets',
-]
-
 export type TableKey = keyof typeof TABLES
 
 export interface SearchResult {
@@ -113,9 +104,6 @@ export async function initialize(): Promise<void> {
     const status = await client.getStatus()
     log.info('Antfly connected', { url: settings.antfly.url, health: status?.health })
 
-    // Wipe legacy beacon_* tables
-    await wipeLegacyTables(client)
-
     // Store embedder hash for change detection
     _g.__bakinAntflyEmbedderHash = embedderHash(settings)
 
@@ -124,26 +112,6 @@ export async function initialize(): Promise<void> {
     log.error('Failed to connect to Antfly — falling back to file-only mode', err)
     setClient(null)
     _g.__bakinAntflyReady = true
-  }
-}
-
-async function wipeLegacyTables(client: AntflyClient): Promise<void> {
-  try {
-    const tables = await client.tables.list()
-    const existingNames = new Set(tables.map(t => t.name))
-
-    for (const legacy of LEGACY_TABLES) {
-      if (existingNames.has(legacy)) {
-        try {
-          await client.tables.drop(legacy)
-          log.info(`Wiped legacy table: ${legacy}`)
-        } catch (err) {
-          log.warn(`Failed to wipe legacy table ${legacy}`, err)
-        }
-      }
-    }
-  } catch {
-    // Can't list tables — skip cleanup
   }
 }
 
