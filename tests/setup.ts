@@ -1,12 +1,9 @@
 /**
- * Global vitest setup.
+ * Global bun:test setup.
  *
- * Mocks the main-agent resolution module so tests don't leak into the real
- * `~/.openclaw/` state. All test files see `getMainAgentId() === 'main'`
- * unless they override the mock in a per-file `vi.mock()` call.
- *
- * Mocks BOTH the alias path and the re-export in `src/core/` because some
- * production modules still import via relative paths.
+ * 1. Registers happy-dom so component tests have document/window.
+ * 2. Mocks the main-agent module at its canonical path so tests don't
+ *    read the real ~/.openclaw/ state.
  *
  * Test-data leak protection works in two layers:
  *  1. Runtime guards in content-dir.ts and openclaw-home.ts throw if
@@ -14,9 +11,12 @@
  *  2. Individual tests must mock those modules or set BAKIN_HOME /
  *     OPENCLAW_HOME to a temp directory.
  * We do NOT force-set BAKIN_HOME/OPENCLAW_HOME here because tests that
- * vi.mock('os', …) to redirect homedir() rely on env vars being unset.
+ * mock `os` to redirect homedir() rely on env vars being unset.
  */
-import { vi } from 'vitest'
+import GlobalRegistrator from '@happy-dom/global-registrator'
+import { mock } from 'bun:test'
+
+GlobalRegistrator.register()
 
 const mainAgentMock = {
   getMainAgentId: () => 'main',
@@ -24,8 +24,4 @@ const mainAgentMock = {
   getMainAgentName: () => 'Main',
 }
 
-vi.mock('@bakin/core/main-agent', () => mainAgentMock)
-vi.mock('../../packages/core/src/main-agent', () => mainAgentMock)
-vi.mock('../../../src/core/main-agent', () => mainAgentMock)
-vi.mock('../../src/core/main-agent', () => mainAgentMock)
-vi.mock('./main-agent', () => mainAgentMock)
+mock.module('@bakin/core/main-agent', () => mainAgentMock)
