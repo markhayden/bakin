@@ -621,11 +621,15 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
           </div>
 
           {/* ── Brainstorm — pinned at bottom ── */}
+          {(() => {
+            const hasMessages = brainstormMessages.length > 0
+            const panelIsSized = brainstormOpen && hasMessages
+            return (
           <div
             className="relative shrink-0 border-t border-[rgba(255,255,255,0.06)] pt-3 pb-1 flex flex-col"
-            style={brainstormOpen ? { height: brainstormPanelHeight } : undefined}
+            style={panelIsSized ? { height: brainstormPanelHeight } : undefined}
           >
-            {brainstormOpen && (
+            {panelIsSized && (
               <div
                 {...brainstormResizeHandleProps}
                 role="separator"
@@ -640,7 +644,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
             >
               <Sparkles className="size-3.5" />
               <span className="font-medium">Brainstorm</span>
-              {brainstormMessages.length > 0 && (
+              {hasMessages && (
                 <span className="text-[10px] text-zinc-600 font-mono">{brainstormMessages.filter(m => m.role === 'agent').length} replies</span>
               )}
               <ChevronDown className={`size-3 transition-transform ${brainstormOpen ? 'rotate-180' : ''}`} />
@@ -649,7 +653,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
             {brainstormOpen && (
               <div className="flex flex-col flex-1 min-h-0">
                 {/* Conversation history */}
-                {brainstormMessages.length > 0 && (
+                {hasMessages && (
                   <div
                     className="flex-1 min-h-0 overflow-y-auto mb-2 space-y-2 pr-1"
                     style={{ scrollbarGutter: 'stable' }}
@@ -706,6 +710,8 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
               </div>
             )}
           </div>
+            )
+          })()}
         </div>
 
         {/* ── Right sidebar ── */}
