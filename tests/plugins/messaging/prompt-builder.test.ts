@@ -1,40 +1,31 @@
 /**
  * Prompt builder tests — verifies system prompt construction,
- * persona loading, plan state inclusion, and messages array format.
+ * persona inclusion, plan state, and messages array format.
  *
- * Agent identity and content-type taxonomy come from the caller via
- * PromptBuilderOptions; the builder stays neutral.
+ * The builder is pure: agent identity, persona markdown, and the
+ * content-type taxonomy are all caller-supplied via PromptBuilderOptions.
+ * Mocks below are defensive — the module itself no longer touches disk,
+ * but CLAUDE.md requires content-dir isolation for every plugin test.
  */
-import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { describe, it, expect, mock } from 'bun:test'
+import { tmpdir } from 'os'
 import { join } from 'path'
 
-const testDir = (() => {
-  const { join } = require('path')
-  const { tmpdir } = require('os')
-  return join(tmpdir(), `bakin-test-prompt-${Date.now()}`)
-})()
+const testDir = join(tmpdir(), `bakin-test-prompt-${Date.now()}`)
 
-// ES imports are hoisted above mock.module — set env so the content-dir
-// guard doesn't trip when plugin modules call getContentDir at init.
 process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = testDir + '-openclaw'
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ messaging: testDir }),
+  getBakinPaths: () => ({ root: testDir }),
 }))
-
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir }),
+}))
 mock.module('../../../src/core/logger', () => ({
-  createLogger: () => ({
-    info: mock(), warn: mock(), error: mock(), debug: mock(),
-  }),
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 import { buildSystemPrompt, buildMessages } from '../../../plugins/messaging/lib/prompt-builder'
@@ -46,11 +37,11 @@ const DEFAULT_TYPES: ContentTypeOption[] = [
   { id: 'video',   label: 'Video' },
 ]
 
-function opts(overrides: { agentName?: string; contentTypes?: ContentTypeOption[] } = {}) {
+function opts(overrides: { agentName?: string; contentTypes?: ContentTypeOption[]; persona?: string } = {}) {
   return {
-    contentDir: testDir,
     contentTypes: overrides.contentTypes ?? DEFAULT_TYPES,
     agentName: overrides.agentName,
+    persona: overrides.persona ?? '',
   }
 }
 
@@ -67,14 +58,6 @@ function makeSession(overrides: Partial<PlanningSession> = {}): PlanningSession 
     ...overrides,
   }
 }
-
-beforeAll(() => {
-  mkdirSync(testDir, { recursive: true })
-})
-
-afterAll(() => {
-  rmSync(testDir, { recursive: true, force: true })
-})
 
 describe('buildSystemPrompt', () => {
   it('uses the agentName from options when provided', () => {
@@ -101,17 +84,17 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('contentType: one of a content type id of your choosing')
   })
 
-  it('includes persona when file exists', () => {
-    const personaDir = join(testDir, 'team', 'personas')
-    mkdirSync(personaDir, { recursive: true })
-    writeFileSync(join(personaDir, 'chef.md'), '# Chef\nA chef who loves fresh ingredients.')
-
-    const prompt = buildSystemPrompt('chef', makeSession(), opts({ agentName: 'Chef' }))
+  it('includes persona section when caller supplies persona markdown', () => {
+    const prompt = buildSystemPrompt(
+      'chef',
+      makeSession(),
+      opts({ agentName: 'Chef', persona: '# Chef\nA chef who loves fresh ingredients.' }),
+    )
     expect(prompt).toContain('Your Persona')
     expect(prompt).toContain('fresh ingredients')
   })
 
-  it('omits persona section when file is missing', () => {
+  it('omits persona section when caller passes empty persona', () => {
     const prompt = buildSystemPrompt('explorer', makeSession({ agentId: 'explorer' }), opts({ agentName: 'Explorer' }))
     expect(prompt).not.toContain('Your Persona')
     expect(prompt).toContain('You are Explorer')

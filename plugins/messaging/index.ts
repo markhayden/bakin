@@ -77,7 +77,12 @@ async function resolvePromptOptions(ctx: PluginContext, agentId: string) {
   }
   const settings = ctx.getSettings<MessagingSettings>()
   const contentTypes = settings.contentTypes ?? DEFAULT_CONTENT_TYPES
-  return { agentName, contentTypes }
+  // Persona is a stub here — commit 2 replaces this with the validated
+  // roster-gated persona load. Callers must already be passing valid
+  // agent ids (today they come from session state, which was written by
+  // trusted server code; /brainstorm still reads its own persona inline
+  // and passes it via its own prompt template, not through this path).
+  return { agentName, contentTypes, persona: '' }
 }
 
 // ---------------------------------------------------------------------------
