@@ -622,7 +622,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
 
           {/* ── Brainstorm — pinned at bottom ── */}
           <div
-            className="relative shrink-0 border-t border-[rgba(255,255,255,0.06)] pt-3 pb-1 flex flex-col"
+            className="relative shrink-0 border-t border-[rgba(255,255,255,0.06)] pt-2 pb-1 flex flex-col"
             style={brainstormOpen ? { height: brainstormPanelHeight } : undefined}
           >
             {brainstormOpen && (
@@ -636,7 +636,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
             )}
             <button
               onClick={() => setBrainstormOpen(!brainstormOpen)}
-              className="flex items-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors mb-2 shrink-0"
+              className={`flex items-center justify-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors shrink-0 ${brainstormOpen ? 'mb-2' : ''}`}
             >
               <Sparkles className="size-3.5" />
               <span className="font-medium">Brainstorm</span>
