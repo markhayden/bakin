@@ -130,7 +130,7 @@ export function ProjectDetail({ projectId, onBack, initialEdit = false, onEditCh
   const brainstormEndRef = useRef<HTMLDivElement>(null)
   const brainstormAgentMeta = useAgent(brainstormAgent)
   const { height: brainstormPanelHeight, handleProps: brainstormResizeHandleProps } = useVerticalResize({
-    defaultHeight: 180,
+    defaultHeight: 120,
     minHeight: 120,
     maxHeight: 720,
     storageKey: 'projects-brainstorm-panel',
