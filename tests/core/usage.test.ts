@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -6,7 +6,7 @@ const testDir = join(tmpdir(), `bakin-usage-test-${Date.now()}`)
 
 // Usage recorder is pure in-memory — no filesystem access. This mock is a
 // defensive safeguard per CLAUDE.md's absolute test isolation rule.
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,

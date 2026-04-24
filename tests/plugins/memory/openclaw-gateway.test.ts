@@ -5,27 +5,27 @@
  * We mock the global WebSocket constructor via vi.stubGlobal so tests stay
  * in-process. The mock replays a canned request/response sequence per call.
  */
-import { describe, it, expect, beforeEach, afterEach, vi, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-memory-gateway-${Date.now()}`)
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-vi.mock('../../../src/core/vault', () => ({
+mock.module('../../../src/core/vault', () => ({
   get: (key: string) => (key === 'gateway-token' ? 'test-token-abc' : null),
 }))
-vi.mock('../../../src/core/settings', () => ({
+mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     openclaw: {
       gatewayUrl: 'http://localhost',

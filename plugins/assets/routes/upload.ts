@@ -42,8 +42,8 @@ export async function handleUpload(req: Request, ctx: PluginContext): Promise<Re
   // Collect all file entries
   const files: File[] = []
   for (const [key, value] of formData.entries()) {
-    if ((key === 'file' || key === 'files') && value instanceof File) {
-      files.push(value)
+    if ((key === 'file' || key === 'files') && typeof value === 'object' && value !== null && 'arrayBuffer' in value) {
+      files.push(value as File)
     }
   }
 

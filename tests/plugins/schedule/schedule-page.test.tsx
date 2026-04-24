@@ -13,7 +13,7 @@
  * views, agent store, etc.). All of them are stubbed to keep the test
  * focused on filter/search behavior in `view='list'` mode.
  */
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
 import { rmSync } from 'fs'
 import { join } from 'path'
@@ -28,31 +28,31 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-schedule-page-${process.pid}-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
-  watchPath: vi.fn(),
+mock.module('@/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
+  watchPath: mock(),
 }))
 
-vi.mock('@/core/openclaw-client', () => ({
-  sendToAgent: vi.fn(),
+mock.module('@/core/openclaw-client', () => ({
+  sendToAgent: mock(),
 }))
 
 afterAll(() => {
@@ -66,7 +66,7 @@ afterAll(() => {
 
 const queryStateRefs: Record<string, string> = {}
 
-vi.mock('@/hooks/use-query-state', () => ({
+mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => {
     if (!(key in queryStateRefs)) queryStateRefs[key] = defaultValue
     const setter = (v: string) => { queryStateRefs[key] = v }
@@ -83,17 +83,17 @@ vi.mock('@/hooks/use-query-state', () => ({
 
 interface SearchHookState {
   results: Array<{ id: string; table: string; score: number; fields: Record<string, unknown> }>
-  search: ReturnType<typeof vi.fn>
-  clear: ReturnType<typeof vi.fn>
+  search: ReturnType<typeof mock>
+  clear: ReturnType<typeof mock>
 }
 
 const searchHookState: SearchHookState = {
   results: [],
-  search: vi.fn(),
-  clear: vi.fn(),
+  search: mock(),
+  clear: mock(),
 }
 
-vi.mock('@/hooks/use-search', () => ({
+mock.module('@/hooks/use-search', () => ({
   useSearch: () => ({
     results: searchHookState.results,
     aggregations: {},
@@ -127,18 +127,18 @@ const scheduleState: { jobs: ScheduleJobStub[]; loading: boolean } = {
   loading: false,
 }
 
-vi.mock('@/hooks/use-schedule', () => ({
+mock.module('@/hooks/use-schedule', () => ({
   useScheduleJobs: () => ({
     jobs: scheduleState.jobs,
     loading: scheduleState.loading,
-    refresh: vi.fn(),
-    pauseJob: vi.fn(),
-    resumeJob: vi.fn(),
-    deleteJob: vi.fn(),
-    runNow: vi.fn(),
-    updateJob: vi.fn(),
-    skipNext: vi.fn(),
-    duplicateJob: vi.fn(),
+    refresh: mock(),
+    pauseJob: mock(),
+    resumeJob: mock(),
+    deleteJob: mock(),
+    runNow: mock(),
+    updateJob: mock(),
+    skipNext: mock(),
+    duplicateJob: mock(),
   }),
 }))
 
@@ -146,13 +146,13 @@ vi.mock('@/hooks/use-schedule', () => ({
 // Stubbed children — each renders a small, observable marker.
 // ---------------------------------------------------------------------------
 
-vi.mock('@bakin/team/hooks/use-agent-store', () => ({
+mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgentIds: () => ['basil', 'pixel'],
   useAgent: (id: string) => ({ id, name: id }),
   useAgentDisplayName: () => undefined,
 }))
 
-vi.mock('@/components/plugin-header', () => ({
+mock.module('@/components/plugin-header', () => ({
   PluginHeader: ({ title, count }: { title: string; count?: number }) => (
     <div data-testid="plugin-header">
       <span>{title}</span>
@@ -161,21 +161,21 @@ vi.mock('@/components/plugin-header', () => ({
   ),
 }))
 
-vi.mock('@/components/agent-avatar', () => ({
+mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
 }))
 
-vi.mock('@/components/bakin-drawer', () => ({
+mock.module('@/components/bakin-drawer', () => ({
   BakinDrawer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }))
 
-vi.mock('@/components/ui/button', () => ({
+mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick }: { children?: React.ReactNode; onClick?: () => void }) => (
     <button onClick={onClick}>{children}</button>
   ),
 }))
 
-vi.mock('@bakin/schedule/components/job-list', () => ({
+mock.module('@bakin/schedule/components/job-list', () => ({
   JobList: ({ jobs }: { jobs: ScheduleJobStub[] }) => (
     <ul data-testid="job-list">
       {jobs.map(j => (
@@ -185,23 +185,23 @@ vi.mock('@bakin/schedule/components/job-list', () => ({
   ),
 }))
 
-vi.mock('@bakin/schedule/components/job-drawer', () => ({
+mock.module('@bakin/schedule/components/job-drawer', () => ({
   JobDrawer: () => null,
 }))
 
-vi.mock('@bakin/schedule/components/job-form', () => ({
+mock.module('@bakin/schedule/components/job-form', () => ({
   JobForm: () => null,
 }))
 
-vi.mock('@bakin/schedule/components/calendar-monthly', () => ({
+mock.module('@bakin/schedule/components/calendar-monthly', () => ({
   CalendarMonthly: () => null,
 }))
 
-vi.mock('@bakin/schedule/components/calendar-weekly', () => ({
+mock.module('@bakin/schedule/components/calendar-weekly', () => ({
   CalendarWeekly: () => null,
 }))
 
-vi.mock('@bakin/schedule/components/calendar-today', () => ({
+mock.module('@bakin/schedule/components/calendar-today', () => ({
   CalendarToday: () => null,
 }))
 

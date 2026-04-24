@@ -1,21 +1,21 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, setSystemTime } from 'bun:test'
 import { mkdtempSync, readFileSync, existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 // Mock logger to suppress output during tests
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
+    debug: mock(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
   }),
 }))
 
 // Defensive content-dir redirect — audit.ts takes a contentDir arg, but the
 // isolation rule requires a mock be present so nothing downstream can leak.
-vi.mock('@/core/content-dir', async () => {
+mock.module('@/core/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-audit-mock')
@@ -28,7 +28,7 @@ describe('audit', () => {
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'bakin-audit-test-'))
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-06-15T12:00:00.000Z'))
+    setSystemTime(new Date('2026-06-15T12:00:00.000Z'))
     // Clear SSE broadcast between tests
     delete (globalThis as any).__bakinBroadcastAudit
   })
@@ -147,12 +147,12 @@ describe('audit', () => {
   describe('appendAudit — SSE broadcast', () => {
     it('calls globalThis.__bakinBroadcastAudit when available', async () => {
       const { appendAudit } = await import('@/core/audit')
-      const broadcastSpy = vi.fn()
+      const broadcastSpy = mock()
       ;(globalThis as any).__bakinBroadcastAudit = broadcastSpy
 
       appendAudit(tmpDir, 'sse.test', 'patch', { key: 'value' })
 
-      expect(broadcastSpy).toHaveBeenCalledOnce()
+      expect(broadcastSpy).toHaveBeenCalledTimes(1)
       expect(broadcastSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           ts: '2026-06-15T12:00:00.000Z',
@@ -174,7 +174,7 @@ describe('audit', () => {
 
     it('broadcasts the same entry that was written to disk', async () => {
       const { appendAudit } = await import('@/core/audit')
-      const broadcastSpy = vi.fn()
+      const broadcastSpy = mock()
       ;(globalThis as any).__bakinBroadcastAudit = broadcastSpy
 
       appendAudit(tmpDir, 'sync.check', 'scout', { x: 1 }, 'rest')

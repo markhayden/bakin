@@ -9,7 +9,7 @@
  * (case-insensitive). These tests verify the filter, the empty-state
  * behavior, and assert that this component does NOT import useSearch.
  */
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { readFileSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -17,33 +17,33 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-messaging-calfilter-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('@/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
-vi.mock('@/core/openclaw-client', () => ({
-  sendToAgent: vi.fn(),
+mock.module('@/core/openclaw-client', () => ({
+  sendToAgent: mock(),
 }))
 
 // ---------------------------------------------------------------------------
 // useQueryState — back with React.useState so updates are reactive
 // ---------------------------------------------------------------------------
-vi.mock('@/hooks/use-query-state', async () => {
+mock.module('@/hooks/use-query-state', async () => {
   const { useState } = await import('react')
   return {
     useQueryState: (_key: string, defaultValue?: string) => {
@@ -60,7 +60,7 @@ vi.mock('@/hooks/use-query-state', async () => {
 // ---------------------------------------------------------------------------
 // Heavy / unrelated children
 // ---------------------------------------------------------------------------
-vi.mock('@/components/plugin-header', () => ({
+mock.module('@/components/plugin-header', () => ({
   PluginHeader: ({ title, count, actions }: Record<string, unknown>) => (
     <div data-testid="plugin-header">
       <h1>{title as string}</h1>
@@ -70,21 +70,21 @@ vi.mock('@/components/plugin-header', () => ({
   ),
 }))
 
-vi.mock('@/components/facet-filter', () => ({
+mock.module('@/components/facet-filter', () => ({
   FacetFilter: () => null,
 }))
 
-vi.mock('@/components/agent-avatar', () => ({
+mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
 }))
 
-vi.mock('@/components/ui/button', () => ({
+mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick }: Record<string, unknown>) => (
     <button onClick={onClick as () => void}>{children as React.ReactNode}</button>
   ),
 }))
 
-vi.mock('@/components/ui/input', () => ({
+mock.module('@/components/ui/input', () => ({
   Input: ({ value, onChange, placeholder }: Record<string, unknown>) => (
     <input
       data-testid="calendar-search-input"
@@ -99,7 +99,7 @@ vi.mock('@/components/ui/input', () => ({
 // content-calendar so destructured imports resolve.
 // CalendarWeek — emit one row per item we receive so we can assert on
 // what survives the filter.
-vi.mock('../../../plugins/messaging/components/calendar-week', () => ({
+mock.module('../../../plugins/messaging/components/calendar-week', () => ({
   CalendarWeek: ({ items }: { items: Array<{ id: string; title: string }> }) => (
     <div data-testid="calendar-week">
       {items.map(it => (
@@ -109,7 +109,7 @@ vi.mock('../../../plugins/messaging/components/calendar-week', () => ({
   ),
 }))
 
-vi.mock('../../../plugins/messaging/components/item-detail-drawer', () => ({
+mock.module('../../../plugins/messaging/components/item-detail-drawer', () => ({
   ItemDetailDrawer: () => null,
 }))
 
@@ -178,7 +178,7 @@ const ITEMS = [
 ]
 
 function mockFetchItems() {
-  globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+  globalThis.fetch = mock().mockImplementation((url: string) => {
     if (typeof url === 'string' && url.startsWith('/api/plugins/messaging/?month=')) {
       return Promise.resolve({
         ok: true,
@@ -186,7 +186,7 @@ function mockFetchItems() {
       })
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
-  }) as typeof fetch
+  }) as unknown as typeof fetch
 }
 
 beforeEach(() => {

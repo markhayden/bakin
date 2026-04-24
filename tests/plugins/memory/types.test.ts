@@ -1,15 +1,15 @@
 /**
  * Tests for plugins/memory/lib/types.ts — Zod schemas for MemoryRow and per-tier meta.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 
 // Mandatory mocks (CLAUDE.md test isolation). Types-only test, no FS touch,
 // but the mock enforcement hook requires these regardless.
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => '/tmp/bakin-types-test',
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => '/tmp/bakin-types-test',
   getBakinPaths: () => ({}),
 }))

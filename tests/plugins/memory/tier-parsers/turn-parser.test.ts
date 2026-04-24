@@ -22,22 +22,22 @@
  * 32KB truncation → content sliced, meta.truncated=true, meta.rawByteOffset set.
  * Stable id: turn:<16-char-sha256(agent|sessionId|eventId)>.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 
-vi.mock('../../../../src/core/content-dir', async () => {
+mock.module('../../../../src/core/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-turn-parser-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })
-vi.mock('../../../../packages/core/src/content-dir', async () => {
+mock.module('../../../../packages/core/src/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-turn-parser-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })
-vi.mock('../../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 import { parseTurnLine } from '../../../../plugins/memory/lib/tier-parsers/turn-parser'

@@ -9,7 +9,7 @@
  * If the bridge ever starts swallowing error text, this test fails with the
  * actual normalized payload so we can hand it back to OpenClaw.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock, spyOn } from 'bun:test'
 import { mkdirSync, existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -21,10 +21,8 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 const TEST_DIR = join(tmpdir(), `bakin-mcp-bridge-${process.pid}-${Date.now()}`)
 const ORIGINAL_BAKIN_HOME = process.env.BAKIN_HOME
 
-vi.mock('../../src/core/content-dir', async () => {
-  const actual = await vi.importActual<typeof import('../../src/core/content-dir')>(
-    '../../src/core/content-dir',
-  )
+mock.module('../../src/core/content-dir', async () => {
+  const actual = await import('../../src/core/content-dir')
   return {
     ...actual,
     getContentDir: () => TEST_DIR,
@@ -50,17 +48,17 @@ vi.mock('../../src/core/content-dir', async () => {
   }
 })
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 beforeAll(() => {
@@ -84,7 +82,7 @@ describe('MCP bridge error passthrough', () => {
 
     // Stub getToolContext — this test only cares about handler-error
     // passthrough, not the real PluginToolContext wiring.
-    vi.spyOn(registry, 'getToolContext').mockReturnValue(undefined)
+    spyOn(registry, 'getToolContext').mockReturnValue(undefined)
 
     addExecTool({
       name: 'bakin_exec_test_throw',

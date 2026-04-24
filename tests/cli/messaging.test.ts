@@ -5,15 +5,15 @@
  * endpoints with correct HTTP methods and request bodies. We mock
  * global fetch to intercept HTTP calls.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 
-const mockFetch = vi.fn()
+const mockFetch = mock()
 
 describe('CLI messaging commands', () => {
   const originalFetch = globalThis.fetch
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     globalThis.fetch = mockFetch as unknown as typeof fetch
     mockFetch.mockResolvedValue({
       ok: true,

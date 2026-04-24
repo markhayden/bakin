@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { join } from 'path'
 
-const testHome = vi.hoisted(() => {
+const testHome = (() => {
   const { mkdtempSync } = require('fs')
   const { tmpdir } = require('os')
   const { join } = require('path')
@@ -10,9 +10,9 @@ const testHome = vi.hoisted(() => {
   process.env.BAKIN_HOME = home
   process.env.OPENCLAW_HOME = openclaw
   return { home, openclaw }
-})
+})()
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testHome.home,
   getBakinPaths: () => ({
     home: testHome.home,

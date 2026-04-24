@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
 
 // Mock fetch globally so initialize() doesn't hit the network
-vi.stubGlobal('fetch', vi.fn(() =>
+vi.stubGlobal('fetch', mock(() =>
   Promise.resolve({ ok: false, json: () => Promise.resolve({}) }),
 ))
 

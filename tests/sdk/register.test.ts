@@ -6,10 +6,10 @@
  * The registry is browser-global, so between-test isolation explicitly
  * unregisters any plugin ids used by the test.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 
 // Defensive content-dir mock per CLAUDE.md test-isolation rules.
-vi.mock('../../src/core/content-dir', async () => {
+mock.module('../../src/core/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-sdk-register-noop')
@@ -18,7 +18,7 @@ vi.mock('../../src/core/content-dir', async () => {
     getBakinPaths: () => ({ root: base }),
   }
 })
-vi.mock('../../packages/core/src/content-dir', async () => {
+mock.module('../../packages/core/src/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-sdk-register-noop')
@@ -91,7 +91,7 @@ describe('unregisterPlugin — cross-plugin isolation', () => {
 
 describe('registerPluginCleanup', () => {
   it('runs enrolled cleanup fns when the plugin is unregistered', () => {
-    const spy = vi.fn()
+    const spy = mock()
     registerPlugin({ id: 'cleanup-test' })
     registerPluginCleanup('cleanup-test', spy)
 
@@ -100,7 +100,7 @@ describe('registerPluginCleanup', () => {
   })
 
   it('is idempotent — unregister twice runs cleanup exactly once', () => {
-    const spy = vi.fn()
+    const spy = mock()
     registerPlugin({ id: 'cleanup-test' })
     registerPluginCleanup('cleanup-test', spy)
 
@@ -120,8 +120,8 @@ describe('registerPluginCleanup', () => {
   })
 
   it('swallows errors thrown by a cleanup fn so subsequent ones still run', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const later = vi.fn()
+    const consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    const later = mock()
     registerPlugin({ id: 'cleanup-test' })
     registerPluginCleanup('cleanup-test', () => { throw new Error('boom') })
     registerPluginCleanup('cleanup-test', later)
@@ -145,7 +145,7 @@ describe('getRegistryVersion + subscribeRegistry', () => {
   })
 
   it('notifies subscribers on every mutation', () => {
-    const listener = vi.fn()
+    const listener = mock()
     const unsubscribe = subscribeRegistry(listener)
 
     registerPlugin({ id: 'x' })

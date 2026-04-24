@@ -9,7 +9,7 @@
  * All filesystem ops are confined to a temp dir; `getOpenClawHome` is
  * mocked so the component never touches the production OpenClaw home.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -18,16 +18,16 @@ const testDir = join(tmpdir(), `bakin-test-plugin-assets-${Date.now()}`)
 const openclawHome = join(testDir, 'openclaw')
 const bakinHome = join(testDir, 'bakin')
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => bakinHome,
   getBakinPaths: () => ({ workflows: join(bakinHome, 'workflows') }),
 }))
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => openclawHome,
   getOpenClawPath: (...parts: string[]) => join(openclawHome, ...parts),
 }))
-vi.mock('@/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('@/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 import {

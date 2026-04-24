@@ -2,7 +2,7 @@
  * Integration tests for tasks plugin — end-to-end flows testing
  * position ordering, two-tier permissions, and state transitions.
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import Database from 'better-sqlite3'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -56,22 +56,22 @@ function clearTestDb() {
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os')
+mock.module('os', async () => {
+  const actual = await import('os')
   return { ...actual, homedir: () => testHome }
 })
 
-vi.mock('../../../plugins/workflows/lib/runtime', () => ({
-  cancelInstance: vi.fn(),
+mock.module('../../../plugins/workflows/lib/runtime', () => ({
+  cancelInstance: mock(),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
+    info: mock(), warn: mock(), error: mock(), debug: mock(),
   }),
 }))
 
-;(globalThis as Record<string, unknown>).__bakinBroadcast = vi.fn()
+;(globalThis as Record<string, unknown>).__bakinBroadcast = mock()
 
 // ---------------------------------------------------------------------------
 // Import after mocks
@@ -92,7 +92,7 @@ initTestDb()
 
 beforeEach(() => {
   clearTestDb()
-  vi.clearAllMocks()
+  mock.clearAllMocks()
 })
 
 afterAll(() => {

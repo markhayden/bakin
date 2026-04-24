@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 
-vi.mock('@/components/ui/button', () => ({
+mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, ...props }: Record<string, unknown>) => (
     <button onClick={onClick as () => void} disabled={disabled as boolean} {...props}>
       {children as React.ReactNode}
@@ -11,13 +11,13 @@ vi.mock('@/components/ui/button', () => ({
   ),
 }))
 
-vi.mock('@/components/ui/badge', () => ({
+mock.module('@/components/ui/badge', () => ({
   Badge: ({ children, ...props }: Record<string, unknown>) => (
     <span data-testid="badge" {...props}>{children as React.ReactNode}</span>
   ),
 }))
 
-vi.mock('@/components/ui/input', () => ({
+mock.module('@/components/ui/input', () => ({
   Input: ({ value, onChange, onBlur, onKeyDown, ...props }: Record<string, unknown>) => (
     <input
       value={value as string}
@@ -55,7 +55,7 @@ describe('Inline title editing', () => {
     render(
       <ProposalCard
         proposal={makeProposal()}
-        onTitleChange={vi.fn()}
+        onTitleChange={mock()}
       />
     )
     expect(screen.getByTestId('proposal-title')).toBeDefined()
@@ -67,7 +67,7 @@ describe('Inline title editing', () => {
     render(
       <ProposalCard
         proposal={makeProposal()}
-        onTitleChange={vi.fn()}
+        onTitleChange={mock()}
       />
     )
     fireEvent.click(screen.getByTestId('proposal-title'))
@@ -75,7 +75,7 @@ describe('Inline title editing', () => {
   })
 
   it('calls onTitleChange on Enter', () => {
-    const onTitleChange = vi.fn()
+    const onTitleChange = mock()
     render(
       <ProposalCard
         proposal={makeProposal()}
@@ -90,7 +90,7 @@ describe('Inline title editing', () => {
   })
 
   it('cancels on Escape without calling callback', () => {
-    const onTitleChange = vi.fn()
+    const onTitleChange = mock()
     render(
       <ProposalCard
         proposal={makeProposal()}
@@ -109,7 +109,7 @@ describe('Inline title editing', () => {
     render(
       <ProposalCard
         proposal={makeProposal({ status: 'approved' })}
-        onTitleChange={vi.fn()}
+        onTitleChange={mock()}
       />
     )
     const title = screen.getByTestId('proposal-title')

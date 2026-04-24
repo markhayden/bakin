@@ -4,23 +4,23 @@
  * workflows.notificationChannels registry. Locks in the graceful-degradation
  * contract for orphan channel refs in legacy frontmatter.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { cleanup, render, screen, fireEvent } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { afterEach } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-channel-rendering-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
@@ -32,7 +32,7 @@ const MOCK_CHANNELS = [
   { runtime: 'builtin' as const, id: 'slack',   label: 'Slack',   initials: 'SL', icon: 'MessageSquare' },
 ]
 
-vi.mock('@bakin/workflows/hooks/use-notification-channels', () => ({
+mock.module('@bakin/workflows/hooks/use-notification-channels', () => ({
   useNotificationChannels: () => MOCK_CHANNELS,
   getChannelLabel: (id: string, channels: typeof MOCK_CHANNELS) =>
     channels.find(c => c.id === id)?.label ?? id,
@@ -40,11 +40,11 @@ vi.mock('@bakin/workflows/hooks/use-notification-channels', () => ({
     channels.find(c => c.id === id)?.initials ?? id.slice(0, 2).toUpperCase(),
 }))
 
-vi.mock('@bakin/workflows/hooks/channel-icon', () => ({
+mock.module('@bakin/workflows/hooks/channel-icon', () => ({
   ChannelIcon: ({ channelId }: { channelId: string }) => <span data-testid={`channel-icon-${channelId}`} />,
 }))
 
-vi.mock('@bakin/team/hooks/use-agent-store', () => ({
+mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgent: (id: string) => ({ id, name: id, emoji: '🤖', role: '', headshot: '' }),
   useAgentIds: () => ['basil'],
   useAgentList: () => [{ id: 'basil', name: 'Basil', emoji: '🥗', role: '', headshot: '' }],
@@ -53,21 +53,21 @@ vi.mock('@bakin/team/hooks/use-agent-store', () => ({
     selector({ agents: [], agentIds: [] }),
 }))
 
-vi.mock('../../../plugins/messaging/hooks/use-content-types', () => ({
+mock.module('../../../plugins/messaging/hooks/use-content-types', () => ({
   useContentTypes: () => [{ id: 'post', label: 'Post' }],
   getContentTypeLabel: (id: string) => id,
 }))
 
-vi.mock('@/components/bakin-drawer', () => ({
+mock.module('@/components/bakin-drawer', () => ({
   BakinDrawer: ({ children, open }: { children: React.ReactNode; open: boolean }) =>
     open ? <div data-testid="drawer">{children}</div> : null,
 }))
 
-vi.mock('@/components/agent-avatar', () => ({
+mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
 }))
 
-vi.mock('@/components/agent-select', () => ({
+mock.module('@/components/agent-select', () => ({
   AgentSelect: () => <span />,
 }))
 
@@ -101,11 +101,11 @@ describe('messaging drawer — channel chips from the workflows registry', () =>
         item={makeItem({ channels: ['discord', 'email'] })}
         open
         editing={false}
-        onClose={vi.fn()}
-        onCancelEdit={vi.fn()}
-        onEdit={vi.fn()}
-        onUpdated={vi.fn()}
-        onDelete={vi.fn()}
+        onClose={mock()}
+        onCancelEdit={mock()}
+        onEdit={mock()}
+        onUpdated={mock()}
+        onDelete={mock()}
       />
     )
     // Detail view shows chips labelled with getChannelLabel
@@ -119,11 +119,11 @@ describe('messaging drawer — channel chips from the workflows registry', () =>
         item={makeItem({ channels: ['mastodon'] })}
         open
         editing={false}
-        onClose={vi.fn()}
-        onCancelEdit={vi.fn()}
-        onEdit={vi.fn()}
-        onUpdated={vi.fn()}
-        onDelete={vi.fn()}
+        onClose={mock()}
+        onCancelEdit={mock()}
+        onEdit={mock()}
+        onUpdated={mock()}
+        onDelete={mock()}
       />
     )
     // Raw id rendered as the label when the channel isn't in the registry

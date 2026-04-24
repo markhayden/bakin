@@ -6,11 +6,11 @@
  *   2. BAKIN_DEV unset returns the input buffer reference unchanged so
  *      the compiled binary serves production index.html byte-identical.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 // Per CLAUDE.md testing rules — mock content-dir even when the test
 // doesn't appear to need storage. Transitive imports can surprise you.
-vi.mock('../../src/core/content-dir', async () => {
+mock.module('../../src/core/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const testDir = join(tmpdir(), `bakin-test-host-static-${Date.now()}`)
@@ -19,7 +19,7 @@ vi.mock('../../src/core/content-dir', async () => {
     getBakinPaths: () => ({ root: testDir }),
   }
 })
-vi.mock('../../packages/core/src/content-dir', async () => {
+mock.module('../../packages/core/src/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const testDir = join(tmpdir(), `bakin-test-host-static-${Date.now()}`)

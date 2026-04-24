@@ -7,19 +7,19 @@
  * the env var lets the real module cooperate with a temp directory
  * without having to mock two layers of re-exports.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import fs from 'fs'
 import path from 'path'
 
 const TEST_CONTENT_DIR = path.join(process.cwd(), 'test-content-onboarding-settings')
 const SETTINGS_FILE = path.join(TEST_CONTENT_DIR, 'settings.json')
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 

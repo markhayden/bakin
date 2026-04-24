@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, mock, spyOn, type Mock } from 'bun:test'
 
 // Mock fs.existsSync to control binary/config detection
-vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs')
-  return { ...actual, existsSync: vi.fn(() => false) }
+mock.module('fs', async () => {
+  const actual = await import('fs')
+  return { ...actual, existsSync: mock(() => false) }
 })
 
 import { existsSync } from 'fs'
@@ -18,12 +18,12 @@ describe('mock safety gate', () => {
     mockExistsSync.mockReturnValue(false)
 
     // Reset fetch mock
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   it('passes when no OpenClaw signals are found', async () => {
     mockExistsSync.mockReturnValue(false)
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
+    spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
 
     const { checkSafety } = await import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
@@ -35,7 +35,7 @@ describe('mock safety gate', () => {
     mockExistsSync.mockImplementation((p: unknown) => {
       return String(p).includes('openclaw') && !String(p).includes('openclaw.json')
     })
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
+    spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
 
     const { checkSafety } = await import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
@@ -47,7 +47,7 @@ describe('mock safety gate', () => {
     mockExistsSync.mockImplementation((p: unknown) => {
       return String(p).includes('openclaw.json')
     })
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
+    spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))
 
     const { checkSafety } = await import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
@@ -57,7 +57,7 @@ describe('mock safety gate', () => {
 
   it('fails when gateway is responding', async () => {
     mockExistsSync.mockReturnValue(false)
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
+    spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
 
     const { checkSafety } = await import('../../dev/imitation-crab/safety')
     const result = await checkSafety()
@@ -68,7 +68,7 @@ describe('mock safety gate', () => {
   it('bypasses all checks when OPENCLAW_MOCK_FORCE=1', async () => {
     process.env.OPENCLAW_MOCK_FORCE = '1'
     mockExistsSync.mockReturnValue(true)
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
+    spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
 
     const { checkSafety } = await import('../../dev/imitation-crab/safety')
     const result = await checkSafety()

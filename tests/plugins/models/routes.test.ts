@@ -1,7 +1,7 @@
 /**
  * Tests for models plugin routes, exec tools, and hooks.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -51,7 +51,7 @@ const mockOpenclawConfig = {
 // Mock the openclaw.json path by replacing the constants module-level reads
 // We redirect the file reads to our test directory
 const openclawJsonPath = join(mockOpenclawDir, 'openclaw.json')
-vi.mock('os', async (importOriginal) => {
+vi.mock('os', async (importOriginal: <T = any>() => Promise<T>) => {
   const os = await importOriginal<typeof import('os')>()
   const { join: pathJoin } = await import('path')
   return {
@@ -63,7 +63,7 @@ vi.mock('os', async (importOriginal) => {
 // The os.homedir mock above routes ~/.bakin to tmpdir, but the hook
 // validator also requires an explicit content-dir mock. Both point at
 // the same tmpdir; this is defense-in-depth.
-vi.mock('../../../src/core/content-dir', async () => {
+mock.module('../../../src/core/content-dir', async () => {
   const { join: pathJoin } = await import('path')
   const { tmpdir } = await import('os')
   const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
@@ -72,7 +72,7 @@ vi.mock('../../../src/core/content-dir', async () => {
     getBakinPaths: () => ({ root: dir }),
   }
 })
-vi.mock('../../../packages/core/src/content-dir', async () => {
+mock.module('../../../packages/core/src/content-dir', async () => {
   const { join: pathJoin } = await import('path')
   const { tmpdir } = await import('os')
   const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
@@ -82,17 +82,17 @@ vi.mock('../../../packages/core/src/content-dir', async () => {
   }
 })
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('child_process', () => ({
-  execFile: vi.fn((file: string, args: string[], optionsOrCb?: unknown, maybeCb?: (err: Error | null, stdout: string, stderr: string) => void) => {
+mock.module('child_process', () => ({
+  execFile: mock((file: string, args: string[], optionsOrCb?: unknown, maybeCb?: (err: Error | null, stdout: string, stderr: string) => void) => {
     const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
     if (args[0] === 'models' && args[1] === 'list' && args.includes('--all') && args.includes('--json')) {
       cb?.(null, JSON.stringify({
@@ -146,7 +146,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
-  vi.restoreAllMocks()
+  mock.restore()
 })
 
 // ---------------------------------------------------------------------------
@@ -181,7 +181,7 @@ describe('Models Plugin Activation', () => {
 
   it('registers 5 hooks', () => {
     expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(5)
-    const hookNames = (activated.ctx.hooks.register as ReturnType<typeof vi.fn>).mock.calls.map(
+    const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
     expect(hookNames.sort()).toEqual([

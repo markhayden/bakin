@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 const testDir = join(tmpdir(), `bakin-search-registry-test-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
@@ -17,18 +17,18 @@ vi.mock('@/core/content-dir', () => ({
 }))
 
 // Mock antfly module
-vi.mock('@/core/antfly', () => ({
-  enabled: vi.fn(() => true),
-  available: vi.fn(() => true),
-  createTable: vi.fn(async () => true),
-  listTables: vi.fn(async () => []),
-  indexDocument: vi.fn(async () => {}),
-  removeDocument: vi.fn(async () => {}),
-  transformDocument: vi.fn(async () => {}),
-  rebuildIndexes: vi.fn(async () => {}),
-  batchIndex: vi.fn(async (_table: string, docs: Record<string, unknown>) => Object.keys(docs).length),
-  multiQuery: vi.fn(async () => ({ results: [], total: 0, took: 0 })),
-  queryTable: vi.fn(async () => ({
+mock.module('@/core/antfly', () => ({
+  enabled: mock(() => true),
+  available: mock(() => true),
+  createTable: mock(async () => true),
+  listTables: mock(async () => []),
+  indexDocument: mock(async () => {}),
+  removeDocument: mock(async () => {}),
+  transformDocument: mock(async () => {}),
+  rebuildIndexes: mock(async () => {}),
+  batchIndex: mock(async (_table: string, docs: Record<string, unknown>) => Object.keys(docs).length),
+  multiQuery: mock(async () => ({ results: [], total: 0, took: 0 })),
+  queryTable: mock(async () => ({
     results: [
       { id: 'doc-1', table: 'bakin_tasks', score: 0.95, fields: { title: 'Test task' } },
     ],
@@ -38,12 +38,12 @@ vi.mock('@/core/antfly', () => ({
     took: 12,
     total: 1,
   })),
-  getIndexHealth: vi.fn(async () => null),
-  getTableStats: vi.fn(async () => null),
+  getIndexHealth: mock(async () => null),
+  getTableStats: mock(async () => null),
 }))
 
-vi.mock('@/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('@/core/settings', () => ({
+  getSettings: mock(() => ({
     antfly: {
       enabled: true,
       url: 'http://localhost:8080/api/v1',
@@ -63,17 +63,17 @@ vi.mock('@/core/settings', () => ({
   })),
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/sse', () => ({
-  broadcast: vi.fn(),
+mock.module('@/core/sse', () => ({
+  broadcast: mock(),
 }))
 
 import {
@@ -92,7 +92,7 @@ import { broadcast } from '@/core/sse'
 describe('search-registry', () => {
   beforeEach(() => {
     resetSearchRegistry()
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     // Restore defaults — clearAllMocks resets call history but not implementations.
     // resetAllMocks on specific mocks clears the once-queue too, preventing leaks.
     vi.mocked(antfly.enabled).mockReturnValue(true)

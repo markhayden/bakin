@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdtempSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -9,7 +9,7 @@ const mockColumns: Record<string, typeof mockTasks> = {
   backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [],
 }
 
-vi.mock('@bakin/tasks/lib/flow-store', () => ({
+mock.module('@bakin/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({ columns: mockColumns }),
 }))
 

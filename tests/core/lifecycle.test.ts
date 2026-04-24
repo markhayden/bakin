@@ -1,55 +1,55 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
 import type { Server } from 'http'
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-const mockAppendAudit = vi.fn()
-vi.mock('../../src/core/audit', () => ({
+const mockAppendAudit = mock()
+mock.module('../../src/core/audit', () => ({
   appendAudit: mockAppendAudit,
 }))
 
-const mockSseStop = vi.fn()
-vi.mock('../../src/core/sse', () => ({
+const mockSseStop = mock()
+mock.module('../../src/core/sse', () => ({
   stop: mockSseStop,
 }))
 
-const mockDispatchStop = vi.fn()
-vi.mock('../../src/core/dispatch', () => ({
+const mockDispatchStop = mock()
+mock.module('../../src/core/dispatch', () => ({
   stop: mockDispatchStop,
 }))
 
-const mockWatchdogStop = vi.fn()
-vi.mock('../../src/core/watchdog', () => ({
+const mockWatchdogStop = mock()
+mock.module('../../src/core/watchdog', () => ({
   stop: mockWatchdogStop,
 }))
 
-const mockMessagingStop = vi.fn()
-vi.mock('../../src/core/messaging-cron', () => ({
+const mockMessagingStop = mock()
+mock.module('../../src/core/messaging-cron', () => ({
   stop: mockMessagingStop,
 }))
 
-const mockWatcherStop = vi.fn().mockResolvedValue(undefined)
-vi.mock('../../src/core/watcher', () => ({
+const mockWatcherStop = mock().mockResolvedValue(undefined)
+mock.module('../../src/core/watcher', () => ({
   stop: mockWatcherStop,
 }))
 
-vi.mock('../../src/core/doctor', () => ({
-  stop: vi.fn(),
+mock.module('../../src/core/doctor', () => ({
+  stop: mock(),
 }))
 
-vi.mock('../../src/core/antfly-server', () => ({
-  stop: vi.fn(),
+mock.module('../../src/core/antfly-server', () => ({
+  stop: mock(),
 }))
 
-const mockShutdownAll = vi.fn().mockResolvedValue(undefined)
-vi.mock('../../src/lib/plugin-registry', () => ({
+const mockShutdownAll = mock().mockResolvedValue(undefined)
+mock.module('../../src/lib/plugin-registry', () => ({
   pluginRegistry: {
     shutdownAll: mockShutdownAll,
   },
@@ -60,14 +60,14 @@ describe('lifecycle', () => {
   let registerShutdownHandlers: typeof import('../../src/core/lifecycle').registerShutdownHandlers
 
   beforeEach(async () => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     processListeners = {}
 
-    vi.spyOn(process, 'on').mockImplementation((event: string | symbol, handler: any) => {
+    spyOn(process, 'on').mockImplementation((event: string | symbol, handler: any) => {
       processListeners[event as string] = handler
       return process
     })
-    vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    spyOn(process, 'exit').mockImplementation(() => undefined as never)
     vi.useFakeTimers()
 
     // Reset module to get fresh shutdownInProgress state
@@ -78,11 +78,11 @@ describe('lifecycle', () => {
 
   afterEach(() => {
     vi.useRealTimers()
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   function mockServer(): Server {
-    return { close: vi.fn((cb: () => void) => cb()) } as unknown as Server
+    return { close: mock((cb: () => void) => cb()) } as unknown as Server
   }
 
   it('registers SIGTERM and SIGINT handlers', () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import fs from 'fs'
 import path from 'path'
 import { getSettings, updateSettings, resetSettingsCache } from '../../src/core/settings'

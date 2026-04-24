@@ -18,7 +18,7 @@
  * holds only the filename (no path) and running it through the
  * same mutation sequence the ff335816 incident triggered.
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -26,13 +26,13 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-identity-regression-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ assets: assetsRoot }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 import { retypeAsset } from '@bakin/assets/lib/retype'

@@ -9,18 +9,18 @@
  *   5. Uses destructive styling (border-destructive/20, bg-destructive/10).
  */
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-error-banner-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../packages/core/src/content-dir', () => ({
+mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
@@ -39,7 +39,7 @@ describe('ErrorBanner', () => {
   })
 
   it('calls onRetry when the retry button is clicked', () => {
-    const onRetry = vi.fn()
+    const onRetry = mock()
     render(<ErrorBanner message="oops" onRetry={onRetry} />)
     const btn = screen.getByRole('button', { name: /retry/i })
     fireEvent.click(btn)

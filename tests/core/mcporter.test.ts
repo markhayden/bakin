@@ -1,33 +1,33 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@bakin/core/openclaw-config', () => ({
-  getAgentIds: vi.fn().mockReturnValue(['main', 'pixel', 'nemo']),
+mock.module('@bakin/core/openclaw-config', () => ({
+  getAgentIds: mock().mockReturnValue(['main', 'pixel', 'nemo']),
 }))
 
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => '/tmp/mcporter-test-openclaw',
   getOpenClawPath: (...parts: string[]) => ['/tmp/mcporter-test-openclaw', ...parts].join('/'),
 }))
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => '/tmp/mcporter-test-bakin',
   getBakinPaths: () => ({ root: '/tmp/mcporter-test-bakin' }),
 }))
 
-vi.mock('child_process', () => ({
-  execSync: vi.fn(),
+mock.module('child_process', () => ({
+  execSync: mock(),
 }))
 
 import { execSync } from 'child_process'
@@ -67,7 +67,7 @@ describe('mcporter', () => {
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true })
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   // -------------------------------------------------------------------------

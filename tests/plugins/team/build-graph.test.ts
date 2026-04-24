@@ -6,7 +6,7 @@
  * `reportsTo ?? mainAgentId` at render time. We also check graceful
  * degradation when the roster is broken.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -17,7 +17,7 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-build-graph-${Date.now()}`)
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     agents: join(testDir, 'agents'),
@@ -25,7 +25,7 @@ vi.mock('../../../src/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     agents: join(testDir, 'agents'),
@@ -33,13 +33,13 @@ vi.mock('../../../packages/core/src/content-dir', () => ({
   }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
 // ─── Imports under test ────────────────────────────────────────────────────

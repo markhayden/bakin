@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
 
-const { hoistedBakinHome } = vi.hoisted(() => {
+const { hoistedBakinHome } = (() => {
   const { mkdtempSync } = require('fs')
   const { tmpdir } = require('os')
   const { join } = require('path')
@@ -8,24 +8,24 @@ const { hoistedBakinHome } = vi.hoisted(() => {
   process.env.BAKIN_HOME = bakinHome
   process.env.OPENCLAW_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
   return { hoistedBakinHome: bakinHome }
-})
+})()
 
 import { execFile } from 'child_process'
 
-vi.mock('child_process', () => ({
-  execFile: vi.fn(),
+mock.module('child_process', () => ({
+  execFile: mock(),
 }))
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => hoistedBakinHome,
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
@@ -34,7 +34,7 @@ import { cronAdd, cronEdit, cronRemove, cronRun, cronList } from '@bakin/schedul
 const mockExecFile = vi.mocked(execFile)
 
 function setupExecFile(stdout: string, stderr = '', err: Error | null = null) {
-  mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+  mockExecFile.mockImplementation((_cmd: any, _args: any, _opts: any, callback: any) => {
     ;(callback as Function)(err, stdout, stderr)
     return {} as any
   })
@@ -42,7 +42,7 @@ function setupExecFile(stdout: string, stderr = '', err: Error | null = null) {
 
 describe('schedule/openclaw-cron', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
   })
 
   describe('cronAdd', () => {
@@ -52,7 +52,7 @@ describe('schedule/openclaw-cron', () => {
       const id = await cronAdd({ name: 'Test Job', cron: '0 9 * * *' })
       expect(id).toBe('new-job-123')
 
-      expect(mockExecFile).toHaveBeenCalledOnce()
+      expect(mockExecFile).toHaveBeenCalledTimes(1)
       const args = mockExecFile.mock.calls[0][1] as string[]
       expect(args).toContain('add')
       expect(args).toContain('--name')

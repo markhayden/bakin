@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { WorkflowDefinition } from '@bakin/workflows/types'
@@ -7,12 +7,12 @@ import type { WorkflowDefinition } from '@bakin/workflows/types'
 // in-memory registry logic but we stub storage modules so the registry can
 // never accidentally read from or write to ~/.bakin/ or ~/.openclaw/.
 const testDir = join(tmpdir(), `bakin-test-source-registry-${Date.now()}`)
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-vi.mock('@bakin/tasks/lib/flow-store', () => ({}))
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/tasks/lib/flow-store', () => ({}))
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))

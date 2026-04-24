@@ -1,15 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-plugin-registry-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-vi.mock('@bakin/tasks/lib/flow-store', () => ({}))
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/tasks/lib/flow-store', () => ({}))
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))
@@ -17,13 +17,13 @@ vi.mock('@bakin/core/openclaw-home', () => ({
 // Spy on the logger so we can assert collisions are logged but contained.
 // Hoisted so it's defined before vi.mock's factory runs at import time
 // (test-helpers calls createLogger() at module load).
-const { errorLog } = vi.hoisted(() => ({ errorLog: vi.fn() }))
-vi.mock('../../src/core/logger', () => ({
+const { errorLog } = (() => ({ errorLog: mock() }))()
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
+    info: mock(),
+    warn: mock(),
     error: errorLog,
-    debug: vi.fn(),
+    debug: mock(),
   }),
 }))
 

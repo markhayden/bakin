@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -7,26 +7,26 @@ import { tmpdir } from 'os'
 // watchdog receives its contentDir via `start()`, but any transitive import
 // must be prevented from reading/writing ~/.bakin/.
 const contentDirMockPath = join(tmpdir(), `bakin-watchdog-test-${Date.now()}`)
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => contentDirMockPath,
   getBakinPaths: () => ({ root: contentDirMockPath }),
 }))
-vi.mock('../../packages/core/src/content-dir', () => ({
+mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => contentDirMockPath,
   getBakinPaths: () => ({ root: contentDirMockPath }),
 }))
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/settings', () => ({
-  getSettings: vi.fn().mockReturnValue({
+mock.module('../../src/core/settings', () => ({
+  getSettings: mock().mockReturnValue({
     watchdog: {
       intervalMs: 1000,
       stuckThresholdMs: 30 * 60 * 1000,
@@ -42,30 +42,30 @@ vi.mock('../../src/core/settings', () => ({
   }),
 }))
 
-vi.mock('../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('../../src/core/sse', () => ({
-  broadcast: vi.fn(),
+mock.module('../../src/core/sse', () => ({
+  broadcast: mock(),
 }))
 
-vi.mock('../../src/core/openclaw-client', () => ({
-  sendChannelMessage: vi.fn().mockResolvedValue(undefined),
-  sendMessage: vi.fn().mockResolvedValue(undefined),
-  getAgentLastReply: vi.fn().mockReturnValue(null),
+mock.module('../../src/core/openclaw-client', () => ({
+  sendChannelMessage: mock().mockResolvedValue(undefined),
+  sendMessage: mock().mockResolvedValue(undefined),
+  getAgentLastReply: mock().mockReturnValue(null),
 }))
 
-vi.mock('../../src/lib/plugin-registry', () => ({
-  getHookRegistry: vi.fn().mockReturnValue({
-    invoke: vi.fn().mockResolvedValue(undefined),
-    has: vi.fn().mockReturnValue(false),
-    register: vi.fn(),
+mock.module('../../src/lib/plugin-registry', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mock().mockResolvedValue(undefined),
+    has: mock().mockReturnValue(false),
+    register: mock(),
   }),
 }))
 
-vi.mock('../../src/lib/format', () => ({
-  isStale: vi.fn().mockReturnValue(false),
+mock.module('../../src/lib/format', () => ({
+  isStale: mock().mockReturnValue(false),
 }))
 
 import { start, stop } from '../../src/core/watchdog'
@@ -80,7 +80,7 @@ describe('watchdog', () => {
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-watchdog-'))
     vi.useFakeTimers()
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     // Default: no recorded gateway reply for any agent (forces watchdog
     // to fall back to the heartbeat-file path). Individual tests override.
     const openclaw = await import('../../src/core/openclaw-client')
@@ -91,7 +91,7 @@ describe('watchdog', () => {
     stop()
     vi.useRealTimers()
     rmSync(tempDir, { recursive: true, force: true })
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   // -------------------------------------------------------------------------

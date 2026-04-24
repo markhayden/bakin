@@ -14,7 +14,7 @@
  * latter we mock because the candidate list includes real system paths
  * like /opt/homebrew/bin/openclaw that a dev machine may actually have.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { existsSync as realExistsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -22,7 +22,7 @@ import { tmpdir } from 'os'
 let fakeHome: string
 const fakeContentDir = join(tmpdir(), `bakin-test-openclaw-content-${Date.now()}-${Math.random().toString(36).slice(2)}`)
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => fakeContentDir,
   getBakinPaths: () => ({
     home: fakeContentDir,
@@ -33,17 +33,17 @@ vi.mock('../../../src/core/content-dir', () => ({
   resetContentDir: () => {},
 }))
 
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => fakeHome,
   getOpenClawPath: (...segments: string[]) => join(fakeHome, ...segments),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
@@ -52,8 +52,8 @@ vi.mock('../../../src/core/logger', () => ({
 // inside the per-test sandbox. Everything else, including whatever the
 // machine running the suite has in /opt/homebrew/, looks absent.
 // readFileSync is passed through unchanged so JSON parsing still works.
-vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs')
+mock.module('fs', async () => {
+  const actual = await import('fs')
   return {
     ...actual,
     existsSync: (p: fs.PathLike) => {

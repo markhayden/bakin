@@ -3,7 +3,7 @@
  * every saved asset gets a YYYYMMDD-{slug}-{id8}.{ext} filename,
  * collisions trigger regeneration, and variants share the unique stem.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -11,7 +11,7 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-save-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => {
     const base = join(testDir, 'assets')
@@ -23,7 +23,7 @@ vi.mock('../../../src/core/content-dir', () => ({
     }
   },
 }))
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 

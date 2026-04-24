@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -10,10 +10,8 @@ const TEST_OPENCLAW_HOME = join(TEST_DIR, '.openclaw')
 const ORIGINAL_OPENCLAW_HOME = process.env.OPENCLAW_HOME
 const ORIGINAL_BAKIN_HOME = process.env.BAKIN_HOME
 
-vi.mock('../../src/core/content-dir', async () => {
-  const actual = await vi.importActual<typeof import('../../src/core/content-dir')>(
-    '../../src/core/content-dir',
-  )
+mock.module('../../src/core/content-dir', async () => {
+  const actual = await import('../../src/core/content-dir')
   return {
     ...actual,
     getContentDir: () => TEST_DIR,
@@ -39,34 +37,34 @@ vi.mock('../../src/core/content-dir', async () => {
   }
 })
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/watcher', async (importOriginal) => {
+vi.mock('../../src/core/watcher', async (importOriginal: <T = any>() => Promise<T>) => {
   const actual = await importOriginal<typeof import('../../src/core/watcher')>()
   return {
     ...actual,
-    watch: vi.fn(),
-    watchFiles: vi.fn(),
-    registerWatchPattern: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
-    registerSyncHook: vi.fn(() => () => {}),
-    registerUnlinkHook: vi.fn(() => () => {}),
+    watch: mock(),
+    watchFiles: mock(),
+    registerWatchPattern: mock(),
+    start: mock(),
+    stop: mock(),
+    registerSyncHook: mock(() => () => {}),
+    registerUnlinkHook: mock(() => () => {}),
   }
 })
 
-vi.mock('../../src/core/openclaw-client', () => ({
-  sendChannelMessage: vi.fn(async () => ({ ok: true })),
-  sendMessage: vi.fn(async () => ({ ok: true })),
-  isHealthy: vi.fn(async () => true),
-  callGateway: vi.fn(async () => ({ ok: true })),
+mock.module('../../src/core/openclaw-client', () => ({
+  sendChannelMessage: mock(async () => ({ ok: true })),
+  sendMessage: mock(async () => ({ ok: true })),
+  isHealthy: mock(async () => true),
+  callGateway: mock(async () => ({ ok: true })),
 }))
 
 beforeAll(() => {

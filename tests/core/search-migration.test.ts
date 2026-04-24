@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
 import fs from 'fs'
 import path from 'path'
 
 const testDir = path.join(process.cwd(), 'test-content-search-migration')
 const stateFile = path.join(testDir, '.search-state.json')
 
-vi.mock('../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 // Antfly mock — controlled per-test via state vars below
@@ -18,13 +18,13 @@ const antflyState = {
   dropError: null as null | Error,
 }
 
-vi.mock('../../src/core/antfly', () => ({
+mock.module('../../src/core/antfly', () => ({
   enabled: () => antflyState.enabled,
-  listTables: vi.fn(async () => {
+  listTables: mock(async () => {
     if (antflyState.listError) throw antflyState.listError
     return antflyState.tables
   }),
-  dropTable: vi.fn(async (name: string) => {
+  dropTable: mock(async (name: string) => {
     if (antflyState.dropError) throw antflyState.dropError
     antflyState.dropped.push(name)
   }),

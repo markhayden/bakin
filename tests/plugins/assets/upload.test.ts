@@ -1,7 +1,7 @@
 /**
  * Tests for the asset upload route (POST /api/plugins/assets/upload).
  */
-import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach, mock } from 'bun:test'
 import { mkdirSync, rmSync, existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -14,7 +14,7 @@ import {
 const testDir = join(tmpdir(), `bakin-test-upload-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => {
     const base = join(testDir, 'assets')
@@ -27,17 +27,17 @@ vi.mock('../../../src/core/content-dir', () => ({
   },
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  registerSyncHook: mock(),
 }))
 
 import assetsPlugin from '@bakin/assets'

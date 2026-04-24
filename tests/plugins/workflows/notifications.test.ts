@@ -1,42 +1,42 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
 // Defensive mocks: notifications doesn't read content-dir or call flow-store,
 // but enforce isolation rules across the suite.
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => '/tmp/bakin-test-notifications',
   getBakinPaths: () => ({}),
 }))
 
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  createTask: vi.fn(() => Promise.resolve({ id: 'mock' })),
-  addTaskLog: vi.fn(() => Promise.resolve()),
-  moveTask: vi.fn(() => Promise.resolve()),
-  readTaskboard: vi.fn(() => ({ columns: {} })),
-  getTask: vi.fn(() => null),
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  createTask: mock(() => Promise.resolve({ id: 'mock' })),
+  addTaskLog: mock(() => Promise.resolve()),
+  moveTask: mock(() => Promise.resolve()),
+  readTaskboard: mock(() => ({ columns: {} })),
+  getTask: mock(() => null),
 }))
 
 // Mock post-discord config and channel resolution
-vi.mock('../../../scripts/lib/post-discord', () => ({
-  loadDiscordConfig: vi.fn(() => ({
+mock.module('../../../scripts/lib/post-discord', () => ({
+  loadDiscordConfig: mock(() => ({
     botToken: 'test-bot-token',
     guildId: 'test-guild-id',
   })),
-  resolveChannelId: vi.fn(() => Promise.resolve({ id: 'ch-123', available: ['general', 'approvals'] })),
+  resolveChannelId: mock(() => Promise.resolve({ id: 'ch-123', available: ['general', 'approvals'] })),
 }))
 
 // Mock global fetch
-const mockFetch = vi.fn()
+const mockFetch = mock()
 vi.stubGlobal('fetch', mockFetch)
 
 import {

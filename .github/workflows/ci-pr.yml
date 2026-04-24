@@ -38,4 +38,4 @@ jobs:
         run: bunx tsc --noEmit -p tsconfig.app.json
 
       - name: Tests
-        run: bunx vitest run
+        run: bun test --isolate

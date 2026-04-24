@@ -9,7 +9,7 @@
  * `brainstorm-` key prefix) and falls back to a local title/agentId
  * substring filter when the hook returns nothing.
  */
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { rmSync } from 'fs'
 import { join } from 'path'
@@ -17,27 +17,27 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-messaging-consumer-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('@/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
-vi.mock('@/core/openclaw-client', () => ({
-  sendToAgent: vi.fn(),
+mock.module('@/core/openclaw-client', () => ({
+  sendToAgent: mock(),
 }))
 
 // ---------------------------------------------------------------------------
@@ -46,8 +46,8 @@ vi.mock('@/core/openclaw-client', () => ({
 
 type Hook = {
   results: Array<{ id: string; table: string; score: number; fields: Record<string, unknown> }>
-  search: ReturnType<typeof vi.fn>
-  clear: ReturnType<typeof vi.fn>
+  search: ReturnType<typeof mock>
+  clear: ReturnType<typeof mock>
   aggregations: Record<string, unknown>
   loading: boolean
   error: null
@@ -56,22 +56,22 @@ type Hook = {
 
 const hookState: Hook = {
   results: [],
-  search: vi.fn(),
-  clear: vi.fn(),
+  search: mock(),
+  clear: mock(),
   aggregations: {},
   loading: false,
   error: null,
   meta: null,
 }
 
-const useSearchMock = vi.fn((..._args: unknown[]) => hookState)
+const useSearchMock = mock((..._args: unknown[]) => hookState)
 
-vi.mock('@/hooks/use-search', () => ({
+mock.module('@/hooks/use-search', () => ({
   useSearch: (...args: unknown[]) => useSearchMock(...args),
 }))
 
 // useQueryState — back with a plain useState so the search field is reactive.
-vi.mock('@/hooks/use-query-state', async () => {
+mock.module('@/hooks/use-query-state', async () => {
   const { useState } = await import('react')
   return {
     useQueryState: (_key: string, defaultValue: string) => {
@@ -86,7 +86,7 @@ vi.mock('@/hooks/use-query-state', async () => {
 })
 
 // Heavy / unrelated children
-vi.mock('@/components/plugin-header', () => ({
+mock.module('@/components/plugin-header', () => ({
   PluginHeader: ({ title, search }: { title: string; search?: { value: string; onChange: (v: string) => void; placeholder?: string } }) => (
     <div>
       <h1>{title}</h1>
@@ -102,11 +102,11 @@ vi.mock('@/components/plugin-header', () => ({
   ),
 }))
 
-vi.mock('@/components/agent-avatar', () => ({
+mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
 }))
 
-vi.mock('@/components/ui/button', () => ({
+mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled }: Record<string, unknown>) => (
     <button onClick={onClick as () => void} disabled={disabled as boolean}>
       {children as React.ReactNode}
@@ -114,11 +114,11 @@ vi.mock('@/components/ui/button', () => ({
   ),
 }))
 
-vi.mock('@/components/ui/badge', () => ({
+mock.module('@/components/ui/badge', () => ({
   Badge: ({ children }: Record<string, unknown>) => <span>{children as React.ReactNode}</span>,
 }))
 
-vi.mock('@/components/ui/dropdown-menu', () => ({
+mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
   DropdownMenuTrigger: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
   DropdownMenuContent: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
@@ -129,7 +129,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 // Stub every lucide icon with a noop span. List names imported by
 // brainstorm-view + session-list so destructured imports resolve.
-vi.mock('@/components/ui/table', () => ({
+mock.module('@/components/ui/table', () => ({
   Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
   TableHeader: ({ children }: { children: React.ReactNode }) => <thead>{children}</thead>,
   TableBody: ({ children }: { children: React.ReactNode }) => <tbody>{children}</tbody>,
@@ -140,15 +140,15 @@ vi.mock('@/components/ui/table', () => ({
   TableCell: ({ children }: { children: React.ReactNode }) => <td>{children}</td>,
 }))
 
-vi.mock('../../../plugins/messaging/components/planning-layout', () => ({
+mock.module('../../../plugins/messaging/components/planning-layout', () => ({
   PlanningLayout: () => <div data-testid="planning-layout" />,
 }))
 
-vi.mock('../../../plugins/messaging/components/new-session-dialog', () => ({
+mock.module('../../../plugins/messaging/components/new-session-dialog', () => ({
   NewSessionDialog: () => null,
 }))
 
-vi.mock('../../../plugins/messaging/components/delete-session-dialog', () => ({
+mock.module('../../../plugins/messaging/components/delete-session-dialog', () => ({
   DeleteSessionDialog: () => null,
 }))
 
@@ -181,7 +181,7 @@ const SESSIONS = [
 ]
 
 function mockFetchSessions() {
-  globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+  globalThis.fetch = mock().mockImplementation((url: string) => {
     if (typeof url === 'string' && url.startsWith('/api/plugins/messaging/sessions')) {
       return Promise.resolve({
         ok: true,
@@ -189,7 +189,7 @@ function mockFetchSessions() {
       })
     }
     return Promise.resolve({ ok: false })
-  }) as typeof fetch
+  }) as unknown as typeof fetch
 }
 
 beforeEach(() => {

@@ -3,7 +3,7 @@
  * Activates the plugin with a mock PluginContext, then exercises every
  * registered HTTP route and MCP exec tool.
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -28,30 +28,30 @@ const projectsDir = join(testDir, 'projects')
 // Mocks — must be declared before any plugin imports
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getBakinPaths: () => ({ projects: projectsDir }),
   getContentDir: () => testDir,
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-const mockCreateTask = vi.fn((_opts?: unknown) => Promise.resolve({ id: 'promoted01' }))
-vi.mock('../../../src/core/task-service', () => ({
+const mockCreateTask = mock((_opts?: unknown) => Promise.resolve({ id: 'promoted01' }))
+mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
 
-vi.mock('../../../plugins/tasks/lib/flow-store', async (importOriginal) => {
+vi.mock('../../../plugins/tasks/lib/flow-store', async (importOriginal: <T = any>() => Promise<T>) => {
   const actual = await importOriginal<typeof import('../../../plugins/tasks/lib/flow-store')>()
   return {
     ...actual,
@@ -69,13 +69,13 @@ vi.mock('../../../plugins/tasks/lib/flow-store', async (importOriginal) => {
   }
 })
 
-const mockSendMessage = vi.fn((..._args: unknown[]) => Promise.resolve('Agent reply here'))
-vi.mock('../../../src/core/openclaw-client', () => ({
+const mockSendMessage = mock((..._args: unknown[]) => Promise.resolve('Agent reply here'))
+mock.module('../../../src/core/openclaw-client', () => ({
   sendMessage: (...args: unknown[]) => mockSendMessage(...args),
 }))
 
 // Suppress SSE broadcast
-;(globalThis as any).__bakinBroadcast = vi.fn()
+;(globalThis as any).__bakinBroadcast = mock()
 
 // Clear project index / lock between tests
 function clearGlobals() {
@@ -518,7 +518,7 @@ describe('Routes', () => {
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
       expect(body.taskId).toBe('promoted01')
-      expect(mockCreateTask).toHaveBeenCalledOnce()
+      expect(mockCreateTask).toHaveBeenCalledTimes(1)
     })
 
     it('returns 400 when ids are missing', async () => {
@@ -923,7 +923,7 @@ describe('Exec Tools', () => {
       const result = await callTool(tool, { projectId: 'proj-pi', taskItemId: 't001', assignee: 'pixel' })
       expect(result.ok).toBe(true)
       expect(result.taskId).toBe('promoted01')
-      expect(mockCreateTask).toHaveBeenCalledOnce()
+      expect(mockCreateTask).toHaveBeenCalledTimes(1)
     })
 
     it('returns error if item already linked', async () => {

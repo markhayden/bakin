@@ -25,11 +25,11 @@
  * level unregisterPlugin tests (tests/sdk/register.test.ts) to cover
  * the rest of the mechanism.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, waitFor, act } from '@testing-library/react'
 
 // Per CLAUDE.md — defensive content-dir mocks even for pure React tests.
-vi.mock('../../src/core/content-dir', async () => {
+mock.module('../../src/core/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-plugin-host-noop')
@@ -38,7 +38,7 @@ vi.mock('../../src/core/content-dir', async () => {
     getBakinPaths: () => ({ root: base }),
   }
 })
-vi.mock('../../packages/core/src/content-dir', async () => {
+mock.module('../../packages/core/src/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-plugin-host-noop')
@@ -90,7 +90,7 @@ const USED_IDS = ['x', 'y']
 
 beforeEach(() => {
   // Mock fetch so PluginHost's manifest load resolves deterministically.
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+  vi.stubGlobal('fetch', mock(async (url: string) => {
     if (url === '/api/plugins/manifest') {
       return new Response(JSON.stringify(EMPTY_MANIFEST), {
         status: 200,

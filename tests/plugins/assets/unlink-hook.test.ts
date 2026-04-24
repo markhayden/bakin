@@ -18,7 +18,7 @@
  *   3. .trash/ delete      → not called (trash events are noise)
  *   4. Variant delete      → not called (variants ride with their primary)
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -32,25 +32,25 @@ import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapte
 const testDir = join(tmpdir(), `bakin-test-assets-unlink-${Date.now()}`)
 const assetsDir = join(testDir, 'assets')
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 import assetsPlugin from '../../../plugins/assets'
@@ -78,33 +78,33 @@ function makeCtx(): CapturedCtx {
     storage,
     events,
     pluginId: 'assets',
-    registerNav: vi.fn(),
-    registerRoute: vi.fn(),
-    registerSlot: vi.fn(),
-    registerExecTool: vi.fn(),
-    registerSkill: vi.fn(),
-    registerWorkflow: vi.fn(),
-    registerNodeType: vi.fn(() => ''),
-    registerNotificationChannel: vi.fn(() => ''),
-    registerHealthCheck: vi.fn(() => ''),
-    watchFiles: vi.fn(),
+    registerNav: mock(),
+    registerRoute: mock(),
+    registerSlot: mock(),
+    registerExecTool: mock(),
+    registerSkill: mock(),
+    registerWorkflow: mock(),
+    registerNodeType: mock(() => ''),
+    registerNotificationChannel: mock(() => ''),
+    registerHealthCheck: mock(() => ''),
+    watchFiles: mock(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
-    updateSettings: vi.fn(),
-    activity: { log: vi.fn(), audit: vi.fn() },
+    updateSettings: mock(),
+    activity: { log: mock(), audit: mock() },
     search: {
-      registerContentType: vi.fn(),
-      registerFileBackedContentType: vi.fn((def: FileBackedContentTypeDefinition) => {
+      registerContentType: mock(),
+      registerFileBackedContentType: mock((def: FileBackedContentTypeDefinition) => {
         capturedDef = def
       }),
-      index: vi.fn(async () => {}),
-      remove: vi.fn(async (key: string) => { removeCalls.push(key) }),
-      transform: vi.fn(async () => {}),
-      query: vi.fn(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      index: mock(async () => {}),
+      remove: mock(async (key: string) => { removeCalls.push(key) }),
+      transform: mock(async () => {}),
+      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
     },
     hooks: {
-      register: vi.fn(() => () => {}),
-      has: vi.fn(() => false),
-      invoke: vi.fn(async () => undefined),
+      register: mock(() => () => {}),
+      has: mock(() => false),
+      invoke: mock(async () => undefined),
     },
   }
 

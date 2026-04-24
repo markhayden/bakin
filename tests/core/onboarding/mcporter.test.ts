@@ -8,7 +8,7 @@
  * InstallResult shapes. Testing the underlying module's behavior is
  * already covered by tests/core/mcporter.test.ts.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 let isInstalledReturn: boolean | (() => boolean)
 let installMcporterReturn: boolean
@@ -19,7 +19,7 @@ let syncConfigError: Error | null
 let configFileExists: boolean
 let askYesNoReturn: boolean
 
-vi.mock('../../../src/core/mcporter', () => ({
+mock.module('../../../src/core/mcporter', () => ({
   isMcporterInstalled: () =>
     typeof isInstalledReturn === 'function' ? isInstalledReturn() : isInstalledReturn,
   installMcporter: () => {
@@ -36,17 +36,17 @@ vi.mock('../../../src/core/mcporter', () => ({
   },
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs')
+mock.module('fs', async () => {
+  const actual = await import('fs')
   return {
     ...actual,
     existsSync: (p: unknown) => {
@@ -57,7 +57,7 @@ vi.mock('fs', async () => {
   }
 })
 
-vi.mock('../../../src/core/onboarding/prompts', () => ({
+mock.module('../../../src/core/onboarding/prompts', () => ({
   askYesNo: () => Promise.resolve(askYesNoReturn),
   readLine: () => Promise.resolve(''),
 }))

@@ -1,24 +1,24 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, mock } from 'bun:test'
 
 // Mandatory mocks per CLAUDE.md test isolation rules — even though this is a
 // pure-function test that never touches the filesystem, we keep the mocks in
 // place so that an accidental import chain reaching content-dir/logger/watcher
 // can never resolve to the real ~/.bakin or chokidar.
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => '/tmp/test-reorder',
   getBakinPaths: () => ({}),
 }))
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
-vi.mock('@/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('@/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
 import { reorderBySearchResults, type SearchResult } from '@/hooks/use-search'

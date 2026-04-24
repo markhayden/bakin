@@ -12,17 +12,17 @@
  * emits a row so the UI can surface the friendly empty-state copy instead of
  * a mysterious absence.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-dream-parser-${Date.now()}`)
 
-vi.mock('../../../../src/core/content-dir', () => ({
+mock.module('../../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../../packages/core/src/content-dir', () => ({
+mock.module('../../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))

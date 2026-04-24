@@ -3,7 +3,7 @@
  * Covers all API routes (except /bridge, tested in bridge.test.ts)
  * and all bakin_exec_schedule_* tools.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -21,54 +21,54 @@ const sidecarDir = join(testDir, 'schedule')
 // Mocks — must be declared before imports that use them
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-const mockCreateTask = vi.fn((_opts?: unknown) => Promise.resolve({ id: 'task-new', workflowId: undefined }))
-vi.mock('../../../src/core/task-service', () => ({
+const mockCreateTask = mock((_opts?: unknown) => Promise.resolve({ id: 'task-new', workflowId: undefined }))
+mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
 
 // Mock plugin-registry (hook registry used by bridge — not under test here but must be present)
-vi.mock('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => ({
-    invoke: vi.fn(async () => undefined),
-    register: vi.fn(() => () => {}),
-    has: vi.fn(() => false),
+    invoke: mock(async () => undefined),
+    register: mock(() => () => {}),
+    has: mock(() => false),
   }),
 }))
 
 // Mock openclaw-cron
-const mockCronAdd = vi.fn((..._args: unknown[]) => Promise.resolve('new-job-id'))
-const mockCronEdit = vi.fn((..._args: unknown[]) => Promise.resolve())
-const mockCronRemove = vi.fn((..._args: unknown[]) => Promise.resolve())
-const mockCronRun = vi.fn((..._args: unknown[]) => Promise.resolve())
+const mockCronAdd = mock((..._args: unknown[]) => Promise.resolve('new-job-id'))
+const mockCronEdit = mock((..._args: unknown[]) => Promise.resolve())
+const mockCronRemove = mock((..._args: unknown[]) => Promise.resolve())
+const mockCronRun = mock((..._args: unknown[]) => Promise.resolve())
 
-vi.mock('@bakin/schedule/lib/openclaw-cron', () => ({
+mock.module('@bakin/schedule/lib/openclaw-cron', () => ({
   cronAdd: (...args: unknown[]) => mockCronAdd(...args),
   cronEdit: (...args: unknown[]) => mockCronEdit(...args),
   cronRemove: (...args: unknown[]) => mockCronRemove(...args),
   cronRun: (...args: unknown[]) => mockCronRun(...args),
-  cronList: vi.fn(() => Promise.resolve([])),
+  cronList: mock(() => Promise.resolve([])),
 }))
 
 // Mock jobs-reader — we control what readMergedJobs returns
 const mockMergedJobs: MergedJob[] = []
-vi.mock('@bakin/schedule/lib/jobs-reader', () => ({
+mock.module('@bakin/schedule/lib/jobs-reader', () => ({
   readMergedJobs: () => mockMergedJobs,
 }))
 
@@ -77,13 +77,13 @@ const mockRuns: RunEntry[] = []
 const mockLastRun: RunEntry | null = null
 let lastRunOverride: RunEntry | null = null
 
-vi.mock('@bakin/schedule/lib/runs-reader', () => ({
+mock.module('@bakin/schedule/lib/runs-reader', () => ({
   readRuns: (_jobId: string, _limit?: number) => mockRuns,
   getLastRun: (_jobId: string) => lastRunOverride,
 }))
 
 // Mock cron-parser — parseSchedule and cronToHuman
-vi.mock('@bakin/schedule/lib/cron-parser', () => ({
+mock.module('@bakin/schedule/lib/cron-parser', () => ({
   parseSchedule: (input: string) => {
     if (input === 'bad-expr') return null
     // Raw cron passes through
@@ -162,7 +162,7 @@ beforeAll(async () => {
 })
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  mock.clearAllMocks()
   mockMergedJobs.length = 0
   mockRuns.length = 0
   lastRunOverride = null
@@ -257,7 +257,7 @@ describe('schedule routes', () => {
       expect(body.tz).toBeDefined()
 
       // Verify cronAdd was called
-      expect(mockCronAdd).toHaveBeenCalledOnce()
+      expect(mockCronAdd).toHaveBeenCalledTimes(1)
       const addArgs = (mockCronAdd.mock.calls[0] as unknown[])[0] as Record<string, unknown>
       expect(addArgs.name).toBe('Morning Tasks')
       expect(addArgs.cron).toBe('0 9 * * *')
@@ -883,7 +883,7 @@ describe('schedule exec tools', () => {
       expect(result.cron).toBe('0 9 * * *')
       expect(result.tz).toBeDefined()
 
-      expect(mockCronAdd).toHaveBeenCalledOnce()
+      expect(mockCronAdd).toHaveBeenCalledTimes(1)
 
       // Verify sidecar
       const meta = getJob('new-job-id')

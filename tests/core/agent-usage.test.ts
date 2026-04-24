@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -6,8 +6,8 @@ import { tmpdir } from 'os'
 // Mock the agents directory before importing
 const testDir = join(tmpdir(), `bakin-usage-test-${Date.now()}`)
 
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os')
+mock.module('os', async () => {
+  const actual = await import('os')
   return { ...actual, homedir: () => testDir }
 })
 

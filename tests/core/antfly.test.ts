@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
 
 // Use vi.hoisted so mock variables survive vi.mock hoisting
 const {
@@ -6,19 +6,19 @@ const {
   mockTablesGet, mockTablesQuery, mockTablesBatch, mockTablesScan,
   mockIndexesList, mockIndexesCreate, mockIndexesDrop, mockMultiquery,
   mockClientInstance,
-} = vi.hoisted(() => {
-  const mockGetStatus = vi.fn()
-  const mockTablesList = vi.fn(async () => [])
-  const mockTablesCreate = vi.fn()
-  const mockTablesDrop = vi.fn()
-  const mockTablesGet = vi.fn()
-  const mockTablesQuery = vi.fn()
-  const mockTablesBatch = vi.fn()
-  const mockTablesScan = vi.fn(async function* () {})
-  const mockIndexesList = vi.fn(async () => ({}))
-  const mockIndexesCreate = vi.fn()
-  const mockIndexesDrop = vi.fn()
-  const mockMultiquery = vi.fn()
+} = (() => {
+  const mockGetStatus = mock()
+  const mockTablesList = mock(async () => [])
+  const mockTablesCreate = mock()
+  const mockTablesDrop = mock()
+  const mockTablesGet = mock()
+  const mockTablesQuery = mock()
+  const mockTablesBatch = mock()
+  const mockTablesScan = mock(async function* () {})()
+  const mockIndexesList = mock(async () => ({}))
+  const mockIndexesCreate = mock()
+  const mockIndexesDrop = mock()
+  const mockMultiquery = mock()
   const mockClientInstance = {
     getStatus: mockGetStatus,
     tables: {
@@ -27,7 +27,7 @@ const {
       drop: mockTablesDrop,
       get: mockTablesGet,
       query: mockTablesQuery,
-      multiquery: vi.fn(),
+      multiquery: mock(),
       batch: mockTablesBatch,
       scan: mockTablesScan,
     },
@@ -44,17 +44,17 @@ const {
     mockIndexesList, mockIndexesCreate, mockIndexesDrop, mockMultiquery,
     mockClientInstance,
   }
-})
+})()
 
-vi.mock('@/core/content-dir', async () => {
+mock.module('@/core/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-antfly-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })
 
-vi.mock('@/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('@/core/settings', () => ({
+  getSettings: mock(() => ({
     antfly: {
       enabled: false,
       url: 'http://localhost:8080/api/v1',
@@ -74,18 +74,18 @@ vi.mock('@/core/settings', () => ({
   })),
 }))
 
-vi.mock('@antfly/sdk', () => ({
-  default: vi.fn().mockImplementation(() => mockClientInstance),
-  AntflyClient: vi.fn().mockImplementation(() => mockClientInstance),
-  matchAll: vi.fn(() => ({ match_all: {} })),
+mock.module('@antfly/sdk', () => ({
+  default: mock().mockImplementation(() => mockClientInstance),
+  AntflyClient: mock().mockImplementation(() => mockClientInstance),
+  matchAll: mock(() => ({ match_all: {} })),
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
@@ -105,7 +105,7 @@ function resetAntflyGlobals() {
 
 describe('antfly', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     resetAntflyGlobals()
   })
 

@@ -11,7 +11,7 @@
  * isolation prevents accidental ~/.bakin/ writes.
  */
 
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -25,28 +25,28 @@ import React from 'react'
 const testDir = join(tmpdir(), `bakin-test-projects-search-${Date.now()}`)
 mkdirSync(testDir, { recursive: true })
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('@/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
-vi.mock('@/core/openclaw-client', () => ({
-  sendToAgent: vi.fn(),
-  sendMessage: vi.fn(),
+mock.module('@/core/openclaw-client', () => ({
+  sendToAgent: mock(),
+  sendMessage: mock(),
 }))
 
 afterAll(() => {
@@ -66,7 +66,7 @@ function setQueryStateValue(key: string, value: string) {
   querySetters[key]?.(value)
 }
 
-vi.mock('@/hooks/use-query-state', () => ({
+mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string = '') => {
     const [value, setValue] = React.useState<string>(queryState[key] ?? defaultValue)
     querySetters[key] = setValue
@@ -92,10 +92,10 @@ type StubSearchResult = {
 }
 
 let stubSearchResults: StubSearchResult[] = []
-const searchSpy = vi.fn<(q: string) => void>()
-const clearSpy = vi.fn<() => void>()
+const searchSpy = mock<(q: string) => void>()
+const clearSpy = mock<() => void>()
 
-vi.mock('@/hooks/use-search', () => ({
+mock.module('@/hooks/use-search', () => ({
   useSearch: () => ({
     results: stubSearchResults,
     aggregations: {},
@@ -112,22 +112,22 @@ vi.mock('@/hooks/use-search', () => ({
 // Stub UI shells so we don't pull in tailwind/cn or large component graphs.
 // ---------------------------------------------------------------------------
 
-vi.mock('@/components/ui/button', () => ({
+mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => (
     <button onClick={onClick}>{children}</button>
   ),
 }))
 
-vi.mock('@/components/ui/input', () => ({
+mock.module('@/components/ui/input', () => ({
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
 }))
 
-vi.mock('@/components/ui/badge', () => ({
+mock.module('@/components/ui/badge', () => ({
   Badge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }))
 
 // project-card has its own dependencies — stub it to a simple title button.
-vi.mock('../../../plugins/projects/components/project-card', () => ({
+mock.module('../../../plugins/projects/components/project-card', () => ({
   ProjectCard: ({ project, onClick }: { project: { id: string; title: string }; onClick: () => void }) => (
     <button data-testid={`project-card-${project.id}`} onClick={onClick}>
       {project.title}
@@ -172,7 +172,7 @@ const fixtureProjects = [
   },
 ]
 
-const fetchMock = vi.fn(async () => ({
+const fetchMock = mock(async () => ({
   ok: true,
   json: async () => ({ projects: fixtureProjects }),
 })) as unknown as typeof fetch
