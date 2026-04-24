@@ -686,9 +686,6 @@ export interface BakinPlugin {
   contentFiles?: ContentFile[]
 }
 
-/** @deprecated Use BakinPlugin */
-export type MCPlugin = BakinPlugin
-
 // ---------------------------------------------------------------------------
 // Plugin Manifest (bakin-plugin.json)
 // ---------------------------------------------------------------------------
@@ -722,5 +719,3 @@ export interface BakinConfig {
   }
 }
 
-/** @deprecated Use BakinConfig */
-export type MCConfig = BakinConfig
