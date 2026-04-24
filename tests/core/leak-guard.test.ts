@@ -11,7 +11,7 @@
  * the modules under test. The test-mock checker hook allows this via the
  * self-test exception in .claude/hooks/check-test-mocks.mjs.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 

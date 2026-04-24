@@ -9,34 +9,34 @@
  *  4. Custom width/height from node.style.width is respected.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Edge, Node } from '@xyflow/react'
 
 const testDir = join(tmpdir(), `bakin-test-dagre-layout-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  createTask: vi.fn(),
-  addTaskLog: vi.fn(),
-  moveTask: vi.fn(),
-  readTaskboard: vi.fn(() => ({ columns: {} })),
-  getTask: vi.fn(() => null),
-  getTaskWithColumn: vi.fn(() => null),
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  createTask: mock(),
+  addTaskLog: mock(),
+  moveTask: mock(),
+  readTaskboard: mock(() => ({ columns: {} })),
+  getTask: mock(() => null),
+  getTaskWithColumn: mock(() => null),
 }))
 
 import { layoutNodes } from '../../../plugins/workflows/lib/dagre-layout'

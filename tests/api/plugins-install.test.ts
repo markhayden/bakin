@@ -11,26 +11,26 @@
  * as `(req, url) => Response`. Tests invoke them directly with a synthetic
  * `URL` derived from the Request.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { mkdirSync, writeFileSync, existsSync, rmSync } from 'fs'
 import { join } from 'path'
 
-const testDir = vi.hoisted(() => {
+const testDir = (() => {
   const { join } = require('path')
   const { tmpdir } = require('os')
   return join(tmpdir(), `bakin-test-plugin-install-${Date.now()}`)
-})
+})()
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../packages/core/src/content-dir', () => ({
+mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 import { post as installPOST } from '../../packages/host/src/api/plugins/install'

@@ -3,7 +3,7 @@
  * ~/.openclaw/ memory paths. The adapter is the sole module allowed to
  * hardcode OpenClaw paths (via getOpenClawPath).
  */
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -11,24 +11,24 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-memory-adapter-${Date.now()}`)
 const openclawDir = join(testDir, 'openclaw')
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => openclawDir,
   getOpenClawPath: (...parts: string[]) => join(openclawDir, ...parts),
 }))
-vi.mock('@bakin/core/main-agent', () => ({
+mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
 }))
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 import {

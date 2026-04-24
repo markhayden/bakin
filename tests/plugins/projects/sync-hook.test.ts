@@ -11,7 +11,7 @@
  * any escape hatches directly. We do NOT exercise the real watcher here —
  * the watcher integration is covered in tests/integration/.
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -25,22 +25,22 @@ import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapte
 const testDir = join(tmpdir(), `bakin-test-projects-sync-${Date.now()}`)
 const projectsDir = join(testDir, 'projects')
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getBakinPaths: () => ({ projects: projectsDir }),
   getContentDir: () => testDir,
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 import projectsPlugin from '../../../plugins/projects'
@@ -70,33 +70,33 @@ function makeCtx(): CapturedCtx {
     storage,
     events,
     pluginId: 'projects',
-    registerNav: vi.fn(),
-    registerRoute: vi.fn(),
-    registerSlot: vi.fn(),
-    registerExecTool: vi.fn(),
-    registerSkill: vi.fn(),
-    registerWorkflow: vi.fn(),
-    registerNodeType: vi.fn(() => ''),
-    registerNotificationChannel: vi.fn(() => ''),
-    registerHealthCheck: vi.fn(() => ''),
-    watchFiles: vi.fn(),
+    registerNav: mock(),
+    registerRoute: mock(),
+    registerSlot: mock(),
+    registerExecTool: mock(),
+    registerSkill: mock(),
+    registerWorkflow: mock(),
+    registerNodeType: mock(() => ''),
+    registerNotificationChannel: mock(() => ''),
+    registerHealthCheck: mock(() => ''),
+    watchFiles: mock(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
-    updateSettings: vi.fn(),
-    activity: { log: vi.fn(), audit: vi.fn() },
+    updateSettings: mock(),
+    activity: { log: mock(), audit: mock() },
     search: {
-      registerContentType: vi.fn(),
-      registerFileBackedContentType: vi.fn((def: FileBackedContentTypeDefinition) => {
+      registerContentType: mock(),
+      registerFileBackedContentType: mock((def: FileBackedContentTypeDefinition) => {
         capturedDef = def
       }),
-      index: vi.fn(async (key, doc) => { indexCalls.push({ key, doc }) }),
-      remove: vi.fn(async (key) => { removeCalls.push(key) }),
-      transform: vi.fn(async () => {}),
-      query: vi.fn(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      index: mock(async (key, doc) => { indexCalls.push({ key, doc }) }),
+      remove: mock(async (key) => { removeCalls.push(key) }),
+      transform: mock(async () => {}),
+      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
     },
     hooks: {
-      register: vi.fn(() => () => {}),
-      has: vi.fn(() => false),
-      invoke: vi.fn(async () => undefined),
+      register: mock(() => () => {}),
+      has: mock(() => false),
+      invoke: mock(async () => undefined),
     },
   }
 
@@ -117,7 +117,7 @@ describe('projects plugin — file-backed sync hook', () => {
   it('registers a file-backed content type with projects/*.md pattern', async () => {
     const captured = makeCtx()
     await projectsPlugin.activate(captured.ctx)
-    expect(captured.ctx.search.registerFileBackedContentType).toHaveBeenCalledOnce()
+    expect(captured.ctx.search.registerFileBackedContentType).toHaveBeenCalledTimes(1)
     expect(captured.capturedDef).not.toBeNull()
     expect(captured.capturedDef!.table).toBe('projects')
     expect(captured.capturedDef!.filePatterns).toHaveLength(1)

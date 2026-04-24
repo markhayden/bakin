@@ -6,14 +6,14 @@
  * the real `getUsageFeed()` output so any regression that removes or bypasses
  * `recordUsage()` fails this test.
  */
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { z } from 'zod'
 
 const testDir = join(tmpdir(), `bakin-usage-wiring-mcp-${Date.now()}`)
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
@@ -23,39 +23,39 @@ vi.mock('../../src/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/watcher', () => ({
+mock.module('../../src/core/watcher', () => ({
   createInboxHandler: () => () => {},
   default: { createInboxHandler: () => () => {} },
-  watch: vi.fn(),
-  watchFiles: vi.fn(),
-  registerWatchPattern: vi.fn(),
-  start: vi.fn(),
-  stop: vi.fn(),
-  registerSyncHook: vi.fn(() => () => {}),
-  registerUnlinkHook: vi.fn(() => () => {}),
+  watch: mock(),
+  watchFiles: mock(),
+  registerWatchPattern: mock(),
+  start: mock(),
+  stop: mock(),
+  registerSyncHook: mock(() => () => {}),
+  registerUnlinkHook: mock(() => () => {}),
 }))
 
-vi.mock('../../src/core/openclaw-client', () => ({
-  openclaw: { sendMessage: vi.fn().mockResolvedValue(undefined) },
-  sendChannelMessage: vi.fn(async () => ({ ok: true })),
-  sendMessage: vi.fn(async () => ({ ok: true })),
-  isHealthy: vi.fn(async () => true),
-  callGateway: vi.fn(async () => ({ ok: true })),
+mock.module('../../src/core/openclaw-client', () => ({
+  openclaw: { sendMessage: mock().mockResolvedValue(undefined) },
+  sendChannelMessage: mock(async () => ({ ok: true })),
+  sendMessage: mock(async () => ({ ok: true })),
+  isHealthy: mock(async () => true),
+  callGateway: mock(async () => ({ ok: true })),
 }))
 
 // Stubbing appendAudit keeps the test in-memory — otherwise tool invocations
 // would try to write to the audit jsonl under testDir.
-vi.mock('../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 afterAll(() => {

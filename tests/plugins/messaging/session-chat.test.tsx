@@ -1,39 +1,39 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 const testDir = join(tmpdir(), `bakin-test-session-chat-${Date.now()}`)
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
 
 // Mock UI components
-vi.mock('@/components/ui/button', () => ({
+mock.module('@/components/ui/button', () => ({
   Button: ({ children, disabled, ...props }: { children: React.ReactNode; disabled?: boolean; [k: string]: unknown }) => (
     <button disabled={disabled} {...props}>{children}</button>
   ),
 }))
 
-vi.mock('@/components/ui/textarea', () => ({
+mock.module('@/components/ui/textarea', () => ({
   Textarea: (props: Record<string, unknown>) => <textarea data-testid="chat-input" {...props} />,
 }))
 
-vi.mock('@/components/ui/badge', () => ({
+mock.module('@/components/ui/badge', () => ({
   Badge: ({ children, ...props }: { children: React.ReactNode; [k: string]: unknown }) => (
     <span data-testid="badge" {...props}>{children}</span>
   ),
 }))
 
-vi.mock('@/components/agent-avatar', () => ({
+mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
 }))
 
@@ -43,7 +43,7 @@ const MOCK_AGENTS = [
   { id: 'trainer', name: 'Trainer', emoji: '🏊', role: '', headshot: '' },
   { id: 'coach', name: 'Coach', emoji: '🧘', role: '', headshot: '' },
 ]
-vi.mock('@bakin/team/hooks/use-agent-store', () => ({
+mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgentList: () => MOCK_AGENTS,
   useAgentIds: () => MOCK_AGENTS.map(a => a.id),
   useAgent: (id: string) => MOCK_AGENTS.find(a => a.id === id),

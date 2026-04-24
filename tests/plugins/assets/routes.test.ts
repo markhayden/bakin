@@ -2,7 +2,7 @@
  * Comprehensive tests for the assets plugin routes and exec tools.
  * Tests all 7 API routes and 9 MCP exec tools registered by the plugin.
  */
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -24,27 +24,27 @@ import {
 const testDir = join(tmpdir(), `bakin-test-assets-routes-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ assets: join(testDir, 'assets') }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
-vi.mock('../../../src/core/openclaw-client', () => ({
-  sendToAgent: vi.fn(),
+mock.module('../../../src/core/openclaw-client', () => ({
+  sendToAgent: mock(),
 }))
 
 // Import the plugin after mocks are set up

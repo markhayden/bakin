@@ -7,25 +7,25 @@
  * runtime can resolve them by name without any manual wiring inside each
  * plugin's `activate()`.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-plugin-skills-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-vi.mock('@/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('@/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 import { loadPluginSkills } from '@/lib/plugin-skill-loader'
 import type { PluginContext, SkillDefinition } from '@/lib/plugin-types'
 
-const fakeLog = { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() }
+const fakeLog = { warn: mock(), info: mock(), error: mock(), debug: mock() }
 
 const writeCopySkill = `---
 name: Write Copy

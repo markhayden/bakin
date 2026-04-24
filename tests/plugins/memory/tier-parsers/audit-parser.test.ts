@@ -5,24 +5,24 @@
  * one MemoryRow (or null) out. No I/O, no state; just translation from
  * Bakin audit entry shape to `bakin_memory` row shape.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 
 // Defensive isolation: parser is pure, but any transitive import that
 // reaches content-dir must be redirected away from ~/.bakin/.
-vi.mock('../../../../src/core/content-dir', async () => {
+mock.module('../../../../src/core/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-audit-parser-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })
-vi.mock('../../../../packages/core/src/content-dir', async () => {
+mock.module('../../../../packages/core/src/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-audit-parser-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })
-vi.mock('../../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 import { parseAuditLine } from '../../../../plugins/memory/lib/tier-parsers/audit-parser'

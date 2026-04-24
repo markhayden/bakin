@@ -4,45 +4,45 @@
  * Tests session CRUD routes, session exec tools, proposal lifecycle,
  * and plan confirmation (creates CalendarItems from approved proposals).
  */
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun:test'
 import { mkdirSync, rmSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 
-const testDir = vi.hoisted(() => {
+const testDir = (() => {
   const { join } = require('path')
   const { tmpdir } = require('os')
   return join(tmpdir(), `bakin-test-sessions-${Date.now()}`)
-})
+})()
 
 // ---------------------------------------------------------------------------
 // Mocks — must be before any plugin imports
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ calendar: testDir }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  watchDir: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  watchDir: mock(),
 }))
 
 // Mock the gateway module so tests don't hit a real gateway
-vi.mock('../../../plugins/messaging/lib/gateway', () => ({
-  streamChatCompletion: vi.fn(async () => {
+mock.module('../../../plugins/messaging/lib/gateway', () => ({
+  streamChatCompletion: mock(async () => {
     // Return a mock Response with SSE body
     const encoder = new TextEncoder()
     const body = new ReadableStream({
@@ -62,19 +62,19 @@ vi.mock('../../../plugins/messaging/lib/gateway', () => ({
       headers: { 'Content-Type': 'text/event-stream' },
     })
   }),
-  chatCompletion: vi.fn(async () =>
+  chatCompletion: mock(async () =>
     '[mock:Chef] Acknowledged. Task understood — working on it.'
   ),
 }))
 
 // Mock openclaw-home to prevent filesystem access
-vi.mock('@bakin/core/openclaw-home', () => ({
-  getOpenClawPath: vi.fn(() => '/tmp/mock-openclaw.json'),
-  getOpenClawHome: vi.fn(() => '/tmp/mock-openclaw'),
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawPath: mock(() => '/tmp/mock-openclaw.json'),
+  getOpenClawHome: mock(() => '/tmp/mock-openclaw'),
 }))
 
 // Suppress SSE broadcast
-;(globalThis as any).__bakinBroadcast = vi.fn()
+;(globalThis as any).__bakinBroadcast = mock()
 
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
@@ -117,7 +117,7 @@ beforeEach(() => {
   // Reset messaging.json
   const { writeFileSync } = require('fs')
   writeFileSync(join(testDir, 'messaging.json'), '[]')
-  vi.clearAllMocks()
+  mock.clearAllMocks()
 })
 
 // ===========================================================================

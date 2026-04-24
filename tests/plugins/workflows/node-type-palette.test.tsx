@@ -12,22 +12,22 @@
  *  4. Collapse/expand toggles visibility.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-node-palette-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({}))
 
 import {
   NodeTypePalette,
@@ -56,11 +56,11 @@ describe('NodeTypePalette', () => {
   })
 
   it('sets the drag MIME payload to the namespaced kind on dragstart', () => {
-    const onDragKind = vi.fn()
+    const onDragKind = mock()
     render(<NodeTypePalette initialNodeTypes={FIXTURES} onDragKind={onDragKind} />)
 
     const item = screen.getByText('noise-gate').closest('li')!
-    const setData = vi.fn()
+    const setData = mock()
     fireEvent.dragStart(item, {
       dataTransfer: { setData, effectAllowed: '' },
     })
@@ -79,7 +79,7 @@ describe('NodeTypePalette', () => {
   })
 
   it('hydrates from GET /node-types when initialNodeTypes is omitted', async () => {
-    const fetchMock = vi.fn(() =>
+    const fetchMock = mock(() =>
       Promise.resolve(
         new Response(JSON.stringify({ nodeTypes: FIXTURES }), {
           status: 200,

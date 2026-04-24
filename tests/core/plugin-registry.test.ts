@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -50,8 +50,8 @@ describe('HookRegistry', () => {
   })
 
   it('callAll() invokes all handlers and ignores return values', async () => {
-    const spy1 = vi.fn()
-    const spy2 = vi.fn()
+    const spy1 = mock()
+    const spy2 = mock()
     registry.register('notify', spy1)
     registry.register('notify', spy2)
     await registry.callAll('notify', { event: 'ping' })
@@ -60,8 +60,8 @@ describe('HookRegistry', () => {
   })
 
   it('invoke() calls only the first registered handler', async () => {
-    const spy1 = vi.fn().mockReturnValue('first')
-    const spy2 = vi.fn().mockReturnValue('second')
+    const spy1 = mock().mockReturnValue('first')
+    const spy2 = mock().mockReturnValue('second')
     registry.register('rpc', spy1)
     registry.register('rpc', spy2)
     const result = await registry.invoke<string>('rpc', 'input')
@@ -97,33 +97,33 @@ describe('HookRegistry', () => {
 
 // These vi.mock calls are hoisted — they use paths relative to THIS file,
 // matching how vitest resolves them (same as the source's imports via aliases).
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/api-docs', () => ({
-  registerRouteDoc: vi.fn(),
+mock.module('@/core/api-docs', () => ({
+  registerRouteDoc: mock(),
 }))
 
-vi.mock('@/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('@/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('@/core/content-dir', () => ({
-  getContentDir: vi.fn(),
+mock.module('@/core/content-dir', () => ({
+  getContentDir: mock(),
 }))
 
-vi.mock('@/core/migrations', () => ({
-  runMigrations: vi.fn().mockResolvedValue(0),
+mock.module('@/core/migrations', () => ({
+  runMigrations: mock().mockResolvedValue(0),
 }))
 
-vi.mock('../../scripts/lib/registry', () => ({
-  addExecTool: vi.fn(),
+mock.module('../../scripts/lib/registry', () => ({
+  addExecTool: mock(),
 }))
 
 describe('PluginRegistryImpl', () => {
@@ -176,17 +176,17 @@ describe('PluginRegistryImpl', () => {
       }
     }
     rmSync(tempDir, { recursive: true, force: true })
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   // Helpers
 
   function mockStorage() {
-    return { read: vi.fn(), write: vi.fn(), append: vi.fn(), exists: vi.fn(), readAll: vi.fn() }
+    return { read: mock(), write: mock(), append: mock(), exists: mock(), readAll: mock() }
   }
 
   function mockEvents() {
-    return { emit: vi.fn(), on: vi.fn(), once: vi.fn() }
+    return { emit: mock(), on: mock(), once: mock() }
   }
 
   /**

@@ -6,22 +6,22 @@
  * returns empty array on fetch failure, and __resetNotificationChannelsCache
  * clears state between tests.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock, spyOn } from 'bun:test'
 import { render, waitFor, act } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-use-channels-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
@@ -40,13 +40,13 @@ const MOCK_CHANNELS = [
   { runtime: 'builtin' as const, id: 'instagram', label: 'Instagram', initials: 'IG', icon: 'Instagram' },
 ]
 
-let fetchSpy: ReturnType<typeof vi.spyOn> | null = null
+let fetchSpy: ReturnType<typeof spyOn> | null = null
 
 function mockFetch(delay = 0) {
-  fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+  fetchSpy = spyOn(globalThis, 'fetch').mockImplementation((() =>
     new Promise((resolve) => {
       setTimeout(() => resolve(new Response(JSON.stringify({ channels: MOCK_CHANNELS }), { status: 200 })), delay)
-    }) as any,
+    })) as unknown as typeof fetch,
   )
 }
 
@@ -89,7 +89,7 @@ describe('useNotificationChannels', () => {
   })
 
   it('returns an empty array when the fetch fails', async () => {
-    fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('boom') as never)
+    fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('boom') as never)
     const seen: unknown[][] = []
     render(<Probe onChannels={(c) => seen.push(c)} />)
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))

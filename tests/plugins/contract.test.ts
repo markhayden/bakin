@@ -1,6 +1,6 @@
-import { describe, it, expect, afterAll, vi } from 'vitest'
+import { describe, it, expect, afterAll, mock } from 'bun:test'
 
-const { hoistedBakinHome, hoistedOpenClawHome } = vi.hoisted(() => {
+const { hoistedBakinHome, hoistedOpenClawHome } = (() => {
   const { mkdtempSync } = require('fs')
   const { tmpdir } = require('os')
   const { join } = require('path')
@@ -9,9 +9,9 @@ const { hoistedBakinHome, hoistedOpenClawHome } = vi.hoisted(() => {
   process.env.BAKIN_HOME = bakinHome
   process.env.OPENCLAW_HOME = openclawHome
   return { hoistedBakinHome: bakinHome, hoistedOpenClawHome: openclawHome }
-})
+})()
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => hoistedBakinHome,
   getBakinPaths: () => ({
     home: hoistedBakinHome,
@@ -32,7 +32,7 @@ vi.mock('../../src/core/content-dir', () => ({
   resetContentDir: () => {},
 }))
 
-vi.mock('../../plugins/tasks/lib/flow-store', () => ({
+mock.module('../../plugins/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
@@ -42,17 +42,17 @@ vi.mock('../../plugins/tasks/lib/flow-store', () => ({
   readAllColumns: () => ({ todo: [], 'in-progress': [], done: [] }),
   getTodoTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] }, todoTasks: [] }),
   getAgentTasks: () => [],
-  createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
-  moveTask: vi.fn(() => Promise.resolve()),
-  assignTask: vi.fn(() => Promise.resolve()),
-  deleteTask: vi.fn(() => Promise.resolve()),
-  addTaskLog: vi.fn(() => Promise.resolve()),
-  blockTask: vi.fn(() => Promise.resolve()),
-  updateTask: vi.fn(() => Promise.resolve()),
-  setDependency: vi.fn(() => Promise.resolve()),
-  clearDependency: vi.fn(() => Promise.resolve()),
-  reorderTasks: vi.fn(() => Promise.resolve()),
-  moveTaskToInProgress: vi.fn(() => Promise.resolve()),
+  createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
+  moveTask: mock(() => Promise.resolve()),
+  assignTask: mock(() => Promise.resolve()),
+  deleteTask: mock(() => Promise.resolve()),
+  addTaskLog: mock(() => Promise.resolve()),
+  blockTask: mock(() => Promise.resolve()),
+  updateTask: mock(() => Promise.resolve()),
+  setDependency: mock(() => Promise.resolve()),
+  clearDependency: mock(() => Promise.resolve()),
+  reorderTasks: mock(() => Promise.resolve()),
+  moveTaskToInProgress: mock(() => Promise.resolve()),
   archiveOldTasks: () => 0,
   getArchivedCount: () => 0,
   autoArchiveDoneTasks: () => 0,
@@ -61,12 +61,12 @@ vi.mock('../../plugins/tasks/lib/flow-store', () => ({
   VALID_TRANSITIONS: {},
 }))
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 

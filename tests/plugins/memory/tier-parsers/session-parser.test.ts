@@ -12,23 +12,23 @@
  *   id: session:<16-char-sha256(agent|sessionKey)>
  *   kind: parsed from sessionKey (format `agent:<agent>:<kind>[:...]`).
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 
 // Defensive isolation — pure parser, but shared module init touches logger etc.
-vi.mock('../../../../src/core/content-dir', async () => {
+mock.module('../../../../src/core/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-session-parser-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })
-vi.mock('../../../../packages/core/src/content-dir', async () => {
+mock.module('../../../../packages/core/src/content-dir', async () => {
   const { join } = await import('path')
   const { tmpdir } = await import('os')
   const base = join(tmpdir(), 'bakin-test-session-parser-mock')
   return { getContentDir: () => base, getBakinPaths: () => ({ root: base }) }
 })
-vi.mock('../../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 import { parseSession } from '../../../../plugins/memory/lib/tier-parsers/session-parser'

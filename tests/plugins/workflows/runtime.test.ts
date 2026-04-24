@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -6,26 +6,26 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-runtime-${Date.now()}`)
 
 // ─── CRITICAL: Mock content-dir to prevent writes to ~/.bakin/ ─────────────
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 
 // Mock audit to prevent writes to audit.jsonl
-vi.mock('../../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 // Mock logger to prevent noise
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
@@ -33,23 +33,23 @@ vi.mock('../../../src/core/logger', () => ({
 // The path needs three `../` to reach the repo root — two would land in tests/
 // and the mock would silently no-op, letting the real module write to
 // ~/.openclaw/flows/registry.sqlite.
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  createTask: vi.fn(() => Promise.resolve({ id: 'mock-task' })),
-  addTaskLog: vi.fn(() => Promise.resolve()),
-  moveTask: vi.fn(() => Promise.resolve()),
-  readTaskboard: vi.fn(() => ({
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
+  addTaskLog: mock(() => Promise.resolve()),
+  moveTask: mock(() => Promise.resolve()),
+  readTaskboard: mock(() => ({
     columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [] },
   })),
-  getTask: vi.fn(() => null),
-  getTaskWithColumn: vi.fn(() => null),
+  getTask: mock(() => null),
+  getTaskWithColumn: mock(() => null),
 }))
 
 // Defense-in-depth: even if another module reaches openclaw-home, redirect it
 // into testDir instead of ~/.openclaw/.
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => testDir,
   getOpenClawPath: (...parts: string[]) => join(testDir, ...parts),
-  resetOpenClawHome: vi.fn(),
+  resetOpenClawHome: mock(),
 }))
 
 import {

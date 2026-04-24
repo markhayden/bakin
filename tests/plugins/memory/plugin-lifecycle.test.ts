@@ -15,14 +15,14 @@
  * then persisted an empty table forever. These tests lock in the fix so a
  * future refactor can't silently reintroduce the race.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-memory-lifecycle-${Date.now()}`)
 
-vi.mock('../../../src/core/content-dir', async () => {
+mock.module('../../../src/core/content-dir', async () => {
   const { join: j } = await import('path')
   const { tmpdir: t } = await import('os')
   const base = j(t(), `bakin-test-memory-lifecycle-mock`)
@@ -31,7 +31,7 @@ vi.mock('../../../src/core/content-dir', async () => {
     getBakinPaths: () => ({ root: base, plugins: j(base, 'plugin-settings') }),
   }
 })
-vi.mock('../../../packages/core/src/content-dir', async () => {
+mock.module('../../../packages/core/src/content-dir', async () => {
   const { join: j } = await import('path')
   const { tmpdir: t } = await import('os')
   const base = j(t(), `bakin-test-memory-lifecycle-mock`)
@@ -40,12 +40,12 @@ vi.mock('../../../packages/core/src/content-dir', async () => {
     getBakinPaths: () => ({ root: base, plugins: j(base, 'plugin-settings') }),
   }
 })
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-vi.mock('../../../src/core/watcher', () => ({ watchFiles: vi.fn() }))
-vi.mock('../../../src/core/openclaw-client', () => ({ sendMessage: vi.fn() }))
-vi.mock('../../../packages/core/src/openclaw-home', async () => {
+mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
+mock.module('../../../src/core/openclaw-client', () => ({ sendMessage: mock() }))
+mock.module('../../../packages/core/src/openclaw-home', async () => {
   const { join: j } = await import('path')
   const { tmpdir: t } = await import('os')
   const base = j(t(), `bakin-test-memory-lifecycle-mock`, 'openclaw')
@@ -54,11 +54,11 @@ vi.mock('../../../packages/core/src/openclaw-home', async () => {
     getOpenClawPath: (...parts: string[]) => j(base, ...parts),
   }
 })
-vi.mock('../../../packages/core/src/main-agent', () => ({
+mock.module('../../../packages/core/src/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
 }))
-vi.mock('../../../src/core/settings', () => ({
+mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     openclaw: { binaryPath: '/fake/openclaw', gatewayUrl: 'http://localhost', gatewayPort: 18789 },
     antfly: { auditTtl: null },
@@ -66,9 +66,9 @@ vi.mock('../../../src/core/settings', () => ({
 }))
 // The gateway subscribe only runs after onReady. Stub it so we don't try to
 // open a real WebSocket during the test.
-vi.mock('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewaySubscribe: vi.fn(async () => () => {}),
-  gatewayCall: vi.fn(async () => ({})),
+mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
+  gatewaySubscribe: mock(async () => () => {}),
+  gatewayCall: mock(async () => ({})),
 }))
 
 import { activatePlugin } from '../test-helpers'
@@ -96,7 +96,7 @@ describe('memory plugin lifecycle — activate vs onReady', () => {
     const activated = await activatePlugin(memoryPlugin, testDir)
     await flush()
 
-    const index = activated.ctx.search.index as ReturnType<typeof vi.fn>
+    const index = activated.ctx.search.index as ReturnType<typeof mock>
     // No tier parser should have been able to fire yet — the table doesn't
     // exist at this point in server startup.
     expect(index).not.toHaveBeenCalled()
@@ -110,8 +110,8 @@ describe('memory plugin lifecycle — activate vs onReady', () => {
     activated.ctx.events.emit('file.change', { file: '/tmp/audit.jsonl' })
     await flush()
 
-    const index = activated.ctx.search.index as ReturnType<typeof vi.fn>
-    const remove = activated.ctx.search.remove as ReturnType<typeof vi.fn>
+    const index = activated.ctx.search.index as ReturnType<typeof mock>
+    const remove = activated.ctx.search.remove as ReturnType<typeof mock>
     expect(index).not.toHaveBeenCalled()
     expect(remove).not.toHaveBeenCalled()
   })

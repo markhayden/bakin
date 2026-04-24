@@ -9,7 +9,7 @@
  * module and the logger so tests can drive config shapes without ever
  * touching the real filesystem.
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { mkdirSync, rmSync, readFileSync, existsSync } from 'fs'
 
@@ -17,13 +17,13 @@ import { mkdirSync, rmSync, readFileSync, existsSync } from 'fs'
 // Mandatory test-isolation mocks — declared before any plugin import
 // ---------------------------------------------------------------------------
 
-const testDir = vi.hoisted(() => {
+const testDir = (() => {
   const { tmpdir } = require('os') as typeof import('os')
   const { join } = require('path') as typeof import('path')
   return join(tmpdir(), `bakin-test-team-adapter-${Date.now()}`)
-})
+})()
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     agents: join(testDir, 'agents'),
@@ -31,7 +31,7 @@ vi.mock('../../../src/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     agents: join(testDir, 'agents'),
@@ -43,36 +43,36 @@ vi.mock('../../../packages/core/src/content-dir', () => ({
 // module init so we capture the singleton and assert on it per test.
 // vi.hoisted is required because vi.mock factories run before the test
 // module body executes.
-const loggerMock = vi.hoisted(() => ({
-  info: vi.fn(),
-  warn: vi.fn(),
-  error: vi.fn(),
-  debug: vi.fn(),
-}))
+const loggerMock = (() => ({
+  info: mock(),
+  warn: mock(),
+  error: mock(),
+  debug: mock(),
+}))()
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => loggerMock,
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
 // OpenClaw client — adapter doesn't import it directly, but other modules
 // pulled in transitively might. Stub to be safe.
-vi.mock('../../../src/core/openclaw-client', () => ({
-  sendMessage: vi.fn(async () => 'ok'),
-  invokeTool: vi.fn(async () => ({ ok: true })),
-  sendChannelMessage: vi.fn(async () => 'ok'),
-  restartGateway: vi.fn(async () => {}),
-  ping: vi.fn(async () => true),
-  getAgentLastReply: vi.fn(() => null),
+mock.module('../../../src/core/openclaw-client', () => ({
+  sendMessage: mock(async () => 'ok'),
+  invokeTool: mock(async () => ({ ok: true })),
+  sendChannelMessage: mock(async () => 'ok'),
+  restartGateway: mock(async () => {}),
+  ping: mock(async () => true),
+  getAgentLastReply: mock(() => null),
 }))
 
 // main-agent — `resolveRole` falls back on tryGetMainAgentId for the
 // orchestrator-role label. Stub to avoid reading settings.
-vi.mock('@bakin/core/main-agent', () => ({
+mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
 }))
@@ -80,33 +80,33 @@ vi.mock('@bakin/core/main-agent', () => ({
 // openclaw-home — adapter touches getOpenClawHome/getOpenClawPath at
 // module init. Point them at a non-existent tmp path so filesystem reads
 // for workspace files (called from resolveRole) return null gracefully.
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))
 
 // Settings — needed by openclawExec for binaryPath
-vi.mock('../../../src/core/settings', () => ({
+mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     openclaw: { binaryPath: '/usr/bin/openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
   }),
-  resetSettingsCache: vi.fn(),
+  resetSettingsCache: mock(),
 }))
 
 // child_process — mock execFile for CLI shell-outs
-const execFileMock = vi.hoisted(() => vi.fn((_cmd: string, _args: string[], cb: (err: Error | null, result: { stdout: string; stderr: string }) => void) => {
+const execFileMock = (() => mock((_cmd: string, _args: string[], cb: (err: Error | null, result: { stdout: string; stderr: string }) => void) => {
   cb(null, { stdout: '{}', stderr: '' })
-}))
-vi.mock('child_process', () => ({
+}))()
+mock.module('child_process', () => ({
   execFile: execFileMock,
 }))
 
 // The module under test — drive config shapes through this mock.
-const { readOpenClawConfigMock, resetOpenClawConfigCacheMock } = vi.hoisted(() => ({
-  readOpenClawConfigMock: vi.fn(() => null as unknown),
-  resetOpenClawConfigCacheMock: vi.fn(),
-}))
-vi.mock('@bakin/core/openclaw-config', () => ({
+const { readOpenClawConfigMock, resetOpenClawConfigCacheMock } = (() => ({
+  readOpenClawConfigMock: mock(() => null as unknown),
+  resetOpenClawConfigCacheMock: mock(),
+}))()
+mock.module('@bakin/core/openclaw-config', () => ({
   readOpenClawConfig: () => readOpenClawConfigMock(),
   resetOpenClawConfigCache: resetOpenClawConfigCacheMock,
 }))

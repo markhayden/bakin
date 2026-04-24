@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -6,12 +6,12 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-load-defaults-${Date.now()}`)
 const fakeDefaultsDir = join(testDir, 'defaults', 'workflows')
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-vi.mock('@bakin/tasks/lib/flow-store', () => ({}))
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/tasks/lib/flow-store', () => ({}))
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))
@@ -21,7 +21,7 @@ import { clearSourceRegistry, getDefinition } from '@bakin/workflows/lib/source-
 import { activatePlugin } from '../test-helpers'
 import type { BakinPlugin, PluginContext } from '@/lib/plugin-types'
 
-const fakeLog = { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() }
+const fakeLog = { warn: mock(), info: mock(), error: mock(), debug: mock() }
 
 function makeHostPlugin(defaultsDir: string): BakinPlugin {
   return {
@@ -98,7 +98,7 @@ describe('loadDefaultWorkflows', () => {
   it('returns an empty result when the defaults dir does not exist', async () => {
     rmSync(fakeDefaultsDir, { recursive: true, force: true })
 
-    const ctx = { registerWorkflow: vi.fn() } as unknown as PluginContext
+    const ctx = { registerWorkflow: mock() } as unknown as PluginContext
     const result = loadDefaultWorkflows(ctx, fakeDefaultsDir, fakeLog)
     expect(result.registered).toEqual([])
     expect(result.skipped).toEqual([])

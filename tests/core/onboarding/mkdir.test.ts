@@ -7,17 +7,15 @@
  * function under test. Content-dir is mocked so the temp dir stands in for
  * ~/.bakin/. Logger is stubbed to silence output.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { existsSync, mkdtempSync, rmSync, rmdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 let testDir: string
 
-vi.mock('../../../src/core/content-dir', async () => {
-  const actual = await vi.importActual<typeof import('../../../src/core/content-dir')>(
-    '../../../src/core/content-dir'
-  )
+mock.module('../../../src/core/content-dir', async () => {
+  const actual = await import('../../../src/core/content-dir')
   return {
     ...actual,
     getContentDir: () => testDir,
@@ -46,12 +44,12 @@ vi.mock('../../../src/core/content-dir', async () => {
   }
 })
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 

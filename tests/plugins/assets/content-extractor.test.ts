@@ -3,7 +3,7 @@
  * decision logic (which extension routes to which extractor), graceful
  * failure on unreadable files, and the size cap.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -13,7 +13,7 @@ import { tmpdir } from 'os'
 // surfaces whatever text the library returns. pdf-parse v2 exports a
 // PDFParse class with getText() and destroy() methods, so the mock
 // stands up a matching class.
-vi.mock('pdf-parse', () => {
+mock.module('pdf-parse', () => {
   class MockPDFParse {
     private byteLen: number
     constructor(options: { data: Uint8Array }) {
@@ -31,8 +31,8 @@ vi.mock('pdf-parse', () => {
 
 // Logger mock — silences warnings during tests and avoids the real
 // logger's globalThis side effects.
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 import { extractAssetContent } from '../../../plugins/assets/lib/content-extractor'

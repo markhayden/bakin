@@ -12,23 +12,23 @@
  *   - The component exposes the OnboardingComponent shape the dispatcher expects.
  *   - `check()` returns ok with "0 plugin assets" when nothing ships S-B skills.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-cli-plugin-assets-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))
-vi.mock('@/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('@/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 describe('CLI: bakin install/check plugin-assets', () => {

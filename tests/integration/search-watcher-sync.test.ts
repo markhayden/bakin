@@ -15,7 +15,7 @@
  * Everything else (search-registry, watcher hook plumbing, plugin code)
  * is the real production code path.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -23,7 +23,7 @@ import type { FSWatcher } from 'chokidar'
 
 const testDir = join(tmpdir(), `bakin-int-search-watcher-${process.pid}-${Date.now()}`)
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     home: testDir,
@@ -31,65 +31,65 @@ vi.mock('../../src/core/content-dir', () => ({
     workflows: join(testDir, 'workflows'),
     assets: join(testDir, 'assets'),
   }),
-  resetContentDir: vi.fn(),
-  initBakinHome: vi.fn(),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('../../src/core/sse', () => ({
-  broadcast: vi.fn(),
-  broadcastAuditEvent: vi.fn(),
+mock.module('../../src/core/sse', () => ({
+  broadcast: mock(),
+  broadcastAuditEvent: mock(),
 }))
 
-vi.mock('../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
-vi.mock('../../src/core/discord-gateway', () => ({
-  startGateway: vi.fn(),
-  stopGateway: vi.fn(),
-  onGateInteraction: vi.fn(),
-  isGatewayConnected: vi.fn(() => false),
+mock.module('../../src/core/discord-gateway', () => ({
+  startGateway: mock(),
+  stopGateway: mock(),
+  onGateInteraction: mock(),
+  isGatewayConnected: mock(() => false),
 }))
 
-vi.mock('../../scripts/lib/post-discord', () => ({
-  loadDiscordConfig: vi.fn(() => null),
+mock.module('../../scripts/lib/post-discord', () => ({
+  loadDiscordConfig: mock(() => null),
 }))
 
-vi.mock('../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('../../plugins/tasks/lib/flow-store', () => ({}))
 
 const indexCalls: Array<{ table: string; key: string; doc: Record<string, unknown> }> = []
 const removeCalls: Array<{ table: string; key: string }> = []
 
-vi.mock('../../src/core/antfly', () => ({
+mock.module('../../src/core/antfly', () => ({
   enabled: () => true,
-  indexDocument: vi.fn(async (table: string, key: string, doc: Record<string, unknown>) => {
+  indexDocument: mock(async (table: string, key: string, doc: Record<string, unknown>) => {
     indexCalls.push({ table, key, doc })
   }),
-  removeDocument: vi.fn(async (table: string, key: string) => {
+  removeDocument: mock(async (table: string, key: string) => {
     removeCalls.push({ table, key })
   }),
-  getClient: vi.fn(() => null),
-  createTable: vi.fn(async () => {}),
-  scanTable: vi.fn(async () => []),
-  searchTable: vi.fn(async () => ({ hits: { hits: [], total: 0 }, took: 0 })),
-  deleteTable: vi.fn(async () => {}),
-  getIndexHealth: vi.fn(async () => ({ ready: 0, total: 0, queued: 0 })),
+  getClient: mock(() => null),
+  createTable: mock(async () => {}),
+  scanTable: mock(async () => []),
+  searchTable: mock(async () => ({ hits: { hits: [], total: 0 }, took: 0 })),
+  deleteTable: mock(async () => {}),
+  getIndexHealth: mock(async () => ({ ready: 0, total: 0, queued: 0 })),
 }))
 
-vi.mock('chokidar', () => ({
-  watch: vi.fn().mockReturnValue({
-    on: vi.fn().mockReturnThis(),
-    close: vi.fn().mockResolvedValue(undefined),
+mock.module('chokidar', () => ({
+  watch: mock().mockReturnValue({
+    on: mock().mockReturnThis(),
+    close: mock().mockResolvedValue(undefined),
   }),
 }))
 
@@ -129,24 +129,24 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     storage,
     events,
     pluginId: plugin.id,
-    registerNav: vi.fn(),
-    registerRoute: vi.fn(),
-    registerSlot: vi.fn(),
-    registerExecTool: vi.fn(),
-    registerSkill: vi.fn(),
-    registerWorkflow: vi.fn(),
-    registerNodeType: vi.fn(() => ''),
-    registerNotificationChannel: vi.fn(() => ''),
-    registerHealthCheck: vi.fn(() => ''),
-    watchFiles: vi.fn(),
+    registerNav: mock(),
+    registerRoute: mock(),
+    registerSlot: mock(),
+    registerExecTool: mock(),
+    registerSkill: mock(),
+    registerWorkflow: mock(),
+    registerNodeType: mock(() => ''),
+    registerNotificationChannel: mock(() => ''),
+    registerHealthCheck: mock(() => ''),
+    watchFiles: mock(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
-    updateSettings: vi.fn(),
-    activity: { log: vi.fn(), audit: vi.fn() },
+    updateSettings: mock(),
+    activity: { log: mock(), audit: mock() },
     search,
     hooks: {
-      register: vi.fn(() => () => {}),
-      has: vi.fn(() => false),
-      invoke: vi.fn(async () => undefined),
+      register: mock(() => () => {}),
+      has: mock(() => false),
+      invoke: mock(async () => undefined),
     },
   }
 }
@@ -168,7 +168,7 @@ describe('integration: search ↔ watcher sync', () => {
     indexCalls.length = 0
     removeCalls.length = 0
     resetSearchRegistry()
-    vi.clearAllMocks()
+    mock.clearAllMocks()
   })
 
   afterEach(async () => {
@@ -179,7 +179,7 @@ describe('integration: search ↔ watcher sync', () => {
   it('projects plugin: write triggers index, delete triggers remove', async () => {
     await projectsPlugin.activate(makeCtx(projectsPlugin))
     const eventBus = new BakinEventBus(() => {})
-    start({ contentDir: testDir, eventBus, onInboxFile: vi.fn() })
+    start({ contentDir: testDir, eventBus, onInboxFile: mock() })
     const handlers = await getChokidarHandlers()
 
     const projectFile = join(testDir, 'projects', 'integration.md')
@@ -201,7 +201,7 @@ describe('integration: search ↔ watcher sync', () => {
   it('workflows plugin: definition YAML add/delete flows through search', async () => {
     await workflowsPlugin.activate(makeCtx(workflowsPlugin))
     const eventBus = new BakinEventBus(() => {})
-    start({ contentDir: testDir, eventBus, onInboxFile: vi.fn() })
+    start({ contentDir: testDir, eventBus, onInboxFile: mock() })
     const handlers = await getChokidarHandlers()
 
     const defFile = join(testDir, 'workflows', 'definitions', 'sample.yaml')
@@ -222,7 +222,7 @@ describe('integration: search ↔ watcher sync', () => {
   it('workflows plugin: instance JSON add/delete flows through search', async () => {
     await workflowsPlugin.activate(makeCtx(workflowsPlugin))
     const eventBus = new BakinEventBus(() => {})
-    start({ contentDir: testDir, eventBus, onInboxFile: vi.fn() })
+    start({ contentDir: testDir, eventBus, onInboxFile: mock() })
     const handlers = await getChokidarHandlers()
 
     const instFile = join(testDir, 'workflows', 'instances', 'task-99.json')
@@ -251,7 +251,7 @@ describe('integration: search ↔ watcher sync', () => {
   it('assets plugin: binary delete removes from index, sidecar-only delete does not', async () => {
     await assetsPlugin.activate(makeCtx(assetsPlugin))
     const eventBus = new BakinEventBus(() => {})
-    start({ contentDir: testDir, eventBus, onInboxFile: vi.fn() })
+    start({ contentDir: testDir, eventBus, onInboxFile: mock() })
     const handlers = await getChokidarHandlers()
 
     const assetFile = join(testDir, 'assets', 'images', 'task-1', 'photo.png')
@@ -284,7 +284,7 @@ describe('integration: search ↔ watcher sync', () => {
   it('assets plugin: .trash/ deletes are ignored', async () => {
     await assetsPlugin.activate(makeCtx(assetsPlugin))
     const eventBus = new BakinEventBus(() => {})
-    start({ contentDir: testDir, eventBus, onInboxFile: vi.fn() })
+    start({ contentDir: testDir, eventBus, onInboxFile: mock() })
     const handlers = await getChokidarHandlers()
 
     mkdirSync(join(testDir, 'assets', '.trash'), { recursive: true })

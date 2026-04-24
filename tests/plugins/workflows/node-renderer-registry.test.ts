@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { NodeProps } from '@xyflow/react'
@@ -9,17 +9,17 @@ import type { ComponentType } from 'react'
 // content-dir (and not pull in real flow-store) as a safety net.
 const testDir = join(tmpdir(), `bakin-test-${Date.now()}`)
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
-  getTask: vi.fn(),
-  createTask: vi.fn(),
-  moveTask: vi.fn(),
-  addTaskLog: vi.fn(),
-  readTaskboard: vi.fn(() => ({ columns: { todo: [], inProgress: [], review: [], done: [], blocked: [] } })),
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+  getTask: mock(),
+  createTask: mock(),
+  moveTask: mock(),
+  addTaskLog: mock(),
+  readTaskboard: mock(() => ({ columns: { todo: [], inProgress: [], review: [], done: [], blocked: [] } })),
 }))
 
 import {

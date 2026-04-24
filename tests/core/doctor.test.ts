@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testHome = vi.hoisted(() => {
+const testHome = (() => {
   const { mkdtempSync } = require('fs')
   const { tmpdir } = require('os')
   const { join } = require('path')
@@ -12,9 +12,9 @@ const testHome = vi.hoisted(() => {
   process.env.BAKIN_HOME = home
   process.env.OPENCLAW_HOME = openclaw
   return { home, openclaw }
-})
+})()
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testHome.home,
   getBakinPaths: () => ({
     home: testHome.home,
@@ -40,8 +40,8 @@ vi.mock('@/core/content-dir', () => ({
 }))
 
 // Mock settings
-vi.mock('@/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('@/core/settings', () => ({
+  getSettings: mock(() => ({
     antfly: { enabled: false },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
     openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
@@ -50,62 +50,62 @@ vi.mock('@/core/settings', () => ({
 }))
 
 // Mock openclaw-config — owns the authoritative agent roster after T2
-vi.mock('@bakin/core/openclaw-config', () => ({
-  getAgentIds: vi.fn(() => ['main', 'patch', 'pixel']),
-  findAgentById: vi.fn((id: string) => (['main', 'patch', 'pixel'].includes(id) ? { id } : null)),
-  readOpenClawConfig: vi.fn(() => ({ agents: [{ id: 'main' }, { id: 'patch' }, { id: 'pixel' }] })),
-  resetOpenClawConfigCache: vi.fn(),
+mock.module('@bakin/core/openclaw-config', () => ({
+  getAgentIds: mock(() => ['main', 'patch', 'pixel']),
+  findAgentById: mock((id: string) => (['main', 'patch', 'pixel'].includes(id) ? { id } : null)),
+  readOpenClawConfig: mock(() => ({ agents: [{ id: 'main' }, { id: 'patch' }, { id: 'pixel' }] })),
+  resetOpenClawConfigCache: mock(),
 }))
 
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => '/tmp/doctor-test-openclaw',
   getOpenClawPath: (...parts: string[]) => ['/tmp/doctor-test-openclaw', ...parts].join('/'),
 }))
 
 // Mock openclaw-client
-vi.mock('@/core/openclaw-client', () => ({
-  ping: vi.fn(async () => false),
-  sendMessage: vi.fn(),
+mock.module('@/core/openclaw-client', () => ({
+  ping: mock(async () => false),
+  sendMessage: mock(),
 }))
 
 // Mock audit (avoid file writes in tests)
-vi.mock('@/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('@/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 // Mock better-sqlite3 so doctor checks don't touch real SQLite
-vi.mock('better-sqlite3', () => {
+mock.module('better-sqlite3', () => {
   return {
-    default: vi.fn(() => ({
-      prepare: vi.fn(() => ({
-        get: vi.fn(() => ({ n: 0 })),
+    default: mock(() => ({
+      prepare: mock(() => ({
+        get: mock(() => ({ n: 0 })),
       })),
-      close: vi.fn(),
+      close: mock(),
     })),
   }
 })
 
 // Mock onboarding state — controls the requireOnboard gate
 let mockIsOnboarded = true
-vi.mock('@/core/onboarding/state', () => ({
+mock.module('@/core/onboarding/state', () => ({
   isOnboarded: () => mockIsOnboarded,
 }))
 
 // Mock plugin-assets onboarding component — controls drift status surfaced by doctor
-const mockPluginAssetsCheck = vi.fn()
-vi.mock('@/core/onboarding/plugin-assets', () => ({
+const mockPluginAssetsCheck = mock()
+mock.module('@/core/onboarding/plugin-assets', () => ({
   pluginAssetsComponent: {
     name: 'plugin-assets',
     check: mockPluginAssetsCheck,
-    install: vi.fn(),
+    install: mock(),
   },
 }))
 
 // Mock mcporter (avoid install/config in tests)
-vi.mock('@/core/mcporter', () => ({
-  isMcporterInstalled: vi.fn(() => true),
-  installMcporter: vi.fn(() => true),
-  verifyConfig: vi.fn(() => ({
+mock.module('@/core/mcporter', () => ({
+  isMcporterInstalled: mock(() => true),
+  installMcporter: mock(() => true),
+  verifyConfig: mock(() => ({
     installed: true,
     configExists: true,
     agentEntries: [
@@ -115,7 +115,7 @@ vi.mock('@/core/mcporter', () => ({
     ],
     staleEntries: [],
   })),
-  syncConfig: vi.fn(() => []),
+  syncConfig: mock(() => []),
 }))
 
 describe('doctor', () => {
@@ -311,7 +311,7 @@ describe('doctor', () => {
     it('returns single error when requireOnboard=true and machine is not onboarded', async () => {
       mockIsOnboarded = false
       const { getSettings } = await import('@/core/settings')
-      const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
+      const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
@@ -330,7 +330,7 @@ describe('doctor', () => {
     it('runs normal checks when requireOnboard=true and machine IS onboarded', async () => {
       mockIsOnboarded = true
       const { getSettings } = await import('@/core/settings')
-      const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
+      const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
@@ -348,7 +348,7 @@ describe('doctor', () => {
     it('runs normal checks when requireOnboard=false and machine is NOT onboarded', async () => {
       mockIsOnboarded = false
       const { getSettings } = await import('@/core/settings')
-      const settings = (getSettings as unknown as ReturnType<typeof vi.fn>)
+      const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },

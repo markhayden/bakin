@@ -55,7 +55,7 @@ async function downloadTo(url: string, dest: string): Promise<void> {
   if (!res.ok || !res.body) {
     throw new Error(`download failed for ${url} (HTTP ${res.status})`)
   }
-  const nodeStream = Readable.fromWeb(res.body as WebReadableStream<Uint8Array>)
+  const nodeStream = Readable.fromWeb(res.body as unknown as WebReadableStream<Uint8Array>)
   const out = createWriteStream(dest)
   nodeStream.pipe(out)
   await finished(out)

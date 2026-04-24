@@ -5,7 +5,7 @@
  * CRITICAL (CLAUDE.md): every filesystem path must resolve under testDir.
  * Never touches ~/.bakin/.
  */
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { rmSync, mkdirSync } from 'fs'
@@ -14,7 +14,7 @@ const testDir = join(tmpdir(), `bakin-usage-wiring-agent-${Date.now()}`)
 mkdirSync(testDir, { recursive: true })
 mkdirSync(join(testDir, 'heartbeats'), { recursive: true })
 
-vi.mock('../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
@@ -24,30 +24,30 @@ vi.mock('../../src/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-vi.mock('../../src/core/openclaw-client', () => ({
-  sendMessage: vi.fn().mockResolvedValue(undefined),
-  openclaw: { sendMessage: vi.fn().mockResolvedValue(undefined) },
+mock.module('../../src/core/openclaw-client', () => ({
+  sendMessage: mock().mockResolvedValue(undefined),
+  openclaw: { sendMessage: mock().mockResolvedValue(undefined) },
 }))
 
 // Mock audit so it doesn't try to write jsonl with real paths pulled in elsewhere.
-vi.mock('../../src/core/audit', () => ({
-  appendAudit: vi.fn(),
+mock.module('../../src/core/audit', () => ({
+  appendAudit: mock(),
 }))
 
 // Watcher would otherwise try to chokidar the temp dir.
-vi.mock('../../src/core/watcher', () => ({
-  watchContentDir: vi.fn(),
-  getWatcher: () => ({ on: vi.fn(), close: vi.fn() }),
+mock.module('../../src/core/watcher', () => ({
+  watchContentDir: mock(),
+  getWatcher: () => ({ on: mock(), close: mock() }),
 }))
 
 // Stub the plugin registry / hooks so task-service can call hooks without
 // loading real plugins. We install a per-test registry via globalThis so
 // mutations to hook handlers are scoped.
-vi.mock('../../src/lib/plugin-registry', () => {
+mock.module('../../src/lib/plugin-registry', () => {
   const handlers = new Map<string, (data: unknown) => unknown>()
   return {
     getHookRegistry: () => ({
@@ -66,12 +66,12 @@ vi.mock('../../src/lib/plugin-registry', () => {
 })
 
 // Prevent main-agent lookup from touching files.
-vi.mock('../../src/core/main-agent', () => ({
+mock.module('../../src/core/main-agent', () => ({
   getMainAgentId: () => 'orchestrator',
 }))
 
 // Pin openclaw home under testDir so nothing reads real ~/.openclaw.
-vi.mock('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
@@ -137,22 +137,22 @@ describe('T2.3 agent usage wiring', () => {
 
   it('dispatchSingleTask records an agent dispatch usage entry on success', async () => {
     // Stub settings before importing dispatch.
-    vi.doMock('../../src/core/settings', () => ({
+    mock.module('../../src/core/settings', () => ({
       getSettings: () => ({
         dispatch: { maxRetries: 3, failureCooldownMs: 1000, transientCooldownMs: 500, maxDispatched: 200 },
       }),
     }))
     // Dispatch now derives the agent roster from openclaw-config (T2).
-    vi.doMock('@bakin/core/openclaw-config', () => ({
+    mock.module('@bakin/core/openclaw-config', () => ({
       getAgentIds: () => ['alice'],
       findAgentById: (id: string) => (id === 'alice' ? { id: 'alice' } : null),
       readOpenClawConfig: () => ({ agents: [{ id: 'alice' }] }),
       resetOpenClawConfigCache: () => {},
     }))
     // Stub taskboard lib used via dynamic import inside dispatch.
-    vi.doMock('@bakin/tasks/lib/flow-store', () => ({
-      moveTaskToInProgress: vi.fn().mockResolvedValue(undefined),
-      addTaskLog: vi.fn().mockResolvedValue(undefined),
+    mock.module('@bakin/tasks/lib/flow-store', () => ({
+      moveTaskToInProgress: mock().mockResolvedValue(undefined),
+      addTaskLog: mock().mockResolvedValue(undefined),
     }))
 
     // State file is written under testDir — provide an empty file ok.

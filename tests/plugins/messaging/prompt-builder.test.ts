@@ -5,24 +5,24 @@
  * Agent identity and content-type taxonomy come from the caller via
  * PromptBuilderOptions; the builder stays neutral.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
-const testDir = vi.hoisted(() => {
+const testDir = (() => {
   const { join } = require('path')
   const { tmpdir } = require('os')
   return join(tmpdir(), `bakin-test-prompt-${Date.now()}`)
-})
+})()
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ messaging: testDir }),
 }))
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
+    info: mock(), warn: mock(), error: mock(), debug: mock(),
   }),
 }))
 

@@ -6,24 +6,24 @@
  * never shell exec (avoids shell-injection surface even though we build
  * args by hand).
  */
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-memory-cli-${Date.now()}`)
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-vi.mock('../../../src/core/settings', () => ({
+mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     openclaw: {
       binaryPath: '/fake/bin/openclaw',
@@ -44,7 +44,7 @@ type ExecFileCall = {
 let lastCall: ExecFileCall | null = null
 let nextResult: { stdout?: string; stderr?: string; err?: Error } = { stdout: '{}' }
 
-vi.mock('child_process', () => ({
+mock.module('child_process', () => ({
   execFile: (cmd: string, args: string[], options: { timeout?: number; maxBuffer?: number }, cb: ExecFileCallback) => {
     lastCall = { cmd, args, options }
     const { stdout = '', stderr = '', err = null } = nextResult

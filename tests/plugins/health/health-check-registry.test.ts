@@ -5,24 +5,24 @@
  * but without any builtin-seeding assertions — this registry is
  * plugin-contributions-only.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-health-registry-${Date.now()}`)
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -7,17 +7,17 @@ import type { PluginSettingsSchema } from '@/lib/plugin-types'
 
 const testDir = join(tmpdir(), `bakin-test-settings-renderer-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-vi.mock('../../packages/core/src/content-dir', () => ({
+mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-const toastAdd = vi.fn()
-vi.mock('@/hooks/use-toast', () => ({
+const toastAdd = mock()
+mock.module('@/hooks/use-toast', () => ({
   useToastStore: (selector: (s: { add: typeof toastAdd }) => unknown) => selector({ add: toastAdd }),
 }))
 
@@ -52,7 +52,7 @@ describe('PluginSettingsRenderer — list field', () => {
         pluginId="messaging"
         schema={listSchema}
         values={{ contentTypes: [{ id: 'post', label: 'Post' }, { id: 'video', label: 'Video' }] }}
-        onSave={vi.fn()}
+        onSave={mock()}
       />
     )
     const inputs = screen.getAllByRole('textbox') as HTMLInputElement[]
@@ -65,7 +65,7 @@ describe('PluginSettingsRenderer — list field', () => {
         pluginId="messaging"
         schema={listSchema}
         values={{ contentTypes: [{ id: 'post', label: 'Post' }] }}
-        onSave={vi.fn()}
+        onSave={mock()}
       />
     )
     fireEvent.click(screen.getByRole('button', { name: /add content type/i }))
@@ -82,7 +82,7 @@ describe('PluginSettingsRenderer — list field', () => {
           { id: 'b', label: 'B' },
           { id: 'c', label: 'C' },
         ] }}
-        onSave={vi.fn()}
+        onSave={mock()}
       />
     )
     expect(screen.getByRole('button', { name: /add content type/i }).hasAttribute('disabled')).toBe(true)
@@ -97,7 +97,7 @@ describe('PluginSettingsRenderer — list field', () => {
           { id: 'post', label: 'Post' },
           { id: 'video', label: 'Video' },
         ] }}
-        onSave={vi.fn()}
+        onSave={mock()}
       />
     )
     fireEvent.click(screen.getByRole('button', { name: /delete row 1/i }))
@@ -111,14 +111,14 @@ describe('PluginSettingsRenderer — list field', () => {
         pluginId="messaging"
         schema={listSchema}
         values={{ contentTypes: [{ id: 'post', label: 'Post' }] }}
-        onSave={vi.fn()}
+        onSave={mock()}
       />
     )
     expect(screen.getByRole('button', { name: /delete row 1/i }).hasAttribute('disabled')).toBe(true)
   })
 
   it('saves edited values through onSave', async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined)
+    const onSave = mock().mockResolvedValue(undefined)
     render(
       <PluginSettingsRenderer
         pluginId="messaging"
@@ -137,7 +137,7 @@ describe('PluginSettingsRenderer — list field', () => {
   })
 
   it('blocks save with a toast when a required field is empty', () => {
-    const onSave = vi.fn()
+    const onSave = mock()
     render(
       <PluginSettingsRenderer
         pluginId="messaging"
@@ -161,7 +161,7 @@ describe('PluginSettingsRenderer — list field', () => {
         { ...listSchema.fields[0] as Extract<PluginSettingsSchema['fields'][number], { type: 'list' }>, uniqueField: 'id' },
       ],
     }
-    const onSave = vi.fn()
+    const onSave = mock()
     render(
       <PluginSettingsRenderer
         pluginId="messaging"
@@ -191,7 +191,7 @@ describe('PluginSettingsRenderer — list field', () => {
         { ...listSchema.fields[0] as Extract<PluginSettingsSchema['fields'][number], { type: 'list' }>, minItems: 3 },
       ],
     }
-    const onSave = vi.fn()
+    const onSave = mock()
     render(
       <PluginSettingsRenderer
         pluginId="messaging"

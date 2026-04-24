@@ -1,19 +1,19 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/antfly', () => ({
-  scanTable: vi.fn(async function* () {}),
+mock.module('@/core/antfly', () => ({
+  scanTable: mock(async function* () {}),
 }))
 
 import {
@@ -31,7 +31,7 @@ describe('search-reconcile', () => {
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-reconcile-'))
-    vi.clearAllMocks()
+    mock.clearAllMocks()
   })
 
   afterEach(() => {
@@ -262,7 +262,7 @@ describe('search-reconcile', () => {
     mkdirSync(join(tempDir, 'projects'), { recursive: true })
     writeFileSync(join(tempDir, 'projects', 'delta.md'), 'delta body')
 
-    const onSync = vi.fn(async () => {})
+    const onSync = mock(async () => {})
     const indexed: string[] = []
 
     await performStartupReconcile(
@@ -275,7 +275,7 @@ describe('search-reconcile', () => {
       },
     )
 
-    expect(onSync).toHaveBeenCalledOnce()
+    expect(onSync).toHaveBeenCalledTimes(1)
     expect(onSync).toHaveBeenCalledWith('projects/delta.md', 'delta body')
     expect(indexed).toEqual([])
   })

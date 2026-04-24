@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'bun:test'
 import { parseSchedule, cronToHuman } from '@bakin/schedule/lib/cron-parser'
 
 describe('schedule/cron-parser', () => {

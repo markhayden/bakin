@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ModelsPage } from '../../plugins/models/components/models-page'
 
-vi.mock('@/hooks/use-query-state', () => ({
+mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
     return React.useState(defaultValue)
@@ -14,23 +14,23 @@ vi.mock('@/hooks/use-query-state', () => ({
 const gatewayState = {
   restartNeeded: false,
   restarting: false,
-  restart: vi.fn(),
-  markDirty: vi.fn(),
+  restart: mock(),
+  markDirty: mock(),
 }
 
-vi.mock('@/hooks/use-gateway-status', () => ({
+mock.module('@/hooks/use-gateway-status', () => ({
   useGatewayStatus: () => gatewayState,
 }))
 
-vi.mock('@/components/plugin-header', () => ({
+mock.module('@/components/plugin-header', () => ({
   PluginHeader: ({ title }: { title: string }) => <div>{title}</div>,
 }))
 
-vi.mock('@/components/agent-avatar', () => ({
+mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <div>{agentId}</div>,
 }))
 
-vi.mock('@/components/model-select', () => ({
+mock.module('@/components/model-select', () => ({
   ModelSelect: ({
     value,
     onChange,
@@ -84,7 +84,7 @@ describe('ModelsPage component', () => {
 
   beforeEach(() => {
     cleanup()
-    vi.restoreAllMocks()
+    mock.restore()
     gatewayState.markDirty.mockReset()
     fetchCalls = []
     availableFetchCount = 0
@@ -109,7 +109,7 @@ describe('ModelsPage component', () => {
       sonnet: 'anthropic/claude-sonnet-4-6',
     }
 
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal('fetch', mock(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       const method = init?.method ?? 'GET'
       const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined

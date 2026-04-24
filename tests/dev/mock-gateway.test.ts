@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'bun:test'
 import { handleGatewayRequest } from '../../dev/imitation-crab/gateway'
 
 describe('mock gateway request handling', () => {

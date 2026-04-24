@@ -9,7 +9,7 @@
  * The team plugin is an adapter over OpenClaw; all OpenClaw-touching
  * modules are stubbed so the test never reads from ~/.openclaw/.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -24,7 +24,7 @@ const testDir = join(tmpdir(), `bakin-test-team-routes-${Date.now()}`)
 // Mandatory mocks — declared before any plugin import
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     agents: join(testDir, 'agents'),
@@ -32,7 +32,7 @@ vi.mock('../../../src/core/content-dir', () => ({
   }),
 }))
 
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     agents: join(testDir, 'agents'),
@@ -40,14 +40,14 @@ vi.mock('../../../packages/core/src/content-dir', () => ({
   }),
 }))
 
-const { logWarn, logInfo, logError, logDebug } = vi.hoisted(() => ({
-  logWarn: vi.fn(),
-  logInfo: vi.fn(),
-  logError: vi.fn(),
-  logDebug: vi.fn(),
-}))
+const { logWarn, logInfo, logError, logDebug } = (() => ({
+  logWarn: mock(),
+  logInfo: mock(),
+  logError: mock(),
+  logDebug: mock(),
+}))()
 
-vi.mock('../../../src/core/logger', () => ({
+mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
     info: logInfo,
     warn: logWarn,
@@ -56,74 +56,74 @@ vi.mock('../../../src/core/logger', () => ({
   }),
 }))
 
-vi.mock('../../../src/core/watcher', () => ({
-  registerSyncHook: vi.fn(),
-  registerUnlinkHook: vi.fn(),
+mock.module('../../../src/core/watcher', () => ({
+  registerSyncHook: mock(),
+  registerUnlinkHook: mock(),
 }))
 
 // OpenClaw HTTP client — no real gateway calls
-vi.mock('../../../src/core/openclaw-client', () => ({
-  sendMessage: vi.fn(async () => 'ok'),
-  invokeTool: vi.fn(async () => ({ ok: true })),
-  sendChannelMessage: vi.fn(async () => 'ok'),
-  restartGateway: vi.fn(async () => {}),
-  ping: vi.fn(async () => true),
-  getAgentLastReply: vi.fn(() => null),
+mock.module('../../../src/core/openclaw-client', () => ({
+  sendMessage: mock(async () => 'ok'),
+  invokeTool: mock(async () => ({ ok: true })),
+  sendChannelMessage: mock(async () => 'ok'),
+  restartGateway: mock(async () => {}),
+  ping: mock(async () => true),
+  getAgentLastReply: mock(() => null),
 }))
 
 // Settings — return a fully-shaped stub
-vi.mock('../../../src/core/settings', () => ({
+mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     mainAgentId: 'main',
     antfly: { enabled: false, auditTtl: undefined },
   }),
-  resetSettingsCache: vi.fn(),
+  resetSettingsCache: mock(),
 }))
 
-vi.mock('../../../src/core/main-agent', () => ({
+mock.module('../../../src/core/main-agent', () => ({
   getMainAgentId: () => 'main',
 }))
 
 // mcporter — would otherwise spawn child processes
-vi.mock('../../../src/core/mcporter', () => ({
-  syncConfig: vi.fn(() => []),
+mock.module('../../../src/core/mcporter', () => ({
+  syncConfig: mock(() => []),
 }))
 
 // agents — sendMessageToAgent is the only thing imported by team
-vi.mock('../../../src/core/agents', () => ({
-  sendMessageToAgent: vi.fn(async () => ({ ok: true })),
+mock.module('../../../src/core/agents', () => ({
+  sendMessageToAgent: mock(async () => ({ ok: true })),
 }))
 
-vi.mock('../../../src/core/agent-usage', () => ({
-  getAllAgentUsage: vi.fn(() => []),
+mock.module('../../../src/core/agent-usage', () => ({
+  getAllAgentUsage: mock(() => []),
 }))
 
-vi.mock('../../../src/lib/agents', () => ({
-  startAgent: vi.fn(async () => {}),
-  stopAgent: vi.fn(async () => {}),
+mock.module('../../../src/lib/agents', () => ({
+  startAgent: mock(async () => {}),
+  stopAgent: mock(async () => {}),
 }))
 
-vi.mock('../../../src/lib/content', () => ({
-  readHeartbeats: vi.fn(() => ({})),
+mock.module('../../../src/lib/content', () => ({
+  readHeartbeats: mock(() => ({})),
 }))
 
 // Shared mutable roster so individual tests can simulate missing agents
 // without redefining the full adapter mock.
-const { rosterAgents } = vi.hoisted(() => ({
+const { rosterAgents } = (() => ({
   rosterAgents: {
     current: [
       { id: 'main', name: 'Main', emoji: '🤖', role: 'Orchestrator', headshot: '' },
       { id: 'chef', name: 'Chef', emoji: '🌿', role: 'Cook', headshot: '' },
     ] as Array<{ id: string; name: string; emoji: string; role: string; headshot: string }>,
   },
-}))
+}))()
 
 // OpenClaw adapter — fully stubbed, never touches ~/.openclaw/
-vi.mock('@bakin/team/lib/openclaw-adapter', () => ({
-  listAgents: vi.fn(() => rosterAgents.current),
-  getAgentIds: vi.fn(() => rosterAgents.current.map((a) => a.id)),
-  getAgentModel: vi.fn(() => 'claude-opus-4'),
-  getAgentProfile: vi.fn((id: string) => ({
+mock.module('@bakin/team/lib/openclaw-adapter', () => ({
+  listAgents: mock(() => rosterAgents.current),
+  getAgentIds: mock(() => rosterAgents.current.map((a) => a.id)),
+  getAgentModel: mock(() => 'claude-opus-4'),
+  getAgentProfile: mock((id: string) => ({
     id,
     name: id,
     emoji: '🤖',
@@ -138,32 +138,32 @@ vi.mock('@bakin/team/lib/openclaw-adapter', () => ({
     heartbeatMd: null,
     subagentPerms: null,
   })),
-  listWorkspaceFiles: vi.fn(() => []),
-  readWorkspaceFile: vi.fn(() => null),
-  writeWorkspaceFile: vi.fn(() => {}),
-  listSkills: vi.fn(() => []),
-  readSkillFile: vi.fn(() => null),
-  listMemoryFiles: vi.fn(() => []),
-  readMemoryFile: vi.fn(() => null),
-  addAgent: vi.fn(async (input: Record<string, unknown>) => ({ id: input.id, workspace: `/tmp/ws/${input.id}` })),
-  removeAgent: vi.fn(async () => true),
-  removeFromAllowLists: vi.fn(),
-  updateAgentField: vi.fn(),
-  getOpenClawConfig: vi.fn(() => ({ agents: { list: [] } })),
-  openclawExec: vi.fn(async () => '{}'),
-  synthesizeIdentityMd: vi.fn(() => '# IDENTITY.md\n'),
-  addToAllowLists: vi.fn(),
-  setSubagentPermissions: vi.fn(),
-  updateAgentIdentity: vi.fn(async () => ['name', 'role']),
+  listWorkspaceFiles: mock(() => []),
+  readWorkspaceFile: mock(() => null),
+  writeWorkspaceFile: mock(() => {}),
+  listSkills: mock(() => []),
+  readSkillFile: mock(() => null),
+  listMemoryFiles: mock(() => []),
+  readMemoryFile: mock(() => null),
+  addAgent: mock(async (input: Record<string, unknown>) => ({ id: input.id, workspace: `/tmp/ws/${input.id}` })),
+  removeAgent: mock(async () => true),
+  removeFromAllowLists: mock(),
+  updateAgentField: mock(),
+  getOpenClawConfig: mock(() => ({ agents: { list: [] } })),
+  openclawExec: mock(async () => '{}'),
+  synthesizeIdentityMd: mock(() => '# IDENTITY.md\n'),
+  addToAllowLists: mock(),
+  setSubagentPermissions: mock(),
+  updateAgentIdentity: mock(async () => ['name', 'role']),
 }))
 
 // The team plugin's relative import path inside the plugin uses './lib/openclaw-adapter'.
 // Add a relative-path alias so vi.mock catches both shapes.
-vi.mock('../../../plugins/team/lib/openclaw-adapter', () => ({
-  listAgents: vi.fn(() => rosterAgents.current),
-  getAgentIds: vi.fn(() => rosterAgents.current.map((a) => a.id)),
-  getAgentModel: vi.fn(() => 'claude-opus-4'),
-  getAgentProfile: vi.fn((id: string) => ({
+mock.module('../../../plugins/team/lib/openclaw-adapter', () => ({
+  listAgents: mock(() => rosterAgents.current),
+  getAgentIds: mock(() => rosterAgents.current.map((a) => a.id)),
+  getAgentModel: mock(() => 'claude-opus-4'),
+  getAgentProfile: mock((id: string) => ({
     id,
     name: id,
     emoji: '🤖',
@@ -178,23 +178,23 @@ vi.mock('../../../plugins/team/lib/openclaw-adapter', () => ({
     heartbeatMd: null,
     subagentPerms: null,
   })),
-  listWorkspaceFiles: vi.fn(() => []),
-  readWorkspaceFile: vi.fn(() => null),
-  writeWorkspaceFile: vi.fn(() => {}),
-  listSkills: vi.fn(() => []),
-  readSkillFile: vi.fn(() => null),
-  listMemoryFiles: vi.fn(() => []),
-  readMemoryFile: vi.fn(() => null),
-  addAgent: vi.fn(async (input: Record<string, unknown>) => ({ id: input.id, workspace: `/tmp/ws/${input.id}` })),
-  removeAgent: vi.fn(async () => true),
-  removeFromAllowLists: vi.fn(),
-  updateAgentField: vi.fn(),
-  getOpenClawConfig: vi.fn(() => ({ agents: { list: [] } })),
-  openclawExec: vi.fn(async () => '{}'),
-  synthesizeIdentityMd: vi.fn(() => '# IDENTITY.md\n'),
-  addToAllowLists: vi.fn(),
-  setSubagentPermissions: vi.fn(),
-  updateAgentIdentity: vi.fn(async () => ['name', 'role']),
+  listWorkspaceFiles: mock(() => []),
+  readWorkspaceFile: mock(() => null),
+  writeWorkspaceFile: mock(() => {}),
+  listSkills: mock(() => []),
+  readSkillFile: mock(() => null),
+  listMemoryFiles: mock(() => []),
+  readMemoryFile: mock(() => null),
+  addAgent: mock(async (input: Record<string, unknown>) => ({ id: input.id, workspace: `/tmp/ws/${input.id}` })),
+  removeAgent: mock(async () => true),
+  removeFromAllowLists: mock(),
+  updateAgentField: mock(),
+  getOpenClawConfig: mock(() => ({ agents: { list: [] } })),
+  openclawExec: mock(async () => '{}'),
+  synthesizeIdentityMd: mock(() => '# IDENTITY.md\n'),
+  addToAllowLists: mock(),
+  setSubagentPermissions: mock(),
+  updateAgentIdentity: mock(async () => ['name', 'role']),
 }))
 
 // ---------------------------------------------------------------------------
@@ -231,7 +231,7 @@ describe('team plugin — activation', () => {
   it('registers the team search content type', async () => {
     const activated = await activatePlugin(teamPlugin, testDir)
     expect(activated.ctx.search.registerContentType).toHaveBeenCalled()
-    const call = (activated.ctx.search.registerContentType as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+    const call = (activated.ctx.search.registerContentType as ReturnType<typeof mock>).mock.calls[0]?.[0]
     expect(call?.table).toBe('team')
   })
 })
@@ -477,14 +477,14 @@ describe('team plugin — reportsTo graceful degradation on read', () => {
 
 describe('team plugin — POST / (create agent with new fields)', () => {
   let activated: ActivatedPlugin
-  let adapter: Record<string, ReturnType<typeof vi.fn>>
+  let adapter: Record<string, ReturnType<typeof mock>>
 
   beforeAll(async () => {
     activated = await activatePlugin(teamPlugin, testDir)
   })
 
   beforeEach(async () => {
-    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof vi.fn>>
+    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof mock>>
     adapter.addAgent.mockClear()
     adapter.addToAllowLists.mockClear()
   })
@@ -560,14 +560,14 @@ describe('team plugin — POST / (create agent with new fields)', () => {
 
 describe('team plugin — DELETE /:agentId (allowlist cleanup)', () => {
   let activated: ActivatedPlugin
-  let adapter: Record<string, ReturnType<typeof vi.fn>>
+  let adapter: Record<string, ReturnType<typeof mock>>
 
   beforeAll(async () => {
     activated = await activatePlugin(teamPlugin, testDir)
   })
 
   beforeEach(async () => {
-    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof vi.fn>>
+    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof mock>>
     adapter.removeAgent.mockClear()
     adapter.removeFromAllowLists.mockClear()
   })
@@ -589,14 +589,14 @@ describe('team plugin — DELETE /:agentId (allowlist cleanup)', () => {
 
 describe('team plugin — PUT /:agentId/identity', () => {
   let activated: ActivatedPlugin
-  let adapter: Record<string, ReturnType<typeof vi.fn>>
+  let adapter: Record<string, ReturnType<typeof mock>>
 
   beforeAll(async () => {
     activated = await activatePlugin(teamPlugin, testDir)
   })
 
   beforeEach(async () => {
-    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof vi.fn>>
+    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof mock>>
     adapter.updateAgentIdentity.mockClear()
     adapter.updateAgentIdentity.mockResolvedValue(['name', 'role'])
   })
@@ -634,14 +634,14 @@ describe('team plugin — PUT /:agentId/identity', () => {
 
 describe('team plugin — PUT /:agentId/permissions', () => {
   let activated: ActivatedPlugin
-  let adapter: Record<string, ReturnType<typeof vi.fn>>
+  let adapter: Record<string, ReturnType<typeof mock>>
 
   beforeAll(async () => {
     activated = await activatePlugin(teamPlugin, testDir)
   })
 
   beforeEach(async () => {
-    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof vi.fn>>
+    adapter = await import('../../../plugins/team/lib/openclaw-adapter') as unknown as Record<string, ReturnType<typeof mock>>
     adapter.setSubagentPermissions.mockClear()
     rosterAgents.current = [
       { id: 'main', name: 'Main', emoji: '🤖', role: 'Orchestrator', headshot: '' },

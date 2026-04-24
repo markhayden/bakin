@@ -14,32 +14,32 @@
  *      inactive case).
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-node-config-drawer-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({}))
 
 // Stub AgentSelect so the agent-field renderer renders in jsdom without
 // hitting the agent store.
-vi.mock('@bakin/team/hooks/use-agent-store', () => ({
+mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgentList: () => [
     { id: 'chef', name: 'Chef' },
     { id: 'pixel', name: 'Pixel' },
   ],
 }))
-vi.mock('@/components/agent-avatar', () => ({
+mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
 }))
 
@@ -64,7 +64,7 @@ describe('NodeConfigDrawer', () => {
   })
 
   it('calls onApply with the merged patch when Apply is clicked on valid input', () => {
-    const onApply = vi.fn()
+    const onApply = mock()
     render(
       <NodeConfigDrawer
         step={{ id: 'approve', type: 'gate', label: 'Approve', on_approve: 'done' }}
@@ -81,7 +81,7 @@ describe('NodeConfigDrawer', () => {
   })
 
   it('surfaces Zod errors when required fields are missing', () => {
-    const onApply = vi.fn()
+    const onApply = mock()
     render(
       <NodeConfigDrawer
         // gate with empty on_approve should fail min(1) validation.
@@ -109,7 +109,7 @@ describe('NodeConfigDrawer', () => {
   })
 
   it('closes via the X button', () => {
-    const onClose = vi.fn()
+    const onClose = mock()
     render(
       <NodeConfigDrawer
         step={{ id: 's1', type: 'agent', label: 'S', agent: 'chef' }}

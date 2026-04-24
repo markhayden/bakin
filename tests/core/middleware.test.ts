@@ -1,13 +1,13 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 import { Readable, PassThrough } from 'stream'
 import type { IncomingMessage, ServerResponse } from 'http'
 
-vi.mock('../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
@@ -40,9 +40,9 @@ function mockReq(opts: {
 /** Create a mock ServerResponse that captures writeHead + end calls. */
 function mockRes() {
   const res = {
-    writeHead: vi.fn(),
-    end: vi.fn(),
-  } as unknown as ServerResponse & { writeHead: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> }
+    writeHead: mock(),
+    end: mock(),
+  } as unknown as ServerResponse & { writeHead: ReturnType<typeof mock>; end: ReturnType<typeof mock> }
   return res
 }
 
@@ -160,7 +160,7 @@ describe('middleware', () => {
     it('calls handler with parsed body and sends result', async () => {
       const req = mockReq({ method: 'POST', contentType: 'application/json', body: '{"name":"test"}' })
       const res = mockRes()
-      const handler = vi.fn().mockResolvedValue({ created: true })
+      const handler = mock().mockResolvedValue({ created: true })
 
       await handleJsonPost(req, res, handler)
 
@@ -173,7 +173,7 @@ describe('middleware', () => {
     it('returns 400 when content type is wrong', async () => {
       const req = mockReq({ method: 'POST', contentType: 'text/plain', body: '{}' })
       const res = mockRes()
-      const handler = vi.fn()
+      const handler = mock()
 
       await handleJsonPost(req, res, handler)
 
@@ -184,7 +184,7 @@ describe('middleware', () => {
     it('returns 400 when body is invalid JSON', async () => {
       const req = mockReq({ method: 'POST', contentType: 'application/json', body: '{ broken' })
       const res = mockRes()
-      const handler = vi.fn()
+      const handler = mock()
 
       await handleJsonPost(req, res, handler)
 
@@ -197,7 +197,7 @@ describe('middleware', () => {
     it('returns 500 when handler throws', async () => {
       const req = mockReq({ method: 'POST', contentType: 'application/json', body: '{"ok":true}' })
       const res = mockRes()
-      const handler = vi.fn().mockRejectedValue(new Error('handler boom'))
+      const handler = mock().mockRejectedValue(new Error('handler boom'))
 
       await handleJsonPost(req, res, handler)
 
@@ -209,7 +209,7 @@ describe('middleware', () => {
     it('returns { ok: true } when handler returns void', async () => {
       const req = mockReq({ method: 'POST', contentType: 'application/json', body: '{}' })
       const res = mockRes()
-      const handler = vi.fn().mockResolvedValue(undefined)
+      const handler = mock().mockResolvedValue(undefined)
 
       await handleJsonPost(req, res, handler)
 

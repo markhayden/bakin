@@ -10,18 +10,18 @@
  * nothing.  Clicking a tab must write back through setTabParam so the URL
  * stays the source of truth.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-agent-detail-tabs-${Date.now()}`)
 
-vi.mock('@/core/content-dir', () => ({
+mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
@@ -30,32 +30,32 @@ vi.mock('../../../src/core/content-dir', () => ({
 // seed that each test sets so we can simulate different URLs without touching
 // jsdom's window.location.
 const queryState: { tab: string } = { tab: 'profile' }
-const setTabSpy = vi.fn((v: string) => { queryState.tab = v })
+const setTabSpy = mock((v: string) => { queryState.tab = v })
 
-vi.mock('@/hooks/use-query-state', () => ({
+mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => {
     // Mirror the real hook's shape: [value, setValue, pushValue].  The
     // component uses setTabParam (the replace variant) to switch tabs.
-    return [queryState.tab || defaultValue, setTabSpy, vi.fn()]
+    return [queryState.tab || defaultValue, setTabSpy, mock()]
   },
 }))
 
-vi.mock('@/hooks/use-gateway-status', () => ({
-  useGatewayStatus: () => ({ restartNeeded: false, restart: vi.fn(), restarting: false, markDirty: vi.fn() }),
+mock.module('@/hooks/use-gateway-status', () => ({
+  useGatewayStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
 }))
 
-vi.mock('../../../plugins/team/hooks/use-agent-store', () => ({
+mock.module('../../../plugins/team/hooks/use-agent-store', () => ({
   useAgentStore: (selector: (s: unknown) => unknown) =>
-    selector({ teams: [], displaySettings: {}, load: vi.fn() }),
+    selector({ teams: [], displaySettings: {}, load: mock() }),
   useAgentColor: () => '#888',
   useMainAgentId: () => 'main',
 }))
 
 // Keep the heavy tab content out of the render tree — we only care about the
 // header/tab-bar wiring here.
-vi.mock('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
-vi.mock('@/components/markdown-content', () => ({ MarkdownContent: () => <div /> }))
-vi.mock('@/components/model-select', () => ({ ModelSelect: () => <div /> }))
+mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
+mock.module('@/components/markdown-content', () => ({ MarkdownContent: () => <div /> }))
+mock.module('@/components/model-select', () => ({ ModelSelect: () => <div /> }))
 
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
 
@@ -66,7 +66,7 @@ beforeEach(() => {
   setTabSpy.mockClear()
 
   // Minimal profile payload so the component falls out of its loading shell.
-  global.fetch = vi.fn((url: RequestInfo | URL) => {
+  global.fetch = mock((url: RequestInfo | URL) => {
     const u = String(url)
     if (u.includes('/api/plugins/team/') && !u.includes('/avatar')) {
       return Promise.resolve({
@@ -87,7 +87,7 @@ beforeEach(() => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) } as Response)
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
-  }) as typeof fetch
+  }) as unknown as typeof fetch
 })
 
 afterEach(() => {

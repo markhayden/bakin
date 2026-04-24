@@ -6,32 +6,32 @@
  * content-dir so the indexer writes offsets under the temp dir, never
  * ~/.bakin/.
  */
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, appendFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-memory-indexer-audit-${Date.now()}`)
 
-vi.mock('../../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir, audit: join(testDir, 'audit.jsonl') }),
 }))
-vi.mock('../../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir, audit: join(testDir, 'audit.jsonl') }),
 }))
-vi.mock('../../../src/core/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-vi.mock('../../../src/core/watcher', () => ({ watchFiles: vi.fn() }))
+mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
 // Defensive: prevent matchDurablePath (called in handleWatcherEvent routing)
 // from touching the real ~/.openclaw/ home during audit-tier tests.
-vi.mock('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/core/src/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
-vi.mock('../../../src/core/main-agent', () => ({
+mock.module('../../../src/core/main-agent', () => ({
   tryGetMainAgentId: () => null,
 }))
 
@@ -51,34 +51,34 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
     pluginId: 'memory',
     storage: {} as PluginContext['storage'],
     events: {} as PluginContext['events'],
-    registerNav: vi.fn(),
-    registerRoute: vi.fn(),
-    registerSlot: vi.fn(),
-    registerExecTool: vi.fn(),
-    registerSkill: vi.fn(),
-    watchFiles: vi.fn(),
+    registerNav: mock(),
+    registerRoute: mock(),
+    registerSlot: mock(),
+    registerExecTool: mock(),
+    registerSkill: mock(),
+    watchFiles: mock(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
-    updateSettings: vi.fn(),
-    activity: { log: vi.fn(), audit: vi.fn() },
+    updateSettings: mock(),
+    activity: { log: mock(), audit: mock() },
     search: {
-      registerContentType: vi.fn(),
-      registerFileBackedContentType: vi.fn(),
-      index: vi.fn(async (key: string, doc: Record<string, unknown>) => {
+      registerContentType: mock(),
+      registerFileBackedContentType: mock(),
+      index: mock(async (key: string, doc: Record<string, unknown>) => {
         indexed.push({ key, doc })
       }),
-      remove: vi.fn(async (key: string) => {
+      remove: mock(async (key: string) => {
         removed.push(key)
       }),
-      transform: vi.fn(async () => {}),
-      query: vi.fn(async () => ({
+      transform: mock(async () => {}),
+      query: mock(async () => ({
         results: [],
         meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const },
       })),
     },
     hooks: {
-      register: vi.fn(() => () => {}),
-      has: vi.fn(() => false),
-      invoke: vi.fn(async () => undefined),
+      register: mock(() => () => {}),
+      has: mock(() => false),
+      invoke: mock(async () => undefined),
     },
   } as unknown as PluginContext
   return { ctx, indexed, removed }

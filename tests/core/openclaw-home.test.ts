@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, mock } from 'bun:test'
 
 // These tests exercise the getOpenClawHome/getOpenClawPath fallback path
 // that resolves against os.homedir(). The runtime guard in openclaw-home.ts
@@ -16,17 +16,17 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 // factories are hoisted above consts and would TDZ-error if they closed
 // over them.
 
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os')
+mock.module('os', async () => {
+  const actual = await import('os')
   return { ...actual, homedir: () => '/tmp/bakin-test-module-home-fake' }
 })
 
 // Satisfy the content-dir mock requirement even though these tests don't
 // touch it — any transitive import could reach it otherwise.
-vi.mock('../../packages/core/src/content-dir', () => ({
+mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => '/tmp/bakin-test-guard-home-fake',
   getBakinPaths: () => ({ home: '/tmp/bakin-test-guard-home-fake' }),
-  resetContentDir: vi.fn(),
+  resetContentDir: mock(),
 }))
 
 describe('openclaw-home', () => {

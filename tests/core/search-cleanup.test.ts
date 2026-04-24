@@ -1,16 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 
-vi.mock('@/core/logger', () => ({
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
   }),
 }))
 
-vi.mock('@/core/settings', () => ({
-  getSettings: vi.fn(() => ({
+mock.module('@/core/settings', () => ({
+  getSettings: mock(() => ({
     antfly: {
       enabled: true,
       cleanupInterval: '24h',
@@ -18,33 +18,33 @@ vi.mock('@/core/settings', () => ({
   })),
 }))
 
-vi.mock('@/core/antfly', () => ({
-  enabled: vi.fn(() => true),
-  scanTable: vi.fn(),
-  batchRemove: vi.fn(async () => 0),
+mock.module('@/core/antfly', () => ({
+  enabled: mock(() => true),
+  scanTable: mock(),
+  batchRemove: mock(async () => 0),
 }))
 
-vi.mock('@/core/search-registry', () => ({
-  getContentTypes: vi.fn(),
+mock.module('@/core/search-registry', () => ({
+  getContentTypes: mock(),
 }))
 
 import { runCleanup } from '@/core/search-cleanup'
 import * as antflyMod from '@/core/antfly'
 import { getContentTypes } from '@/core/search-registry'
 
-const mockScanTable = antflyMod.scanTable as ReturnType<typeof vi.fn>
-const mockBatchRemove = antflyMod.batchRemove as ReturnType<typeof vi.fn>
-const mockGetContentTypes = getContentTypes as ReturnType<typeof vi.fn>
+const mockScanTable = antflyMod.scanTable as ReturnType<typeof mock>
+const mockBatchRemove = antflyMod.batchRemove as ReturnType<typeof mock>
+const mockGetContentTypes = getContentTypes as ReturnType<typeof mock>
 
 describe('search-cleanup', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
     // Reset the running flag
     ;(globalThis as any).__bakinSearchCleanupRunning = false
   })
 
   it('removes orphaned documents', async () => {
-    const verifyExists = vi.fn()
+    const verifyExists = mock()
       .mockResolvedValueOnce(true)  // key-1 exists
       .mockResolvedValueOnce(false) // key-2 orphan
       .mockResolvedValueOnce(true)  // key-3 exists
@@ -81,7 +81,7 @@ describe('search-cleanup', () => {
         ['bakin_empty', {
           table: 'empty',
           pluginId: 'empty',
-          verifyExists: vi.fn(),
+          verifyExists: mock(),
           reindex: async function* () {},
         }],
       ])
@@ -98,7 +98,7 @@ describe('search-cleanup', () => {
   })
 
   it('handles verifyExists errors gracefully', async () => {
-    const verifyExists = vi.fn()
+    const verifyExists = mock()
       .mockResolvedValueOnce(true)
       .mockRejectedValueOnce(new Error('boom'))
 
@@ -138,13 +138,13 @@ describe('search-cleanup', () => {
         ['bakin_tasks', {
           table: 'tasks',
           pluginId: 'tasks',
-          verifyExists: vi.fn().mockResolvedValue(true),
+          verifyExists: mock().mockResolvedValue(true),
           reindex: async function* () {},
         }],
         ['bakin_assets', {
           table: 'assets',
           pluginId: 'assets',
-          verifyExists: vi.fn().mockResolvedValue(false),
+          verifyExists: mock().mockResolvedValue(false),
           reindex: async function* () {},
         }],
       ])
