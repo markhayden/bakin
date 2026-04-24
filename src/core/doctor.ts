@@ -1514,7 +1514,7 @@ function checkTaskPositionIntegrity(autoFix: boolean): DiagnosticResult[] {
           case 'queued': col = state.column === 'backlog' ? 'backlog' : 'todo'; break
           case 'running': col = 'inProgress'; break
           case 'waiting': col = row.blocked_task_id ? 'blocked' : 'review'; break
-          case 'succeeded': col = (state.archived || state.confirmed) ? 'archived' : 'done'; break
+          case 'succeeded': col = state.archived ? 'archived' : 'done'; break
           default: col = 'backlog'
         }
 
