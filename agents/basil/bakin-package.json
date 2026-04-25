@@ -1,0 +1,44 @@
+{
+  "id": "basil",
+  "kind": "agent",
+  "name": "Basil",
+  "version": "0.1.0",
+  "description": "Nutritionist + food content creator. Orchestrates Pixel and Rolo for daily food / nutrition posts.",
+  "bakin": "^1.0.0",
+  "author": "Made in Wyo",
+  "agent": {
+    "identity": { "name": "Basil", "emoji": "🥗" },
+    "role": "Nutritionist + food content creator",
+    "dispatchableBy": ["main"],
+    "tags": ["content", "food", "nutrition", "betterfit"],
+    "allowedTools": [
+      "bakin_exec_tasks_*",
+      "bakin_exec_assets_*",
+      "bakin_exec_get_paths",
+      "bakin_exec_log",
+      "bakin_exec_heartbeat"
+    ],
+    "allowedSkills": []
+  },
+  "install": {
+    "createIfMissing": true,
+    "adoptIfExists": true,
+    "writeWorkspaceFiles": true,
+    "installSkills": true,
+    "installWorkflows": true,
+    "enableKnowledge": ["food-content-craft"]
+  },
+  "contributions": {
+    "workspaceFiles": [
+      "workspace/SOUL.md",
+      "workspace/IDENTITY.md",
+      "workspace/AGENTS.md",
+      "workspace/TOOLS.md"
+    ],
+    "knowledge": [
+      "knowledge/food-content-craft.md",
+      "knowledge/orchestration-playbook.md"
+    ],
+    "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
+  }
+}
