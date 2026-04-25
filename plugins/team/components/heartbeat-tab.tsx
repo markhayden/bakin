@@ -14,7 +14,7 @@ import { MarkdownContent } from '@bakin/sdk/components'
 import type { HeartbeatRaw } from '../types'
 import { EmptyState } from './empty-state'
 
-const HEARTBEAT_DISABLED_REASON = 'Heartbeats are agent-authored — they\'re written by the agent itself via the bakin_exec_heartbeat tool. Editing from the UI would just get overwritten on the next dispatch.'
+const HEARTBEAT_DISABLED_REASON = 'HEARTBEAT.md is an agent-maintained narrative — the agent updates it itself as it works. Editing from the UI would conflict with what the agent next writes.'
 
 export interface HeartbeatTabProps {
   agentId: string
@@ -85,10 +85,13 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
         title="No heartbeat yet"
         description={
           <>
-            Heartbeats appear here once this agent writes its first
+            This agent hasn't written a
             {' '}
-            <code className="font-mono text-foreground/80">HEARTBEAT.md</code>.
-            Most agents update theirs at the end of every task.
+            <code className="font-mono text-foreground/80">HEARTBEAT.md</code>
+            {' '}
+            yet — it appears here once they do. (Distinct from the JSON
+            status signal at <code className="font-mono text-foreground/80">~/.bakin/heartbeats/{'{id}'}.json</code>;
+            this tab shows the agent's narrative file in their workspace.)
           </>
         }
       />

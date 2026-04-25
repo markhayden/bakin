@@ -150,8 +150,6 @@ export function getWorkspacePath(agentId: string): string {
 
 // ─── Workspace File Operations ───────────────────────────────────────────────
 
-const WORKSPACE_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md', 'USER.md', 'BOOTSTRAP.md'] as const
-
 /** Read a workspace file for an agent. Returns null if missing. */
 export function readWorkspaceFile(agentId: string, filename: string): string | null {
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
