@@ -30,9 +30,9 @@ type Tab = 'overview' | 'memory' | 'heartbeat' | 'soul' | 'rules' | 'tools' | 's
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'soul', label: 'Soul' },
   { id: 'memory', label: 'Memory' },
   { id: 'heartbeat', label: 'Heartbeat' },
-  { id: 'soul', label: 'Soul' },
   { id: 'rules', label: 'Rules' },
   { id: 'tools', label: 'Tools' },
   { id: 'skills', label: 'Skills' },
