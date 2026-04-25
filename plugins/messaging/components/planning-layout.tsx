@@ -247,7 +247,7 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
       </div>
 
       {/* Split layout */}
-      <div className="flex flex-1 overflow-hidden gap-6">
+      <div className="flex flex-1 overflow-hidden gap-6 pt-5">
         {/* Chat panel */}
         <div className={`flex-1 min-w-0 ${showReview ? 'md:w-[60%]' : 'w-full'}`}>
           <SessionChat

@@ -108,6 +108,14 @@ mock.module('../../../src/core/agent-usage', () => ({
   getAllAgentUsage: mock(() => []),
 }))
 
+mock.module('../../../src/core/usage', () => ({
+  getStatsByMs: mock(() => ({ total: 0, errors: 0 })),
+}))
+
+mock.module('../../../plugins/team/lib/session-reader', () => ({
+  readLatestSessionTranscript: mock(() => null),
+}))
+
 mock.module('../../../src/lib/agents', () => ({
   startAgent: mock(async () => {}),
   stopAgent: mock(async () => {}),
@@ -165,6 +173,7 @@ mock.module('@bakin/team/lib/openclaw-adapter', () => ({
   addToAllowLists: mock(),
   setSubagentPermissions: mock(),
   updateAgentIdentity: mock(async () => ['name', 'role']),
+  readHeartbeatRaw: mock(() => null),
 }))
 
 // The team plugin's relative import path inside the plugin uses './lib/openclaw-adapter'.
@@ -205,6 +214,7 @@ mock.module('../../../plugins/team/lib/openclaw-adapter', () => ({
   addToAllowLists: mock(),
   setSubagentPermissions: mock(),
   updateAgentIdentity: mock(async () => ['name', 'role']),
+  readHeartbeatRaw: mock(() => null),
 }))
 
 // ---------------------------------------------------------------------------
@@ -689,5 +699,118 @@ describe('team plugin — PUT /:agentId/permissions', () => {
     })
     expect(status).toBe(400)
     expect((body as { error: string }).error).toMatch(/ghost/)
+  })
+})
+
+describe('team plugin — GET /:agentId/heartbeat', () => {
+  let activated: ActivatedPlugin
+
+  beforeAll(async () => {
+    activated = await activatePlugin(teamPlugin, testDir)
+  })
+
+  it('rejects missing agentId with 400', async () => {
+    const route = findRoute(activated.routes, 'GET', '/:agentId/heartbeat')!
+    const { status } = await callRoute(route, activated.ctx, { searchParams: {} })
+    expect(status).toBe(400)
+  })
+
+  it('returns null heartbeat when none exists', async () => {
+    const adapterMod = await import('../../../plugins/team/lib/openclaw-adapter')
+    const spy = adapterMod.readHeartbeatRaw as ReturnType<typeof mock>
+    spy.mockReturnValueOnce(null)
+
+    const route = findRoute(activated.routes, 'GET', '/:agentId/heartbeat')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { agentId: 'main' } })
+    expect(status).toBe(200)
+    expect(body).toEqual({ ok: true, heartbeat: null })
+  })
+
+  it('returns content + lastUpdated when the file exists', async () => {
+    const adapterMod = await import('../../../plugins/team/lib/openclaw-adapter')
+    const spy = adapterMod.readHeartbeatRaw as ReturnType<typeof mock>
+    spy.mockReturnValueOnce({ content: '## Alive', lastUpdated: '2026-04-25T10:00:00.000Z' })
+
+    const route = findRoute(activated.routes, 'GET', '/:agentId/heartbeat')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { agentId: 'pixel' } })
+    expect(status).toBe(200)
+    expect(body).toEqual({
+      ok: true,
+      heartbeat: { content: '## Alive', lastUpdated: '2026-04-25T10:00:00.000Z' },
+    })
+  })
+})
+
+describe('team plugin — GET /:agentId/active-context', () => {
+  let activated: ActivatedPlugin
+
+  beforeAll(async () => {
+    activated = await activatePlugin(teamPlugin, testDir)
+  })
+
+  it('rejects missing agentId with 400', async () => {
+    const route = findRoute(activated.routes, 'GET', '/:agentId/active-context')!
+    const { status } = await callRoute(route, activated.ctx, { searchParams: {} })
+    expect(status).toBe(400)
+  })
+
+  it('returns transcript=null when no session exists', async () => {
+    const sessionMod = await import('../../../plugins/team/lib/session-reader')
+    const spy = sessionMod.readLatestSessionTranscript as ReturnType<typeof mock>
+    spy.mockReturnValueOnce(null)
+
+    const route = findRoute(activated.routes, 'GET', '/:agentId/active-context')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { agentId: 'main' } })
+    expect(status).toBe(200)
+    expect(body).toEqual({ ok: true, transcript: null })
+  })
+
+  it('returns the parsed transcript and respects the max query param', async () => {
+    const sessionMod = await import('../../../plugins/team/lib/session-reader')
+    const spy = sessionMod.readLatestSessionTranscript as ReturnType<typeof mock>
+    const transcript = {
+      sessionId: 'sess-1',
+      sessionStarted: '2026-04-25T10:00:00Z',
+      messages: [{ role: 'user', content: 'hi' }],
+      truncated: false,
+      totalMessages: 1,
+    }
+    spy.mockReturnValueOnce(transcript)
+
+    const route = findRoute(activated.routes, 'GET', '/:agentId/active-context')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { agentId: 'pixel', max: '50' } })
+    expect(status).toBe(200)
+    expect(body).toEqual({ ok: true, transcript })
+    expect(spy).toHaveBeenCalledWith('pixel', { maxMessages: 50 })
+  })
+})
+
+describe('team plugin — GET /:agentId/recent-activity', () => {
+  let activated: ActivatedPlugin
+
+  beforeAll(async () => {
+    activated = await activatePlugin(teamPlugin, testDir)
+  })
+
+  it('rejects missing agentId with 400', async () => {
+    const route = findRoute(activated.routes, 'GET', '/:agentId/recent-activity')!
+    const { status } = await callRoute(route, activated.ctx, { searchParams: {} })
+    expect(status).toBe(400)
+  })
+
+  it('returns counts across 5m / 1h / 24h windows + sinceServerStart', async () => {
+    const usageMod = await import('../../../src/core/usage')
+    const spy = usageMod.getStatsByMs as ReturnType<typeof mock>
+    spy.mockReturnValueOnce({ total: 1, errors: 0 })
+       .mockReturnValueOnce({ total: 5, errors: 1 })
+       .mockReturnValueOnce({ total: 12, errors: 2 })
+
+    const route = findRoute(activated.routes, 'GET', '/:agentId/recent-activity')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { agentId: 'pixel' } })
+    expect(status).toBe(200)
+    const activity = (body as { activity: { windowMs: Record<string, number>; errors: Record<string, number>; sinceServerStart: string } }).activity
+    expect(activity.windowMs).toEqual({ '5m': 1, '1h': 5, '24h': 12 })
+    expect(activity.errors).toEqual({ '5m': 0, '1h': 1, '24h': 2 })
+    expect(activity.sinceServerStart).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
 })
