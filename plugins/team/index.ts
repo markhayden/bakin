@@ -7,8 +7,8 @@
  * Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw.
  */
 import { z } from 'zod'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
-import { join } from 'path'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'fs'
+import { basename, dirname, join, relative } from 'path'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { createLogger } from '../../src/core/logger'
 import { readHeartbeats } from '../../src/lib/content'
@@ -282,6 +282,166 @@ function getOrgStructure() {
 /** Module-level hook for batch-indexing agents — set during activate() */
 let batchIndexAgents: () => void = () => {}
 
+// ─── Agent-knowledge indexing helpers ────────────────────────────────────────
+
+/**
+ * Decompose a packages/agents/<dir>@<version>/knowledge/<lesson>.md path
+ * into the parts needed to build a search id + doc. Returns null on a
+ * non-conforming path (the watcher passes us anything that matches the
+ * glob; we trust the glob for happy-path inputs but defensively handle
+ * the edge cases).
+ */
+interface KnowledgeFileParts {
+  packageId: string
+  version: string
+  lessonId: string
+  agentId: string
+}
+
+function parseKnowledgeFilePath(rel: string): KnowledgeFileParts | null {
+  // rel example: 'packages/agents/pixel@0.1.0/knowledge/style.md'
+  const segments = rel.split('/')
+  if (segments.length < 5) return null
+  if (segments[0] !== 'packages' || segments[1] !== 'agents') return null
+  if (segments[3] !== 'knowledge') return null
+  const dirName = segments[2]
+  const lessonFile = segments[4]
+  if (!lessonFile.endsWith('.md')) return null
+  const at = dirName.lastIndexOf('@')
+  if (at === -1) return null
+  const packageId = dirName.slice(0, at)
+  const version = dirName.slice(at + 1)
+  const lessonId = lessonFile.replace(/\.md$/i, '')
+  // For kind:"agent" packages the package id IS the agent id; this matches
+  // the projection convention in src/core/agent-packages/projector.ts.
+  return { packageId, version, agentId: packageId, lessonId }
+}
+
+function agentKnowledgeFileToId(rel: string): string {
+  const parts = parseKnowledgeFilePath(rel)
+  if (!parts) return rel.replace(/[^a-zA-Z0-9_]+/g, '_')
+  return `${parts.packageId}@${parts.version}/${parts.lessonId}`
+}
+
+function agentKnowledgeKeyToFilePath(key: string): string | null {
+  const slash = key.indexOf('/')
+  if (slash === -1) return null
+  const dirPart = key.slice(0, slash)
+  const lesson = key.slice(slash + 1)
+  return join(getContentDir(), 'packages', 'agents', dirPart, 'knowledge', `${lesson}.md`)
+}
+
+interface KnowledgeDoc extends Record<string, unknown> {
+  title: string
+  body: string
+  package_id: string
+  agent_id: string
+  lesson_id: string
+  tags: string[]
+  default_enabled: 'true' | 'false'
+  updated_at: string
+}
+
+function parseKnowledgeFrontmatter(raw: string): {
+  title: string
+  body: string
+  tags: string[]
+  defaultEnabled: boolean
+} {
+  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
+  if (!match) return { title: '', body: raw.trim(), tags: [], defaultEnabled: false }
+  const body = match[2].trim()
+  let title = ''
+  let defaultEnabled = false
+  let tags: string[] = []
+  for (const line of match[1].split('\n')) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('title:')) {
+      title = trimmed.slice('title:'.length).trim().replace(/^['"]|['"]$/g, '')
+    } else if (trimmed.startsWith('defaultEnabled:')) {
+      defaultEnabled = trimmed.slice('defaultEnabled:'.length).trim() === 'true'
+    } else if (trimmed.startsWith('tags:')) {
+      const rest = trimmed.slice('tags:'.length).trim()
+      if (rest.startsWith('[') && rest.endsWith(']')) {
+        tags = rest
+          .slice(1, -1)
+          .split(',')
+          .map((t) => t.trim().replace(/^['"]|['"]$/g, ''))
+          .filter((t) => t.length > 0)
+      }
+    }
+  }
+  return { title, body, tags, defaultEnabled }
+}
+
+async function agentKnowledgeFileToDoc(rel: string): Promise<KnowledgeDoc | null> {
+  const parts = parseKnowledgeFilePath(rel)
+  if (!parts) return null
+  const abs = join(getContentDir(), rel)
+  if (!existsSync(abs)) return null
+  let raw: string
+  try {
+    raw = readFileSync(abs, 'utf-8')
+  } catch {
+    return null
+  }
+  const { title, body, tags, defaultEnabled } = parseKnowledgeFrontmatter(raw)
+  return {
+    title: title || parts.lessonId,
+    body,
+    package_id: parts.packageId,
+    agent_id: parts.agentId,
+    lesson_id: parts.lessonId,
+    tags,
+    default_enabled: defaultEnabled ? 'true' : 'false',
+    updated_at: new Date().toISOString(),
+  }
+}
+
+/**
+ * Walk every installed agent package's knowledge/ dir and yield
+ * (key, doc) pairs for the search index reindexer.
+ */
+function* agentKnowledgeReindexAll(): Generator<{ key: string; doc: KnowledgeDoc }> {
+  const root = join(getContentDir(), 'packages', 'agents')
+  if (!existsSync(root)) return
+  for (const dirent of readdirSync(root, { withFileTypes: true })) {
+    if (!dirent.isDirectory()) continue
+    const knowledgeDir = join(root, dirent.name, 'knowledge')
+    if (!existsSync(knowledgeDir)) continue
+    let stat
+    try { stat = statSync(knowledgeDir) } catch { continue }
+    if (!stat.isDirectory()) continue
+    for (const file of readdirSync(knowledgeDir)) {
+      if (!file.endsWith('.md')) continue
+      const rel = relative(getContentDir(), join(knowledgeDir, file))
+      const parts = parseKnowledgeFilePath(rel)
+      if (!parts) continue
+      const raw = readFileSync(join(knowledgeDir, file), 'utf-8')
+      const { title, body, tags, defaultEnabled } = parseKnowledgeFrontmatter(raw)
+      const key = `${parts.packageId}@${parts.version}/${parts.lessonId}`
+      yield {
+        key,
+        doc: {
+          title: title || parts.lessonId,
+          body,
+          package_id: parts.packageId,
+          agent_id: parts.agentId,
+          lesson_id: parts.lessonId,
+          tags,
+          default_enabled: defaultEnabled ? 'true' : 'false',
+          updated_at: new Date().toISOString(),
+        },
+      }
+    }
+  }
+}
+
+// Reference imports so unused-import linting doesn't fire when the
+// helpers above don't exercise every utility on every code path.
+void basename
+void dirname
+
 // ─── Plugin Definition ───────────────────────────────────────────────────────
 
 const teamPlugin: BakinPlugin = {
@@ -328,6 +488,53 @@ const teamPlugin: BakinPlugin = {
         // Agents are loaded from OpenClaw at runtime — use batch-index on load
       },
       verifyExists: async () => true, // Agents are managed by OpenClaw
+    })
+
+    // ─── Agent-knowledge content type (Phase F-4) ────────────────────────
+    //
+    // Indexes lesson markdown files shipped by installed agent-packages.
+    // Source: ~/.bakin/packages/agents/<id>@<version>/knowledge/*.md
+    //
+    // Frontmatter carries title / tags / defaultEnabled; body is the
+    // searchable content. The lesson's enabled state lives in the
+    // lockfile — not indexed here for V1; consumers filter that
+    // client-side by cross-referencing the lockfile.
+    ctx.search.registerFileBackedContentType({
+      table: 'agent-knowledge',
+      schema: {
+        title: { type: 'text' },
+        body: { type: 'text' },
+        package_id: { type: 'keyword' },
+        agent_id: { type: 'keyword' },
+        lesson_id: { type: 'keyword' },
+        tags: { type: 'keyword' },
+        default_enabled: { type: 'keyword' },
+        updated_at: { type: 'datetime' },
+      },
+      searchableFields: ['title', 'body'],
+      rerankField: 'body',
+      embeddingTemplate: '{{title}} {{body}}',
+      facets: ['package_id', 'agent_id', 'tags'],
+      chunker: { enabled: true, targetTokens: 250, overlapTokens: 30 },
+      filePatterns: [
+        {
+          // Match `packages/agents/<id>@<version>/knowledge/<lesson>.md`
+          // under the content dir. Subdir layout for the kind:"agent"
+          // install root is fixed by getPackageSourceDir.
+          pattern: 'packages/agents/*/knowledge/*.md',
+          fileToId: (rel) => agentKnowledgeFileToId(rel),
+          fileToDoc: async (rel) => agentKnowledgeFileToDoc(rel),
+        },
+      ],
+      reindex: async function* () {
+        for (const doc of agentKnowledgeReindexAll()) {
+          yield doc
+        }
+      },
+      verifyExists: async (key: string) => {
+        const path = agentKnowledgeKeyToFilePath(key)
+        return path !== null && existsSync(path)
+      },
     })
 
     /** Convert an agent to a search document */
