@@ -160,7 +160,7 @@ export function PlanningLayout({ sessionId, onBack, onSessionUpdated }: Props) {
   return (
     <div className="flex flex-col h-full" data-testid="planning-layout">
       {/* Session header */}
-      <div className="flex items-center gap-3 px-3 pt-5 pb-3 border-b border-border">
+      <div className="flex items-center gap-3 px-3 pb-3 border-b border-border">
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onBack}>
           <ArrowLeft className="w-4 h-4" />
         </Button>
