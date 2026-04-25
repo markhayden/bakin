@@ -1,0 +1,48 @@
+{
+  "id": "jessica-fetcher",
+  "kind": "agent",
+  "name": "Jessica Fetcher",
+  "version": "0.1.0",
+  "description": "Research agent — multi-source discovery, evidence gathering, synthesis support.",
+  "bakin": "^1.0.0",
+  "author": "Made in Wyo",
+  "agent": {
+    "identity": {
+      "name": "Jessica Fetcher",
+      "emoji": "🔎"
+    },
+    "role": "Research agent",
+    "dispatchableBy": ["main"],
+    "tags": ["research", "synthesis", "fact-finding"],
+    "allowedTools": [
+      "bakin_exec_tasks_*",
+      "bakin_exec_assets_*",
+      "bakin_exec_search_*",
+      "bakin_exec_get_paths",
+      "bakin_exec_log",
+      "bakin_exec_heartbeat"
+    ],
+    "allowedSkills": []
+  },
+  "install": {
+    "createIfMissing": true,
+    "adoptIfExists": true,
+    "writeWorkspaceFiles": true,
+    "installSkills": true,
+    "installWorkflows": true,
+    "enableKnowledge": ["source-hierarchy"]
+  },
+  "contributions": {
+    "workspaceFiles": [
+      "workspace/SOUL.md",
+      "workspace/IDENTITY.md",
+      "workspace/AGENTS.md",
+      "workspace/TOOLS.md"
+    ],
+    "knowledge": [
+      "knowledge/source-hierarchy.md",
+      "knowledge/parallel-lanes.md"
+    ],
+    "assets": ["assets/avatar.jpg"]
+  }
+}
