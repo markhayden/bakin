@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "updatedAt": "2026-04-24T00:00:00Z",
+  "agents": [
+    {
+      "id": "pixel",
+      "name": "Pixel",
+      "emoji": "🎨",
+      "description": "Image artist agent. Crafts prompts, iterates on outputs, owns visual quality.",
+      "tags": ["creative", "image", "design"],
+      "source": "github:markhayden/bakin-bits-official",
+      "ref": null,
+      "trust": "official"
+    },
+    {
+      "id": "rolo",
+      "name": "Rolo",
+      "emoji": "🎬",
+      "description": "Video producer agent. Generates video + audio, mixes finished assets.",
+      "tags": ["creative", "video", "audio"],
+      "source": "github:markhayden/bakin-bits-official",
+      "ref": null,
+      "trust": "official"
+    },
+    {
+      "id": "jessica-fetcher",
+      "name": "Jessica Fetcher",
+      "emoji": "🔎",
+      "description": "Research agent — multi-source discovery, evidence gathering, synthesis support.",
+      "tags": ["research", "synthesis"],
+      "source": "github:markhayden/bakin-bits-official",
+      "ref": null,
+      "trust": "official"
+    },
+    {
+      "id": "chef",
+      "name": "Chef",
+      "emoji": "🥗",
+      "description": "Nutritionist + food content creator. Orchestrates Pixel and Rolo for daily food / nutrition posts.",
+      "tags": ["content", "food", "nutrition"],
+      "source": "github:markhayden/bakin-bits-official",
+      "ref": null,
+      "trust": "official"
+    },
+    {
+      "id": "patch",
+      "name": "Patch",
+      "emoji": "⚙️",
+      "description": "Developer agent — API integrations, automation, debugging, tool extensions.",
+      "tags": ["dev", "automation"],
+      "source": "github:markhayden/bakin-bits-official",
+      "ref": null,
+      "trust": "official"
+    }
+  ]
+}

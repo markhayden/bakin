@@ -25,8 +25,10 @@ mock.module('@bakin/core/openclaw-home', () => ({
 
 import {
   registerPluginDefinition,
+  registerAgentPackageDefinition,
   registerUserDefinition,
   unregisterPluginDefinitions,
+  unregisterAgentPackageDefinitions,
   unregisterUserDefinition,
   getDefinition,
   listAll,
@@ -126,6 +128,73 @@ describe('source-registry', () => {
     })
   })
 
+  describe('agent-package registration', () => {
+    it('registers an agent-package-owned definition with source="agent-package"', () => {
+      registerAgentPackageDefinition('pixel', 'image-generation', def('Image Generation'))
+      const entry = getDefinition('image-generation')
+      expect(entry).toBeDefined()
+      expect(entry!.source).toBe('agent-package')
+      expect(entry!.packageId).toBe('pixel')
+      expect(entry!.pluginId).toBeUndefined()
+    })
+
+    it('throws when two different agent-packages register the same id', () => {
+      registerAgentPackageDefinition('pixel', 'shared', def('Pixel'))
+      expect(() =>
+        registerAgentPackageDefinition('rolo', 'shared', def('Rolo')),
+      ).toThrow(/already registered/)
+    })
+
+    it('lets the same package overwrite its own registration (update)', () => {
+      registerAgentPackageDefinition('pixel', 'gen', def('Old'))
+      expect(() => registerAgentPackageDefinition('pixel', 'gen', def('New'))).not.toThrow()
+      expect(getDefinition('gen')!.definition.name).toBe('New')
+    })
+
+    it('unregisterAgentPackageDefinitions removes all ids for that package', () => {
+      registerAgentPackageDefinition('pixel', 'a', def('A'))
+      registerAgentPackageDefinition('pixel', 'b', def('B'))
+      registerAgentPackageDefinition('rolo', 'c', def('C'))
+
+      unregisterAgentPackageDefinitions('pixel')
+
+      expect(getDefinition('a')).toBeUndefined()
+      expect(getDefinition('b')).toBeUndefined()
+      expect(getDefinition('c')!.packageId).toBe('rolo')
+    })
+
+    it('agent-package shadows a plugin registration with the same id', () => {
+      registerPluginDefinition('workflows', 'image-gen', def('Plugin Default'))
+      registerAgentPackageDefinition('pixel', 'image-gen', def('Pixel Override'))
+
+      const entry = getDefinition('image-gen')
+      expect(entry!.source).toBe('agent-package')
+      expect(entry!.definition.name).toBe('Pixel Override')
+    })
+
+    it('user shadows agent-package (user > agent-package > plugin)', () => {
+      registerPluginDefinition('workflows', 'wf', def('Plugin'))
+      registerAgentPackageDefinition('pixel', 'wf', def('Package'))
+      registerUserDefinition('wf', def('User'))
+
+      const entry = getDefinition('wf')
+      expect(entry!.source).toBe('user')
+      expect(entry!.definition.name).toBe('User')
+    })
+
+    it('unregistering the agent-package falls back through the precedence chain', () => {
+      registerPluginDefinition('workflows', 'wf', def('Plugin'))
+      registerAgentPackageDefinition('pixel', 'wf', def('Package'))
+
+      // Agent-package wins initially
+      expect(getDefinition('wf')!.source).toBe('agent-package')
+
+      // Remove the agent-package — falls back to plugin
+      unregisterAgentPackageDefinitions('pixel')
+      expect(getDefinition('wf')!.source).toBe('plugin')
+    })
+  })
+
   describe('listAll', () => {
     it('returns plugin and user entries, with user-wins where both exist', () => {
       registerPluginDefinition('workflows', 'alpha', def('Plugin Alpha'))
@@ -141,6 +210,23 @@ describe('source-registry', () => {
       expect(byId.get('beta')!.definition.name).toBe('User Beta')
       expect(byId.get('gamma')!.source).toBe('user')
       expect(all.length).toBe(3)
+    })
+
+    it('listAll includes agent-package entries with correct source resolution', () => {
+      registerPluginDefinition('workflows', 'plugin-only', def('Plugin Only'))
+      registerAgentPackageDefinition('pixel', 'pkg-only', def('Pkg Only'))
+      registerAgentPackageDefinition('pixel', 'pkg-shadows-plugin', def('Pkg Shadow'))
+      registerPluginDefinition('workflows', 'pkg-shadows-plugin', def('Plugin Shadowed'))
+      registerUserDefinition('user-wins', def('User Wins'))
+      registerAgentPackageDefinition('rolo', 'user-wins', def('Pkg Loses'))
+
+      const byId = new Map(listAll().map((e) => [e.id, e]))
+
+      expect(byId.get('plugin-only')!.source).toBe('plugin')
+      expect(byId.get('pkg-only')!.source).toBe('agent-package')
+      expect(byId.get('pkg-only')!.packageId).toBe('pixel')
+      expect(byId.get('pkg-shadows-plugin')!.source).toBe('agent-package')
+      expect(byId.get('user-wins')!.source).toBe('user')
     })
 
     it('returns an empty list when nothing is registered', () => {
@@ -161,11 +247,22 @@ describe('source-registry', () => {
       expect(isReadOnly('missing')).toBe(false)
     })
 
-    it('getSource mirrors getDefinition().source', () => {
+    it('isReadOnly is true for agent-package-owned ids without user shadow', () => {
+      registerAgentPackageDefinition('pixel', 'pkg-locked', def('Pkg Locked'))
+      registerAgentPackageDefinition('pixel', 'pkg-shadowed', def('Pkg'))
+      registerUserDefinition('pkg-shadowed', def('User'))
+
+      expect(isReadOnly('pkg-locked')).toBe(true)
+      expect(isReadOnly('pkg-shadowed')).toBe(false)
+    })
+
+    it('getSource mirrors getDefinition().source for all three tiers', () => {
       registerPluginDefinition('workflows', 'pl', def('Pl'))
+      registerAgentPackageDefinition('pixel', 'pk', def('Pk'))
       registerUserDefinition('us', def('Us'))
 
       expect(getSource('pl')).toBe('plugin')
+      expect(getSource('pk')).toBe('agent-package')
       expect(getSource('us')).toBe('user')
       expect(getSource('missing')).toBeUndefined()
     })

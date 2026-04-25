@@ -519,6 +519,7 @@ const workflowsPlugin: BakinPlugin = {
           definition: d.definition,
           source: d.source,
           pluginId: d.pluginId,
+          packageId: d.packageId,
         }
       })
       return { templates, subWorkflows }

@@ -25,7 +25,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'openclaw', 'antfly', 'models', 'mcporter', 'plugin-assets', 'llm', 'channels'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'openclaw', 'antfly', 'models', 'mcporter', 'plugin-assets', 'agent-assets', 'llm', 'channels'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -59,6 +59,7 @@ mock.module('../../../src/core/onboarding/antfly', () => ({ antflyComponent: mak
 mock.module('../../../src/core/onboarding/models', () => ({ modelsComponent: makeMock('models') }))
 mock.module('../../../src/core/onboarding/mcporter', () => ({ mcporterComponent: makeMock('mcporter') }))
 mock.module('../../../src/core/onboarding/plugin-assets', () => ({ pluginAssetsComponent: makeMock('plugin-assets') }))
+mock.module('../../../src/core/onboarding/agent-assets', () => ({ agentAssetsComponent: makeMock('agent-assets') }))
 mock.module('../../../src/core/onboarding/credentials', () => ({
   llmComponent: makeMock('llm'),
   channelsComponent: makeMock('channels'),
@@ -154,7 +155,7 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
 
   describe('COMPONENT_ORDER', () => {
-    it('contains exactly the 9 expected components in the spec order', () => {
+    it('contains exactly the 10 expected components in the spec order', () => {
       expect(COMPONENT_ORDER.map((c) => c.name)).toEqual([
         'mkdir',
         'settings',
@@ -163,6 +164,7 @@ describe('runOnboard orchestrator', () => {
         'models',
         'mcporter',
         'plugin-assets',
+        'agent-assets',
         'llm',
         'channels',
       ])
@@ -179,7 +181,7 @@ describe('runOnboard orchestrator', () => {
       expect(result.exitCode).toBe(0)
       expect(result.markerWritten).toBe(true)
       expect(result.outcomes.map((o) => o.finalStatus)).toEqual([
-        'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
+        'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
       ])
       // check() was called on every component
       for (const n of COMPONENT_NAMES) {
@@ -198,6 +200,7 @@ describe('runOnboard orchestrator', () => {
         models: 'ok',
         mcporter: 'ok',
         'plugin-assets': 'ok',
+        'agent-assets': 'ok',
         llm: 'ok',
         channels: 'ok',
       })
@@ -316,7 +319,7 @@ describe('runOnboard orchestrator', () => {
       expect(scripts.llm.checkCalls).toBe(0)
       expect(scripts.channels.checkCalls).toBe(0)
       // All 8 components still appear in outcomes
-      expect(result.outcomes).toHaveLength(9)
+      expect(result.outcomes).toHaveLength(10)
       // OpenClaw is error (missing prerequisite), downstream all skipped
       expect(result.outcomes.find((o) => o.name === 'openclaw')?.finalStatus).toBe('error')
       expect(result.outcomes.find((o) => o.name === 'antfly')?.finalStatus).toBe('skipped')
@@ -393,7 +396,7 @@ describe('runOnboard orchestrator', () => {
   describe('json output', () => {
     it('emits one JSON line per outcome', async () => {
       await runOnboard({ ...opts, json: true })
-      expect(stdoutLines).toHaveLength(9)
+      expect(stdoutLines).toHaveLength(10)
       for (const line of stdoutLines) {
         const parsed = JSON.parse(line)
         expect(COMPONENT_NAMES).toContain(parsed.component)
@@ -406,7 +409,7 @@ describe('runOnboard orchestrator', () => {
       scripts.openclaw.install = { name: 'openclaw', status: 'noop', message: 'required', durationMs: 0 }
       await runOnboard({ ...opts, json: true })
       // Should emit 8 lines total: 3 that actually ran + 5 cascade-skipped
-      expect(stdoutLines).toHaveLength(9)
+      expect(stdoutLines).toHaveLength(10)
     })
 
     it('does not emit JSON when json flag is false', async () => {
@@ -423,7 +426,7 @@ describe('runOnboard orchestrator', () => {
     it('calls check() on every component and never install()', async () => {
       scripts.antfly.check = { name: 'antfly', status: 'missing', message: 'antfly missing' }
       const results = await checkAll()
-      expect(results).toHaveLength(9)
+      expect(results).toHaveLength(10)
       expect(results.map((r) => r.name)).toEqual([...COMPONENT_NAMES])
       for (const n of COMPONENT_NAMES) {
         expect(scripts[n].checkCalls).toBe(1)

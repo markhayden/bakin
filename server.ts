@@ -60,6 +60,13 @@ import * as pluginSettingsIdRoute from './packages/host/src/api/plugin-settings/
 import * as pluginSettingsSchemasRoute from './packages/host/src/api/plugin-settings/schemas'
 import * as pluginsInstallRoute from './packages/host/src/api/plugins/install'
 import * as pluginsRemoveRoute from './packages/host/src/api/plugins/remove'
+import * as agentPackagesListRoute from './packages/host/src/api/agent-packages/list'
+import * as agentPackagesInstallRoute from './packages/host/src/api/agent-packages/install'
+import * as agentPackagesDynamicRoute from './packages/host/src/api/agent-packages/dynamic'
+import * as packagesListRoute from './packages/host/src/api/packages/list'
+import * as packagesInstallRoute from './packages/host/src/api/packages/install'
+import * as packagesDynamicRoute from './packages/host/src/api/packages/dynamic'
+import * as curatedListRoute from './packages/host/src/api/curated/list'
 import * as pluginsMemoryAuditRoute from './packages/host/src/api/plugins/memory/audit'
 import * as pluginsMemoryGatewayRoute from './packages/host/src/api/plugins/memory/gateway'
 import * as pluginsMemoryWorkspaceRoute from './packages/host/src/api/plugins/memory/workspace'
@@ -126,6 +133,15 @@ const eventBus = new BakinEventBus(broadcast)
   // Initialize plugin registry
   log.info('Loading plugins...')
   await pluginRegistry.initialize(config, storage, eventBus)
+
+  // Layer agent-package contributions on top of plugin-registered workflows +
+  // workflow-skills. Plugins have populated the `plugin` tier of the workflow
+  // source-registry / skill-loader; agent-packages now populate the
+  // `agent-package` tier (precedence: user > agent-package > plugin). User
+  // files on disk get loaded by their own paths and always win on top.
+  // Failures are logged inside the helper — never block boot.
+  const { loadAgentPackageSources } = await import('./src/core/agent-packages/load-sources')
+  loadAgentPackageSources()
 
   // Expose registry accessors on globalThis so Next.js API routes (which get
   // separate webpack-compiled module instances) can read the real data.
@@ -365,6 +381,42 @@ const eventBus = new BakinEventBus(broadcast)
 
     if (url.pathname === '/api/plugins/remove' && req.method === 'POST') {
       dispatchWebHandler(req, res, pluginsRemoveRoute.post)
+      return
+    }
+
+    // ─── Agent-package routes (install / list / remove / update / knowledge) ──
+    // Distinct from the runtime /api/agents/* surface below — see
+    // packages/host/src/api/agent-packages/dynamic.ts for the rationale.
+    if (url.pathname === '/api/agent-packages' && req.method === 'GET') {
+      dispatchWebHandler(req, res, agentPackagesListRoute.get)
+      return
+    }
+    if (url.pathname === '/api/agent-packages/install' && req.method === 'POST') {
+      dispatchWebHandler(req, res, agentPackagesInstallRoute.post)
+      return
+    }
+    if (url.pathname.startsWith('/api/agent-packages/') && url.pathname !== '/api/agent-packages/install') {
+      dispatchWebHandler(req, res, agentPackagesDynamicRoute.handler)
+      return
+    }
+
+    // ─── Standalone packages routes (skill-pack / workflow-pack / knowledge-pack) ──
+    if (url.pathname === '/api/packages' && req.method === 'GET') {
+      dispatchWebHandler(req, res, packagesListRoute.get)
+      return
+    }
+    if (url.pathname === '/api/packages/install' && req.method === 'POST') {
+      dispatchWebHandler(req, res, packagesInstallRoute.post)
+      return
+    }
+    if (url.pathname.startsWith('/api/packages/') && url.pathname !== '/api/packages/install') {
+      dispatchWebHandler(req, res, packagesDynamicRoute.handler)
+      return
+    }
+
+    // ─── Curated catalog (binary-embedded suggestions) ───────────────
+    if (url.pathname === '/api/curated' && req.method === 'GET') {
+      dispatchWebHandler(req, res, curatedListRoute.get)
       return
     }
 

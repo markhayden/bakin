@@ -48,6 +48,7 @@ import { antflyComponent } from './antfly'
 import { modelsComponent } from './models'
 import { mcporterComponent } from './mcporter'
 import { pluginAssetsComponent } from './plugin-assets'
+import { agentAssetsComponent } from './agent-assets'
 import { llmComponent, channelsComponent } from './credentials'
 import { saveState, clearMarker } from './state'
 import type { CheckResult, OnboardingComponent, OnboardingOptions } from './types'
@@ -72,6 +73,7 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   modelsComponent,
   mcporterComponent,
   pluginAssetsComponent,
+  agentAssetsComponent,
   llmComponent,
   channelsComponent,
 ] as const

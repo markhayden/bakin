@@ -1,8 +1,34 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { loadSkill, invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
+
+// CC-6 isolation mocks (added when phase C-2 of agent-packages extended this
+// loader). The legacy block below already passes a tmp dir explicitly to
+// every loadSkill() call, but agent-package + plugin skill resolution paths
+// pull from in-memory registries that can reach into the real ~/.bakin/ if
+// the harness ever changed. Mocking is cheap insurance.
+const mockTestDir = join(tmpdir(), `bakin-test-skill-loader-mock-${Date.now()}`)
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => mockTestDir,
+  getBakinPaths: () => ({ workflows: join(mockTestDir, 'workflows') }),
+}))
+mock.module('@bakin/core/content-dir', () => ({
+  getContentDir: () => mockTestDir,
+  getBakinPaths: () => ({ workflows: join(mockTestDir, 'workflows') }),
+}))
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => join(mockTestDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(mockTestDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+mock.module('@bakin/tasks/lib/flow-store', () => ({}))
+
+import { loadSkill, listAllSkills, invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
+import {
+  clearAgentPackageSkillRegistry,
+  registerAgentPackageSkill,
+} from '@bakin/workflows/lib/agent-package-skill-registry'
 
 describe('skill-loader', () => {
   const testDir = join(tmpdir(), `bakin-test-skills-${Date.now()}`)
@@ -111,5 +137,87 @@ output_schema:
     expect(skill).not.toBeNull()
     expect(skill!.instructions).toContain('SCOPE BOUNDARY')
     expect(skill!.output_schema).toBeDefined()
+  })
+})
+
+describe('skill-loader — multi-source precedence (user > agent-package > plugin)', () => {
+  const testDir = join(tmpdir(), `bakin-test-skills-precedence-${Date.now()}`)
+  const skillsDir = join(testDir, 'workflows', 'skills')
+
+  beforeEach(() => {
+    invalidateSkillCache()
+    clearAgentPackageSkillRegistry()
+    mkdirSync(skillsDir, { recursive: true })
+  })
+
+  afterEach(() => {
+    invalidateSkillCache()
+    clearAgentPackageSkillRegistry()
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
+  it('agent-package skill resolves when no user file shadows it', () => {
+    registerAgentPackageSkill('pixel', 'pkg-only', {
+      name: 'Package Only',
+      instructions: 'package body',
+    })
+    const skill = loadSkill('pkg-only', testDir)
+    expect(skill).not.toBeNull()
+    expect(skill!.name).toBe('Package Only')
+    expect(skill!.instructions).toContain('package body')
+    expect(skill!.instructions).toContain('SCOPE BOUNDARY')
+  })
+
+  it('user file wins over agent-package registration', () => {
+    invalidateSkillCache()
+    registerAgentPackageSkill('pixel', 'shared', {
+      name: 'From Package',
+      instructions: 'package body',
+    })
+    writeFileSync(
+      join(skillsDir, 'shared.md'),
+      `---\nname: From User\n---\n\nuser body`,
+    )
+    const skill = loadSkill('shared', testDir)
+    expect(skill!.name).toBe('From User')
+    expect(skill!.instructions).toContain('user body')
+    expect(skill!.instructions).not.toContain('package body')
+  })
+
+  it('appends SCOPE BOUNDARY exactly once even when package skill already has it', () => {
+    registerAgentPackageSkill('pixel', 'fenced', {
+      name: 'Fenced',
+      instructions: 'body\n\n---\n**SCOPE BOUNDARY:** already here',
+    })
+    const skill = loadSkill('fenced', testDir)
+    const occurrences = (skill!.instructions.match(/SCOPE BOUNDARY/g) || []).length
+    expect(occurrences).toBe(1)
+  })
+
+  it('listAllSkills surfaces source="agent-package" entries', () => {
+    registerAgentPackageSkill('pixel', 'a', { name: 'A', instructions: 'a' })
+    registerAgentPackageSkill('pixel', 'b', { name: 'B', instructions: 'b' })
+
+    const all = listAllSkills(testDir)
+    const byName = new Map(all.map((s) => [s.name, s]))
+    expect(byName.get('a')?.source).toBe('agent-package')
+    expect(byName.get('b')?.source).toBe('agent-package')
+  })
+
+  it('listAllSkills resolves user-shadowed package skills with source="user"', () => {
+    registerAgentPackageSkill('pixel', 'shadowed', {
+      name: 'shadowed',
+      instructions: 'pkg',
+    })
+    writeFileSync(
+      join(skillsDir, 'shadowed.md'),
+      `---\nname: shadowed\n---\n\nuser`,
+    )
+
+    const all = listAllSkills(testDir)
+    const found = all.find((s) => s.name === 'shadowed')
+    expect(found?.source).toBe('user')
+    // Only one entry — no duplicate from the agent-package tier
+    expect(all.filter((s) => s.name === 'shadowed')).toHaveLength(1)
   })
 })
