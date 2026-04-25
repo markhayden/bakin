@@ -118,16 +118,21 @@ async function openDetail() {
 }
 
 describe('PackageCard — Adopt flow', () => {
+  // The Package card's Adopt button has a verbose aria-label that explains
+  // what adopting means. The dialog's submit button is just "Adopt". Match
+  // the trigger via the aria-label substring; the submit via exact name.
+  const triggerName = /Adopt this agent/
+
   it('opens AdoptDialog with the agentId baked in when Adopt is clicked', async () => {
     await openDetail()
-    fireEvent.click(screen.getByRole('button', { name: 'Adopt' }))
+    fireEvent.click(screen.getByRole('button', { name: triggerName }))
     // Dialog title bakes in the agentId
     await waitFor(() => expect(screen.getByText(/Adopt pixel into a package/)).toBeDefined())
   })
 
   it('POSTs /api/agent-packages/install with { source, adopt: agentId } on submit', async () => {
     await openDetail()
-    fireEvent.click(screen.getByRole('button', { name: 'Adopt' }))
+    fireEvent.click(screen.getByRole('button', { name: triggerName }))
     await waitFor(() => screen.getByLabelText('Package source'))
     fireEvent.change(screen.getByLabelText('Package source'), {
       target: { value: 'github:examples/pixel@v0.1.0' },
@@ -143,7 +148,7 @@ describe('PackageCard — Adopt flow', () => {
 
   it('refreshes package state on successful adopt', async () => {
     await openDetail()
-    fireEvent.click(screen.getByRole('button', { name: 'Adopt' }))
+    fireEvent.click(screen.getByRole('button', { name: triggerName }))
     await waitFor(() => screen.getByLabelText('Package source'))
     fireEvent.change(screen.getByLabelText('Package source'), {
       target: { value: 'github:examples/pixel' },

@@ -111,13 +111,17 @@ async function renderDetail() {
 }
 
 describe('PackageCard — read-only display per state', () => {
-  it('renders an unmanaged badge + Adopt button when no row exists', async () => {
+  it('renders an unmanaged badge + Adopt button + explainer when no row exists', async () => {
     primeState()
     await renderDetail()
     expect(screen.getByText('unmanaged')).toBeDefined()
-    const adopt = screen.getByRole('button', { name: 'Adopt' })
+    const adopt = screen.getByRole('button', { name: /Adopt/ })
     expect(adopt).toBeDefined()
     expect((adopt as HTMLButtonElement).disabled).toBe(false)
+    // The explainer text now appears below the button so users understand
+    // what adoption means before clicking.
+    expect(screen.getByText(/This agent isn't tracked by an agent-package/)).toBeDefined()
+    expect(screen.getByText(/knowledge-lesson toggles/)).toBeDefined()
   })
 
   it('renders a managed badge + entry fields when state=managed', async () => {
@@ -185,5 +189,56 @@ describe('PackageCard — read-only display per state', () => {
     expect(screen.getByText('update available')).toBeDefined()
     expect(screen.getByText('bakin agents update pixel')).toBeDefined()
     expect(screen.getByLabelText('Copy command')).toBeDefined()
+  })
+})
+
+describe('PackageCard — main agent special-case', () => {
+  function setupMainFetch() {
+    const MAIN_PROFILE = { ...PROFILE, id: 'main', name: 'Main Operator', role: 'Head Honcho' }
+    global.fetch = mock((url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u === '/api/plugins/team/main') return Promise.resolve({ ok: true, json: () => Promise.resolve(MAIN_PROFILE) } as Response)
+      if (u.startsWith('/api/plugins/models/available')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) } as Response)
+      if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: null }) } as Response)
+      if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
+      if (u.endsWith('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) } as Response)
+      if (u.includes('/api/agent-packages/') && u.endsWith('/knowledge')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, lessons: [] }) } as Response)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
+    }) as unknown as typeof global.fetch
+  }
+
+  beforeEach(() => {
+    setupMainFetch()
+    primeState()
+  })
+
+  it('shows "Self-managed" instead of Adopt for the main agent when unmanaged', async () => {
+    render(<AgentDetail agentId="main" />)
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Main Operator' })).toBeDefined())
+
+    // No Adopt button on main
+    expect(screen.queryByRole('button', { name: /Adopt/ })).toBeNull()
+    // Self-managed badge instead
+    expect(screen.getByText('Self-managed')).toBeDefined()
+    // Explainer copy that frames the design choice
+    expect(screen.getByText(/main agent is your own persona/)).toBeDefined()
+  })
+
+  it('still shows package details for main agent if it is somehow managed', async () => {
+    primeState({
+      main: {
+        agentId: 'main',
+        state: 'managed',
+        packageId: 'examples/main@0.1.0',
+        entry: { source: 'github:examples/main', ref: 'v0.1.0', commitSha: 'abcdefg', installedAt: '2026-04-25T00:00:00Z' },
+      },
+    })
+    render(<AgentDetail agentId="main" />)
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Main Operator' })).toBeDefined())
+
+    // Managed/adopted main bypasses the Self-managed special-case and shows
+    // standard package fields. (This is an unusual state but should not crash.)
+    expect(screen.getByText('managed')).toBeDefined()
+    expect(screen.getByText('github:examples/main')).toBeDefined()
   })
 })
