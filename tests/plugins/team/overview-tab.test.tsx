@@ -134,9 +134,9 @@ describe('OverviewTab', () => {
     expect(teamSelect).toBeDefined()
   })
 
-  it('renders the workspace path', () => {
+  it('does NOT render the workspace path — header owns that surface now', () => {
     renderTab()
-    expect(screen.getByText('/tmp/openclaw/workspaces/pixel')).toBeDefined()
+    expect(screen.queryByText('/tmp/openclaw/workspaces/pixel')).toBeNull()
   })
 
   it('fetches stats / recent-activity / skills / knowledge in parallel and renders the counts', async () => {
