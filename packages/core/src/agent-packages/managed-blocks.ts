@@ -45,6 +45,37 @@ export function isValidBlockId(blockId: string): boolean {
 }
 
 /**
+ * Detailed state of a managed block in some content. Used by callers (e.g.
+ * `bakin doctor`) that need to distinguish between "block was never written"
+ * and "block markers are malformed" — the second case is unsafe to silently
+ * repair because we don't know what the user's intent was.
+ *
+ *   - 'absent'        — neither start nor end marker present
+ *   - 'present'       — both markers present and properly paired
+ *   - 'orphan-start'  — start marker present but no matching end marker
+ *   - 'orphan-end'    — end marker present but no matching start marker
+ */
+export type BlockState = 'absent' | 'present' | 'orphan-start' | 'orphan-end'
+
+export function getBlockState(content: string, blockId: string): BlockState {
+  if (!isValidBlockId(blockId)) return 'absent'
+  const hasStart = content.includes(startMarker(blockId))
+  const hasEnd = content.includes(endMarker(blockId))
+  if (hasStart && hasEnd) {
+    // Order matters — start must come before end for the pair to be valid.
+    if (content.indexOf(startMarker(blockId)) < content.indexOf(endMarker(blockId))) {
+      return 'present'
+    }
+    // Out-of-order markers — treat as orphan-end (start before end is the
+    // canonical shape; reverse means the end isn't actually closing anything).
+    return 'orphan-end'
+  }
+  if (hasStart) return 'orphan-start'
+  if (hasEnd) return 'orphan-end'
+  return 'absent'
+}
+
+/**
  * True iff the content has a properly-paired marker pair for the block id.
  * Falses on missing pair, on start without end, on end without start.
  */
