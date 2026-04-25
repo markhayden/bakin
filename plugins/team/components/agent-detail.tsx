@@ -463,7 +463,13 @@ function SkillsTab({ agentId }: { agentId: string }) {
   useEffect(() => {
     fetch(`/api/plugins/team/${agentId}/skills`)
       .then((r) => r.json())
-      .then((data) => setSkills(data.skills ?? []))
+      .then((data) => {
+        const list: SkillSummary[] = data.skills ?? []
+        setSkills(list)
+        // Auto-select the first skill on load so the user never lands on an
+        // empty pane wondering what to click.
+        if (list.length > 0) setSelectedSkill((current) => current ?? list[0].id)
+      })
       .finally(() => setLoading(false))
   }, [agentId])
 
@@ -486,8 +492,8 @@ function SkillsTab({ agentId }: { agentId: string }) {
   if (skills.length === 0) return <div className="text-sm text-muted-foreground py-8 text-center">No skills installed</div>
 
   return (
-    <div className="flex gap-6">
-      <div className="w-48 shrink-0 space-y-1">
+    <div className="flex gap-6 min-h-[calc(100vh-260px)]">
+      <div className="w-56 shrink-0 space-y-1 border-r border-border pr-4 max-h-[calc(100vh-260px)] overflow-auto">
         {skills.map((s) => (
           <button
             key={s.id}
@@ -503,14 +509,12 @@ function SkillsTab({ agentId }: { agentId: string }) {
       </div>
       <div className="flex-1 min-w-0">
         {skillContent ? (
-          <div className="bg-muted/30 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed max-h-[600px] overflow-auto">
+          <div className="bg-muted/30 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed h-full overflow-auto">
             {skillContent}
           </div>
         ) : selectedSkill ? (
-          <div className="text-sm text-muted-foreground">No SKILL.md found</div>
-        ) : (
-          <div className="text-sm text-muted-foreground">Select a skill to view</div>
-        )}
+          <div className="text-sm text-muted-foreground">No SKILL.md found for this skill.</div>
+        ) : null}
       </div>
     </div>
   )
@@ -527,7 +531,13 @@ function MemoryTab({ agentId }: { agentId: string }) {
   useEffect(() => {
     fetch(`/api/plugins/team/${agentId}/memory`)
       .then((r) => r.json())
-      .then((data) => setFiles(data.files ?? []))
+      .then((data) => {
+        const list: string[] = data.files ?? []
+        setFiles(list)
+        // Auto-select the most recent file on load (server returns
+        // newest-first by convention).
+        if (list.length > 0) setSelectedFile((current) => current ?? list[0])
+      })
       .finally(() => setLoading(false))
   }, [agentId])
 
@@ -550,8 +560,8 @@ function MemoryTab({ agentId }: { agentId: string }) {
   if (files.length === 0) return <div className="text-sm text-muted-foreground py-8 text-center">No memory files</div>
 
   return (
-    <div className="flex gap-6">
-      <div className="w-48 shrink-0 space-y-1 max-h-[500px] overflow-auto">
+    <div className="flex gap-6 min-h-[calc(100vh-260px)]">
+      <div className="w-56 shrink-0 space-y-1 border-r border-border pr-4 max-h-[calc(100vh-260px)] overflow-auto">
         {files.map((f) => (
           <button
             key={f}
@@ -566,13 +576,11 @@ function MemoryTab({ agentId }: { agentId: string }) {
       </div>
       <div className="flex-1 min-w-0">
         {content ? (
-          <div className="bg-muted/30 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed max-h-[600px] overflow-auto">
+          <div className="bg-muted/30 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed h-full overflow-auto">
             {content}
           </div>
-        ) : selectedFile ? (
-          <Skeleton className="h-40 w-full" />
         ) : (
-          <div className="text-sm text-muted-foreground">Select a date to view</div>
+          <Skeleton className="h-40 w-full" />
         )}
       </div>
     </div>
