@@ -1,0 +1,12 @@
+{
+  "id": "bakin-skills-visual",
+  "kind": "skill-pack",
+  "name": "Visual Skills",
+  "version": "0.3.1",
+  "description": "Reusable image generation + prompt refinement skills.",
+  "bakin": "^1.0.0",
+  "author": "Made in Wyo",
+  "contributions": {
+    "skills": ["skills/image-generation", "skills/prompt-refinement"]
+  }
+}

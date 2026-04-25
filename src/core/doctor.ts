@@ -12,6 +12,11 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { createLogger } from './logger'
+import {
+  extractBlock,
+  getBlockState,
+  injectBlock,
+} from '../../packages/core/src/agent-packages/managed-blocks'
 import { getSettings } from './settings'
 import { getAgentIds } from '@bakin/core/openclaw-config'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
@@ -21,6 +26,7 @@ import * as openclaw from './openclaw-client'
 import * as mcporter from './mcporter'
 import { isOnboarded } from './onboarding/state'
 import { pluginAssetsComponent } from './onboarding/plugin-assets'
+import { agentAssetsComponent } from './onboarding/agent-assets'
 import { getMainAgentId, getMainAgentName } from './main-agent'
 import { getAllExecTools } from '../../scripts/lib/registry'
 import { getHookRegistry } from '../lib/plugin-registry'
@@ -890,6 +896,13 @@ interface ManagedBlockDef {
 
 /**
  * Check/inject/update a managed block in each agent's AGENTS.md.
+ *
+ * The marker primitives — `getBlockState`, `extractBlock`, `injectBlock` —
+ * live in `packages/core/src/agent-packages/managed-blocks.ts` and are
+ * shared with the agent-package installer/projector. This function is the
+ * doctor-shaped wrapper around them: it translates marker state into
+ * DiagnosticResult shapes and applies the autoFix policy.
+ *
  * All managed blocks follow the same marker pattern:
  *   <!-- bakin:{blockId}:start -->
  *   {content}
@@ -898,8 +911,6 @@ interface ManagedBlockDef {
 function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): DiagnosticResult[] {
   const results: DiagnosticResult[] = []
   const openclawBase = getOpenClawPath()
-  const startMarker = `<!-- bakin:${def.blockId}:start -->`
-  const endMarker = `<!-- bakin:${def.blockId}:end -->`
   const checkName = `agent-${def.blockId}`
 
   const mainId = getMainAgentId()
@@ -915,34 +926,36 @@ function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): DiagnosticRe
     }
 
     const current = readFileSync(agentsPath, 'utf-8')
-    const startIdx = current.indexOf(startMarker)
-    const endIdx = current.indexOf(endMarker)
-    const expectedContent = def.contentFn(agentId).trim()
+    const expectedBody = def.contentFn(agentId).trim()
+    const state = getBlockState(current, def.blockId)
 
-    if (startIdx === -1) {
+    if (state === 'orphan-start' || state === 'orphan-end') {
+      // Malformed marker pair — refuse to silently rewrite. The user's
+      // intent isn't clear (mid-edit? merge conflict remnant?), and
+      // overwriting could destroy unsynced work.
+      results.push(error(
+        checkName,
+        `${def.blockId} block has malformed markers (${state}) in ${agentId}/AGENTS.md`,
+      ))
+      continue
+    }
+
+    if (state === 'absent') {
       if (!autoFix) {
         results.push(warn(checkName, `${def.blockId} block missing from ${agentId}/AGENTS.md`, true))
         continue
       }
-      const block = `${startMarker}\n${expectedContent}\n${endMarker}\n`
-      writeFileSync(agentsPath, current.trimEnd() + '\n\n' + block, 'utf-8')
+      writeFileSync(agentsPath, injectBlock(current, def.blockId, expectedBody), 'utf-8')
       results.push(fixed(checkName, `Added ${def.blockId} block to ${agentId}/AGENTS.md`))
       continue
     }
 
-    if (endIdx === -1) {
-      results.push(error(checkName, `${def.blockId} block start marker found in ${agentId}/AGENTS.md but no end marker`))
-      continue
-    }
-
-    const blockContent = current.slice(startIdx + startMarker.length, endIdx).trim()
-
-    if (blockContent === expectedContent) {
+    // state === 'present'
+    const currentBody = extractBlock(current, def.blockId) ?? ''
+    if (currentBody === expectedBody) {
       results.push(ok(checkName, `${def.blockId} in ${agentId}/AGENTS.md is up to date`))
     } else if (autoFix) {
-      const block = `${startMarker}\n${expectedContent}\n${endMarker}`
-      const updated = current.slice(0, startIdx) + block + current.slice(endIdx + endMarker.length)
-      writeFileSync(agentsPath, updated, 'utf-8')
+      writeFileSync(agentsPath, injectBlock(current, def.blockId, expectedBody), 'utf-8')
       results.push(fixed(checkName, `Updated ${def.blockId} block in ${agentId}/AGENTS.md`))
     } else {
       results.push(warn(checkName, `${def.blockId} block is outdated in ${agentId}/AGENTS.md`, true))
@@ -1581,6 +1594,47 @@ async function checkPluginAssets(): Promise<DiagnosticResult[]> {
   }
 }
 
+/**
+ * Agent-package projections: surface drift / missing / broken-marker
+ * findings. With autoFix enabled, runs the same install() flow as
+ * `bakin install agent-assets` to repair detected drift in-place.
+ *
+ * Doctor sweep companion to the user-facing `bakin doctor` view; the
+ * onboarding component (src/core/onboarding/agent-assets.ts) drives
+ * the CLI surface, this wrapper reuses its scan + install paths so
+ * the two views never disagree.
+ */
+async function checkAgentAssets(autoFix: boolean): Promise<DiagnosticResult[]> {
+  try {
+    const checkResult = await agentAssetsComponent.check()
+    if (checkResult.status === 'ok') {
+      return [ok('agent-assets', checkResult.message)]
+    }
+
+    if (autoFix) {
+      const installResult = await agentAssetsComponent.install({
+        interactive: false,
+        autoApprove: true,
+        json: false,
+        checkOnly: false,
+        force: false,
+      })
+      if (installResult.status === 'installed') {
+        return [fixed('agent-assets', installResult.message)]
+      }
+      if (installResult.status === 'noop') {
+        return [ok('agent-assets', installResult.message)]
+      }
+      return [error('agent-assets', `Repair failed: ${installResult.message}`)]
+    }
+
+    const reminder = checkResult.remediation ?? 'Run `bakin install agent-assets` to repair.'
+    return [warn('agent-assets', `${checkResult.message} — ${reminder}`, true)]
+  } catch (err) {
+    return [warn('agent-assets', `agent-assets check failed: ${err}`)]
+  }
+}
+
 export async function runDiagnostics(
   contentDir: string,
   projectRoot: string
@@ -1624,13 +1678,14 @@ export async function runDiagnostics(
   results.push(...checkTaskPositionIntegrity(autoFix))
 
   // Async checks (network, not auto-fixable) — run in parallel
-  const [gatewayResults, antflyResults, searchTableResults, pluginAssetsResults] = await Promise.all([
+  const [gatewayResults, antflyResults, searchTableResults, pluginAssetsResults, agentAssetsResults] = await Promise.all([
     checkGateway(),
     checkAntfly(),
     checkSearchTables(),
     checkPluginAssets(),
+    checkAgentAssets(autoFix),
   ])
-  results.push(...gatewayResults, ...antflyResults, ...searchTableResults, ...pluginAssetsResults)
+  results.push(...gatewayResults, ...antflyResults, ...searchTableResults, ...pluginAssetsResults, ...agentAssetsResults)
 
   // Plugin-contributed health checks (#137). Results appended to the same
   // list as builtins; the UI groups by status so ordering doesn't matter.

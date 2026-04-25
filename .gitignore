@@ -82,3 +82,9 @@ plugins/*/dist/
 
 # dev-client bundle (built by scripts/dev.ts on `bun run dev`; never embedded)
 packages/host/public/__bakin-dev/
+
+# agent-package conversion snapshots — gitignored copies of an agent's
+# OpenClaw workspace + Bakin UI assets, captured by scripts/migration/
+# snapshot-agent.ts. Used as conversion source for hand-built reference
+# packages; never committed.
+agents/*/.snapshot/

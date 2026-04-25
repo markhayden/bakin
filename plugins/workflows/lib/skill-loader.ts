@@ -1,10 +1,23 @@
 /**
  * Skill file loader — multi-source resolution.
  *
- * Skills can come from three sources (checked in this order):
- * 1. Plugin-registered skills (in-memory, from registerSkill())
- * 2. User skills ({CONTENT_DIR}/workflows/skills/{name}.md)
- * 3. Returns null if not found in any source
+ * Resolution order (first match wins):
+ *   1. User skill files                   — {CONTENT_DIR}/workflows/skills/{name}.md
+ *   2. Agent-package-registered skills    — in-memory, from boot-time lockfile
+ *                                            scan + bakin agents install/update
+ *   3. Plugin-registered skills           — in-memory, from ctx.registerSkill()
+ *                                            during plugin activation
+ *   4. null
+ *
+ * Same precedence rule as source-registry.ts (workflow definitions):
+ *   user > agent-package > plugin
+ *
+ * The user tier always wins so a hand-edited skill file in
+ * ~/.bakin/workflows/skills/ can override anything that an installed
+ * package or plugin ships. The agent-package tier sits between user and
+ * plugin so an installed Pixel package's `generate-image` skill can
+ * shadow a plugin-shipped `generate-image` default without the user
+ * having to manually drop a shadow file.
  *
  * Frontmatter carries metadata (name, output_schema); the markdown body
  * becomes the agent's step instructions.
@@ -15,6 +28,7 @@ import yaml from 'js-yaml'
 import type { SkillDefinition } from '../types'
 import { getContentDir } from './content-dir'
 import { getPluginSkills } from '../../../src/lib/plugin-registry'
+import { getAgentPackageSkills } from './agent-package-skill-registry'
 
 const skillCache = new Map<string, SkillDefinition | null>()
 
@@ -66,10 +80,12 @@ function loadSkillFromFile(name: string, dir: string): SkillDefinition | null {
 /**
  * Load a skill by name using multi-source resolution.
  *
- * Resolution order:
- * 1. Plugin-registered skills (in-memory)
- * 2. User skill files ({CONTENT_DIR}/workflows/skills/{name}.md)
- * 3. null if not found
+ * Resolution order (first match wins): user > agent-package > plugin.
+ *
+ * 1. User skill files ({CONTENT_DIR}/workflows/skills/{name}.md)
+ * 2. Agent-package-registered skills (in-memory)
+ * 3. Plugin-registered skills (in-memory)
+ * 4. null if not found
  */
 export function loadSkill(name: string, contentDir?: string): SkillDefinition | null {
   const cacheKey = `${contentDir || ''}:${name}`
@@ -77,11 +93,30 @@ export function loadSkill(name: string, contentDir?: string): SkillDefinition | 
     return skillCache.get(cacheKey)!
   }
 
-  // Source 1: Plugin-registered skills
-  const pluginSkills = getPluginSkills()
-  const pluginSkill = pluginSkills.get(name)
+  // Source 1: User skill files on disk (highest precedence)
+  const dir = contentDir || getContentDir()
+  const fileSkill = loadSkillFromFile(name, dir)
+  if (fileSkill) {
+    skillCache.set(cacheKey, fileSkill)
+    return fileSkill
+  }
+
+  // Source 2: Agent-package-registered skills (in-memory)
+  const packageSkill = getAgentPackageSkills().get(name)
+  if (packageSkill) {
+    const skill: SkillDefinition = {
+      ...packageSkill,
+      instructions: packageSkill.instructions.includes('SCOPE BOUNDARY')
+        ? packageSkill.instructions
+        : packageSkill.instructions + SCOPE_FENCE,
+    }
+    skillCache.set(cacheKey, skill)
+    return skill
+  }
+
+  // Source 3: Plugin-registered skills (in-memory)
+  const pluginSkill = getPluginSkills().get(name)
   if (pluginSkill) {
-    // Ensure scope fence is appended if not already present
     const skill: SkillDefinition = {
       ...pluginSkill,
       instructions: pluginSkill.instructions.includes('SCOPE BOUNDARY')
@@ -92,21 +127,14 @@ export function loadSkill(name: string, contentDir?: string): SkillDefinition | 
     return skill
   }
 
-  // Source 2: User skill files on disk
-  const dir = contentDir || getContentDir()
-  const fileSkill = loadSkillFromFile(name, dir)
-  if (fileSkill) {
-    skillCache.set(cacheKey, fileSkill)
-    return fileSkill
-  }
-
   // Not found
   skillCache.set(cacheKey, null)
   return null
 }
 
 /**
- * Get metadata about all available skills from all sources.
+ * Get metadata about all available skills from all sources, resolved through
+ * the same precedence chain as `loadSkill()` (user > agent-package > plugin).
  * Used by the health dashboard registry endpoint.
  */
 export function listAllSkills(contentDir?: string): Array<{
@@ -117,14 +145,7 @@ export function listAllSkills(contentDir?: string): Array<{
   const results: Array<{ name: string; source: string; path?: string }> = []
   const seen = new Set<string>()
 
-  // Plugin-registered skills
-  const pluginSkills = getPluginSkills()
-  for (const [name, skill] of pluginSkills) {
-    results.push({ name, source: skill.source || 'plugin' })
-    seen.add(name)
-  }
-
-  // User skill files
+  // Source 1: User skill files (highest precedence, listed first)
   const dir = contentDir || getContentDir()
   const skillsDir = join(dir, 'workflows', 'skills')
   if (existsSync(skillsDir)) {
@@ -141,6 +162,22 @@ export function listAllSkills(contentDir?: string): Array<{
       }
     } catch {
       // skills directory not readable
+    }
+  }
+
+  // Source 2: Agent-package-registered skills
+  for (const [name] of getAgentPackageSkills()) {
+    if (!seen.has(name)) {
+      results.push({ name, source: 'agent-package' })
+      seen.add(name)
+    }
+  }
+
+  // Source 3: Plugin-registered skills
+  for (const [name, skill] of getPluginSkills()) {
+    if (!seen.has(name)) {
+      results.push({ name, source: skill.source || 'plugin' })
+      seen.add(name)
     }
   }
 

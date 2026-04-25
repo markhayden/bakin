@@ -51,8 +51,11 @@ async function apiPost(path: string, body?: unknown): Promise<unknown> {
   })
 }
 
-async function apiDelete(path: string): Promise<unknown> {
-  return api(path, { method: 'DELETE' })
+async function apiDelete(path: string, body?: unknown): Promise<unknown> {
+  return api(path, {
+    method: 'DELETE',
+    body: body ? JSON.stringify(body) : undefined,
+  })
 }
 
 function print(data: unknown): void {
@@ -233,6 +236,183 @@ async function cmdPluginsInstall(source: string): Promise<void> {
 async function cmdPluginsRemove(pluginId: string): Promise<void> {
   const result = await apiPost('/api/plugins/remove', { pluginId })
   print(result)
+}
+
+// ---------------------------------------------------------------------------
+// Agent-package commands — `bakin agents ...`
+// ---------------------------------------------------------------------------
+
+interface AgentsCmdFlags {
+  adopt?: boolean
+  installAs?: string
+  replace?: boolean
+  keepBlocks?: boolean
+  deleteAgent?: boolean
+  refreshTemplate?: boolean
+  force?: boolean
+  json?: boolean
+}
+
+async function cmdAgentPackagesInstall(source: string, flags: AgentsCmdFlags): Promise<void> {
+  const body: Record<string, unknown> = { source }
+  if (flags.adopt) body.adopt = source // installer reads any truthy adopt as the agentId
+  if (flags.installAs) body.installAs = flags.installAs
+  if (flags.replace) body.replace = true
+  const result = await apiPost('/api/agent-packages/install', body)
+  print(result)
+}
+
+async function cmdAgentPackagesList(flags: AgentsCmdFlags): Promise<void> {
+  const result = await apiGet('/api/agent-packages') as {
+    ok: boolean
+    agents: Array<{ agentId: string; state: string; packageId?: string }>
+  }
+  if (flags.json) {
+    print(result)
+    return
+  }
+  console.log('Agents (package state):')
+  for (const a of result.agents) {
+    const pkg = a.packageId ? `  [${a.packageId}]` : ''
+    console.log(`  ${a.agentId.padEnd(20)} ${a.state}${pkg}`)
+  }
+}
+
+async function cmdAgentPackagesRemove(agentId: string, flags: AgentsCmdFlags): Promise<void> {
+  const body: Record<string, unknown> = {}
+  if (flags.keepBlocks) body.keepBlocks = true
+  if (flags.deleteAgent) body.deleteAgent = true
+  if (flags.force) body.force = true
+  const result = await apiDelete(`/api/agent-packages/${encodeURIComponent(agentId)}`, body)
+  print(result)
+}
+
+async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
+  const body: Record<string, unknown> = {}
+  if (flags.refreshTemplate) body.refreshTemplate = true
+
+  if (agentId) {
+    const result = await apiPost(`/api/agent-packages/${encodeURIComponent(agentId)}/update`, body)
+    print(result)
+    return
+  }
+
+  // No agentId — update every managed agent package.
+  const list = await apiGet('/api/agent-packages') as {
+    agents: Array<{ agentId: string; state: string }>
+  }
+  for (const a of list.agents) {
+    if (a.state !== 'managed' && a.state !== 'adopted') continue
+    try {
+      const result = await apiPost(`/api/agent-packages/${encodeURIComponent(a.agentId)}/update`, body)
+      console.log(`${a.agentId}:`)
+      print(result)
+    } catch (err) {
+      console.error(`${a.agentId}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+}
+
+async function cmdAgentPackagesKnowledgeList(agentId: string): Promise<void> {
+  const result = await apiGet(`/api/agent-packages/${encodeURIComponent(agentId)}/knowledge`) as {
+    ok: boolean
+    packageId: string
+    lessons: Array<{ lessonId: string; title: string; tags: string[]; enabled: boolean }>
+  }
+  console.log(`Knowledge for ${agentId} (package: ${result.packageId})`)
+  for (const l of result.lessons) {
+    const mark = l.enabled ? '[x]' : '[ ]'
+    const tags = l.tags.length > 0 ? ` (${l.tags.join(', ')})` : ''
+    console.log(`  ${mark} ${l.lessonId.padEnd(30)} ${l.title}${tags}`)
+  }
+}
+
+async function cmdAgentPackagesKnowledgeToggle(agentId: string, lessonId: string, enabled: boolean): Promise<void> {
+  const result = await apiPost(
+    `/api/agent-packages/${encodeURIComponent(agentId)}/knowledge/${encodeURIComponent(lessonId)}`,
+    { enabled },
+  )
+  print(result)
+}
+
+// ---------------------------------------------------------------------------
+// Standalone-pack commands — `bakin packages ...`
+// ---------------------------------------------------------------------------
+
+async function cmdPackagesList(flags: AgentsCmdFlags): Promise<void> {
+  const result = await apiGet('/api/packages') as {
+    ok: boolean
+    packages: Array<{
+      id: string; kind: string; version: string; refCount: number; dependents: string[]
+    }>
+  }
+  if (flags.json) {
+    print(result)
+    return
+  }
+  console.log('Installed packages:')
+  for (const p of result.packages) {
+    const refs = p.refCount > 0 ? `  (refCount=${p.refCount}: ${p.dependents.join(', ')})` : ''
+    console.log(`  ${p.id.padEnd(40)} ${p.kind.padEnd(15)} ${p.version}${refs}`)
+  }
+}
+
+async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags): Promise<void> {
+  const body: Record<string, unknown> = { source }
+  if (flags.installAs) body.installAs = flags.installAs
+  if (flags.replace) body.replace = true
+  const result = await apiPost('/api/packages/install', body)
+  print(result)
+}
+
+async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Promise<void> {
+  const body: Record<string, unknown> = {}
+  if (flags.keepBlocks) body.keepBlocks = true
+  if (flags.force) body.force = true
+  const result = await apiDelete(`/api/packages/${encodeURIComponent(packageId)}`, body)
+  print(result)
+}
+
+async function cmdPackagesUpdate(packageId: string, flags: AgentsCmdFlags): Promise<void> {
+  const body: Record<string, unknown> = {}
+  if (flags.refreshTemplate) body.refreshTemplate = true
+  const result = await apiPost(`/api/packages/${encodeURIComponent(packageId)}/update`, body)
+  print(result)
+}
+
+/** Parse a flag-style argv tail (everything after the positional args). */
+function parseAgentsFlags(args: string[]): AgentsCmdFlags {
+  const flags: AgentsCmdFlags = {}
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
+    switch (a) {
+      case '--adopt':
+        flags.adopt = true
+        break
+      case '--install-as':
+        flags.installAs = args[++i]
+        break
+      case '--replace':
+        flags.replace = true
+        break
+      case '--keep-blocks':
+        flags.keepBlocks = true
+        break
+      case '--delete-agent':
+        flags.deleteAgent = true
+        break
+      case '--refresh-template':
+        flags.refreshTemplate = true
+        break
+      case '--force':
+        flags.force = true
+        break
+      case '--json':
+        flags.json = true
+        break
+    }
+  }
+  return flags
 }
 
 async function cmdDocs(): Promise<void> {
@@ -1426,12 +1606,13 @@ async function cmdOnboardingSettingsInit(): Promise<void> {
   if (result.status === 'failed') process.exit(1)
 }
 
-async function cmdOnboardingCheckSingle(target: 'openclaw' | 'llm' | 'channels' | 'plugin-assets'): Promise<void> {
+async function cmdOnboardingCheckSingle(target: 'openclaw' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets'): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
     openclaw: async () => (await import('../src/core/onboarding/openclaw')).openclawComponent,
     llm: async () => (await import('../src/core/onboarding/credentials')).llmComponent,
     channels: async () => (await import('../src/core/onboarding/credentials')).channelsComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
+    'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
   }
   const component = await componentMap[target]()
   const result = await component.check()
@@ -1459,6 +1640,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     models: async () => (await import('../src/core/onboarding/models')).modelsComponent,
     mcporter: async () => (await import('../src/core/onboarding/mcporter')).mcporterComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
+    'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
   }
   const component = await componentMap[target]()
   const isTTY = Boolean(process.stdout.isTTY)
@@ -1614,7 +1796,13 @@ export async function main(): Promise<void> {
 
       case 'agents':
         if (sub === 'list') {
-          await cmdAgentsList()
+          // `bakin agents list --packages` → package state view
+          // `bakin agents list`            → existing runtime view
+          if (args.includes('--packages')) {
+            await cmdAgentPackagesList(parseAgentsFlags(args.slice(2)))
+          } else {
+            await cmdAgentsList()
+          }
         } else if (sub === 'status') {
           if (!args[2]) { console.error('Usage: bakin agents status <id>'); process.exit(1) }
           await cmdAgentsStatus(args[2])
@@ -1624,8 +1812,33 @@ export async function main(): Promise<void> {
         } else if (sub === 'send') {
           if (!args[2] || !args[3]) { console.error('Usage: bakin agents send <id> <message>'); process.exit(1) }
           await cmdAgentsSend(args[2], args.slice(3).join(' '))
+        } else if (sub === 'install') {
+          if (!args[2]) { console.error('Usage: bakin agents install <path|github:user/repo[@ref]> [--adopt] [--install-as <id>] [--replace]'); process.exit(1) }
+          await cmdAgentPackagesInstall(args[2], parseAgentsFlags(args.slice(3)))
+        } else if (sub === 'remove') {
+          if (!args[2]) { console.error('Usage: bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]'); process.exit(1) }
+          await cmdAgentPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
+        } else if (sub === 'update') {
+          // `bakin agents update` (no id) updates everything; `bakin agents update <id>` is targeted
+          const id = args[2] && !args[2].startsWith('--') ? args[2] : undefined
+          const flagsStart = id ? 3 : 2
+          await cmdAgentPackagesUpdate(id, parseAgentsFlags(args.slice(flagsStart)))
+        } else if (sub === 'knowledge') {
+          const knowSub = args[2]
+          if (knowSub === 'list') {
+            if (!args[3]) { console.error('Usage: bakin agents knowledge list <agent-id>'); process.exit(1) }
+            await cmdAgentPackagesKnowledgeList(args[3])
+          } else if (knowSub === 'enable' || knowSub === 'disable') {
+            if (!args[3] || !args[4]) { console.error(`Usage: bakin agents knowledge ${knowSub} <agent-id> <lesson-id>`); process.exit(1) }
+            await cmdAgentPackagesKnowledgeToggle(args[3], args[4], knowSub === 'enable')
+          } else {
+            console.error(`Unknown agents knowledge subcommand: ${knowSub ?? '(none)'}`)
+            console.error('Available: list | enable | disable')
+            process.exit(1)
+          }
         } else {
           console.error(`Unknown agents subcommand: ${sub}`)
+          console.error('Available: list | status | tasks | send | install | remove | update | knowledge {list,enable,disable}')
           process.exit(1)
         }
         break
@@ -1655,6 +1868,25 @@ export async function main(): Promise<void> {
           await cmdPluginsRemove(args[2])
         } else {
           console.error(`Unknown plugins subcommand: ${sub}`)
+          process.exit(1)
+        }
+        break
+
+      case 'packages':
+        if (sub === 'install') {
+          if (!args[2]) { console.error('Usage: bakin packages install <path|github:user/repo[@ref]> [--install-as <id>] [--replace]'); process.exit(1) }
+          await cmdPackagesInstall(args[2], parseAgentsFlags(args.slice(3)))
+        } else if (sub === 'list') {
+          await cmdPackagesList(parseAgentsFlags(args.slice(2)))
+        } else if (sub === 'remove') {
+          if (!args[2]) { console.error('Usage: bakin packages remove <package-id> [--force] [--keep-blocks]'); process.exit(1) }
+          await cmdPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
+        } else if (sub === 'update') {
+          if (!args[2]) { console.error('Usage: bakin packages update <package-id> [--refresh-template]'); process.exit(1) }
+          await cmdPackagesUpdate(args[2], parseAgentsFlags(args.slice(3)))
+        } else {
+          console.error(`Unknown packages subcommand: ${sub ?? '(none)'}`)
+          console.error('Available: install | list | remove | update')
           process.exit(1)
         }
         break
@@ -1706,23 +1938,23 @@ export async function main(): Promise<void> {
         break
 
       case 'check':
-        if (sub === 'openclaw' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets') {
+        if (sub === 'openclaw' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets') {
           await cmdOnboardingCheckSingle(sub)
         } else if (sub === 'all') {
           await cmdOnboardingCheckAll()
         } else {
           console.error(`Unknown check target: ${sub}`)
-          console.error('Available: bakin check openclaw | llm | channels | plugin-assets | all')
+          console.error('Available: bakin check openclaw | llm | channels | plugin-assets | agent-assets | all')
           process.exit(1)
         }
         break
 
       case 'install':
-        if (sub === 'antfly' || sub === 'models' || sub === 'mcporter' || sub === 'plugin-assets') {
+        if (sub === 'antfly' || sub === 'models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets') {
           await cmdOnboardingInstallSingle(sub, args)
         } else {
           console.error(`Unknown install target: ${sub}`)
-          console.error('Available: bakin install antfly | models | mcporter | plugin-assets')
+          console.error('Available: bakin install antfly | models | mcporter | plugin-assets | agent-assets')
           process.exit(1)
         }
         break

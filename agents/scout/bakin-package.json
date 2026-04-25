@@ -1,0 +1,47 @@
+{
+  "id": "scout",
+  "kind": "agent",
+  "name": "Scout",
+  "version": "0.1.0",
+  "description": "Outdoor + adventure content creator. Connor \"Scout\" Walsh — accessible-outdoors voice for BetterFit.",
+  "bakin": "^1.0.0",
+  "author": "Made in Wyo",
+  "agent": {
+    "identity": {
+      "name": "Scout",
+      "emoji": "🌲"
+    },
+    "role": "Outdoor content creator",
+    "dispatchableBy": ["main"],
+    "tags": ["content", "outdoor", "betterfit"],
+    "allowedTools": [
+      "bakin_exec_tasks_*",
+      "bakin_exec_assets_*",
+      "bakin_exec_get_paths",
+      "bakin_exec_log",
+      "bakin_exec_heartbeat"
+    ],
+    "allowedSkills": []
+  },
+  "install": {
+    "createIfMissing": true,
+    "adoptIfExists": true,
+    "writeWorkspaceFiles": true,
+    "installSkills": true,
+    "installWorkflows": true,
+    "enableKnowledge": ["accessibility-voice"]
+  },
+  "contributions": {
+    "workspaceFiles": [
+      "workspace/SOUL.md",
+      "workspace/IDENTITY.md",
+      "workspace/AGENTS.md",
+      "workspace/TOOLS.md"
+    ],
+    "knowledge": [
+      "knowledge/accessibility-voice.md",
+      "knowledge/outdoor-content-patterns.md"
+    ],
+    "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
+  }
+}

@@ -1,10 +1,19 @@
 /**
  * Source registry — in-memory index of every workflow definition the system
- * knows about, keyed by id, with provenance (plugin vs user).
+ * knows about, keyed by id, with provenance (plugin / agent-package / user).
  *
- * User copies always shadow plugin copies with the same id. Two different
- * plugins registering the same id is a hard error; a plugin may overwrite
- * its own registration (hot reload during activate()).
+ * Precedence (highest wins, last loses):
+ *   user                — files in ~/.bakin/workflows/definitions/
+ *   agent-package       — workflows shipped by an installed agent-package
+ *                         (kind: "agent" or "workflow-pack"), loaded at boot
+ *                         from the lockfile
+ *   plugin              — workflows shipped via plugin defaults/, registered
+ *                         during plugin activation
+ *
+ * Two different plugins registering the same id is a hard error; the same
+ * plugin may overwrite its own registration (hot reload during activate()).
+ * Symmetrically: two different agent-packages cannot register the same id;
+ * the same package may re-register on update.
  *
  * Backed by globalThis so a single process keeps one registry instance
  * even when this module is reached from multiple entry points (same
@@ -12,7 +21,7 @@
  */
 import type { WorkflowDefinition } from '../types'
 
-export type DefinitionSource = 'plugin' | 'user'
+export type DefinitionSource = 'plugin' | 'agent-package' | 'user'
 
 export interface SourceEntry {
   id: string
@@ -20,6 +29,8 @@ export interface SourceEntry {
   source: DefinitionSource
   /** Present when source === 'plugin' */
   pluginId?: string
+  /** Present when source === 'agent-package' */
+  packageId?: string
 }
 
 interface PluginEntry {
@@ -27,8 +38,14 @@ interface PluginEntry {
   definition: WorkflowDefinition
 }
 
+interface AgentPackageEntry {
+  packageId: string
+  definition: WorkflowDefinition
+}
+
 interface SourceStore {
   plugin: Map<string, PluginEntry>
+  agentPackage: Map<string, AgentPackageEntry>
   user: Map<string, WorkflowDefinition>
 }
 
@@ -40,8 +57,15 @@ function getStore(): SourceStore {
   if (!globalThis.__bakinWorkflowSources) {
     globalThis.__bakinWorkflowSources = {
       plugin: new Map(),
+      agentPackage: new Map(),
       user: new Map(),
     }
+  }
+  // Migration: callers from earlier versions of this module may have set
+  // a store with only `plugin` + `user`. Backfill the third map so we
+  // never observe `undefined` here.
+  if (!globalThis.__bakinWorkflowSources.agentPackage) {
+    globalThis.__bakinWorkflowSources.agentPackage = new Map()
   }
   return globalThis.__bakinWorkflowSources
 }
@@ -79,8 +103,44 @@ export function unregisterPluginDefinitions(pluginId: string): void {
 }
 
 /**
+ * Register an agent-package-owned workflow definition.
+ * Symmetric to `registerPluginDefinition`: throws if a *different* package
+ * has already registered the same id; the same package may overwrite its
+ * own registration (e.g. when the user runs `bakin agents update`).
+ */
+export function registerAgentPackageDefinition(
+  packageId: string,
+  id: string,
+  definition: WorkflowDefinition,
+): void {
+  const store = getStore()
+  const existing = store.agentPackage.get(id)
+  if (existing && existing.packageId !== packageId) {
+    throw new Error(
+      `Workflow id "${id}" is already registered by agent-package "${existing.packageId}" ` +
+        `(attempted by "${packageId}")`,
+    )
+  }
+  store.agentPackage.set(id, { packageId, definition })
+}
+
+/**
+ * Remove every agent-package-owned entry for the given packageId. Called by
+ * the uninstaller when a package is removed; lockfile entry deletion is the
+ * only signal needed — the source registry stops resolving the package's
+ * contributions immediately, no Bakin restart required.
+ */
+export function unregisterAgentPackageDefinitions(packageId: string): void {
+  const store = getStore()
+  for (const [id, entry] of store.agentPackage) {
+    if (entry.packageId === packageId) store.agentPackage.delete(id)
+  }
+}
+
+/**
  * Register a user-owned workflow definition (from ~/.bakin/workflows/definitions/).
- * User registration silently shadows any plugin-owned copy with the same id.
+ * User registration silently shadows any plugin- or agent-package-owned copy
+ * with the same id.
  */
 export function registerUserDefinition(id: string, definition: WorkflowDefinition): void {
   getStore().user.set(id, definition)
@@ -91,13 +151,27 @@ export function unregisterUserDefinition(id: string): void {
 }
 
 /**
- * Fetch the effective definition for an id. User wins over plugin.
+ * Fetch the effective definition for an id under the precedence rule:
+ *   user > agent-package > plugin
+ *
+ * The agent-package tier sits between user and plugin so a freshly installed
+ * package can override a plugin-shipped workflow without the user having to
+ * shadow it manually, while user files still always win.
  */
 export function getDefinition(id: string): SourceEntry | undefined {
   const store = getStore()
   const userDef = store.user.get(id)
   if (userDef) {
     return { id, definition: userDef, source: 'user' }
+  }
+  const pkgEntry = store.agentPackage.get(id)
+  if (pkgEntry) {
+    return {
+      id,
+      definition: pkgEntry.definition,
+      source: 'agent-package',
+      packageId: pkgEntry.packageId,
+    }
   }
   const pluginEntry = store.plugin.get(id)
   if (pluginEntry) {
@@ -112,11 +186,15 @@ export function getDefinition(id: string): SourceEntry | undefined {
 }
 
 /**
- * List every id known to the registry, resolved through the user-wins rule.
+ * List every id known to the registry, resolved through the precedence rule.
  */
 export function listAll(): SourceEntry[] {
   const store = getStore()
-  const ids = new Set<string>([...store.plugin.keys(), ...store.user.keys()])
+  const ids = new Set<string>([
+    ...store.plugin.keys(),
+    ...store.agentPackage.keys(),
+    ...store.user.keys(),
+  ])
   const out: SourceEntry[] = []
   for (const id of ids) {
     const entry = getDefinition(id)
@@ -126,12 +204,13 @@ export function listAll(): SourceEntry[] {
 }
 
 /**
- * True iff the id resolves to a plugin-owned definition with no user shadow.
- * Plugin-owned ids are read-only in the UI — CRUD routes refuse writes on them.
+ * True iff the id resolves to a plugin- or agent-package-owned definition
+ * with no user shadow. Read-only ids refuse writes from the UI's CRUD routes.
  */
 export function isReadOnly(id: string): boolean {
   const store = getStore()
-  return !store.user.has(id) && store.plugin.has(id)
+  if (store.user.has(id)) return false
+  return store.agentPackage.has(id) || store.plugin.has(id)
 }
 
 export function getSource(id: string): DefinitionSource | undefined {
@@ -140,10 +219,12 @@ export function getSource(id: string): DefinitionSource | undefined {
 
 /**
  * Test-only helper: clear all registry state. Production code must not call
- * this — plugin hot-reload uses unregisterPluginDefinitions instead.
+ * this — plugin hot-reload uses unregisterPluginDefinitions and agent-package
+ * removal uses unregisterAgentPackageDefinitions instead.
  */
 export function clearSourceRegistry(): void {
   const store = getStore()
   store.plugin.clear()
+  store.agentPackage.clear()
   store.user.clear()
 }

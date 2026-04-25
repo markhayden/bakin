@@ -1,0 +1,47 @@
+{
+  "id": "rolo",
+  "kind": "agent",
+  "name": "Rolo",
+  "version": "0.1.0",
+  "description": "Video producer agent. Generates video + audio, mixes finished assets.",
+  "bakin": "^1.0.0",
+  "author": "Made in Wyo",
+  "agent": {
+    "identity": {
+      "name": "Rolo",
+      "emoji": "🎬"
+    },
+    "role": "Video producer",
+    "dispatchableBy": ["main"],
+    "tags": ["creative", "video", "audio"],
+    "allowedTools": [
+      "bakin_exec_tasks_*",
+      "bakin_exec_assets_*",
+      "bakin_exec_get_paths",
+      "bakin_exec_log",
+      "bakin_exec_heartbeat"
+    ],
+    "allowedSkills": ["runway", "elevenlabs"]
+  },
+  "install": {
+    "createIfMissing": true,
+    "adoptIfExists": true,
+    "writeWorkspaceFiles": true,
+    "installSkills": true,
+    "installWorkflows": true,
+    "enableKnowledge": ["video-pacing"]
+  },
+  "contributions": {
+    "workspaceFiles": [
+      "workspace/SOUL.md",
+      "workspace/IDENTITY.md",
+      "workspace/AGENTS.md",
+      "workspace/TOOLS.md"
+    ],
+    "knowledge": [
+      "knowledge/video-pacing.md",
+      "knowledge/audio-craft.md"
+    ],
+    "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
+  }
+}
