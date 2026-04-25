@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from '@bakin/sdk/hooks'
-import { ArrowLeft, Loader2, Camera, Trash2, Copy } from 'lucide-react'
+import { ArrowLeft, Loader2, Camera, Trash2, Copy, Info } from 'lucide-react'
 import { Badge } from "@bakin/sdk/ui"
 import { Button } from "@bakin/sdk/ui"
 import {
@@ -345,13 +345,37 @@ function PackageEntryFields({ entry, packageId }: { entry: NonNullable<PackageSt
   )
 }
 
+const ADOPT_INFO = `Adopting attaches an agent-package to this agent. Bakin then tracks the source repo + commit, projects the package's knowledge lessons + skills into the workspace, and lets you toggle which lessons are active. Your existing SOUL/IDENTITY/AGENTS/TOOLS files stay on disk untouched.`
+
 export function PackageCard({ agentId, packageState }: { agentId: string; packageState: PackageStateRow | undefined }) {
   // Default to "unmanaged" when the API hasn't reported a row at all — the
   // most common reason is the agent exists in OpenClaw but has never been
   // adopted, which is the same thing as state=unmanaged.
   const state = packageState?.state ?? 'unmanaged'
+  const mainAgentId = useMainAgentId()
+  const isMain = agentId === mainAgentId
   const refreshPackageStates = useAgentStore((s) => s.refreshPackageStates)
   const [adoptOpen, setAdoptOpen] = useState(false)
+
+  // Main agent is the user's persona — adopting/replacing it doesn't make
+  // sense. Show a different framing instead of the Adopt button.
+  if (isMain && (state === 'unmanaged' || state === 'absent')) {
+    return (
+      <section>
+        <h3 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-2">Package</h3>
+        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="bg-zinc-800 text-zinc-300">Self-managed</Badge>
+            <span className="text-xs text-muted-foreground">main agent</span>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Your main agent is your own persona — its workspace files live with you, not a package template. Adoption is intentionally not offered here.
+          </p>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section>
       <h3 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-2">Package</h3>
@@ -359,11 +383,24 @@ export function PackageCard({ agentId, packageState }: { agentId: string; packag
         <div className="flex items-center justify-between gap-2">
           <PackageStateBadge state={state} packageId={packageState?.packageId} />
           {state === 'unmanaged' && (
-            <Button size="sm" onClick={() => setAdoptOpen(true)}>
+            <Button
+              size="sm"
+              onClick={() => setAdoptOpen(true)}
+              title={ADOPT_INFO}
+              aria-label={`Adopt this agent into a package — ${ADOPT_INFO}`}
+            >
+              <Info className="size-3 mr-1.5" />
               Adopt
             </Button>
           )}
         </div>
+        {state === 'unmanaged' && (
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            This agent isn't tracked by an agent-package. Adopt to enable
+            knowledge-lesson toggles, automatic skill projection, and
+            update-from-source tracking. Your workspace files stay as-is.
+          </p>
+        )}
         {packageState?.entry && (state === 'managed' || state === 'adopted') && (
           <PackageEntryFields entry={packageState.entry} packageId={packageState.packageId} />
         )}
