@@ -152,7 +152,7 @@ export function IntegratedBrainstorm({
           ) : (
             <div
               data-testid="brainstorm-history"
-              className="flex-1 min-h-0 overflow-y-auto mb-2 pt-5 pr-1"
+              className="flex-1 min-h-0 overflow-y-auto mb-2 pr-1"
               style={{ scrollbarGutter: 'stable' }}
             >
               {messages.length > 0 && (
