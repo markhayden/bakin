@@ -150,8 +150,6 @@ export function getWorkspacePath(agentId: string): string {
 
 // ─── Workspace File Operations ───────────────────────────────────────────────
 
-const WORKSPACE_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md', 'USER.md', 'BOOTSTRAP.md'] as const
-
 /** Read a workspace file for an agent. Returns null if missing. */
 export function readWorkspaceFile(agentId: string, filename: string): string | null {
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
@@ -162,6 +160,22 @@ export function readWorkspaceFile(agentId: string, filename: string): string | n
   const filePath = join(wsPath, filename)
   try {
     return readFileSync(filePath, 'utf-8')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Read the agent's HEARTBEAT.md plus its mtime as the lastUpdated timestamp.
+ * Heartbeat is agent-authored narrative — view-only in the UI.
+ */
+export function readHeartbeatRaw(agentId: string): { content: string; lastUpdated: string | null } | null {
+  const wsPath = getWorkspacePath(agentId)
+  const filePath = join(wsPath, 'HEARTBEAT.md')
+  try {
+    const content = readFileSync(filePath, 'utf-8')
+    const stats = statSync(filePath)
+    return { content, lastUpdated: stats.mtime.toISOString() }
   } catch {
     return null
   }
@@ -611,16 +625,58 @@ export async function updateAgentIdentity(agentId: string, fields: IdentityField
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
+ * Match a key:value field in IDENTITY.md. Accepts every common
+ * markdown shape we've seen in the wild:
+ *
+ *   - `Role: Foo`                — plain
+ *   - `- Role: Foo`              — bulleted
+ *   - `- **Role**: Foo`          — bold key, colon outside wrap
+ *   - `- **Role:** Foo`          — bold key, colon INSIDE wrap
+ *   - `## Role\nFoo`             — heading + value on next line
+ *
+ * Returns the trimmed value with any wrapping asterisks/whitespace
+ * stripped, or null if no match.
+ */
+function matchIdentityField(identity: string, key: string): string | null {
+  // Inline: optional bullet, 0-2 leading asterisks, key, 0-2 trailing
+  // asterisks, optional whitespace, colon, optional asterisks/whitespace,
+  // value, optional trailing asterisks.
+  const inlineRe = new RegExp(
+    `^\\s*[-*]?\\s*\\*{0,2}${key}\\*{0,2}\\s*:\\s*\\*{0,2}\\s*(.+?)\\s*\\*{0,2}\\s*$`,
+    'mi',
+  )
+  const inline = identity.match(inlineRe)
+  if (inline) {
+    const v = inline[1].trim().replace(/^\*+|\*+$/g, '').trim()
+    if (v.length > 0) return v
+  }
+  // Heading: `## Role` on its own line, value on next non-empty line.
+  const headingRe = new RegExp(`^#{1,6}\\s+${key}\\s*$\\n+([^\\n]+)`, 'mi')
+  const heading = identity.match(headingRe)
+  if (heading) {
+    const v = heading[1].trim().replace(/^\*+|\*+$/g, '').trim()
+    if (v.length > 0) return v
+  }
+  return null
+}
+
+/**
  * Resolve agent role from IDENTITY.md or SOUL.md content.
  * Falls back to a generic role derived from position in the roster.
+ *
+ * Precedence:
+ *   1. IDENTITY.md `Role:` (the explicit field — wins if present)
+ *   2. IDENTITY.md `Vibe:` (legacy / soft descriptor)
+ *   3. SOUL.md "You are X — the Y" first line
+ *   4. 'Orchestrator' for the main agent, '' for everyone else
  */
 function resolveRole(agentId: string): string {
-  // Try IDENTITY.md first (has structured fields)
   const identity = readWorkspaceFile(agentId, 'IDENTITY.md')
   if (identity) {
-    // Parse simple key: value or YAML frontmatter
-    const vibeMatch = identity.match(/^[-*]\s*\*?Vibe\*?:\s*(.+)/mi)
-    if (vibeMatch) return vibeMatch[1].trim()
+    const role = matchIdentityField(identity, 'Role')
+    if (role) return role
+    const vibe = matchIdentityField(identity, 'Vibe')
+    if (vibe) return vibe
   }
 
   // Try SOUL.md — look for a role-like first line
@@ -637,7 +693,9 @@ function resolveRole(agentId: string): string {
     }
   }
 
-  // Main agent fallback
+  // Main agent fallback — meaningful role for the orchestrator
   if (agentId === tryGetMainAgentId()) return 'Orchestrator'
-  return 'Agent'
+  // No parseable role and not main: return empty so the UI can hide the
+  // line entirely instead of labeling every agent "Agent" (tautology).
+  return ''
 }

@@ -92,3 +92,53 @@ export interface PackageStateRow {
     dependencies?: string[]
   }
 }
+
+/**
+ * Single message from an OpenClaw session JSONL. Used by the Active Context
+ * tab to render what the agent has actually been sent + has produced.
+ */
+export interface SessionMessage {
+  /** system / user / assistant / tool — drives the role badge color */
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  /** Raw text content. JSON tool calls are pretty-printed by the renderer. */
+  content: string
+  /** Model id present on assistant messages when usage was recorded. */
+  model?: string
+  /** ISO timestamp when present; absent on synthetic system messages. */
+  ts?: string
+  /** Tool name for `role: 'tool'` entries. */
+  toolName?: string
+}
+
+/**
+ * Latest-session transcript surfaced through `/api/plugins/team/:id/active-context`.
+ * `truncated` is true when the underlying JSONL had more than the requested
+ * cap (default 200) and we returned the most-recent N.
+ */
+export interface SessionTranscript {
+  sessionId: string
+  sessionStarted: string | null
+  messages: SessionMessage[]
+  truncated: boolean
+  totalMessages: number
+}
+
+/**
+ * Per-agent activity counts pulled from the in-memory `recordUsage` recorder.
+ * Resets on server restart — `sinceServerStart` exists so the UI can frame
+ * the numbers honestly rather than claim lifetime totals.
+ */
+export interface RecentActivity {
+  windowMs: Record<'5m' | '1h' | '24h', number>
+  errors: Record<'5m' | '1h' | '24h', number>
+  sinceServerStart: string
+}
+
+/**
+ * Raw heartbeat surface — the markdown body the agent wrote to its heartbeat
+ * file plus the file mtime. The Heartbeat tab renders this view-only.
+ */
+export interface HeartbeatRaw {
+  content: string
+  lastUpdated: string | null
+}

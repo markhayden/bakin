@@ -20,7 +20,9 @@ import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
 import { restartGateway } from '../../src/core/openclaw-client'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
+import { getStatsByMs } from '../../src/core/usage'
 import * as adapter from './lib/openclaw-adapter'
+import { readLatestSessionTranscript } from './lib/session-reader'
 import type { AgentWithStatus, AgentDisplaySettingsMap, HeartbeatData, OrgTeam, TeamPluginSettings } from './types'
 
 const log = createLogger('team')
@@ -1032,6 +1034,77 @@ const teamPlugin: BakinPlugin = {
         const usage = allUsage.find((u) => u.agent === agentId)
 
         return Response.json({ usage: usage ?? null })
+      },
+    })
+
+    // GET /:agentId/heartbeat — Raw HEARTBEAT.md content + lastUpdated
+    ctx.registerRoute({
+      path: '/:agentId/heartbeat',
+      method: 'GET',
+      description: 'Read the agent\'s HEARTBEAT.md narrative + file mtime',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const agentId = url.searchParams.get('agentId')
+        if (!agentId) return Response.json({ ok: false, error: 'agentId required' }, { status: 400 })
+
+        try {
+          const heartbeat = adapter.readHeartbeatRaw(agentId)
+          return Response.json({ ok: true, heartbeat })
+        } catch (err) {
+          log.error('Failed to read heartbeat', err, { agentId })
+          return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // GET /:agentId/active-context — Latest session transcript (read-only)
+    ctx.registerRoute({
+      path: '/:agentId/active-context',
+      method: 'GET',
+      description: 'Read the most recent session JSONL parsed into a message stream',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const agentId = url.searchParams.get('agentId')
+        if (!agentId) return Response.json({ ok: false, error: 'agentId required' }, { status: 400 })
+
+        const maxParam = url.searchParams.get('max')
+        const maxMessages = maxParam ? Math.max(1, Math.min(1000, parseInt(maxParam, 10) || 200)) : 200
+
+        try {
+          const transcript = readLatestSessionTranscript(agentId, { maxMessages })
+          return Response.json({ ok: true, transcript })
+        } catch (err) {
+          log.error('Failed to read active context', err, { agentId })
+          return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        }
+      },
+    })
+
+    // GET /:agentId/recent-activity — In-memory dispatch counts per window
+    ctx.registerRoute({
+      path: '/:agentId/recent-activity',
+      method: 'GET',
+      description: 'Per-agent dispatch + error counts across 5m / 1h / 24h windows (resets on server restart)',
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const agentId = url.searchParams.get('agentId')
+        if (!agentId) return Response.json({ ok: false, error: 'agentId required' }, { status: 400 })
+
+        try {
+          const windows = { '5m': 5 * 60 * 1000, '1h': 60 * 60 * 1000, '24h': 24 * 60 * 60 * 1000 } as const
+          const windowMs: Record<'5m' | '1h' | '24h', number> = { '5m': 0, '1h': 0, '24h': 0 }
+          const errors: Record<'5m' | '1h' | '24h', number> = { '5m': 0, '1h': 0, '24h': 0 }
+          for (const [key, ms] of Object.entries(windows) as Array<['5m' | '1h' | '24h', number]>) {
+            const stats = getStatsByMs({ kind: 'agent', windowMs: ms, agent: agentId })
+            windowMs[key] = stats.total
+            errors[key] = stats.errors
+          }
+          const sinceServerStart = new Date(Date.now() - process.uptime() * 1000).toISOString()
+          return Response.json({ ok: true, activity: { windowMs, errors, sinceServerStart } })
+        } catch (err) {
+          log.error('Failed to compute recent activity', err, { agentId })
+          return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        }
       },
     })
 

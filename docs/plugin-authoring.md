@@ -369,6 +369,20 @@ edits (e.g., a half-filled form), it resets. That's v2's tradeoff —
 full React Fast Refresh is deferred to v3. See
 `.claude/knowledge/dev-loop.md` for the full architecture.
 
+## Reusable patterns from core plugins
+
+A few patterns the team plugin landed during the agent-detail rework are worth knowing about — they aren't in `@bakin/sdk` *yet*, but they're stable patterns other plugins can adopt by referencing the source.
+
+### View→Edit markdown tabs (Assets-style)
+
+`plugins/team/components/markdown-edit-tab.tsx` provides a reusable view/edit component for markdown workspace files. Default state renders `<MarkdownContent>`; a pencil button in the absolute top-right corner toggles to a textarea editor with Save (green check) + Cancel (X) buttons in the same corner. Cmd+S saves when dirty; Esc cancels. Save POSTs to a configurable endpoint.
+
+If a plugin author needs the same pattern, copy the component and adjust the save endpoint. If multiple plugins end up wanting it, lift to `@bakin/sdk/components` as a follow-up.
+
+### Per-tab fetch waterfall in dashboards
+
+`plugins/team/components/overview-tab.tsx` shows the recommended pattern for a dashboard tab that needs to load several independent data sources: `Promise.all` four fetches, one panel per source, each handles its own loading/empty state. Avoid sequential awaits — the user perceives the slowest fetch as the page latency, not the sum.
+
 ## Future work (not yet supported)
 
 - **React Fast Refresh (v3).** Preserve `useState` across a component
