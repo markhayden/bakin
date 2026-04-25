@@ -127,6 +127,15 @@ const eventBus = new BakinEventBus(broadcast)
   log.info('Loading plugins...')
   await pluginRegistry.initialize(config, storage, eventBus)
 
+  // Layer agent-package contributions on top of plugin-registered workflows +
+  // workflow-skills. Plugins have populated the `plugin` tier of the workflow
+  // source-registry / skill-loader; agent-packages now populate the
+  // `agent-package` tier (precedence: user > agent-package > plugin). User
+  // files on disk get loaded by their own paths and always win on top.
+  // Failures are logged inside the helper — never block boot.
+  const { loadAgentPackageSources } = await import('./src/core/agent-packages/load-sources')
+  loadAgentPackageSources()
+
   // Expose registry accessors on globalThis so Next.js API routes (which get
   // separate webpack-compiled module instances) can read the real data.
   ;(globalThis as any).__bakinGetRegistrySnapshot = () => pluginRegistry.getRegistrySnapshot()
