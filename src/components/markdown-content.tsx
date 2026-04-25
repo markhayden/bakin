@@ -63,9 +63,9 @@ export function MarkdownContent({ content }: { content: string }) {
           <div
             key={i}
             data-bakin-block={seg.markerName}
-            className="bakin-block my-3 rounded-md border border-dashed border-border/60 px-4 py-3 bg-muted/10"
+            className="bakin-block my-3 rounded-md border border-dashed border-zinc-500/70 px-4 py-3 bg-zinc-800/40"
           >
-            <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-mono mb-2">
+            <div className="text-[10px] uppercase tracking-widest text-zinc-400 font-mono mb-2">
               bakin:{seg.markerName}
             </div>
             <MarkdownBody content={seg.body} />
