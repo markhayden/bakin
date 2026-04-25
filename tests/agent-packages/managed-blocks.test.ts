@@ -33,6 +33,7 @@ mock.module('@bakin/core/openclaw-home', () => ({
 
 import {
   extractBlock,
+  getBlockState,
   hasBlock,
   injectBlock,
   isValidBlockId,
@@ -198,6 +199,36 @@ describe('injectBlock', () => {
   it('round-trips with extractBlock', () => {
     const out = injectBlock('', 'knowledge:pixel:product-photography', 'lesson body')
     expect(extractBlock(out, 'knowledge:pixel:product-photography')).toBe('lesson body')
+  })
+})
+
+describe('getBlockState', () => {
+  it('returns "absent" when neither marker exists', () => {
+    expect(getBlockState('# just markdown\n', 'foo')).toBe('absent')
+  })
+
+  it('returns "present" when both markers are paired correctly', () => {
+    const content = `<!-- bakin:foo:start -->\nbody\n<!-- bakin:foo:end -->`
+    expect(getBlockState(content, 'foo')).toBe('present')
+  })
+
+  it('returns "orphan-start" when start marker exists without end', () => {
+    const content = `<!-- bakin:foo:start -->\nbody with no end marker`
+    expect(getBlockState(content, 'foo')).toBe('orphan-start')
+  })
+
+  it('returns "orphan-end" when end marker exists without start', () => {
+    const content = `body\n<!-- bakin:foo:end -->\nmore`
+    expect(getBlockState(content, 'foo')).toBe('orphan-end')
+  })
+
+  it('returns "orphan-end" when markers are reversed (end before start)', () => {
+    const content = `<!-- bakin:foo:end -->\nbody\n<!-- bakin:foo:start -->`
+    expect(getBlockState(content, 'foo')).toBe('orphan-end')
+  })
+
+  it('returns "absent" for invalid block ids', () => {
+    expect(getBlockState('<!-- bakin:has space:start -->', 'has space')).toBe('absent')
   })
 })
 
