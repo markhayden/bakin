@@ -32,6 +32,13 @@ mock.module('../../../packages/core/src/content-dir', () => ({
 }))
 
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
+import type { PackageStateRow } from '../../../plugins/team/types'
+
+interface PkgResponse {
+  ok: boolean
+  agents?: PackageStateRow[]
+  error?: string
+}
 
 afterAll(() => {
   try { rmSync(testDir, { recursive: true, force: true }) } catch {}
@@ -47,16 +54,16 @@ const ROSTER_OK = {
   mainAgentId: 'main',
 }
 
-const PKG_OK = {
+const PKG_OK: PkgResponse = {
   ok: true,
   agents: [
     {
       agentId: 'pixel',
-      state: 'managed' as const,
+      state: 'managed',
       packageId: 'examples/pixel@0.1.0',
       entry: { source: 'github:examples/pixel', ref: 'v0.1.0', commitSha: 'abc1234', installedAt: '2026-04-25T00:00:00Z' },
     },
-    { agentId: 'orca', state: 'unmanaged' as const },
+    { agentId: 'orca', state: 'unmanaged' },
   ],
 }
 
@@ -172,7 +179,7 @@ describe('useAgentStore — package state plumbing', () => {
   })
 
   it('refreshPackageStates() picks up a new state value', async () => {
-    let pkgVariant = PKG_OK
+    let pkgVariant: PkgResponse = PKG_OK
     global.fetch = mock((url: RequestInfo | URL) => {
       const u = String(url)
       if (u === '/api/plugins/team/') {
@@ -190,8 +197,8 @@ describe('useAgentStore — package state plumbing', () => {
     pkgVariant = {
       ok: true,
       agents: [
-        { agentId: 'pixel', state: 'managed' as const, packageId: 'examples/pixel@0.1.0', entry: PKG_OK.agents[0].entry },
-        { agentId: 'orca', state: 'adopted' as const, packageId: 'examples/orca@0.1.0' },
+        { agentId: 'pixel', state: 'managed', packageId: 'examples/pixel@0.1.0', entry: PKG_OK.agents?.[0].entry },
+        { agentId: 'orca', state: 'adopted', packageId: 'examples/orca@0.1.0' },
       ],
     }
     await useAgentStore.getState().refreshPackageStates()

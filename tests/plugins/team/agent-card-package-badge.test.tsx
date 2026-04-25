@@ -78,7 +78,10 @@ describe('AgentCardNode — package state badge wiring', () => {
 
   function renderCard() {
     // NodeProps minimal stub — AgentCardNode only reads `data.agent`.
-    const props = { data: { agent: AGENT }, id: AGENT.id, type: 'agentCard' } as never
+    // Cast to `any` (not `never`) so JSX spread is allowed; the runtime
+    // surface AgentCardNode actually reads is just `data.agent`.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const props: any = { data: { agent: AGENT }, id: AGENT.id, type: 'agentCard' }
     return render(<AgentCardNode {...props} />)
   }
 
