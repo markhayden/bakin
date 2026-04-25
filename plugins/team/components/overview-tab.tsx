@@ -17,7 +17,7 @@ import { useAgentStore, useAgentColor } from '@bakin/sdk/hooks'
 import type { AvailableModel } from '@bakin/sdk/types'
 import type { AgentProfile, PackageStateRow, RecentActivity } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
-import { PackageCard } from './agent-detail'
+import { PackageCardBody } from './agent-detail'
 
 export interface OverviewTabProps {
   agentId: string
@@ -175,18 +175,19 @@ export function OverviewTab({
 
   return (
     <div className="space-y-6 w-full">
-      {/* HERO ROW — Identity (2/3) + Settings (1/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <section className="lg:col-span-2">
-          <SectionLabel>Identity</SectionLabel>
-          <div
-            className="relative rounded-2xl border-2 px-6 py-5 overflow-hidden"
-            style={{
-              borderColor: `${accentColor}55`,
-              background: `linear-gradient(135deg, ${accentColor}10 0%, transparent 60%)`,
-            }}
-          >
-            <div className="flex items-center gap-5">
+      {/* HERO — Identity + Settings + Package merged into one card with the
+          agent's accent color. Stacks at narrow widths; splits 3-up at lg+. */}
+      <section
+        className="relative rounded-2xl border-2 overflow-hidden"
+        style={{
+          borderColor: `${accentColor}55`,
+          background: `linear-gradient(135deg, ${accentColor}10 0%, transparent 50%)`,
+        }}
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr] divide-y lg:divide-y-0 lg:divide-x divide-border/40">
+          {/* IDENTITY */}
+          <div className="px-6 py-5">
+            <div className="flex items-center gap-4">
               <div
                 className="size-16 rounded-2xl flex items-center justify-center text-4xl shrink-0"
                 style={{ background: `${accentColor}20`, border: `1px solid ${accentColor}40` }}
@@ -199,7 +200,7 @@ export function OverviewTab({
               </div>
             </div>
             {profile.subagentPerms && profile.subagentPerms.length > 0 && (
-              <div className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border/50 flex flex-wrap items-center gap-1.5">
+              <div className="text-xs text-muted-foreground mt-4 flex flex-wrap items-center gap-1.5">
                 <span className="text-foreground/70">Manages</span>
                 {profile.subagentPerms.map((id) => (
                   <Badge
@@ -214,11 +215,10 @@ export function OverviewTab({
               </div>
             )}
           </div>
-        </section>
 
-        <section>
-          <SectionLabel>Settings</SectionLabel>
-          <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4 space-y-3 h-full">
+          {/* SETTINGS */}
+          <div className="px-6 py-5 space-y-3">
+            <SectionLabel>Settings</SectionLabel>
             <div>
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Model</div>
               {availableModels.length > 0 ? (
@@ -252,11 +252,14 @@ export function OverviewTab({
               </div>
             )}
           </div>
-        </section>
-      </div>
 
-      {/* PACKAGE */}
-      <PackageCard agentId={agentId} packageState={packageState} />
+          {/* PACKAGE */}
+          <div className="px-6 py-5 space-y-3">
+            <SectionLabel>Package</SectionLabel>
+            <PackageCardBody agentId={agentId} packageState={packageState} />
+          </div>
+        </div>
+      </section>
 
       {/* TELEMETRY — 4 metric tiles, color-coded, with icons */}
       <section>

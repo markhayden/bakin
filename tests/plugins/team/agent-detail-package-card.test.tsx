@@ -118,10 +118,10 @@ describe('PackageCard — read-only display per state', () => {
     const adopt = screen.getByRole('button', { name: /Adopt/ })
     expect(adopt).toBeDefined()
     expect((adopt as HTMLButtonElement).disabled).toBe(false)
-    // The explainer text now appears below the button so users understand
+    // The explainer text appears below the button so users understand
     // what adoption means before clicking.
-    expect(screen.getByText(/This agent isn't tracked by an agent-package/)).toBeDefined()
     expect(screen.getByText(/knowledge-lesson toggles/)).toBeDefined()
+    expect(screen.getByText(/workspace files stay as-is/)).toBeDefined()
   })
 
   it('renders a managed badge + entry fields when state=managed', async () => {
