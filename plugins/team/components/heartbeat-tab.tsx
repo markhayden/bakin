@@ -9,9 +9,10 @@
  * { content, lastUpdated } or null when the file doesn't exist yet.
  */
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Heart } from 'lucide-react'
 import { MarkdownContent } from '@bakin/sdk/components'
 import type { HeartbeatRaw } from '../types'
+import { EmptyState } from './empty-state'
 
 export interface HeartbeatTabProps {
   agentId: string
@@ -77,12 +78,18 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
 
   if (!heartbeat) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-        <div className="text-base font-medium text-foreground mb-1">No heartbeat reported yet</div>
-        <p className="text-sm max-w-md">
-          Heartbeats appear here once the agent writes its first <code className="font-mono">HEARTBEAT.md</code>.
-        </p>
-      </div>
+      <EmptyState
+        icon={Heart}
+        title="No heartbeat yet"
+        description={
+          <>
+            Heartbeats appear here once this agent writes its first
+            {' '}
+            <code className="font-mono text-foreground/80">HEARTBEAT.md</code>.
+            Most agents update theirs at the end of every task.
+          </>
+        }
+      />
     )
   }
 

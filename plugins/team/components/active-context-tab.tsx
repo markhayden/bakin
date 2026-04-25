@@ -13,10 +13,11 @@
  * (default 200 messages on the server).
  */
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, MessageCircle } from 'lucide-react'
 import { Badge } from '@bakin/sdk/ui'
 import { MarkdownContent } from '@bakin/sdk/components'
 import type { SessionMessage, SessionTranscript } from '../types'
+import { EmptyState } from './empty-state'
 
 export interface ActiveContextTabProps {
   agentId: string
@@ -112,12 +113,11 @@ export function ActiveContextTab({ agentId }: ActiveContextTabProps) {
 
   if (!transcript || transcript.messages.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-        <div className="text-base font-medium text-foreground mb-1">No session context yet</div>
-        <p className="text-sm max-w-md">
-          Active context appears here once the agent has been dispatched at least once.
-        </p>
-      </div>
+      <EmptyState
+        icon={MessageCircle}
+        title="No session context yet"
+        description="The most recent dispatch's full message stream appears here — the system prompt, every user/assistant turn, and every tool call. Run a task with this agent to populate it."
+      />
     )
   }
 
