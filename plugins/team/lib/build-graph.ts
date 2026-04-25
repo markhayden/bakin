@@ -20,8 +20,8 @@ import type { AgentWithStatus, AgentDisplaySettingsMap, OrgTeam } from '../types
 
 // ─── Layout constants ───────────────────────────────────────────────────────
 
-export const CARD_W = 184
-export const CARD_H = 280
+export const CARD_W = 208
+export const CARD_H = 320
 export const X_GAP = 28
 export const Y_GAP = 56
 const TEAM_GAP = 80

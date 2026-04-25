@@ -111,7 +111,7 @@ export function AgentCardNode({ data }: NodeProps) {
 
   return (
     <div
-      className="agent-card-hover rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden w-[184px] flex flex-col cursor-pointer shadow-md"
+      className="agent-card-hover rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden w-[208px] flex flex-col cursor-pointer shadow-md"
       style={{ '--agent-glow': accentColor } as React.CSSProperties}
     >
       <Handle type="target" position={Position.Top} className="!bg-zinc-600" />
@@ -141,7 +141,10 @@ export function AgentCardNode({ data }: NodeProps) {
             <PackageStateBadge state={pkgState.state} compact />
           )}
         </div>
-        <div className="text-xs text-zinc-500 leading-tight truncate w-full">
+        <div
+          className="text-xs text-zinc-500 leading-snug w-full line-clamp-3"
+          title={agent.role || undefined}
+        >
           {agent.role || <span className="text-zinc-700">no role</span>}
         </div>
         <div
