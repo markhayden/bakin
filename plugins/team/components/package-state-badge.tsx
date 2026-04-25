@@ -28,6 +28,12 @@ export interface PackageStateBadgeProps {
   packageId?: string
   /** Hover tooltip override; defaults to a state-specific explainer */
   title?: string
+  /**
+   * Compact mode — drops the text label, renders a small colored pill.
+   * For cramped contexts like the agent grid card. Tooltip is preserved
+   * so the user can still read the state on hover.
+   */
+  compact?: boolean
 }
 
 const STATE_STYLES: Record<PackageState, { label: string; cls: string; tip: string }> = {
@@ -63,8 +69,18 @@ const STATE_STYLES: Record<PackageState, { label: string; cls: string; tip: stri
   },
 }
 
-export function PackageStateBadge({ state, packageId, title }: PackageStateBadgeProps) {
+export function PackageStateBadge({ state, packageId, title, compact }: PackageStateBadgeProps) {
   const style = STATE_STYLES[state]
+  if (compact) {
+    return (
+      <span
+        title={title ?? `${style.label} — ${style.tip}`}
+        aria-label={`Package state: ${style.label}`}
+        data-state={state}
+        className={`inline-block size-2 rounded-full ${style.cls}`}
+      />
+    )
+  }
   return (
     <span title={title ?? style.tip} className="inline-flex items-center gap-2">
       <Badge className={style.cls} variant="secondary">

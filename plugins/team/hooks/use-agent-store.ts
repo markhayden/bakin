@@ -7,7 +7,7 @@
  * All components that need agent info import from here instead of static constants.
  */
 import { create } from 'zustand'
-import type { AgentMeta, AgentDisplaySettings, AgentDisplaySettingsMap, AgentWithStatus, OrgTeam } from '../types'
+import type { AgentMeta, AgentDisplaySettings, AgentDisplaySettingsMap, AgentWithStatus, OrgTeam, PackageStateRow } from '../types'
 
 interface AgentStore {
   /** Lightweight agent list (for dropdowns, badges, avatars) */
@@ -22,15 +22,46 @@ interface AgentStore {
   displaySettings: AgentDisplaySettingsMap
   /** Organizational teams */
   teams: OrgTeam[]
+  /**
+   * Agent-package state per agent id, sourced from `/api/agent-packages`.
+   * Fetched in parallel with the roster on `load()`. Empty map when the
+   * endpoint fails — agent-packages is optional context, not load-blocking.
+   */
+  packageStates: Record<string, PackageStateRow>
   /** Canonical main/orchestrator agent id (resolved server-side from settings → OpenClaw) */
   mainAgentId: string | null
   /** Whether initial load has completed */
   loaded: boolean
 
-  /** Fetch agents + display settings from team plugin API */
+  /** Fetch agents + display settings + package states from the API */
   load: () => Promise<void>
+  /** Re-fetch only `/api/agent-packages` — used after Adopt to invalidate staleness */
+  refreshPackageStates: () => Promise<void>
   /** Update display settings for a single agent */
   updateDisplay: (agentId: string, patch: Partial<AgentDisplaySettings>) => Promise<void>
+}
+
+/**
+ * Normalize a `/api/agent-packages` response into a Record keyed by agentId.
+ * Handles both the success shape and any failure (non-ok response, network
+ * error, malformed payload) by returning an empty map — the agent-package
+ * surface is supplementary context, not load-blocking.
+ */
+async function parsePackageStatesResponse(
+  res: Response | null,
+): Promise<Record<string, PackageStateRow>> {
+  if (!res || !res.ok) return {}
+  try {
+    const body = await res.json() as { ok?: boolean; agents?: PackageStateRow[] }
+    if (!body.ok || !Array.isArray(body.agents)) return {}
+    const map: Record<string, PackageStateRow> = {}
+    for (const row of body.agents) {
+      map[row.agentId] = row
+    }
+    return map
+  } catch {
+    return {}
+  }
 }
 
 export const useAgentStore = create<AgentStore>((set, get) => ({
@@ -40,17 +71,21 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   agentsWithStatus: [],
   displaySettings: {},
   teams: [],
+  packageStates: {},
   mainAgentId: null,
   loaded: false,
 
   load: async () => {
     try {
-      const res = await fetch('/api/plugins/team/')
-      if (!res.ok) {
+      const [rosterRes, pkgRes] = await Promise.all([
+        fetch('/api/plugins/team/'),
+        fetch('/api/agent-packages').catch(() => null),
+      ])
+      if (!rosterRes.ok) {
         set({ loaded: true })
         return
       }
-      const data = await res.json() as {
+      const data = await rosterRes.json() as {
         agents: AgentWithStatus[]
         displaySettings: AgentDisplaySettingsMap
         teams: OrgTeam[]
@@ -61,6 +96,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       for (const a of agents) {
         agentMap[a.id] = a
       }
+      const packageStates = await parsePackageStatesResponse(pkgRes)
       set({
         agents,
         agentIds: agents.map((a) => a.id),
@@ -68,12 +104,19 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         agentsWithStatus: data.agents,
         displaySettings: data.displaySettings,
         teams: data.teams ?? [],
+        packageStates,
         mainAgentId: data.mainAgentId ?? null,
         loaded: true,
       })
     } catch {
       set({ loaded: true })
     }
+  },
+
+  refreshPackageStates: async () => {
+    const res = await fetch('/api/agent-packages').catch(() => null)
+    const packageStates = await parsePackageStatesResponse(res)
+    set({ packageStates })
   },
 
   updateDisplay: async (agentId, patch) => {
@@ -109,6 +152,11 @@ export function useAgentColor(agentId: string): string {
   return useAgentStore(
     (s) => s.displaySettings[agentId]?.accentColor ?? '#a1a1aa'
   )
+}
+
+/** Get an agent's package state row. Undefined when the API hasn't reported one. */
+export function usePackageState(agentId: string): PackageStateRow | undefined {
+  return useAgentStore((s) => s.packageStates?.[agentId])
 }
 
 /** Get an agent's display name override, if any. */

@@ -25,11 +25,19 @@ import {
 } from "@bakin/sdk/ui"
 import { BakinDrawer } from "@bakin/sdk/components"
 import { useGatewayStatus } from "@bakin/sdk/hooks"
-import { useAgentStore, useAgentColor, useMainAgentId } from '@bakin/sdk/hooks'
+import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@bakin/sdk/hooks'
 import { buildGraph } from '../lib/build-graph'
 import { AgentForm, type AgentFormData } from './agent-form'
 import { TeamManager } from './team-manager'
+import { PackageStateBadge, type PackageState } from './package-state-badge'
 import type { AgentWithStatus } from '../types'
+
+/**
+ * Render a compact package badge on an agent card only when the state is
+ * attention-worthy. Healthy states (managed/adopted/absent/undefined) leave
+ * the card uncluttered — the convention is "no badge means OK."
+ */
+const ATTENTION_STATES: PackageState[] = ['unmanaged', 'drifted', 'update-available']
 
 /** Strip default ReactFlow node chrome + animated edges + hover glow */
 const RESET_STYLES = `
@@ -83,9 +91,11 @@ interface AgentNodeData extends Record<string, unknown> {
   agent: AgentWithStatus
 }
 
-function AgentCardNode({ data }: NodeProps) {
+export function AgentCardNode({ data }: NodeProps) {
   const { agent } = data as AgentNodeData
   const accentColor = useAgentColor(agent.id)
+  const pkgState = usePackageState(agent.id)
+  const showBadge = pkgState && ATTENTION_STATES.includes(pkgState.state)
 
   const dotColor =
     agent.status === 'online' ? 'bg-green-400' :
@@ -122,7 +132,12 @@ function AgentCardNode({ data }: NodeProps) {
         <div className={`absolute top-2 right-2 size-2.5 rounded-full border-2 border-zinc-900 ${dotColor}`} />
       </div>
       <div className="p-2.5 flex flex-col gap-0.5">
-        <div className="text-sm font-semibold text-zinc-100 leading-tight">{agent.name}</div>
+        <div className="flex items-center gap-1.5 leading-tight">
+          <span className="text-sm font-semibold text-zinc-100 truncate">{agent.name}</span>
+          {showBadge && pkgState && (
+            <PackageStateBadge state={pkgState.state} compact />
+          )}
+        </div>
         <div className="text-xs text-zinc-500 leading-tight truncate">{agent.role}</div>
         <div className="flex items-center gap-1.5 mt-1.5">
           <Badge
