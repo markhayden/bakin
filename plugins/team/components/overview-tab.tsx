@@ -312,7 +312,7 @@ export function OverviewTab({
               <ActivityTile label="Last hour" count={activity.windowMs['1h']} errors={activity.errors['1h']} agentColor={accentColor} />
               <ActivityTile label="Last 24 h" count={activity.windowMs['24h']} errors={activity.errors['24h']} agentColor={accentColor} />
             </div>
-            <div className="text-[11px] text-muted-foreground mt-2.5">
+            <div className="text-[11px] text-muted-foreground mt-2.5 text-center">
               Counts since server start ({new Date(activity.sinceServerStart).toLocaleString()}). The recorder is in-memory and resets on restart.
             </div>
           </>
