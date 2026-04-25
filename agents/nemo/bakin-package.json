@@ -1,0 +1,41 @@
+{
+  "id": "nemo",
+  "kind": "agent",
+  "name": "Nemo",
+  "version": "0.1.0",
+  "description": "Fitness coach + content creator. Yuki \"Nemo\" Tanaka — longevity-focused, allergic to fitness-culture pain-as-virtue.",
+  "bakin": "^1.0.0",
+  "author": "Made in Wyo",
+  "agent": {
+    "identity": { "name": "Nemo", "emoji": "🏊" },
+    "role": "Fitness coach + content creator",
+    "dispatchableBy": ["main"],
+    "tags": ["content", "fitness", "betterfit"],
+    "allowedTools": [
+      "bakin_exec_tasks_*",
+      "bakin_exec_assets_*",
+      "bakin_exec_get_paths",
+      "bakin_exec_log",
+      "bakin_exec_heartbeat"
+    ],
+    "allowedSkills": []
+  },
+  "install": {
+    "createIfMissing": true,
+    "adoptIfExists": true,
+    "writeWorkspaceFiles": true,
+    "installSkills": true,
+    "installWorkflows": true,
+    "enableKnowledge": ["longevity-voice"]
+  },
+  "contributions": {
+    "workspaceFiles": [
+      "workspace/SOUL.md",
+      "workspace/IDENTITY.md",
+      "workspace/AGENTS.md",
+      "workspace/TOOLS.md"
+    ],
+    "knowledge": ["knowledge/longevity-voice.md"],
+    "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
+  }
+}
