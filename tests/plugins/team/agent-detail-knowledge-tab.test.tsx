@@ -54,7 +54,7 @@ const PROFILE = {
 function setupFetch() {
   global.fetch = mock((url: RequestInfo | URL) => {
     const u = String(url)
-    if (u.startsWith('/api/plugins/team/pixel') && !u.includes('/avatar')) {
+    if (u === '/api/plugins/team/pixel') {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(PROFILE) } as Response)
     }
     if (u.startsWith('/api/plugins/models/available')) {
@@ -73,6 +73,9 @@ function setupFetch() {
         }),
       } as Response)
     }
+    if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: null }) } as Response)
+    if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
+    if (u.endsWith('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) } as Response)
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
   }) as unknown as typeof global.fetch
 }
@@ -91,7 +94,7 @@ afterAll(() => {
 
 afterEach(() => {
   cleanup()
-  queryState.tab = 'profile'
+  queryState.tab = 'overview'
   setTabSpy.mockClear()
 })
 
@@ -101,7 +104,7 @@ beforeEach(() => {
 
 async function openDetail() {
   render(<AgentDetail agentId="pixel" />)
-  await waitFor(() => expect(screen.getByText('Pixel')).toBeDefined())
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Pixel' })).toBeDefined())
 }
 
 describe('AgentDetail — Knowledge tab', () => {

@@ -38,7 +38,7 @@ mock.module('../../../packages/core/src/content-dir', () => ({
 }))
 
 mock.module('@/hooks/use-query-state', () => ({
-  useQueryState: (_key: string, defaultValue: string) => ['profile', mock(), mock()],
+  useQueryState: (_key: string, defaultValue: string) => ['overview', mock(), mock()],
 }))
 mock.module('@/hooks/use-gateway-status', () => ({
   useGatewayStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
@@ -78,12 +78,16 @@ function primeState(packageStates: Record<string, PackageStateRow> = {}) {
 function mockProfileFetch() {
   global.fetch = mock((url: RequestInfo | URL) => {
     const u = String(url)
-    if (u.startsWith('/api/plugins/team/pixel') && !u.includes('/avatar')) {
+    if (u === '/api/plugins/team/pixel' || (u.startsWith('/api/plugins/team/pixel') && !u.includes('/avatar') && !u.endsWith('/stats') && !u.endsWith('/recent-activity') && !u.endsWith('/skills') && !u.endsWith('/heartbeat') && !u.endsWith('/active-context'))) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(PROFILE) } as Response)
     }
     if (u.startsWith('/api/plugins/models/available')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) } as Response)
     }
+    if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: null }) } as Response)
+    if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
+    if (u.endsWith('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) } as Response)
+    if (u.includes('/api/agent-packages/') && u.endsWith('/knowledge')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, lessons: [] }) } as Response)
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
   }) as unknown as typeof global.fetch
 }
@@ -102,7 +106,8 @@ beforeEach(() => {
 
 async function renderDetail() {
   render(<AgentDetail agentId="pixel" />)
-  await waitFor(() => expect(screen.getByText('Pixel')).toBeDefined())
+  // Wait for the agent header to render (h1 is unique)
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Pixel' })).toBeDefined())
 }
 
 describe('PackageCard — read-only display per state', () => {
