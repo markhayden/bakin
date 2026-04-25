@@ -445,7 +445,7 @@ function PackageEntryFields({ entry, packageId }: { entry: NonNullable<PackageSt
   )
 }
 
-function PackageCard({ agentId, packageState }: { agentId: string; packageState: PackageStateRow | undefined }) {
+export function PackageCard({ agentId, packageState }: { agentId: string; packageState: PackageStateRow | undefined }) {
   // Default to "unmanaged" when the API hasn't reported a row at all — the
   // most common reason is the agent exists in OpenClaw but has never been
   // adopted, which is the same thing as state=unmanaged.
