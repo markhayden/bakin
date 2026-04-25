@@ -102,12 +102,12 @@ afterEach(() => {
 })
 
 describe('AgentDetail — tab URL contract', () => {
-  it('defaults to Profile when no ?tab= param is present', async () => {
+  it('defaults to Overview when no ?tab= param is present', async () => {
     queryState.tab = ''
     render(<AgentDetail agentId="explorer" />)
-    const profileBtn = await waitFor(() => screen.getByRole('button', { name: 'Profile' }))
+    const overviewBtn = await waitFor(() => screen.getByRole('button', { name: 'Overview' }))
     // Active tab gets the accent underline style applied inline.
-    expect(profileBtn.getAttribute('style') ?? '').toMatch(/border-color/i)
+    expect(overviewBtn.getAttribute('style') ?? '').toMatch(/border-color/i)
   })
 
   it('selects the Soul tab when ?tab=soul is present', async () => {
@@ -115,23 +115,40 @@ describe('AgentDetail — tab URL contract', () => {
     render(<AgentDetail agentId="explorer" />)
     const soulBtn = await waitFor(() => screen.getByRole('button', { name: 'Soul' }))
     expect(soulBtn.getAttribute('style') ?? '').toMatch(/border-color/i)
-    // Profile button must NOT be active when Soul is selected.
-    const profileBtn = screen.getByRole('button', { name: 'Profile' })
-    expect(profileBtn.getAttribute('style') ?? '').not.toMatch(/border-color/i)
+    // Overview button must NOT be active when Soul is selected.
+    const overviewBtn = screen.getByRole('button', { name: 'Overview' })
+    expect(overviewBtn.getAttribute('style') ?? '').not.toMatch(/border-color/i)
   })
 
-  it('falls back to Profile when ?tab= is an unknown value', async () => {
+  it('falls back to Overview when ?tab= is an unknown value', async () => {
     queryState.tab = 'bogus'
     render(<AgentDetail agentId="explorer" />)
-    const profileBtn = await waitFor(() => screen.getByRole('button', { name: 'Profile' }))
-    expect(profileBtn.getAttribute('style') ?? '').toMatch(/border-color/i)
+    const overviewBtn = await waitFor(() => screen.getByRole('button', { name: 'Overview' }))
+    expect(overviewBtn.getAttribute('style') ?? '').toMatch(/border-color/i)
   })
 
   it('writes the tab back to the URL when a tab is clicked', async () => {
-    queryState.tab = 'profile'
+    queryState.tab = 'overview'
     render(<AgentDetail agentId="explorer" />)
     const rulesBtn = await waitFor(() => screen.getByRole('button', { name: 'Rules' }))
     fireEvent.click(rulesBtn)
     expect(setTabSpy).toHaveBeenCalledWith('rules')
+  })
+
+  it('renders the new Heartbeat, Active Context, and Memory tabs in the bar', async () => {
+    queryState.tab = 'overview'
+    render(<AgentDetail agentId="explorer" />)
+    await waitFor(() => screen.getByRole('button', { name: 'Overview' }))
+    expect(screen.getByRole('button', { name: 'Memory' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Heartbeat' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Active Context' })).toBeDefined()
+  })
+
+  it('no longer renders the legacy Profile or Stats tabs', async () => {
+    queryState.tab = 'overview'
+    render(<AgentDetail agentId="explorer" />)
+    await waitFor(() => screen.getByRole('button', { name: 'Overview' }))
+    expect(screen.queryByRole('button', { name: 'Profile' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Stats' })).toBeNull()
   })
 })
