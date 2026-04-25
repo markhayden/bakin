@@ -199,9 +199,9 @@ The `/team/:id` page (`agent-detail.tsx`) is a thin orchestrator: header + tab b
 | Tab | Component | Source |
 |---|---|---|
 | Overview | `<OverviewTab>` | `overview-tab.tsx` |
+| Soul | `<MarkdownEditTab>` | workspace `SOUL.md` |
 | Memory | `<MemoryTab>` (in `agent-detail.tsx`) | `~/.openclaw/agents/<id>/memory/*.md` |
 | Heartbeat | `<HeartbeatTab>` | `heartbeat-tab.tsx` (view-only) |
-| Soul | `<MarkdownEditTab>` | workspace `SOUL.md` |
 | Rules | `<MarkdownEditTab>` | workspace `AGENTS.md` |
 | Tools | `<MarkdownEditTab>` | workspace `TOOLS.md` |
 | Skills | `<SkillsTab>` (in `agent-detail.tsx`) | workspace `skills/<name>/SKILL.md` |
