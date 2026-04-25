@@ -627,16 +627,49 @@ export async function updateAgentIdentity(agentId: string, fields: IdentityField
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
+ * Match a key:value field in IDENTITY.md. Accepts:
+ *   - Markdown bullets: `- Vibe: foo`, `* Role: foo`
+ *   - Bold-wrapped keys: `- **Role**: foo`
+ *   - Plain lines (no bullet): `Role: foo`
+ *   - Headings: `## Role\nfoo` (returns first non-empty line)
+ *
+ * Returns the trimmed value, or null if no match.
+ */
+function matchIdentityField(identity: string, key: string): string | null {
+  // Inline form: optional bullet + optional bold + key + colon + value
+  const inlineRe = new RegExp(`^\\s*[-*]?\\s*\\*?${key}\\*?\\s*:\\s*(.+)$`, 'mi')
+  const inline = identity.match(inlineRe)
+  if (inline) {
+    const v = inline[1].trim().replace(/^\*+|\*+$/g, '').trim()
+    if (v.length > 0) return v
+  }
+  // Heading form: ## Role on its own line, value on next non-empty line
+  const headingRe = new RegExp(`^#{1,6}\\s+${key}\\s*$\\n+([^\\n]+)`, 'mi')
+  const heading = identity.match(headingRe)
+  if (heading) {
+    const v = heading[1].trim().replace(/^\*+|\*+$/g, '').trim()
+    if (v.length > 0) return v
+  }
+  return null
+}
+
+/**
  * Resolve agent role from IDENTITY.md or SOUL.md content.
  * Falls back to a generic role derived from position in the roster.
+ *
+ * Precedence:
+ *   1. IDENTITY.md `Role:` (the explicit field — wins if present)
+ *   2. IDENTITY.md `Vibe:` (legacy / soft descriptor)
+ *   3. SOUL.md "You are X — the Y" first line
+ *   4. 'Orchestrator' for the main agent, '' for everyone else
  */
 function resolveRole(agentId: string): string {
-  // Try IDENTITY.md first (has structured fields)
   const identity = readWorkspaceFile(agentId, 'IDENTITY.md')
   if (identity) {
-    // Parse simple key: value or YAML frontmatter
-    const vibeMatch = identity.match(/^[-*]\s*\*?Vibe\*?:\s*(.+)/mi)
-    if (vibeMatch) return vibeMatch[1].trim()
+    const role = matchIdentityField(identity, 'Role')
+    if (role) return role
+    const vibe = matchIdentityField(identity, 'Vibe')
+    if (vibe) return vibe
   }
 
   // Try SOUL.md — look for a role-like first line
