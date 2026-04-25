@@ -186,3 +186,158 @@ describe('resolveDependencies — error paths', () => {
     expect(() => resolveDependencies(parent)).toThrow(/does not exist/)
   })
 })
+
+// ─── Transitive resolution (Phase H-2) ───────────────────────────────────────
+
+/**
+ * Seed a skill-pack at `rel` whose manifest declares a dep on the
+ * skill-pack at `depDir`. Used to build multi-level chains.
+ */
+function seedSkillPackWithDep(rel: string, id: string, depDir: string, depRef = 'main'): string {
+  const dir = join(testDir, rel)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(
+    join(dir, 'bakin-package.json'),
+    JSON.stringify({
+      id,
+      kind: 'skill-pack',
+      name: id,
+      version: '0.1.0',
+      contributions: { skills: ['skills/whatever'] },
+      dependencies: { skills: [{ source: depDir, ref: depRef }] },
+    }),
+  )
+  return dir
+}
+
+describe('resolveDependencies — transitive resolution', () => {
+  it('walks a 3-deep chain and returns leaves first', () => {
+    // bottom -> middle -> top -> pixel
+    const bottom = seedSkillPack('bottom', 'bottom-pack')
+    const middle = seedSkillPackWithDep('middle', 'middle-pack', bottom)
+    const top = seedSkillPackWithDep('top', 'top-pack', middle)
+
+    const parent = pixelWithDeps({
+      skills: [{ source: top, ref: 'main' }],
+    })
+
+    const resolved = resolveDependencies(parent)
+    expect(resolved.map((r) => r.manifest.id)).toEqual([
+      'bottom-pack',
+      'middle-pack',
+      'top-pack',
+    ])
+    expect(resolved.map((r) => r.depth)).toEqual([3, 2, 1])
+  })
+
+  it('short-circuits on diamond deps (same dep pulled in via two paths, resolved once)', () => {
+    // shared-leaf <- branch-a <- pixel
+    // shared-leaf <- branch-b <- pixel
+    const sharedLeaf = seedSkillPack('shared-leaf', 'shared')
+    const branchA = seedSkillPackWithDep('branch-a', 'branch-a', sharedLeaf)
+    const branchB = seedSkillPackWithDep('branch-b', 'branch-b', sharedLeaf)
+
+    const parent = pixelWithDeps({
+      skills: [
+        { source: branchA, ref: 'main' },
+        { source: branchB, ref: 'main' },
+      ],
+    })
+
+    const resolved = resolveDependencies(parent)
+    // shared-leaf appears exactly once despite two incoming edges
+    const sharedCount = resolved.filter((r) => r.manifest.id === 'shared').length
+    expect(sharedCount).toBe(1)
+    // Topological order: shared-leaf first, then both branches
+    const ids = resolved.map((r) => r.manifest.id)
+    expect(ids[0]).toBe('shared')
+    expect(ids).toContain('branch-a')
+    expect(ids).toContain('branch-b')
+  })
+
+  it('detects cycles and throws with the loop path', () => {
+    // a -> b -> a (b depends on a, a depends on b)
+    const aDir = join(testDir, 'cycle-a')
+    const bDir = join(testDir, 'cycle-b')
+    mkdirSync(aDir, { recursive: true })
+    mkdirSync(bDir, { recursive: true })
+    writeFileSync(
+      join(aDir, 'bakin-package.json'),
+      JSON.stringify({
+        id: 'a',
+        kind: 'skill-pack',
+        name: 'A',
+        version: '0.1.0',
+        contributions: { skills: ['skills/x'] },
+        dependencies: { skills: [{ source: bDir, ref: 'main' }] },
+      }),
+    )
+    writeFileSync(
+      join(bDir, 'bakin-package.json'),
+      JSON.stringify({
+        id: 'b',
+        kind: 'skill-pack',
+        name: 'B',
+        version: '0.1.0',
+        contributions: { skills: ['skills/x'] },
+        dependencies: { skills: [{ source: aDir, ref: 'main' }] },
+      }),
+    )
+
+    const parent = pixelWithDeps({
+      skills: [{ source: aDir, ref: 'main' }],
+    })
+
+    expect(() => resolveDependencies(parent)).toThrow(/cycle detected/i)
+  })
+
+  it('detects self-cycles (a depends on itself)', () => {
+    const aDir = join(testDir, 'self-cycle')
+    mkdirSync(aDir, { recursive: true })
+    writeFileSync(
+      join(aDir, 'bakin-package.json'),
+      JSON.stringify({
+        id: 'self',
+        kind: 'skill-pack',
+        name: 'Self',
+        version: '0.1.0',
+        contributions: { skills: ['skills/x'] },
+        dependencies: { skills: [{ source: aDir, ref: 'main' }] },
+      }),
+    )
+
+    const parent = pixelWithDeps({
+      skills: [{ source: aDir, ref: 'main' }],
+    })
+    expect(() => resolveDependencies(parent)).toThrow(/cycle detected/i)
+  })
+
+  it('caps recursion depth and throws past the cap', () => {
+    // Build a chain longer than the test-supplied cap of 2.
+    const a = seedSkillPack('depth-a', 'a')
+    const b = seedSkillPackWithDep('depth-b', 'b', a)
+    const c = seedSkillPackWithDep('depth-c', 'c', b)
+    const d = seedSkillPackWithDep('depth-d', 'd', c)
+
+    const parent = pixelWithDeps({
+      skills: [{ source: d, ref: 'main' }],
+    })
+
+    expect(() => resolveDependencies(parent, { maxDepth: 2 })).toThrow(/exceeds max depth/)
+  })
+
+  it('preserves the pulledBy field along the chain', () => {
+    const bottom = seedSkillPack('pb-bottom', 'pb-bottom')
+    const middle = seedSkillPackWithDep('pb-middle', 'pb-middle', bottom)
+
+    const parent = pixelWithDeps({
+      skills: [{ source: middle, ref: 'main' }],
+    })
+
+    const resolved = resolveDependencies(parent)
+    const bottomEntry = resolved.find((r) => r.manifest.id === 'pb-bottom')!
+    const middleEntry = resolved.find((r) => r.manifest.id === 'pb-middle')!
+    expect(middleEntry.pulledBy).toBe('pixel') // direct dep
+    expect(bottomEntry.pulledBy).toBe('pb-middle') // pulled by intermediate
+  })
+})
