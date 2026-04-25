@@ -6,7 +6,7 @@
  * - Tab is always visible in the tab bar (regardless of package state)
  * - For managed/adopted agents the tab renders KnowledgeToggleList
  *   (which fetches from /api/agent-packages/:id/knowledge)
- * - For unmanaged/absent/undefined the tab renders a "Coming soon"
+ * - For unmanaged/absent/undefined the tab renders a "Knowledge requires a package"
  *   placeholder with a hint pointing back at the Package card
  * - Tab click writes ?tab=knowledge to the URL via useQueryState
  */
@@ -129,7 +129,7 @@ describe('AgentDetail — Knowledge tab', () => {
     await openDetail()
     await waitFor(() => expect(screen.getByText('Lesson One')).toBeDefined())
     expect(screen.getByText('Lesson Two')).toBeDefined()
-    expect(screen.queryByText('Coming soon')).toBeNull()
+    expect(screen.queryByText('Knowledge requires a package')).toBeNull()
   })
 
   it('renders KnowledgeToggleList for state=adopted', async () => {
@@ -141,18 +141,18 @@ describe('AgentDetail — Knowledge tab', () => {
     await waitFor(() => expect(screen.getByText('Lesson One')).toBeDefined())
   })
 
-  it('renders "Coming soon" empty state for state=unmanaged', async () => {
+  it('renders "Knowledge requires a package" empty state for state=unmanaged', async () => {
     primeState({ pixel: { agentId: 'pixel', state: 'unmanaged' } })
     queryState.tab = 'knowledge'
     await openDetail()
-    await waitFor(() => expect(screen.getByText('Coming soon')).toBeDefined())
+    await waitFor(() => expect(screen.getByText('Knowledge requires a package')).toBeDefined())
     expect(screen.queryByText('Lesson One')).toBeNull()
   })
 
-  it('renders "Coming soon" when no package state row exists', async () => {
+  it('renders "Knowledge requires a package" when no package state row exists', async () => {
     primeState()
     queryState.tab = 'knowledge'
     await openDetail()
-    await waitFor(() => expect(screen.getByText('Coming soon')).toBeDefined())
+    await waitFor(() => expect(screen.getByText('Knowledge requires a package')).toBeDefined())
   })
 })

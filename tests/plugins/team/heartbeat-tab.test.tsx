@@ -64,7 +64,7 @@ describe('HeartbeatTab', () => {
   it('renders the empty state when heartbeat is null', async () => {
     setupFetch({ ok: true, heartbeat: null })
     render(<HeartbeatTab agentId="pixel" />)
-    await waitFor(() => expect(screen.getByText(/No heartbeat reported yet/)).toBeDefined())
+    await waitFor(() => expect(screen.getByText(/No heartbeat yet/)).toBeDefined())
   })
 
   it('renders the markdown content + last updated badge for a populated heartbeat', async () => {

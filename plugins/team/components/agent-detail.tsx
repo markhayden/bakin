@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from '@bakin/sdk/hooks'
-import { ArrowLeft, Loader2, Camera, Trash2, Copy, Info } from 'lucide-react'
+import { ArrowLeft, Loader2, Camera, Trash2, Copy, Info, BookOpen, Sparkles, Calendar } from 'lucide-react'
 import { Badge } from "@bakin/sdk/ui"
 import { Button } from "@bakin/sdk/ui"
 import {
@@ -23,6 +23,7 @@ import { MarkdownEditTab } from './markdown-edit-tab'
 import { HeartbeatTab } from './heartbeat-tab'
 import { ActiveContextTab } from './active-context-tab'
 import { OverviewTab } from './overview-tab'
+import { EmptyState } from './empty-state'
 import type { AgentProfile, SkillSummary, PackageStateRow } from '../types'
 
 type Tab = 'overview' | 'memory' | 'heartbeat' | 'soul' | 'rules' | 'tools' | 'skills' | 'knowledge' | 'active-context'
@@ -443,12 +444,11 @@ function KnowledgeTab({ agentId, packageState }: { agentId: string; packageState
     )
   }
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-      <div className="text-base font-medium text-foreground mb-1">Coming soon</div>
-      <p className="text-sm max-w-md">
-        Knowledge management requires a managed agent-package. Adopt this agent in the Package card on the Profile tab to unlock per-lesson toggles.
-      </p>
-    </div>
+    <EmptyState
+      icon={BookOpen}
+      title="Knowledge requires a package"
+      description="Knowledge lessons let you toggle individual pieces of curriculum on or off per agent — useful for narrowing the persona to a task. Adopt this agent into a package on the Overview tab to unlock per-lesson toggles."
+    />
   )
 }
 
@@ -489,7 +489,15 @@ function SkillsTab({ agentId }: { agentId: string }) {
       </div>
     )
   }
-  if (skills.length === 0) return <div className="text-sm text-muted-foreground py-8 text-center">No skills installed</div>
+  if (skills.length === 0) {
+    return (
+      <EmptyState
+        icon={Sparkles}
+        title="No skills installed"
+        description="Skills are reusable OpenClaw capabilities the agent can invoke. Install a skill-pack via the CLI to add some — `bakin packages install <source>`."
+      />
+    )
+  }
 
   return (
     <div className="flex gap-6 min-h-[calc(100vh-260px)]">
@@ -557,7 +565,15 @@ function MemoryTab({ agentId }: { agentId: string }) {
       </div>
     )
   }
-  if (files.length === 0) return <div className="text-sm text-muted-foreground py-8 text-center">No memory files</div>
+  if (files.length === 0) {
+    return (
+      <EmptyState
+        icon={Calendar}
+        title="No memory yet"
+        description="Per-day memory files appear here once this agent writes its first lesson via `bakin_exec_log_memory`. Memory accumulates as the agent works through tasks."
+      />
+    )
+  }
 
   return (
     <div className="flex gap-6 min-h-[calc(100vh-260px)]">
