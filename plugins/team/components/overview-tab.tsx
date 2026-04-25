@@ -12,7 +12,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Sparkles, BookOpen, MessageSquare, Coins, Database, Activity } from 'lucide-react'
 import { ModelSelect } from '@bakin/sdk/components'
-import { useAgentStore, useAgentColor } from '@bakin/sdk/hooks'
+import { useAgentStore, useAgentColor, useRouter } from '@bakin/sdk/hooks'
 import type { AvailableModel } from '@bakin/sdk/types'
 import type { AgentProfile, PackageStateRow, RecentActivity } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
@@ -121,8 +121,11 @@ export function OverviewTab({
   const teams = useAgentStore((s) => s.teams)
   const displaySettings = useAgentStore((s) => s.displaySettings)
   const reload = useAgentStore((s) => s.load)
+  const agentMap = useAgentStore((s) => s.agentMap)
   const accentColor = useAgentColor(agentId)
+  const router = useRouter()
   const currentTeamId = displaySettings[agentId]?.teamId ?? ''
+  const reports = profile.subagentPerms ?? []
 
   const [usage, setUsage] = useState<AgentUsage | null>(null)
   const [activity, setActivity] = useState<RecentActivity | null>(null)
@@ -322,6 +325,49 @@ export function OverviewTab({
           </div>
         )}
       </section>
+
+      {/* DIRECT REPORTS — agents this one is permitted to dispatch.
+          Only renders when there's anything to manage. */}
+      {reports.length > 0 && (
+        <section>
+          <SectionLabel>Direct reports</SectionLabel>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            {reports.map((id) => {
+              const report = agentMap[id]
+              return (
+                <button
+                  key={id}
+                  onClick={() => router.push(`/team/${id}`)}
+                  className="group flex items-center gap-3 rounded-xl border border-border bg-muted/15 p-3 text-left transition-colors hover:bg-muted/30 hover:border-border/80"
+                >
+                  <div className="size-10 rounded-full overflow-hidden bg-muted shrink-0">
+                    {report?.headshot ? (
+                      <img
+                        src={report.headshot}
+                        alt={report?.name ?? id}
+                        className="w-full h-full object-cover object-top"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-lg" aria-hidden>
+                        {report?.emoji || '🤖'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-foreground truncate group-hover:text-foreground">
+                      {report?.name ?? id}
+                    </div>
+                    {report?.role && (
+                      <div className="text-[11px] text-muted-foreground truncate">{report.role}</div>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
     </div>
   )
