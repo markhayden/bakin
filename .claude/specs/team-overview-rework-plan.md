@@ -1,5 +1,14 @@
 # Execution Plan — Team Overview Rework
 
+> **Post-merge note:** this plan targeted 9 tabs and assumed Heartbeat reads
+> from `~/.bakin/heartbeats/{id}.json`. Both shifted during build:
+> - Shipped 10 tabs (Identity added mid-stream).
+> - Heartbeat tab reads `<workspace>/HEARTBEAT.md` instead — the agent-authored
+>   markdown narrative, not the JSON status signal. The two surfaces were
+>   conflated in this plan; the knowledge doc + landed code disambiguate.
+
+
+
 Companion to `.claude/specs/team-overview-rework.md`. Read the spec first for the *what* and *why*; this is the *how* — exact files, line numbers, dependency graph, per-checkpoint verification, rollback story.
 
 ## Refresher
