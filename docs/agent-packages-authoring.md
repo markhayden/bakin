@@ -612,6 +612,31 @@ To get your package into the curated catalog, send a PR to
 `trust` is display-only in V1 (`official | verified | community`). A
 hosted registry + signed-package trust enforcement is future work.
 
+## From the UI
+
+The Teams plugin surfaces a small but useful slice of the agent-package model in the browser. Everything else is CLI today.
+
+**Surfaced in the UI:**
+
+- **Package state badge** on every agent card in the team grid — only renders for `unmanaged`, `drifted`, or `update-available` (healthy states stay clean). Color-coded.
+- **Package card** at the top of the agent-detail Profile tab — read-only display of state, source, ref, commit (short SHA), installed-at, and dependencies for managed/adopted agents.
+- **Adopt button** in the Package card on unmanaged agents — opens a dialog, asks for the package source, and `POST`s `/api/agent-packages/install` with `{ source, adopt: agentId }`. The Teams page updates without a reload.
+- **Knowledge tab** on agent-detail — for managed/adopted agents, renders per-lesson on/off toggles backed by `/api/agent-packages/:id/knowledge`. Optimistic UI, revert on error.
+
+**Still CLI-only:**
+
+- **Install fresh agent** → `bakin agents install <source>`
+- **Browse curated catalog** → `bakin agents install` from the curated list (no in-app browser yet)
+- **Install non-agent kinds** (skill-pack / workflow-pack / knowledge-pack) → `bakin packages install <source>`
+- **List installed packages** of any kind → `bakin packages list`
+- **Update a package** → `bakin agents update <id>` or `bakin packages update <id>`
+- **Remove a package** → `bakin agents remove <id>` or `bakin packages remove <id>`
+- **Reset workspace** (re-template from package source) → `bakin agents update <id> --refresh-template`
+- **Release a `.userEdited` lock** → `rm <file>.userEdited`
+- **Drift repair** → `bakin install agent-assets` (CLI hint surfaced inside the Package card on `drifted` state)
+
+A future "Workshop" page will bring install / browse / curated / non-agent management into the UI. Until then the CLI remains the canonical surface for those flows; the UI is sugar on top.
+
 ## Future work (not yet supported)
 
 - **Per-skill rename via `installAs`.** V1 aliases the lockfile key only;

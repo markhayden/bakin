@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from '@bakin/sdk/hooks'
-import { ArrowLeft, Save, Loader2, Camera, Trash2 } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, Camera, Trash2, Copy } from 'lucide-react'
 import { Badge } from "@bakin/sdk/ui"
 import { Button } from "@bakin/sdk/ui"
 import {
@@ -17,12 +17,15 @@ import { MarkdownContent } from "@bakin/sdk/components"
 import { ModelSelect } from "@bakin/sdk/components"
 import { useGatewayStatus } from "@bakin/sdk/hooks"
 import type { AvailableModel } from "@bakin/sdk/types"
-import { useAgentStore, useAgentColor, useMainAgentId } from '@bakin/sdk/hooks'
+import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@bakin/sdk/hooks'
 import { useQueryState } from "@bakin/sdk/hooks"
-import type { AgentProfile, SkillSummary } from '../types'
+import { PackageStateBadge } from './package-state-badge'
+import { AdoptDialog } from './adopt-dialog'
+import { KnowledgeToggleList } from './knowledge-toggle-list'
+import type { AgentProfile, SkillSummary, PackageStateRow } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
 
-type Tab = 'profile' | 'soul' | 'rules' | 'tools' | 'skills' | 'memory' | 'stats'
+type Tab = 'profile' | 'soul' | 'rules' | 'tools' | 'skills' | 'knowledge' | 'memory' | 'stats'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'profile', label: 'Profile' },
@@ -30,6 +33,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'rules', label: 'Rules' },
   { id: 'tools', label: 'Tools' },
   { id: 'skills', label: 'Skills' },
+  { id: 'knowledge', label: 'Knowledge' },
   { id: 'memory', label: 'Memory' },
   { id: 'stats', label: 'Stats' },
 ]
@@ -41,6 +45,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const teams = useAgentStore((s) => s.teams)
   const displaySettings = useAgentStore((s) => s.displaySettings)
   const reload = useAgentStore((s) => s.load)
+  const packageState = usePackageState(agentId)
   const currentTeamId = displaySettings[agentId]?.teamId ?? ''
   const [profile, setProfile] = useState<AgentProfile | null>(null)
   const [tabParam, setTabParam] = useQueryState('tab', 'profile')
@@ -269,11 +274,12 @@ export function AgentDetail({ agentId }: { agentId: string }) {
 
       {/* Tab Content */}
       <div className="min-h-[400px]">
-        {activeTab === 'profile' && <ProfileTab profile={profile} />}
+        {activeTab === 'profile' && <ProfileTab profile={profile} agentId={agentId} packageState={packageState} />}
         {activeTab === 'soul' && <FileEditorTab agentId={agentId} filename="SOUL.md" content={profile.soul} />}
         {activeTab === 'rules' && <FileEditorTab agentId={agentId} filename="AGENTS.md" content={profile.rules} />}
         {activeTab === 'tools' && <FileEditorTab agentId={agentId} filename="TOOLS.md" content={profile.tools} />}
         {activeTab === 'skills' && <SkillsTab agentId={agentId} />}
+        {activeTab === 'knowledge' && <KnowledgeTab agentId={agentId} packageState={packageState} />}
         {activeTab === 'memory' && <MemoryTab agentId={agentId} />}
         {activeTab === 'stats' && <StatsTab agentId={agentId} />}
       </div>
@@ -327,9 +333,18 @@ function ProfileMarkdown({ content }: { content: string }) {
   )
 }
 
-function ProfileTab({ profile }: { profile: AgentProfile }) {
+function ProfileTab({
+  profile,
+  agentId,
+  packageState,
+}: {
+  profile: AgentProfile
+  agentId: string
+  packageState: PackageStateRow | undefined
+}) {
   return (
     <div className="space-y-5 max-w-2xl">
+      <PackageCard agentId={agentId} packageState={packageState} />
       {profile.identity && (
         <ProfileSection label="Identity">
           <ProfileMarkdown content={profile.identity} />
@@ -358,6 +373,143 @@ function ProfileTab({ profile }: { profile: AgentProfile }) {
       <ProfileSection label="Workspace">
         <code className="text-[11px] text-muted-foreground font-mono">{profile.workspacePath}</code>
       </ProfileSection>
+    </div>
+  )
+}
+
+// ─── Package Card (lives inside Profile Tab) ─────────────────────────────────
+
+function CliHint({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // clipboard api unavailable — fail quietly, the command is visible
+    }
+  }
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+      <code className="flex-1 font-mono text-foreground">{command}</code>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={handleCopy}
+        title={copied ? 'Copied' : 'Copy'}
+        aria-label="Copy command"
+      >
+        <Copy className="size-3.5" />
+      </Button>
+    </div>
+  )
+}
+
+function PackageEntryFields({ entry, packageId }: { entry: NonNullable<PackageStateRow['entry']>; packageId?: string }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
+      {packageId && (
+        <>
+          <dt className="text-muted-foreground">Package</dt>
+          <dd className="font-mono text-foreground break-all">{packageId}</dd>
+        </>
+      )}
+      <dt className="text-muted-foreground">Source</dt>
+      <dd className="font-mono text-foreground break-all">{entry.source}</dd>
+      {entry.ref && (
+        <>
+          <dt className="text-muted-foreground">Ref</dt>
+          <dd className="font-mono text-foreground">{entry.ref}</dd>
+        </>
+      )}
+      {entry.commitSha && (
+        <>
+          <dt className="text-muted-foreground">Commit</dt>
+          <dd className="font-mono text-foreground">{entry.commitSha.slice(0, 7)}</dd>
+        </>
+      )}
+      <dt className="text-muted-foreground">Installed</dt>
+      <dd className="text-foreground">{entry.installedAt}</dd>
+      {entry.dependencies && entry.dependencies.length > 0 && (
+        <>
+          <dt className="text-muted-foreground">Depends on</dt>
+          <dd className="flex flex-wrap gap-1">
+            {entry.dependencies.map((d) => (
+              <Badge key={d} variant="outline" className="text-[10px] font-mono">{d}</Badge>
+            ))}
+          </dd>
+        </>
+      )}
+    </dl>
+  )
+}
+
+function PackageCard({ agentId, packageState }: { agentId: string; packageState: PackageStateRow | undefined }) {
+  // Default to "unmanaged" when the API hasn't reported a row at all — the
+  // most common reason is the agent exists in OpenClaw but has never been
+  // adopted, which is the same thing as state=unmanaged.
+  const state = packageState?.state ?? 'unmanaged'
+  const refreshPackageStates = useAgentStore((s) => s.refreshPackageStates)
+  const [adoptOpen, setAdoptOpen] = useState(false)
+  return (
+    <ProfileSection label="Package">
+      <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <PackageStateBadge state={state} packageId={packageState?.packageId} />
+          {state === 'unmanaged' && (
+            <Button size="sm" onClick={() => setAdoptOpen(true)}>
+              Adopt
+            </Button>
+          )}
+        </div>
+        {packageState?.entry && (state === 'managed' || state === 'adopted') && (
+          <PackageEntryFields entry={packageState.entry} packageId={packageState.packageId} />
+        )}
+        {state === 'drifted' && (
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground">
+              Projection sha mismatch detected. Repair from the CLI:
+            </p>
+            <CliHint command="bakin install agent-assets" />
+          </div>
+        )}
+        {state === 'update-available' && (
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground">
+              A newer version of the source package is available. Update from the CLI:
+            </p>
+            <CliHint command={`bakin agents update ${agentId}`} />
+          </div>
+        )}
+      </div>
+      <AdoptDialog
+        open={adoptOpen}
+        onOpenChange={setAdoptOpen}
+        agentId={agentId}
+        onAdopted={() => { refreshPackageStates() }}
+      />
+    </ProfileSection>
+  )
+}
+
+// ─── Knowledge Tab ───────────────────────────────────────────────────────────
+
+function KnowledgeTab({ agentId, packageState }: { agentId: string; packageState: PackageStateRow | undefined }) {
+  const state = packageState?.state ?? 'unmanaged'
+  if (state === 'managed' || state === 'adopted') {
+    return (
+      <div className="max-w-2xl">
+        <KnowledgeToggleList agentId={agentId} />
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+      <div className="text-base font-medium text-foreground mb-1">Coming soon</div>
+      <p className="text-sm max-w-md">
+        Knowledge management requires a managed agent-package. Adopt this agent in the Package card on the Profile tab to unlock per-lesson toggles.
+      </p>
     </div>
   )
 }
