@@ -26,10 +26,11 @@ import { OverviewTab } from './overview-tab'
 import { EmptyState } from './empty-state'
 import type { AgentProfile, SkillSummary, PackageStateRow } from '../types'
 
-type Tab = 'overview' | 'memory' | 'heartbeat' | 'soul' | 'rules' | 'tools' | 'skills' | 'knowledge' | 'active-context'
+type Tab = 'overview' | 'identity' | 'soul' | 'memory' | 'heartbeat' | 'rules' | 'tools' | 'skills' | 'knowledge' | 'active-context'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'identity', label: 'Identity' },
   { id: 'soul', label: 'Soul' },
   { id: 'memory', label: 'Memory' },
   { id: 'heartbeat', label: 'Heartbeat' },
@@ -248,6 +249,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         )}
         {activeTab === 'memory' && <MemoryTab agentId={agentId} />}
         {activeTab === 'heartbeat' && <HeartbeatTab agentId={agentId} />}
+        {activeTab === 'identity' && <MarkdownEditTab agentId={agentId} filename="IDENTITY.md" initialContent={profile.identity} />}
         {activeTab === 'soul' && <MarkdownEditTab agentId={agentId} filename="SOUL.md" initialContent={profile.soul} />}
         {activeTab === 'rules' && <MarkdownEditTab agentId={agentId} filename="AGENTS.md" initialContent={profile.rules} />}
         {activeTab === 'tools' && <MarkdownEditTab agentId={agentId} filename="TOOLS.md" initialContent={profile.tools} />}
