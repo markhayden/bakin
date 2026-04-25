@@ -21,10 +21,11 @@ import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@
 import { useQueryState } from "@bakin/sdk/hooks"
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
+import { KnowledgeToggleList } from './knowledge-toggle-list'
 import type { AgentProfile, SkillSummary, PackageStateRow } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
 
-type Tab = 'profile' | 'soul' | 'rules' | 'tools' | 'skills' | 'memory' | 'stats'
+type Tab = 'profile' | 'soul' | 'rules' | 'tools' | 'skills' | 'knowledge' | 'memory' | 'stats'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'profile', label: 'Profile' },
@@ -32,6 +33,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'rules', label: 'Rules' },
   { id: 'tools', label: 'Tools' },
   { id: 'skills', label: 'Skills' },
+  { id: 'knowledge', label: 'Knowledge' },
   { id: 'memory', label: 'Memory' },
   { id: 'stats', label: 'Stats' },
 ]
@@ -277,6 +279,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         {activeTab === 'rules' && <FileEditorTab agentId={agentId} filename="AGENTS.md" content={profile.rules} />}
         {activeTab === 'tools' && <FileEditorTab agentId={agentId} filename="TOOLS.md" content={profile.tools} />}
         {activeTab === 'skills' && <SkillsTab agentId={agentId} />}
+        {activeTab === 'knowledge' && <KnowledgeTab agentId={agentId} packageState={packageState} />}
         {activeTab === 'memory' && <MemoryTab agentId={agentId} />}
         {activeTab === 'stats' && <StatsTab agentId={agentId} />}
       </div>
@@ -487,6 +490,27 @@ function PackageCard({ agentId, packageState }: { agentId: string; packageState:
         onAdopted={() => { refreshPackageStates() }}
       />
     </ProfileSection>
+  )
+}
+
+// ─── Knowledge Tab ───────────────────────────────────────────────────────────
+
+function KnowledgeTab({ agentId, packageState }: { agentId: string; packageState: PackageStateRow | undefined }) {
+  const state = packageState?.state ?? 'unmanaged'
+  if (state === 'managed' || state === 'adopted') {
+    return (
+      <div className="max-w-2xl">
+        <KnowledgeToggleList agentId={agentId} />
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+      <div className="text-base font-medium text-foreground mb-1">Coming soon</div>
+      <p className="text-sm max-w-md">
+        Knowledge management requires a managed agent-package. Adopt this agent in the Package card on the Profile tab to unlock per-lesson toggles.
+      </p>
+    </div>
   )
 }
 
