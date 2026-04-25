@@ -627,23 +627,32 @@ export async function updateAgentIdentity(agentId: string, fields: IdentityField
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Match a key:value field in IDENTITY.md. Accepts:
- *   - Markdown bullets: `- Vibe: foo`, `* Role: foo`
- *   - Bold-wrapped keys: `- **Role**: foo`
- *   - Plain lines (no bullet): `Role: foo`
- *   - Headings: `## Role\nfoo` (returns first non-empty line)
+ * Match a key:value field in IDENTITY.md. Accepts every common
+ * markdown shape we've seen in the wild:
  *
- * Returns the trimmed value, or null if no match.
+ *   - `Role: Foo`                — plain
+ *   - `- Role: Foo`              — bulleted
+ *   - `- **Role**: Foo`          — bold key, colon outside wrap
+ *   - `- **Role:** Foo`          — bold key, colon INSIDE wrap
+ *   - `## Role\nFoo`             — heading + value on next line
+ *
+ * Returns the trimmed value with any wrapping asterisks/whitespace
+ * stripped, or null if no match.
  */
 function matchIdentityField(identity: string, key: string): string | null {
-  // Inline form: optional bullet + optional bold + key + colon + value
-  const inlineRe = new RegExp(`^\\s*[-*]?\\s*\\*?${key}\\*?\\s*:\\s*(.+)$`, 'mi')
+  // Inline: optional bullet, 0-2 leading asterisks, key, 0-2 trailing
+  // asterisks, optional whitespace, colon, optional asterisks/whitespace,
+  // value, optional trailing asterisks.
+  const inlineRe = new RegExp(
+    `^\\s*[-*]?\\s*\\*{0,2}${key}\\*{0,2}\\s*:\\s*\\*{0,2}\\s*(.+?)\\s*\\*{0,2}\\s*$`,
+    'mi',
+  )
   const inline = identity.match(inlineRe)
   if (inline) {
     const v = inline[1].trim().replace(/^\*+|\*+$/g, '').trim()
     if (v.length > 0) return v
   }
-  // Heading form: ## Role on its own line, value on next non-empty line
+  // Heading: `## Role` on its own line, value on next non-empty line.
   const headingRe = new RegExp(`^#{1,6}\\s+${key}\\s*$\\n+([^\\n]+)`, 'mi')
   const heading = identity.match(headingRe)
   if (heading) {
