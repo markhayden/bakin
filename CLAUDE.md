@@ -19,6 +19,7 @@ Runs on a Mac mini, accessed via Tailscale. No database (except OpenClaw's task 
 - **Agents:** Managed via OpenClaw gateway, communicate through MCP tools.
 - **Search:** `@antfly/sdk` for full-text + semantic search, `ctx.search` plugin API, `bakin_` table prefix.
 - **OpenClaw Adapter Principle:** Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw. Agent identity, soul, rules, tools, models, and workspace data all live in the OpenClaw home directory (`OPENCLAW_HOME` env var, defaults to `~/.openclaw/`). Bakin owns only UI-specific data (display settings, avatars, heartbeats). Question any pattern that duplicates OpenClaw state into Bakin code or storage. All OpenClaw paths MUST use `getOpenClawPath()` from `packages/core/src/openclaw-home.ts` — never hardcode `~/.openclaw/`.
+- **Agent Packages:** A second primitive distinct from plugins. Plugins ship code (routes, UI, MCP tools); agent packages ship **content** — identity (SOUL/IDENTITY/AGENTS/TOOLS), OpenClaw skills, workflows, and knowledge files — that personifies an agent in OpenClaw and gives it domain perspective. Manifested as `bakin-package.json` with `kind: "agent" | "skill-pack" | "workflow-pack" | "knowledge-pack"`. Installs land in `~/.bakin/packages/<kind>s/<id>@<version>/`; the lockfile at `~/.bakin/packages/lock.json` is the canonical install ledger. Three states per agent: `unmanaged` (in OpenClaw, no Bakin tracking), `adopted` (Bakin manages markers + assets only), `managed` (Bakin owns the package + projected files). See `docs/agent-packages-authoring.md` for the author walkthrough and `.claude/knowledge/agent-packages.md` for the deep reference.
 
 ### Binary Distribution
 
@@ -60,6 +61,22 @@ bakin plugins list                # list installed plugins (HTTP)
 bakin plugins install <src>       # local path or github:user/repo
 bakin plugins remove <id>         # refuses to remove core plugins
 bakin plugins scaffold <name>     # generate a starter plugin in ./<name>/
+
+# Agent packages
+bakin agents install <src>        # github:user/repo[@ref] or local path; --adopt for existing agents
+bakin agents list --packages      # state badges (unmanaged | adopted | managed)
+bakin agents remove <id>          # --keep-blocks --delete-agent --force
+bakin agents update [<id>]        # --refresh-template overwrites SOUL.md template
+bakin agents knowledge {list,enable,disable} <id> [<lesson-id>]
+
+# Standalone packs (skill-pack / workflow-pack / knowledge-pack)
+bakin packages list
+bakin packages install <src>      # --install-as <id> --replace
+bakin packages remove <id>        # blocked if refCount > 0; --force overrides
+bakin packages update <id>
+
+bakin check agent-assets          # drift report
+bakin install agent-assets        # repair drift in-place
 ```
 
 (`--help` lists everything.)
@@ -150,6 +167,10 @@ src/
   hooks/                   — use-search.ts, use-query-state.ts, etc. (legacy,
                               re-exported from @bakin/sdk/hooks for plugins)
   components/              — shared UI components (legacy; prefer @bakin/sdk/components)
+agents/                    — In-repo reference agent packages (8 backfilled — pixel/rolo/
+                              jessica-fetcher/explorer/coach/trainer/chef/patch). NOT bundled
+                              into the binary; users install via `bakin agents install
+                              ./agents/<id>` during dev or via the curated catalog UI.
 plugins/                   — 10 core plugins (each has bakin-plugin.json manifest)
   tasks/                   — Task board (SQLite-backed via bun:sqlite)
   workflows/               — Workflow execution engine (xyflow canvas)
@@ -167,6 +188,10 @@ scripts/                   — Build + infrastructure scripts
   build-binary.ts          — Cross-platform `bun build --compile`
   generate-embedded-assets.ts — Regenerates _embedded-assets-static.ts
   publish-sdk.ts           — Pushes @bakin/sdk to npm on release
+  migration/               — One-shot agent-package migration helpers
+    snapshot-agent.ts      — Captures agent's OpenClaw + Bakin state for conversion
+    validate-package.ts    — zod-validates a candidate agent-package directory
+    wipe-and-install-all.ts — Reset to a clean package-managed baseline
   lib/                     — MCP exec tools (self-registering via registry.ts)
 cli/                       — Thin legacy CLI wrapper (most commands now go
                               through `src/core/cli.ts` inside the binary)
@@ -183,7 +208,14 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
   settings.json            — Runtime config (dispatch/watchdog/antfly/bridge settings)
   plugin-settings/         — Per-plugin configuration (id.json)
   plugins/<id>/            — Installed addon plugins (source + generated dist/)
-  agents/                  — Per-agent UI data ({id}/avatar.jpg, avatar-full.png)
+  agents/                  — Per-agent UI data ({id}/avatar.jpg, avatar-full.png + .installedBy)
+  packages/                — Agent-package install state
+    lock.json              — Canonical install ledger (zod-validated, atomic IO)
+    .lock                  — Advisory install lock (PID-tagged, stale-detected)
+    agents/<id>@<v>/       — Installed agent packages (immutable source)
+    skill-packs/<id>@<v>/  — Installed standalone skill packs
+    workflow-packs/<id>@<v>/ — Installed standalone workflow packs
+    knowledge-packs/<id>@<v>/ — Installed standalone knowledge packs
   assets/                  — Content files sharded by month under store/
   projects/                — Project markdown files
   heartbeats/              — Agent status heartbeats (JSON)
@@ -217,6 +249,34 @@ Routes registered as: `/api/plugins/{pluginId}/{path}` via the catch-all route i
 Exec tools naming: `bakin_exec_{pluginId}_{action}`.
 
 See `docs/plugin-authoring.md` for the plugin author walkthrough, `.claude/knowledge/plugin-system.md` for the deep reference, and `.claude/knowledge/workflows-plugin.md` for the workflows plugin's source registry, node-type registry, notification-channel registry, CRUD routes, and the S-A vs S-B skill distinction.
+
+## Agent Packages
+
+A second primitive parallel to plugins. Plugins ship code; agent packages ship content.
+
+Every agent package has:
+- `bakin-package.json` — manifest with `id`, `kind` (`agent | skill-pack | workflow-pack | knowledge-pack`), `name`, `version`, kind-specific `agent` + `install` stanzas (only for `kind: "agent"`), `contributions` (workspace files / skills / workflows / workflow-skills / knowledge / assets), and optional `dependencies` on other packages. Validated by `packages/core/src/agent-packages/manifest.ts`.
+- `workspace/` — template files (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md) seeded into `{openclaw}/workspaces/<id>/` on fresh install. After install, the agent owns these files; doctor only manages `<!-- bakin:* -->` markers within them.
+- `skills/<name>/` — OpenClaw skill directories (with SKILL.md + optional scripts/). For `kind: "agent"` skills project per-agent to `{workspace}/skills/<name>/`; for `kind: "skill-pack"` they project globally to `~/.openclaw/skills/<name>/`.
+- `workflows/*.yaml` + `workflow-skills/*.md` — registered into the workflows plugin's source registry at boot via `src/core/agent-packages/load-sources.ts`. Precedence rule: `user > agent-package > plugin`.
+- `knowledge/*.md` — frontmatter-tagged lessons (title / tags / defaultEnabled). Catalog block injected into the agent's SOUL.md; per-lesson blocks for enabled lessons. Lockfile tracks per-agent enabled state.
+- `assets/*` — per-agent UI files (avatars) projected to `~/.bakin/agents/<id>/`.
+
+The lockfile at `~/.bakin/packages/lock.json` records every install: `{kind, version, source, ref, commitSha, projections[], dependencies[], dependents[], refCount, state}`. Every projected file gets a `.installedBy` sidecar JSON with `{package, version, ref, commitSha, sha256, installedAt}`. `.userEdited` sentinel files lock projections from being overwritten.
+
+Public APIs:
+- `installPackage({ source, adopt?, replace?, installAs? })` — fetch → resolve deps → project → write lockfile, all atomic with rollback
+- `removePackageById({ packageId, keepBlocks?, deleteAgent?, force? })` — N-level cascade ref-counted dep cleanup
+- `updatePackageById({ packageId, refreshTemplate? })` — sha-based no-op detection; templateOnly carve-out
+- `setKnowledgeEnabled(packageId, lessonId, enabled)` — toggle a single lesson's catalog/per-lesson markers in SOUL.md
+
+Surfaces:
+- CLI: `bakin agents {install,list,remove,update,knowledge}` and `bakin packages {install,list,remove,update}`
+- REST: `/api/agent-packages/*` and `/api/packages/*` (top-level — distinct from `/api/agents/*` which serves runtime ops)
+- Onboarding: `bakin check agent-assets` / `bakin install agent-assets` (drift report + repair)
+- Doctor: `agent-assets` check runs in the existing parallel-check loop, surfaces drift/missing/broken-marker findings; `--fix` repairs
+
+See `docs/agent-packages-authoring.md` for the author walkthrough and `.claude/knowledge/agent-packages.md` for the deep reference.
 
 ## Code Conventions
 
@@ -258,9 +318,9 @@ Conventional commits with scope:
 
 ## Testing Rules — CRITICAL
 
-**Every test file MUST mock the content-dir resolver to use a temp directory.** Tests that touch storage, assets, tasks, or any plugin MUST NOT read from or write to `~/.bakin/`. Leaked test data into the production instance has caused real incidents.
+**Every test file MUST mock the content-dir resolver AND the OpenClaw home resolver to use temp directories.** Tests that touch storage, assets, tasks, agent packages, or any plugin MUST NOT read from or write to `~/.bakin/` or `~/.openclaw/`. Leaked test data into either production directory has caused real incidents.
 
-Because `src/core/content-dir.ts` is a thin shim over `packages/core/src/content-dir.ts`, **mock both**. Any consumer may import from either path (or the `@/core/content-dir` alias), and missing one leaves a leak surface.
+Because `src/core/content-dir.ts` is a thin shim over `packages/core/src/content-dir.ts`, **mock both**. Any consumer may import from either path (or the `@/core/content-dir` alias), and missing one leaves a leak surface. Same applies to OpenClaw home.
 
 Required mocks for any test that touches the filesystem:
 ```typescript
@@ -274,6 +334,22 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => { /* return paths under testDir */ },
 }))
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+```
+
+When the test imports modules that read `process.env.OPENCLAW_HOME` at module-load time (the openclaw-adapter is the most common one), set the env var BEFORE any imports — `mock.module` calls run after ES-module imports hoist, which is too late for module-top reads:
+
+```typescript
+const testDir = pathJoin(tmpdir(), `bakin-test-foo-${Date.now()}-${randomUUID()}`)
+process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
+process.env.BAKIN_HOME = testDir
+
+// imports follow — modules read the env vars on first call
+import { ... } from '...'
 ```
 
 Run the full suite with `bun test --isolate` (CI) or `bun test --watch --isolate` (dev). Individual file: `bun test tests/path/to/foo.test.ts --isolate`. `--isolate` gives each test file a fresh global so `mock.module` overlays don't leak across files.
@@ -348,6 +424,7 @@ All shared UI lives under `@bakin/sdk/components` — plugins should always impo
 
 - **Contributing:** `CONTRIBUTING.md` — Bun setup, build pipeline, dev loop
 - **Plugin authoring:** `docs/plugin-authoring.md` — hands-on walkthrough for plugin authors
+- **Agent-package authoring:** `docs/agent-packages-authoring.md` — package-author walkthrough
 - **Specs:** `.claude/specs/` — detailed specs for each hardening phase
 - **Knowledge:** `.claude/knowledge/` — deep dives on plugin system, repo architecture, storage model, search, per-plugin references
 - **Skills:** `.claude/skills/` — reusable Claude Code operations (create-plugin, audit-plugin, add-component)
