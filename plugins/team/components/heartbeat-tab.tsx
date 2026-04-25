@@ -9,10 +9,12 @@
  * { content, lastUpdated } or null when the file doesn't exist yet.
  */
 import { useEffect, useState } from 'react'
-import { Loader2, Heart } from 'lucide-react'
+import { Loader2, Heart, Pencil } from 'lucide-react'
 import { MarkdownContent } from '@bakin/sdk/components'
 import type { HeartbeatRaw } from '../types'
 import { EmptyState } from './empty-state'
+
+const HEARTBEAT_DISABLED_REASON = 'Heartbeats are agent-authored — they\'re written by the agent itself via the bakin_exec_heartbeat tool. Editing from the UI would just get overwritten on the next dispatch.'
 
 export interface HeartbeatTabProps {
   agentId: string
@@ -95,10 +97,21 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
 
   return (
     <div className="relative w-full">
-      <div className="absolute top-2 right-2 z-10 text-xs text-muted-foreground bg-muted/40 backdrop-blur-sm rounded-full px-3 py-1">
-        Last updated {formatRelative(heartbeat.lastUpdated)}
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+        <span className="text-xs text-muted-foreground bg-muted/40 backdrop-blur-sm rounded-full px-3 py-1">
+          Last updated {formatRelative(heartbeat.lastUpdated)}
+        </span>
+        <button
+          disabled
+          aria-disabled="true"
+          title={HEARTBEAT_DISABLED_REASON}
+          aria-label={`Edit disabled — ${HEARTBEAT_DISABLED_REASON}`}
+          className="size-8 rounded-full bg-zinc-700/40 text-zinc-500 flex items-center justify-center cursor-not-allowed shadow-lg backdrop-blur-sm"
+        >
+          <Pencil className="size-4" />
+        </button>
       </div>
-      <div className="w-full min-h-[calc(100vh-260px)] rounded-lg border border-border bg-muted/20 p-6 pr-32 overflow-auto">
+      <div className="w-full min-h-[calc(100vh-260px)] pr-14 overflow-auto">
         <MarkdownContent content={heartbeat.content} />
       </div>
     </div>

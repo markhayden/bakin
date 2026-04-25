@@ -106,14 +106,22 @@ describe('HeartbeatTab', () => {
     await waitFor(() => expect(screen.getByText('boom')).toBeDefined())
   })
 
-  it('exposes no edit affordance — Heartbeat is view-only', async () => {
+  it('shows a disabled edit button (visual parity with markdown tabs) but no editable surface', async () => {
     setupFetch({
       ok: true,
       heartbeat: { content: 'alive', lastUpdated: new Date().toISOString() },
     })
     render(<HeartbeatTab agentId="pixel" />)
     await waitFor(() => expect(screen.getByTestId('markdown')).toBeDefined())
-    expect(screen.queryByLabelText(/Edit/i)).toBeNull()
+
+    // Button is present so the corner real-estate matches Soul/Rules/Tools
+    // tabs, but it's explicitly disabled with an explanatory tooltip.
+    const btn = screen.getByLabelText(/Edit disabled/) as HTMLButtonElement
+    expect(btn).toBeDefined()
+    expect(btn.disabled).toBe(true)
+
+    // No save button, no editable textbox — the disabled affordance is
+    // visual parity only, never lets the user edit.
     expect(screen.queryByLabelText(/Save/i)).toBeNull()
     expect(screen.queryByRole('textbox')).toBeNull()
   })
