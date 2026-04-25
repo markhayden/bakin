@@ -156,7 +156,7 @@ export function useAgentColor(agentId: string): string {
 
 /** Get an agent's package state row. Undefined when the API hasn't reported one. */
 export function usePackageState(agentId: string): PackageStateRow | undefined {
-  return useAgentStore((s) => s.packageStates[agentId])
+  return useAgentStore((s) => s.packageStates?.[agentId])
 }
 
 /** Get an agent's display name override, if any. */
