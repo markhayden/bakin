@@ -30,8 +30,17 @@ const log = createLogger('team:openclaw')
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
-const OPENCLAW_ROOT = getOpenClawHome()
-const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
+// Resolved lazily on each call so test harnesses that mock
+// @bakin/core/openclaw-home or set OPENCLAW_HOME after this module is
+// evaluated still see the mocked / overridden home directory. Eagerly
+// reading at module-top fired the test-env safety guard before any
+// downstream test had a chance to redirect the home dir.
+function openClawRoot(): string {
+  return getOpenClawHome()
+}
+function openClawJsonPath(): string {
+  return getOpenClawPath('openclaw.json')
+}
 
 // ─── Config Reading ──────────────────────────────────────────────────────────
 
@@ -132,11 +141,11 @@ export function getWorkspacePath(agentId: string): string {
 
   // Main agent default — resolve orchestrator id dynamically
   if (agentId === tryGetMainAgentId()) {
-    return config.agents?.defaults?.workspace ?? join(OPENCLAW_ROOT, 'workspace')
+    return config.agents?.defaults?.workspace ?? join(openClawRoot(), 'workspace')
   }
 
   // Subagent default
-  return join(OPENCLAW_ROOT, 'workspaces', agentId)
+  return join(openClawRoot(), 'workspaces', agentId)
 }
 
 // ─── Workspace File Operations ───────────────────────────────────────────────
@@ -359,7 +368,7 @@ export async function addAgent(input: CreateAgentInput): Promise<{ id: string; w
     throw new Error(`Agent "${input.id}" already exists in openclaw.json`)
   }
 
-  const wsPath = join(OPENCLAW_ROOT, 'workspaces', input.id)
+  const wsPath = join(openClawRoot(), 'workspaces', input.id)
 
   // Register agent in OpenClaw via CLI
   const addArgs = ['agents', 'add', input.id, '--workspace', wsPath, '--non-interactive', '--json']
@@ -442,7 +451,7 @@ export function removeFromAllowLists(agentId: string): void {
   }
 
   if (modified) {
-    writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
+    writeFileSync(openClawJsonPath(), JSON.stringify(config, null, 2), 'utf-8')
     resetOpenClawConfigCache()
     log.info('Removed agent from allow lists', { agentId })
   }
@@ -497,7 +506,7 @@ export function addToAllowLists(newAgentId: string, dispatchable: 'all' | 'main'
   }
 
   if (modified) {
-    writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
+    writeFileSync(openClawJsonPath(), JSON.stringify(config, null, 2), 'utf-8')
     resetOpenClawConfigCache()
     log.info('Updated allow lists', { newAgentId, dispatchable })
   }
@@ -521,7 +530,7 @@ export function setSubagentPermissions(agentId: string, allowAgents: string[]): 
   if (!agent.subagents) agent.subagents = {}
   agent.subagents.allowAgents = allowAgents
 
-  writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
+  writeFileSync(openClawJsonPath(), JSON.stringify(config, null, 2), 'utf-8')
   resetOpenClawConfigCache()
   log.info('Updated subagent permissions', { agentId, allowAgents })
 }

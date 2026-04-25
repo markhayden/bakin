@@ -48,8 +48,11 @@ const PackageEntrySchema = z.object({
   kind: PackageKindSchema,
   version: z.string().min(1),
   source: z.string().min(1),
-  ref: z.string().min(1),
-  commitSha: z.string().min(1),
+  // ref and commitSha are empty strings for local sources (no git provenance
+  // exists). The lockfile records this honestly rather than fabricating a
+  // synthetic value. Github sources always populate both.
+  ref: z.string(),
+  commitSha: z.string(),
   installedAt: z.string().min(1),
 
   // Agent-only fields (present iff kind === 'agent')
