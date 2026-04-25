@@ -1,5 +1,14 @@
 # Spec — Team Agent Detail Overview Rework
 
+> **Post-merge note (scope grew during build):** the spec below targets 9 tabs.
+> Shipped result is **10 tabs** — `Identity` was added mid-stream so users can
+> edit `IDENTITY.md` from the UI (the file the role parser reads). Final tab
+> order: `Overview | Identity | Soul | Memory | Heartbeat | Rules | Tools |
+> Skills | Knowledge | Active Context`. See `.claude/knowledge/team-plugin.md`
+> for the canonical landed state.
+
+
+
 Restructures `/team/:id` (`agent-detail.tsx`) around a new "Overview" tab and rationalizes the entire tab list. New tabs: Heartbeat (read-only) and Active Context (read-only session transcript). Existing markdown tabs (Soul / Rules / Tools) get an Assets-style view-then-edit pattern with full-width layout.
 
 ## Problem

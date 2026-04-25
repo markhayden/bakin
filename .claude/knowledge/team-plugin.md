@@ -161,10 +161,10 @@ Convention: **CLI hints render only when there is no UI affordance for the actio
 
 ### Surface 3 — Knowledge Tab (`agent-detail.tsx`)
 
-The "Knowledge" tab sits between Skills and Memory in the tab order — both are package-rooted concepts. Always visible, content adapts:
+The "Knowledge" tab sits between Skills and Active Context in the tab order. Always visible, content adapts:
 
-- **`managed` / `adopted`:** renders `<KnowledgeToggleList agentId={...}>` (existing component, optimistic UI, REST round-trip on toggle).
-- **Anything else:** "Coming soon" placeholder pointing the user back at the Package card on the Overview tab to adopt first. Future work replaces this with adoption-value + knowledge-explainer copy.
+- **`managed` / `adopted`:** renders `<KnowledgeToggleList agentId={...}>` — a responsive grid of cards with title + lessonId + tags + per-card package-source chip. Optimistic UI, REST round-trip on toggle.
+- **Anything else:** shared `<EmptyState>` with "Knowledge requires a package" pointing the user back at the Package card on the Overview tab to adopt first.
 
 ### Adopt Round-Trip
 
@@ -217,15 +217,15 @@ The header contains: back arrow, avatar (clickable for upload), name, role, gate
 
 ### OverviewTab Composition
 
-Single dashboard surface, full-width responsive grid (1 → 2 → 3 cols at md / xl breakpoints). Panels:
+Identity (name + role + workspace path) lives in the page header above the tab bar — OverviewTab itself does **not** repeat it.
 
-- Identity (name + role + emoji + manages-list)
-- Settings (model selector + team selector with live save)
-- PackageCard (embedded — exported from `agent-detail.tsx`)
-- Workspace path
-- Capacity counts (skills, knowledge total + enabled, last-session message count)
-- Latest Session (folds in the killed Stats tab — model, total tokens with input/output split, cache reads, total cost with per-message average)
-- Recent Activity (5m / 1h / 24h dispatch + error counts via `getStatsByMs`, framed as "since server start" because the recorder is in-memory)
+Page sections, top to bottom:
+
+- **Hero card** — accent-bordered, 2-col at lg (stacked at narrower). Two panels separated by a subtle divider:
+  - Settings (no header label) — model selector + team selector with live save
+  - Agent Package — embedded `<PackageCardBody>` (lives in `package-card.tsx`)
+- **Metrics** — 4 color-coded tiles (Skills/violet, Knowledge/cyan, Tokens/blue, Cost/emerald). When a latest-session payload is present, a secondary 4-tile row appears (Model / Messages / Cache reads / Cache writes).
+- **Activity** — 3 tiles tinted with the agent's accent color when count > 0, for 5m/1h/24h windows. Footer caption clarifies "since server start" (the recorder is in-memory and resets on restart).
 
 OverviewTab fetches stats / recent-activity / skills / knowledge in parallel on mount. Each panel handles its own loading/empty state.
 

@@ -5,8 +5,8 @@
  *
  * The agent detail page reads the active tab from `?tab=` via useQueryState.
  * This test pins the three behaviours that matter for bookmarks and shared
- * links: a missing param defaults to Profile, a valid param (soul) selects
- * that tab, and an unknown param falls back to Profile rather than rendering
+ * links: a missing param defaults to Overview, a valid param (soul) selects
+ * that tab, and an unknown param falls back to Overview rather than rendering
  * nothing.  Clicking a tab must write back through setTabParam so the URL
  * stays the source of truth.
  */
@@ -30,6 +30,20 @@ mock.module('@/core/content-dir', () => ({
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
+}))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+}))
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+mock.module('../../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
 }))
 
 // useQueryState is what we're actually pinning.  The factory reads a global
