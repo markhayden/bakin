@@ -60,6 +60,12 @@ import * as pluginSettingsIdRoute from './packages/host/src/api/plugin-settings/
 import * as pluginSettingsSchemasRoute from './packages/host/src/api/plugin-settings/schemas'
 import * as pluginsInstallRoute from './packages/host/src/api/plugins/install'
 import * as pluginsRemoveRoute from './packages/host/src/api/plugins/remove'
+import * as agentPackagesListRoute from './packages/host/src/api/agent-packages/list'
+import * as agentPackagesInstallRoute from './packages/host/src/api/agent-packages/install'
+import * as agentPackagesDynamicRoute from './packages/host/src/api/agent-packages/dynamic'
+import * as packagesListRoute from './packages/host/src/api/packages/list'
+import * as packagesInstallRoute from './packages/host/src/api/packages/install'
+import * as packagesDynamicRoute from './packages/host/src/api/packages/dynamic'
 import * as pluginsMemoryAuditRoute from './packages/host/src/api/plugins/memory/audit'
 import * as pluginsMemoryGatewayRoute from './packages/host/src/api/plugins/memory/gateway'
 import * as pluginsMemoryWorkspaceRoute from './packages/host/src/api/plugins/memory/workspace'
@@ -374,6 +380,36 @@ const eventBus = new BakinEventBus(broadcast)
 
     if (url.pathname === '/api/plugins/remove' && req.method === 'POST') {
       dispatchWebHandler(req, res, pluginsRemoveRoute.post)
+      return
+    }
+
+    // ─── Agent-package routes (install / list / remove / update / knowledge) ──
+    // Distinct from the runtime /api/agents/* surface below — see
+    // packages/host/src/api/agent-packages/dynamic.ts for the rationale.
+    if (url.pathname === '/api/agent-packages' && req.method === 'GET') {
+      dispatchWebHandler(req, res, agentPackagesListRoute.get)
+      return
+    }
+    if (url.pathname === '/api/agent-packages/install' && req.method === 'POST') {
+      dispatchWebHandler(req, res, agentPackagesInstallRoute.post)
+      return
+    }
+    if (url.pathname.startsWith('/api/agent-packages/') && url.pathname !== '/api/agent-packages/install') {
+      dispatchWebHandler(req, res, agentPackagesDynamicRoute.handler)
+      return
+    }
+
+    // ─── Standalone packages routes (skill-pack / workflow-pack / knowledge-pack) ──
+    if (url.pathname === '/api/packages' && req.method === 'GET') {
+      dispatchWebHandler(req, res, packagesListRoute.get)
+      return
+    }
+    if (url.pathname === '/api/packages/install' && req.method === 'POST') {
+      dispatchWebHandler(req, res, packagesInstallRoute.post)
+      return
+    }
+    if (url.pathname.startsWith('/api/packages/') && url.pathname !== '/api/packages/install') {
+      dispatchWebHandler(req, res, packagesDynamicRoute.handler)
       return
     }
 
