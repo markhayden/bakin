@@ -191,13 +191,24 @@ function loadWorkflowSkillsForPackage(
   }
 }
 
+/** Strip a compound `<id>@<version>` lockfile key down to the bare id. */
+function stripVersionFromKey(key: string): string {
+  const at = key.lastIndexOf('@')
+  return at === -1 ? key : key.slice(0, at)
+}
+
 function loadSourcesForEntry(
   packageId: string,
   entry: PackageEntry,
   contentDir: string,
   result: LoadSourcesResult,
 ): void {
-  const packageDir = getPackageSourceDir(contentDir, entry.kind, packageId, entry.version)
+  // Lockfile keys for non-agent kinds are compound (`<id>@<version>`);
+  // package-paths takes the bare id + version separately, and the workflow
+  // source registry indexes by bare id so cross-package references stay
+  // version-agnostic.
+  const bareId = entry.kind === 'agent' ? packageId : stripVersionFromKey(packageId)
+  const packageDir = getPackageSourceDir(contentDir, entry.kind, bareId, entry.version)
   if (!existsSync(packageDir) || !statSync(packageDir).isDirectory()) {
     result.warnings.push({
       packageId,
@@ -215,17 +226,19 @@ function loadSourcesForEntry(
   }
 
   // Wipe prior registrations for this package id so re-runs are idempotent
-  // (server boot, post-install reload, etc.).
-  unregisterAgentPackageDefinitions(packageId)
-  unregisterAgentPackageSkills(packageId)
+  // (server boot, post-install reload, etc.). Use bare id so registry refs
+  // stay version-agnostic; the lockfile is the source of truth for which
+  // version is actually installed.
+  unregisterAgentPackageDefinitions(bareId)
+  unregisterAgentPackageSkills(bareId)
 
   const workflows = manifest.contributions?.workflows ?? []
   if (workflows.length > 0) {
-    loadWorkflowsForPackage(packageId, packageDir, workflows, result)
+    loadWorkflowsForPackage(bareId, packageDir, workflows, result)
   }
   const workflowSkills = manifest.contributions?.workflowSkills ?? []
   if (workflowSkills.length > 0) {
-    loadWorkflowSkillsForPackage(packageId, packageDir, workflowSkills, result)
+    loadWorkflowSkillsForPackage(bareId, packageDir, workflowSkills, result)
   }
 
   result.packagesProcessed.push(packageId)

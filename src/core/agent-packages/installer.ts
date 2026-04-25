@@ -187,6 +187,35 @@ interface AdapterCreateAgentInput {
   model?: string
 }
 
+/**
+ * Walk a parsed manifest's `dependencies` and return the lockfile keys of
+ * the immediate deps it declared. Looks each dep up by `<source>@<ref>`
+ * in a map the resolver already built — this avoids re-parsing local-source
+ * paths into manifest ids (fragile heuristic that breaks for paths that
+ * don't end in the agent id).
+ */
+function listImmediateDeps(
+  manifest: Manifest,
+  sourceToLockKey: Map<string, string>,
+): string[] {
+  const out: string[] = []
+  const deps = manifest.dependencies
+  const slots: Array<Array<{ source: string; ref: string }> | undefined> = [
+    deps?.skills,
+    deps?.workflows,
+    deps?.knowledge,
+  ]
+  for (const slot of slots) {
+    if (!slot) continue
+    for (const dep of slot) {
+      const sourceKey = `${dep.source}@${dep.ref}`
+      const lockKey = sourceToLockKey.get(sourceKey)
+      if (lockKey) out.push(lockKey)
+    }
+  }
+  return out
+}
+
 function manifestToCreateAgent(manifest: Manifest): AdapterCreateAgentInput {
   if (manifest.kind !== 'agent') {
     throw new Error(`manifestToCreateAgent called with non-agent kind: ${manifest.kind}`)
@@ -239,6 +268,22 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     const lock = readLockfile()
     let mode: ProjectionMode = 'fresh'
     let agentId: string | undefined
+
+    // Lockfile key conventions:
+    //   - agent kind:        plain id (e.g. "pixel")        — one agent per id
+    //   - non-agent kinds:   compound (e.g. "visual@0.3.1") — multiple versions
+    //                        of the same pack can coexist during update
+    const parentLockfileKey =
+      manifest.kind === 'agent'
+        ? resolvedTopId
+        : `${resolvedTopId}@${manifest.version}`
+
+    if (manifest.kind !== 'agent' && lock.packages[parentLockfileKey] && !options.replace) {
+      throw new Error(
+        `Package "${parentLockfileKey}" is already installed. ` +
+          `Run \`bakin packages update ${parentLockfileKey}\` to update or \`bakin packages remove ${parentLockfileKey}\` first.`,
+      )
+    }
 
     if (manifest.kind === 'agent') {
       agentId = manifest.id
@@ -294,6 +339,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
         stagingDir: dep.fetched.stagingDir,
         agentId: undefined,
         mode: 'fresh',
+        replace: options.replace,
         installedBy: {
           package: dep.resolvedId,
           version: dep.manifest.version,
@@ -312,6 +358,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       stagingDir: topFetched.stagingDir,
       agentId,
       mode,
+      replace: options.replace,
       installedBy: {
         package: resolvedTopId,
         version: manifest.version,
@@ -339,6 +386,24 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     let nextLock = lock
     const installedAt = new Date().toISOString()
 
+    // Build two maps so transitive deps record their IMMEDIATE parent
+    // (not the top-level package) as the dependent. Cascade removal of a
+    // 3+-deep chain depends on each entry pointing at the right immediate
+    // parent rather than the top-level installer-invocation root.
+    //
+    //   idToLockKey:     manifest.id  → lockfile-key (used by incrementRefCount)
+    //   sourceToLockKey: `<source>@<ref>` → lockfile-key (used by
+    //                    listImmediateDeps to resolve local-path deps without
+    //                    parsing the path back into a manifest id)
+    const idToLockKey = new Map<string, string>()
+    const sourceToLockKey = new Map<string, string>()
+    idToLockKey.set(manifest.id, parentLockfileKey)
+    for (const dep of resolved) {
+      const depKey = `${dep.resolvedId}@${dep.manifest.version}`
+      idToLockKey.set(dep.manifest.id, depKey)
+      sourceToLockKey.set(`${dep.spec.source}@${dep.spec.ref}`, depKey)
+    }
+
     // Dep entries first
     for (const dep of resolved) {
       const depKey = `${dep.resolvedId}@${dep.manifest.version}`
@@ -354,9 +419,19 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
         projections: projectedFor?.result.projections ?? [],
         refCount: existing?.refCount ?? 0,
         dependents: existing?.dependents ?? [],
+        // Record any transitive deps this dep itself pulled in so the
+        // uninstaller can cascade-remove orphans.
+        dependencies: listImmediateDeps(dep.manifest, sourceToLockKey),
       }
       nextLock = addPackage(nextLock, depKey, entry)
-      nextLock = incrementRefCount(nextLock, depKey, resolvedTopId)
+
+      // Increment refCount against the IMMEDIATE parent — for top-level
+      // direct deps that's the agent / parent pkg id; for transitive deps
+      // that's the intermediate package's lockfile key. Without this, all
+      // transitive deps would track the top-level package and removing
+      // intermediates wouldn't decrement leaves correctly.
+      const immediateDependentKey = idToLockKey.get(dep.pulledBy) ?? parentLockfileKey
+      nextLock = incrementRefCount(nextLock, depKey, immediateDependentKey)
     }
 
     // Parent entry
@@ -376,8 +451,14 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       parentEntry.knowledgeEnabled =
         manifest.install.enableKnowledge ??
         []
+    } else {
+      // Non-agent kinds (skill-pack / workflow-pack / knowledge-pack) live as
+      // top-level entries with no agent state. Initialize refCount/dependents
+      // so other packages can depend on them later via incrementRefCount.
+      parentEntry.refCount = 0
+      parentEntry.dependents = []
     }
-    nextLock = addPackage(nextLock, resolvedTopId, parentEntry)
+    nextLock = addPackage(nextLock, parentLockfileKey, parentEntry)
 
     writeLockfile(nextLock)
 

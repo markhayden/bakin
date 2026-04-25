@@ -45,6 +45,7 @@ import {
   type InstalledByMarker,
   installedByPath,
   isUserEdited,
+  readInstalledBy,
   removeInstalledBy,
   writeInstalledBy,
 } from '../../../packages/core/src/agent-packages/markers'
@@ -74,6 +75,15 @@ export interface ProjectorOptions {
   enabledKnowledge?: string[]
   /** Provenance metadata stamped onto every .installedBy sidecar. */
   installedBy: Omit<InstalledByMarker, 'sha256'>
+  /**
+   * When true, allow overwriting projection targets owned by a DIFFERENT
+   * package. Default: refuse (throw with the conflicting package id).
+   * The CLI / REST surface threads `--replace` here; manifest-declared
+   * `installAs` aliases sidestep collisions by retargeting the
+   * projection at a different filesystem path entirely (no overlap to
+   * resolve).
+   */
+  replace?: boolean
 }
 
 export interface SkippedEntry {
@@ -290,7 +300,24 @@ function projectSkills(
     // Skills always project on fresh + update; adopt mode also installs
     // skills (the user opted into the package's capabilities).
     const targetExisted = existsSync(target)
+
+    // Collision check: if the target already has a sidecar pointing at a
+    // DIFFERENT package, refuse unless --replace was passed. This is the
+    // primary collision path for global ~/.openclaw/skills/<name>/ where
+    // two skill-packs could both ship the same skill name.
     if (targetExisted) {
+      const existingMarker = readInstalledBy(target)
+      if (
+        existingMarker
+        && existingMarker.package !== options.installedBy.package
+        && !options.replace
+      ) {
+        throw new Error(
+          `Projection collision at ${target}: already owned by package "${existingMarker.package}" `
+          + `(would be replaced by "${options.installedBy.package}"). Resolve via the manifest's `
+          + `dependencies[].installAs alias, or pass --replace to overwrite.`,
+        )
+      }
       // Replace by removing first — atomicity is handled by the recorded
       // tree pointer in the write log; rollback re-creates it from staging.
       rmSync(target, { recursive: true, force: true })
@@ -349,6 +376,20 @@ function projectAssets(
     ensureDir(dirname(target), writeLog)
     const targetExisted = existsSync(target)
     if (targetExisted) {
+      // Same collision policy as skills — different package's existing
+      // asset refuses unless --replace.
+      const existingMarker = readInstalledBy(target)
+      if (
+        existingMarker
+        && existingMarker.package !== options.installedBy.package
+        && !options.replace
+      ) {
+        throw new Error(
+          `Projection collision at ${target}: already owned by package "${existingMarker.package}" `
+          + `(would be replaced by "${options.installedBy.package}"). Resolve via the manifest's `
+          + `dependencies[].installAs alias, or pass --replace to overwrite.`,
+        )
+      }
       const prev = readFileSync(target)
       copyFileSync(src, target)
       writeLog.recordModifiedFile(target, prev.toString('binary'))
