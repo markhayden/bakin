@@ -113,11 +113,13 @@ describe('OverviewTab', () => {
     )
   }
 
-  it('renders identity (name + role + emoji)', () => {
+  it('does NOT render identity (name/role/emoji) — header owns that surface', () => {
     renderTab()
-    expect(screen.getByText('Pixel')).toBeDefined()
-    expect(screen.getByText('designer')).toBeDefined()
-    expect(screen.getByText('🎨')).toBeDefined()
+    // OverviewTab is rendered standalone in this test (no AgentDetail
+    // header), so the identity strings should be entirely absent.
+    expect(screen.queryByText('Pixel')).toBeNull()
+    expect(screen.queryByText('designer')).toBeNull()
+    expect(screen.queryByText('🎨')).toBeNull()
   })
 
   it('renders the model selector pre-set to the agent\'s model', () => {

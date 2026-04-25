@@ -182,6 +182,21 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-semibold">{profile.name}</h1>
           <div className="text-sm text-muted-foreground">{profile.role}</div>
+          {profile.subagentPerms && profile.subagentPerms.length > 0 && (
+            <div className="text-xs text-muted-foreground mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span className="text-foreground/70">Manages</span>
+              {profile.subagentPerms.map((id) => (
+                <Badge
+                  key={id}
+                  variant="outline"
+                  className="text-[10px] font-mono"
+                  style={{ borderColor: `${accentColor}40`, color: accentColor }}
+                >
+                  {id}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
         {agentId !== mainAgentId && (
           <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive shrink-0" onClick={() => setDeleteOpen(true)}>
