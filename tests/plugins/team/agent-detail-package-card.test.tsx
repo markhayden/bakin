@@ -106,13 +106,13 @@ async function renderDetail() {
 }
 
 describe('PackageCard — read-only display per state', () => {
-  it('renders an unmanaged badge + Adopt button (disabled in C3) when no row exists', async () => {
+  it('renders an unmanaged badge + Adopt button when no row exists', async () => {
     primeState()
     await renderDetail()
     expect(screen.getByText('unmanaged')).toBeDefined()
     const adopt = screen.getByRole('button', { name: 'Adopt' })
     expect(adopt).toBeDefined()
-    expect((adopt as HTMLButtonElement).disabled).toBe(true)
+    expect((adopt as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('renders a managed badge + entry fields when state=managed', async () => {
