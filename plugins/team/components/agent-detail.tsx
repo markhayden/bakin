@@ -20,6 +20,7 @@ import type { AvailableModel } from "@bakin/sdk/types"
 import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@bakin/sdk/hooks'
 import { useQueryState } from "@bakin/sdk/hooks"
 import { PackageStateBadge } from './package-state-badge'
+import { AdoptDialog } from './adopt-dialog'
 import type { AgentProfile, SkillSummary, PackageStateRow } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
 
@@ -446,13 +447,15 @@ function PackageCard({ agentId, packageState }: { agentId: string; packageState:
   // most common reason is the agent exists in OpenClaw but has never been
   // adopted, which is the same thing as state=unmanaged.
   const state = packageState?.state ?? 'unmanaged'
+  const refreshPackageStates = useAgentStore((s) => s.refreshPackageStates)
+  const [adoptOpen, setAdoptOpen] = useState(false)
   return (
     <ProfileSection label="Package">
       <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <PackageStateBadge state={state} packageId={packageState?.packageId} />
           {state === 'unmanaged' && (
-            <Button size="sm" disabled title="Adopt flow lands in C4">
+            <Button size="sm" onClick={() => setAdoptOpen(true)}>
               Adopt
             </Button>
           )}
@@ -477,6 +480,12 @@ function PackageCard({ agentId, packageState }: { agentId: string; packageState:
           </div>
         )}
       </div>
+      <AdoptDialog
+        open={adoptOpen}
+        onOpenChange={setAdoptOpen}
+        agentId={agentId}
+        onAdopted={() => { refreshPackageStates() }}
+      />
     </ProfileSection>
   )
 }
