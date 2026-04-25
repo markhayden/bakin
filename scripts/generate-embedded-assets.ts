@@ -102,6 +102,31 @@ function collectAssets(): AssetSource[] {
     }
   }
 
+  // Host static-data files — served at /api/<filename> by per-route
+  // handlers (e.g. curated-agents.json → /api/curated). Walk just the
+  // top level; subdirectories don't get a default URL mapping.
+  const dataDir = join(REPO_ROOT, 'packages/host/src/data')
+  if (existsSync(dataDir)) {
+    for (const entry of readdirSync(dataDir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      const name = String(entry.name)
+      assets.push({
+        absPath: join(dataDir, name),
+        urlPath: `/data/${name}`,
+        varName: makeVarName(`/data/${name}`),
+      })
+    }
+  }
+
+  // CRITICAL exclusion: agents/ is the in-repo dev location for
+  // reference packages (PLAN.md D-3 settled-decision: no agent
+  // packages bundled in the binary; users install via curated catalog
+  // or `bakin agents install`). The walk paths above never enter
+  // agents/, so this is enforced by omission. The
+  // tests/scripts/embedded-assets-no-agents.test.ts test pins this
+  // contract so a future regression that adds an `agents/` walker
+  // breaks the build instead of silently shipping bytes.
+
   return assets
 }
 
