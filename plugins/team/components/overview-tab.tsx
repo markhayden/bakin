@@ -224,7 +224,7 @@ export function OverviewTab({
 
           {/* PACKAGE */}
           <div className="px-6 py-5 space-y-3">
-            <SectionLabel>Package</SectionLabel>
+            <SectionLabel>Agent Package</SectionLabel>
             <PackageCardBody agentId={agentId} packageState={packageState} />
           </div>
         </div>
