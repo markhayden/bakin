@@ -186,9 +186,8 @@ export function OverviewTab({
         }}
       >
         <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border/40">
-          {/* SETTINGS */}
+          {/* SETTINGS — no header, the labeled selectors below are self-explanatory */}
           <div className="px-6 py-5 space-y-3">
-            <SectionLabel>Settings</SectionLabel>
             <div>
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Model</div>
               {availableModels.length > 0 ? (
@@ -233,7 +232,7 @@ export function OverviewTab({
 
       {/* TELEMETRY — 4 metric tiles, color-coded, with icons */}
       <section>
-        <SectionLabel>Telemetry · latest session</SectionLabel>
+        <SectionLabel>Metrics</SectionLabel>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MetricTile
             label="Skills"
@@ -303,7 +302,7 @@ export function OverviewTab({
 
       {/* RECENT ACTIVITY — 3 tiles tinted with agent accent when active */}
       <section>
-        <SectionLabel>Recent activity</SectionLabel>
+        <SectionLabel>Activity</SectionLabel>
         {loading ? (
           <div className="text-sm text-muted-foreground py-3">Loading…</div>
         ) : activity ? (
