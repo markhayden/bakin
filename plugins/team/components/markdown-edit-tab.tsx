@@ -140,7 +140,7 @@ export function MarkdownEditTab({ agentId, filename, initialContent }: MarkdownE
           className="w-full min-h-[calc(100vh-260px)] bg-muted/30 border border-border rounded-lg p-6 pr-14 text-sm font-mono leading-relaxed text-foreground resize-y focus:outline-none focus:ring-1 focus:ring-primary"
         />
       ) : (
-        <div className="w-full min-h-[calc(100vh-260px)] rounded-lg border border-border bg-muted/20 p-6 pr-14 overflow-auto">
+        <div className="w-full min-h-[calc(100vh-260px)] pr-14 overflow-auto">
           <MarkdownContent content={content} />
         </div>
       )}
