@@ -16,7 +16,7 @@ import { useAgentStore, useAgentColor } from '@bakin/sdk/hooks'
 import type { AvailableModel } from '@bakin/sdk/types'
 import type { AgentProfile, PackageStateRow, RecentActivity } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
-import { PackageCardBody } from './agent-detail'
+import { PackageCardBody } from './package-card'
 
 export interface OverviewTabProps {
   agentId: string

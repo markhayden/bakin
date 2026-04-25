@@ -39,7 +39,6 @@ import type { AgentWithStatus } from '../types'
  */
 const ATTENTION_STATES: PackageState[] = ['unmanaged', 'drifted', 'update-available']
 
-
 /** Strip default ReactFlow node chrome + animated edges + hover glow */
 const RESET_STYLES = `
   .react-flow__node {
