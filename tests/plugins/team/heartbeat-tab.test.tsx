@@ -1,0 +1,120 @@
+// @vitest-environment jsdom
+
+/**
+ * Heartbeat tab contract — view-only markdown render with last-updated.
+ *
+ * Covers: loading state, error state, empty state, populated state,
+ * last-updated formatting, absence of any edit/save affordance.
+ */
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { rmSync } from 'fs'
+
+const testDir = join(tmpdir(), `bakin-test-heartbeat-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+
+mock.module('@/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
+mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
+mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+mock.module('../../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+
+mock.module('@bakin/sdk/components', () => ({
+  MarkdownContent: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
+}))
+
+import { HeartbeatTab } from '../../../plugins/team/components/heartbeat-tab'
+
+function setupFetch(body: { ok: boolean; heartbeat: { content: string; lastUpdated: string | null } | null; error?: string }) {
+  global.fetch = mock(() =>
+    Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response),
+  ) as unknown as typeof global.fetch
+}
+
+afterAll(() => {
+  try { rmSync(testDir, { recursive: true, force: true }) } catch {}
+})
+
+afterEach(() => {
+  cleanup()
+})
+
+describe('HeartbeatTab', () => {
+  it('shows the loading state before the fetch resolves', () => {
+    let resolveFetch: (value: Response) => void
+    global.fetch = mock(
+      () => new Promise<Response>((res) => { resolveFetch = res }),
+    ) as unknown as typeof global.fetch
+
+    render(<HeartbeatTab agentId="pixel" />)
+    expect(screen.getByText(/Loading heartbeat/)).toBeDefined()
+    // Resolve so the test doesn't dangle
+    resolveFetch!({ ok: true, json: () => Promise.resolve({ ok: true, heartbeat: null }) } as Response)
+  })
+
+  it('renders the empty state when heartbeat is null', async () => {
+    setupFetch({ ok: true, heartbeat: null })
+    render(<HeartbeatTab agentId="pixel" />)
+    await waitFor(() => expect(screen.getByText(/No heartbeat reported yet/)).toBeDefined())
+  })
+
+  it('renders the markdown content + last updated badge for a populated heartbeat', async () => {
+    setupFetch({
+      ok: true,
+      heartbeat: {
+        content: '## Status\n\nAlive.',
+        lastUpdated: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // 5 minutes ago
+      },
+    })
+    render(<HeartbeatTab agentId="pixel" />)
+    await waitFor(() => expect(screen.getByTestId('markdown')).toBeDefined())
+    expect(screen.getByTestId('markdown').textContent).toBe('## Status\n\nAlive.')
+    expect(screen.getByText(/Last updated 5m ago/)).toBeDefined()
+  })
+
+  it('formats sub-minute updates in seconds', async () => {
+    setupFetch({
+      ok: true,
+      heartbeat: { content: 'x', lastUpdated: new Date(Date.now() - 12 * 1000).toISOString() },
+    })
+    render(<HeartbeatTab agentId="pixel" />)
+    await waitFor(() => expect(screen.getByText(/Last updated/)).toBeDefined())
+    expect(screen.getByText(/Last updated 1[12]s ago/)).toBeDefined()
+  })
+
+  it('formats day-old updates in days', async () => {
+    setupFetch({
+      ok: true,
+      heartbeat: { content: 'x', lastUpdated: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
+    })
+    render(<HeartbeatTab agentId="pixel" />)
+    await waitFor(() => expect(screen.getByText(/Last updated 3d ago/)).toBeDefined())
+  })
+
+  it('renders an error state when the API returns ok:false', async () => {
+    setupFetch({ ok: false, heartbeat: null, error: 'boom' })
+    render(<HeartbeatTab agentId="pixel" />)
+    await waitFor(() => expect(screen.getByText('boom')).toBeDefined())
+  })
+
+  it('exposes no edit affordance — Heartbeat is view-only', async () => {
+    setupFetch({
+      ok: true,
+      heartbeat: { content: 'alive', lastUpdated: new Date().toISOString() },
+    })
+    render(<HeartbeatTab agentId="pixel" />)
+    await waitFor(() => expect(screen.getByTestId('markdown')).toBeDefined())
+    expect(screen.queryByLabelText(/Edit/i)).toBeNull()
+    expect(screen.queryByLabelText(/Save/i)).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+})
