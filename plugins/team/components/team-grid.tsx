@@ -134,7 +134,7 @@ export function AgentCardNode({ data }: NodeProps) {
           <span className="text-xs font-medium text-zinc-100 leading-none">{statusLabel}</span>
         </div>
       </div>
-      <div className="p-3 flex flex-col items-center text-center gap-1">
+      <div className="p-3 pb-3 flex flex-col items-center text-center gap-1 flex-1">
         <div className="flex items-center justify-center gap-1.5 leading-tight w-full">
           <span className="text-base font-semibold text-zinc-100 truncate">{agent.name}</span>
           {showBadge && pkgState && (
@@ -147,12 +147,16 @@ export function AgentCardNode({ data }: NodeProps) {
         >
           {agent.role || <span className="text-zinc-700">no role</span>}
         </div>
-        <div
-          className="text-[11px] text-zinc-400 font-mono truncate mt-1.5 w-full"
-          title={agent.model}
-        >
-          {agent.model}
-        </div>
+      </div>
+      <div
+        className="px-3 py-2 text-[11px] text-zinc-300 font-mono truncate text-center border-t"
+        style={{
+          background: `linear-gradient(180deg, ${accentColor}22 0%, ${accentColor}33 100%)`,
+          borderTopColor: `${accentColor}33`,
+        }}
+        title={agent.model}
+      >
+        {agent.model}
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-zinc-600" />
     </div>
