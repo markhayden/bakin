@@ -653,7 +653,9 @@ function resolveRole(agentId: string): string {
     }
   }
 
-  // Main agent fallback
+  // Main agent fallback — meaningful role for the orchestrator
   if (agentId === tryGetMainAgentId()) return 'Orchestrator'
-  return 'Agent'
+  // No parseable role and not main: return empty so the UI can hide the
+  // line entirely instead of labeling every agent "Agent" (tautology).
+  return ''
 }
