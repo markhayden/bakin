@@ -126,8 +126,71 @@ The REST routes and MCP tools share the same adapter layer underneath. UI uses R
 
 - `useAgent(id)`, `useAgentList()`, `useAgentIds()`, `useAgentColor(id)`
 - `useMainAgentId()` — reads the `mainAgentId` field the roster route returns (server-side `getMainAgentId()`). Used by `TeamGrid` to pass the canonical root into `buildGraph`.
+- `usePackageState(id)` — reads the per-agent agent-package row sourced from `/api/agent-packages` (see "Agent-Package Surfaces" below).
 
 Components never compute "who is the main agent" themselves — always read it from the store.
+
+## Agent-Package Surfaces (#158)
+
+The Teams UI exposes three contextual agent-package surfaces. Cross-agent operations (install, browse, curated) are intentionally CLI-only in this iteration; a future Workshop page will bring those into the UI.
+
+### Data Plumbing
+
+`useAgentStore.load()` issues `/api/plugins/team/` and `/api/agent-packages` in parallel and merges the package response into a `packageStates: Record<agentId, PackageStateRow>` map. A failed `/api/agent-packages` is non-fatal — the agent grid keeps working with no badges. The store also exposes `refreshPackageStates()` for post-Adopt invalidation; consumers call it after a write so the UI updates without a page reload.
+
+`PackageStateRow.state` is typed as the badge component's 6-state union (`absent | unmanaged | adopted | managed | drifted | update-available`) for forward-compat. The server today emits only the 4-state subset; `drifted` and `update-available` code paths are wired but unreachable until the API starts returning them.
+
+### Surface 1 — Badge on AgentCardNode (`team-grid.tsx`)
+
+The compact `<PackageStateBadge state={...} compact />` renders inline next to the agent name, but **only when state is "attention-worthy"**: `unmanaged`, `drifted`, or `update-available`. Healthy states (`managed`, `adopted`) and missing data leave the card visually unchanged. Convention: *no badge means OK.*
+
+The compact pill is purely visual — no text label, tooltip + aria-label preserved. Click on the agent card opens the detail page where the full Package card lives.
+
+### Surface 2 — Package Card on Profile Tab (`agent-detail.tsx`)
+
+A read-only `<PackageCard>` sits at the top of the Profile tab and adapts content per state:
+
+| State | Render |
+|---|---|
+| `managed` / `adopted` | Full state badge + dl-style fields: source, ref, commit (sliced to 7 chars), installed-at, dependencies. No CLI hint. |
+| `unmanaged` (default when no row exists) | State badge + Adopt button → opens `<AdoptDialog>`. |
+| `drifted` | State badge + CLI hint: `bakin install agent-assets` with copy button. |
+| `update-available` | State badge + CLI hint: `bakin agents update <id>` with copy button. |
+
+Convention: **CLI hints render only when there is no UI affordance for the action.** Adopt is wired in-UI, so `unmanaged` shows no hint. Update / Reinstall / Remove / Reset workspace are all CLI-only and show hints in their respective state branches.
+
+### Surface 3 — Knowledge Tab (`agent-detail.tsx`)
+
+The "Knowledge" tab sits between Skills and Memory in the tab order — both are package-rooted concepts. Always visible, content adapts:
+
+- **`managed` / `adopted`:** renders `<KnowledgeToggleList agentId={...}>` (existing component, optimistic UI, REST round-trip on toggle).
+- **Anything else:** "Coming soon" placeholder pointing the user back at the Package card on the Profile tab to adopt first. Future work replaces this with adoption-value + knowledge-explainer copy.
+
+### Adopt Round-Trip
+
+```
+PackageCard (unmanaged) → click "Adopt"
+  → <AdoptDialog open={true} agentId={agentId}>
+    → user enters source → submit
+      → POST /api/agent-packages/install { source, adopt: agentId }
+        → onAdopted callback
+          → refreshPackageStates() invalidates the store slice
+            → PackageCard re-renders with the new state (managed/adopted)
+              → Badge on AgentCardNode disappears (state no longer attention-worthy)
+```
+
+No page reload, no manual refetch from the consumer side.
+
+### What's Deferred (future Workshop ticket)
+
+- Curated browser (`<CuratedBrowser>` exists, unwired)
+- Generic install dialog (`<InstallDialog>` exists, unwired) — for installing fresh agents and non-agent kinds
+- Per-package detail drawer for skill-pack / workflow-pack / knowledge-pack
+- Update / Reinstall / Remove / Reset workspace as UI buttons
+- `.userEdited` lock surfacing
+- Drift-count widget in Health plugin
+
+These all stay CLI-only until the Workshop page lands.
 
 ## Test Coverage Map
 
