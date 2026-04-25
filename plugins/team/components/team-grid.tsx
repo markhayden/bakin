@@ -138,7 +138,7 @@ export function AgentCardNode({ data }: NodeProps) {
             <PackageStateBadge state={pkgState.state} compact />
           )}
         </div>
-        <div className="text-xs text-zinc-500 leading-tight truncate">{agent.role}</div>
+        {agent.role && <div className="text-xs text-zinc-500 leading-tight truncate">{agent.role}</div>}
         <div className="flex items-center gap-1.5 mt-1.5">
           <Badge
             variant={agent.status === 'online' || agent.status === 'working' ? 'default' : 'secondary'}
