@@ -10,10 +10,10 @@
  * selector — both moved out of the agent-detail header.
  */
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Sparkles, BookOpen, MessageSquare, Coins, Database, Activity } from 'lucide-react'
 import { Badge } from '@bakin/sdk/ui'
 import { ModelSelect } from '@bakin/sdk/components'
-import { useAgentStore } from '@bakin/sdk/hooks'
+import { useAgentStore, useAgentColor } from '@bakin/sdk/hooks'
 import type { AvailableModel } from '@bakin/sdk/types'
 import type { AgentProfile, PackageStateRow, RecentActivity } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
@@ -33,21 +33,70 @@ interface KnowledgeMeta {
   enabled: number
 }
 
-function Section({ title, children, span }: { title: string; children: React.ReactNode; span?: 'full' }) {
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <section className={span === 'full' ? 'col-span-full' : undefined}>
-      <h3 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-2">{title}</h3>
-      {children}
-    </section>
+    <h3 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-2">{children}</h3>
   )
 }
 
-function StatTile({ label, value, sublabel }: { label: string; value: string; sublabel?: string }) {
+interface MetricTileProps {
+  label: string
+  value: string
+  sublabel?: string
+  icon: React.ComponentType<{ className?: string }>
+  /** Tailwind color stem used for the icon, value text, and accent border (e.g. "text-blue-400") */
+  accent: string
+  /** Tailwind background stem for the icon chip (e.g. "bg-blue-500/10") */
+  accentBg: string
+}
+
+function MetricTile({ label, value, sublabel, icon: Icon, accent, accentBg }: MetricTileProps) {
   return (
-    <div className="rounded-lg border border-border bg-muted/20 px-4 py-3">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="text-2xl font-semibold text-foreground tabular-nums leading-tight mt-1">{value}</div>
+    <div className="relative rounded-xl border border-border bg-muted/15 px-4 py-4 overflow-hidden group transition-colors hover:bg-muted/25">
+      <div className={`absolute inset-y-0 left-0 w-1 ${accentBg.replace('/10', '/40')}`} />
+      <div className="flex items-start justify-between mb-2">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+        <span className={`size-7 rounded-lg flex items-center justify-center ${accentBg}`}>
+          <Icon className={`size-3.5 ${accent}`} />
+        </span>
+      </div>
+      <div className={`text-2xl font-semibold tabular-nums leading-tight ${accent}`}>{value}</div>
       {sublabel && <div className="text-[11px] text-muted-foreground mt-1">{sublabel}</div>}
+    </div>
+  )
+}
+
+interface ActivityTileProps {
+  label: string
+  count: number
+  errors: number
+  agentColor: string
+}
+
+function ActivityTile({ label, count, errors, agentColor }: ActivityTileProps) {
+  const isActive = count > 0
+  return (
+    <div
+      className="rounded-xl border border-border bg-muted/15 px-4 py-3 flex items-center gap-3 transition-colors"
+      style={isActive ? { borderColor: `${agentColor}40`, boxShadow: `inset 0 0 0 1px ${agentColor}20` } : undefined}
+    >
+      <div
+        className="size-9 rounded-lg flex items-center justify-center shrink-0"
+        style={isActive ? { background: `${agentColor}20` } : { background: 'rgb(63 63 70 / 0.4)' }}
+      >
+        <Activity className={`size-4 ${isActive ? '' : 'text-muted-foreground'}`} style={isActive ? { color: agentColor } : undefined} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+        <div className="text-xl font-semibold tabular-nums leading-tight" style={isActive ? { color: agentColor } : { color: 'rgb(244 244 245 / 0.85)' }}>
+          {count.toLocaleString()}
+        </div>
+      </div>
+      {errors > 0 && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300 font-medium">
+          {errors} err
+        </span>
+      )}
     </div>
   )
 }
@@ -73,6 +122,7 @@ export function OverviewTab({
   const teams = useAgentStore((s) => s.teams)
   const displaySettings = useAgentStore((s) => s.displaySettings)
   const reload = useAgentStore((s) => s.load)
+  const accentColor = useAgentColor(agentId)
   const currentTeamId = displaySettings[agentId]?.teamId ?? ''
 
   const [usage, setUsage] = useState<AgentUsage | null>(null)
@@ -124,136 +174,190 @@ export function OverviewTab({
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 w-full">
-      <Section title="Identity">
-        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-2">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl leading-none">{profile.emoji || '🤖'}</span>
-            <div>
-              <div className="text-base font-semibold text-foreground">{profile.name}</div>
-              <div className="text-xs text-muted-foreground">{profile.role || 'No role assigned'}</div>
-            </div>
-          </div>
-          {profile.subagentPerms && profile.subagentPerms.length > 0 && (
-            <div className="text-xs text-muted-foreground pt-1">
-              <span className="text-foreground/80">Manages:</span>{' '}
-              {profile.subagentPerms.map((id) => (
-                <Badge key={id} variant="outline" className="text-[10px] mx-0.5">{id}</Badge>
-              ))}
-            </div>
-          )}
-        </div>
-      </Section>
-
-      <Section title="Settings">
-        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-3">
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Model</div>
-            {availableModels.length > 0 ? (
-              <div className="flex items-center gap-2">
-                <ModelSelect
-                  value={resolvedModelId}
-                  onChange={onModelChange}
-                  models={availableModels}
-                  defaultLabel="Use default"
-                  className="h-8 w-full text-xs"
-                />
-                {savingModel && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
+    <div className="space-y-6 w-full">
+      {/* HERO ROW — Identity (2/3) + Settings (1/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <section className="lg:col-span-2">
+          <SectionLabel>Identity</SectionLabel>
+          <div
+            className="relative rounded-2xl border-2 px-6 py-5 overflow-hidden"
+            style={{
+              borderColor: `${accentColor}55`,
+              background: `linear-gradient(135deg, ${accentColor}10 0%, transparent 60%)`,
+            }}
+          >
+            <div className="flex items-center gap-5">
+              <div
+                className="size-16 rounded-2xl flex items-center justify-center text-4xl shrink-0"
+                style={{ background: `${accentColor}20`, border: `1px solid ${accentColor}40` }}
+              >
+                {profile.emoji || '🤖'}
               </div>
-            ) : (
-              <code className="text-xs font-mono text-muted-foreground">{profile.model}</code>
+              <div className="min-w-0 flex-1">
+                <div className="text-2xl font-semibold text-foreground leading-tight">{profile.name}</div>
+                <div className="text-sm text-muted-foreground mt-0.5">{profile.role || 'No role assigned'}</div>
+              </div>
+            </div>
+            {profile.subagentPerms && profile.subagentPerms.length > 0 && (
+              <div className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border/50 flex flex-wrap items-center gap-1.5">
+                <span className="text-foreground/70">Manages</span>
+                {profile.subagentPerms.map((id) => (
+                  <Badge
+                    key={id}
+                    variant="outline"
+                    className="text-[10px] font-mono"
+                    style={{ borderColor: `${accentColor}30`, color: accentColor }}
+                  >
+                    {id}
+                  </Badge>
+                ))}
+              </div>
             )}
           </div>
-          {teams.length > 0 && (
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Team</div>
-              <select
-                value={currentTeamId}
-                onChange={(e) => handleTeamChange(e.target.value)}
-                className="h-8 w-full rounded border border-border bg-transparent px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                <option value="">No team</option>
-                {teams.map((t) => (
-                  <option key={t.id} value={t.id}>{t.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      </Section>
+        </section>
 
+        <section>
+          <SectionLabel>Settings</SectionLabel>
+          <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4 space-y-3 h-full">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Model</div>
+              {availableModels.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  <ModelSelect
+                    value={resolvedModelId}
+                    onChange={onModelChange}
+                    models={availableModels}
+                    defaultLabel="Use default"
+                    className="h-8 w-full text-xs"
+                  />
+                  {savingModel && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
+                </div>
+              ) : (
+                <code className="text-xs font-mono text-muted-foreground">{profile.model}</code>
+              )}
+            </div>
+            {teams.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Team</div>
+                <select
+                  value={currentTeamId}
+                  onChange={(e) => handleTeamChange(e.target.value)}
+                  className="h-8 w-full rounded border border-border bg-transparent px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">No team</option>
+                  {teams.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {/* PACKAGE */}
       <PackageCard agentId={agentId} packageState={packageState} />
 
-      <Section title="Workspace" span="full">
-        <code className="text-[11px] text-muted-foreground font-mono break-all">{profile.workspacePath}</code>
-      </Section>
-
-      <Section title="Capacity" span="full">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <StatTile label="Skills" value={loading || skillCount === null ? '—' : fmtNum(skillCount)} />
-          <StatTile
-            label="Knowledge lessons"
+      {/* TELEMETRY — 4 metric tiles, color-coded, with icons */}
+      <section>
+        <SectionLabel>Telemetry · latest session</SectionLabel>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <MetricTile
+            label="Skills"
+            value={loading || skillCount === null ? '—' : fmtNum(skillCount)}
+            icon={Sparkles}
+            accent="text-violet-300"
+            accentBg="bg-violet-500/15"
+          />
+          <MetricTile
+            label="Knowledge"
             value={loading || !knowledge ? '—' : fmtNum(knowledge.total)}
             sublabel={knowledge ? `${knowledge.enabled} enabled` : undefined}
+            icon={BookOpen}
+            accent="text-cyan-300"
+            accentBg="bg-cyan-500/15"
           />
-          <StatTile
-            label="Sessions"
-            value={loading ? '—' : fmtNum(usage?.messages ?? 0)}
-            sublabel="latest session messages"
+          <MetricTile
+            label="Tokens"
+            value={loading ? '—' : fmtNum(usage?.tokens.total ?? 0)}
+            sublabel={usage ? `in ${fmtNum(usage.tokens.input)} · out ${fmtNum(usage.tokens.output)}` : undefined}
+            icon={MessageSquare}
+            accent="text-blue-300"
+            accentBg="bg-blue-500/15"
+          />
+          <MetricTile
+            label="Cost"
+            value={loading ? '—' : fmtCost(usage?.cost.total ?? 0)}
+            sublabel={usage && usage.messages > 0 ? `${fmtCost(usage.cost.total / usage.messages)}/msg` : undefined}
+            icon={Coins}
+            accent="text-emerald-300"
+            accentBg="bg-emerald-500/15"
           />
         </div>
-      </Section>
-
-      <Section title="Latest Session" span="full">
-        {loading ? (
-          <div className="text-sm text-muted-foreground">Loading…</div>
-        ) : usage ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatTile label="Model" value={usage.model || 'unknown'} />
-            <StatTile label="Tokens" value={fmtNum(usage.tokens.total)} sublabel={`in ${fmtNum(usage.tokens.input)} · out ${fmtNum(usage.tokens.output)}`} />
-            <StatTile label="Cache reads" value={fmtNum(usage.tokens.cacheRead)} />
-            <StatTile label="Cost" value={fmtCost(usage.cost.total)} sublabel={`$${(usage.cost.total / Math.max(1, usage.messages)).toFixed(4)}/msg`} />
-          </div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-            No session data yet
+        {usage && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+            <MetricTile
+              label="Model"
+              value={usage.model || 'unknown'}
+              icon={MessageSquare}
+              accent="text-zinc-300"
+              accentBg="bg-zinc-500/15"
+            />
+            <MetricTile
+              label="Messages"
+              value={fmtNum(usage.messages)}
+              icon={MessageSquare}
+              accent="text-zinc-300"
+              accentBg="bg-zinc-500/15"
+            />
+            <MetricTile
+              label="Cache reads"
+              value={fmtNum(usage.tokens.cacheRead)}
+              icon={Database}
+              accent="text-amber-300"
+              accentBg="bg-amber-500/15"
+            />
+            <MetricTile
+              label="Cache writes"
+              value={fmtNum(usage.tokens.cacheWrite)}
+              icon={Database}
+              accent="text-amber-300"
+              accentBg="bg-amber-500/15"
+            />
           </div>
         )}
-      </Section>
+      </section>
 
-      <Section title="Recent Activity" span="full">
+      {/* RECENT ACTIVITY — 3 tiles tinted with agent accent when active */}
+      <section>
+        <SectionLabel>Recent activity</SectionLabel>
         {loading ? (
-          <div className="text-sm text-muted-foreground">Loading…</div>
+          <div className="text-sm text-muted-foreground py-3">Loading…</div>
         ) : activity ? (
           <>
-            <div className="grid grid-cols-3 gap-3">
-              <StatTile
-                label="Last 5 min"
-                value={fmtNum(activity.windowMs['5m'])}
-                sublabel={activity.errors['5m'] ? `${activity.errors['5m']} errors` : undefined}
-              />
-              <StatTile
-                label="Last hour"
-                value={fmtNum(activity.windowMs['1h'])}
-                sublabel={activity.errors['1h'] ? `${activity.errors['1h']} errors` : undefined}
-              />
-              <StatTile
-                label="Last 24 h"
-                value={fmtNum(activity.windowMs['24h'])}
-                sublabel={activity.errors['24h'] ? `${activity.errors['24h']} errors` : undefined}
-              />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <ActivityTile label="Last 5 min" count={activity.windowMs['5m']} errors={activity.errors['5m']} agentColor={accentColor} />
+              <ActivityTile label="Last hour" count={activity.windowMs['1h']} errors={activity.errors['1h']} agentColor={accentColor} />
+              <ActivityTile label="Last 24 h" count={activity.windowMs['24h']} errors={activity.errors['24h']} agentColor={accentColor} />
             </div>
-            <div className="text-[11px] text-muted-foreground mt-2">
-              Counts since server start ({new Date(activity.sinceServerStart).toLocaleString()}).
-              The recorder is in-memory and resets on restart.
+            <div className="text-[11px] text-muted-foreground mt-2.5">
+              Counts since server start ({new Date(activity.sinceServerStart).toLocaleString()}). The recorder is in-memory and resets on restart.
             </div>
           </>
         ) : (
-          <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-            No activity recorded
+          <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+            No activity recorded yet
           </div>
         )}
-      </Section>
+      </section>
+
+      {/* WORKSPACE — footer line */}
+      <section className="pt-2 border-t border-border/50">
+        <div className="flex items-baseline gap-3 text-xs">
+          <span className="text-muted-foreground/70 uppercase tracking-wider text-[10px] font-semibold">Workspace</span>
+          <code className="font-mono text-muted-foreground break-all">{profile.workspacePath}</code>
+        </div>
+      </section>
     </div>
   )
 }

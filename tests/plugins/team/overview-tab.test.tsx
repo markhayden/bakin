@@ -155,10 +155,16 @@ describe('OverviewTab', () => {
     expect(screen.getByText('23')).toBeDefined() // 24h count
   })
 
-  it('shows the no-data fallback when stats endpoint returns null', async () => {
+  it('shows em-dash placeholders + suppresses the secondary metric row when stats is null', async () => {
     setupFetch({ stats: { usage: null } })
     renderTab()
-    await waitFor(() => expect(screen.getByText('No session data yet')).toBeDefined())
+    // Top-row tiles render '—' for missing data
+    await waitFor(() => expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2))
+    // The secondary row (Model / Messages / Cache reads / Cache writes) only
+    // renders when usage is present — confirm via labels unique to that row.
+    expect(screen.queryByText('Cache reads')).toBeNull()
+    expect(screen.queryByText('Cache writes')).toBeNull()
+    expect(screen.queryByText('Messages')).toBeNull()
   })
 
   it('writes /team on team select change', async () => {
