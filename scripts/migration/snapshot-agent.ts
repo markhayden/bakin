@@ -25,7 +25,8 @@
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, copyFileSync } from 'fs'
 import { join, dirname, resolve } from 'path'
-import { homedir } from 'os'
+import { getOpenClawHome, getOpenClawPath } from '../../packages/core/src/openclaw-home'
+import { getContentDir } from '../../packages/core/src/content-dir'
 
 interface SnapshotResult {
   agentId: string
@@ -73,24 +74,24 @@ interface OpenClawConfig {
   agents?: { list?: OpenClawAgent[]; defaults?: { workspace?: string } }
 }
 
-function resolveWorkspace(agentId: string, openClawHome: string): string {
+function resolveWorkspace(agentId: string): string {
   // Mirror the resolution in plugins/team/lib/openclaw-adapter.ts: explicit
   // entry.workspace > defaults.workspace (for main) > workspaces/<id>/ for
   // subagents. We don't import the adapter to keep this script self-contained
   // and runnable from a clean checkout.
-  const config = readJsonOrNull(join(openClawHome, 'openclaw.json')) as OpenClawConfig | null
+  const config = readJsonOrNull(getOpenClawPath('openclaw.json')) as OpenClawConfig | null
   const entry = config?.agents?.list?.find((a) => a.id === agentId)
   if (entry?.workspace) return entry.workspace
   if (agentId === 'main') {
-    return config?.agents?.defaults?.workspace ?? join(openClawHome, 'workspace')
+    return config?.agents?.defaults?.workspace ?? getOpenClawPath('workspace')
   }
-  return join(openClawHome, 'workspaces', agentId)
+  return getOpenClawPath('workspaces', agentId)
 }
 
 function snapshotAgent(agentId: string): SnapshotResult {
   const warnings: string[] = []
-  const openClawHome = process.env.OPENCLAW_HOME ?? join(homedir(), '.openclaw')
-  const bakinHome = process.env.BAKIN_HOME ?? join(homedir(), '.bakin')
+  const openClawHome = getOpenClawHome()
+  const bakinHome = getContentDir()
 
   const repoRoot = resolve(import.meta.dir, '..', '..')
   const destDir = join(repoRoot, 'agents', agentId, '.snapshot')
@@ -115,7 +116,7 @@ function snapshotAgent(agentId: string): SnapshotResult {
   }
 
   // Workspace
-  const wsSrc = resolveWorkspace(agentId, openClawHome)
+  const wsSrc = resolveWorkspace(agentId)
   const wsDst = join(destDir, 'workspace')
   let workspaceCopied = 0
   if (!existsSync(wsSrc)) {
