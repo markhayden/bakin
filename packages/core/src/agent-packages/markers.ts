@@ -27,8 +27,12 @@ export const InstalledByMarkerSchema = z.object({
   /** Package id from the manifest (e.g. "pixel"). Not the lockfile key. */
   package: z.string().min(1),
   version: z.string().min(1),
-  ref: z.string().min(1),
-  commitSha: z.string().min(1),
+  // ref + commitSha are empty strings for local-source installs. The
+  // marker still records the absence honestly rather than fabricating a
+  // synthetic value; the doctor's drift checks treat empty ref+sha as a
+  // signal that the package has no git provenance to verify against.
+  ref: z.string(),
+  commitSha: z.string(),
   /** sha256 of the source file (or directory Merkle root for skill dirs). */
   sha256: z.string().min(1),
   installedAt: z.string().min(1),
