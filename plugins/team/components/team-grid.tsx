@@ -161,13 +161,11 @@ interface SectionNodeData extends Record<string, unknown> {
 function SectionNode({ data }: NodeProps) {
   const { label } = data as SectionNodeData
   return (
-    <div className="flex items-center gap-3 px-4">
+    <div className="flex items-center justify-center px-4">
       <Handle type="target" position={Position.Top} className="!bg-transparent !border-0" />
-      <div className="h-px flex-1 bg-zinc-700 w-16" />
       <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 whitespace-nowrap">
         {label}
       </span>
-      <div className="h-px flex-1 bg-zinc-700 w-16" />
       <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0" />
     </div>
   )

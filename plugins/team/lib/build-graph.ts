@@ -139,7 +139,7 @@ export function buildGraph(input: BuildGraphInput): BuildGraphResult {
       id: `mark->${mainAgent.id}`,
       source: 'mark',
       target: mainAgent.id,
-      type: 'smoothstep',
+      type: 'default',
       style: EDGE_STYLE,
     })
     y += CARD_H + Y_GAP
@@ -167,7 +167,7 @@ export function buildGraph(input: BuildGraphInput): BuildGraphResult {
           id: `${mainAgent.id}->${leader.id}`,
           source: mainAgent.id,
           target: leader.id,
-          type: 'smoothstep',
+          type: 'default',
           style: EDGE_STYLE,
         })
       }
@@ -224,7 +224,7 @@ export function buildGraph(input: BuildGraphInput): BuildGraphResult {
         id: `${reporterId}->section-${team.id}`,
         source: reporterId,
         target: `section-${team.id}`,
-        type: 'smoothstep',
+        type: 'default',
         style: EDGE_STYLE,
       })
       teamX += teamWidths[t] + TEAM_GAP
@@ -251,7 +251,7 @@ export function buildGraph(input: BuildGraphInput): BuildGraphResult {
           id: `section-${team.id}->${agent.id}`,
           source: `section-${team.id}`,
           target: agent.id,
-          type: 'smoothstep',
+          type: 'default',
           style: EDGE_DASHED,
         })
       })
@@ -279,7 +279,7 @@ export function buildGraph(input: BuildGraphInput): BuildGraphResult {
       id: `${mainAgent.id}->section-all`,
       source: mainAgent.id,
       target: 'section-all',
-      type: 'smoothstep',
+      type: 'default',
       style: EDGE_STYLE,
     })
     y += SECTION_ROW_H + Y_GAP
@@ -296,7 +296,7 @@ export function buildGraph(input: BuildGraphInput): BuildGraphResult {
         id: `section-all->${agent.id}`,
         source: 'section-all',
         target: agent.id,
-        type: 'smoothstep',
+        type: 'default',
         style: EDGE_DASHED,
       })
       assignedIds.add(agent.id)
@@ -329,7 +329,7 @@ export function buildGraph(input: BuildGraphInput): BuildGraphResult {
         id: `unassigned->${agent.id}`,
         source: 'section-unassigned',
         target: agent.id,
-        type: 'smoothstep',
+        type: 'default',
         style: EDGE_DASHED,
       })
     }
