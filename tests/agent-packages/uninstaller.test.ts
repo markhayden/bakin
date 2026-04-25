@@ -274,3 +274,83 @@ describe('removePackageById — error paths', () => {
     }).toThrow(/not installed/)
   })
 })
+
+// ─── Transitive ref-counting (Phase H-3) ─────────────────────────────────────
+
+describe('removePackageById — transitive dep cleanup', () => {
+  function seedSkillPackWithDep(name: string, depPath: string): string {
+    const dir = join(testDir, `${name}-pack`)
+    mkdirSync(join(dir, 'skills', name), { recursive: true })
+    writeFileSync(
+      join(dir, 'bakin-package.json'),
+      JSON.stringify({
+        id: name,
+        kind: 'skill-pack',
+        name,
+        version: '0.1.0',
+        contributions: { skills: [`skills/${name}`] },
+        dependencies: { skills: [{ source: depPath, ref: 'main' }] },
+      }),
+    )
+    writeFileSync(join(dir, 'skills', name, 'SKILL.md'), `# ${name}`)
+    return dir
+  }
+
+  it('removing the only dependent of a 3-deep chain cleans up everything', async () => {
+    // bottom-pack <- middle-pack <- pixel
+    const bottomSrc = seedSkillPack('bottom-pack')
+    const middleSrc = seedSkillPackWithDep('middle-pack', bottomSrc)
+    const agentSrc = seedAgentPackage({ id: 'pixel-tx', deps: [middleSrc] })
+
+    await installPackage({ source: agentSrc })
+    const lockBefore = readLockfile()
+    expect(lockBefore.packages['middle-pack@0.1.0']).toBeDefined()
+    expect(lockBefore.packages['bottom-pack@0.3.1']).toBeDefined()
+    expect(lockBefore.packages['middle-pack@0.1.0'].refCount).toBe(1)
+    expect(lockBefore.packages['bottom-pack@0.3.1'].refCount).toBe(1)
+
+    const result = await removePackageById({ packageId: 'pixel-tx' })
+
+    expect(result.removed).toContain('pixel-tx')
+    expect(result.removed).toContain('middle-pack@0.1.0')
+    expect(result.removed).toContain('bottom-pack@0.3.1')
+    const lockAfter = readLockfile()
+    expect(lockAfter.packages['middle-pack@0.1.0']).toBeUndefined()
+    expect(lockAfter.packages['bottom-pack@0.3.1']).toBeUndefined()
+  })
+
+  it('removing one branch of a diamond keeps the shared leaf alive', async () => {
+    // shared-leaf <- branch-a <- pixel-a
+    // shared-leaf <- branch-b <- pixel-b
+    const sharedSrc = seedSkillPack('shared-leaf')
+    const branchASrc = seedSkillPackWithDep('branch-a', sharedSrc)
+    const branchBSrc = seedSkillPackWithDep('branch-b', sharedSrc)
+    const agentASrc = seedAgentPackage({ id: 'pixel-a', deps: [branchASrc] })
+    const agentBSrc = seedAgentPackage({ id: 'pixel-b', deps: [branchBSrc] })
+
+    await installPackage({ source: agentASrc })
+    await installPackage({ source: agentBSrc })
+
+    // shared-leaf has 2 dependents (branch-a + branch-b)
+    expect(readLockfile().packages['shared-leaf@0.3.1'].refCount).toBe(2)
+
+    // Removing pixel-a decrements branch-a, which then has no dependents,
+    // which decrements shared-leaf to refCount 1.
+    const result = await removePackageById({ packageId: 'pixel-a' })
+    expect(result.removed).toContain('pixel-a')
+    expect(result.removed).toContain('branch-a@0.1.0')
+    expect(result.removed).not.toContain('shared-leaf@0.3.1')
+
+    const lockAfter = readLockfile()
+    expect(lockAfter.packages['branch-a@0.1.0']).toBeUndefined()
+    expect(lockAfter.packages['shared-leaf@0.3.1']).toBeDefined()
+    expect(lockAfter.packages['shared-leaf@0.3.1'].refCount).toBe(1)
+    expect(lockAfter.packages['shared-leaf@0.3.1'].dependents).toEqual(['branch-b@0.1.0'])
+
+    // Now remove pixel-b — everything cascades.
+    await removePackageById({ packageId: 'pixel-b' })
+    const lockFinal = readLockfile()
+    expect(lockFinal.packages['shared-leaf@0.3.1']).toBeUndefined()
+    expect(lockFinal.packages['branch-b@0.1.0']).toBeUndefined()
+  })
+})

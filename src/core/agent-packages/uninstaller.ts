@@ -94,40 +94,59 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
 
     // 3. Mutate lockfile — drop the parent, decrement deps, recursively
     //    remove deps that drop to zero refCount.
+    //
+    // Cascade recurses N levels: when a dep's refCount hits 0 we remove it
+    // AND walk its own `dependencies`, decrementing each by the now-removed
+    // intermediate. This handles 3+-deep chains correctly.
+    const cascadeRemove = (
+      currentLock: typeof lock,
+      depKeys: string[],
+      dependentKey: string,
+    ): typeof lock => {
+      let l = currentLock
+      for (const depKey of depKeys) {
+        l = decrementRefCount(l, depKey, dependentKey)
+        const depEntry = l.packages[depKey]
+        if (!depEntry) continue
+        if ((depEntry.refCount ?? 0) <= 0) {
+          // Orphaned — unproject + remove install dir + recurse into its
+          // own deps before dropping the lockfile entry.
+          if (depEntry.projections && depEntry.projections.length > 0) {
+            unprojectPackage(depEntry.projections, { keepBlocks: options.keepBlocks })
+          }
+          const depInstallDir = getPackageSourceDir(
+            getContentDir(),
+            depEntry.kind,
+            stripVersionFromKey(depKey),
+            depEntry.version,
+          )
+          if (existsSync(depInstallDir)) {
+            try {
+              rmSync(depInstallDir, { recursive: true, force: true })
+            } catch (err) {
+              log.warn('Failed to remove dep install dir', {
+                depInstallDir,
+                error: err instanceof Error ? err.message : String(err),
+              })
+            }
+          }
+          // Recurse — the orphaned dep's transitive deps cascade with the
+          // orphan as the dependent (NOT the original package being removed).
+          if (depEntry.dependencies && depEntry.dependencies.length > 0) {
+            l = cascadeRemove(l, depEntry.dependencies, depKey)
+          }
+          l = removePackage(l, depKey)
+          removed.push(depKey)
+        } else {
+          if (!kept.includes(depKey)) kept.push(depKey)
+        }
+      }
+      return l
+    }
+
     lock = removePackage(lock, options.packageId)
     removed.push(options.packageId)
-
-    for (const depKey of entry.dependencies ?? []) {
-      lock = decrementRefCount(lock, depKey, options.packageId)
-      const depEntry = lock.packages[depKey]
-      if (!depEntry) continue
-      if ((depEntry.refCount ?? 0) <= 0) {
-        // Dep is orphaned — remove it too.
-        if (depEntry.projections && depEntry.projections.length > 0) {
-          unprojectPackage(depEntry.projections, { keepBlocks: options.keepBlocks })
-        }
-        const depInstallDir = getPackageSourceDir(
-          getContentDir(),
-          depEntry.kind,
-          stripVersionFromKey(depKey),
-          depEntry.version,
-        )
-        if (existsSync(depInstallDir)) {
-          try {
-            rmSync(depInstallDir, { recursive: true, force: true })
-          } catch (err) {
-            log.warn('Failed to remove dep install dir', {
-              depInstallDir,
-              error: err instanceof Error ? err.message : String(err),
-            })
-          }
-        }
-        lock = removePackage(lock, depKey)
-        removed.push(depKey)
-      } else {
-        kept.push(depKey)
-      }
-    }
+    lock = cascadeRemove(lock, entry.dependencies ?? [], options.packageId)
 
     writeLockfile(lock)
 
