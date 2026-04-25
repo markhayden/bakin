@@ -32,6 +32,7 @@ export {
   useAgentDisplayName,
   useAgentIds,
   useMainAgentId,
+  usePackageState,
   hexToMuted,
 } from '@bakin/team/hooks/use-agent-store'
 
