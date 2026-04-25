@@ -1,0 +1,16 @@
+{
+  "id": "bakin-workflows-creative",
+  "kind": "workflow-pack",
+  "name": "Creative Workflows",
+  "version": "0.2.0",
+  "description": "Reusable creative-team workflow definitions.",
+  "bakin": "^1.0.0",
+  "author": "Made in Wyo",
+  "contributions": {
+    "workflows": [
+      "workflows/image-generation.yaml",
+      "workflows/image-social-post.yaml"
+    ],
+    "workflowSkills": ["workflow-skills/critique-image.md"]
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "pixel",
+  "kind": "agent",
+  "name": "Pixel",
+  "version": "0.1.0",
+  "description": "Creative image and design agent.",
+  "bakin": "^1.0.0",
+  "author": "Made in Wyo",
+  "agent": {
+    "identity": { "name": "Pixel", "emoji": "🎨" },
+    "role": "Creative content and design",
+    "defaultModel": "anthropic/claude-sonnet-4-20250514",
+    "dispatchableBy": ["main"],
+    "tags": ["creative", "image", "design"],
+    "allowedTools": ["bakin_exec_assets_*"],
+    "allowedSkills": ["image-generation"]
+  },
+  "install": {
+    "createIfMissing": true,
+    "adoptIfExists": true,
+    "writeWorkspaceFiles": true,
+    "installSkills": true,
+    "installWorkflows": true,
+    "enableKnowledge": ["prompt-style-system"]
+  },
+  "contributions": {
+    "workspaceFiles": [
+      "workspace/SOUL.md",
+      "workspace/IDENTITY.md",
+      "workspace/AGENTS.md",
+      "workspace/TOOLS.md"
+    ],
+    "skills": ["skills/image-generation"],
+    "workflows": ["workflows/image-generation.yaml"],
+    "workflowSkills": ["workflow-skills/generate-image.md"],
+    "knowledge": [
+      "knowledge/product-photography.md",
+      "knowledge/editorial-photography.md",
+      "knowledge/prompt-style-system.md"
+    ],
+    "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
+  },
+  "dependencies": {
+    "skills": [
+      {
+        "source": "github:madeinwyo/bakin-skills-visual",
+        "ref": "v0.3.1",
+        "items": ["image-generation"],
+        "installAs": null
+      }
+    ]
+  }
+}
