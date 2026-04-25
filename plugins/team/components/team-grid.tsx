@@ -141,7 +141,9 @@ export function AgentCardNode({ data }: NodeProps) {
             <PackageStateBadge state={pkgState.state} compact />
           )}
         </div>
-        {agent.role && <div className="text-xs text-zinc-500 leading-tight truncate w-full">{agent.role}</div>}
+        <div className="text-xs text-zinc-500 leading-tight truncate w-full">
+          {agent.role || <span className="text-zinc-700">no role</span>}
+        </div>
         <div
           className="text-[11px] text-zinc-400 font-mono truncate mt-1.5 w-full"
           title={agent.model}
