@@ -26,6 +26,7 @@ import * as openclaw from './openclaw-client'
 import * as mcporter from './mcporter'
 import { isOnboarded } from './onboarding/state'
 import { pluginAssetsComponent } from './onboarding/plugin-assets'
+import { agentAssetsComponent } from './onboarding/agent-assets'
 import { getMainAgentId, getMainAgentName } from './main-agent'
 import { getAllExecTools } from '../../scripts/lib/registry'
 import { getHookRegistry } from '../lib/plugin-registry'
@@ -1593,6 +1594,47 @@ async function checkPluginAssets(): Promise<DiagnosticResult[]> {
   }
 }
 
+/**
+ * Agent-package projections: surface drift / missing / broken-marker
+ * findings. With autoFix enabled, runs the same install() flow as
+ * `bakin install agent-assets` to repair detected drift in-place.
+ *
+ * Doctor sweep companion to the user-facing `bakin doctor` view; the
+ * onboarding component (src/core/onboarding/agent-assets.ts) drives
+ * the CLI surface, this wrapper reuses its scan + install paths so
+ * the two views never disagree.
+ */
+async function checkAgentAssets(autoFix: boolean): Promise<DiagnosticResult[]> {
+  try {
+    const checkResult = await agentAssetsComponent.check()
+    if (checkResult.status === 'ok') {
+      return [ok('agent-assets', checkResult.message)]
+    }
+
+    if (autoFix) {
+      const installResult = await agentAssetsComponent.install({
+        interactive: false,
+        autoApprove: true,
+        json: false,
+        checkOnly: false,
+        force: false,
+      })
+      if (installResult.status === 'installed') {
+        return [fixed('agent-assets', installResult.message)]
+      }
+      if (installResult.status === 'noop') {
+        return [ok('agent-assets', installResult.message)]
+      }
+      return [error('agent-assets', `Repair failed: ${installResult.message}`)]
+    }
+
+    const reminder = checkResult.remediation ?? 'Run `bakin install agent-assets` to repair.'
+    return [warn('agent-assets', `${checkResult.message} — ${reminder}`, true)]
+  } catch (err) {
+    return [warn('agent-assets', `agent-assets check failed: ${err}`)]
+  }
+}
+
 export async function runDiagnostics(
   contentDir: string,
   projectRoot: string
@@ -1636,13 +1678,14 @@ export async function runDiagnostics(
   results.push(...checkTaskPositionIntegrity(autoFix))
 
   // Async checks (network, not auto-fixable) — run in parallel
-  const [gatewayResults, antflyResults, searchTableResults, pluginAssetsResults] = await Promise.all([
+  const [gatewayResults, antflyResults, searchTableResults, pluginAssetsResults, agentAssetsResults] = await Promise.all([
     checkGateway(),
     checkAntfly(),
     checkSearchTables(),
     checkPluginAssets(),
+    checkAgentAssets(autoFix),
   ])
-  results.push(...gatewayResults, ...antflyResults, ...searchTableResults, ...pluginAssetsResults)
+  results.push(...gatewayResults, ...antflyResults, ...searchTableResults, ...pluginAssetsResults, ...agentAssetsResults)
 
   // Plugin-contributed health checks (#137). Results appended to the same
   // list as builtins; the UI groups by status so ordering doesn't matter.
