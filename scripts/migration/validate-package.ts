@@ -31,10 +31,13 @@ interface ValidationResult {
 }
 
 function getContributionPaths(manifest: Manifest): string[] {
-  const c = manifest.contributions
   const all: string[] = []
 
+  // Access manifest.contributions inside each branch so the discriminated
+  // union narrows correctly — extracting `c = manifest.contributions` outside
+  // the conditionals leaves it as the cross-kind union with no shared keys.
   if (manifest.kind === 'agent') {
+    const c = manifest.contributions
     all.push(...(c.workspaceFiles ?? []))
     all.push(...(c.skills ?? []))
     all.push(...(c.workflows ?? []))
@@ -42,13 +45,16 @@ function getContributionPaths(manifest: Manifest): string[] {
     all.push(...(c.knowledge ?? []))
     all.push(...(c.assets ?? []))
   } else if (manifest.kind === 'skill-pack') {
+    const c = manifest.contributions
     all.push(...c.skills)
     all.push(...(c.assets ?? []))
   } else if (manifest.kind === 'workflow-pack') {
+    const c = manifest.contributions
     all.push(...(c.workflows ?? []))
     all.push(...(c.workflowSkills ?? []))
     all.push(...(c.assets ?? []))
   } else if (manifest.kind === 'knowledge-pack') {
+    const c = manifest.contributions
     all.push(...c.knowledge)
     all.push(...(c.assets ?? []))
   }
