@@ -17,10 +17,16 @@ import {
   type DefinitionSource,
 } from './source-registry'
 
-/** A definition plus its provenance. Disk-loaded defs carry source='user'; plugin-registered ones carry source='plugin' + pluginId. */
+/**
+ * A definition plus its provenance.
+ *   - Disk-loaded defs carry source='user'
+ *   - Plugin-registered defs carry source='plugin' + pluginId
+ *   - Agent-package-registered defs carry source='agent-package' + packageId
+ */
 export type LoadedDefinition = WorkflowDefinition & {
   source?: DefinitionSource
   pluginId?: string
+  packageId?: string
 }
 
 export interface LoadedDefinitionEntry {
@@ -28,6 +34,7 @@ export interface LoadedDefinitionEntry {
   definition: LoadedDefinition
   source: DefinitionSource
   pluginId?: string
+  packageId?: string
 }
 
 function getDefinitionsDir(contentDir?: string): string {
@@ -138,8 +145,11 @@ export function validateDefinition(def: WorkflowDefinition): string[] {
 }
 
 /**
- * Load a workflow definition by name, consulting disk first (user-wins) then
- * the plugin source registry.
+ * Load a workflow definition by name. Same precedence as listDefinitions:
+ *   user (~/.bakin/workflows/definitions/) > agent-package > plugin
+ *
+ * The source-registry's `getDefinition()` already resolves agent-package
+ * vs plugin — we just check disk first.
  */
 export function loadDefinition(name: string, contentDir?: string): LoadedDefinition | null {
   // User-wins: check ~/.bakin/ disk first
@@ -153,13 +163,14 @@ export function loadDefinition(name: string, contentDir?: string): LoadedDefinit
     return { ...parsed, source: 'user' }
   }
 
-  // Fall back to plugin-registered definitions
+  // Fall back to source-registry (agent-package > plugin precedence)
   const entry = getRegistryDefinition(name)
   if (entry) {
     return {
       ...entry.definition,
       source: entry.source,
       pluginId: entry.pluginId,
+      packageId: entry.packageId,
     }
   }
 
@@ -167,13 +178,17 @@ export function loadDefinition(name: string, contentDir?: string): LoadedDefinit
 }
 
 /**
- * List all available workflow definitions, merging disk (user) + plugin
- * registry entries with user-wins precedence on id collision.
+ * List all available workflow definitions, merging plugin + agent-package +
+ * disk (user) entries with the precedence rule:
+ *   user > agent-package > plugin
+ *
+ * The seeding order below builds the map low → high, so the final value at
+ * each id is whichever tier wins.
  */
 export function listDefinitions(contentDir?: string): LoadedDefinitionEntry[] {
   const byName = new Map<string, LoadedDefinitionEntry>()
 
-  // 1. Plugin-registered entries (lower precedence)
+  // 1. Plugin-registered entries (lowest precedence)
   for (const entry of listRegistryAll()) {
     if (entry.source === 'plugin') {
       byName.set(entry.id, {
@@ -185,7 +200,23 @@ export function listDefinitions(contentDir?: string): LoadedDefinitionEntry[] {
     }
   }
 
-  // 2. Disk entries (user — overwrites plugin on collision)
+  // 2. Agent-package-registered entries (overwrite plugin on collision)
+  for (const entry of listRegistryAll()) {
+    if (entry.source === 'agent-package') {
+      byName.set(entry.id, {
+        name: entry.id,
+        definition: {
+          ...entry.definition,
+          source: entry.source,
+          packageId: entry.packageId,
+        },
+        source: entry.source,
+        packageId: entry.packageId,
+      })
+    }
+  }
+
+  // 3. Disk entries (user — overwrites plugin and agent-package on collision)
   const defsDir = getDefinitionsDir(contentDir)
   if (existsSync(defsDir)) {
     for (const f of readdirSync(defsDir)) {
