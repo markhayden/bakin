@@ -167,6 +167,22 @@ export function readWorkspaceFile(agentId: string, filename: string): string | n
   }
 }
 
+/**
+ * Read the agent's HEARTBEAT.md plus its mtime as the lastUpdated timestamp.
+ * Heartbeat is agent-authored narrative — view-only in the UI.
+ */
+export function readHeartbeatRaw(agentId: string): { content: string; lastUpdated: string | null } | null {
+  const wsPath = getWorkspacePath(agentId)
+  const filePath = join(wsPath, 'HEARTBEAT.md')
+  try {
+    const content = readFileSync(filePath, 'utf-8')
+    const stats = statSync(filePath)
+    return { content, lastUpdated: stats.mtime.toISOString() }
+  } catch {
+    return null
+  }
+}
+
 /** Write a workspace file for an agent. Creates if missing. */
 export function writeWorkspaceFile(agentId: string, filename: string, content: string): void {
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
