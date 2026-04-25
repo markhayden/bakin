@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Package } from 'lucide-react'
 import { Switch } from '@bakin/sdk/ui'
 
 /**
@@ -112,37 +112,22 @@ export function KnowledgeToggleList({ agentId }: KnowledgeToggleListProps) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      {packageId && (
-        <p className="text-xs text-muted-foreground">
-          From package <code className="rounded bg-muted px-1 py-0.5">{packageId}</code>
-        </p>
-      )}
-      <ul className="flex flex-col gap-2">
-        {lessons.map((lesson) => (
-          <li
-            key={lesson.lessonId}
-            className="flex items-start justify-between gap-3 rounded border border-border/60 p-3"
-          >
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{lesson.title}</span>
-                <code className="text-xs text-muted-foreground">{lesson.lessonId}</code>
-              </div>
-              {lesson.tags.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {lesson.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {lessons.map((lesson) => (
+        <article
+          key={lesson.lessonId}
+          className={`group relative flex flex-col gap-3 rounded-xl border p-5 transition-colors ${
+            lesson.enabled
+              ? 'border-border bg-muted/20 hover:bg-muted/30'
+              : 'border-border/60 bg-muted/5 hover:bg-muted/15'
+          }`}
+        >
+          <header className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-foreground leading-snug">{lesson.title}</div>
+              <code className="text-[11px] text-muted-foreground/70 font-mono break-all">{lesson.lessonId}</code>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {pendingId === lesson.lessonId && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
               <Switch
                 checked={lesson.enabled}
@@ -151,9 +136,29 @@ export function KnowledgeToggleList({ agentId }: KnowledgeToggleListProps) {
                 aria-label={`Toggle ${lesson.title}`}
               />
             </div>
-          </li>
-        ))}
-      </ul>
+          </header>
+
+          {lesson.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {lesson.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {packageId && (
+            <footer className="mt-auto pt-2 border-t border-border/40 flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+              <Package className="size-3" />
+              <span className="font-mono truncate" title={packageId}>{packageId}</span>
+            </footer>
+          )}
+        </article>
+      ))}
     </div>
   )
 }

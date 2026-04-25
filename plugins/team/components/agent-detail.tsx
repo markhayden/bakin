@@ -443,7 +443,7 @@ function KnowledgeTab({ agentId, packageState }: { agentId: string; packageState
   const state = packageState?.state ?? 'unmanaged'
   if (state === 'managed' || state === 'adopted') {
     return (
-      <div className="max-w-2xl">
+      <div className="w-full">
         <KnowledgeToggleList agentId={agentId} />
       </div>
     )
