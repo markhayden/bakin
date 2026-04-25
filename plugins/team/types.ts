@@ -69,3 +69,26 @@ export interface SkillSummary {
   name: string
   hasSkillMd: boolean
 }
+
+/**
+ * Per-agent agent-package state, sourced from `/api/agent-packages`. Mirrors
+ * the server-side `AgentStateInfo` shape but stays self-contained so the
+ * client doesn't reach across the package boundary for types.
+ *
+ * The server today returns 4 states (`absent | unmanaged | adopted | managed`).
+ * `drifted` and `update-available` are declared on the badge component for
+ * forward-compat — wiring handles them but the API doesn't yet emit them.
+ */
+export interface PackageStateRow {
+  agentId: string
+  state: 'absent' | 'unmanaged' | 'adopted' | 'managed' | 'drifted' | 'update-available'
+  packageId?: string
+  entry?: {
+    source: string
+    ref: string
+    commitSha: string
+    installedAt: string
+    version?: string
+    dependencies?: string[]
+  }
+}
