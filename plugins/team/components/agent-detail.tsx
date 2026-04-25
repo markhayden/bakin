@@ -179,11 +179,19 @@ export function AgentDetail({ agentId }: { agentId: string }) {
             onChange={handleAvatarUpload}
           />
         </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold">{profile.name}</h1>
-          <div className="text-sm text-muted-foreground">{profile.role}</div>
+        <div className="flex-1 min-w-0 flex items-center gap-6 flex-wrap">
+          <h1 className="text-xl font-semibold leading-tight">{profile.name}</h1>
+          {profile.role && (
+            <span className="text-sm text-muted-foreground">{profile.role}</span>
+          )}
+          <code
+            className="text-[11px] font-mono text-muted-foreground/70 truncate min-w-0 max-w-md"
+            title={profile.workspacePath}
+          >
+            {profile.workspacePath}
+          </code>
           {profile.subagentPerms && profile.subagentPerms.length > 0 && (
-            <div className="text-xs text-muted-foreground mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
               <span className="text-foreground/70">Manages</span>
               {profile.subagentPerms.map((id) => (
                 <Badge
@@ -195,7 +203,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
                   {id}
                 </Badge>
               ))}
-            </div>
+            </span>
           )}
         </div>
         {agentId !== mainAgentId && (

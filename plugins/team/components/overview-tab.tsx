@@ -323,13 +323,6 @@ export function OverviewTab({
         )}
       </section>
 
-      {/* WORKSPACE — footer line */}
-      <section className="pt-2 border-t border-border/50">
-        <div className="flex items-baseline gap-3 text-xs">
-          <span className="text-muted-foreground/70 uppercase tracking-wider text-[10px] font-semibold">Workspace</span>
-          <code className="font-mono text-muted-foreground break-all">{profile.workspacePath}</code>
-        </div>
-      </section>
     </div>
   )
 }
