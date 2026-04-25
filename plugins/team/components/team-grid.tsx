@@ -39,37 +39,6 @@ import type { AgentWithStatus } from '../types'
  */
 const ATTENTION_STATES: PackageState[] = ['unmanaged', 'drifted', 'update-available']
 
-/**
- * Provider brand colors — mirrors the canonical KNOWN_PROVIDERS list in
- * plugins/models/data/known-models.ts. Inlined to avoid cross-plugin import.
- * Add new providers here when models gains them.
- */
-const PROVIDER_COLOR: Record<string, string> = {
-  anthropic: '#D97757',
-  openai: '#10A37F',
-  'openai-codex': '#10A37F',
-  google: '#4285F4',
-  ollama: '#0B0B0B',
-  bytedance: '#000000',
-  kuaishou: '#FF4906',
-  runway: '#E0F60A',
-  'black-forest-labs': '#000000',
-  stability: '#0050FF',
-  midjourney: '#131415',
-}
-
-const FALLBACK_PROVIDER_COLOR = '#52525b' // zinc-600 — unknown provider
-
-function providerColorFor(modelId: string): string {
-  if (!modelId) return FALLBACK_PROVIDER_COLOR
-  // Most ids are "<provider>/<model>"; bare `claude-*` resolves to anthropic.
-  const provider = modelId.includes('/')
-    ? modelId.split('/')[0]
-    : modelId.startsWith('claude-')
-      ? 'anthropic'
-      : modelId
-  return PROVIDER_COLOR[provider] ?? FALLBACK_PROVIDER_COLOR
-}
 
 /** Strip default ReactFlow node chrome + animated edges + hover glow */
 const RESET_STYLES = `
@@ -180,21 +149,12 @@ export function AgentCardNode({ data }: NodeProps) {
           {agent.role || <span className="text-zinc-700">no role</span>}
         </div>
       </div>
-      {(() => {
-        const providerColor = providerColorFor(agent.model)
-        return (
-          <div
-            className="px-3 py-2 text-[11px] text-zinc-100 font-mono truncate text-center border-t"
-            style={{
-              background: `linear-gradient(180deg, ${providerColor}22 0%, ${providerColor}40 100%)`,
-              borderTopColor: `${providerColor}55`,
-            }}
-            title={agent.model}
-          >
-            {agent.model}
-          </div>
-        )
-      })()}
+      <div
+        className="px-3 py-2 text-[11px] text-zinc-200 font-mono truncate text-center bg-black border-t border-zinc-800"
+        title={agent.model}
+      >
+        {agent.model}
+      </div>
       <Handle type="source" position={Position.Bottom} className="!bg-zinc-600" />
     </div>
   )
