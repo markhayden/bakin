@@ -1,0 +1,15 @@
+{
+  "id": "bakin-knowledge-product-photography",
+  "kind": "knowledge-pack",
+  "name": "Product Photography Knowledge",
+  "version": "0.1.0",
+  "description": "Cross-agent product photography lessons.",
+  "bakin": "^1.0.0",
+  "author": "Bakin Test Fixtures",
+  "contributions": {
+    "knowledge": [
+      "knowledge/product-photography.md",
+      "knowledge/ecommerce-lighting.md"
+    ]
+  }
+}
