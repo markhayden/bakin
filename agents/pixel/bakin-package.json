@@ -1,0 +1,45 @@
+{
+  "id": "pixel",
+  "kind": "agent",
+  "name": "Pixel",
+  "version": "0.1.0",
+  "description": "Image artist agent. Crafts prompts, iterates on outputs, owns visual quality.",
+  "bakin": "^1.0.0",
+  "author": "Made in Wyo",
+  "agent": {
+    "identity": {
+      "name": "Pixel",
+      "emoji": "🖼️"
+    },
+    "role": "Image artist",
+    "dispatchableBy": ["main"],
+    "tags": ["creative", "image", "design"],
+    "allowedTools": [
+      "bakin_exec_tasks_*",
+      "bakin_exec_assets_*",
+      "bakin_exec_get_paths",
+      "bakin_exec_log",
+      "bakin_exec_heartbeat"
+    ],
+    "allowedSkills": ["nano-banana-pro"]
+  },
+  "install": {
+    "createIfMissing": true,
+    "adoptIfExists": true,
+    "writeWorkspaceFiles": true,
+    "installSkills": true,
+    "installWorkflows": true,
+    "enableKnowledge": ["prompt-style-system"]
+  },
+  "contributions": {
+    "workspaceFiles": [
+      "workspace/SOUL.md",
+      "workspace/IDENTITY.md",
+      "workspace/AGENTS.md",
+      "workspace/TOOLS.md"
+    ],
+    "workflowSkills": ["workflow-skills/generate-image.md"],
+    "knowledge": ["knowledge/prompt-style-system.md"],
+    "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
+  }
+}
