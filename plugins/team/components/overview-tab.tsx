@@ -11,7 +11,6 @@
  */
 import { useEffect, useState } from 'react'
 import { Loader2, Sparkles, BookOpen, MessageSquare, Coins, Database, Activity } from 'lucide-react'
-import { Badge } from '@bakin/sdk/ui'
 import { ModelSelect } from '@bakin/sdk/components'
 import { useAgentStore, useAgentColor } from '@bakin/sdk/hooks'
 import type { AvailableModel } from '@bakin/sdk/types'
@@ -175,8 +174,10 @@ export function OverviewTab({
 
   return (
     <div className="space-y-6 w-full">
-      {/* HERO — Identity + Settings + Package merged into one card with the
-          agent's accent color. Stacks at narrow widths; splits 3-up at lg+. */}
+      {/* HERO — Settings + Package merged into one accent-bordered card.
+          Identity (avatar/name/role/manages) lives in the page header above
+          and is intentionally not duplicated here. Stacks 1-up at narrow
+          widths; splits 1:1 at lg+. */}
       <section
         className="relative rounded-2xl border-2 overflow-hidden"
         style={{
@@ -184,38 +185,7 @@ export function OverviewTab({
           background: `linear-gradient(135deg, ${accentColor}10 0%, transparent 50%)`,
         }}
       >
-        <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr] divide-y lg:divide-y-0 lg:divide-x divide-border/40">
-          {/* IDENTITY */}
-          <div className="px-6 py-5">
-            <div className="flex items-center gap-4">
-              <div
-                className="size-16 rounded-2xl flex items-center justify-center text-4xl shrink-0"
-                style={{ background: `${accentColor}20`, border: `1px solid ${accentColor}40` }}
-              >
-                {profile.emoji || '🤖'}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-2xl font-semibold text-foreground leading-tight">{profile.name}</div>
-                <div className="text-sm text-muted-foreground mt-0.5">{profile.role || 'No role assigned'}</div>
-              </div>
-            </div>
-            {profile.subagentPerms && profile.subagentPerms.length > 0 && (
-              <div className="text-xs text-muted-foreground mt-4 flex flex-wrap items-center gap-1.5">
-                <span className="text-foreground/70">Manages</span>
-                {profile.subagentPerms.map((id) => (
-                  <Badge
-                    key={id}
-                    variant="outline"
-                    className="text-[10px] font-mono"
-                    style={{ borderColor: `${accentColor}30`, color: accentColor }}
-                  >
-                    {id}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-
+        <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border/40">
           {/* SETTINGS */}
           <div className="px-6 py-5 space-y-3">
             <SectionLabel>Settings</SectionLabel>
