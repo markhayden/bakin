@@ -9,7 +9,7 @@
   "agent": {
     "identity": {
       "name": "Pixel",
-      "emoji": "🖼️"
+      "emoji": "🎨"
     },
     "role": "Image artist",
     "dispatchableBy": ["main"],
@@ -29,7 +29,7 @@
     "writeWorkspaceFiles": true,
     "installSkills": true,
     "installWorkflows": true,
-    "enableKnowledge": ["prompt-style-system"]
+    "enableKnowledge": ["prompt-style-system", "visual-styles"]
   },
   "contributions": {
     "workspaceFiles": [
@@ -39,7 +39,11 @@
       "workspace/TOOLS.md"
     ],
     "workflowSkills": ["workflow-skills/generate-image.md"],
-    "knowledge": ["knowledge/prompt-style-system.md"],
+    "knowledge": [
+      "knowledge/prompt-style-system.md",
+      "knowledge/visual-styles.md",
+      "knowledge/social-media-craft.md"
+    ],
     "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
   }
 }
