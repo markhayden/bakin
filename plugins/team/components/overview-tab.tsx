@@ -12,7 +12,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Sparkles, BookOpen, MessageSquare, Coins, Database, Activity } from 'lucide-react'
 import { ModelSelect } from '@bakin/sdk/components'
-import { useAgentStore, useAgentColor, useRouter } from '@bakin/sdk/hooks'
+import { useAgentStore, useAgentColor } from '@bakin/sdk/hooks'
 import type { AvailableModel } from '@bakin/sdk/types'
 import type { AgentProfile, PackageStateRow, RecentActivity } from '../types'
 import type { AgentUsage } from '../../../src/core/agent-usage'
@@ -121,11 +121,8 @@ export function OverviewTab({
   const teams = useAgentStore((s) => s.teams)
   const displaySettings = useAgentStore((s) => s.displaySettings)
   const reload = useAgentStore((s) => s.load)
-  const agentMap = useAgentStore((s) => s.agentMap)
   const accentColor = useAgentColor(agentId)
-  const router = useRouter()
   const currentTeamId = displaySettings[agentId]?.teamId ?? ''
-  const reports = profile.subagentPerms ?? []
 
   const [usage, setUsage] = useState<AgentUsage | null>(null)
   const [activity, setActivity] = useState<RecentActivity | null>(null)
@@ -325,70 +322,6 @@ export function OverviewTab({
           </div>
         )}
       </section>
-
-      {/* DIRECT REPORTS — agents this one is permitted to dispatch,
-          bucketed by team. Only renders when there's anything to manage. */}
-      {reports.length > 0 && (
-        <section className="space-y-5">
-          <SectionLabel>Direct reports</SectionLabel>
-          {(() => {
-            // Bucket reports by their teamId. Unassigned go to a final
-            // "No team" bucket. Team order follows the teams array; teams
-            // with no matching reports are skipped.
-            const buckets = new Map<string, { label: string; ids: string[] }>()
-            for (const team of teams) {
-              buckets.set(team.id, { label: team.label, ids: [] })
-            }
-            buckets.set('__unassigned', { label: 'No team', ids: [] })
-            for (const id of reports) {
-              const teamId = displaySettings[id]?.teamId
-              const key = teamId && buckets.has(teamId) ? teamId : '__unassigned'
-              buckets.get(key)!.ids.push(id)
-            }
-            return Array.from(buckets.entries())
-              .filter(([, b]) => b.ids.length > 0)
-              .map(([key, bucket]) => (
-                <div key={key} className="space-y-2">
-                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground/80 font-medium flex items-center gap-2">
-                    {bucket.label}
-                    <span className="text-muted-foreground/50">·</span>
-                    <span className="text-muted-foreground/60 normal-case tracking-normal font-normal">{bucket.ids.length}</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                    {bucket.ids.map((id) => {
-                      const report = agentMap[id]
-                      return (
-                        <button
-                          key={id}
-                          onClick={() => router.push(`/team/${id}`)}
-                          className="group flex items-center gap-3 rounded-xl border border-border bg-muted/15 p-3 text-left transition-colors hover:bg-muted/30 hover:border-border/80"
-                        >
-                          <div className="size-10 rounded-full overflow-hidden bg-muted shrink-0">
-                            {report?.headshot ? (
-                              <img
-                                src={report.headshot}
-                                alt={report?.name ?? id}
-                                className="w-full h-full object-cover object-top"
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-lg" aria-hidden>
-                                {report?.emoji || '🤖'}
-                              </div>
-                            )}
-                          </div>
-                          <div className="text-sm font-medium text-foreground truncate group-hover:text-foreground">
-                            {report?.name ?? id}
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))
-          })()}
-        </section>
-      )}
 
     </div>
   )
