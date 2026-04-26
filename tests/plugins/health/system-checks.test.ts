@@ -16,7 +16,7 @@ process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 let mockUsingBakinHome = true
@@ -101,11 +101,46 @@ mock.module('../../../src/core/settings', () => ({
   resetSettingsCache: () => {},
 }))
 
+mock.module('../../../src/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+mock.module('@bakin/core/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
+}))
+
+mock.module('../../../src/lib/plugin-registry', () => ({
+  getHookRegistry: () => ({
+    invoke: async () => undefined,
+    has: () => false,
+    register: () => () => {},
+  }),
+}))
+
+let mockPluginAssetsResult = { name: 'plugin-assets', status: 'ok' as const, message: '0 plugin assets to install' }
+mock.module('../../../src/core/onboarding/plugin-assets', () => ({
+  pluginAssetsComponent: {
+    name: 'plugin-assets',
+    check: async () => mockPluginAssetsResult,
+    install: async () => ({ status: 'noop' as const, message: 'noop' }),
+  },
+}))
+
+mock.module('../../../scripts/lib/registry', () => ({
+  getAllExecTools: () => [],
+}))
+
 import { checkContentDir } from '../../../plugins/health/lib/system-checks/content-dir'
 import { checkService } from '../../../plugins/health/lib/system-checks/service'
 import { checkMcporter } from '../../../plugins/health/lib/system-checks/mcporter'
 import { checkGateway } from '../../../plugins/health/lib/system-checks/gateway'
 import { checkAntfly } from '../../../plugins/health/lib/system-checks/antfly'
+import { checkOrchestratorRules } from '../../../plugins/health/lib/system-checks/orchestrator-rules'
+import { checkAndSyncSkill } from '../../../plugins/health/lib/system-checks/sync-skill'
+import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -342,5 +377,123 @@ describe('checkAntfly', () => {
     } finally {
       restoreFetch()
     }
+  })
+})
+
+// ─── checkOrchestratorRules ───────────────────────────────────────────────
+
+describe('checkOrchestratorRules', () => {
+  const openClawWorkspace = pathJoin(testDir, 'openclaw', 'workspace')
+
+  it('warns when AGENTS.md is missing', async () => {
+    const results = await checkOrchestratorRules()
+    expect(results[0].check).toBe('orchestrator-rules')
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toMatch(/AGENTS.md not found/)
+  })
+
+  it('warns when block is missing without autoFix', async () => {
+    mkdirSync(openClawWorkspace, { recursive: true })
+    writeFileSync(join(openClawWorkspace, 'AGENTS.md'), '# Main\n\nNo block here.\n')
+    const results = await checkOrchestratorRules()
+    expect(results[0].status).toBe('warn')
+    expect(results[0].autoFixable).toBe(true)
+    expect(results[0].message).toMatch(/missing from AGENTS.md/)
+  })
+
+  it('adds the block under autoFix when missing', async () => {
+    mockAutoFix = true
+    mkdirSync(openClawWorkspace, { recursive: true })
+    writeFileSync(join(openClawWorkspace, 'AGENTS.md'), '# Main\n')
+    const results = await checkOrchestratorRules()
+    expect(results[0].status).toBe('fixed')
+    const after = readFileSync(join(openClawWorkspace, 'AGENTS.md'), 'utf-8')
+    expect(after).toContain('<!-- bakin:orchestrator-rules:start -->')
+    expect(after).toContain('<!-- bakin:orchestrator-rules:end -->')
+  })
+
+  it('reports error when block has start marker but no end marker', async () => {
+    mkdirSync(openClawWorkspace, { recursive: true })
+    writeFileSync(
+      join(openClawWorkspace, 'AGENTS.md'),
+      '# Main\n\n<!-- bakin:orchestrator-rules:start -->\n(missing end)\n',
+    )
+    const results = await checkOrchestratorRules()
+    expect(results[0].status).toBe('error')
+    expect(results[0].message).toMatch(/no end marker/)
+  })
+})
+
+// ─── checkAndSyncSkill ────────────────────────────────────────────────────
+
+describe('checkAndSyncSkill', () => {
+  it('errors when the skill source is missing', () => {
+    const projectRoot = pathJoin(testDir, 'project-no-skill')
+    mkdirSync(projectRoot, { recursive: true })
+    const results = checkAndSyncSkill(projectRoot)
+    expect(results[0].check).toBe('skill')
+    expect(results[0].status).toBe('error')
+    expect(results[0].message).toMatch(/source not found/)
+  })
+
+  it('errors when the template is missing the exec-tools markers', () => {
+    const projectRoot = pathJoin(testDir, 'project-no-markers')
+    mkdirSync(join(projectRoot, 'skill'), { recursive: true })
+    writeFileSync(join(projectRoot, 'skill', 'SKILL.md'), '# Bakin Skill\n(no markers)\n')
+    const results = checkAndSyncSkill(projectRoot)
+    expect(results[0].status).toBe('error')
+    expect(results[0].message).toMatch(/missing the .*markers/)
+  })
+
+  it('warns when the rendered skill is not yet installed (no autoFix)', () => {
+    const projectRoot = pathJoin(testDir, 'project-ok')
+    mkdirSync(join(projectRoot, 'skill'), { recursive: true })
+    writeFileSync(
+      join(projectRoot, 'skill', 'SKILL.md'),
+      '# Bakin Skill\n<!-- bakin:exec-tools:start -->\n<!-- bakin:exec-tools:end -->\n',
+    )
+    const results = checkAndSyncSkill(projectRoot)
+    expect(results[0].status).toBe('warn')
+    expect(results[0].autoFixable).toBe(true)
+    expect(results[0].message).toMatch(/not installed in OpenClaw/)
+  })
+
+  it('installs the skill under autoFix when missing', () => {
+    mockAutoFix = true
+    const projectRoot = pathJoin(testDir, 'project-install')
+    mkdirSync(join(projectRoot, 'skill'), { recursive: true })
+    writeFileSync(
+      join(projectRoot, 'skill', 'SKILL.md'),
+      '# Bakin Skill\n<!-- bakin:exec-tools:start -->\n<!-- bakin:exec-tools:end -->\n',
+    )
+    const results = checkAndSyncSkill(projectRoot)
+    expect(results[0].status).toBe('fixed')
+    expect(results[0].message).toMatch(/installed in OpenClaw workspace/)
+  })
+})
+
+// ─── checkPluginAssets ────────────────────────────────────────────────────
+
+describe('checkPluginAssets', () => {
+  it('reports ok when component check returns ok', async () => {
+    mockPluginAssetsResult = { name: 'plugin-assets', status: 'ok', message: '3 plugin assets installed' }
+    const results = await checkPluginAssets()
+    expect(results[0].check).toBe('plugin-assets')
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toMatch(/3 plugin assets installed/)
+  })
+
+  it('warns with reminder when component reports drift', async () => {
+    mockPluginAssetsResult = {
+      name: 'plugin-assets',
+      status: 'warn' as unknown as 'ok',
+      message: '1 missing',
+      // @ts-expect-error - extra field accepted at runtime
+      remediation: 'Run `bakin install plugin-assets` to apply.',
+    }
+    const results = await checkPluginAssets()
+    expect(results[0].status).toBe('warn')
+    expect(results[0].autoFixable).toBe(false)
+    expect(results[0].message).toMatch(/bakin install plugin-assets/)
   })
 })
