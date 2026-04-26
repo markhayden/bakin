@@ -117,6 +117,33 @@ function readManifest(pluginDir: string): { manifest: Record<string, unknown>; m
   return { manifest, manifestSha }
 }
 
+/**
+ * Read the manifest at `<ref>:bakin-plugin.json` from the cloned git repo
+ * without touching the working tree. Used by the github upgrade flow to
+ * inspect the remote manifest BEFORE fast-forwarding so the consent gate
+ * can short-circuit cleanly when permissions widen.
+ *
+ * `git show <ref>:<path>` writes the file content to stdout — we capture
+ * it and compute the manifestSha from the bytes. Identical to what
+ * `readManifest` would compute after a checkout.
+ */
+function readRemoteManifest(pluginDir: string, ref: string): { manifest: Record<string, unknown>; manifestSha: string } {
+  const raw = run('git', ['show', `origin/${ref}:bakin-plugin.json`], pluginDir)
+  if (!raw) {
+    throw new UpgradeRefusedError(`origin/${ref} has no bakin-plugin.json`)
+  }
+  let manifest: Record<string, unknown>
+  try {
+    manifest = JSON.parse(raw)
+  } catch (err) {
+    throw new UpgradeRefusedError(
+      `origin/${ref}/bakin-plugin.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+  const manifestSha = createHash('sha256').update(raw, 'utf-8').digest('hex')
+  return { manifest, manifestSha }
+}
+
 function manifestPermissions(manifest: Record<string, unknown>, id: string): Permission[] {
   try {
     return parseManifestPermissions(manifest.permissions)
@@ -139,40 +166,6 @@ function manifestVersion(manifest: Record<string, unknown>, fallback: string): s
 function diffNewPermissions(prev: string[], next: string[]): string[] {
   const prevSet = new Set(prev)
   return next.filter(p => !prevSet.has(p))
-}
-
-/**
- * Fast-forward `<plugin-dir>` to the remote head of `ref`. Throws an
- * UpgradeRefusedError with the spec's exact message when the local commit
- * is not an ancestor of the remote (force-push or rewrite scenario).
- */
-function gitFetchAndFastForward(
-  pluginDir: string,
-  id: string,
-  ref: string,
-): { from: string; to: string } {
-  // `--` end-of-options sentinel before any user-supplied positional —
-  // ref is Zod-validated to /^[A-Za-z0-9._/-]+$/ but defense-in-depth
-  // costs nothing here.
-  run('git', ['fetch', 'origin', '--', ref], pluginDir)
-  const from = run('git', ['rev-parse', 'HEAD'], pluginDir).toLowerCase()
-  const to = run('git', ['rev-parse', `origin/${ref}`], pluginDir).toLowerCase()
-  if (from === to) return { from, to }
-  // Is the local HEAD an ancestor of the remote? If not, history was
-  // rewritten — refuse loudly rather than silently hard-resetting.
-  try {
-    execFileSync('git', ['merge-base', '--is-ancestor', from, to], {
-      cwd: pluginDir,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      maxBuffer: 10 * 1024 * 1024,
-    })
-  } catch {
-    throw new UpgradeRefusedError(
-      `${id}: cannot fast-forward (remote history rewritten?). Remove and reinstall.`,
-    )
-  }
-  run('git', ['merge', '--ff-only', `origin/${ref}`], pluginDir)
-  return { from, to }
 }
 
 // ─── Upgrade-available detection (C5) ────────────────────────────────────────
@@ -303,15 +296,19 @@ async function upgradeGithub(
       `${id}: lockfile is missing the git ref. Reinstall.`,
     )
   }
-  const { from, to } = gitFetchAndFastForward(pluginDir, id, entry.ref)
-  // Two no-op shapes:
-  //   (a) Working tree HEAD === remote HEAD AND lockfile commitSha matches.
-  //       Truly nothing to do.
-  //   (b) Working tree was fast-forwarded on a prior call but the lockfile
-  //       wasn't updated (consent gate held; user has now passed --yes).
-  //       Fall through and complete the upgrade — read manifest, build,
-  //       update lockfile.
-  if (from === to && entry.commitSha === to) {
+
+  // Read-only fetch — updates `.git/` but does not touch the working tree.
+  // This lets us inspect the remote manifest before deciding whether to
+  // commit the upgrade (consent gate runs against the remote state, not a
+  // post-mutation working tree).
+  run('git', ['fetch', 'origin', '--', entry.ref], pluginDir)
+
+  const remoteSha = run('git', ['rev-parse', `origin/${entry.ref}`], pluginDir).toLowerCase()
+  const localSha = run('git', ['rev-parse', 'HEAD'], pluginDir).toLowerCase()
+
+  // True noop — local HEAD already matches remote AND lockfile commitSha
+  // is in sync. Nothing on disk or in the lockfile needs to change.
+  if (localSha === remoteSha && entry.commitSha === remoteSha) {
     return {
       id,
       before,
@@ -322,20 +319,41 @@ async function upgradeGithub(
     }
   }
 
-  const { manifest, manifestSha } = readManifest(pluginDir)
+  // Read the remote manifest WITHOUT mutating the working tree. Consent gate
+  // runs against this. If the user declines, no disk change happens.
+  const { manifest, manifestSha } = readRemoteManifest(pluginDir, entry.ref)
   const newVersion = manifestVersion(manifest, entry.version)
   const newPerms = manifestPermissions(manifest, id)
   const widened = diffNewPermissions(entry.permissions, newPerms)
 
   if (widened.length > 0 && !opts.yes) {
+    // Consent required — exit BEFORE mutating disk or lockfile.
     return {
       id,
       before,
-      after: { version: newVersion, commitSha: to },
+      after: { version: newVersion, commitSha: remoteSha },
       noop: false,
       newPermissions: widened,
       awaitingConsent: true,
     }
+  }
+
+  // Consent accepted (or unnecessary). Now safe to mutate working tree.
+  // The merge-base check inside the helper still defends against a force-push
+  // that landed between fetch and merge.
+  if (localSha !== remoteSha) {
+    try {
+      execFileSync('git', ['merge-base', '--is-ancestor', localSha, remoteSha], {
+        cwd: pluginDir,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        maxBuffer: 10 * 1024 * 1024,
+      })
+    } catch {
+      throw new UpgradeRefusedError(
+        `${id}: cannot fast-forward (remote history rewritten?). Remove and reinstall.`,
+      )
+    }
+    run('git', ['merge', '--ff-only', `origin/${entry.ref}`], pluginDir)
   }
 
   await buildUserPlugin(pluginDir)
@@ -343,7 +361,7 @@ async function upgradeGithub(
   const updated = updatePlugin(readPluginLockfile(), id, {
     upgradedAt: new Date().toISOString(),
     version: newVersion,
-    commitSha: to,
+    commitSha: remoteSha,
     manifestSha,
     permissions: newPerms,
   })
@@ -352,7 +370,7 @@ async function upgradeGithub(
   return {
     id,
     before,
-    after: { version: newVersion, commitSha: to },
+    after: { version: newVersion, commitSha: remoteSha },
     noop: false,
     newPermissions: widened,
     awaitingConsent: false,
@@ -385,17 +403,16 @@ async function upgradeLocal(
     }
   }
 
-  // Re-copy source over plugin dir. Wipe first so deletions in the source
-  // are reflected (plain cpSync would only overlay, leaving stale files).
-  rmSync(pluginDir, { recursive: true, force: true })
-  cpSync(sourcePath, pluginDir, { recursive: true, dereference: false })
-
-  const { manifest, manifestSha } = readManifest(pluginDir)
+  // Read the source manifest WITHOUT mutating the plugin dir. Consent gate
+  // runs against the source state. If the user declines, the on-disk plugin
+  // (and its lockfile entry) stays exactly where it was.
+  const { manifest, manifestSha } = readManifest(sourcePath)
   const newVersion = manifestVersion(manifest, entry.version)
   const newPerms = manifestPermissions(manifest, id)
   const widened = diffNewPermissions(entry.permissions, newPerms)
 
   if (widened.length > 0 && !opts.yes) {
+    // Consent required — exit BEFORE mutating disk or lockfile.
     return {
       id,
       before,
@@ -405,6 +422,12 @@ async function upgradeLocal(
       awaitingConsent: true,
     }
   }
+
+  // Consent accepted (or unnecessary). Now safe to wipe + re-copy the
+  // plugin dir. Wipe first so deletions in the source are reflected
+  // (plain cpSync would only overlay, leaving stale files).
+  rmSync(pluginDir, { recursive: true, force: true })
+  cpSync(sourcePath, pluginDir, { recursive: true, dereference: false })
 
   await buildUserPlugin(pluginDir)
 

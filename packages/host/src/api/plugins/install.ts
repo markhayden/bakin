@@ -37,6 +37,7 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { computeSourceTreeSha } from '@/core/plugins/upgrade'
+import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
 
 /** Hard ceiling for any plugin source we'll accept — a manifest that big is malicious. */
 const MANIFEST_MAX_BYTES = 1 * 1024 * 1024  // 1MB
@@ -329,6 +330,10 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         }, { status: 400 })
       }
 
+      // Compute the manifestSha now so it's bound into the consent token AND
+      // re-checked at commit time. Same hash function recordInstall uses.
+      const stagedManifestSha = createHash('sha256').update(readFileSync(manifestPath)).digest('hex')
+
       // #142 layer 2 — if the manifest declares permissions and the caller
       // hasn't accepted yet, return awaitingConsent with the diff. CLI
       // surfaces the prompt and re-invokes with accepted:true. We tear
@@ -336,6 +341,16 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // re-cloning is cheap relative to the cost of staging cleanup bugs.
       if (parsedPermissions.length > 0 && body.accepted !== true) {
         const versionForPrompt = typeof manifest.version === 'string' ? manifest.version : '0.0.0'
+        // C13 binding — the token captures (source, manifestSha,
+        // permissions). Commit must echo it back; server re-validates
+        // against the freshly cloned manifest. If the manifest changed
+        // between preflight and commit, commit returns awaitingConsent
+        // again with the new diff instead of installing.
+        const consentToken = signConsentToken({
+          source: body.source,
+          manifestSha: stagedManifestSha,
+          permissions: parsedPermissions,
+        })
         rmSync(stagingDir, { recursive: true, force: true })
         return Response.json({
           ok: false,
@@ -343,7 +358,52 @@ export async function post(req: Request, _url: URL): Promise<Response> {
           id,
           version: versionForPrompt,
           permissions: parsedPermissions,
+          consentToken,
         })
+      }
+
+      // Commit phase — when the caller passes accepted:true AND a permission
+      // set was declared at preflight, validate the consent token. Without
+      // a valid token, the server has no proof the user actually saw and
+      // approved this exact manifest's permissions.
+      if (parsedPermissions.length > 0 && body.accepted === true) {
+        const token = body.consentToken ? verifyConsentToken(body.consentToken) : null
+        if (!token) {
+          rmSync(stagingDir, { recursive: true, force: true })
+          return Response.json({
+            ok: false,
+            error: 'install commit requires a valid consentToken from preflight',
+          }, { status: 400 })
+        }
+        if (token.source !== body.source) {
+          rmSync(stagingDir, { recursive: true, force: true })
+          return Response.json({
+            ok: false,
+            error: 'consentToken source does not match commit body source — re-run preflight',
+          }, { status: 400 })
+        }
+        // The crux: the manifest may have changed between preflight and
+        // commit. If so, the user's consent was for a different permission
+        // set; bounce back to awaitingConsent with the NEW diff so they
+        // can decide again.
+        if (token.manifestSha !== stagedManifestSha) {
+          const versionForPrompt = typeof manifest.version === 'string' ? manifest.version : '0.0.0'
+          const freshToken = signConsentToken({
+            source: body.source,
+            manifestSha: stagedManifestSha,
+            permissions: parsedPermissions,
+          })
+          rmSync(stagingDir, { recursive: true, force: true })
+          return Response.json({
+            ok: false,
+            awaitingConsent: true,
+            manifestChanged: true,
+            id,
+            version: versionForPrompt,
+            permissions: parsedPermissions,
+            consentToken: freshToken,
+          })
+        }
       }
 
       const targetDir = join(pluginsRoot, id)
