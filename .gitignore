@@ -56,6 +56,7 @@ mc-server-error.log
 # playwright mcp
 .playwright-mcp/
 .turbo/
+**/.astro/
 
 # full-res headshot originals (keep only thumbnails in repo)
 public/headshots/full/

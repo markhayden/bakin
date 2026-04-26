@@ -4,6 +4,7 @@
  */
 
 import type { ZodRawShape, ZodType } from 'zod'
+import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from './docs'
 
 // ---------------------------------------------------------------------------
 // Approval actor — identifies who decided a gate (or any reviewable action)
@@ -51,8 +52,16 @@ export interface APIRoute {
   path: string
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   handler: (req: Request, ctx: PluginContext) => Response | Promise<Response>
+  summary?: string
   description?: string
   params?: string
+  input?: SchemaLike
+  output?: SchemaLike
+  visibility?: ContractVisibility
+  stability?: ContractStability
+  examples?: DocsExample[]
+  source?: SourceLocation
+  permissions?: string[]
 }
 
 export interface UISlotRegistration {
@@ -731,4 +740,3 @@ export interface BakinConfig {
     contentDir?: string
   }
 }
-

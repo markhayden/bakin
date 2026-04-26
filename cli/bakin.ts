@@ -10,6 +10,7 @@ import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
 } from '../src/cli/schedule'
+import { renderCliUsage } from '../src/core/cli/registry'
 
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -1470,97 +1471,7 @@ async function cmdProposalUpdate(sessionId: string, proposalId: string, args: st
   print(result)
 }
 
-const USAGE = `
-Usage: bakin <command> [options]
-
-Commands:
-  status                           System health, agents, dispatch timer
-  dispatch                         Trigger immediate task dispatch
-  tasks list [--column=X]          List tasks (optionally filter by column)
-  tasks get <id>                   Get task details
-  tasks create <title> [agent]     Create a task (--workflow=<id> or --no-workflow="reason")
-  tasks move <id> <column>         Move task to column
-  tasks log <id> <message>         Log a progress update
-  tasks block <id> <reason>        Block a task with reason
-  tasks depend <id> <dependsOn>    Register a task dependency
-  tasks complete <id> <summary>    Mark task done with summary
-  workflows list                    List available workflow definitions
-  workflows start <taskId> <wfId>  Start a workflow for a task
-  workflows step <taskId>          Get current workflow step details
-  workflows submit <t> <s> <json>  Submit workflow step output
-  agents list                      List all agents with status
-  agents status <id>               Get detailed agent status
-  agents tasks <id>                List tasks assigned to agent
-  agents send <id> <message>       Send message to agent
-  settings get [key]               Read settings (dot notation for nested)
-  settings set <key> <value>       Update a setting
-  plugins list                     List installed plugins
-  plugins install <path|repo>      Install plugin (local path or github:user/repo)
-  plugins remove <id>              Remove an installed plugin
-  start                             Start Bakin (setup mcporter + launch server)
-  stop                              Stop Bakin server
-  logs [filter]                     Tail audit log (filter: mcp, rest, or agent name)
-  setup service [--uninstall]       Install/remove macOS LaunchAgent for auto-start
-  setup antfly                     Install AntflyDB + enable + reindex (one command)
-  setup mcporter                   Install mcporter + sync per-agent MCP config
-  paths [key]                      Show content directory paths (keys: home, assets, projects, etc.)
-  init                             Initialize ~/.bakin/ directory with defaults
-  mkdir                            Create/verify ~/.bakin/ directory tree (replaces init)
-  settings init                    Seed ~/.bakin/settings.json with defaults if missing
-  check openclaw                   Detect OpenClaw binary + config
-  check llm                        Verify at least one LLM provider configured
-  check channels                   Verify at least one messaging channel configured
-  check plugin-assets              Detect plugin-shipped OpenClaw skills needing install
-  check all                        Run all onboarding checks, report each
-  install antfly                   Install AntflyDB via Homebrew
-  install models                   Download Termite ML models (BGE, CLIP, mxbai-rerank)
-  install mcporter                 Install mcporter + sync per-agent MCP config
-  install plugin-assets            Install plugin-shipped OpenClaw skills into ~/.openclaw/skills/
-  onboard                          Run full first-run onboarding (all checks + installs)
-    --check                          Check-only mode (no installs, exit 0/1/2)
-    --yes                            Auto-approve all prompts (for CI/scripts)
-    --json                           Emit one JSON line per component to stdout
-    --force                          Delete .onboarded marker and replay from scratch
-  agent-rules [--apply|--check]    Manage orchestrator rules block in AGENTS.md
-  agent-rules --apply-all          Apply all managed blocks to all agent AGENTS.md files
-  agent-rules --check-all          Check all managed blocks across all agents
-  doctor                           Run health checks (agent sync, skill, gateway, etc.)
-  reboot                           Restart Bakin server (works with launchctl or standalone)
-  reindex                          Reindex all content to Antfly
-  docs                             Print API documentation
-  schedule [list]                    List scheduled jobs
-  schedule add <name> <sched>       Create a scheduled job (--agent, --prompt)
-  schedule pause <jobId>            Pause a job (--until <date>, --skip <n>)
-  schedule resume <jobId>           Resume a paused job
-  schedule remove <jobId>           Delete a scheduled job
-  schedule run <jobId>              Trigger immediate job run
-  schedule runs <jobId>             View run history for a job
-  trash [list]                       List trashed assets (7-day soft-delete window)
-  trash restore <filename>           Restore a trashed asset to its original location
-  trash empty                        Permanently delete all items in trash
-  messaging list [options]            List messaging items (--month, --status, --agent, --channel)
-  messaging get <id>                  Get messaging item details
-  messaging create <title> [agent]    Create item (--channels, --type, --tone, --brief)
-  messaging update <id> [flags]       Update item (--title, --status, --scheduledAt, --brief, --tone)
-  messaging delete <id>               Delete a messaging item
-  messaging approve <id>              Approve/schedule a messaging item
-  messaging reject <id> [note]        Reject a messaging item
-  messaging sessions [options]        List planning sessions (--status, --agent)
-  messaging session <id>              Get session details
-  messaging session-create <agent>    Create session (optional title as 2nd arg)
-  messaging session-update <id>       Update session (--title)
-  messaging session-delete <id>       Delete a planning session
-  messaging message <id> <text>       Send message to session
-  messaging confirm <id>              Confirm plan (creates messaging items from approved proposals)
-  messaging proposal <sid> <pid>      Update proposal (--approve, --reject, --status, --title, --note)
-  search <query> [options]          Search across indexed content
-    --table=<name>                   Filter by table (tasks, decisions, audit, content, assets)
-    --agent=<name>                   Filter by agent (e.g. patch, pixel, rolo)
-    --limit=<n>                      Max results (default: 10)
-
-Environment:
-  BAKIN_URL    Base URL (default: http://localhost:3737)
-`
+const USAGE = renderCliUsage({ bakinUrl: BASE_URL })
 
 // ---------------------------------------------------------------------------
 // Onboarding CLI handlers

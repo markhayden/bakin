@@ -1,0 +1,84 @@
+---
+title: Install Bakin
+description: One line, one binary, you're running.
+lastUpdated: 2026-04-25
+---
+
+import { Aside, LinkButton } from '@astrojs/starlight/components'
+
+One command and you're running. The installer picks the right binary for your machine, verifies the SHA-256, and drops it on your `PATH` as `bakin`.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | bash
+```
+
+That's the whole install.
+
+## Supported
+
+<ul class="platform-chips not-content">
+  <li>macOS · Apple Silicon</li>
+  <li>Linux · x64</li>
+  <li>Linux · arm64</li>
+</ul>
+
+Intel Macs and Windows aren't in the release matrix yet. [Build from source](#build-from-source) if you need them.
+
+## Confirm it worked
+
+```sh
+bakin version
+bakin --help
+```
+
+By default the binary lands in `/usr/local/bin`, or `~/.local/bin` if that's not writable. If it landed in `~/.local/bin`, make sure that directory is on your `PATH`. Otherwise the shell won't find `bakin` and the install will look broken when it isn't.
+
+If `bakin: command not found`, add this to your shell profile (`~/.zshrc`, `~/.bashrc`, or equivalent):
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+<div class="next-step-callout">
+<Aside type="tip" title="That's the install. Onto Initial Setup.">
+The rest of this page is for custom install locations, pinned versions, manual downloads, and source builds. If none of that applies, skip it.
+
+<LinkButton href="/docs/start/first-time-setup/" icon="right-arrow" class="cta-sm cta-yellow">Continue to Initial Setup</LinkButton>
+</Aside>
+</div>
+
+## Advanced
+
+### Release assets
+
+Each release publishes the platform binaries plus a `checksums.txt` with SHA-256 sums.
+
+| Platform | Asset |
+| --- | --- |
+| macOS (Apple Silicon) | `bakin-darwin-arm64` |
+| Linux x64 | `bakin-linux-x64` |
+| Linux arm64 | `bakin-linux-arm64` |
+
+### Custom install location
+
+Override the default with `BAKIN_INSTALL_DIR`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | BAKIN_INSTALL_DIR="$HOME/bin" bash
+```
+
+### Pin a version
+
+`BAKIN_VERSION` grabs a specific release tag instead of the latest:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | BAKIN_VERSION=v1.0.0 bash
+```
+
+### Manual download
+
+Pull the asset for your platform from the [GitHub releases page](https://github.com/markhayden/bakin/releases), check it against `checksums.txt`, drop it on your `PATH` as `bakin`. Same outcome as the installer, just more steps.
+
+### Build from source
+
+For Intel Mac, Windows, or anything not in the release matrix, build from the repo. Source setup lives in [Contribute](/docs/contribute/overview/).

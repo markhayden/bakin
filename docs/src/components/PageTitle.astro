@@ -1,0 +1,76 @@
+---
+const { editUrl, entry, lang, lastUpdated } = Astro.locals.starlightRoute
+
+const updated = lastUpdated
+  ? lastUpdated.toLocaleDateString(lang, {
+      dateStyle: 'medium',
+      timeZone: 'UTC',
+    })
+  : undefined
+---
+
+<div class="docs-page-title">
+  <h1 id="_top">{entry.data.title}</h1>
+  {(updated || editUrl) && (
+    <div class="docs-page-title__meta">
+      {updated && (
+        <time datetime={lastUpdated?.toISOString()}>Updated {updated}</time>
+      )}
+      {editUrl && (
+        <a href={editUrl.toString()} class="print:hidden">Suggest Edits</a>
+      )}
+    </div>
+  )}
+</div>
+
+<style>
+  .docs-page-title {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.5rem;
+    margin-top: 1rem;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: var(--sl-text-h1);
+    line-height: var(--sl-line-height-headings);
+    font-weight: 600;
+    color: var(--sl-color-white);
+  }
+
+  .docs-page-title__meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+    flex: 0 0 auto;
+    padding-bottom: 0.35rem;
+    font-size: 0.8rem;
+    line-height: 1.25;
+    color: var(--sl-color-gray-4);
+    text-align: right;
+  }
+
+  .docs-page-title__meta a {
+    color: var(--sl-color-accent-high);
+    text-decoration: none;
+  }
+
+  .docs-page-title__meta a:hover {
+    color: var(--sl-color-white);
+  }
+
+  @media (max-width: 44rem) {
+    .docs-page-title {
+      display: block;
+    }
+
+    .docs-page-title__meta {
+      align-items: flex-start;
+      margin-top: 0.75rem;
+      text-align: left;
+    }
+  }
+</style>

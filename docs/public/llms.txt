@@ -1,0 +1,36 @@
+# Bakin Docs
+
+Docs version: Bakin 1.0.0
+
+Bakin is a self-hosted dashboard, backend, CLI, and extension system for running agent work with OpenClaw. Use these docs to install Bakin, operate it, build plugins, author agent packages, and understand the public contracts exposed by the SDK, hooks, slots, CLI, and HTTP API.
+
+Primary docs:
+
+- Install Bakin: https://makinbakin.com/docs/start/install/
+  Use this for the released one-line install path and platform notes.
+
+- Initial Setup: https://makinbakin.com/docs/start/first-time-setup/
+  Use this to create the Bakin home directory and validate local dependencies.
+
+- Daily Operation: https://makinbakin.com/docs/start/operation/
+  Use this for lifecycle commands, health checks, updates, and runtime operation.
+
+- Core workflows: https://makinbakin.com/docs/core/tasks/
+  Use this for built-in Bakin areas such as tasks, workflows, projects, assets, schedule, messaging, memory, models, team, and health.
+
+- Plugin authoring: https://makinbakin.com/docs/extend/plugins/overview/
+  Use this when building Bakin plugins with @bakin/sdk.
+
+- Agent authoring: https://makinbakin.com/docs/extend/agents/overview/
+  Use this when creating agent packages or writing instructions for coding agents working with Bakin.
+
+- SDK docs: https://makinbakin.com/docs/extend/sdk/overview/
+  Use this for @bakin/sdk imports, UI components, hooks, slots, and public extension contracts.
+
+LLM bundles:
+
+- Full context: https://makinbakin.com/docs/llms-full.txt
+- Plugin authoring bundle: https://makinbakin.com/docs/llms/plugin-authoring.md
+- Agent authoring bundle: https://makinbakin.com/docs/llms/agent-authoring.md
+- SDK reference bundle: https://makinbakin.com/docs/llms/sdk-reference.md
+- API reference bundle: https://makinbakin.com/docs/llms/api.md

@@ -1,0 +1,9 @@
+# Bakin SDK Reference
+
+Docs version: Bakin 1.0.0
+
+Audience: coding agents and technical authors.
+
+Canonical docs: https://makinbakin.com/docs/
+
+The SDK reference is currently generated from packages/sdk/package.json and SDK barrel files. Current SDK subpath count: 8. Full TypeDoc output and TSDoc coverage checks are still required before public launch.

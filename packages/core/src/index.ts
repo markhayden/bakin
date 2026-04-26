@@ -48,7 +48,7 @@ export {
 export type { BakinPaths } from './content-dir'
 
 // Settings
-export { getSettings, updateSettings, resetSettingsCache } from './settings'
+export { DEFAULT_SETTINGS, getSettings, updateSettings, resetSettingsCache } from './settings'
 export type { BakinSettings } from './settings'
 
 // Main agent
@@ -63,3 +63,6 @@ export * as vault from './vault'
 // Utilities
 export { formatAge, isStale } from './format'
 export { generateTaskId } from './ids'
+
+// Documentation metadata contracts
+export * from './docs'
