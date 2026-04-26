@@ -475,8 +475,10 @@ If a plugin author needs the same pattern, copy the component and adjust the sav
 - **Server-side reload (v4).** Edit your plugin's `index.ts` (or any
   `src/core/**`) and have the server reload without Ctrl-C. Today
   requires a manual restart.
-- **Runtime permission enforcement.** The `permissions` manifest field
-  is logged but not enforced. Tracked in issue #142.
+- **Runtime permission enforcement (layer 3).** Activation logging
+  (layer 1) and install/upgrade consent prompts (layer 2) ARE
+  enforced. Layer 3 — capability-gating individual `ctx.*` calls
+  against the declared permissions — is tracked in issue #166.
 - **Plugin registry / marketplace.** `bakin plugins install github:...`
   works today for any public repo; a curated index is future work.
 

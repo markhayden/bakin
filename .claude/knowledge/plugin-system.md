@@ -690,12 +690,6 @@ communication goes through the HookRegistry instead.
 has the same id as a built-in, it replaces it. This lets users fork
 and customize any core plugin without modifying the repo.
 
-## Permissions (declared, not yet enforced)
-
-The `permissions` manifest field is logged at activation but not yet
-enforced at runtime. Tracked in issue #142. When enforced, it will
-gate `storage.*` and `events.emit` calls at the `ctx` boundary.
-
 ## Key Files
 
 | File | Purpose |
