@@ -214,4 +214,69 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
   it('errors when no lockfile entry exists', async () => {
     await expect(upgradePlugin('never-installed')).rejects.toThrow(UpgradeRefusedError)
   })
+
+  it('refuses upgrade when the new manifest declares a different id (anti-impersonation)', async () => {
+    const repo = createBareRepo(testDir, 'rename-fixture',
+      fixturePluginFiles({ id: 'rename', version: '1.0.0' }))
+    cloneRepoIntoPluginsDir({ pluginId: 'rename', cloneUrl: repo.cloneUrl })
+    const installedSha = headSha(join(testDir, 'plugins', 'rename'))
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'rename', makeLockEntry({
+      cloneUrl: repo.cloneUrl,
+      ref: 'main',
+      commitSha: installedSha,
+      version: '1.0.0',
+    })))
+
+    // Push a commit that swaps the manifest id to "tasks" — exactly the
+    // core-plugin impersonation attack the C20 stability check defends.
+    pushCommit(repo.workingClonePath,
+      fixturePluginFiles({ id: 'tasks', version: '1.1.0' }), 'masquerade as core')
+
+    await expect(upgradePlugin('rename', { yes: true })).rejects.toThrow(UpgradeRefusedError)
+
+    // Lockfile entry must be untouched after the refused upgrade.
+    const after = readPluginLockfile().plugins['rename']
+    expect(after?.version).toBe('1.0.0')
+    expect(after?.commitSha).toBe(installedSha)
+  })
+
+  it('resets origin URL from lockfile before fetch (defeats .git/config tampering)', async () => {
+    // Two repos: A is the legitimate source, B is what a malicious plugin
+    // would re-point its .git/config at to hijack the next upgrade.
+    const repoA = createBareRepo(testDir, 'origin-pin-A',
+      fixturePluginFiles({ id: 'pinme', version: '1.0.0' }))
+    const repoB = createBareRepo(testDir, 'origin-pin-B',
+      fixturePluginFiles({ id: 'pinme', version: '99.0.0' }))
+    cloneRepoIntoPluginsDir({ pluginId: 'pinme', cloneUrl: repoA.cloneUrl })
+    const pluginDir = join(testDir, 'plugins', 'pinme')
+
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'pinme', makeLockEntry({
+      cloneUrl: repoA.cloneUrl,
+      ref: 'main',
+      commitSha: headSha(pluginDir),
+      version: '1.0.0',
+    })))
+
+    // Tamper: rewrite the on-disk origin to point at repo B.
+    execFileSync('git', ['remote', 'set-url', 'origin', repoB.cloneUrl], {
+      cwd: pluginDir, stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    expect(execFileSync('git', ['config', '--get', 'remote.origin.url'], {
+      cwd: pluginDir, encoding: 'utf-8',
+    }).trim()).toBe(repoB.cloneUrl)
+
+    // Push a fresh commit to repo A so there's something to upgrade to.
+    pushCommit(repoA.workingClonePath,
+      fixturePluginFiles({ id: 'pinme', version: '1.1.0' }), 'legitimate update')
+
+    // Upgrade — must pull from repo A, not the tampered repo B.
+    const result = await upgradePlugin('pinme', { yes: true })
+    expect(result.after.version).toBe('1.1.0')
+
+    // Origin should now be reset to the lockfile URL.
+    const originAfter = execFileSync('git', ['config', '--get', 'remote.origin.url'], {
+      cwd: pluginDir, encoding: 'utf-8',
+    }).trim()
+    expect(originAfter).toBe(repoA.cloneUrl)
+  })
 })

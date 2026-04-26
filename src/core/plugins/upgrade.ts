@@ -160,6 +160,22 @@ function manifestPermissions(manifest: Record<string, unknown>, id: string): Per
   }
 }
 
+/**
+ * Refuse an upgrade if the new manifest's id doesn't match the lockfile-
+ * recorded id. Otherwise a plugin can rename itself across an upgrade —
+ * a user plugin `foo` that ships a new manifest declaring `"id": "tasks"`
+ * would, after restart, get activated under `tasks` via the user-plugin
+ * override path and silently impersonate the core tasks plugin.
+ */
+function assertManifestIdStable(manifest: Record<string, unknown>, id: string): void {
+  const manifestId = typeof manifest.id === 'string' ? manifest.id : ''
+  if (manifestId !== id) {
+    throw new UpgradeRefusedError(
+      `${id}: upgraded manifest declares id "${manifestId}" — plugins cannot rename across upgrades. Remove and reinstall as the new id if intentional.`,
+    )
+  }
+}
+
 function manifestVersion(manifest: Record<string, unknown>, fallback: string): string {
   if (typeof manifest.version === 'string' && manifest.version.length > 0) {
     return manifest.version
@@ -314,7 +330,18 @@ export async function runChecks(ids: readonly string[]): Promise<UpgradeAvailabi
  */
 function githubCloneUrl(source: string): string {
   const stripped = source.startsWith('github:') ? source.slice(7) : source
-  if (stripped.startsWith('http') || stripped.startsWith('git@')) return stripped
+  // Anything that already looks like a complete URL (http(s)://, git@host:,
+  // ssh://, file://, etc.) passes through. Only the bare `user/repo`
+  // shorthand gets the github.com prefix.
+  if (
+    stripped.startsWith('http://') ||
+    stripped.startsWith('https://') ||
+    stripped.startsWith('git@') ||
+    stripped.startsWith('ssh://') ||
+    stripped.startsWith('file://')
+  ) {
+    return stripped
+  }
   return `https://github.com/${stripped}.git`
 }
 
@@ -370,6 +397,16 @@ async function upgradeGithub(
     )
   }
 
+  // Pin `origin` to the lockfile-recorded source URL BEFORE fetching.
+  // Otherwise a malicious already-activated plugin can rewrite its own
+  // `.git/config` `origin` to point at attacker.com and the next user-
+  // initiated upgrade silently pulls + builds attacker code (no consent
+  // prompt fires when permissions are unchanged). The lockfile is the
+  // source of truth for what the user originally installed; reset every
+  // time so any in-place tampering is overridden.
+  const expectedUrl = githubCloneUrl(entry.source)
+  run('git', ['remote', 'set-url', 'origin', '--', expectedUrl], pluginDir)
+
   // Read-only fetch — updates `.git/` but does not touch the working tree.
   // This lets us inspect the remote manifest before deciding whether to
   // commit the upgrade (consent gate runs against the remote state, not a
@@ -395,6 +432,7 @@ async function upgradeGithub(
   // Read the remote manifest WITHOUT mutating the working tree. Consent gate
   // runs against this. If the user declines, no disk change happens.
   const { manifest, manifestSha } = readRemoteManifest(pluginDir, entry.ref)
+  assertManifestIdStable(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
   const newPerms = manifestPermissions(manifest, id)
   const widened = diffNewPermissions(entry.permissions, newPerms)
@@ -483,6 +521,7 @@ async function upgradeLocal(
   // runs against the source state. If the user declines, the on-disk plugin
   // (and its lockfile entry) stays exactly where it was.
   const { manifest, manifestSha } = readManifest(sourcePath)
+  assertManifestIdStable(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
   const newPerms = manifestPermissions(manifest, id)
   const widened = diffNewPermissions(entry.permissions, newPerms)
