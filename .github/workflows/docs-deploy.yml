@@ -20,14 +20,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build docs
+  deploy:
+    name: Build and deploy docs
     runs-on: ubuntu-latest
+    env:
+      DOCS_DEPLOY_BRANCH: ${{ inputs.version_ref || github.ref_name }}
+      PUBLIC_GTM_ID: ${{ vars.PUBLIC_GTM_ID || 'GTM-KZQK989V' }}
     permissions:
       contents: read
+      deployments: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version_ref || github.ref }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -45,3 +51,10 @@ jobs:
         with:
           name: bakin-docs
           path: apps/docs/dist
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/docs/dist --project-name=${{ vars.CLOUDFLARE_DOCS_PROJECT_NAME || 'bakin-docs' }} --branch=${{ env.DOCS_DEPLOY_BRANCH }}

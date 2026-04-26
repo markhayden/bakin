@@ -1,0 +1,194 @@
+---
+---
+
+<div
+  class="docs-consent"
+  data-consent-banner
+  role="dialog"
+  aria-modal="false"
+  aria-labelledby="docs-consent-title"
+  aria-describedby="docs-consent-copy"
+  hidden
+>
+  <p id="docs-consent-title" class="docs-consent__title">Cookies &amp; such</p>
+  <p id="docs-consent-copy" class="docs-consent__copy">
+    We use analytics to see what's landing. No ads, no cross-site tracking. Your call.
+  </p>
+  <div class="docs-consent__actions">
+    <button type="button" class="docs-consent__button docs-consent__button--primary" data-consent-action="accept" data-cta="consent_accept">
+      Accept
+    </button>
+    <button type="button" class="docs-consent__button docs-consent__button--ghost" data-consent-action="reject" data-cta="consent_reject">
+      Reject
+    </button>
+  </div>
+</div>
+
+<script>
+  const COOKIE_NAME = "bakin_consent";
+  const MAX_AGE_SECONDS = 15552000;
+  const SCHEMA_VERSION = 1;
+
+  const readConsent = () => {
+    const match = document.cookie.split("; ").find((row) => row.startsWith(`${COOKIE_NAME}=`));
+    if (!match) return null;
+    try {
+      const parsed = JSON.parse(decodeURIComponent(match.slice(COOKIE_NAME.length + 1)));
+      if (!parsed || typeof parsed !== "object") return null;
+      if (parsed.v !== SCHEMA_VERSION) return null;
+      if (parsed.a !== "g" && parsed.a !== "d") return null;
+      if (parsed.d !== "g" && parsed.d !== "d") return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeConsent = (analytics, ads) => {
+    const payload = encodeURIComponent(JSON.stringify({
+      a: analytics === "granted" ? "g" : "d",
+      d: ads === "granted" ? "g" : "d",
+      v: SCHEMA_VERSION,
+      t: Math.floor(Date.now() / 1000),
+    }));
+    const attrs = [
+      `${COOKIE_NAME}=${payload}`,
+      `Max-Age=${MAX_AGE_SECONDS}`,
+      "Path=/",
+      "SameSite=Lax",
+    ];
+    if (window.location.hostname === "makinbakin.com" || window.location.hostname.endsWith(".makinbakin.com")) {
+      attrs.push("Domain=.makinbakin.com");
+    }
+    if (window.location.protocol === "https:") attrs.push("Secure");
+    document.cookie = attrs.join("; ");
+  };
+
+  const applyConsent = (analytics, ads, source) => {
+    writeConsent(analytics, ads);
+    if (typeof window.gtag === "function") {
+      window.gtag("consent", "update", {
+        analytics_storage: analytics,
+        ad_storage: ads,
+        ad_user_data: ads,
+        ad_personalization: ads,
+      });
+    }
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({
+      event: "consent_update",
+      analytics_storage: analytics,
+      ad_storage: ads,
+      source,
+    });
+  };
+
+  const bindConsentBanner = () => {
+    const banner = document.querySelector("[data-consent-banner]");
+    if (!banner || banner.dataset.bound === "true") return;
+    if (readConsent()) {
+      banner.remove();
+      return;
+    }
+
+    banner.dataset.bound = "true";
+    banner.hidden = false;
+
+    const previouslyFocused = document.activeElement;
+    const buttons = Array.from(banner.querySelectorAll("[data-consent-action]"));
+    const firstButton = buttons[0];
+    if (firstButton instanceof HTMLElement) window.requestAnimationFrame(() => firstButton.focus());
+
+    const close = () => {
+      banner.remove();
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+      document.removeEventListener("keydown", handleKeydown);
+    };
+
+    const handleKeydown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        applyConsent("granted", "granted", "dismiss");
+        close();
+      }
+    };
+
+    for (const button of buttons) {
+      button.addEventListener("click", () => {
+        if (button.dataset.consentAction === "accept") {
+          applyConsent("granted", "granted", "accept");
+        } else {
+          applyConsent("denied", "denied", "reject");
+        }
+        close();
+      });
+    }
+
+    document.addEventListener("keydown", handleKeydown);
+  };
+
+  bindConsentBanner();
+  document.addEventListener("astro:page-load", bindConsentBanner);
+</script>
+
+<style>
+  .docs-consent {
+    position: fixed;
+    left: 1rem;
+    bottom: 1rem;
+    z-index: 100;
+    max-width: min(24rem, calc(100vw - 2rem));
+    padding: 1rem;
+    border: 1px solid color-mix(in srgb, var(--sl-color-accent-high), transparent 45%);
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--sl-color-bg), #000 15%);
+    box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.45);
+    color: var(--sl-color-white);
+  }
+
+  .docs-consent[hidden] {
+    display: none;
+  }
+
+  .docs-consent__title {
+    margin: 0 0 0.35rem;
+    font-size: var(--sl-text-sm);
+    font-weight: 700;
+  }
+
+  .docs-consent__copy {
+    margin: 0;
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    line-height: 1.45;
+  }
+
+  .docs-consent__actions {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 0.85rem;
+  }
+
+  .docs-consent__button {
+    min-height: 2.25rem;
+    padding: 0 0.85rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.4rem;
+    background: transparent;
+    color: var(--sl-color-white);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .docs-consent__button--primary {
+    border-color: var(--sl-color-accent-high);
+    background: var(--sl-color-accent-high);
+    color: #160b11;
+    font-weight: 700;
+  }
+
+  .docs-consent__button--ghost:hover {
+    border-color: var(--sl-color-accent-high);
+  }
+</style>
