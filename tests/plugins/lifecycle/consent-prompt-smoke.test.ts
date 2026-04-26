@@ -42,7 +42,7 @@ import {
   promptUpgradeConsent,
   renderInstallPrompt,
   renderUpgradePrompt,
-} from '../../../src/core/plugins/consent-prompt'
+} from '../../../src/core/cli/consent-prompt'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

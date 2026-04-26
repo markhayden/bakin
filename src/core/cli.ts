@@ -236,7 +236,7 @@ async function cmdPluginsInstall(source: string, opts: { yes: boolean }): Promis
     // bound against a pathological remote that flaps the manifest.
     for (let attempt = 0; attempt < 3; attempt++) {
       if (!response.awaitingConsent) break
-      const { promptInstallConsent } = await import(/* @vite-ignore */ './plugins/consent-prompt' as string) as typeof import('./plugins/consent-prompt')
+      const { promptInstallConsent } = await import(/* @vite-ignore */ './cli/consent-prompt' as string) as typeof import('./cli/consent-prompt')
       if (response.manifestChanged) {
         console.error(`\nManifest changed between preflight and commit — re-confirming permissions.`)
       }
@@ -302,7 +302,7 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean }): Prom
       return 0
     }
     if (res.awaitingConsent) {
-      const { promptUpgradeConsent } = await import(/* @vite-ignore */ './plugins/consent-prompt' as string) as typeof import('./plugins/consent-prompt')
+      const { promptUpgradeConsent } = await import(/* @vite-ignore */ './cli/consent-prompt' as string) as typeof import('./cli/consent-prompt')
       const accepted = await promptUpgradeConsent({
         pluginId,
         fromVersion: res.before?.version ?? '?',

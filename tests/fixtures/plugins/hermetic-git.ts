@@ -84,21 +84,26 @@ export function pushCommit(
   return run('git', ['rev-parse', 'HEAD'], workingClonePath)
 }
 
-/** Force-push a divergent history (used to test the rewind-rejection path). */
+/**
+ * Force-push a divergent history (used to test the rewind-rejection path).
+ *
+ * Implementation: nuke .git/, reinit, reattach the remote, write fresh
+ * files, commit, force-push. The working tree's non-tracked files survive
+ * because we only blow away `.git/`; tracked files get overwritten by
+ * writeFiles. For the rewind tests this is fine — they always pass the
+ * exact set of fixture files they care about.
+ */
 export function forcePushRewind(
   workingClonePath: string,
   files: Record<string, string>,
   message = 'rewritten history',
 ): string {
-  // Reset to no commits then redo from scratch.
   rmSync(join(workingClonePath, '.git'), { recursive: true, force: true })
   run('git', ['init', '-b', 'main'], workingClonePath)
-  run('git', ['remote', 'add', 'origin',
-    // re-derive bare path from working clone — assume <name>.git sibling.
-    workingClonePath.replace(/-work$/, '.git')], workingClonePath)
+  // re-derive bare path from working clone — by convention `<name>-work` ↔ `<name>.git`.
+  const bareRepoPath = workingClonePath.replace(/-work$/, '.git')
+  run('git', ['remote', 'add', 'origin', bareRepoPath], workingClonePath)
   configureCommitIdentity(workingClonePath)
-  // Wipe the working tree, write fresh files, commit, force-push.
-  for (const f of ['.', '..']) void f // no-op to avoid relative shenanigans
   writeFiles(workingClonePath, files)
   run('git', ['add', '-A'], workingClonePath)
   run('git', ['commit', '-m', message], workingClonePath, commitEnv())
