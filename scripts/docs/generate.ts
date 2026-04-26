@@ -7,6 +7,7 @@ import { getAllRoutes } from '../../src/core/api-docs'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'apps/docs')
+const generatedRoot = join(docsRoot, '.generated')
 const sourceRoots = [join(repoRoot, 'plugins'), join(repoRoot, 'src'), join(repoRoot, 'packages')]
 
 function writeStableFile(path: string, contents: string): void {
@@ -136,6 +137,55 @@ function flattenObject(value: unknown, prefix = ''): Array<{ key: string; value:
 }
 
 const versionLine = `Docs version: Bakin ${APP_VERSION}`
+
+function buildCoverageReport(): Record<string, unknown> {
+  return {
+    version: APP_VERSION,
+    generatedBy: 'scripts/docs/generate.ts',
+    surfaces: {
+      cliCommands: {
+        status: 'active',
+        count: CLI_COMMANDS.length,
+        source: 'src/core/cli/registry.ts',
+      },
+      httpRoutes: {
+        status: 'active',
+        count: getAllRoutes().length,
+        source: 'src/core/api-docs.ts',
+      },
+      hookRegistrations: {
+        status: 'audited',
+        count: extractHookRegistrations().length,
+        source: 'source scan',
+      },
+      execTools: {
+        status: 'audited',
+        count: extractExecTools().length,
+        source: 'source scan',
+      },
+      corePlugins: {
+        status: 'active',
+        count: readCorePluginManifests().length,
+        source: 'plugins/*/bakin-plugin.json',
+      },
+      settings: {
+        status: 'active',
+        count: flattenObject(DEFAULT_SETTINGS).length,
+        source: 'packages/core/src/settings.ts',
+      },
+      sdkSubpaths: {
+        status: 'audited',
+        count: readSdkExports().length,
+        source: 'packages/sdk/package.json',
+      },
+      llmBundles: {
+        status: 'active',
+        count: 10,
+        source: 'scripts/docs/generate.ts',
+      },
+    },
+  }
+}
 
 function renderCliReference(): string {
   const grouped = new Map<string, typeof CLI_COMMANDS[number][]>()
@@ -415,6 +465,11 @@ function renderSdkReference(): string {
 
   return lines.join('\n')
 }
+
+writeStableFile(
+  join(generatedRoot, 'coverage.json'),
+  JSON.stringify(buildCoverageReport(), null, 2),
+)
 
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/cli.md'),

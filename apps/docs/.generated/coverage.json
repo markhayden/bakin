@@ -1,0 +1,46 @@
+{
+  "version": "1.0.0",
+  "generatedBy": "scripts/docs/generate.ts",
+  "surfaces": {
+    "cliCommands": {
+      "status": "active",
+      "count": 58,
+      "source": "src/core/cli/registry.ts"
+    },
+    "httpRoutes": {
+      "status": "active",
+      "count": 17,
+      "source": "src/core/api-docs.ts"
+    },
+    "hookRegistrations": {
+      "status": "audited",
+      "count": 51,
+      "source": "source scan"
+    },
+    "execTools": {
+      "status": "audited",
+      "count": 90,
+      "source": "source scan"
+    },
+    "corePlugins": {
+      "status": "active",
+      "count": 10,
+      "source": "plugins/*/bakin-plugin.json"
+    },
+    "settings": {
+      "status": "active",
+      "count": 52,
+      "source": "packages/core/src/settings.ts"
+    },
+    "sdkSubpaths": {
+      "status": "audited",
+      "count": 8,
+      "source": "packages/sdk/package.json"
+    },
+    "llmBundles": {
+      "status": "active",
+      "count": 10,
+      "source": "scripts/docs/generate.ts"
+    }
+  }
+}

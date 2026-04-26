@@ -46,6 +46,7 @@ for (const file of walkMarkdown(docsContentRoot)) {
 }
 
 const requiredPublicFiles = [
+  '.generated/coverage.json',
   'public/robots.txt',
   'public/_redirects',
   'public/llms.txt',
