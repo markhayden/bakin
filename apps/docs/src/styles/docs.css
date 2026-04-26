@@ -126,3 +126,9 @@ pre {
 .hero img {
   filter: drop-shadow(0 0 18px rgba(255, 112, 158, 0.22));
 }
+
+@media (min-width: 72rem) {
+  :root {
+    --sl-content-width: 58rem;
+  }
+}
