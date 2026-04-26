@@ -640,7 +640,10 @@ class PluginRegistryImpl {
       name: state.plugin.name,
       version: state.plugin.version,
       description: state.description,
-      source: id.startsWith('user:') ? 'user' as const : 'built-in' as const,
+      // Was a `id.startsWith('user:')` heuristic that always evaluated to
+      // 'built-in' — no id is ever prefixed `user:`. Use the authoritative
+      // corePluginIds predicate instead.
+      source: isCorePlugin(id) ? 'built-in' as const : 'user' as const,
       routes: state.routes.length,
     }))
   }
