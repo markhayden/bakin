@@ -18,6 +18,16 @@ import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => true,
+}))
+mock.module('@bakin/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => true,
+}))
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
@@ -27,6 +37,16 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
+}))
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+mock.module('../../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
 }))
 
 let mockAutoFix = false
@@ -294,5 +314,38 @@ describe('checkAssets — disk usage', () => {
 
     const results = checkAssets(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('GB — consider cleanup'))).toBe(true)
+  })
+})
+
+// ─── Registration smoke test ──────────────────────────────────────────────
+
+describe('plugin registration', () => {
+  it('registers the assets health check on activate', async () => {
+    const assetsPlugin = (await import('../../../plugins/assets')).default
+    const registeredIds: string[] = []
+    const noop = mock()
+    const noopAsync = mock(async () => {})
+    const ctx: Record<string, unknown> = {
+      pluginId: 'assets',
+      registerRoute: noop, registerExecTool: noop, registerNav: noop,
+      registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
+      registerNodeType: noop, registerNotificationChannel: noop,
+      registerHealthCheck: (def: { id: string }) => { registeredIds.push(def.id); return `assets.${def.id}` },
+      watchFiles: noop,
+      getSettings: () => ({}),
+      updateSettings: noop,
+      activity: { log: noop, audit: noop },
+      hooks: { register: () => () => {}, has: () => false, invoke: noopAsync },
+      search: {
+        registerContentType: noop, registerFileBackedContentType: noop,
+        index: noopAsync, remove: noopAsync, transform: noopAsync,
+        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      },
+      storage: {},
+      events: { on: noop, emit: noop, off: noop },
+    }
+    await assetsPlugin.activate(ctx as unknown as Parameters<typeof assetsPlugin.activate>[0])
+
+    expect(registeredIds).toContain('assets')
   })
 })

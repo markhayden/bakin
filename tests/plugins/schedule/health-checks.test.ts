@@ -21,6 +21,16 @@ import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => true,
+}))
+mock.module('@bakin/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => true,
+}))
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
@@ -215,5 +225,38 @@ describe('checkScheduleSync — malformed input', () => {
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warn')
     expect(results[0].message).toMatch(/Failed to read OpenClaw jobs/)
+  })
+})
+
+// ─── Registration smoke test ──────────────────────────────────────────────
+
+describe('plugin registration', () => {
+  it('registers the schedule-sync health check on activate', async () => {
+    const schedulePlugin = (await import('../../../plugins/schedule')).default
+    const registeredIds: string[] = []
+    const noop = mock()
+    const noopAsync = mock(async () => {})
+    const ctx: Record<string, unknown> = {
+      pluginId: 'schedule',
+      registerRoute: noop, registerExecTool: noop, registerNav: noop,
+      registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
+      registerNodeType: noop, registerNotificationChannel: noop,
+      registerHealthCheck: (def: { id: string }) => { registeredIds.push(def.id); return `schedule.${def.id}` },
+      watchFiles: noop,
+      getSettings: () => ({}),
+      updateSettings: noop,
+      activity: { log: noop, audit: noop },
+      hooks: { register: () => () => {}, has: () => false, invoke: noopAsync },
+      search: {
+        registerContentType: noop, registerFileBackedContentType: noop,
+        index: noopAsync, remove: noopAsync, transform: noopAsync,
+        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      },
+      storage: {},
+      events: { on: noop, emit: noop, off: noop },
+    }
+    await schedulePlugin.activate(ctx as unknown as Parameters<typeof schedulePlugin.activate>[0])
+
+    expect(registeredIds).toContain('schedule-sync')
   })
 })
