@@ -666,10 +666,10 @@ Primary docs:
 - Install Bakin: https://docs.makinbakin.com/start/install/
   Use this for the released one-line install path and platform notes.
 
-- First-time setup: https://docs.makinbakin.com/start/first-time-setup/
+- Initial Setup: https://docs.makinbakin.com/start/first-time-setup/
   Use this to create the Bakin home directory and validate local dependencies.
 
-- Operation: https://docs.makinbakin.com/start/operation/
+- Daily Operation: https://docs.makinbakin.com/start/operation/
   Use this for lifecycle commands, health checks, updates, and runtime operation.
 
 - Core workflows: https://docs.makinbakin.com/core/tasks/

@@ -154,8 +154,8 @@ document.addEventListener("click", function (event) {
           label: 'Start',
           items: [
             { label: 'Install', slug: 'start/install' },
-            { label: 'First-Time Setup', slug: 'start/first-time-setup' },
-            { label: 'Operation', slug: 'start/operation' },
+            { label: 'Initial Setup', slug: 'start/first-time-setup' },
+            { label: 'Daily Operation', slug: 'start/operation' },
           ],
         },
         {
