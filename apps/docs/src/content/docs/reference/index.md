@@ -32,4 +32,5 @@ Generated references currently available:
 - [Core Plugin Catalog](/reference/generated/core-plugins/)
 - [Settings Reference](/reference/generated/settings/)
 - [Runtime Paths](/reference/generated/runtime-paths/)
+- [SDK Reference](/reference/generated/sdk/)
 - [Generated Coverage](/reference/generated/coverage/)

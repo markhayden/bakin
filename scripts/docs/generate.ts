@@ -74,6 +74,12 @@ interface PluginManifestDoc {
   file: string
 }
 
+interface SdkExportDoc {
+  importPath: string
+  source: string
+  exports: string[]
+}
+
 function readCorePluginManifests(): PluginManifestDoc[] {
   const pluginsDir = join(repoRoot, 'plugins')
   const manifests: PluginManifestDoc[] = []
@@ -98,6 +104,26 @@ function readCorePluginManifests(): PluginManifestDoc[] {
     }
   }
   return manifests
+}
+
+function readSdkExports(): SdkExportDoc[] {
+  const pkgPath = join(repoRoot, 'packages/sdk/package.json')
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { exports: Record<string, string> }
+  return Object.entries(pkg.exports).map(([subpath, source]) => {
+    const importPath = subpath === '.' ? '@bakin/sdk' : `@bakin/sdk${subpath.slice(1)}`
+    const sourcePath = join(repoRoot, 'packages/sdk', source.replace(/^\.\//, ''))
+    const text = readFileSync(sourcePath, 'utf8')
+    const exports = text
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.startsWith('export '))
+      .map(line => line.replace(/\s+/g, ' '))
+    return {
+      importPath,
+      source: relativeSource(sourcePath),
+      exports,
+    }
+  })
 }
 
 function flattenObject(value: unknown, prefix = ''): Array<{ key: string; value: unknown }> {
@@ -356,6 +382,40 @@ function renderRuntimePathsReference(): string {
   return lines.join('\n')
 }
 
+function renderSdkReference(): string {
+  const entries = readSdkExports()
+  const lines = [
+    '---',
+    'title: SDK Reference',
+    'description: Generated audit reference for @bakin/sdk subpath exports.',
+    '---',
+    '',
+    '# SDK Reference',
+    '',
+    versionLine,
+    '',
+    'This page is generated from `packages/sdk/package.json` and SDK barrel files. Full TypeDoc output will replace this audit view once public TSDoc coverage is complete.',
+    '',
+  ]
+
+  for (const entry of entries) {
+    lines.push(`## \`${entry.importPath}\``, '')
+    lines.push(`Source: \`${entry.source}\``, '')
+    if (entry.exports.length === 0) {
+      lines.push('No direct exports detected in the barrel file.', '')
+      continue
+    }
+    lines.push('| Export declaration |')
+    lines.push('| --- |')
+    for (const exported of entry.exports) {
+      lines.push(`| \`${exported.replaceAll('|', '\\|')}\` |`)
+    }
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
+
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/cli.md'),
   renderCliReference(),
@@ -392,6 +452,11 @@ writeStableFile(
 )
 
 writeStableFile(
+  join(docsRoot, 'src/content/docs/reference/generated/sdk.md'),
+  renderSdkReference(),
+)
+
+writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/coverage.md'),
   `---
 title: Generated Coverage
@@ -420,6 +485,7 @@ The current scaffold establishes the public coverage contract. The next implemen
 | Core plugins | Manifest catalog from shipped plugins | Active: ${readCorePluginManifests().length} plugins |
 | Settings | Generated from default settings | Active: ${flattenObject(DEFAULT_SETTINGS).length} settings |
 | Runtime paths | Generated from path contract | Active |
+| SDK exports | TypeDoc, TSDoc, stability | Audited: ${readSdkExports().length} subpaths |
 `,
 )
 
@@ -493,6 +559,7 @@ Canonical docs: https://docs.makinbakin.com/
 - Core plugin catalog: /reference/generated/core-plugins/
 - Settings reference: /reference/generated/settings/
 - Runtime paths: /reference/generated/runtime-paths/
+- SDK reference: /reference/generated/sdk/
 
 ## Fetch Examples
 
@@ -511,10 +578,6 @@ const bundles = {
   'agent-authoring.md': {
     title: 'Bakin Agent Authoring',
     body: 'Agent-facing docs are explicit and labeled. Explain only the OpenClaw concepts needed to use Bakin, then link to OpenClaw for deeper details. Agent package examples must be validated before publication.',
-  },
-  'sdk-reference.md': {
-    title: 'Bakin SDK Reference',
-    body: 'The SDK reference is generated from `@bakin/sdk/*` exports with TypeDoc and custom usage pages. Every public SDK export requires TSDoc and stability metadata before launch.',
   },
   'api.md': {
     title: 'Bakin API Reference',
@@ -539,6 +602,10 @@ const bundles = {
   'settings.md': {
     title: 'Bakin Settings Reference',
     body: `The settings reference is generated from packages/core/src/settings.ts. Current flattened setting count: ${flattenObject(DEFAULT_SETTINGS).length}. Operators can override settings in settings.json under the resolved Bakin home directory.`,
+  },
+  'sdk-reference.md': {
+    title: 'Bakin SDK Reference',
+    body: `The SDK reference is currently generated from packages/sdk/package.json and SDK barrel files. Current SDK subpath count: ${readSdkExports().length}. Full TypeDoc output and TSDoc coverage checks are still required before public launch.`,
   },
 }
 

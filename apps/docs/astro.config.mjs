@@ -66,6 +66,7 @@ export default defineConfig({
             { label: 'Core Plugins', slug: 'reference/generated/core-plugins' },
             { label: 'Settings', slug: 'reference/generated/settings' },
             { label: 'Runtime Paths', slug: 'reference/generated/runtime-paths' },
+            { label: 'SDK Reference', slug: 'reference/generated/sdk' },
           ],
         },
         {

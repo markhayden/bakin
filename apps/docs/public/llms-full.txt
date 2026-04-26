@@ -28,6 +28,7 @@ Canonical docs: https://docs.makinbakin.com/
 - Core plugin catalog: /reference/generated/core-plugins/
 - Settings reference: /reference/generated/settings/
 - Runtime paths: /reference/generated/runtime-paths/
+- SDK reference: /reference/generated/sdk/
 
 ## Fetch Examples
 
