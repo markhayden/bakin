@@ -238,6 +238,43 @@ Restart still required for the plugin's modules to be released from
 the JS module cache; the registry sweep ensures no new invocations
 land while in-memory state is being torn down.
 
+**CLI surface details:**
+- The response includes `skillsMissing: string[]` listing skill names
+  the lockfile claimed but which weren't on disk (or whose marker
+  disagreed). The CLI surfaces this as a `WARNING: lockfile claimed N
+  skill(s) not present on disk: <list>` line. Silent drift becomes
+  visible.
+- Snapshot failures don't block the rest of the cleanup, but the CLI
+  exits non-zero (status 1) when `snapshot === null` so scripted
+  callers can react. The user sees a `WARNING: pre-removal snapshot
+  failed` line.
+
+### Audit log surface
+
+Lifecycle events are append-only to `~/.bakin/audit.jsonl`. Events
+worth grepping:
+
+```bash
+# Activations — what permissions did each plugin request?
+jq 'select(.event == "plugin.activate")' ~/.bakin/audit.jsonl
+
+# Security-relevant events from install/upgrade/remove —
+# rejections, snapshot failures, onUninstall errors. All carry
+# `data.kind === 'security'`.
+jq 'select(.data.kind == "security")' ~/.bakin/audit.jsonl
+```
+
+Specific `plugin.install.rejected` reasons (`data.reason` field):
+- `path_traversal` — local source outside trusted roots
+- `invalid_github_url` — URL parser refused the source string
+- `manifest_too_large` — bakin-plugin.json exceeds 1 MB
+- `core_id_collision` — install requested an id already used by a
+  core plugin (without `overrideCore: true`)
+- `consent_token_missing` — accepted=true commit had no token
+- `consent_token_invalid` — token failed signature/expiry verification
+- `consent_source_mismatch` — token bound to a different source than
+  the commit body's source
+
 ### Permissions (#142 layers 1+2)
 
 `packages/core/src/plugins/permissions.ts` — Zod enum locked to the
