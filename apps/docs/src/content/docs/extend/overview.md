@@ -3,8 +3,6 @@ title: Extend Bakin
 description: Overview of Bakin extension points for plugin authors, agent authors, and SDK consumers.
 ---
 
-# Extend Bakin
-
 Bakin is designed to be extended through documented contracts, not internal imports.
 
 Extension authors use:

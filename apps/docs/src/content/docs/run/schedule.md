@@ -3,8 +3,6 @@ title: Schedule
 description: Use Bakin schedule jobs to trigger recurring prompts or agent work.
 ---
 
-# Schedule
-
 Scheduled jobs let Bakin trigger recurring work. Jobs can be listed, created, paused, resumed, removed, run immediately, and inspected through run history.
 
 ## Common Commands

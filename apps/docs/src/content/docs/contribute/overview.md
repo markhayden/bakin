@@ -3,8 +3,6 @@ title: Contribute
 description: Contribute to Bakin, run the repo locally, update docs metadata, and prepare documentation changes.
 ---
 
-# Contribute
-
 Bakin's public docs launch alongside the open-source repository. Contributor docs cover source setup, tests, docs authoring, metadata requirements, examples, and release docs.
 
 ## Development Setup

@@ -3,8 +3,6 @@ title: Install Bakin
 description: Install the released Bakin binary with the recommended one-line installer.
 ---
 
-# Install Bakin
-
 The recommended installation path is the one-line installer for the released `bakin` binary.
 
 ```sh

@@ -3,8 +3,6 @@ title: Agent Authoring
 description: Author agent packages and agent-facing instructions for Bakin and OpenClaw workflows.
 ---
 
-# Agent Authoring
-
 Agent authoring docs explain the Bakin-specific contracts agents need: package structure, available tools, workflow handoffs, memory/context expectations, and how Bakin coordinates work through OpenClaw.
 
 These docs explain only the OpenClaw concepts required to use Bakin. Deeper OpenClaw behavior belongs in OpenClaw documentation.

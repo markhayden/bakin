@@ -3,8 +3,6 @@ title: SDK Reference
 description: Generated audit reference for @bakin/sdk subpath exports.
 ---
 
-# SDK Reference
-
 Docs version: Bakin 1.0.0
 
 This page is generated from `packages/sdk/package.json` and SDK barrel files. Full TypeDoc output will replace this audit view once public TSDoc coverage is complete.

@@ -3,8 +3,6 @@ title: Architecture
 description: Conceptual architecture and implementation map for Bakin.
 ---
 
-# Architecture
-
 Architecture docs are split into stable contracts and current implementation details.
 
 ## Stable Contract

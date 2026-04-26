@@ -3,8 +3,6 @@ title: Workflows
 description: Use Bakin workflows to coordinate multi-step work, gates, and structured agent handoffs.
 ---
 
-# Workflows
-
 Workflows coordinate multi-step work around a task. They can define steps, gates, expected outputs, notifications, and handoffs between agents or people.
 
 ## Common Commands

@@ -3,8 +3,6 @@ title: Projects
 description: Use Bakin projects to group tasks, checklists, context, and linked assets.
 ---
 
-# Projects
-
 Projects group related work and context. They are useful when a task is too small to hold the full picture or when multiple tasks contribute to a shared outcome.
 
 ## How to Use Projects

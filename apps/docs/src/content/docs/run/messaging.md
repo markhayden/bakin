@@ -3,8 +3,6 @@ title: Messaging
 description: Use Bakin messaging for content calendar items, planning sessions, approvals, and proposals.
 ---
 
-# Messaging
-
 Messaging supports content planning and approval workflows. It tracks items, planning sessions, messages, proposals, approvals, and rejections.
 
 ## Common Commands

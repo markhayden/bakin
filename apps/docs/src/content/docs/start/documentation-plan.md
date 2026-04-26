@@ -3,8 +3,6 @@ title: Documentation Plan
 description: The implementation plan and quality bar for the Bakin documentation system.
 ---
 
-# Documentation Plan
-
 The Bakin docs are built as a product artifact. Public docs live in `apps/docs`, deploy to Cloudflare Pages, and are optimized for operators, extension authors, contributors, search engines, and coding agents.
 
 ## Launch Requirements

@@ -3,8 +3,6 @@ title: Tasks
 description: Use Bakin tasks to create, assign, move, block, log, and complete agent work.
 ---
 
-# Tasks
-
 Tasks are the core work unit in Bakin. A task records what needs to happen, who owns it, what column it is in, and the activity that led to completion.
 
 ## Common Commands

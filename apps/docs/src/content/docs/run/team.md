@@ -3,8 +3,6 @@ title: Team
 description: Use Bakin team management to inspect, create, adopt, configure, start, stop, and organize agents.
 ---
 
-# Team
-
 The team plugin manages the agent roster and its relationship to OpenClaw. It surfaces agent profiles, runtime status, avatars, workspace files, skills, memory, package state, and teams.
 
 ## Operator Notes

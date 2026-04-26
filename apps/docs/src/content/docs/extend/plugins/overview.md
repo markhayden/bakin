@@ -3,8 +3,6 @@ title: Plugin Authoring
 description: Build Bakin plugins with manifests, server routes, client pages, slots, hooks, and SDK components.
 ---
 
-# Plugin Authoring
-
 Bakin plugins are source trees with a manifest, a server entry, and a client entry. Core plugins ship with Bakin. Third-party plugin docs are not published on this site, but plugin metadata validation uses the same contract model.
 
 ## Quick Start

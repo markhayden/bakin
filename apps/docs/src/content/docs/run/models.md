@@ -3,8 +3,6 @@ title: Models
 description: Use Bakin model settings to inspect available models and assign effective model choices to agents.
 ---
 
-# Models
-
 Model management controls the relationship between agents and available model choices. It helps operators see what models are known, cached, assigned, and effective.
 
 ## Operator Notes

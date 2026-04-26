@@ -3,8 +3,6 @@ title: SDK
 description: Use @bakin/sdk to build plugins with supported UI components, hooks, slots, types, and utilities.
 ---
 
-# SDK
-
 `@bakin/sdk` is the plugin-author surface. It exposes plugin registration, UI components, hooks, slots, types, and utilities that are safe for plugins to import.
 
 Public SDK exports require TSDoc and stability metadata before launch.

@@ -3,8 +3,6 @@ title: Operation
 description: Start, stop, inspect, update, and troubleshoot a running Bakin instance.
 ---
 
-# Operation
-
 Start the server:
 
 ```sh

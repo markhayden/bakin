@@ -3,8 +3,6 @@ title: Server Contracts
 description: Register plugin routes, tools, settings, workflows, hooks, search types, and health checks from activate().
 ---
 
-# Server Contracts
-
 The server entry exports a `BakinPlugin`. Bakin calls `activate(ctx)` once the plugin is loaded. Register server-side behavior there.
 
 The tested minimal server entry lives at `apps/docs/snippets/plugin-basic/index.ts`.
