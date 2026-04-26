@@ -38,6 +38,7 @@ import {
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { computeSourceTreeSha } from '@/core/plugins/upgrade'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
+import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
 
 /** Hard ceiling for any plugin source we'll accept — a manifest that big is malicious. */
 const MANIFEST_MAX_BYTES = 1 * 1024 * 1024  // 1MB
@@ -117,6 +118,15 @@ function recordInstall(args: {
       }
     }
 
+    // Record the OpenClaw skills this plugin shipped — used as the
+    // authoritative allowlist at uninstall time.
+    let installedSkills: string[] = []
+    try {
+      installedSkills = findSkillsForPlugin({ id, path: targetDir }).map(s => s.name)
+    } catch (err) {
+      log.warn('failed to scan plugin skills at install', { id, err: String(err) })
+    }
+
     // Permissions are validated up-front by the caller (POST handler) and
     // passed in pre-parsed; recordInstall just records them as-is.
     const entry: PluginLockEntry = {
@@ -129,6 +139,7 @@ function recordInstall(args: {
       permissions: args.permissions,
       manifestSha,
       sourceTreeSha,
+      installedSkills,
     }
 
     const lock = readPluginLockfile()

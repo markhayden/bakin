@@ -96,6 +96,17 @@ const PluginLockEntrySchema = z.object({
    * `sourceTreeSha` to determine whether an upgrade is available.
    */
   lastSourceTreeSha: z.string().optional(),
+  /**
+   * OpenClaw skill names (one segment, no slashes) this plugin installed
+   * via `defaults/openclaw-skills/<name>/SKILL.md` at install/upgrade
+   * time. The remove flow uses this as the authoritative allowlist when
+   * deciding which `~/.openclaw/skills/*` dirs to delete — defeats the
+   * fake-`.installedBy` scorched-earth attack (security HIGH #2).
+   *
+   * Optional; consumers should default to [] for entries written before
+   * this field existed.
+   */
+  installedSkills: z.array(z.string().regex(/^[A-Za-z0-9._-]+$/)).optional(),
 })
 
 export const PluginLockfileSchema = z.object({

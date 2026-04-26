@@ -28,6 +28,7 @@ import {
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions, type Permission } from '@bakin/core/plugins/permissions'
+import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
 
 const log = createLogger('plugin-upgrade')
@@ -358,12 +359,15 @@ async function upgradeGithub(
 
   await buildUserPlugin(pluginDir)
 
+  const installedSkills = findSkillsForPlugin({ id, path: pluginDir }).map(s => s.name)
+
   const updated = updatePlugin(readPluginLockfile(), id, {
     upgradedAt: new Date().toISOString(),
     version: newVersion,
     commitSha: remoteSha,
     manifestSha,
     permissions: newPerms,
+    installedSkills,
   })
   writePluginLockfile(updated)
 
@@ -431,12 +435,15 @@ async function upgradeLocal(
 
   await buildUserPlugin(pluginDir)
 
+  const installedSkills = findSkillsForPlugin({ id, path: pluginDir }).map(s => s.name)
+
   const updated = updatePlugin(readPluginLockfile(), id, {
     upgradedAt: new Date().toISOString(),
     version: newVersion,
     manifestSha,
     permissions: newPerms,
     sourceTreeSha: newTreeSha,
+    installedSkills,
   })
   writePluginLockfile(updated)
 

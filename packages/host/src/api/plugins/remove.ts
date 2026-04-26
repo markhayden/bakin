@@ -111,7 +111,15 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   // We snapshot the to-remove skill dirs into the tarball, then actually
   // delete them. Capturing the plan first lets the snapshot include the
   // exact paths the cleanup step will delete.
-  const assetsPlan = planPluginAssetsRemoval(pluginId)
+  //
+  // Authority: the LOCKFILE entry's installedSkills allowlist, NOT the
+  // on-disk `.installedBy` markers. This defeats the fake-marker
+  // scorched-earth attack — a malicious plugin that wrote
+  // `{pluginId: <self>}` into other plugins' .installedBy can't trick us
+  // into deleting them, because the lockfile entry only records skills
+  // this plugin actually installed.
+  const ownedSkills = readPluginLockfile().plugins[pluginId]?.installedSkills ?? []
+  const assetsPlan = planPluginAssetsRemoval(pluginId, ownedSkills)
 
   // ─── 3. Snapshot ───────────────────────────────────────────────────────────
   let snapshotPath: string | null = null
@@ -182,8 +190,14 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   // ─── 5. Filesystem deletes ─────────────────────────────────────────────────
   let skillsResult = { removed: 0, kept: 0 }
   try {
-    const r = await removePluginAssets(pluginId)
+    const r = await removePluginAssets(pluginId, ownedSkills)
     skillsResult = { removed: r.removed, kept: r.kept }
+    if (r.missingFromDisk.length > 0) {
+      log.warn('lockfile claimed ownership of skills not present on disk', {
+        pluginId,
+        missing: r.missingFromDisk,
+      })
+    }
   } catch (err) {
     log.warn('removePluginAssets failed', err, { pluginId })
   }
