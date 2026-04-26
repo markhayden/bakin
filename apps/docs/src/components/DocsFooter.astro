@@ -1,7 +1,15 @@
 ---
-import DefaultFooter from '@astrojs/starlight/components/Footer.astro'
+import Pagination from '@astrojs/starlight/components/Pagination.astro'
 import ConsentBanner from './ConsentBanner.astro'
 ---
 
-<DefaultFooter />
+<footer class="docs-footer">
+  <Pagination />
+</footer>
 <ConsentBanner />
+
+<style>
+  .docs-footer {
+    margin-top: 3rem;
+  }
+</style>
