@@ -160,6 +160,7 @@ async function callBridge(
     registerNav: mock(),
     registerSlot: mock(),
     registerSkill: mock(),
+    registerHealthCheck: mock(),
     watchFiles: mock(),
     storage: {} as any,
     events: {} as any,
