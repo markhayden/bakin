@@ -74,8 +74,13 @@ Build outputs land in `dist/index.js` (server) and `dist/client.js`
 }
 ```
 
-`id` must match `/^[a-z0-9][a-z0-9-_]{0,39}$/i`. The `permissions` field
-is logged at activation but not yet enforced at runtime (issue #142).
+`id` must match `/^[a-z][a-z0-9-]{0,39}$/` — lowercase letters and
+digits, hyphens allowed mid-id, must start with a letter, no
+underscore (avoids exec-tool name collisions like `bakin_exec_foo_bar_baz`
+that an underscore-id could create). The `permissions` field is
+validated against the Zod enum at install/upgrade, logged at
+activation, and surfaced via the install/upgrade consent prompt;
+runtime capability gating (layer 3) is tracked in issue #166.
 `dependencies` is an array of other plugin ids — if set, the plugin
 loader topo-sorts activation accordingly.
 
