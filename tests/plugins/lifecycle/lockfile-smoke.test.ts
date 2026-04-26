@@ -69,7 +69,7 @@ function sampleEntry(overrides: Partial<PluginLockEntry> = {}): PluginLockEntry 
     source: 'github:madeinwyo/sample-plugin',
     type: 'github',
     ref: 'main',
-    commitSha: 'abc1234567890',
+    commitSha: '0123456789abcdef0123456789abcdef01234567',
     installedAt: NOW,
     version: '1.0.0',
     permissions: ['storage.read'],

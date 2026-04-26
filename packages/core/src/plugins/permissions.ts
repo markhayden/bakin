@@ -47,8 +47,14 @@ export function newPermissions(prev: readonly string[], next: readonly string[])
  * Suggest a known permission within edit-distance 2 of the unknown
  * input — used to render "did you mean…" in install/upgrade errors.
  * Returns null when nothing matches closely enough.
+ *
+ * Bounded input length: any reasonable permission is ≤ 32 chars; a
+ * hostile manifest with a 1MB string here would burn O(N×M) CPU in
+ * Levenshtein. Truncate before comparing.
  */
+const MAX_SUGGEST_LEN = 64
 export function suggestPermission(unknown: string): Permission | null {
+  if (unknown.length > MAX_SUGGEST_LEN) return null
   let best: { perm: Permission; dist: number } | null = null
   for (const known of KNOWN_PERMISSIONS) {
     const dist = levenshtein(unknown, known)
@@ -71,7 +77,7 @@ export function parseManifestPermissions(input: unknown): Permission[] {
   if (!Array.isArray(input)) {
     throw new Error(`bakin-plugin.json "permissions" must be an array of strings`)
   }
-  const result: Permission[] = []
+  const seen = new Set<Permission>()
   for (const raw of input) {
     if (typeof raw !== 'string') {
       throw new Error(`bakin-plugin.json "permissions" entries must be strings; got ${typeof raw}`)
@@ -82,9 +88,11 @@ export function parseManifestPermissions(input: unknown): Permission[] {
       const hint = suggestion ? ` Did you mean "${suggestion}"?` : ''
       throw new Error(`Unknown permission "${raw}" in bakin-plugin.json.${hint}`)
     }
-    result.push(parsed.data)
+    seen.add(parsed.data)
   }
-  return result
+  // Dedup at parse time — duplicate entries are equivalent and they bloat
+  // the audit log + lockfile noise.
+  return [...seen]
 }
 
 // ─── Levenshtein (small, no external dep) ────────────────────────────────────

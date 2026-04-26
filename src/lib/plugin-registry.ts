@@ -58,6 +58,16 @@ import { parseManifestPermissions } from '../../packages/core/src/plugins/permis
 let corePluginTable: Readonly<Record<string, BakinPlugin>> = {}
 export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>): void {
   corePluginTable = table
+  // Seed corePluginIds synchronously from the static table so the predicate
+  // is correct from the moment any code can call into the registry — not
+  // just after each plugin's loadPlugin activation completes. Without this,
+  // any pre-activation lockfile write (migrations, startup hooks) would
+  // bypass the defense-in-depth guard. The activation-time add in
+  // loadPlugin still runs as a backstop for dynamic-import test paths
+  // where the table stays empty.
+  for (const plugin of Object.values(table)) {
+    if (plugin?.id) corePluginIds.add(plugin.id)
+  }
 }
 
 const log = createLogger('plugin-registry')
