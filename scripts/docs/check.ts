@@ -62,8 +62,17 @@ const requiredPublicFiles = [
   'public/llms/settings.md',
 ]
 
+const requiredSnippetFiles = [
+  'snippets/plugin-basic/index.ts',
+  'snippets/plugin-basic/client.tsx',
+]
+
 for (const file of requiredPublicFiles) {
   if (!existsSync(join(docsRoot, file))) errors.push(`apps/docs/${file}: required docs asset missing`)
+}
+
+for (const file of requiredSnippetFiles) {
+  if (!existsSync(join(docsRoot, file))) errors.push(`apps/docs/${file}: required docs snippet missing`)
 }
 
 if (errors.length > 0) {
