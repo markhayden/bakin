@@ -25,3 +25,9 @@ Public SDK exports require TSDoc and stability metadata before launch.
 ## Component Guidance
 
 Prefer SDK components for plugin UI. Custom UI is allowed for domain-specific needs, but it should preserve Bakin's accessibility, spacing, and interaction patterns.
+
+## Related Authoring Guides
+
+- [Plugin Manifest](/extend/plugins/manifest/)
+- [Server Contracts](/extend/plugins/server-contracts/)
+- [Client UI](/extend/plugins/client-ui/)

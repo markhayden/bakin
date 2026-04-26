@@ -61,7 +61,12 @@ export default defineConfig({
           items: [
             { label: 'Overview', slug: 'extend/overview' },
             { label: 'Plugin Authoring', slug: 'extend/plugins/overview' },
+            { label: 'Plugin Manifest', slug: 'extend/plugins/manifest' },
+            { label: 'Server Contracts', slug: 'extend/plugins/server-contracts' },
+            { label: 'Client UI', slug: 'extend/plugins/client-ui' },
             { label: 'Agent Authoring', slug: 'extend/agents/overview' },
+            { label: 'Agent Packages', slug: 'extend/agents/packages' },
+            { label: 'Agent Knowledge', slug: 'extend/agents/knowledge' },
             { label: 'SDK', slug: 'extend/sdk/overview' },
           ],
         },
