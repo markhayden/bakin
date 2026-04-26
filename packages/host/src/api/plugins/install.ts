@@ -80,22 +80,27 @@ function resolveGitProvenance(targetDir: string, type: 'github' | 'local'): { re
 }
 
 /**
- * Write a `PluginLockEntry` for a freshly installed plugin. Failures are
- * logged but do not block install at C1 — C7 (uninstall teardown) will
- * require lockfile consistency for remove and tighten the contract.
+ * Write a `PluginLockEntry` for a freshly installed plugin.
+ *
+ * `manifestSha` is computed by the caller BEFORE the staging→target copy
+ * (so the same hash drives both the consent token and this lockfile
+ * entry). Previously this function re-read the manifest from
+ * `manifestPath` AFTER the staging dir had been deleted — the resulting
+ * ENOENT was swallowed by the catch and every install silently returned
+ * `ok: true` with no lockfile entry written. That broke consent tokens,
+ * `installedSkills`, --check, upgrade, and remove for fresh installs.
  */
 function recordInstall(args: {
   id: string
   targetDir: string
-  manifestPath: string
+  manifestSha: string
   manifest: Record<string, unknown>
   source: string
   type: 'github' | 'local'
   permissions: PluginLockEntry['permissions']
 }): void {
-  const { id, targetDir, manifestPath, manifest, source, type } = args
+  const { id, targetDir, manifestSha, manifest, source, type } = args
   try {
-    const manifestSha = createHash('sha256').update(readFileSync(manifestPath)).digest('hex')
     const { ref, commitSha } = resolveGitProvenance(targetDir, type)
 
     let version: string
@@ -451,7 +456,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       recordInstall({
         id,
         targetDir,
-        manifestPath,
+        manifestSha: stagedManifestSha,
         manifest,
         source: recordedSource,
         type: body.type,

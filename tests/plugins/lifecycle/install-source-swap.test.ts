@@ -170,4 +170,28 @@ describe('install consentToken binding', () => {
     expect(commitBody.ok).toBe(true)
     expect(commitBody.id).toBe('tok-test')
   })
+
+  it('successful install actually persists a lockfile entry (regression — C19)', async () => {
+    // The original recordInstall read manifestPath from a now-deleted staging
+    // dir, swallowed ENOENT, and returned ok:true with NO lockfile entry.
+    // This pinned that bug — verify the entry IS persisted.
+    writeFixture(sourceA, { id: 'persist-test', version: '1.2.3', permissions: [] })
+
+    const res = await installPOST(
+      makeRequest({ source: sourceA, type: 'local', accepted: true }),
+      new URL('http://localhost/api/plugins/install'),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+
+    // The lockfile entry MUST exist now — without it, upgrade / remove /
+    // --check all 404 and the consent token is meaningless.
+    const { readPluginLockfile } = await import('../../../packages/core/src/plugins/lockfile')
+    const entry = readPluginLockfile().plugins['persist-test']
+    expect(entry).toBeDefined()
+    expect(entry?.version).toBe('1.2.3')
+    expect(entry?.type).toBe('local')
+    expect(entry?.manifestSha).toMatch(/^[a-f0-9]{64}$/)
+  })
 })
