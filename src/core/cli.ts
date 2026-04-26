@@ -201,58 +201,70 @@ async function cmdPluginsList(opts: { check: boolean }): Promise<number> {
   }
 }
 
+interface InstallApiResponse {
+  ok?: boolean
+  error?: string
+  awaitingConsent?: boolean
+  manifestChanged?: boolean
+  id?: string
+  version?: string
+  permissions?: import('@bakin/core/plugins/permissions').Permission[]
+  consentToken?: string
+  message?: string
+}
+
 async function cmdPluginsInstall(source: string, opts: { yes: boolean }): Promise<number> {
   const isGithub = source.startsWith('github:') || (source.includes('/') && !source.startsWith('.') && !source.startsWith('/'))
   const type: 'github' | 'local' = isGithub ? 'github' : 'local'
   try {
-    // First call — preflight. Server stages, validates manifest +
-    // permissions, returns awaitingConsent if the manifest declares any
-    // permissions (and we didn't pre-accept via --yes).
-    const preflight = await api<{
-      ok?: boolean
-      error?: string
-      awaitingConsent?: boolean
-      id?: string
-      version?: string
-      permissions?: import('@bakin/core/plugins/permissions').Permission[]
-      message?: string
-    }>('/api/plugins/install', {
+    // First call — preflight. With --yes the caller skips the consent
+    // round-trip entirely, but we still go through preflight first so the
+    // server can return a consentToken if it turns out the manifest needed
+    // one (--yes implies "accept whatever permissions show up").
+    let response = await api<InstallApiResponse>('/api/plugins/install', {
       method: 'POST',
-      body: JSON.stringify({ source, type, accepted: opts.yes }),
+      body: JSON.stringify({ source, type, accepted: false }),
     })
 
-    if (preflight.error) {
-      console.error(`Install failed: ${preflight.error}`)
+    if (response.error) {
+      console.error(`Install failed: ${response.error}`)
       return 1
     }
 
-    if (preflight.awaitingConsent) {
+    // Loop the prompt — if the server bounces back with manifestChanged,
+    // re-prompt with the new diff. Cap to a few iterations as a sanity
+    // bound against a pathological remote that flaps the manifest.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (!response.awaitingConsent) break
       const { promptInstallConsent } = await import(/* @vite-ignore */ './plugins/consent-prompt' as string) as typeof import('./plugins/consent-prompt')
+      if (response.manifestChanged) {
+        console.error(`\nManifest changed between preflight and commit — re-confirming permissions.`)
+      }
       const accepted = await promptInstallConsent({
-        pluginId: preflight.id ?? '?',
-        version: preflight.version ?? '0.0.0',
-        permissions: preflight.permissions ?? [],
+        pluginId: response.id ?? '?',
+        version: response.version ?? '0.0.0',
+        permissions: response.permissions ?? [],
         yes: opts.yes,
       })
       if (!accepted) {
         console.error(`\nInstall cancelled.`)
         return 1
       }
-      // Second call — accepted. Server clones again and proceeds.
-      const result = await api<{ ok?: boolean; error?: string; id?: string; message?: string }>('/api/plugins/install', {
+      response = await api<InstallApiResponse>('/api/plugins/install', {
         method: 'POST',
-        body: JSON.stringify({ source, type, accepted: true }),
+        body: JSON.stringify({ source, type, accepted: true, consentToken: response.consentToken }),
       })
-      if (result.error) {
-        console.error(`Install failed: ${result.error}`)
+      if (response.error) {
+        console.error(`Install failed: ${response.error}`)
         return 1
       }
-      console.log(result.message ?? `Installed "${result.id}". Restart Bakin to load the plugin.`)
-      return 0
+    }
+    if (response.awaitingConsent) {
+      console.error(`Install failed: manifest kept changing between preflight and commit; aborting.`)
+      return 1
     }
 
-    // No consent needed (zero-permission plugin or --yes flag).
-    console.log(preflight.message ?? `Installed "${preflight.id}". Restart Bakin to load the plugin.`)
+    console.log(response.message ?? `Installed "${response.id}". Restart Bakin to load the plugin.`)
     return 0
   } catch (err) {
     console.error(`Install failed: ${err instanceof Error ? err.message : String(err)}`)
