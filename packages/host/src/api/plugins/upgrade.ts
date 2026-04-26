@@ -36,7 +36,9 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   if (!pluginId || typeof pluginId !== 'string') {
     return Response.json({ ok: false, error: 'Missing pluginId' }, { status: 400 })
   }
-  if (!/^[a-z0-9][a-z0-9-_]{0,39}$/i.test(pluginId)) {
+  // Match install.ts:311 — lowercase letters, digits, hyphen only; must
+  // start with a letter. C12 tightened install but missed this endpoint.
+  if (!/^[a-z][a-z0-9-]{0,39}$/.test(pluginId)) {
     return Response.json({ ok: false, error: `Invalid pluginId "${pluginId}"` }, { status: 400 })
   }
 
