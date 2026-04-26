@@ -6,4 +6,4 @@ Audience: coding agents and technical authors.
 
 Canonical docs: https://docs.makinbakin.com/
 
-The SDK reference is generated from `@bakin/sdk/*` exports with TypeDoc and custom usage pages. Every public SDK export requires TSDoc and stability metadata before launch.
+The SDK reference is currently generated from packages/sdk/package.json and SDK barrel files. Current SDK subpath count: 8. Full TypeDoc output and TSDoc coverage checks are still required before public launch.

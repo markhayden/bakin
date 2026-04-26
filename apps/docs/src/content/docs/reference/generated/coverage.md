@@ -25,3 +25,4 @@ The current scaffold establishes the public coverage contract. The next implemen
 | Core plugins | Manifest catalog from shipped plugins | Active: 10 plugins |
 | Settings | Generated from default settings | Active: 52 settings |
 | Runtime paths | Generated from path contract | Active |
+| SDK exports | TypeDoc, TSDoc, stability | Audited: 8 subpaths |
