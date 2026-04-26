@@ -16,6 +16,8 @@
 import { createLogger } from '@/core/logger'
 import { upgradePlugin, UpgradeRefusedError } from '@/core/plugins/upgrade'
 import { isCorePlugin } from '@/lib/plugin-registry'
+import { appendAudit } from '@/core/audit'
+import { getContentDir } from '@/core/content-dir'
 
 const log = createLogger('plugin-upgrade')
 
@@ -43,6 +45,18 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   }
 
   if (isCorePlugin(pluginId)) {
+    // Audit at the API layer too — the inner upgradePlugin guard also
+    // audits, but the API-layer check returns 400 before reaching it,
+    // so the forensic trail would otherwise be missing for this path.
+    try {
+      appendAudit(getContentDir(), 'plugin.upgrade.rejected', 'system', {
+        kind: 'security',
+        reason: 'core_plugin',
+        pluginId,
+      }, 'system')
+    } catch {
+      // best-effort
+    }
     return Response.json({
       ok: false,
       core: true,

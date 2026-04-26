@@ -31,6 +31,12 @@ import {
 import { join, dirname } from 'path'
 import { createLogger } from '../logger'
 import { getOpenClawPath } from '../../../packages/core/src/openclaw-home'
+import {
+  type PluginLockfile,
+  readPluginLockfile,
+  updatePlugin,
+  writePluginLockfile,
+} from '../../../packages/core/src/plugins/lockfile'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
 const log = createLogger('onboarding:plugin-assets')
@@ -335,17 +341,19 @@ export const pluginAssetsComponent: OnboardingComponent = {
  * Only touches lockfile entries that ALREADY exist (i.e., user plugins
  * that were installed via `bakin plugins install`). Core plugins have no
  * lockfile entry; they're skipped.
+ *
+ * Static-import (not lazy `require`) so test mocks targeting the
+ * lockfile module actually intercept these calls. The previous lazy
+ * require silently bypassed `mock.module` and the function ran against
+ * the real production code path during tests — which then tripped the
+ * content-dir safety guard and silently aborted via the swallow-all
+ * catch below. The "circular import" the lazy form claimed to dodge
+ * doesn't actually exist (lockfile only depends on content-dir).
  */
-function syncLockfileInstalledSkills(plugins: PluginEntry[]): void {
-  // Lazy require to dodge a circular import — the onboarding module is
-  // pulled in by code that's also reachable from the lockfile/registry
-  // import graph.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const lf = require('../../../packages/core/src/plugins/lockfile') as
-    typeof import('../../../packages/core/src/plugins/lockfile')
-  let lock: import('../../../packages/core/src/plugins/lockfile').PluginLockfile
+export function syncLockfileInstalledSkills(plugins: PluginEntry[]): void {
+  let lock: PluginLockfile
   try {
-    lock = lf.readPluginLockfile()
+    lock = readPluginLockfile()
   } catch (err) {
     log.warn('syncLockfileInstalledSkills: lockfile read failed', { err: String(err) })
     return
@@ -357,7 +365,7 @@ function syncLockfileInstalledSkills(plugins: PluginEntry[]): void {
     const current = (lock.plugins[plugin.id].installedSkills ?? []).slice().sort()
     if (skillNames.length === current.length && skillNames.every((n, i) => n === current[i])) continue
     try {
-      lock = lf.updatePlugin(lock, plugin.id, { installedSkills: skillNames })
+      lock = updatePlugin(lock, plugin.id, { installedSkills: skillNames })
       mutated = true
     } catch (err) {
       log.warn('syncLockfileInstalledSkills: updatePlugin failed', { id: plugin.id, err: String(err) })
@@ -365,7 +373,7 @@ function syncLockfileInstalledSkills(plugins: PluginEntry[]): void {
   }
   if (mutated) {
     try {
-      lf.writePluginLockfile(lock)
+      writePluginLockfile(lock)
     } catch (err) {
       log.warn('syncLockfileInstalledSkills: write failed', { err: String(err) })
     }
