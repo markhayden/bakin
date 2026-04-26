@@ -6,14 +6,17 @@ Bakin is a self-hosted dashboard, backend, CLI, and extension system for running
 
 Primary docs:
 
-- Start: https://docs.makinbakin.com/start/overview/
-  Use this to understand what Bakin is and where to begin.
-
-- Install Bakin: https://docs.makinbakin.com/run/install/
+- Install Bakin: https://docs.makinbakin.com/start/install/
   Use this for the released one-line install path and platform notes.
 
-- Run Bakin: https://docs.makinbakin.com/run/operation/
+- First-time setup: https://docs.makinbakin.com/start/first-time-setup/
+  Use this to create the Bakin home directory and validate local dependencies.
+
+- Operation: https://docs.makinbakin.com/start/operation/
   Use this for lifecycle commands, health checks, updates, and runtime operation.
+
+- Core workflows: https://docs.makinbakin.com/core/tasks/
+  Use this for built-in Bakin areas such as tasks, workflows, projects, assets, schedule, messaging, memory, models, team, and health.
 
 - Plugin authoring: https://docs.makinbakin.com/extend/plugins/overview/
   Use this when building Bakin plugins with @bakin/sdk.
