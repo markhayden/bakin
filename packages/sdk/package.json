@@ -12,7 +12,8 @@
     "./components": "./src/components/index.ts",
     "./slots": "./src/slots/index.tsx",
     "./types": "./src/types/index.ts",
-    "./utils": "./src/utils/index.ts"
+    "./utils": "./src/utils/index.ts",
+    "./metadata": "./src/metadata/index.ts"
   },
   "files": [
     "src",

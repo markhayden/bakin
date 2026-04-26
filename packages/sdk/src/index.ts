@@ -13,6 +13,7 @@
  *   - `@bakin/sdk/components` — shared components (PluginHeader, FacetFilter, ...)
  *   - `@bakin/sdk/slots`      — Slot + registerSlot primitive
  *   - `@bakin/sdk/types`      — full type re-exports
+ *   - `@bakin/sdk/metadata`   — docs-aware contract helpers
  *
  * Plugin authors: at build time, mark `@bakin/sdk`, `@bakin/sdk/*`, and
  * `react`/`react-dom` as externals. At runtime the browser's import map

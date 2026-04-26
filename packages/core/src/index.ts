@@ -63,3 +63,6 @@ export * as vault from './vault'
 // Utilities
 export { formatAge, isStale } from './format'
 export { generateTaskId } from './ids'
+
+// Documentation metadata contracts
+export * from './docs'
