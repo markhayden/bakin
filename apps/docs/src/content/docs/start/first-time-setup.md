@@ -1,5 +1,5 @@
 ---
-title: First-Time Setup
+title: Initial Setup
 description: Run onboarding, create the Bakin home directory, and verify local dependencies.
 ---
 

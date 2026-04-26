@@ -21,7 +21,7 @@ Bakin is a local-first dashboard, backend, CLI, and extension system for running
 
 <CardGrid>
   <Card title="Start" icon="setting">
-    Install the released `bakin` binary, run first-time setup, start the server, and operate the local instance.
+    Install the released `bakin` binary, complete initial setup, start the server, and operate the local instance.
   </Card>
   <Card title="Core" icon="document">
     Use tasks, workflows, projects, assets, schedule, messaging, memory, models, team, and health.
