@@ -81,7 +81,7 @@ pre {
 }
 
 .site-title img {
-  height: 1.4rem;
+  height: 1.55rem;
   width: auto;
   filter: brightness(0) saturate(100%) invert(69%) sepia(36%) saturate(1831%) hue-rotate(292deg) brightness(102%) contrast(101%);
 }
@@ -89,7 +89,7 @@ pre {
 .site-title__brand,
 .site-title__suffix {
   font-family: var(--font-bakin-italic);
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-style: italic;
   font-weight: 700;
   letter-spacing: 0;
