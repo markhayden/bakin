@@ -3,8 +3,6 @@ title: First-Time Setup
 description: Run onboarding, create the Bakin home directory, and verify local dependencies.
 ---
 
-# First-Time Setup
-
 After installation, run onboarding:
 
 ```sh

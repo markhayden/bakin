@@ -3,8 +3,6 @@ title: Plugin Manifest
 description: Define the public plugin metadata Bakin uses to install, load, validate, and document a plugin.
 ---
 
-# Plugin Manifest
-
 Every plugin starts with `bakin-plugin.json`. Bakin reads this file before loading plugin code, so keep it boring, explicit, and stable.
 
 The tested manifest fixture for these docs lives at `apps/docs/snippets/plugin-basic/bakin-plugin.json`.

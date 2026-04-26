@@ -3,8 +3,6 @@ title: Settings Reference
 description: Generated reference for Bakin settings keys and default values.
 ---
 
-# Settings Reference
-
 Docs version: Bakin 1.0.0
 
 This page is generated from `packages/core/src/settings.ts`.

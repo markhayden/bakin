@@ -39,7 +39,10 @@ const publicSlotNames = [
 
 function writeStableFile(path: string, contents: string): void {
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, contents.trimEnd() + '\n', 'utf8')
+  const stableContents = path.includes('/apps/docs/src/content/docs/')
+    ? contents.replace(/^(---\n[\s\S]*?\n---\n\n)# [^\n]+\n\n/, '$1')
+    : contents
+  writeFileSync(path, stableContents.trimEnd() + '\n', 'utf8')
 }
 
 function walkFiles(dir: string, files: string[] = []): string[] {

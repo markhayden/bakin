@@ -3,8 +3,6 @@ title: Assets
 description: Use Bakin assets to store files, sidecar metadata, inbox items, trash, and task/project attachments.
 ---
 
-# Assets
-
 Assets keep files and metadata available to operators, plugins, and agents. The assets plugin manages stored files, sidecars, previews, task links, project links, and trash recovery.
 
 ## Asset Areas

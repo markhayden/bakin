@@ -3,8 +3,6 @@ title: CLI Reference
 description: Generated reference for public Bakin CLI commands.
 ---
 
-# CLI Reference
-
 Docs version: Bakin 1.0.0
 
 This page is generated from `src/core/cli/registry.ts`.

@@ -3,8 +3,6 @@ title: API Reference
 description: Generated reference for documented Bakin HTTP API routes.
 ---
 
-# API Reference
-
 Docs version: Bakin 1.0.0
 
 This page is generated from `src/core/api-docs.ts` and runtime route registration metadata.

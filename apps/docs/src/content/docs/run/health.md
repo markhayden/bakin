@@ -3,8 +3,6 @@ title: Health
 description: Use Bakin health checks and doctor diagnostics to inspect system readiness and recoverable problems.
 ---
 
-# Health
-
 Health checks show whether Bakin, OpenClaw, plugins, dependencies, search, and runtime services are operating as expected.
 
 ## Common Commands

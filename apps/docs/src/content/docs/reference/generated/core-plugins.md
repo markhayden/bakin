@@ -3,8 +3,6 @@ title: Core Plugin Catalog
 description: Generated catalog of core plugins shipped with Bakin.
 ---
 
-# Core Plugin Catalog
-
 Docs version: Bakin 1.0.0
 
 This page is generated from `plugins/*/bakin-plugin.json` manifests.

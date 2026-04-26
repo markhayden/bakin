@@ -3,8 +3,6 @@ title: Reference
 description: Generated references for Bakin CLI commands, APIs, SDK exports, hooks, slots, settings, plugins, and tools.
 ---
 
-# Reference
-
 Reference pages are generated from structured metadata whenever possible. Generated pages are committed when they are human-readable public docs.
 
 The launch reference set covers:

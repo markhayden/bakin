@@ -3,8 +3,6 @@ title: Runtime Paths
 description: Reference for Bakin runtime files under the resolved Bakin home directory.
 ---
 
-# Runtime Paths
-
 Docs version: Bakin 1.0.0
 
 This page documents the well-known paths returned by `getBakinPaths()` in `packages/core/src/content-dir.ts`.

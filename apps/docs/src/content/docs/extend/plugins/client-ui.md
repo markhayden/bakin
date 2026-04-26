@@ -3,8 +3,6 @@ title: Client UI
 description: Register plugin navigation, pages, slots, and shell-integrated UI through @bakin/sdk.
 ---
 
-# Client UI
-
 Client entries use `registerPlugin()` from `@bakin/sdk`. Keep UI contributions small, predictable, and built from SDK components whenever possible.
 
 The tested minimal client entry lives at `apps/docs/snippets/plugin-basic/client.tsx`.

@@ -3,8 +3,6 @@ title: Agent Knowledge
 description: Write agent-facing knowledge that Bakin can install, toggle, and keep separate from human docs.
 ---
 
-# Agent Knowledge
-
 Agent knowledge is operational context installed with an agent package. It is different from public docs: public docs teach people and coding agents how Bakin works; package knowledge teaches a specific runtime agent how to behave in a domain.
 
 ## What Belongs Here
