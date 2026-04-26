@@ -50,7 +50,7 @@ Assets + search:
 
 Plugins:
   plugins list [--check]     List installed plugins (--check probes remote/source for upgrades)
-  plugins install <src>      Install a plugin (local path or github:user/repo)
+  plugins install <src> [--yes]  Install a plugin (local path or github:user/repo); --yes skips consent prompt
   plugins upgrade <id> [--yes]  Re-pull a user plugin from its source and rebuild
   plugins remove <id>        Remove a plugin
   plugins scaffold <name>    Create a starter plugin in ./<name>/
@@ -201,15 +201,58 @@ async function cmdPluginsList(opts: { check: boolean }): Promise<number> {
   }
 }
 
-async function cmdPluginsInstall(source: string): Promise<number> {
+async function cmdPluginsInstall(source: string, opts: { yes: boolean }): Promise<number> {
   const isGithub = source.startsWith('github:') || (source.includes('/') && !source.startsWith('.') && !source.startsWith('/'))
-  const body = { source, type: isGithub ? 'github' : 'local' }
+  const type: 'github' | 'local' = isGithub ? 'github' : 'local'
   try {
-    const res = await api<Record<string, unknown>>('/api/plugins/install', {
+    // First call — preflight. Server stages, validates manifest +
+    // permissions, returns awaitingConsent if the manifest declares any
+    // permissions (and we didn't pre-accept via --yes).
+    const preflight = await api<{
+      ok?: boolean
+      error?: string
+      awaitingConsent?: boolean
+      id?: string
+      version?: string
+      permissions?: import('@bakin/core/plugins/permissions').Permission[]
+      message?: string
+    }>('/api/plugins/install', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ source, type, accepted: opts.yes }),
     })
-    console.log(JSON.stringify(res, null, 2))
+
+    if (preflight.error) {
+      console.error(`Install failed: ${preflight.error}`)
+      return 1
+    }
+
+    if (preflight.awaitingConsent) {
+      const { promptInstallConsent } = await import(/* @vite-ignore */ './plugins/consent-prompt' as string) as typeof import('./plugins/consent-prompt')
+      const accepted = await promptInstallConsent({
+        pluginId: preflight.id ?? '?',
+        version: preflight.version ?? '0.0.0',
+        permissions: preflight.permissions ?? [],
+        yes: opts.yes,
+      })
+      if (!accepted) {
+        console.error(`\nInstall cancelled.`)
+        return 1
+      }
+      // Second call — accepted. Server clones again and proceeds.
+      const result = await api<{ ok?: boolean; error?: string; id?: string; message?: string }>('/api/plugins/install', {
+        method: 'POST',
+        body: JSON.stringify({ source, type, accepted: true }),
+      })
+      if (result.error) {
+        console.error(`Install failed: ${result.error}`)
+        return 1
+      }
+      console.log(result.message ?? `Installed "${result.id}". Restart Bakin to load the plugin.`)
+      return 0
+    }
+
+    // No consent needed (zero-permission plugin or --yes flag).
+    console.log(preflight.message ?? `Installed "${preflight.id}". Restart Bakin to load the plugin.`)
     return 0
   } catch (err) {
     console.error(`Install failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -247,13 +290,20 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean }): Prom
       return 0
     }
     if (res.awaitingConsent) {
-      // C9 wires the actual interactive prompt. Until then, surface the
-      // diff and ask the user to re-run with --yes.
-      const newPerms = res.newPermissions ?? []
-      console.error(`Upgrade requires consent — new permissions requested:`)
-      for (const p of newPerms) console.error(`  + ${p}`)
-      console.error(`Re-run with --yes to confirm: bakin plugins upgrade ${pluginId} --yes`)
-      return 1
+      const { promptUpgradeConsent } = await import(/* @vite-ignore */ './plugins/consent-prompt' as string) as typeof import('./plugins/consent-prompt')
+      const accepted = await promptUpgradeConsent({
+        pluginId,
+        fromVersion: res.before?.version ?? '?',
+        toVersion: res.after?.version ?? '?',
+        newPermissions: (res.newPermissions ?? []) as import('@bakin/core/plugins/permissions').Permission[],
+        yes: opts.yes,
+      })
+      if (!accepted) {
+        console.error(`\nUpgrade cancelled.`)
+        return 1
+      }
+      // Re-run with yes:true so the server completes the upgrade.
+      return cmdPluginsUpgrade(pluginId, { yes: true })
     }
     const fromV = res.before?.version ?? '?'
     const toV = res.after?.version ?? '?'
@@ -416,10 +466,11 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
         }
         if (sub === 'install') {
           if (!args[2]) {
-            console.error('Usage: bakin plugins install <path|github:user/repo>')
+            console.error('Usage: bakin plugins install <path|github:user/repo> [--yes]')
             return { startServer: false, exitCode: 1 }
           }
-          return { startServer: false, exitCode: await cmdPluginsInstall(args[2]) }
+          const yes = args.slice(3).includes('--yes')
+          return { startServer: false, exitCode: await cmdPluginsInstall(args[2], { yes }) }
         }
         if (sub === 'upgrade') {
           if (!args[2]) {
