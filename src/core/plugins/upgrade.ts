@@ -56,7 +56,12 @@ export interface UpgradeResult {
 }
 
 /** Tag for refusal errors so the API layer can map them to HTTP 400. */
-export class UpgradeRefusedError extends Error {}
+export class UpgradeRefusedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'UpgradeRefusedError'
+  }
+}
 
 /**
  * Run an external command and return stdout. Wraps execFileSync so the

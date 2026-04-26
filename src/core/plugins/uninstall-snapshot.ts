@@ -19,7 +19,7 @@
  * and macOS ship `tar`; no new npm dep. Resolution captured in
  * .claude/specs/plugin-lifecycle-plan.md C7 OPEN QUESTION.
  */
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from 'fs'
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync } from 'fs'
 import { join, basename } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
@@ -57,15 +57,26 @@ export interface SnapshotResult {
  */
 export async function snapshotUninstall(input: SnapshotInput): Promise<SnapshotResult> {
   const uninstalledDir = join(getContentDir(), '.uninstalled')
-  mkdirSync(uninstalledDir, { recursive: true })
+  mkdirSync(uninstalledDir, { recursive: true, mode: 0o700 })
+  // chmod after-the-fact in case the dir already existed at a looser mode.
+  try {
+    chmodSync(uninstalledDir, 0o700)
+  } catch {
+    // best-effort
+  }
+
+  // Sweep stale .tmp-* leftovers from previous failed snapshots so they
+  // don't accumulate forever in this sensitive dir.
+  cleanupStaleSnapshots(uninstalledDir)
 
   const isoSafe = new Date().toISOString().replace(/[:.]/g, '-')
   const finalPath = join(uninstalledDir, `${input.pluginId}-${isoSafe}.tar.gz`)
   const tmpPath = `${finalPath}.tmp-${process.pid}-${Date.now()}`
-  const stagingDir = `${tmpPath}.staging`
+  // mkdtempSync gives us a randomized + atomically-created dir, defeating
+  // any TOCTOU symlink race on a predictable name.
+  const stagingDir = mkdtempSync(`${finalPath}.tmp-${process.pid}-`)
 
   const captured: string[] = []
-  mkdirSync(stagingDir, { recursive: true })
   try {
     if (existsSync(input.pluginDir)) {
       const dest = join(stagingDir, 'plugins', basename(input.pluginDir))
@@ -110,6 +121,13 @@ export async function snapshotUninstall(input: SnapshotInput): Promise<SnapshotR
     // Leave tmp for debugging — but try to surface a useful error.
     throw new Error(`snapshotUninstall: rename failed for ${tmpPath} → ${finalPath}: ${err instanceof Error ? err.message : String(err)}`)
   }
+  // Tarball may contain plugin-settings JSON with secrets — restrict to
+  // the owner only. Best-effort: never throw on chmod failure.
+  try {
+    chmodSync(finalPath, 0o600)
+  } catch {
+    // best-effort
+  }
 
   log.info('plugin uninstall snapshot written', {
     pluginId: input.pluginId,
@@ -117,6 +135,37 @@ export async function snapshotUninstall(input: SnapshotInput): Promise<SnapshotR
     captured: captured.length,
   })
   return { tarballPath: finalPath, capturedPaths: captured }
+}
+
+/**
+ * Sweep stale `<id>-<ts>.tar.gz.tmp-*` leftovers that previous failed
+ * runs left behind. Anything older than 24h goes; recent files are
+ * preserved so a concurrent in-flight snapshot isn't disturbed.
+ */
+function cleanupStaleSnapshots(uninstalledDir: string): void {
+  if (!existsSync(uninstalledDir)) return
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000
+  let cleaned = 0
+  try {
+    for (const name of readdirSync(uninstalledDir)) {
+      if (!name.includes('.tar.gz.tmp-')) continue
+      const path = join(uninstalledDir, name)
+      try {
+        const st = statSync(path)
+        if (st.mtimeMs < cutoff) {
+          rmSync(path, { recursive: true, force: true })
+          cleaned++
+        }
+      } catch {
+        // best-effort per-entry
+      }
+    }
+  } catch {
+    // best-effort
+  }
+  if (cleaned > 0) {
+    log.info('cleaned stale uninstall snapshots', { count: cleaned })
+  }
 }
 
 async function spawnTar(args: string[]): Promise<void> {
@@ -133,14 +182,3 @@ async function spawnTar(args: string[]): Promise<void> {
   }
 }
 
-/**
- * Best-effort cleanup of a stale tmp file from a previous failed snapshot.
- * Used by tests and by the remove flow to wipe leftovers between attempts.
- */
-export function cleanupStaleSnapshotTmp(path: string): void {
-  try {
-    if (existsSync(path)) rmSync(path, { force: true })
-  } catch {
-    // best-effort
-  }
-}

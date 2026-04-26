@@ -102,6 +102,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   } catch (err) {
     log.error('plugin onUninstall failed', err as Error, { pluginId })
     appendAudit(getContentDir(), 'plugin.uninstall.error', 'system', {
+      kind: 'security',
       pluginId,
       error: err instanceof Error ? err.message : String(err),
     }, 'system')
@@ -134,6 +135,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   } catch (err) {
     log.error('plugin uninstall snapshot failed', err as Error, { pluginId })
     appendAudit(getContentDir(), 'plugin.uninstall.snapshot_error', 'system', {
+      kind: 'security',
       pluginId,
       error: err instanceof Error ? err.message : String(err),
     }, 'system')
