@@ -25,6 +25,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'fs'
 import { join, dirname } from 'path'
@@ -310,4 +311,68 @@ export const pluginAssetsComponent: OnboardingComponent = {
   name: 'plugin-assets',
   check,
   install,
+}
+
+// ─── Removal (#119) ──────────────────────────────────────────────────────────
+
+export interface PluginAssetsRemovalPlan {
+  /** Absolute paths of skill dirs that will be removed. */
+  toRemove: string[]
+  /** Absolute paths of skill dirs left in place because of `.userEdited`. */
+  toKeep: string[]
+}
+
+/**
+ * Walk `~/.openclaw/skills/` and partition every skill dir whose
+ * `.installedBy.pluginId` matches into "remove" vs "keep" (the latter
+ * being skills locked by a `.userEdited` sentinel).
+ *
+ * Returns a plan WITHOUT touching the filesystem so the caller can
+ * snapshot the to-remove dirs into the .uninstalled tarball before
+ * deleting them.
+ */
+export function planPluginAssetsRemoval(pluginId: string): PluginAssetsRemovalPlan {
+  const skillsRoot = getOpenClawPath('skills')
+  const plan: PluginAssetsRemovalPlan = { toRemove: [], toKeep: [] }
+  if (!existsSync(skillsRoot)) return plan
+  for (const entry of readdirSync(skillsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const skillDir = join(skillsRoot, entry.name)
+    const marker = readMarker(skillDir)
+    if (!marker || marker.pluginId !== pluginId) continue
+    if (existsSync(join(skillDir, '.userEdited'))) {
+      plan.toKeep.push(skillDir)
+    } else {
+      plan.toRemove.push(skillDir)
+    }
+  }
+  return plan
+}
+
+/**
+ * Tear down OpenClaw skills owned by `pluginId`. Skips any skill with a
+ * `.userEdited` sentinel and reports both counts. Used by
+ * `bakin plugins remove` (#119).
+ *
+ * Returns counts (and the filesystem paths) so the remove orchestration
+ * can render the spec'd "Cleaned N skills, kept M user-edited" output
+ * without re-walking the filesystem.
+ */
+export async function removePluginAssets(pluginId: string): Promise<{
+  removed: number
+  kept: number
+  removedDirs: string[]
+  keptDirs: string[]
+}> {
+  const plan = planPluginAssetsRemoval(pluginId)
+  for (const dir of plan.toRemove) {
+    rmSync(dir, { recursive: true, force: true })
+    log.info('Removed OpenClaw skill on plugin uninstall', { dir, pluginId })
+  }
+  return {
+    removed: plan.toRemove.length,
+    kept: plan.toKeep.length,
+    removedDirs: plan.toRemove,
+    keptDirs: plan.toKeep,
+  }
 }
