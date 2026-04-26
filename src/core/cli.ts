@@ -143,17 +143,53 @@ async function cmdStop(): Promise<number> {
   return 0
 }
 
+interface ListPluginRow {
+  id: string
+  name: string
+  version: string
+  source: 'core' | 'github' | 'local'
+  upgradeAvailable: boolean
+  staleHintDays: number | null
+  installed: { version: string } | null
+}
+
+function renderPluginsList(rows: ListPluginRow[]): string[] {
+  const COL = { id: 14, name: 18, version: 11, source: 14 }
+  const out: string[] = []
+  out.push(
+    `  ${'ID'.padEnd(COL.id)} ${'NAME'.padEnd(COL.name)} ${'VERSION'.padEnd(COL.version)} ${'SOURCE'.padEnd(COL.source)} STATUS`,
+  )
+  for (const r of rows) {
+    const sourceCell = r.source === 'core' ? '[core]' : r.source
+    let status = ''
+    if (r.source === 'core') {
+      // Core plugins don't have lifecycle status — column stays blank.
+      status = ''
+    } else if (r.upgradeAvailable) {
+      status = 'upgrade available'
+    } else if (r.staleHintDays !== null) {
+      status = `(last checked ${r.staleHintDays} days ago — run with --check)`
+    } else if (r.installed) {
+      status = 'up to date'
+    } else {
+      status = '(no lockfile entry)'
+    }
+    out.push(
+      `  ${r.id.padEnd(COL.id)} ${r.name.padEnd(COL.name)} ${r.version.padEnd(COL.version)} ${sourceCell.padEnd(COL.source)} ${status}`,
+    )
+  }
+  return out
+}
+
 async function cmdPluginsList(): Promise<number> {
   try {
-    const res = await api<{ plugins: Array<{ id: string; name: string; version: string }> }>(
-      '/api/plugins/manifest',
-    )
+    const res = await api<{ plugins: ListPluginRow[] }>('/api/plugins/manifest')
     if (res.plugins.length === 0) {
       console.log('(no plugins registered)')
       return 0
     }
-    for (const p of res.plugins) {
-      console.log(`  ${p.id.padEnd(12)} ${p.name} (${p.version})`)
+    for (const line of renderPluginsList(res.plugins)) {
+      console.log(line)
     }
     return 0
   } catch (err) {
