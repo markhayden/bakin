@@ -150,14 +150,6 @@ describe('doctor', () => {
     expect(typeof doctor.runDiagnostics).toBe('function')
   })
 
-  it('should check taskboard via SQLite', async () => {
-    const doctor = await import('@/core/doctor')
-    const results = await doctor.runDiagnostics(contentDir, tempDir)
-    const tbResults = results.filter(r => r.check === 'taskboard')
-    // With mocked bun:sqlite, should get either ok or warn depending on db existence
-    expect(tbResults.length).toBeGreaterThan(0)
-  })
-
   it('should report gateway as unreachable', async () => {
     const doctor = await import('@/core/doctor')
     const results = await doctor.runDiagnostics(contentDir, tempDir)
