@@ -16,8 +16,9 @@ The current scaffold establishes the public coverage contract. The next implemen
 | CLI commands | Structured registry, examples, docs metadata | Active: 58 commands |
 | HTTP routes | Zod input schemas, examples, visibility, stability | Active: 17 documented routes |
 | Plugin routes | Same contract as HTTP routes | Planned |
-| Hooks | Contract objects, kind, schemas, examples | Planned |
+| Hooks | Contract objects, kind, schemas, examples | Audited: 51 registrations |
 | Slots | Contract objects, props, examples | Planned |
 | SDK exports | TypeDoc, TSDoc, stability | Planned |
 | Examples | External fixtures, tested or explicitly illustrative | Planned |
 | LLM docs | `/llms.txt`, `/llms-full.txt`, targeted bundles | Active |
+| Exec/MCP tools | Contract objects, schemas, examples | Audited: 90 registrations |

@@ -23,6 +23,8 @@ Canonical docs: https://docs.makinbakin.com/
 - API reference: /llms/api.md
 - CLI reference: /reference/generated/cli/
 - API reference: /reference/generated/api/
+- Hooks reference: /reference/generated/hooks/
+- Exec/MCP tools reference: /reference/generated/exec-tools/
 
 ## Fetch Examples
 

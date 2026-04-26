@@ -61,6 +61,8 @@ export default defineConfig({
             { label: 'Reference Index', slug: 'reference' },
             { label: 'CLI Reference', slug: 'reference/generated/cli' },
             { label: 'API Reference', slug: 'reference/generated/api' },
+            { label: 'Hook Reference', slug: 'reference/generated/hooks' },
+            { label: 'Exec/MCP Tools', slug: 'reference/generated/exec-tools' },
           ],
         },
         {
