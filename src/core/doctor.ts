@@ -26,7 +26,6 @@ import * as openclaw from './openclaw-client'
 import * as mcporter from './mcporter'
 import { isOnboarded } from './onboarding/state'
 import { pluginAssetsComponent } from './onboarding/plugin-assets'
-import { agentAssetsComponent } from './onboarding/agent-assets'
 import { getMainAgentId, getMainAgentName } from './main-agent'
 import { getAllExecTools } from '../../scripts/lib/registry'
 import { getHookRegistry } from '../lib/plugin-registry'
@@ -94,95 +93,6 @@ function fixed(check: string, message: string): DiagnosticResult {
 // ---------------------------------------------------------------------------
 // Individual checks — each returns diagnostics AND applies safe fixes
 // ---------------------------------------------------------------------------
-
-/**
- * Agent roster: compare Bakin settings vs openclaw.json.
- * NOT auto-fixable — which system is "right" requires human judgment.
- */
-function checkAgentRoster(contentDir: string): DiagnosticResult[] {
-  const results: DiagnosticResult[] = []
-  const openclawConfigPath = getOpenClawPath('openclaw.json')
-
-  if (!existsSync(openclawConfigPath)) {
-    results.push(warn('agent-roster', 'openclaw.json not found — cannot verify agent roster'))
-    return results
-  }
-
-  try {
-    const config = JSON.parse(readFileSync(openclawConfigPath, 'utf-8'))
-    const openclawAgents = (config.agents?.list || []).map((a: { id: string }) => a.id)
-    const bakinAgents = getAgentIds()
-
-    for (const agent of bakinAgents) {
-      if (!openclawAgents.includes(agent)) {
-        results.push(warn('agent-roster', `Agent "${agent}" is in Bakin but not in OpenClaw`))
-      }
-    }
-
-    for (const ocAgent of openclawAgents) {
-      if (!bakinAgents.includes(ocAgent)) {
-        results.push(warn('agent-roster', `Agent "${ocAgent}" is in OpenClaw but not in Bakin settings`))
-      }
-    }
-
-    if (results.length === 0) {
-      results.push(ok('agent-roster', `${bakinAgents.length} agents in sync`))
-    }
-  } catch (err) {
-    results.push(error('agent-roster', `Failed to read openclaw.json: ${err}`))
-  }
-
-  return results
-}
-
-/**
- * Personas: verify each agent has a persona file.
- * Auto-fixable — creates stub files for missing agents.
- */
-function checkPersonas(contentDir: string, autoFix: boolean): DiagnosticResult[] {
-  const results: DiagnosticResult[] = []
-  const agentIds = getAgentIds()
-  const personasDir = join(contentDir, 'team', 'personas')
-
-  if (!existsSync(personasDir)) {
-    if (autoFix) {
-      mkdirSync(personasDir, { recursive: true })
-      results.push(fixed('personas', 'Created missing personas directory'))
-    } else {
-      results.push(warn('personas', `No personas directory at ${personasDir}`, true))
-      return results
-    }
-  }
-
-  const existing = new Set(
-    readdirSync(personasDir)
-      .filter(f => f.endsWith('.md'))
-      .map(f => f.replace('.md', ''))
-  )
-
-  let created = 0
-  for (const agent of agentIds) {
-    if (!existing.has(agent)) {
-      if (autoFix) {
-        const stub = `# ${agent.charAt(0).toUpperCase() + agent.slice(1)}\n\n_Persona not yet configured. Update this file with the agent's personality, background, and communication style._\n`
-        writeFileSync(join(personasDir, `${agent}.md`), stub, 'utf-8')
-        created++
-      } else {
-        results.push(warn('personas', `Missing persona: ${join(personasDir, `${agent}.md`)}`, true))
-      }
-    }
-  }
-
-  if (autoFix && created > 0) {
-    results.push(fixed('personas', `Created ${created} stub persona file(s) — edit them to add real personalities`))
-  }
-
-  if (results.filter(r => r.check === 'personas').length === 0) {
-    results.push(ok('personas', `All ${agentIds.length} agents have persona files`))
-  }
-
-  return results
-}
 
 /**
  * Gateway: ping the OpenClaw gateway.
@@ -1594,47 +1504,6 @@ async function checkPluginAssets(): Promise<DiagnosticResult[]> {
   }
 }
 
-/**
- * Agent-package projections: surface drift / missing / broken-marker
- * findings. With autoFix enabled, runs the same install() flow as
- * `bakin install agent-assets` to repair detected drift in-place.
- *
- * Doctor sweep companion to the user-facing `bakin doctor` view; the
- * onboarding component (src/core/onboarding/agent-assets.ts) drives
- * the CLI surface, this wrapper reuses its scan + install paths so
- * the two views never disagree.
- */
-async function checkAgentAssets(autoFix: boolean): Promise<DiagnosticResult[]> {
-  try {
-    const checkResult = await agentAssetsComponent.check()
-    if (checkResult.status === 'ok') {
-      return [ok('agent-assets', checkResult.message)]
-    }
-
-    if (autoFix) {
-      const installResult = await agentAssetsComponent.install({
-        interactive: false,
-        autoApprove: true,
-        json: false,
-        checkOnly: false,
-        force: false,
-      })
-      if (installResult.status === 'installed') {
-        return [fixed('agent-assets', installResult.message)]
-      }
-      if (installResult.status === 'noop') {
-        return [ok('agent-assets', installResult.message)]
-      }
-      return [error('agent-assets', `Repair failed: ${installResult.message}`)]
-    }
-
-    const reminder = checkResult.remediation ?? 'Run `bakin install agent-assets` to repair.'
-    return [warn('agent-assets', `${checkResult.message} — ${reminder}`, true)]
-  } catch (err) {
-    return [warn('agent-assets', `agent-assets check failed: ${err}`)]
-  }
-}
-
 export async function runDiagnostics(
   contentDir: string,
   projectRoot: string
@@ -1661,15 +1530,14 @@ export async function runDiagnostics(
 
   // Sync checks (fast, some auto-fixable)
   results.push(...checkContentDir())
-  results.push(...checkAgentRoster(contentDir))
-  results.push(...checkPersonas(contentDir, autoFix))
   results.push(...checkTaskboard(contentDir, autoFix))
   results.push(...checkAndSyncSkill(projectRoot, autoFix))
   results.push(...await checkOrchestratorRules(autoFix))
   results.push(...applyAllManagedBlocks(autoFix))
-  // Workflow checks (definitions / stale-instances / skills) now live in
-  // plugins/workflows/lib/health-checks.ts and are picked up via the
-  // plugin-check loop at the end of this function (#137).
+  // Migrated checks (live in their owner plugins, picked up via the
+  // plugin-check loop at the end of this function):
+  //   workflows: workflow-skills / workflow-definitions / workflow-instances (#137)
+  //   team: agent-roster / personas / agent-assets (#139 C1)
   results.push(...await checkTaskConsistency(contentDir, autoFix))
   results.push(...checkAssets(contentDir, autoFix))
   results.push(...checkScheduleSync(autoFix))
@@ -1678,14 +1546,13 @@ export async function runDiagnostics(
   results.push(...checkTaskPositionIntegrity(autoFix))
 
   // Async checks (network, not auto-fixable) — run in parallel
-  const [gatewayResults, antflyResults, searchTableResults, pluginAssetsResults, agentAssetsResults] = await Promise.all([
+  const [gatewayResults, antflyResults, searchTableResults, pluginAssetsResults] = await Promise.all([
     checkGateway(),
     checkAntfly(),
     checkSearchTables(),
     checkPluginAssets(),
-    checkAgentAssets(autoFix),
   ])
-  results.push(...gatewayResults, ...antflyResults, ...searchTableResults, ...pluginAssetsResults, ...agentAssetsResults)
+  results.push(...gatewayResults, ...antflyResults, ...searchTableResults, ...pluginAssetsResults)
 
   // Plugin-contributed health checks (#137). Results appended to the same
   // list as builtins; the UI groups by status so ordering doesn't matter.

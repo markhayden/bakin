@@ -150,17 +150,6 @@ describe('doctor', () => {
     expect(typeof doctor.runDiagnostics).toBe('function')
   })
 
-  it('should detect missing persona files', async () => {
-    const doctor = await import('@/core/doctor')
-    // Only create persona for main, not patch or pixel
-    writeFileSync(join(contentDir, 'team', 'personas', 'main.md'), '# Main')
-
-    const results = await doctor.runDiagnostics(contentDir, tempDir)
-    const personaResults = results.filter(r => r.check === 'personas')
-    const warnings = personaResults.filter(r => r.status === 'warn')
-    expect(warnings.length).toBeGreaterThanOrEqual(2) // patch and pixel missing
-  })
-
   it('should check taskboard via SQLite', async () => {
     const doctor = await import('@/core/doctor')
     const results = await doctor.runDiagnostics(contentDir, tempDir)

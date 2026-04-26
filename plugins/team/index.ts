@@ -23,6 +23,7 @@ import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getStatsByMs } from '../../src/core/usage'
 import * as adapter from './lib/openclaw-adapter'
 import { readLatestSessionTranscript } from './lib/session-reader'
+import { checkAgentRoster, checkPersonas, checkAgentAssets } from './lib/health-checks'
 import type { AgentWithStatus, AgentDisplaySettingsMap, HeartbeatData, OrgTeam, TeamPluginSettings } from './types'
 
 const log = createLogger('team')
@@ -1662,6 +1663,25 @@ const teamPlugin: BakinPlugin = {
 
         return { ok: true, agentId, allowAgents }
       },
+    })
+
+    // ─── Health checks (migrated out of core/doctor.ts per #139) ────────
+    ctx.registerHealthCheck({
+      id: 'agent-roster',
+      name: 'Bakin agent roster sync',
+      run: () => Promise.resolve(checkAgentRoster()),
+    })
+    ctx.registerHealthCheck({
+      id: 'personas',
+      name: 'Persona files',
+      autoFix: true,
+      run: () => Promise.resolve(checkPersonas(getContentDir())),
+    })
+    ctx.registerHealthCheck({
+      id: 'agent-assets',
+      name: 'Agent-package projection drift',
+      autoFix: true,
+      run: () => checkAgentAssets(),
     })
   },
 
