@@ -338,6 +338,7 @@ async function cmdPluginsRemove(pluginId: string): Promise<number> {
       core?: boolean
       id?: string
       skills?: { removed: number; kept: number }
+      skillsMissing?: string[]
       sweep?: { hooks: number; execTools: number; contentTypes: number }
       snapshot?: string | null
       message?: string
@@ -359,6 +360,11 @@ async function cmdPluginsRemove(pluginId: string): Promise<number> {
       if (res.skills.kept > 0) {
         console.log(`  Kept ${res.skills.kept} user-edited skill(s) (~/.openclaw/skills/)`)
       }
+    }
+    if (res.skillsMissing && res.skillsMissing.length > 0) {
+      // Lockfile claimed ownership of skills not present (or marker
+      // mismatch). Surface so users notice silent drift.
+      console.error(`  WARNING: lockfile claimed ${res.skillsMissing.length} skill(s) not present on disk: ${res.skillsMissing.join(', ')}`)
     }
     if (res.snapshot) {
       console.log(`  Snapshot saved: ${res.snapshot}`)

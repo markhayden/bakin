@@ -194,10 +194,10 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   }
 
   // ─── 5. Filesystem deletes ─────────────────────────────────────────────────
-  let skillsResult = { removed: 0, kept: 0 }
+  let skillsResult: { removed: number; kept: number; missingFromDisk: string[] } = { removed: 0, kept: 0, missingFromDisk: [] }
   try {
     const r = await removePluginAssets(pluginId, ownedSkills)
-    skillsResult = { removed: r.removed, kept: r.kept }
+    skillsResult = { removed: r.removed, kept: r.kept, missingFromDisk: r.missingFromDisk }
     if (r.missingFromDisk.length > 0) {
       log.warn('lockfile claimed ownership of skills not present on disk', {
         pluginId,
@@ -259,7 +259,8 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   return Response.json({
     ok: true,
     id: pluginId,
-    skills: skillsResult,
+    skills: { removed: skillsResult.removed, kept: skillsResult.kept },
+    skillsMissing: skillsResult.missingFromDisk,
     sweep: sweepReport,
     snapshot: snapshotPath,
     message: `Removed "${pluginId}". Restart Bakin to fully release the plugin's modules.`,
