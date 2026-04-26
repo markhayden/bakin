@@ -16,6 +16,10 @@ bun install
 bakin plugins install .
 ```
 
+## Tested Example
+
+The minimal server and client entries used by these docs live in `apps/docs/snippets/plugin-basic/` and are typechecked with the repo. Use that fixture as the source of truth for basic plugin shape.
+
 ## Import Rule
 
 Use SDK imports:
