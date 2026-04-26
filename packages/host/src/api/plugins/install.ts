@@ -338,6 +338,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // digits, and hyphen only; must start with a letter.
       if (!/^[a-z][a-z0-9-]{0,39}$/.test(id)) {
         rmSync(stagingDir, { recursive: true, force: true })
+        auditInstallRejected('invalid_plugin_id', body.source, { id })
         return Response.json({
           ok: false,
           error: `Invalid plugin id "${id}" — must match /^[a-z][a-z0-9-]{0,39}$/`,
@@ -364,6 +365,10 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         parsedPermissions = parseManifestPermissions(manifest.permissions)
       } catch (err) {
         rmSync(stagingDir, { recursive: true, force: true })
+        auditInstallRejected('invalid_permissions', body.source, {
+          id,
+          error: err instanceof Error ? err.message : String(err),
+        })
         return Response.json({
           ok: false,
           error: `plugin "${id}": ${err instanceof Error ? err.message : String(err)}`,

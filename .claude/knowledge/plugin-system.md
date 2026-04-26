@@ -267,6 +267,9 @@ jq 'select(.data.kind == "security")' ~/.bakin/audit.jsonl
 Specific `plugin.install.rejected` reasons (`data.reason` field):
 - `path_traversal` — local source outside trusted roots
 - `invalid_github_url` — URL parser refused the source string
+- `invalid_plugin_id` — manifest.id (or basename fallback) failed the
+  regex `/^[a-z][a-z0-9-]{0,39}$/`
+- `invalid_permissions` — Zod enum rejected one or more entries
 - `manifest_too_large` — bakin-plugin.json exceeds 1 MB
 - `core_id_collision` — install requested an id already used by a
   core plugin (without `overrideCore: true`)
@@ -274,6 +277,13 @@ Specific `plugin.install.rejected` reasons (`data.reason` field):
 - `consent_token_invalid` — token failed signature/expiry verification
 - `consent_source_mismatch` — token bound to a different source than
   the commit body's source
+
+Specific `plugin.upgrade.rejected` reasons (`data.reason` field):
+- `core_plugin` — caller asked to upgrade a built-in
+- `manifest_id_rename` — the upgraded manifest declared a different
+  `id` than the lockfile entry (anti-impersonation)
+- `force_push_detected` — local HEAD is not an ancestor of the remote
+  ref's new HEAD (history was rewritten)
 
 ### Permissions (#142 layers 1+2)
 

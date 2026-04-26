@@ -21,6 +21,7 @@ import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { isCorePlugin } from '@/lib/plugin-registry'
+import { appendAudit } from '@/core/audit'
 import {
   type PluginLockEntry,
   readPluginLockfile,
@@ -60,6 +61,26 @@ export class UpgradeRefusedError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'UpgradeRefusedError'
+  }
+}
+
+/**
+ * Append a `plugin.upgrade.rejected` audit entry with `kind: 'security'`
+ * for forensic-trail symmetry with `auditInstallRejected` in install.ts.
+ * Best-effort — never throws. C24's docs claim "install/upgrade/remove
+ * security events all carry kind:'security'", which only matched code
+ * for install + remove until this lands.
+ */
+function auditUpgradeRejected(reason: string, pluginId: string, extra: Record<string, unknown> = {}): void {
+  try {
+    appendAudit(getContentDir(), 'plugin.upgrade.rejected', 'system', {
+      kind: 'security',
+      reason,
+      pluginId,
+      ...extra,
+    }, 'system')
+  } catch {
+    // best-effort
   }
 }
 
@@ -170,6 +191,7 @@ function manifestPermissions(manifest: Record<string, unknown>, id: string): Per
 function assertManifestIdStable(manifest: Record<string, unknown>, id: string): void {
   const manifestId = typeof manifest.id === 'string' ? manifest.id : ''
   if (manifestId !== id) {
+    auditUpgradeRejected('manifest_id_rename', id, { newManifestId: manifestId })
     throw new UpgradeRefusedError(
       `${id}: upgraded manifest declares id "${manifestId}" — plugins cannot rename across upgrades. Remove and reinstall as the new id if intentional.`,
     )
@@ -355,6 +377,7 @@ export async function upgradePlugin(
   opts: UpgradeOptions = {},
 ): Promise<UpgradeResult> {
   if (isCorePlugin(id)) {
+    auditUpgradeRejected('core_plugin', id)
     throw new UpgradeRefusedError(
       `cannot upgrade core plugin: ${id}. Core plugins ship with Bakin and are managed via the binary itself.`,
     )
@@ -460,6 +483,11 @@ async function upgradeGithub(
         maxBuffer: 10 * 1024 * 1024,
       })
     } catch {
+      auditUpgradeRejected('force_push_detected', id, {
+        ref: entry.ref,
+        localSha,
+        remoteSha,
+      })
       throw new UpgradeRefusedError(
         `${id}: cannot fast-forward (remote history rewritten?). Remove and reinstall.`,
       )
