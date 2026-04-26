@@ -7,25 +7,32 @@ The server entry exports a `BakinPlugin`. Bakin calls `activate(ctx)` once the p
 
 The tested minimal server entry lives at `apps/docs/snippets/plugin-basic/index.ts`.
 
+<!-- docs:snippet plugin-basic-server -->
+Source: `apps/docs/snippets/plugin-basic/index.ts`
+
 ```ts
 import type { BakinPlugin, PluginContext } from '@bakin/sdk/types'
 
 const plugin: BakinPlugin = {
-  id: 'hello-plugin',
-  name: 'Hello Plugin',
+  id: 'docs-basic',
+  name: 'Docs Basic',
   version: '0.1.0',
   async activate(ctx: PluginContext) {
     ctx.registerRoute({
       method: 'GET',
       path: '/hello',
-      summary: 'Return a hello response.',
-      handler: async () => Response.json({ ok: true, message: 'Hello from Bakin' }),
+      summary: 'Say hello',
+      description: 'Returns a small JSON payload from the docs example plugin.',
+      visibility: 'public',
+      stability: 'stable',
+      handler: async () => Response.json({ message: 'Hello from Bakin' }),
     })
   },
 }
 
 export default plugin
 ```
+<!-- /docs:snippet -->
 
 ## `activate(ctx)`
 

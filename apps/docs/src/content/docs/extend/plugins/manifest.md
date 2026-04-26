@@ -7,10 +7,13 @@ Every plugin starts with `bakin-plugin.json`. Bakin reads this file before loadi
 
 The tested manifest fixture for these docs lives at `apps/docs/snippets/plugin-basic/bakin-plugin.json`.
 
+<!-- docs:snippet plugin-basic-manifest -->
+Source: `apps/docs/snippets/plugin-basic/bakin-plugin.json`
+
 ```json
 {
-  "id": "hello-plugin",
-  "name": "Hello Plugin",
+  "id": "docs-basic",
+  "name": "Docs Basic",
   "version": "0.1.0",
   "bakin": ">=0.1.0",
   "description": "Minimal plugin used by the public Bakin docs.",
@@ -18,9 +21,12 @@ The tested manifest fixture for these docs lives at `apps/docs/snippets/plugin-b
     "server": "index.ts",
     "client": "client.tsx"
   },
-  "permissions": ["routes:read"]
+  "permissions": [
+    "routes:read"
+  ]
 }
 ```
+<!-- /docs:snippet -->
 
 ## Required Fields
 

@@ -46,6 +46,24 @@ const commandSnippets = {
   schedule: ['schedule'],
   messaging: ['messaging'],
 }
+const docsSnippetBlocks = {
+  'plugin-basic-manifest': {
+    file: 'snippets/plugin-basic/bakin-plugin.json',
+    language: 'json',
+  },
+  'plugin-basic-server': {
+    file: 'snippets/plugin-basic/index.ts',
+    language: 'ts',
+  },
+  'plugin-basic-client': {
+    file: 'snippets/plugin-basic/client.tsx',
+    language: 'tsx',
+  },
+  'agent-package-basic-manifest': {
+    file: 'snippets/agent-package-basic/bakin-package.json',
+    language: 'json',
+  },
+} satisfies Record<string, { file: string; language: string }>
 
 function writeStableFile(path: string, contents: string): void {
   mkdirSync(dirname(path), { recursive: true })
@@ -95,7 +113,24 @@ function renderCommandSnippet(marker: string): string {
   return lines.join('\n')
 }
 
-function updateCliCommandSnippets(): void {
+function renderDocsSnippetBlock(marker: string): string {
+  const snippet = docsSnippetBlocks[marker as keyof typeof docsSnippetBlocks]
+  if (!snippet) throw new Error(`Unknown docs snippet block: ${marker}`)
+
+  const sourcePath = join(docsRoot, snippet.file)
+  const contents = readFileSync(sourcePath, 'utf8').trimEnd()
+  return [
+    `<!-- docs:snippet ${marker} -->`,
+    `Source: \`apps/docs/${snippet.file}\``,
+    '',
+    `\`\`\`${snippet.language}`,
+    contents,
+    '```',
+    '<!-- /docs:snippet -->',
+  ].join('\n')
+}
+
+function updateGeneratedContentBlocks(): void {
   const docsContentRoot = join(docsRoot, 'src/content/docs')
   const markdownFiles: string[] = []
   const walk = (dir: string) => {
@@ -107,10 +142,13 @@ function updateCliCommandSnippets(): void {
   }
   walk(docsContentRoot)
 
-  const markerPattern = /<!-- docs:cli-commands ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:cli-commands -->/g
+  const commandMarkerPattern = /<!-- docs:cli-commands ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:cli-commands -->/g
+  const snippetMarkerPattern = /<!-- docs:snippet ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:snippet -->/g
   for (const file of markdownFiles) {
     const text = readFileSync(file, 'utf8')
-    const next = text.replace(markerPattern, (_match, marker: string) => renderCommandSnippet(marker))
+    const next = text
+      .replace(commandMarkerPattern, (_match, marker: string) => renderCommandSnippet(marker))
+      .replace(snippetMarkerPattern, (_match, marker: string) => renderDocsSnippetBlock(marker))
     if (next !== text) writeStableFile(file, next)
   }
 }
@@ -708,7 +746,7 @@ writeStableFile(
   renderCoverageReference(),
 )
 
-updateCliCommandSnippets()
+updateGeneratedContentBlocks()
 
 writeStableFile(
   join(docsRoot, 'public/llms.txt'),

@@ -7,28 +7,33 @@ Client entries use `registerPlugin()` from `@bakin/sdk`. Keep UI contributions s
 
 The tested minimal client entry lives at `apps/docs/snippets/plugin-basic/client.tsx`.
 
+<!-- docs:snippet plugin-basic-client -->
+Source: `apps/docs/snippets/plugin-basic/client.tsx`
+
 ```tsx
 import { registerPlugin } from '@bakin/sdk'
 
-function HelloPage() {
-  return <div>Hello from Bakin</div>
+function DocsBasicPage() {
+  return <div>Hello from a Bakin plugin.</div>
 }
 
 registerPlugin({
-  id: 'hello-plugin',
+  id: 'docs-basic',
   navItems: [
     {
-      id: 'hello-plugin.home',
-      label: 'Hello',
-      icon: 'Sparkles',
-      href: '/hello-plugin',
+      id: 'docs-basic',
+      label: 'Docs Basic',
+      icon: 'Puzzle',
+      href: '/docs-basic',
+      order: 100,
     },
   ],
   slots: {
-    'page:/hello-plugin': HelloPage,
+    'page:/docs-basic': DocsBasicPage,
   },
 })
 ```
+<!-- /docs:snippet -->
 
 ## Navigation
 
@@ -69,7 +74,7 @@ During development, Bakin can unregister and reload client contributions. If a p
 ```ts
 import { registerPluginCleanup } from '@bakin/sdk'
 
-registerPluginCleanup('hello-plugin', () => {
+registerPluginCleanup('docs-basic', () => {
   // Clear plugin-owned client registries here.
 })
 ```

@@ -7,6 +7,9 @@ Agent packages are installable bundles for Bakin and OpenClaw-managed agent stat
 
 The tested manifest fixture for these docs lives at `apps/docs/snippets/agent-package-basic/bakin-package.json`.
 
+<!-- docs:snippet agent-package-basic-manifest -->
+Source: `apps/docs/snippets/agent-package-basic/bakin-package.json`
+
 ```json
 {
   "id": "content-planner",
@@ -21,10 +24,20 @@ The tested manifest fixture for these docs lives at `apps/docs/snippets/agent-pa
     },
     "role": "Plans and reviews short-form content workflows.",
     "defaultModel": "gpt-5.4",
-    "dispatchableBy": ["main"],
-    "tags": ["content", "planning"],
-    "allowedTools": ["bakin_exec_tasks_list", "bakin_exec_workflows_run"],
-    "allowedSkills": ["content-brief"]
+    "dispatchableBy": [
+      "main"
+    ],
+    "tags": [
+      "content",
+      "planning"
+    ],
+    "allowedTools": [
+      "bakin_exec_tasks_list",
+      "bakin_exec_workflows_run"
+    ],
+    "allowedSkills": [
+      "content-brief"
+    ]
   },
   "install": {
     "createIfMissing": true,
@@ -32,16 +45,29 @@ The tested manifest fixture for these docs lives at `apps/docs/snippets/agent-pa
     "writeWorkspaceFiles": true,
     "installSkills": true,
     "installWorkflows": true,
-    "enableKnowledge": ["voice"]
+    "enableKnowledge": [
+      "voice"
+    ]
   },
   "contributions": {
-    "workspaceFiles": ["workspace/SOUL.md", "workspace/IDENTITY.md", "workspace/TOOLS.md"],
-    "skills": ["skills/content-brief.md"],
-    "workflows": ["workflows/draft-review.yaml"],
-    "knowledge": ["knowledge/voice.md"]
+    "workspaceFiles": [
+      "workspace/SOUL.md",
+      "workspace/IDENTITY.md",
+      "workspace/TOOLS.md"
+    ],
+    "skills": [
+      "skills/content-brief.md"
+    ],
+    "workflows": [
+      "workflows/draft-review.yaml"
+    ],
+    "knowledge": [
+      "knowledge/voice.md"
+    ]
   }
 }
 ```
+<!-- /docs:snippet -->
 
 ## Package Kinds
 
