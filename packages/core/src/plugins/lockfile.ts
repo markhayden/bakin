@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileS
 import { dirname, join } from 'path'
 import { z } from 'zod'
 import { getContentDir } from '../content-dir'
+import { PermissionSchema } from './permissions'
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -39,12 +40,8 @@ const PluginLockEntrySchema = z.object({
   upgradedAt: z.string().optional(),
   /** From `bakin-plugin.json.version`. */
   version: z.string().min(1),
-  /**
-   * Loose `string[]` at this commit (C1). The C8 commit will tighten this to
-   * the `Permission` Zod enum once `packages/core/src/plugins/permissions.ts`
-   * lands. Until then, we record whatever the manifest declares.
-   */
-  permissions: z.array(z.string()),
+  /** Permissions the manifest declared — strict against the Zod enum (C8). */
+  permissions: z.array(PermissionSchema),
   /** sha256 of `bakin-plugin.json` — drives the "permissions changed?" check on upgrade. */
   manifestSha: z.string().min(1),
   /** ISO 8601, set by `bakin plugins list --check`. */

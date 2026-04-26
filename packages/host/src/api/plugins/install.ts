@@ -25,6 +25,7 @@ import {
   writePluginLockfile,
   type PluginLockEntry,
 } from '@bakin/core/plugins/lockfile'
+import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { computeSourceTreeSha } from '@/core/plugins/upgrade'
 
 const log = createLogger('plugin-install')
@@ -65,6 +66,7 @@ function recordInstall(args: {
   manifest: Record<string, unknown>
   source: string
   type: 'github' | 'local'
+  permissions: PluginLockEntry['permissions']
 }): void {
   const { id, targetDir, manifestPath, manifest, source, type } = args
   try {
@@ -91,6 +93,8 @@ function recordInstall(args: {
       }
     }
 
+    // Permissions are validated up-front by the caller (POST handler) and
+    // passed in pre-parsed; recordInstall just records them as-is.
     const entry: PluginLockEntry = {
       source,
       type,
@@ -98,9 +102,7 @@ function recordInstall(args: {
       commitSha,
       installedAt: new Date().toISOString(),
       version,
-      permissions: Array.isArray(manifest.permissions)
-        ? manifest.permissions.filter((p): p is string => typeof p === 'string')
-        : [],
+      permissions: args.permissions,
       manifestSha,
       sourceTreeSha,
     }
@@ -186,6 +188,20 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         }, { status: 400 })
       }
 
+      // Validate manifest.permissions BEFORE moving files into place — a
+      // typo'd permission should fail the install loudly with a "did you
+      // mean" suggestion, not silently install with broken metadata.
+      let parsedPermissions: PluginLockEntry['permissions']
+      try {
+        parsedPermissions = parseManifestPermissions(manifest.permissions)
+      } catch (err) {
+        rmSync(stagingDir, { recursive: true, force: true })
+        return Response.json({
+          ok: false,
+          error: `plugin "${id}": ${err instanceof Error ? err.message : String(err)}`,
+        }, { status: 400 })
+      }
+
       const targetDir = join(pluginsRoot, id)
       if (existsSync(targetDir)) {
         rmSync(targetDir, { recursive: true, force: true })
@@ -217,7 +233,15 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       const recordedSource = body.type === 'local'
         ? (isAbsolute(body.source) ? body.source : resolve(process.cwd(), body.source))
         : body.source
-      recordInstall({ id, targetDir, manifestPath, manifest, source: recordedSource, type: body.type })
+      recordInstall({
+        id,
+        targetDir,
+        manifestPath,
+        manifest,
+        source: recordedSource,
+        type: body.type,
+        permissions: parsedPermissions,
+      })
 
       log.info(`Installed plugin "${id}"`, { source: body.source, type: body.type })
 

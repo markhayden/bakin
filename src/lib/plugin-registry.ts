@@ -43,7 +43,8 @@ import { appendAudit } from '../core/audit'
 import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 import { buildSearchAPI } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
-import { setCorePluginCheck } from '../../packages/core/src/plugins/lockfile'
+import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
+import { parseManifestPermissions } from '../../packages/core/src/plugins/permissions'
 
 /**
  * Optional static core-plugin table. Set from server.ts on startup so
@@ -94,6 +95,56 @@ export function isCorePlugin(pluginId: string): boolean {
 // module can't import plugin-registry directly (circular), so it accepts a
 // setter at boot.
 setCorePluginCheck(isCorePlugin)
+
+/**
+ * #142 layer 1 — log a plugin's requested permissions on activation.
+ * Appends to ~/.bakin/audit.jsonl AND emits an info-level log line.
+ *
+ * Permission failures are tolerated here (returns []) — install/upgrade
+ * already validate; a malformed manifest at boot shouldn't block the
+ * server. The audit entry just records `(requests: ?)` in that case.
+ */
+function logPluginActivation(args: {
+  plugin: BakinPlugin
+  source: 'core' | 'user'
+  manifestPath?: string
+}): void {
+  const { plugin, source, manifestPath } = args
+  let permissions: string[] = []
+  let resolvedSource: 'core' | 'github' | 'local' = source === 'core' ? 'core' : 'local'
+
+  if (manifestPath && existsSync(manifestPath)) {
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as Record<string, unknown>
+      permissions = parseManifestPermissions(manifest.permissions)
+    } catch {
+      // Already validated at install/upgrade — silently keep permissions empty.
+    }
+  }
+
+  if (source === 'user') {
+    try {
+      const entry = readPluginLockfile().plugins[plugin.id]
+      if (entry?.type === 'github') resolvedSource = 'github'
+      else if (entry?.type === 'local') resolvedSource = 'local'
+    } catch {
+      // lockfile read failure — leave as 'local'
+    }
+  }
+
+  log.info('plugin activated', {
+    pluginId: plugin.id,
+    version: plugin.version,
+    permissions,
+    source: resolvedSource,
+  })
+  appendAudit(getContentDir(), 'plugin.activate', 'system', {
+    pluginId: plugin.id,
+    version: plugin.version,
+    permissions,
+    source: resolvedSource,
+  }, 'system')
+}
 
 interface PluginState {
   plugin: BakinPlugin
@@ -424,6 +475,10 @@ class PluginRegistryImpl {
       // Mark this id as core — `loadPlugin` is the core-only entry; user
       // plugins go through `loadUserPlugins` and never land here.
       corePluginIds.add(plugin.id)
+      // #142 layer 1 — log requested permissions on every activation so
+      // `cat ~/.bakin/audit.jsonl | jq 'select(.event=="plugin.activate")'`
+      // shows the full surface the user authorized.
+      logPluginActivation({ plugin, source: 'core', manifestPath })
       console.log(`  ✓ Plugin loaded: ${plugin.name} v${plugin.version}`)
     } catch (err) {
       console.error(`  ✗ Failed to load plugin at ${pluginPath}:`, err)
@@ -491,6 +546,9 @@ class PluginRegistryImpl {
           const ctx = this.buildContext(plugin.id, state, storage, events)
           await plugin.activate(ctx)
           state.ctx = ctx
+          // #142 layer 1 — surface user-plugin permissions to the audit log.
+          // Source is read from the lockfile (github vs local) by the helper.
+          logPluginActivation({ plugin, source: 'user', manifestPath })
           const userPluginPath = join(userPluginsDir, entry.name)
           const skillResult = loadPluginSkills(userPluginPath, ctx, log)
           if (skillResult.registered.length > 0) {

@@ -27,6 +27,7 @@ import {
   updatePlugin,
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
+import { parseManifestPermissions, type Permission } from '@bakin/core/plugins/permissions'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
 
 const log = createLogger('plugin-upgrade')
@@ -113,10 +114,14 @@ function readManifest(pluginDir: string): { manifest: Record<string, unknown>; m
   return { manifest, manifestSha }
 }
 
-function manifestPermissions(manifest: Record<string, unknown>): string[] {
-  return Array.isArray(manifest.permissions)
-    ? manifest.permissions.filter((p): p is string => typeof p === 'string')
-    : []
+function manifestPermissions(manifest: Record<string, unknown>, id: string): Permission[] {
+  try {
+    return parseManifestPermissions(manifest.permissions)
+  } catch (err) {
+    throw new UpgradeRefusedError(
+      `${id}: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
 }
 
 function manifestVersion(manifest: Record<string, unknown>, fallback: string): string {
@@ -303,7 +308,7 @@ async function upgradeGithub(
 
   const { manifest, manifestSha } = readManifest(pluginDir)
   const newVersion = manifestVersion(manifest, entry.version)
-  const newPerms = manifestPermissions(manifest)
+  const newPerms = manifestPermissions(manifest, id)
   const widened = diffNewPermissions(entry.permissions, newPerms)
 
   if (widened.length > 0 && !opts.yes) {
@@ -371,7 +376,7 @@ async function upgradeLocal(
 
   const { manifest, manifestSha } = readManifest(pluginDir)
   const newVersion = manifestVersion(manifest, entry.version)
-  const newPerms = manifestPermissions(manifest)
+  const newPerms = manifestPermissions(manifest, id)
   const widened = diffNewPermissions(entry.permissions, newPerms)
 
   if (widened.length > 0 && !opts.yes) {
