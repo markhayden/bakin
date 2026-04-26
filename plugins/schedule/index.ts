@@ -15,6 +15,7 @@ import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { getMainAgentId } from '../../src/core/main-agent'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
+import { checkScheduleSync } from './lib/health-checks'
 import type { BakinJobMeta, BridgePayload, BridgeResult } from './types'
 
 const log = createLogger('schedule')
@@ -879,6 +880,14 @@ const schedulePlugin: BakinPlugin = {
           })),
         }
       },
+    })
+
+    // ─── Health check (migrated out of core/doctor.ts per #139 C4) ──────
+    ctx.registerHealthCheck({
+      id: 'schedule-sync',
+      name: 'OpenClaw cron jobs ↔ Bakin sidecar sync',
+      autoFix: true,
+      run: () => Promise.resolve(checkScheduleSync(getContentDir())),
     })
 
     log.info('Schedule plugin activated')

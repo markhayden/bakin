@@ -10,7 +10,7 @@
  * Unsafe issues are reported to the main agent via OpenClaw so they show up in conversation.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
-import { join, dirname } from 'path'
+import { join } from 'path'
 import { createLogger } from './logger'
 import {
   extractBlock,
@@ -952,108 +952,6 @@ export function applyAllManagedBlocks(autoFix: boolean): DiagnosticResult[] {
 
 
 // ---------------------------------------------------------------------------
-// Schedule sync — detect orphaned OpenClaw cron jobs not tracked in sidecar
-// ---------------------------------------------------------------------------
-
-function checkScheduleSync(autoFix: boolean): DiagnosticResult[] {
-  const checkName = 'schedule-sync'
-  const results: DiagnosticResult[] = []
-
-  // Resolve OpenClaw jobs path — configurable, absent on fresh installs
-  let jobsPath: string
-  try {
-    const configPath = getOpenClawPath('config.json')
-    if (existsSync(configPath)) {
-      const config = JSON.parse(readFileSync(configPath, 'utf-8'))
-      jobsPath = config?.cron?.store ?? getOpenClawPath('cron', 'jobs.json')
-    } else {
-      jobsPath = getOpenClawPath('cron', 'jobs.json')
-    }
-  } catch {
-    jobsPath = getOpenClawPath('cron', 'jobs.json')
-  }
-
-  if (!existsSync(jobsPath)) {
-    // Fresh install or no cron jobs yet — nothing to sync
-    return [ok(checkName, 'No OpenClaw cron jobs file found (fresh install)')]
-  }
-
-  let openclawJobs: Array<{ id: string; name: string; payload?: Record<string, unknown> }>
-  try {
-    const raw = JSON.parse(readFileSync(jobsPath, 'utf-8'))
-    openclawJobs = raw?.jobs ?? []
-  } catch (err) {
-    return [warn(checkName, `Failed to read OpenClaw jobs: ${err}`)]
-  }
-
-  if (openclawJobs.length === 0) {
-    return [ok(checkName, 'No OpenClaw cron jobs to sync')]
-  }
-
-  // Read Bakin sidecar
-  let sidecar: { version: number; jobs: Record<string, unknown> }
-  try {
-    const sidecarPath = join(getContentDir(), 'schedule', 'sidecar.json')
-    if (existsSync(sidecarPath)) {
-      sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
-    } else {
-      sidecar = { version: 1, jobs: {} }
-    }
-  } catch {
-    sidecar = { version: 1, jobs: {} }
-  }
-
-  const orphans: typeof openclawJobs = []
-  for (const job of openclawJobs) {
-    if (!sidecar.jobs[job.id]) {
-      orphans.push(job)
-    }
-  }
-
-  if (orphans.length === 0) {
-    return [ok(checkName, `${openclawJobs.length} cron job(s), all tracked in Bakin sidecar`)]
-  }
-
-  for (const orphan of orphans) {
-    if (autoFix) {
-      // Auto-adopt: create minimal sidecar entry flagged for manual triage
-      const now = new Date().toISOString()
-      const entry = {
-        jobId: orphan.id,
-        isBakinJob: false,
-        displayName: orphan.name,
-        agentId: undefined, // Don't guess — flag for triage
-        owner: getMainAgentId(),
-        requireTriage: true,
-        createdAt: now,
-        updatedAt: now,
-      }
-      sidecar.jobs[orphan.id] = entry
-      results.push(fixed(checkName, `Auto-adopted orphan cron job "${orphan.name}" (id: ${orphan.id})`))
-      log.info('Auto-adopted orphan cron job', { jobId: orphan.id, name: orphan.name })
-    } else {
-      results.push(warn(checkName, `Orphan cron job "${orphan.name}" (id: ${orphan.id}) — not tracked in Bakin sidecar`, true))
-    }
-  }
-
-  // Write updated sidecar if we adopted anything
-  if (autoFix && results.some(r => r.status === 'fixed')) {
-    try {
-      const sidecarPath = join(getContentDir(), 'schedule', 'sidecar.json')
-      const dir = dirname(sidecarPath)
-      if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true })
-      }
-      writeFileSync(sidecarPath, JSON.stringify(sidecar, null, 2), 'utf-8')
-    } catch (err) {
-      results.push(error(checkName, `Failed to write updated sidecar: ${err}`))
-    }
-  }
-
-  return results
-}
-
-// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -1114,7 +1012,7 @@ export async function runDiagnostics(
   //   team: agent-roster / personas / agent-assets (#139 C1)
   //   tasks: taskboard / task-consistency / order-integrity (#139 C2)
   //   assets: assets (#139 C3)
-  results.push(...checkScheduleSync(autoFix))
+  //   schedule: schedule-sync (#139 C4)
   results.push(...checkMcporter(Number(process.env.PORT || 3737), autoFix))
   results.push(...checkService(projectRoot))
 
