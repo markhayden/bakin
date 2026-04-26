@@ -24,7 +24,8 @@
   --sl-color-hairline: rgba(74, 71, 71, 0.35);
   --sl-color-hairline-light: rgba(120, 117, 116, 0.35);
   --sl-color-text: #ffffff;
-  --bakin-brand-pink: #ff89ab;
+  --bakin-brand-pink: #ff709e;
+  --bakin-brand-yellow: #eaea00;
   --sl-color-text-accent: var(--bakin-brand-pink);
   --sl-color-text-invert: #4c0021;
   --sl-color-gray-1: #ffffff;
@@ -34,7 +35,7 @@
   --sl-color-gray-5: #4a4747;
   --sl-color-gray-6: #272525;
   --sl-color-black: #0f0e0e;
-  --sl-color-accent-low: rgba(255, 137, 171, 0.18);
+  --sl-color-accent-low: rgba(255, 112, 158, 0.18);
   --sl-color-accent: var(--bakin-brand-pink);
   --sl-color-accent-high: var(--bakin-brand-pink);
   --sl-color-white: #ffffff;
@@ -50,7 +51,7 @@
 
 body {
   background:
-    radial-gradient(32rem 32rem at 78% -10%, rgba(255, 137, 171, 0.16), transparent 64%),
+    radial-gradient(32rem 32rem at 78% -10%, rgba(255, 112, 158, 0.16), transparent 64%),
     radial-gradient(28rem 28rem at 8% 18%, rgba(234, 234, 0, 0.08), transparent 62%),
     #0f0e0e;
   font-family: var(--font-body);
@@ -84,7 +85,7 @@ pre {
 .site-title img {
   height: 30px;
   width: auto;
-  filter: brightness(0) saturate(100%) invert(69%) sepia(36%) saturate(1831%) hue-rotate(292deg) brightness(102%) contrast(101%);
+  filter: brightness(0) saturate(100%) invert(57%) sepia(42%) saturate(3204%) hue-rotate(308deg) brightness(101%) contrast(101%);
 }
 
 .site-title__brand,
@@ -125,7 +126,7 @@ pre {
 }
 
 .hero img {
-  filter: drop-shadow(0 0 18px rgba(255, 137, 171, 0.22));
+  filter: drop-shadow(0 0 18px rgba(255, 112, 158, 0.22));
 }
 
 @media (min-width: 72rem) {
@@ -184,4 +185,60 @@ starlight-toc nav a::before {
 
 starlight-toc nav a[aria-current="true"]::before {
   background: var(--bakin-brand-pink);
+}
+
+.next-step-callout {
+  margin-top: 50px;
+}
+
+.platform-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.platform-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 999rem;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--sl-color-gray-2);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.starlight-aside--tip {
+  --sl-color-asides-text-accent: var(--bakin-brand-yellow);
+  --sl-color-asides-border: var(--bakin-brand-yellow);
+  background-color: rgba(234, 234, 0, 0.08);
+}
+
+.sl-link-button.cta-sm {
+  font-size: var(--sl-text-sm);
+  padding: 0.375rem 0.875rem;
+}
+
+.sl-link-button.cta-sm svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.sl-link-button.cta-yellow.primary,
+.sl-link-button.cta-yellow.primary:hover {
+  background: var(--bakin-brand-yellow);
+  border-color: var(--bakin-brand-yellow);
+  color: #0f0e0e;
+}
+
+@media (min-width: 50rem) {
+  .sl-link-button.cta-sm {
+    font-size: var(--sl-text-sm);
+    padding: 0.375rem 0.875rem;
+  }
 }
