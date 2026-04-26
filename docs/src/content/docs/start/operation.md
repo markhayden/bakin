@@ -1,85 +1,91 @@
 ---
 title: Daily Operation
-description: Start, stop, inspect, update, and troubleshoot a running Bakin instance.
+description: Start, stop, watch, update, and keep your Bakin instance healthy.
 ---
 
-Start the server:
+## Start it
 
 ```sh
 bakin start
 ```
 
-Bakin listens on port `3737` by default. Set `PORT` to override it:
+Once it's running, open **[http://localhost:3737](http://localhost:3737)**. That's Bakin basecamp.
+
+Want it always running? Set Bakin up to [run as a service](#run-as-a-service-macos).
+
+The default port is `3737`. If something else is already on it, override the port:
 
 ```sh
 PORT=3838 bakin start
 ```
 
-Check status:
+For access from another machine, expose the port through Tailscale, Cloudflare Tunnel, or whatever you already trust. Bakin is local-first and assumes you control the network in front of it.
+
+## Stop and restart
 
 ```sh
-bakin status
+bakin stop
+bakin restart
 ```
 
-Run diagnostics:
+`restart` is a `stop` followed by `start`. Good for picking up settings changes, plugin installs, or core agent file changes that don't auto-reload.
+
+## Check that it's healthy
+
+Two flavors of "is it working":
 
 ```sh
-bakin doctor
+bakin status   # is the server running, and on what port
+bakin doctor   # full health check across OpenClaw, models, channels, plugins
 ```
 
-Update the binary:
+Run `status` for a quick "is it up". Run `doctor` when something feels off or after a major change.
+
+## Get the freshest Bakin
 
 ```sh
 bakin update
 ```
 
-`bakin update` downloads the latest GitHub release, verifies `checksums.txt`, replaces the current binary, and tells you to restart. It does not auto-restart a running server.
+Pulls the latest GitHub release, verifies `checksums.txt`, and swaps your binary in place. It doesn't touch a running server. Run `bakin restart` afterward for the new binary to take effect.
 
-Stop a running instance:
-
-```sh
-bakin stop
-```
-
-Restart:
+## Tail the logs
 
 ```sh
-bakin restart
+bakin logs        # rolling server log
+bakin logs mcp    # MCP gateway audit log
 ```
 
-## Service Setup
+Log lines go to both stdout and `~/.bakin/logs/server.log` (10 MB rotation, single backup). Tail with the commands above or watch the file directly.
 
-On macOS, install or remove LaunchAgent service integration:
-
-```sh
-bakin setup service
-bakin setup service --uninstall
-```
-
-Service setup is an operational convenience, not the primary install path.
-
-## Logs and Paths
-
-Show the resolved runtime paths:
+## Inspect runtime paths
 
 ```sh
 bakin paths
 ```
 
-Tail audit logs:
+Shows where Bakin resolved its home directory, content dir, OpenClaw home, plugin paths, logs, and lock files. Useful when something feels off and you want to confirm where state actually lives.
+
+## Reindex search
+
+If search results look stale, or you've edited `~/.bakin/` files outside the app:
 
 ```sh
-bakin logs
-bakin logs mcp
+bakin reindex                # all tables
+bakin reindex --table=tasks  # one table
 ```
 
-## Reindex Search
+Use `--rebuild` only when you want to drop the existing index and start fresh.
 
-When search content drifts, reindex:
+Prefer the dashboard? The same controls live in the [Health plugin](/docs/core/health/).
+
+## Run as a service (macOS)
+
+Optional. To keep Bakin running across reboots:
 
 ```sh
-bakin reindex
-bakin reindex --table=tasks
+bakin setup service             # install LaunchAgent
+bakin setup service --uninstall # remove it
 ```
 
-Use `--rebuild` only when you intend to rebuild index state.
+Plenty of people just leave `bakin start` running in a terminal session or window. Whatever works.
