@@ -190,8 +190,11 @@ describe('doctor', () => {
       vi.resetModules()
       const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
-      // Should have many results from the normal check suite, not just 1
-      expect(results.length).toBeGreaterThan(1)
+      // Post-migration (#139): runDiagnostics no longer runs builtin checks
+      // directly — every check is plugin-registered via runPluginHealthChecks.
+      // With no plugins activated in this test, the result set is empty
+      // when the gate doesn't fire. The non-presence of 'onboarded' is
+      // what proves the gate didn't trip.
       expect(results.find(r => r.check === 'onboarded')).toBeUndefined()
     })
 
@@ -208,7 +211,7 @@ describe('doctor', () => {
       vi.resetModules()
       const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
-      expect(results.length).toBeGreaterThan(1)
+      // See note above: the gate not firing = no 'onboarded' row.
       expect(results.find(r => r.check === 'onboarded')).toBeUndefined()
     })
   })
