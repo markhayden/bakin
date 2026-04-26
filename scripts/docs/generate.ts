@@ -9,6 +9,33 @@ const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'apps/docs')
 const generatedRoot = join(docsRoot, '.generated')
 const sourceRoots = [join(repoRoot, 'plugins'), join(repoRoot, 'src'), join(repoRoot, 'packages')]
+const llmBundleFiles = [
+  'llms.txt',
+  'llms-full.txt',
+  'llms/plugin-authoring.md',
+  'llms/agent-authoring.md',
+  'llms/sdk-reference.md',
+  'llms/api.md',
+  'llms/cli.md',
+  'llms/hooks.md',
+  'llms/exec-tools.md',
+  'llms/core-plugins.md',
+  'llms/settings.md',
+]
+const docsSnippetFiles = [
+  'snippets/plugin-basic/bakin-plugin.json',
+  'snippets/plugin-basic/index.ts',
+  'snippets/plugin-basic/client.tsx',
+  'snippets/agent-package-basic/bakin-package.json',
+]
+const publicSlotNames = [
+  'asset-preview',
+  'asset-detail-modal',
+  'task-assets',
+  'task-sidebar',
+  'home-widget',
+  'page:/<route>',
+]
 
 function writeStableFile(path: string, contents: string): void {
   mkdirSync(dirname(path), { recursive: true })
@@ -62,6 +89,26 @@ function extractExecTools(): Array<{ name: string; description?: string; file: s
     }
   }
   return tools.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file))
+}
+
+function extractSlotRegistrations(): Array<{ name: string; file: string; line: number }> {
+  const slots: Array<{ name: string; file: string; line: number }> = []
+  for (const file of sourceFiles()) {
+    const text = readFileSync(file, 'utf8')
+    const lines = text.split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      const direct = lines[i].match(/registerSlot\(['"`]([^'"`]+)['"`]/)
+      if (direct) slots.push({ name: direct[1], file: relativeSource(file), line: i + 1 })
+
+      const server = lines[i].match(/slot:\s*['"`]([^'"`]+)['"`]/)
+      if (server && lines.slice(Math.max(0, i - 8), i + 8).some(line => line.includes('registerSlot'))) {
+        slots.push({ name: server[1], file: relativeSource(file), line: i + 1 })
+      }
+    }
+  }
+  const byKey = new Map<string, { name: string; file: string; line: number }>()
+  for (const slot of slots) byKey.set(`${slot.name}:${slot.file}:${slot.line}`, slot)
+  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file))
 }
 
 interface PluginManifestDoc {
@@ -139,6 +186,7 @@ function flattenObject(value: unknown, prefix = ''): Array<{ key: string; value:
 const versionLine = `Docs version: Bakin ${APP_VERSION}`
 
 function buildCoverageReport(): Record<string, unknown> {
+  const routes = getAllRoutes()
   return {
     version: APP_VERSION,
     generatedBy: 'scripts/docs/generate.ts',
@@ -146,17 +194,32 @@ function buildCoverageReport(): Record<string, unknown> {
       cliCommands: {
         status: 'active',
         count: CLI_COMMANDS.length,
+        examples: CLI_COMMANDS.reduce((count, command) => count + (command.examples?.length ?? 0), 0),
         source: 'src/core/cli/registry.ts',
       },
       httpRoutes: {
         status: 'active',
-        count: getAllRoutes().length,
+        count: routes.length,
+        withInputSchema: routes.filter(route => Boolean(route.input)).length,
+        withOutputSchema: routes.filter(route => Boolean(route.output)).length,
+        withExamples: routes.filter(route => (route.examples?.length ?? 0) > 0).length,
         source: 'src/core/api-docs.ts',
+      },
+      pluginRoutes: {
+        status: 'partial',
+        count: routes.filter(route => route.pluginId !== 'core').length,
+        source: 'runtime route registration metadata',
       },
       hookRegistrations: {
         status: 'audited',
         count: extractHookRegistrations().length,
         source: 'source scan',
+      },
+      slots: {
+        status: 'documented',
+        count: publicSlotNames.length,
+        auditedRegistrations: extractSlotRegistrations().length,
+        source: 'packages/sdk/src/register.ts and slot source scan',
       },
       execTools: {
         status: 'audited',
@@ -178,9 +241,19 @@ function buildCoverageReport(): Record<string, unknown> {
         count: readSdkExports().length,
         source: 'packages/sdk/package.json',
       },
+      agentPackageKinds: {
+        status: 'active',
+        count: 4,
+        source: 'packages/core/src/agent-packages/manifest.ts',
+      },
+      docsSnippets: {
+        status: 'active',
+        count: docsSnippetFiles.length,
+        source: 'apps/docs/snippets',
+      },
       llmBundles: {
         status: 'active',
-        count: 10,
+        count: llmBundleFiles.length,
         source: 'scripts/docs/generate.ts',
       },
     },
@@ -466,6 +539,67 @@ function renderSdkReference(): string {
   return lines.join('\n')
 }
 
+function renderCoverageReference(): string {
+  const routes = getAllRoutes()
+  const cliExampleCount = CLI_COMMANDS.reduce((count, command) => count + (command.examples?.length ?? 0), 0)
+  const routeInputSchemaCount = routes.filter(route => Boolean(route.input)).length
+  const routeOutputSchemaCount = routes.filter(route => Boolean(route.output)).length
+  const routeExampleCount = routes.filter(route => (route.examples?.length ?? 0) > 0).length
+  const hooks = extractHookRegistrations()
+  const slots = extractSlotRegistrations()
+  const execTools = extractExecTools()
+  const corePlugins = readCorePluginManifests()
+  const settings = flattenObject(DEFAULT_SETTINGS)
+  const sdkExports = readSdkExports()
+
+  return `---
+title: Generated Coverage
+description: Coverage report for generated Bakin documentation surfaces.
+---
+
+# Generated Coverage
+
+${versionLine}
+
+This page is generated by \`scripts/docs/generate.ts\`. It exists to make launch coverage visible and to give CI a stable place to compare generated documentation output.
+
+| Surface | Source | Status |
+| --- | --- | --- |
+| CLI commands | \`src/core/cli/registry.ts\` | Active: ${CLI_COMMANDS.length} commands, ${cliExampleCount} examples |
+| HTTP routes | \`src/core/api-docs.ts\` and route metadata | Active: ${routes.length} routes, ${routeInputSchemaCount} input schemas, ${routeOutputSchemaCount} output schemas, ${routeExampleCount} routes with examples |
+| Plugin routes | Runtime route registration metadata | Partial: ${routes.filter(route => route.pluginId !== 'core').length} documented plugin routes |
+| Hooks | Source scan for \`hooks.register(...)\` | Audited: ${hooks.length} registrations |
+| Slots | SDK slot contract plus source scan | Documented: ${publicSlotNames.length} public slot names, ${slots.length} audited registrations |
+| Exec/MCP tools | Source scan for \`registerExecTool(...)\` | Audited: ${execTools.length} tools |
+| Core plugins | \`plugins/*/bakin-plugin.json\` | Active: ${corePlugins.length} plugin manifests |
+| Settings | \`packages/core/src/settings.ts\` | Active: ${settings.length} flattened settings |
+| Runtime paths | \`packages/core/src/content-dir.ts\` | Active: documented path contract |
+| SDK exports | \`packages/sdk/package.json\` and barrel files | Audited: ${sdkExports.length} subpaths |
+| Agent package kinds | \`packages/core/src/agent-packages/manifest.ts\` | Active: agent, skill-pack, workflow-pack, knowledge-pack |
+| Tested snippets | \`apps/docs/snippets\` | Active: ${docsSnippetFiles.length} required fixtures |
+| LLM docs | \`apps/docs/public/llms*\` | Active: ${llmBundleFiles.length} public bundles |
+
+## Launch Gates
+
+These generated surfaces are in CI through \`bun run docs:check\`:
+
+- generated docs and LLM bundles exist
+- Markdown pages have title and description frontmatter
+- required snippet fixtures exist
+- snippet JSON parses cleanly
+- the Starlight site builds with Pagefind search and sitemap output
+
+## Remaining Contract Debt
+
+The current generated docs distinguish active structured metadata from audited source scans. Audited surfaces are public enough to document, but still need stronger contract objects before they should be considered final:
+
+- hooks need explicit kind, schemas, examples, visibility, and stability
+- exec/MCP tools need explicit metadata and output shape coverage
+- plugin routes should use the same route metadata helpers as core routes
+- SDK exports need complete TSDoc and stability annotations
+`
+}
+
 writeStableFile(
   join(generatedRoot, 'coverage.json'),
   JSON.stringify(buildCoverageReport(), null, 2),
@@ -513,35 +647,7 @@ writeStableFile(
 
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/coverage.md'),
-  `---
-title: Generated Coverage
-description: Coverage report for generated Bakin documentation surfaces.
----
-
-# Generated Coverage
-
-${versionLine}
-
-This page is generated by \`scripts/docs/generate.ts\`.
-
-The current scaffold establishes the public coverage contract. The next implementation pass will replace this summary with inventories for CLI commands, HTTP routes, plugin routes, hooks, slots, SDK exports, settings, exec/MCP tools, agent package contracts, snippets, and LLM bundles.
-
-| Surface | Launch requirement | Current status |
-| --- | --- | --- |
-| CLI commands | Structured registry, examples, docs metadata | Active: ${CLI_COMMANDS.length} commands |
-| HTTP routes | Zod input schemas, examples, visibility, stability | Active: ${getAllRoutes().length} documented routes |
-| Plugin routes | Same contract as HTTP routes | Planned |
-| Hooks | Contract objects, kind, schemas, examples | Audited: ${extractHookRegistrations().length} registrations |
-| Slots | Contract objects, props, examples | Planned |
-| SDK exports | TypeDoc, TSDoc, stability | Planned |
-| Examples | External fixtures, tested or explicitly illustrative | Planned |
-| LLM docs | \`/llms.txt\`, \`/llms-full.txt\`, targeted bundles | Active |
-| Exec/MCP tools | Contract objects, schemas, examples | Audited: ${extractExecTools().length} registrations |
-| Core plugins | Manifest catalog from shipped plugins | Active: ${readCorePluginManifests().length} plugins |
-| Settings | Generated from default settings | Active: ${flattenObject(DEFAULT_SETTINGS).length} settings |
-| Runtime paths | Generated from path contract | Active |
-| SDK exports | TypeDoc, TSDoc, stability | Audited: ${readSdkExports().length} subpaths |
-`,
+  renderCoverageReference(),
 )
 
 writeStableFile(
