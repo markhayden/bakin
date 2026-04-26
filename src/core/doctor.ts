@@ -93,22 +93,6 @@ function fixed(check: string, message: string): DiagnosticResult {
 // Individual checks — each returns diagnostics AND applies safe fixes
 // ---------------------------------------------------------------------------
 
-/**
- * Gateway: ping the OpenClaw gateway.
- * NOT auto-fixable — requires human intervention to start the gateway.
- */
-async function checkGateway(): Promise<DiagnosticResult[]> {
-  try {
-    const alive = await openclaw.ping()
-    if (alive) {
-      return [ok('gateway', 'OpenClaw gateway is reachable')]
-    }
-    return [error('gateway', 'OpenClaw gateway is not responding')]
-  } catch (err) {
-    return [error('gateway', `Gateway check failed: ${err}`)]
-  }
-}
-
 const EXEC_TOOLS_START = '<!-- bakin:exec-tools:start -->'
 const EXEC_TOOLS_END = '<!-- bakin:exec-tools:end -->'
 
@@ -263,47 +247,6 @@ function checkAndSyncSkill(projectRoot: string, autoFix: boolean): DiagnosticRes
   } catch (err) {
     return [error('skill', `Failed to update skill: ${err}`)]
   }
-}
-
-/**
- * Antfly: verify binary installed and connection when enabled.
- * Binary check is informational when disabled, error when enabled and missing.
- */
-async function checkAntfly(): Promise<DiagnosticResult[]> {
-  const settings = getSettings()
-  const { installed } = await import('./antfly-server')
-
-  if (!settings.antfly.enabled) {
-    if (!installed()) {
-      return [warn('antfly', 'Antfly disabled and binary not installed — install with: brew install --cask antflydb/antfly/antfly')]
-    }
-    return [ok('antfly', 'Antfly disabled — binary installed, enable with: bakin settings set antfly.enabled true')]
-  }
-
-  if (!installed()) {
-    return [error('antfly', 'Antfly enabled but binary not found — install with: brew install --cask antflydb/antfly/antfly')]
-  }
-
-  const urls = Array.from(new Set([
-    settings.antfly.url.replace(/\/api\/v1\/?$/, ''),
-    settings.antfly.url.replace('localhost', '127.0.0.1').replace(/\/api\/v1\/?$/, ''),
-  ]))
-
-  let lastErr: unknown
-  for (const base of urls) {
-    try {
-      const res = await fetch(`${base}/api/v1/status`, { signal: AbortSignal.timeout(3000) })
-      if (res.ok) {
-        const status = await res.json()
-        return [ok('antfly', `Antfly connected (health: ${status?.health})`)]
-      }
-      lastErr = new Error(`status ${res.status}`)
-    } catch (err) {
-      lastErr = err
-    }
-  }
-
-  return [error('antfly', `Antfly connection failed: ${lastErr}`)]
 }
 
 /**
@@ -817,14 +760,13 @@ export async function runDiagnostics(
   //   schedule: schedule-sync (#139 C4)
   //   memory: search-tables (#139 C5)
   //   health: content-dir / service / mcporter (#139 C6)
+  //   health: gateway / antfly (#139 C7)
 
   // Async checks (network, not auto-fixable) — run in parallel
-  const [gatewayResults, antflyResults, pluginAssetsResults] = await Promise.all([
-    checkGateway(),
-    checkAntfly(),
+  const [pluginAssetsResults] = await Promise.all([
     checkPluginAssets(),
   ])
-  results.push(...gatewayResults, ...antflyResults, ...pluginAssetsResults)
+  results.push(...pluginAssetsResults)
 
   // Plugin-contributed health checks (#137). Results appended to the same
   // list as builtins; the UI groups by status so ordering doesn't matter.

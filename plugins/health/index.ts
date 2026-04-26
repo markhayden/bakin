@@ -20,6 +20,8 @@ import {
 import { checkContentDir } from './lib/system-checks/content-dir'
 import { checkService } from './lib/system-checks/service'
 import { checkMcporter } from './lib/system-checks/mcporter'
+import { checkGateway } from './lib/system-checks/gateway'
+import { checkAntfly } from './lib/system-checks/antfly'
 // Registry accessors live on globalThis because Next.js API routes get
 // separate webpack-compiled module instances with empty Maps. The custom
 // server (server.ts) registers the real accessors after plugin init.
@@ -297,6 +299,16 @@ const healthPlugin: BakinPlugin = {
       name: 'mcporter install + per-agent config',
       autoFix: true,
       run: () => Promise.resolve(checkMcporter()),
+    })
+    ctx.registerHealthCheck({
+      id: 'gateway',
+      name: 'OpenClaw HTTP gateway reachability',
+      run: () => checkGateway(),
+    })
+    ctx.registerHealthCheck({
+      id: 'antfly',
+      name: 'Antfly binary + daemon connection',
+      run: () => checkAntfly(),
     })
   },
 
