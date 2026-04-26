@@ -22,6 +22,7 @@ Canonical docs: https://docs.makinbakin.com/
 - SDK reference: /llms/sdk-reference.md
 - API reference: /llms/api.md
 - CLI reference: /reference/generated/cli/
+- API reference: /reference/generated/api/
 
 ## Fetch Examples
 

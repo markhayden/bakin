@@ -26,4 +26,5 @@ See [Generated Coverage](/reference/generated/coverage/) for the current invento
 Generated references currently available:
 
 - [CLI Reference](/reference/generated/cli/)
+- [API Reference](/reference/generated/api/)
 - [Generated Coverage](/reference/generated/coverage/)
