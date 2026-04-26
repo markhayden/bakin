@@ -27,5 +27,5 @@ You can edit `~/.bakin/settings.json` directly if you prefer. Same rules apply: 
 
 ## Related
 
-- [Health](/docs/core/health/): see the effects of your settings on system status
-- [Cockpit](/docs/core/cockpit/): alerts surface based on the thresholds you configure here
+- [Health](/docs/using/health/): see the effects of your settings on system status
+- [Essentials](/docs/using/essentials/): alerts surface based on the thresholds you configure here

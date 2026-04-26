@@ -77,7 +77,7 @@ bakin reindex --table=tasks  # one table
 
 Use `--rebuild` only when you want to drop the existing index and start fresh.
 
-Prefer the dashboard? The same controls live in the [Health plugin](/docs/core/health/).
+Prefer the dashboard? The same controls live in the [Health plugin](/docs/using/health/).
 
 ## Run as a service (macOS)
 
@@ -89,3 +89,30 @@ bakin setup service --uninstall # remove it
 ```
 
 Plenty of people just leave `bakin start` running in a terminal session or window. Whatever works.
+
+<div class="for-agents">
+
+## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents
+
+Lifecycle commands (`start`/`stop`/`restart`/`update`/`logs`) are human-only. The diagnostic and search surfaces are also exposed as MCP exec tools so agents can self-check and pull data.
+
+<!-- docs:exec-tools health -->
+- `bakin_exec_health_doctor`: Run system diagnostics (agent roster, skill sync, gateway, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.
+- `bakin_exec_health_status`: Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work.
+<!-- /docs:exec-tools -->
+
+<!-- docs:exec-tools search -->
+- `bakin_exec_search_facets`: Get facet value counts for a plugin. Useful for understanding data distribution (e.g., how many tasks per status).
+- `bakin_exec_search_lookup`: Look up a specific indexed document by its key and plugin.
+- `bakin_exec_search_query`: Search across all Bakin content (tasks, assets, projects, workflows, schedule, team, memory, messaging) or a specific plugin. Returns ranked results with scores.
+- `bakin_exec_search_reindex`: Trigger a full reindex of all content types (or a specific plugin). Use after bulk data changes.
+- `bakin_exec_search_similar`: Find documents similar to a given text description. Uses semantic (vector) search for meaning-based matching.
+- `bakin_exec_search_stats`: Get search system health: enabled status, per-table document counts, and index stats.
+- `bakin_exec_search_table`: Search a specific Bakin plugin with facet filtering. Returns results plus facet counts for filtering.
+<!-- /docs:exec-tools -->
+
+- `bakin_exec_get_paths`: agent equivalent of `bakin paths`.
+
+Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/).
+
+</div>

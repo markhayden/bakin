@@ -4,13 +4,11 @@ description: Onboard your local Bakin instance and confirm it's healthy.
 lastUpdated: 2026-04-25
 ---
 
-import { Aside } from '@astrojs/starlight/components'
-
-<Aside type="note" title="Bakin needs OpenClaw">
-Bakin is the dashboard. <a href="https://openclaw.ai/" target="_blank" rel="noopener noreferrer">OpenClaw</a> is the agent runtime it reads from. Install and start OpenClaw before onboarding, otherwise the OpenClaw check will fail.
+:::note[Bakin needs OpenClaw]
+Bakin is the dashboard. [OpenClaw](https://openclaw.ai/) is the agent runtime it reads from. Install and start OpenClaw before onboarding, otherwise the OpenClaw check will fail.
 
 Onboarding only *reads* `~/.openclaw/` to confirm the install. It never writes, modifies, or copies OpenClaw files.
-</Aside>
+:::
 
 ```sh
 bakin onboard

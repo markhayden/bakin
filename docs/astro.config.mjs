@@ -1,5 +1,6 @@
 import { defineConfig, passthroughImageService } from 'astro/config'
 import starlight from '@astrojs/starlight'
+import rehypeExternalLinks from 'rehype-external-links'
 
 const gtmId = process.env.PUBLIC_GTM_ID ?? 'GTM-KZQK989V'
 
@@ -8,6 +9,17 @@ export default defineConfig({
   base: '/docs',
   image: {
     service: passthroughImageService(),
+  },
+  markdown: {
+    rehypePlugins: [
+      [
+        rehypeExternalLinks,
+        {
+          target: '_blank',
+          rel: ['noopener', 'noreferrer'],
+        },
+      ],
+    ],
   },
   integrations: [
     starlight({
@@ -160,34 +172,34 @@ document.addEventListener("click", function (event) {
           ],
         },
         {
-          label: 'Core',
+          label: 'Using',
           items: [
-            { label: 'Cockpit', slug: 'core/cockpit' },
-            { label: 'Tasks', slug: 'core/tasks' },
-            { label: 'Assets', slug: 'core/assets' },
-            { label: 'Schedule', slug: 'core/schedule' },
-            { label: 'Messaging', slug: 'core/messaging' },
-            { label: 'Projects', slug: 'core/projects' },
-            { label: 'Workflows', slug: 'core/workflows' },
-            { label: 'Memory', slug: 'core/memory' },
-            { label: 'Team', slug: 'core/team' },
-            { label: 'Models', slug: 'core/models' },
-            { label: 'Health', slug: 'core/health' },
-            { label: 'Settings', slug: 'core/settings' },
+            { label: 'Essentials', slug: 'using/essentials' },
+            { label: 'Tasks', slug: 'using/tasks' },
+            { label: 'Assets', slug: 'using/assets' },
+            { label: 'Schedule', slug: 'using/schedule' },
+            { label: 'Messaging', slug: 'using/messaging' },
+            { label: 'Projects', slug: 'using/projects' },
+            { label: 'Workflows', slug: 'using/workflows' },
+            { label: 'Memory', slug: 'using/memory' },
+            { label: 'Team', slug: 'using/team' },
+            { label: 'Models', slug: 'using/models' },
+            { label: 'Health', slug: 'using/health' },
+            { label: 'Settings', slug: 'using/settings' },
           ],
         },
         {
-          label: 'Extend Bakin',
+          label: 'Extending',
           items: [
-            { label: 'Overview', slug: 'extend/overview' },
-            { label: 'Plugin Authoring', slug: 'extend/plugins/overview' },
-            { label: 'Plugin Manifest', slug: 'extend/plugins/manifest' },
-            { label: 'Server Contracts', slug: 'extend/plugins/server-contracts' },
-            { label: 'Client UI', slug: 'extend/plugins/client-ui' },
-            { label: 'Agent Authoring', slug: 'extend/agents/overview' },
-            { label: 'Agent Packages', slug: 'extend/agents/packages' },
-            { label: 'Agent Knowledge', slug: 'extend/agents/knowledge' },
-            { label: 'SDK', slug: 'extend/sdk/overview' },
+            { label: 'Overview', slug: 'extending/overview' },
+            { label: 'Plugin Authoring', slug: 'extending/plugins/overview' },
+            { label: 'Plugin Manifest', slug: 'extending/plugins/manifest' },
+            { label: 'Server Contracts', slug: 'extending/plugins/server-contracts' },
+            { label: 'Client UI', slug: 'extending/plugins/client-ui' },
+            { label: 'Agent Authoring', slug: 'extending/agents/overview' },
+            { label: 'Agent Packages', slug: 'extending/agents/packages' },
+            { label: 'Agent Knowledge', slug: 'extending/agents/knowledge' },
+            { label: 'SDK', slug: 'extending/sdk/overview' },
           ],
         },
         {
