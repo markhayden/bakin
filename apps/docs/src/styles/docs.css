@@ -81,7 +81,7 @@ pre {
 }
 
 .site-title img {
-  height: 20px;
+  height: 25px;
   width: auto;
   filter: brightness(0) saturate(100%) invert(69%) sepia(36%) saturate(1831%) hue-rotate(292deg) brightness(102%) contrast(101%);
 }
