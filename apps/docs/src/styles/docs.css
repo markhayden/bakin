@@ -72,25 +72,38 @@ pre {
 }
 
 .site-title {
+  display: inline-flex;
+  align-items: center;
   gap: 0.5rem;
   color: var(--sl-color-white);
+  text-decoration: none;
+  white-space: nowrap;
 }
 
 .site-title img {
-  height: 1.25rem;
+  height: 1.4rem;
   width: auto;
   filter: brightness(0) saturate(100%) invert(69%) sepia(36%) saturate(1831%) hue-rotate(292deg) brightness(102%) contrast(101%);
 }
 
-.site-title span {
+.site-title__brand,
+.site-title__suffix {
   font-family: var(--font-bakin-italic);
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-style: italic;
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1.25;
   text-transform: uppercase;
+}
+
+.site-title__brand {
   color: var(--sl-color-white);
+}
+
+.site-title__suffix {
+  margin-left: -0.25rem;
+  color: var(--sl-color-gray-4);
 }
 
 ::selection {
