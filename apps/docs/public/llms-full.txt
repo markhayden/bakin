@@ -26,6 +26,8 @@ Canonical docs: https://docs.makinbakin.com/
 - Hooks reference: /reference/generated/hooks/
 - Exec/MCP tools reference: /reference/generated/exec-tools/
 - Core plugin catalog: /reference/generated/core-plugins/
+- Settings reference: /reference/generated/settings/
+- Runtime paths: /reference/generated/runtime-paths/
 
 ## Fetch Examples
 
