@@ -106,6 +106,9 @@ PluginLockEntry {
   remoteHeadSha? // last seen remote sha (github only)
   sourceTreeSha? // install/upgrade time tree sha (local only)
   lastSourceTreeSha? // --check time tree sha (local only)
+  installedSkills? // OpenClaw skill names this plugin shipped — the
+                  // authoritative allowlist for uninstall (defeats fake
+                  // .installedBy markers per #119 hardening)
 }
 ```
 
@@ -115,43 +118,74 @@ throw for core ids. Set during `pluginRegistry.initialize()`.
 
 ### Install flow — `bakin plugins install <src> [--yes]`
 
-Two-phase to support the consent prompt without server-side staging
-state:
+Two-phase with a HMAC-signed consent token binding to defend against a
+source-swap-after-prompt attack (the prompt approves source A but the
+commit submits source B):
 
 1. CLI POSTs `/api/plugins/install` with `{ source, type }` (no
-   `accepted`)
+   `accepted`).
 2. Server clones to staging, validates manifest + permissions, parses
-   the manifest version
+   the manifest version, computes `manifestSha`.
 3. If permissions are non-empty AND `accepted !== true`, server returns
-   `{ awaitingConsent: true, id, version, permissions }` and tears
-   down staging
-4. CLI surfaces the consent prompt (matching exact spec text)
-5. On accept, CLI re-POSTs with `accepted: true` — server clones again
-   (cheap on a single-user machine), builds via `buildUserPlugin()`,
-   writes the lockfile entry
+   `{ awaitingConsent: true, id, version, permissions, consentToken }`
+   and tears down staging. The token is HMAC-SHA256 over
+   `{source, manifestSha, permissions, expiresAt}` with a process-
+   lifetime key (5-minute TTL).
+4. CLI surfaces the consent prompt.
+5. On accept, CLI re-POSTs with `{ source, type, accepted: true,
+   consentToken }`. Server re-clones, recomputes `manifestSha`, then:
+   - Verifies the token signature + expiry.
+   - Asserts `token.source === body.source` (refuses on mismatch).
+   - Asserts `token.manifestSha === fresh manifestSha` (if the manifest
+     changed between preflight and commit, returns awaitingConsent
+     again with `manifestChanged: true` + a fresh token + the new diff).
+   - On full match, runs `buildUserPlugin()` and writes the lockfile
+     entry.
 
-Zero-permission plugins skip steps 3-5. `--yes` short-circuits the
-prompt for scripted/CI installs.
+Zero-permission plugins skip the consent gate (no token needed).
+`--yes` short-circuits the prompt for scripted/CI installs but the
+token round-trip still runs for the binding check.
 
 ### Upgrade flow — `bakin plugins upgrade <id> [--yes]`
 
 `src/core/plugins/upgrade.ts`. Refuses core plugins. Reads the
 lockfile entry to determine source type:
 
-- **github**: `git fetch origin <ref>` + fast-forward. No-op if
-  HEAD == remote and lockfile.commitSha matches. Refuses with
-  `UpgradeRefusedError` if remote history was rewritten (force-push
-  detected via `git merge-base --is-ancestor`).
+- **github**:
+  1. `git remote set-url origin -- <lockfile.source>` — pins origin so
+     a malicious in-place tampering of `.git/config` can't redirect the
+     upgrade to attacker.com.
+  2. `git fetch origin -- <ref>` (read-only on working tree).
+  3. Compare local HEAD sha to remote — true noop if they match AND
+     `lockfile.commitSha === remoteSha`.
+  4. Read remote manifest via `git show origin/<ref>:bakin-plugin.json`
+     (still read-only on working tree).
+  5. **Asserts `manifest.id === id`** — refuses if the upgraded manifest
+     declares a different id (anti-impersonation; otherwise a user
+     plugin could rename to `tasks` and clobber a core plugin after
+     restart).
+  6. Compute permission diff. If widened AND `!opts.yes` → return
+     `{ awaitingConsent: true, newPermissions }` WITHOUT mutating disk
+     or lockfile.
+  7. Force-push detection via `git merge-base --is-ancestor` then
+     `git merge --ff-only`. Build. Write lockfile.
+
 - **local**: re-resolve recorded source path; error if missing.
   Compute deterministic source-tree sha (skip `node_modules`/`dist`/
   `.git`, content + path only — no mtimes). No-op if unchanged.
-  Otherwise wipe + cpSync + rebuild.
+  Read source manifest directly (no copy yet), assert manifest.id
+  stable, compute permission diff, run consent gate. Only then wipe +
+  cpSync + rebuild + write lockfile.
 
 Permission widening: if the new manifest declares permissions not in
 the lockfile entry AND `--yes` is unset, return
 `{ awaitingConsent: true, newPermissions: [...] }` without updating
 the lockfile. CLI runs the upgrade prompt; on accept, recursively
 re-invokes with `yes: true` to commit.
+
+Both branches read the manifest BEFORE any disk mutation so a
+declined upgrade leaves the plugin dir + lockfile exactly as they
+were.
 
 ### Upgrade-available detection — `bakin plugins list --check`
 
@@ -176,7 +210,10 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
    contract)
 2. Call `plugin.onUninstall(ctx)` if defined — log + audit + continue
    on error (a buggy hook must not trap the user)
-3. Plan OpenClaw skill cleanup — partition by `.installedBy.pluginId`,
+3. Plan OpenClaw skill cleanup — partition by the lockfile entry's
+   `installedSkills` allowlist (the authoritative record of what this
+   plugin actually installed) intersected with on-disk
+   `.installedBy.pluginId` markers,
    honor `.userEdited` sentinels
 4. Snapshot Bakin-owned data via `snapshotUninstall` →
    `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz` (atomic tmp+rename via
@@ -234,7 +271,7 @@ cat ~/.bakin/audit.jsonl | jq 'select(.event == "plugin.activate")'
 ```
 
 **Layer 2 — install/upgrade consent prompt**: see install + upgrade
-flows above. Prompt module: `src/core/plugins/consent-prompt.ts` with
+flows above. Prompt module: `src/core/cli/consent-prompt.ts` with
 injected stdio for testability. Permissions removed at upgrade time
 do NOT trigger a prompt (no security concern); permissions added
 trigger the diff prompt.
