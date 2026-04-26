@@ -308,86 +308,6 @@ async function checkAntfly(): Promise<DiagnosticResult[]> {
 }
 
 /**
- * Search tables: verify registered content types have tables with data.
- * Runs only when Antfly is enabled and connected.
- */
-async function checkSearchTables(): Promise<DiagnosticResult[]> {
-  const settings = getSettings()
-  if (!settings.antfly.enabled) return []
-
-  try {
-    const antfly = await import('./antfly')
-    await antfly.initialize()
-
-    // If Antfly is configured but unavailable, the antfly diagnostic is the
-    // root cause. Skip downstream search-table noise until the connection is
-    // healthy again.
-    if (!antfly.available()) return []
-
-    const { getSearchHealth } = await import('./search-registry')
-    const health = await getSearchHealth()
-
-    if (!health.enabled) return []
-
-    const results: DiagnosticResult[] = []
-
-    if (health.tables.length === 0) {
-      results.push(warn('search-tables', 'Antfly enabled but no content types registered — plugins may not have activated'))
-      return results
-    }
-
-    let emptyTables = 0
-    let failedTables = 0
-
-    for (const t of health.tables) {
-      if (!t.stats) {
-        failedTables++
-        results.push(warn('search-tables', `Table "${t.table}" (${t.pluginId}) — stats unavailable, but table is registered${t.healthy ? ' and indexes look healthy' : ''}`))
-        continue
-      }
-
-      const rawNumDocs = Number((t.stats as Record<string, unknown>).num_docs)
-      if (Number.isFinite(rawNumDocs)) {
-        if (rawNumDocs === 0) {
-          if (t.pluginId === 'schedule') {
-            results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 persisted documents; schedule jobs are indexed at runtime`))
-          } else {
-            emptyTables++
-            results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 documents — reindex via POST /api/reindex?table=${t.table}`))
-          }
-        }
-        continue
-      }
-
-      const storage = (t.stats as Record<string, unknown>).storage_status as Record<string, unknown> | undefined
-      if (storage?.empty === true) {
-        emptyTables++
-        results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) appears empty — reindex via POST /api/reindex?table=${t.table}`))
-      }
-    }
-
-    if (results.length === 0) {
-      const totals = health.tables
-        .map(t => Number((t.stats as Record<string, unknown>)?.num_docs))
-        .filter(n => Number.isFinite(n))
-
-      if (totals.length > 0) {
-        const total = totals.reduce((sum, n) => sum + n, 0)
-        results.push(ok('search-tables', `${health.tables.length} tables, ${total} total documents indexed`))
-      } else if (failedTables > 0) {
-        results.push(warn('search-tables', `${health.tables.length} tables registered; ${failedTables} table stats unavailable, but registry metadata is readable`))
-      } else {
-        results.push(ok('search-tables', `${health.tables.length} tables registered; table metadata readable (document counts unavailable from current Antfly API)`))
-      }
-    }
-
-    return results
-  } catch (err) {
-    return [error('search-tables', `Failed to check search tables: ${err}`)]
-  }
-}
-
-/**
  * Content directory: verify content lives in ~/.bakin/ not ./content/.
  * NOT auto-fixable — migration requires user judgment (moving live data).
  */
@@ -1013,17 +933,17 @@ export async function runDiagnostics(
   //   tasks: taskboard / task-consistency / order-integrity (#139 C2)
   //   assets: assets (#139 C3)
   //   schedule: schedule-sync (#139 C4)
+  //   memory: search-tables (#139 C5)
   results.push(...checkMcporter(Number(process.env.PORT || 3737), autoFix))
   results.push(...checkService(projectRoot))
 
   // Async checks (network, not auto-fixable) — run in parallel
-  const [gatewayResults, antflyResults, searchTableResults, pluginAssetsResults] = await Promise.all([
+  const [gatewayResults, antflyResults, pluginAssetsResults] = await Promise.all([
     checkGateway(),
     checkAntfly(),
-    checkSearchTables(),
     checkPluginAssets(),
   ])
-  results.push(...gatewayResults, ...antflyResults, ...searchTableResults, ...pluginAssetsResults)
+  results.push(...gatewayResults, ...antflyResults, ...pluginAssetsResults)
 
   // Plugin-contributed health checks (#137). Results appended to the same
   // list as builtins; the UI groups by status so ordering doesn't matter.
