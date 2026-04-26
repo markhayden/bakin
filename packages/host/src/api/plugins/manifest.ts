@@ -17,7 +17,7 @@ import { isCorePlugin, pluginRegistry } from '@/lib/plugin-registry'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
-import { checkUpgradeAvailable } from '@/core/plugins/upgrade'
+import { runChecks } from '@/core/plugins/upgrade'
 import { EMBEDDED_ASSETS } from '../_embedded-assets'
 
 const log = createLogger('plugin-manifest')
@@ -75,23 +75,20 @@ export async function get(req: Request): Promise<Response> {
   const url = new URL(req.url)
   const wantCheck = url.searchParams.get('check') === '1'
 
-  // If --check requested, run the per-plugin remote/local probe in parallel
-  // for every user plugin BEFORE we read the lockfile for rendering. The
-  // checks themselves persist `lastChecked` + the appropriate sha back into
-  // the lockfile; reading after gives the caller the freshest values.
+  // If --check requested, batch the per-plugin probes via runChecks — that
+  // helper does parallel reads but ONE atomic lockfile write at the end,
+  // avoiding the read-modify-write race that would silently drop updates.
   if (wantCheck) {
     const userIds = pluginRegistry
       .getRegistrySnapshot()
       .map(e => e.id)
       .filter(id => !isCorePlugin(id))
-    await Promise.all(
-      userIds.map(async id => {
-        const result = await checkUpgradeAvailable(id)
-        if (result.error) {
-          log.warn('plugin --check probe failed', { id, error: result.error })
-        }
-      }),
-    )
+    if (userIds.length > 0) {
+      const results = await runChecks(userIds)
+      for (const r of results) {
+        if (r.error) log.warn('plugin --check probe failed', { id: r.id, error: r.error })
+      }
+    }
   }
 
   // Read the lockfile once per request; tolerate read failures so a corrupt

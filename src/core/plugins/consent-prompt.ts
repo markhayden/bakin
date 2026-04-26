@@ -114,7 +114,9 @@ function readYesNo(io: PromptIO): Promise<boolean> {
       if (newlineIdx === -1) return
       io.stdin.removeListener('data', onData)
       const line = buf.slice(0, newlineIdx).trim().toLowerCase()
-      resolve(line === 'y')
+      // Accept both `y` and `yes` — many users type `yes` out of habit.
+      // Anything else (n, empty line, gibberish) rejects.
+      resolve(line === 'y' || line === 'yes')
     }
     io.stdin.on('data', onData)
     if (typeof (io.stdin as unknown as { resume?: () => void }).resume === 'function') {

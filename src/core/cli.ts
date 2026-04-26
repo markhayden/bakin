@@ -332,7 +332,16 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean }): Prom
 
 async function cmdPluginsRemove(pluginId: string): Promise<number> {
   try {
-    const res = await api<{ ok?: boolean; error?: string; core?: boolean }>('/api/plugins/remove', {
+    const res = await api<{
+      ok?: boolean
+      error?: string
+      core?: boolean
+      id?: string
+      skills?: { removed: number; kept: number }
+      sweep?: { hooks: number; execTools: number; contentTypes: number }
+      snapshot?: string | null
+      message?: string
+    }>('/api/plugins/remove', {
       method: 'POST',
       body: JSON.stringify({ pluginId }),
     })
@@ -344,8 +353,23 @@ async function cmdPluginsRemove(pluginId: string): Promise<number> {
       console.error(`Remove failed: ${res.error}`)
       return 1
     }
-    console.log(`Removed plugin "${pluginId}"`)
-    return 0
+    console.log(`Removed plugin: ${res.id ?? pluginId}`)
+    if (res.skills) {
+      console.log(`  Cleaned ${res.skills.removed} OpenClaw skill(s) (created-by-${res.id ?? pluginId})`)
+      if (res.skills.kept > 0) {
+        console.log(`  Kept ${res.skills.kept} user-edited skill(s) (~/.openclaw/skills/)`)
+      }
+    }
+    if (res.snapshot) {
+      console.log(`  Snapshot saved: ${res.snapshot}`)
+    } else {
+      // Snapshot is the safety net — surface its absence loudly so the
+      // user can recover (or knows to back up before retrying).
+      console.error(`  WARNING: pre-removal snapshot failed — plugin files cannot be restored from ~/.bakin/.uninstalled/`)
+    }
+    console.log(`Restart Bakin to fully release the plugin's modules: bakin stop && bakin start`)
+    // Exit non-zero when the snapshot failed so scripted callers can react.
+    return res.snapshot ? 0 : 1
   } catch (err) {
     console.error(`Remove failed: ${err instanceof Error ? err.message : String(err)}`)
     return 1

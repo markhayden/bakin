@@ -185,22 +185,14 @@ export interface UpgradeAvailability {
 }
 
 /**
- * Check whether an upgrade is available for an installed plugin and persist
- * the freshness markers (`lastChecked` + `remoteHeadSha`/`sourceTreeSha`)
- * into the lockfile. Used by `bakin plugins list --check`.
- *
- * Network/fs errors are caught and returned in the `error` field so one
- * plugin's failure doesn't blank the whole list.
+ * Read-only probe for one plugin — no lockfile write. Used by the batched
+ * `runChecks` so a parallel sweep can collect every result and write the
+ * lockfile ONCE at the end. Otherwise concurrent read-modify-write on a
+ * single file races and silently drops half the updates.
  */
-export async function checkUpgradeAvailable(id: string): Promise<UpgradeAvailability> {
+async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvailability> {
   const lastChecked = new Date().toISOString()
   try {
-    const lock = readPluginLockfile()
-    const entry = lock.plugins[id]
-    if (!entry) {
-      return { id, upgradeAvailable: false, lastChecked, error: 'no lockfile entry' }
-    }
-
     if (entry.type === 'github') {
       if (!entry.source || !entry.ref) {
         return { id, upgradeAvailable: false, lastChecked, error: 'lockfile missing source/ref' }
@@ -213,26 +205,101 @@ export async function checkUpgradeAvailable(id: string): Promise<UpgradeAvailabi
       if (!remoteHeadSha) {
         return { id, upgradeAvailable: false, lastChecked, error: `no remote ref: ${entry.ref}` }
       }
-      const upgradeAvailable = remoteHeadSha !== entry.commitSha
-      writePluginLockfile(updatePlugin(readPluginLockfile(), id, { lastChecked, remoteHeadSha }))
-      return { id, upgradeAvailable, lastChecked, remoteHeadSha }
+      return {
+        id,
+        upgradeAvailable: remoteHeadSha !== entry.commitSha,
+        lastChecked,
+        remoteHeadSha,
+      }
     }
 
-    // Local
     if (!existsSync(entry.source)) {
       return { id, upgradeAvailable: false, lastChecked, error: `source path missing: ${entry.source}` }
     }
     const liveTreeSha = computeSourceTreeSha(entry.source)
-    const upgradeAvailable = entry.sourceTreeSha ? liveTreeSha !== entry.sourceTreeSha : true
-    // Write to lastSourceTreeSha — `sourceTreeSha` is the install/upgrade
-    // time value and must not be clobbered by --check. Symmetric with
-    // remoteHeadSha vs commitSha for github.
-    writePluginLockfile(updatePlugin(readPluginLockfile(), id, { lastChecked, lastSourceTreeSha: liveTreeSha }))
-    return { id, upgradeAvailable, lastChecked, sourceTreeSha: liveTreeSha }
+    return {
+      id,
+      upgradeAvailable: entry.sourceTreeSha ? liveTreeSha !== entry.sourceTreeSha : true,
+      lastChecked,
+      sourceTreeSha: liveTreeSha,
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return { id, upgradeAvailable: false, lastChecked, error: message }
   }
+}
+
+/**
+ * Check whether an upgrade is available for an installed plugin and persist
+ * the freshness markers (`lastChecked` + `remoteHeadSha`/`sourceTreeSha`)
+ * into the lockfile. Used by `bakin plugins list --check` for single-plugin
+ * checks. Concurrent callers should prefer `runChecks` to avoid races.
+ *
+ * Network/fs errors are caught and returned in the `error` field so one
+ * plugin's failure doesn't blank the whole list.
+ */
+export async function checkUpgradeAvailable(id: string): Promise<UpgradeAvailability> {
+  const entry = readPluginLockfile().plugins[id]
+  if (!entry) {
+    return {
+      id,
+      upgradeAvailable: false,
+      lastChecked: new Date().toISOString(),
+      error: 'no lockfile entry',
+    }
+  }
+  const result = await probeOne(entry, id)
+  // Single-plugin path still serializes via one read-modify-write call —
+  // safe because there's no parallelism here.
+  if (!result.error) {
+    const patch: Partial<PluginLockEntry> = { lastChecked: result.lastChecked }
+    if (result.remoteHeadSha) patch.remoteHeadSha = result.remoteHeadSha
+    if (result.sourceTreeSha) patch.lastSourceTreeSha = result.sourceTreeSha
+    writePluginLockfile(updatePlugin(readPluginLockfile(), id, patch))
+  }
+  return result
+}
+
+/**
+ * Run the `--check` probe for many plugins in parallel and write the
+ * lockfile ONCE with all updates. The previous shape (each probe
+ * read-modify-writes the lockfile) raced under Promise.all and silently
+ * dropped about half the updates with 10 plugins.
+ *
+ * Errors per plugin are surfaced in the result's `error` field — a single
+ * plugin's failure does NOT block other updates from landing.
+ */
+export async function runChecks(ids: readonly string[]): Promise<UpgradeAvailability[]> {
+  const initial = readPluginLockfile()
+  const results: UpgradeAvailability[] = await Promise.all(
+    ids.map(async id => {
+      const entry = initial.plugins[id]
+      if (!entry) {
+        return {
+          id,
+          upgradeAvailable: false,
+          lastChecked: new Date().toISOString(),
+          error: 'no lockfile entry',
+        }
+      }
+      return probeOne(entry, id)
+    }),
+  )
+
+  // Re-read to pick up any concurrent install/remove that happened
+  // between the initial read and now (rare but possible). Apply every
+  // probe's update to that fresh baseline, then write once.
+  let lock = readPluginLockfile()
+  for (const r of results) {
+    if (r.error) continue
+    if (!lock.plugins[r.id]) continue
+    const patch: Partial<PluginLockEntry> = { lastChecked: r.lastChecked }
+    if (r.remoteHeadSha) patch.remoteHeadSha = r.remoteHeadSha
+    if (r.sourceTreeSha) patch.lastSourceTreeSha = r.sourceTreeSha
+    lock = updatePlugin(lock, r.id, patch)
+  }
+  writePluginLockfile(lock)
+  return results
 }
 
 /**

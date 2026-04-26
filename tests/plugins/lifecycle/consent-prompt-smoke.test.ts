@@ -124,6 +124,26 @@ describe('promptInstallConsent', () => {
     })).toBe(true)
   })
 
+  it('"yes\\n" accepts (common-habit input)', async () => {
+    const { io } = makeIO('yes\n')
+    expect(await promptInstallConsent({
+      pluginId: 'p',
+      version: '1.0.0',
+      permissions: ['storage.read'],
+      io,
+    })).toBe(true)
+  })
+
+  it('"YES\\n" accepts (case-insensitive)', async () => {
+    const { io } = makeIO('YES\n')
+    expect(await promptInstallConsent({
+      pluginId: 'p',
+      version: '1.0.0',
+      permissions: ['storage.read'],
+      io,
+    })).toBe(true)
+  })
+
   it('"n\\n" rejects', async () => {
     const { io } = makeIO('n\n')
     expect(await promptInstallConsent({
