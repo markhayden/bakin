@@ -62,6 +62,43 @@ function extractExecTools(): Array<{ name: string; description?: string; file: s
   return tools.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file))
 }
 
+interface PluginManifestDoc {
+  id: string
+  name: string
+  version: string
+  description?: string
+  bakin?: string
+  permissions?: string[]
+  dependencies?: string[]
+  file: string
+}
+
+function readCorePluginManifests(): PluginManifestDoc[] {
+  const pluginsDir = join(repoRoot, 'plugins')
+  const manifests: PluginManifestDoc[] = []
+  for (const entry of readdirSync(pluginsDir).sort()) {
+    const manifestPath = join(pluginsDir, entry, 'bakin-plugin.json')
+    try {
+      const raw = readFileSync(manifestPath, 'utf8')
+      const parsed = JSON.parse(raw) as Partial<PluginManifestDoc>
+      if (!parsed.id || !parsed.name || !parsed.version) continue
+      manifests.push({
+        id: parsed.id,
+        name: parsed.name,
+        version: parsed.version,
+        description: parsed.description,
+        bakin: parsed.bakin,
+        permissions: parsed.permissions ?? [],
+        dependencies: parsed.dependencies ?? [],
+        file: relativeSource(manifestPath),
+      })
+    } catch {
+      // Not every directory under plugins/ must be a plugin.
+    }
+  }
+  return manifests
+}
+
 const versionLine = `Docs version: Bakin ${APP_VERSION}`
 
 function renderCliReference(): string {
@@ -204,6 +241,37 @@ function renderExecToolReference(): string {
   return lines.join('\n')
 }
 
+function renderPluginCatalog(): string {
+  const plugins = readCorePluginManifests()
+  const lines = [
+    '---',
+    'title: Core Plugin Catalog',
+    'description: Generated catalog of core plugins shipped with Bakin.',
+    '---',
+    '',
+    '# Core Plugin Catalog',
+    '',
+    versionLine,
+    '',
+    'This page is generated from `plugins/*/bakin-plugin.json` manifests.',
+    '',
+  ]
+
+  for (const plugin of plugins) {
+    lines.push(`## ${plugin.name}`, '')
+    lines.push(plugin.description ?? 'No description provided.', '')
+    lines.push(`- ID: \`${plugin.id}\``)
+    lines.push(`- Version: \`${plugin.version}\``)
+    if (plugin.bakin) lines.push(`- Bakin compatibility: \`${plugin.bakin}\``)
+    lines.push(`- Manifest: \`${plugin.file}\``)
+    lines.push(`- Dependencies: ${plugin.dependencies?.length ? plugin.dependencies.map(d => `\`${d}\``).join(', ') : '`none`'}`)
+    lines.push(`- Permissions: ${plugin.permissions?.length ? plugin.permissions.map(p => `\`${p}\``).join(', ') : '`none declared`'}`)
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
+
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/cli.md'),
   renderCliReference(),
@@ -222,6 +290,11 @@ writeStableFile(
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/exec-tools.md'),
   renderExecToolReference(),
+)
+
+writeStableFile(
+  join(docsRoot, 'src/content/docs/reference/generated/core-plugins.md'),
+  renderPluginCatalog(),
 )
 
 writeStableFile(
@@ -250,6 +323,7 @@ The current scaffold establishes the public coverage contract. The next implemen
 | Examples | External fixtures, tested or explicitly illustrative | Planned |
 | LLM docs | \`/llms.txt\`, \`/llms-full.txt\`, targeted bundles | Active |
 | Exec/MCP tools | Contract objects, schemas, examples | Audited: ${extractExecTools().length} registrations |
+| Core plugins | Manifest catalog from shipped plugins | Active: ${readCorePluginManifests().length} plugins |
 `,
 )
 
@@ -320,6 +394,7 @@ Canonical docs: https://docs.makinbakin.com/
 - API reference: /reference/generated/api/
 - Hooks reference: /reference/generated/hooks/
 - Exec/MCP tools reference: /reference/generated/exec-tools/
+- Core plugin catalog: /reference/generated/core-plugins/
 
 ## Fetch Examples
 
@@ -358,6 +433,10 @@ const bundles = {
   'exec-tools.md': {
     title: 'Bakin Exec and MCP Tools',
     body: `The exec/MCP tool reference currently comes from source audit. Current tool registration count: ${extractExecTools().length}. Public tools should migrate to explicit contract objects with schemas, examples, visibility, and stability.`,
+  },
+  'core-plugins.md': {
+    title: 'Bakin Core Plugins',
+    body: `The core plugin catalog is generated from shipped plugin manifests. Current core plugin count: ${readCorePluginManifests().length}. Public docs should pair this generated catalog with human-authored workflow pages for each plugin.`,
   },
 }
 

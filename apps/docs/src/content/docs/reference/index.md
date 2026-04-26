@@ -29,4 +29,5 @@ Generated references currently available:
 - [API Reference](/reference/generated/api/)
 - [Hook Reference](/reference/generated/hooks/)
 - [Exec and MCP Tool Reference](/reference/generated/exec-tools/)
+- [Core Plugin Catalog](/reference/generated/core-plugins/)
 - [Generated Coverage](/reference/generated/coverage/)

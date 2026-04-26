@@ -22,3 +22,4 @@ The current scaffold establishes the public coverage contract. The next implemen
 | Examples | External fixtures, tested or explicitly illustrative | Planned |
 | LLM docs | `/llms.txt`, `/llms-full.txt`, targeted bundles | Active |
 | Exec/MCP tools | Contract objects, schemas, examples | Audited: 90 registrations |
+| Core plugins | Manifest catalog from shipped plugins | Active: 10 plugins |

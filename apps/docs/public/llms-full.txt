@@ -25,6 +25,7 @@ Canonical docs: https://docs.makinbakin.com/
 - API reference: /reference/generated/api/
 - Hooks reference: /reference/generated/hooks/
 - Exec/MCP tools reference: /reference/generated/exec-tools/
+- Core plugin catalog: /reference/generated/core-plugins/
 
 ## Fetch Examples
 
