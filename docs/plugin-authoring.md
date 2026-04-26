@@ -74,8 +74,13 @@ Build outputs land in `dist/index.js` (server) and `dist/client.js`
 }
 ```
 
-`id` must match `/^[a-z0-9][a-z0-9-_]{0,39}$/i`. The `permissions` field
-is logged at activation but not yet enforced at runtime (issue #142).
+`id` must match `/^[a-z][a-z0-9-]{0,39}$/` — lowercase letters and
+digits, hyphens allowed mid-id, must start with a letter, no
+underscore (avoids exec-tool name collisions like `bakin_exec_foo_bar_baz`
+that an underscore-id could create). The `permissions` field is
+validated against the Zod enum at install/upgrade, logged at
+activation, and surfaced via the install/upgrade consent prompt;
+runtime capability gating (layer 3) is tracked in issue #166.
 `dependencies` is an array of other plugin ids — if set, the plugin
 loader topo-sorts activation accordingly.
 
@@ -217,10 +222,20 @@ bakin plugins install /path/to/my-plugin
 # GitHub — clones + builds
 bakin plugins install github:your-user/my-plugin
 
-# List installed plugins
+# Skip the consent prompt (CI / scripted installs)
+bakin plugins install /path/to/my-plugin --yes
+
+# List installed plugins (5-column layout: id / name / version / source / status)
 bakin plugins list
 
-# Remove (refuses core plugins)
+# Probe remotes / local sources for upgrades, persist freshness markers
+bakin plugins list --check
+
+# Re-pull from the recorded source and rebuild (refuses core plugins)
+bakin plugins upgrade my-plugin
+bakin plugins upgrade my-plugin --yes   # skip consent prompt for new permissions
+
+# Remove (refuses core plugins; full teardown sweep + tarball backup)
 bakin plugins remove my-plugin
 ```
 
@@ -249,6 +264,80 @@ What happens under the hood:
 User plugins with the same id as a core plugin **override** the core
 plugin (`~/.bakin/plugins/` is scanned after the built-in table). Use
 this to fork and customize any core plugin without touching the repo.
+
+### Permissions field
+
+`bakin-plugin.json` declares the capabilities your plugin uses. The
+field is a Zod-validated enum (`packages/core/src/plugins/permissions.ts`)
+locked to:
+
+| Permission | Capability |
+|---|---|
+| `events.emit` | Broadcast Server-Sent Events to connected browsers |
+| `openclaw.read` | Read agent identity/skills/state from `~/.openclaw/` |
+| `storage.read` | Read files in `~/.bakin/` |
+| `storage.write` | Write files in `~/.bakin/` |
+
+Empty/missing → `[]`. Unknown strings reject install/upgrade with a
+"did you mean…" suggestion (Levenshtein ≤ 2 against the enum).
+
+At install (and at upgrade when the set widens), the user sees an
+interactive consent prompt listing requested permissions. `--yes`
+skips the prompt for scripted installs. Every plugin activation logs
+the requested set to `~/.bakin/audit.jsonl` so the user can audit
+what they've authorized.
+
+New permissions ship in the same PR that introduces the capability
+needing them — not pre-emptively.
+
+### `onUninstall(ctx)` hook
+
+Optional. Bakin calls it BEFORE tearing down its own bookkeeping
+(plugin dir, settings JSON, registry entries, owned OpenClaw skills).
+Use it to clean up data your plugin wrote OUTSIDE its own dir:
+
+```ts
+const plugin: BakinPlugin = {
+  id: 'my-plugin',
+  // ...
+  async onUninstall(ctx) {
+    // Drop rows from a shared table you don't own:
+    for (const id of myKeys) await ctx.search.remove(id)
+    // Remove a config file you wrote outside ~/.bakin/plugins/<id>/:
+    rmSync(join(ctx.storage.bakinDir, 'my-config.json'), { force: true })
+  },
+}
+```
+
+Bakin handles all of the following itself — you do NOT need to:
+
+- The plugin dir at `~/.bakin/plugins/<id>/`
+- Per-plugin settings at `~/.bakin/plugin-settings/<id>.json`
+- Hook handlers, exec tools, workflow node types, notification
+  channels, health checks, and search content types your plugin
+  registered
+- OpenClaw skills your plugin shipped via `defaults/openclaw-skills/`
+  (Bakin honors `.userEdited` sentinels — those stay in place)
+
+Errors thrown from `onUninstall` are logged and audited but do NOT
+block the rest of the cleanup. A buggy hook must not trap the user
+in a half-removed state.
+
+### Install ledger — `~/.bakin/plugins/lock.json`
+
+Every install/upgrade/remove writes this file atomically. You don't
+touch it from plugin code, but if you're debugging an upgrade flow
+or need to inspect what Bakin recorded, this is the source of truth.
+Schema in `packages/core/src/plugins/lockfile.ts`. Mirrors the agent-
+packages lockfile pattern.
+
+### Backup tarballs — `~/.bakin/.uninstalled/`
+
+`bakin plugins remove <id>` snapshots everything Bakin removes (plugin
+dir + settings JSON + owned OpenClaw skills minus `.userEdited` ones)
+into `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz` BEFORE deleting. No
+auto-retention in this release; tarballs accumulate. Inspect with
+`tar -tzf <file>` or restore manually with `tar -xzf <file> -C ~/`.
 
 ## Testing your plugin
 
@@ -391,8 +480,10 @@ If a plugin author needs the same pattern, copy the component and adjust the sav
 - **Server-side reload (v4).** Edit your plugin's `index.ts` (or any
   `src/core/**`) and have the server reload without Ctrl-C. Today
   requires a manual restart.
-- **Runtime permission enforcement.** The `permissions` manifest field
-  is logged but not enforced. Tracked in issue #142.
+- **Runtime permission enforcement (layer 3).** Activation logging
+  (layer 1) and install/upgrade consent prompts (layer 2) ARE
+  enforced. Layer 3 — capability-gating individual `ctx.*` calls
+  against the declared permissions — is tracked in issue #166.
 - **Plugin registry / marketplace.** `bakin plugins install github:...`
   works today for any public repo; a curated index is future work.
 

@@ -49,8 +49,9 @@ Assets + search:
   reindex [--table=<name>] [--rebuild]
 
 Plugins:
-  plugins list               List installed plugins
-  plugins install <src>      Install a plugin (local path or github:user/repo)
+  plugins list [--check]     List installed plugins (--check probes remote/source for upgrades)
+  plugins install <src> [--yes]  Install a plugin (local path or github:user/repo); --yes skips consent prompt
+  plugins upgrade <id> [--yes]  Re-pull a user plugin from its source and rebuild
   plugins remove <id>        Remove a plugin
   plugins scaffold <name>    Create a starter plugin in ./<name>/
 
@@ -143,17 +144,54 @@ async function cmdStop(): Promise<number> {
   return 0
 }
 
-async function cmdPluginsList(): Promise<number> {
-  try {
-    const res = await api<{ plugins: Array<{ id: string; name: string; version: string }> }>(
-      '/api/plugins/manifest',
+interface ListPluginRow {
+  id: string
+  name: string
+  version: string
+  source: 'core' | 'github' | 'local'
+  upgradeAvailable: boolean
+  staleHintDays: number | null
+  installed: { version: string } | null
+}
+
+function renderPluginsList(rows: ListPluginRow[]): string[] {
+  const COL = { id: 14, name: 18, version: 11, source: 14 }
+  const out: string[] = []
+  out.push(
+    `  ${'ID'.padEnd(COL.id)} ${'NAME'.padEnd(COL.name)} ${'VERSION'.padEnd(COL.version)} ${'SOURCE'.padEnd(COL.source)} STATUS`,
+  )
+  for (const r of rows) {
+    const sourceCell = r.source === 'core' ? '[core]' : r.source
+    let status = ''
+    if (r.source === 'core') {
+      // Core plugins don't have lifecycle status — column stays blank.
+      status = ''
+    } else if (r.upgradeAvailable) {
+      status = 'upgrade available'
+    } else if (r.staleHintDays !== null) {
+      status = `(last checked ${r.staleHintDays} days ago — run with --check)`
+    } else if (r.installed) {
+      status = 'up to date'
+    } else {
+      status = '(no lockfile entry)'
+    }
+    out.push(
+      `  ${r.id.padEnd(COL.id)} ${r.name.padEnd(COL.name)} ${r.version.padEnd(COL.version)} ${sourceCell.padEnd(COL.source)} ${status}`,
     )
+  }
+  return out
+}
+
+async function cmdPluginsList(opts: { check: boolean }): Promise<number> {
+  try {
+    const path = opts.check ? '/api/plugins/manifest?check=1' : '/api/plugins/manifest'
+    const res = await api<{ plugins: ListPluginRow[] }>(path)
     if (res.plugins.length === 0) {
       console.log('(no plugins registered)')
       return 0
     }
-    for (const p of res.plugins) {
-      console.log(`  ${p.id.padEnd(12)} ${p.name} (${p.version})`)
+    for (const line of renderPluginsList(res.plugins)) {
+      console.log(line)
     }
     return 0
   } catch (err) {
@@ -163,15 +201,70 @@ async function cmdPluginsList(): Promise<number> {
   }
 }
 
-async function cmdPluginsInstall(source: string): Promise<number> {
+interface InstallApiResponse {
+  ok?: boolean
+  error?: string
+  awaitingConsent?: boolean
+  manifestChanged?: boolean
+  id?: string
+  version?: string
+  permissions?: import('@bakin/core/plugins/permissions').Permission[]
+  consentToken?: string
+  message?: string
+}
+
+async function cmdPluginsInstall(source: string, opts: { yes: boolean }): Promise<number> {
   const isGithub = source.startsWith('github:') || (source.includes('/') && !source.startsWith('.') && !source.startsWith('/'))
-  const body = { source, type: isGithub ? 'github' : 'local' }
+  const type: 'github' | 'local' = isGithub ? 'github' : 'local'
   try {
-    const res = await api<Record<string, unknown>>('/api/plugins/install', {
+    // First call — preflight. With --yes the caller skips the consent
+    // round-trip entirely, but we still go through preflight first so the
+    // server can return a consentToken if it turns out the manifest needed
+    // one (--yes implies "accept whatever permissions show up").
+    let response = await api<InstallApiResponse>('/api/plugins/install', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ source, type, accepted: false }),
     })
-    console.log(JSON.stringify(res, null, 2))
+
+    if (response.error) {
+      console.error(`Install failed: ${response.error}`)
+      return 1
+    }
+
+    // Loop the prompt — if the server bounces back with manifestChanged,
+    // re-prompt with the new diff. Cap to a few iterations as a sanity
+    // bound against a pathological remote that flaps the manifest.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (!response.awaitingConsent) break
+      const { promptInstallConsent } = await import(/* @vite-ignore */ './cli/consent-prompt' as string) as typeof import('./cli/consent-prompt')
+      if (response.manifestChanged) {
+        console.error(`\nManifest changed between preflight and commit — re-confirming permissions.`)
+      }
+      const accepted = await promptInstallConsent({
+        pluginId: response.id ?? '?',
+        version: response.version ?? '0.0.0',
+        permissions: response.permissions ?? [],
+        yes: opts.yes,
+      })
+      if (!accepted) {
+        console.error(`\nInstall cancelled.`)
+        return 1
+      }
+      response = await api<InstallApiResponse>('/api/plugins/install', {
+        method: 'POST',
+        body: JSON.stringify({ source, type, accepted: true, consentToken: response.consentToken }),
+      })
+      if (response.error) {
+        console.error(`Install failed: ${response.error}`)
+        return 1
+      }
+    }
+    if (response.awaitingConsent) {
+      console.error(`Install failed: manifest kept changing between preflight and commit; aborting.`)
+      return 1
+    }
+
+    console.log(response.message ?? `Installed "${response.id}". Restart Bakin to load the plugin.`)
     return 0
   } catch (err) {
     console.error(`Install failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -179,9 +272,77 @@ async function cmdPluginsInstall(source: string): Promise<number> {
   }
 }
 
+async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean }): Promise<number> {
+  try {
+    const res = await api<{
+      ok?: boolean
+      error?: string
+      core?: boolean
+      id?: string
+      noop?: boolean
+      awaitingConsent?: boolean
+      newPermissions?: string[]
+      before?: { version: string; commitSha: string }
+      after?: { version: string; commitSha: string }
+    }>('/api/plugins/upgrade', {
+      method: 'POST',
+      body: JSON.stringify({ pluginId, yes: opts.yes }),
+    })
+    if (res.core) {
+      console.error(`Refusing to upgrade core plugin "${pluginId}".`)
+      return 2
+    }
+    if (res.error) {
+      console.error(`Upgrade failed: ${res.error}`)
+      return 1
+    }
+    if (res.noop) {
+      const v = res.before?.version ?? '?'
+      console.log(`${pluginId} v${v}: already up to date`)
+      return 0
+    }
+    if (res.awaitingConsent) {
+      const { promptUpgradeConsent } = await import(/* @vite-ignore */ './cli/consent-prompt' as string) as typeof import('./cli/consent-prompt')
+      const accepted = await promptUpgradeConsent({
+        pluginId,
+        fromVersion: res.before?.version ?? '?',
+        toVersion: res.after?.version ?? '?',
+        newPermissions: (res.newPermissions ?? []) as import('@bakin/core/plugins/permissions').Permission[],
+        yes: opts.yes,
+      })
+      if (!accepted) {
+        console.error(`\nUpgrade cancelled.`)
+        return 1
+      }
+      // Re-run with yes:true so the server completes the upgrade.
+      return cmdPluginsUpgrade(pluginId, { yes: true })
+    }
+    const fromV = res.before?.version ?? '?'
+    const toV = res.after?.version ?? '?'
+    const fromSha = (res.before?.commitSha ?? '').slice(0, 8)
+    const toSha = (res.after?.commitSha ?? '').slice(0, 8)
+    const shaPart = fromSha && toSha ? ` (sha ${fromSha}...${toSha})` : ''
+    console.log(`Upgraded ${pluginId} v${fromV} → v${toV}${shaPart}. Restart Bakin to activate the change: bakin stop && bakin start`)
+    return 0
+  } catch (err) {
+    console.error(`Upgrade failed: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
+}
+
 async function cmdPluginsRemove(pluginId: string): Promise<number> {
   try {
-    const res = await api<{ ok?: boolean; error?: string; core?: boolean }>('/api/plugins/remove', {
+    const res = await api<{
+      ok?: boolean
+      error?: string
+      core?: boolean
+      id?: string
+      skills?: { removed: number; kept: number }
+      skillsMissing?: string[]
+      sweep?: { hooks: number; execTools: number; contentTypes: number }
+      snapshot?: string | null
+      message?: string
+    }>('/api/plugins/remove', {
       method: 'POST',
       body: JSON.stringify({ pluginId }),
     })
@@ -193,8 +354,28 @@ async function cmdPluginsRemove(pluginId: string): Promise<number> {
       console.error(`Remove failed: ${res.error}`)
       return 1
     }
-    console.log(`Removed plugin "${pluginId}"`)
-    return 0
+    console.log(`Removed plugin: ${res.id ?? pluginId}`)
+    if (res.skills) {
+      console.log(`  Cleaned ${res.skills.removed} OpenClaw skill(s) (created-by-${res.id ?? pluginId})`)
+      if (res.skills.kept > 0) {
+        console.log(`  Kept ${res.skills.kept} user-edited skill(s) (~/.openclaw/skills/)`)
+      }
+    }
+    if (res.skillsMissing && res.skillsMissing.length > 0) {
+      // Lockfile claimed ownership of skills not present (or marker
+      // mismatch). Surface so users notice silent drift.
+      console.error(`  WARNING: lockfile claimed ${res.skillsMissing.length} skill(s) not present on disk: ${res.skillsMissing.join(', ')}`)
+    }
+    if (res.snapshot) {
+      console.log(`  Snapshot saved: ${res.snapshot}`)
+    } else {
+      // Snapshot is the safety net — surface its absence loudly so the
+      // user can recover (or knows to back up before retrying).
+      console.error(`  WARNING: pre-removal snapshot failed — plugin files cannot be restored from ~/.bakin/.uninstalled/`)
+    }
+    console.log(`Restart Bakin to fully release the plugin's modules: bakin stop && bakin start`)
+    // Exit non-zero when the snapshot failed so scripted callers can react.
+    return res.snapshot ? 0 : 1
   } catch (err) {
     console.error(`Remove failed: ${err instanceof Error ? err.message : String(err)}`)
     return 1
@@ -318,16 +499,28 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
 
       case 'plugins': {
         if (!sub) {
-          console.error('Usage: bakin plugins <list|install|remove|scaffold>')
+          console.error('Usage: bakin plugins <list|install|upgrade|remove|scaffold>')
           return { startServer: false, exitCode: 1 }
         }
-        if (sub === 'list') return { startServer: false, exitCode: await cmdPluginsList() }
+        if (sub === 'list') {
+          const check = args.slice(2).includes('--check')
+          return { startServer: false, exitCode: await cmdPluginsList({ check }) }
+        }
         if (sub === 'install') {
           if (!args[2]) {
-            console.error('Usage: bakin plugins install <path|github:user/repo>')
+            console.error('Usage: bakin plugins install <path|github:user/repo> [--yes]')
             return { startServer: false, exitCode: 1 }
           }
-          return { startServer: false, exitCode: await cmdPluginsInstall(args[2]) }
+          const yes = args.slice(3).includes('--yes')
+          return { startServer: false, exitCode: await cmdPluginsInstall(args[2], { yes }) }
+        }
+        if (sub === 'upgrade') {
+          if (!args[2]) {
+            console.error('Usage: bakin plugins upgrade <id> [--yes]')
+            return { startServer: false, exitCode: 1 }
+          }
+          const yes = args.slice(3).includes('--yes')
+          return { startServer: false, exitCode: await cmdPluginsUpgrade(args[2], { yes }) }
         }
         if (sub === 'remove') {
           if (!args[2]) {

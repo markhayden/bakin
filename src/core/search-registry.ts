@@ -274,6 +274,62 @@ export function getContentTypes(): Map<string, SearchContentTypeDefinition & { p
 }
 
 /**
+ * Purge a single content type — drop the underlying Antfly table (atomic
+ * delete-all) and remove the in-memory registration. Used by
+ * `bakin plugins remove` (#119) to tear down a plugin's index entries
+ * before deleting the plugin itself.
+ *
+ * Accepts either the bare content-type name (`memory`) or the prefixed
+ * full table name (`bakin_memory`). Returns the row count present at
+ * purge time (best-effort via getTableStats; 0 when stats are unavailable
+ * or antfly is disabled).
+ *
+ * No-op + returns 0 when antfly is disabled — the in-memory registration
+ * still gets cleared so the plugin can re-register on next install.
+ */
+export async function purgeContentType(name: string): Promise<number> {
+  const registry = getRegistry()
+  const tableName = fullTableName(name)
+  const def = registry.contentTypes.get(tableName)
+
+  if (!antfly.enabled()) {
+    if (def) {
+      registry.contentTypes.delete(tableName)
+      if (registry.pluginTables.get(def.pluginId) === tableName) {
+        registry.pluginTables.delete(def.pluginId)
+      }
+    }
+    return 0
+  }
+
+  let removed = 0
+  try {
+    const stats = await antfly.getTableStats(tableName)
+    const docCount = (stats as Record<string, unknown> | null)?.num_docs
+    if (typeof docCount === 'number') removed = docCount
+  } catch (err) {
+    log.warn('purgeContentType: failed to read row count before drop', err, { tableName })
+  }
+
+  try {
+    await antfly.dropTable(tableName)
+  } catch (err) {
+    log.error('purgeContentType: dropTable failed', err, { tableName })
+    throw err
+  }
+
+  if (def) {
+    registry.contentTypes.delete(tableName)
+    if (registry.pluginTables.get(def.pluginId) === tableName) {
+      registry.pluginTables.delete(def.pluginId)
+    }
+  }
+
+  log.info(`Purged content type ${tableName} (${removed} docs)`)
+  return removed
+}
+
+/**
  * Get the full table name for a plugin. Returns null when the plugin has
  * no registered content type. Throws when a plugin has registered multiple
  * content types — the API/MCP layers assume 1:1 plugin→table, and the spec
