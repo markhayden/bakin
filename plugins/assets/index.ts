@@ -31,6 +31,7 @@ import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { buildAssetFileUrl } from './lib/asset-url'
 import { extractAssetContent } from './lib/content-extractor'
+import { checkAssets } from './lib/health-checks'
 
 /** Filename is the canonical identity under the filename-as-identity model. */
 function filenameFromRel(relPath: string): string {
@@ -895,6 +896,14 @@ const assetsPlugin: BakinPlugin = {
         ctx.activity.audit('assets.trash.permanent_delete', agent, { filename })
         return { ok: true }
       },
+    })
+
+    // ─── Health check (migrated out of core/doctor.ts per #139 C3) ──────
+    ctx.registerHealthCheck({
+      id: 'assets',
+      name: 'Asset directory + sidecar integrity',
+      autoFix: true,
+      run: () => Promise.resolve(checkAssets(getContentDir())),
     })
   },
 
