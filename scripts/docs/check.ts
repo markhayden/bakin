@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
+import { extractExecTools, renderExecToolsSnippet } from './source-scan'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'docs')
@@ -142,6 +143,27 @@ function validateCliCommandBlocks(file: string, text: string): void {
   }
 }
 
+function execToolMarkerExists(marker: string): boolean {
+  const prefix = `bakin_exec_${marker}_`
+  return extractExecTools().some(t => t.name.startsWith(prefix))
+}
+
+function validateExecToolBlocks(file: string, text: string): void {
+  const rel = file.replace(repoRoot, '').replace(/^\//, '')
+  const markerPattern = /<!-- docs:exec-tools ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:exec-tools -->/g
+  for (const match of text.matchAll(markerPattern)) {
+    const marker = match[1]
+    if (!execToolMarkerExists(marker)) {
+      errors.push(`${rel}: unknown exec-tools snippet marker "${marker}" (no tools start with bakin_exec_${marker}_)`)
+      continue
+    }
+    const expected = renderExecToolsSnippet(marker)
+    if (match[0].trimEnd() !== expected) {
+      errors.push(`${rel}: exec-tools snippet "${marker}" is out of sync with registerExecTool calls in source`)
+    }
+  }
+}
+
 function renderDocsSnippetBlock(marker: string): string {
   const snippet = docsSnippetBlocks[marker as keyof typeof docsSnippetBlocks]
   if (!snippet) return ''
@@ -198,7 +220,8 @@ for (const file of walkMarkdown(docsContentRoot)) {
   const frontmatter = parseFrontmatter(file)
   if (!frontmatter.title) errors.push(`${rel}: missing frontmatter title`)
   if (!frontmatter.description) errors.push(`${rel}: missing frontmatter description`)
-  if (/\bTODO\b|placeholder/i.test(text.replace(/--column=todo/g, '--column=column-name'))) {
+  const cleanedText = text.replace(/--column=todo/g, '--column=column-name')
+  if (/\bTODO\b/.test(cleanedText) || /placeholder/i.test(cleanedText)) {
     errors.push(`${rel}: contains TODO/placeholder language`)
   }
   if (text.includes('https://docs.makinbakin.com')) {
@@ -214,6 +237,7 @@ for (const file of walkMarkdown(docsContentRoot)) {
   }
   validateBakinCommands(file, text)
   validateCliCommandBlocks(file, text)
+  validateExecToolBlocks(file, text)
   validateDocsSnippetBlocks(file, text)
   validateJsonFences(file, text)
 }

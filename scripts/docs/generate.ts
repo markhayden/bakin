@@ -1,4 +1,5 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { renderExecToolsSnippet } from './source-scan'
 import { dirname, join } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { DEFAULT_SETTINGS } from '../../packages/core/src/settings'
@@ -144,11 +145,13 @@ function updateGeneratedContentBlocks(): void {
 
   const commandMarkerPattern = /<!-- docs:cli-commands ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:cli-commands -->/g
   const snippetMarkerPattern = /<!-- docs:snippet ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:snippet -->/g
+  const execToolsMarkerPattern = /<!-- docs:exec-tools ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:exec-tools -->/g
   for (const file of markdownFiles) {
     const text = readFileSync(file, 'utf8')
     const next = text
       .replace(commandMarkerPattern, (_match, marker: string) => renderCommandSnippet(marker))
       .replace(snippetMarkerPattern, (_match, marker: string) => renderDocsSnippetBlock(marker))
+      .replace(execToolsMarkerPattern, (_match, marker: string) => renderExecToolsSnippet(marker))
     if (next !== text) writeStableFile(file, next)
   }
 }
