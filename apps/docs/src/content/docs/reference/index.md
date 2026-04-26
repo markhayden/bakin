@@ -22,3 +22,8 @@ The launch reference set covers:
 - agent package contracts
 
 See [Generated Coverage](/reference/generated/coverage/) for the current inventory status.
+
+Generated references currently available:
+
+- [CLI Reference](/reference/generated/cli/)
+- [Generated Coverage](/reference/generated/coverage/)

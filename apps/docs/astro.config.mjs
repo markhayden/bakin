@@ -59,6 +59,7 @@ export default defineConfig({
           label: 'Reference',
           items: [
             { label: 'Reference Index', slug: 'reference' },
+            { label: 'CLI Reference', slug: 'reference/generated/cli' },
           ],
         },
         {

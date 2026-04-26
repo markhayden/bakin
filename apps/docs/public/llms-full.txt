@@ -21,6 +21,7 @@ Canonical docs: https://docs.makinbakin.com/
 - Agent authoring: /llms/agent-authoring.md
 - SDK reference: /llms/sdk-reference.md
 - API reference: /llms/api.md
+- CLI reference: /reference/generated/cli/
 
 ## Fetch Examples
 
