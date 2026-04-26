@@ -4,20 +4,30 @@
  *
  * Migrated from src/app/api/plugins/install/route.ts for Phase B of #147.
  *
- * Notes:
- * - A Bakin restart is required for the plugin's UI (nav items, pages,
- *   slot registrations) to take effect. The server-side plugin loader will
- *   pick up the new manifest on next boot. This is an accepted constraint
- *   — the runtime client-side loader is deferred (tracked in the spec).
- * - Never run with a source path outside the user's home or the current
- *   working directory — prevents path-traversal write attempts.
+ * Security boundaries enforced here:
+ * - Local source paths are realpath-resolved and contained to one of:
+ *   ~/.bakin/, $HOME, or the current working directory. Anything else is
+ *   rejected as a path-traversal attempt.
+ * - The github URL is parsed and validated against a strict shape before
+ *   it reaches `git clone`; refs that look like options (leading `-`) are
+ *   refused. `git clone` is invoked with `--` to end-of-options.
+ * - manifest.id is regex-validated; collisions with core plugin ids are
+ *   refused unless --override-core was passed (file an issue first).
+ * - Plugin source size is bounded to keep a hostile manifest from
+ *   exhausting memory in JSON.parse / Levenshtein.
+ *
+ * Restart required for the plugin's UI (nav items, pages, slot
+ * registrations) to take effect — the server-side plugin loader picks
+ * up the new manifest on next boot.
  */
-import { existsSync, readFileSync, mkdirSync, cpSync, rmSync } from 'fs'
-import { join, basename, resolve, isAbsolute } from 'path'
+import { existsSync, readFileSync, mkdirSync, cpSync, rmSync, statSync, realpathSync } from 'fs'
+import { homedir } from 'os'
+import { join, basename, resolve, isAbsolute, sep } from 'path'
 import { execFileSync } from 'child_process'
 import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
+import { isCorePlugin } from '@/lib/plugin-registry'
 import { buildUserPlugin } from '../../plugin-host/user-plugin-builder'
 import {
   addPlugin,
@@ -27,6 +37,9 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { computeSourceTreeSha } from '@/core/plugins/upgrade'
+
+/** Hard ceiling for any plugin source we'll accept — a manifest that big is malicious. */
+const MANIFEST_MAX_BYTES = 1 * 1024 * 1024  // 1MB
 
 const log = createLogger('plugin-install')
 
@@ -42,12 +55,22 @@ function resolveGitProvenance(targetDir: string, type: 'github' | 'local'): { re
   let ref = ''
   let commitSha = ''
   try {
-    commitSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: targetDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim()
+    commitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: targetDir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: 1024 * 1024,
+    }).trim().toLowerCase()
   } catch {
     // commitSha stays ''
   }
   try {
-    ref = execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], { cwd: targetDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim()
+    ref = execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], {
+      cwd: targetDir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: 1024 * 1024,
+    }).trim()
   } catch {
     // detached HEAD or other — ref stays ''
   }
@@ -124,6 +147,70 @@ interface InstallBody {
    * before doing any irreversible work.
    */
   accepted?: boolean
+  /** Required when accepted=true and the prior preflight returned a token (C13 binding). */
+  consentToken?: string
+  /** Allow installing a user plugin whose id matches a core plugin id (rare; opt-in). */
+  overrideCore?: boolean
+}
+
+/**
+ * Resolve a local install source to an absolute path AND verify it lives
+ * under one of the trusted roots. Symlinks are followed so a foo→/etc
+ * shortcut can't sneak past containment.
+ *
+ * Trusted roots: ~/.bakin/, $HOME, process.cwd(). Anything else is a
+ * path-traversal attempt or a misconfiguration; reject.
+ */
+function resolveAndContainLocalSource(rawSource: string): { ok: true; path: string } | { ok: false; error: string } {
+  const candidate = isAbsolute(rawSource) ? rawSource : resolve(process.cwd(), rawSource)
+  if (!existsSync(candidate)) return { ok: false, error: `Source path does not exist: ${candidate}` }
+  let real: string
+  try {
+    real = realpathSync(candidate)
+  } catch (err) {
+    return { ok: false, error: `Cannot resolve source path: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  const allowedRoots: string[] = []
+  for (const r of [getContentDir(), homedir(), process.cwd()]) {
+    try {
+      allowedRoots.push(realpathSync(r))
+    } catch {
+      // skip a root that doesn't exist (e.g. process.cwd() under test)
+    }
+  }
+  const contained = allowedRoots.some(root => real === root || real.startsWith(root + sep))
+  if (!contained) {
+    return {
+      ok: false,
+      error: `source path is outside the permitted roots (~/.bakin/, $HOME, cwd): ${real}`,
+    }
+  }
+  return { ok: true, path: real }
+}
+
+/**
+ * Validate a github install source string before it reaches `git clone`.
+ * Rejects anything that looks like a smuggled option (leading `-`, control
+ * chars, whitespace, suspicious schemes). Returns the canonical clone URL.
+ */
+function resolveGithubCloneUrl(rawSource: string): { ok: true; url: string } | { ok: false; error: string } {
+  const stripped = rawSource.startsWith('github:') ? rawSource.slice(7) : rawSource
+  if (stripped.length === 0) return { ok: false, error: 'empty github source' }
+  if (/[\s\x00-\x1f]/.test(stripped)) return { ok: false, error: 'github source contains control characters or whitespace' }
+  if (stripped.startsWith('-')) return { ok: false, error: 'github source must not start with "-"' }
+  let url: string
+  if (stripped.startsWith('http://') || stripped.startsWith('https://')) {
+    url = stripped
+  } else if (stripped.startsWith('git@')) {
+    url = stripped
+  } else {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*(\.git)?$/.test(stripped)) {
+      return { ok: false, error: `invalid github user/repo shorthand: ${stripped}` }
+    }
+    url = `https://github.com/${stripped}.git`
+  }
+  if (url.length > 2048) return { ok: false, error: 'github source URL is suspiciously long' }
+  return { ok: true, url }
 }
 
 export async function post(req: Request, _url: URL): Promise<Response> {
@@ -150,19 +237,24 @@ export async function post(req: Request, _url: URL): Promise<Response> {
 
     try {
       if (body.type === 'local') {
-        const src = isAbsolute(body.source) ? body.source : resolve(process.cwd(), body.source)
-        if (!existsSync(src)) {
+        const contained = resolveAndContainLocalSource(body.source)
+        if (!contained.ok) {
           rmSync(stagingDir, { recursive: true, force: true })
-          return Response.json({ ok: false, error: `Source path does not exist: ${src}` }, { status: 400 })
+          return Response.json({ ok: false, error: contained.error }, { status: 400 })
         }
-        cpSync(src, stagingDir, { recursive: true, dereference: false })
+        cpSync(contained.path, stagingDir, { recursive: true, dereference: false })
       } else {
-        // github: accept user/repo or github:user/repo or full URL
-        const cloneSource = body.source.startsWith('github:') ? body.source.slice(7) : body.source
-        const url = cloneSource.startsWith('http') || cloneSource.startsWith('git@')
-          ? cloneSource
-          : `https://github.com/${cloneSource}.git`
-        execFileSync('git', ['clone', '--depth', '1', url, stagingDir], { stdio: 'pipe' })
+        const parsedUrl = resolveGithubCloneUrl(body.source)
+        if (!parsedUrl.ok) {
+          rmSync(stagingDir, { recursive: true, force: true })
+          return Response.json({ ok: false, error: parsedUrl.error }, { status: 400 })
+        }
+        // `--` ends option parsing so a bizarre URL can't be reinterpreted
+        // as a git option. URL was also validated for leading `-` above.
+        execFileSync('git', ['clone', '--depth', '1', '--', parsedUrl.url, stagingDir], {
+          stdio: 'pipe',
+          maxBuffer: 10 * 1024 * 1024,
+        })
       }
 
       // Validate manifest
@@ -172,6 +264,17 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         return Response.json({
           ok: false,
           error: 'Plugin source is missing bakin-plugin.json',
+        }, { status: 400 })
+      }
+
+      // Bound manifest size before reading — otherwise a hostile source can
+      // hand us a 100MB JSON file and OOM the parser before any validation.
+      const manifestSize = statSync(manifestPath).size
+      if (manifestSize > MANIFEST_MAX_BYTES) {
+        rmSync(stagingDir, { recursive: true, force: true })
+        return Response.json({
+          ok: false,
+          error: `bakin-plugin.json is too large (${manifestSize} bytes; max ${MANIFEST_MAX_BYTES})`,
         }, { status: 400 })
       }
 
@@ -187,11 +290,28 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         ? manifest.id
         : basename(body.source.replace(/\.git$/, ''))
 
-      if (!/^[a-z0-9][a-z0-9-_]{0,39}$/i.test(id)) {
+      // Tightened from /^[a-z0-9][a-z0-9-_]{0,39}$/i — the case-insensitive
+      // flag allowed mixed case which collides with case-insensitive macOS
+      // filesystems, and underscore allowed exec-tool name collisions
+      // between plugins like `foo_bar` + action `baz` vs `foo` + action
+      // `bar_baz` (both produce bakin_exec_foo_bar_baz). Lowercase letters,
+      // digits, and hyphen only; must start with a letter.
+      if (!/^[a-z][a-z0-9-]{0,39}$/.test(id)) {
         rmSync(stagingDir, { recursive: true, force: true })
         return Response.json({
           ok: false,
-          error: `Invalid plugin id "${id}" — must match /^[a-z0-9][a-z0-9-_]{0,39}$/i`,
+          error: `Invalid plugin id "${id}" — must match /^[a-z][a-z0-9-]{0,39}$/`,
+        }, { status: 400 })
+      }
+
+      // Reject id collisions with core plugin ids unless explicitly opted in.
+      // Otherwise a malicious source named "tasks" or "schedule" can replace
+      // a core plugin permanently after the next restart.
+      if (isCorePlugin(id) && body.overrideCore !== true) {
+        rmSync(stagingDir, { recursive: true, force: true })
+        return Response.json({
+          ok: false,
+          error: `Plugin id "${id}" collides with a core plugin. Re-run with overrideCore:true to intentionally replace the built-in (rare).`,
         }, { status: 400 })
       }
 

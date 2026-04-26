@@ -23,18 +23,51 @@ import { PermissionSchema } from './permissions'
 
 const PluginTypeSchema = z.enum(['github', 'local'])
 
+/**
+ * Git refs we'll accept into the lockfile. Strict against shell + git
+ * option smuggling — the value gets passed positionally to `git fetch`,
+ * `git ls-remote`, etc. A leading `-` would be re-interpreted as an
+ * option (CVE-2017-1000117 family). Allow letters/digits/dot/dash/
+ * underscore/slash; nothing else. Empty allowed for local sources where
+ * no ref exists.
+ */
+const RefStringSchema = z.string().refine(
+  s => s.length === 0 || /^[A-Za-z0-9._/-]+$/.test(s),
+  { message: 'ref must be empty or match /^[A-Za-z0-9._/-]+$/' },
+)
+
+/**
+ * Install source — same hardening as ref, plus rejection of leading
+ * `-` and control chars. The github URL gets passed positionally to
+ * `git ls-remote` and `git clone`.
+ */
+const SourceStringSchema = z.string().min(1).refine(
+  s => !s.startsWith('-') && !/[\x00-\x1f]/.test(s),
+  { message: 'source must not start with "-" or contain control characters' },
+)
+
+/**
+ * Resolved git sha — exactly 40 lowercase hex (full sha) or empty string
+ * for local sources. Tighter than `z.string()` so a tampered lockfile
+ * can't smuggle option-like values into `git rev-parse` etc.
+ */
+const CommitShaSchema = z.string().refine(
+  s => s.length === 0 || /^[a-f0-9]{40}$/.test(s),
+  { message: 'commitSha must be empty or a 40-char lowercase hex sha' },
+)
+
 const PluginLockEntrySchema = z.object({
   /** Original install source — git URL for github, absolute path for local. */
-  source: z.string().min(1),
+  source: SourceStringSchema,
   type: PluginTypeSchema,
   /**
    * Default branch name for github sources; empty string for local sources
    * (no git provenance exists). The lockfile records this honestly rather
    * than fabricating a synthetic value.
    */
-  ref: z.string(),
+  ref: RefStringSchema,
   /** Resolved git sha at install/upgrade time; empty string for local. */
-  commitSha: z.string(),
+  commitSha: CommitShaSchema,
   installedAt: z.string().min(1),
   /** ISO 8601, set on first upgrade. */
   upgradedAt: z.string().optional(),
@@ -47,7 +80,10 @@ const PluginLockEntrySchema = z.object({
   /** ISO 8601, set by `bakin plugins list --check`. */
   lastChecked: z.string().optional(),
   /** Last seen remote HEAD sha — written by `bakin plugins list --check` (github only). */
-  remoteHeadSha: z.string().optional(),
+  remoteHeadSha: z.string().refine(
+    s => /^[a-f0-9]{40}$/.test(s),
+    { message: 'remoteHeadSha must be a 40-char lowercase hex sha' },
+  ).optional(),
   /**
    * Local source-tree sha at install/upgrade time (local only). Symmetric
    * with `commitSha` for github sources — captures what was on disk when

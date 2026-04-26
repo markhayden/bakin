@@ -65,7 +65,7 @@ function entry(): PluginLockEntry {
     source: 'github:owner/repo',
     type: 'github',
     ref: 'main',
-    commitSha: 'abc',
+    commitSha: '0123456789abcdef0123456789abcdef01234567',
     installedAt: NOW,
     version: '1.0.0',
     permissions: [],

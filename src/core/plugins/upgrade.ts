@@ -59,13 +59,16 @@ export class UpgradeRefusedError extends Error {}
 
 /**
  * Run an external command and return stdout. Wraps execFileSync so the
- * caller doesn't have to repeat the `stdio` boilerplate.
+ * caller doesn't have to repeat the `stdio` boilerplate. maxBuffer caps
+ * the output at 10MB so a malicious git server can't OOM us by streaming
+ * unbounded data.
  */
 function run(cmd: string, args: string[], cwd: string): string {
   const opts: ExecFileSyncOptions = {
     cwd,
     encoding: 'utf-8',
     stdio: ['pipe', 'pipe', 'pipe'],
+    maxBuffer: 10 * 1024 * 1024,
   }
   return execFileSync(cmd, args, opts).toString().trim()
 }
@@ -148,9 +151,12 @@ function gitFetchAndFastForward(
   id: string,
   ref: string,
 ): { from: string; to: string } {
-  run('git', ['fetch', 'origin', ref], pluginDir)
-  const from = run('git', ['rev-parse', 'HEAD'], pluginDir)
-  const to = run('git', ['rev-parse', `origin/${ref}`], pluginDir)
+  // `--` end-of-options sentinel before any user-supplied positional —
+  // ref is Zod-validated to /^[A-Za-z0-9._/-]+$/ but defense-in-depth
+  // costs nothing here.
+  run('git', ['fetch', 'origin', '--', ref], pluginDir)
+  const from = run('git', ['rev-parse', 'HEAD'], pluginDir).toLowerCase()
+  const to = run('git', ['rev-parse', `origin/${ref}`], pluginDir).toLowerCase()
   if (from === to) return { from, to }
   // Is the local HEAD an ancestor of the remote? If not, history was
   // rewritten — refuse loudly rather than silently hard-resetting.
@@ -158,6 +164,7 @@ function gitFetchAndFastForward(
     execFileSync('git', ['merge-base', '--is-ancestor', from, to], {
       cwd: pluginDir,
       stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: 10 * 1024 * 1024,
     })
   } catch {
     throw new UpgradeRefusedError(
@@ -205,8 +212,10 @@ export async function checkUpgradeAvailable(id: string): Promise<UpgradeAvailabi
         return { id, upgradeAvailable: false, lastChecked, error: 'lockfile missing source/ref' }
       }
       const remoteUrl = githubCloneUrl(entry.source)
-      const lsRemote = run('git', ['ls-remote', remoteUrl, entry.ref], getContentDir())
-      const remoteHeadSha = (lsRemote.split(/\s+/)[0] ?? '').trim()
+      // `--` ends git option parsing — even though source + ref are
+      // Zod-validated to safe shapes, this is a cheap second line of defense.
+      const lsRemote = run('git', ['ls-remote', '--', remoteUrl, entry.ref], getContentDir())
+      const remoteHeadSha = (lsRemote.split(/\s+/)[0] ?? '').trim().toLowerCase()
       if (!remoteHeadSha) {
         return { id, upgradeAvailable: false, lastChecked, error: `no remote ref: ${entry.ref}` }
       }
