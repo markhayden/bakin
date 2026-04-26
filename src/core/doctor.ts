@@ -21,9 +21,8 @@ import { getSettings } from './settings'
 import { getAgentIds } from '@bakin/core/openclaw-config'
 import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { appendAudit } from './audit'
-import { isUsingBakinHome, getContentDir } from './content-dir'
+import { getContentDir } from './content-dir'
 import * as openclaw from './openclaw-client'
-import * as mcporter from './mcporter'
 import { isOnboarded } from './onboarding/state'
 import { pluginAssetsComponent } from './onboarding/plugin-assets'
 import { getMainAgentId, getMainAgentName } from './main-agent'
@@ -308,20 +307,6 @@ async function checkAntfly(): Promise<DiagnosticResult[]> {
 }
 
 /**
- * Content directory: verify content lives in ~/.bakin/ not ./content/.
- * NOT auto-fixable — migration requires user judgment (moving live data).
- */
-function checkContentDir(): DiagnosticResult[] {
-  const contentDir = getContentDir()
-  if (isUsingBakinHome()) {
-    return [ok('content-dir', `Content directory: ${contentDir}`)]
-  }
-  return [warn('content-dir',
-    `Content lives at ${contentDir} instead of ~/.bakin/ — run: bakin init && move content/* to ~/.bakin/`
-  )]
-}
-
-/**
  * Orchestrator rules: verify AGENTS.md has the Bakin rules block and it's current.
  * Auto-fixable — safe to write/update our own block in AGENTS.md.
  */
@@ -476,108 +461,6 @@ async function checkOrchestratorRules(autoFix: boolean): Promise<DiagnosticResul
   writeFileSync(agentsPath, updated, 'utf-8')
   return [fixed('orchestrator-rules', 'Updated orchestrator rules block in AGENTS.md')]
 }
-
-/**
- * mcporter: verify installation and per-agent config entries.
- * Auto-fixable — safe because it only installs a CLI tool and writes config.
- */
-function checkMcporter(port: number, autoFix: boolean): DiagnosticResult[] {
-  const results: DiagnosticResult[] = []
-
-  if (!mcporter.isMcporterInstalled()) {
-    if (!autoFix) {
-      return [warn('mcporter', 'mcporter not installed — run: bakin setup mcporter', true)]
-    }
-    if (!mcporter.installMcporter()) {
-      return [error('mcporter', 'Failed to install mcporter — run: npm i -g mcporter')]
-    }
-    results.push(fixed('mcporter', 'Installed mcporter globally'))
-  }
-
-  const status = mcporter.verifyConfig(port)
-
-  const missing = status.agentEntries.filter(e => !e.correct)
-  if (missing.length > 0) {
-    if (!autoFix) {
-      return [
-        ...results,
-        warn('mcporter', `${missing.length} agent(s) missing or outdated in mcporter config — run: bakin setup mcporter`, true),
-      ]
-    }
-    const changes = mcporter.syncConfig(port)
-    results.push(fixed('mcporter', `Config updated: ${changes.join(', ')}`))
-  } else {
-    results.push(ok('mcporter', `All ${status.agentEntries.length} agent entries configured`))
-  }
-
-  if (status.staleEntries.length > 0 && autoFix) {
-    mcporter.syncConfig(port) // syncConfig already removes stale
-  }
-
-  return results
-}
-
-/**
- * Service: verify the macOS LaunchAgent is installed with correct paths.
- * NOT auto-fixable — stale paths require human judgment.
- */
-function checkService(projectRoot: string): DiagnosticResult[] {
-  const settings = getSettings()
-  if (!settings.service.enabled) {
-    return [ok('service', 'Skipped — service management disabled in settings')]
-  }
-
-  if (process.platform !== 'darwin') {
-    return [ok('service', 'Skipped — macOS only')]
-  }
-
-  const results: DiagnosticResult[] = []
-  const homedir = process.env.HOME || '~'
-  const plistPath = join(homedir, 'Library', 'LaunchAgents', 'com.openclaw.mc.plist')
-
-  if (!existsSync(plistPath)) {
-    results.push(warn('service', 'LaunchAgent plist not found — run: bakin setup service'))
-    return results
-  }
-
-  try {
-    const plistContent = readFileSync(plistPath, 'utf-8')
-
-    // Check WorkingDirectory matches current project
-    const wdMatch = plistContent.match(/<key>WorkingDirectory<\/key>\s*<string>([^<]+)<\/string>/)
-    if (wdMatch && wdMatch[1] !== projectRoot) {
-      results.push(error('service',
-        `LaunchAgent WorkingDirectory is "${wdMatch[1]}" but project is at "${projectRoot}" — run: bakin setup service`
-      ))
-    }
-
-    // Check server.ts path matches
-    const serverMatch = plistContent.match(/<string>([^<]*server\.ts)<\/string>/)
-    if (serverMatch && serverMatch[1] !== join(projectRoot, 'server.ts')) {
-      results.push(error('service',
-        `LaunchAgent references stale server.ts path — run: bakin setup service`
-      ))
-    }
-  } catch (err) {
-    results.push(error('service', `Failed to read plist: ${err}`))
-    return results
-  }
-
-  // Check service is loaded
-  try {
-    const { execSync } = require('child_process')
-    execSync('launchctl list com.openclaw.mc', { encoding: 'utf-8', stdio: 'pipe' })
-  } catch {
-    results.push(warn('service', 'LaunchAgent plist exists but service is not loaded — run: bakin setup service'))
-  }
-
-  if (results.length === 0) {
-    results.push(ok('service', 'LaunchAgent installed and loaded with correct paths'))
-  }
-
-  return results
-}
-
 
 // ---------------------------------------------------------------------------
 // Notification — escalate unfixable issues to the main agent
@@ -922,7 +805,6 @@ export async function runDiagnostics(
   const results: DiagnosticResult[] = []
 
   // Sync checks (fast, some auto-fixable)
-  results.push(...checkContentDir())
   results.push(...checkAndSyncSkill(projectRoot, autoFix))
   results.push(...await checkOrchestratorRules(autoFix))
   results.push(...applyAllManagedBlocks(autoFix))
@@ -934,8 +816,7 @@ export async function runDiagnostics(
   //   assets: assets (#139 C3)
   //   schedule: schedule-sync (#139 C4)
   //   memory: search-tables (#139 C5)
-  results.push(...checkMcporter(Number(process.env.PORT || 3737), autoFix))
-  results.push(...checkService(projectRoot))
+  //   health: content-dir / service / mcporter (#139 C6)
 
   // Async checks (network, not auto-fixable) — run in parallel
   const [gatewayResults, antflyResults, pluginAssetsResults] = await Promise.all([

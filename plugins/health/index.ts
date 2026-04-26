@@ -17,6 +17,9 @@ import {
   getHealthCheck,
   type HealthCheckDef,
 } from './lib/health-check-registry'
+import { checkContentDir } from './lib/system-checks/content-dir'
+import { checkService } from './lib/system-checks/service'
+import { checkMcporter } from './lib/system-checks/mcporter'
 // Registry accessors live on globalThis because Next.js API routes get
 // separate webpack-compiled module instances with empty Maps. The custom
 // server (server.ts) registers the real accessors after plugin init.
@@ -276,6 +279,24 @@ const healthPlugin: BakinPlugin = {
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
+    })
+
+    // ─── System health checks (migrated out of core/doctor.ts per #139 C6+) ──
+    ctx.registerHealthCheck({
+      id: 'content-dir',
+      name: 'Content directory location',
+      run: () => Promise.resolve(checkContentDir()),
+    })
+    ctx.registerHealthCheck({
+      id: 'service',
+      name: 'macOS LaunchAgent plist',
+      run: () => Promise.resolve(checkService(process.cwd())),
+    })
+    ctx.registerHealthCheck({
+      id: 'mcporter',
+      name: 'mcporter install + per-agent config',
+      autoFix: true,
+      run: () => Promise.resolve(checkMcporter()),
     })
   },
 
