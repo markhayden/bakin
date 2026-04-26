@@ -26,6 +26,16 @@ mkdirSync(flowsDir, { recursive: true })
 
 // ─── Mocks (mandatory test-isolation per CLAUDE.md) ────────────────────────
 
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => true,
+}))
+mock.module('@bakin/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => true,
+}))
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
@@ -81,12 +91,38 @@ mock.module('../../../src/core/logger', () => ({
 // through the tasks.readTaskboard / tasks.clearDependency hooks), but the
 // per-directory test isolation rule requires every plugins/tasks/* test
 // to declare a flow-store mock so a careless future import can't leak
-// SQLite writes into the real ~/.openclaw/ tree.
+// SQLite writes into the real ~/.openclaw/ tree. Also: the plugin-
+// registration smoke at the bottom of this file imports the full tasks
+// plugin via `await import('../../../plugins/tasks')`, which pulls in
+// every flow-store export — keep the surface complete.
 mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   readTaskboard: () => null,
   getAllTasks: () => ({ columns: { todo: [], inProgress: [], done: [] } }),
   getTask: () => null,
+  createTask: () => undefined,
+  deleteTask: () => undefined,
+  assignTask: () => undefined,
+  addTaskLog: () => undefined,
+  blockTask: () => undefined,
+  updateTask: () => undefined,
+  moveTask: () => undefined,
+  setDependency: () => undefined,
   clearDependency: () => undefined,
+  reorderTasks: () => undefined,
+  archiveOldTasks: () => 0,
+  autoArchiveDoneTasks: () => 0,
+}))
+
+// task-service surface used by the tasks plugin's exec tools.
+mock.module('../../../src/core/task-service', () => ({
+  moveTaskWithEffects: async () => null,
+  blockTaskWithEffects: async () => null,
+  createTaskWithEffects: async () => null,
+  reportComplete: async () => null,
+  setDependencyWithEffects: async () => null,
+  getTaskDetails: async () => null,
+  logProgress: async () => null,
+  triggerDispatch: async () => null,
 }))
 
 // Hook registry — task-consistency uses tasks.readTaskboard +
@@ -417,5 +453,40 @@ describe('checkTaskPositionIntegrity', () => {
     const older = rows.find(r => r.flow_id === 'older')!
     expect(JSON.parse(newer.state_json).order).toBe(0)
     expect(JSON.parse(older.state_json).order).toBe(1)
+  })
+})
+
+// ─── Registration smoke test ──────────────────────────────────────────────
+
+describe('plugin registration', () => {
+  it('registers all owned health checks on activate', async () => {
+    const tasksPlugin = (await import('../../../plugins/tasks')).default
+    const registeredIds: string[] = []
+    const noop = mock()
+    const noopAsync = mock(async () => {})
+    const ctx: Record<string, unknown> = {
+      pluginId: 'tasks',
+      registerRoute: noop, registerExecTool: noop, registerNav: noop,
+      registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
+      registerNodeType: noop, registerNotificationChannel: noop,
+      registerHealthCheck: (def: { id: string }) => { registeredIds.push(def.id); return `tasks.${def.id}` },
+      watchFiles: noop,
+      getSettings: () => ({}),
+      updateSettings: noop,
+      activity: { log: noop, audit: noop },
+      hooks: { register: () => () => {}, has: () => false, invoke: noopAsync },
+      search: {
+        registerContentType: noop, registerFileBackedContentType: noop,
+        index: noopAsync, remove: noopAsync, transform: noopAsync,
+        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      },
+      storage: {},
+      events: { on: noop, emit: noop, off: noop },
+    }
+    await tasksPlugin.activate(ctx as unknown as Parameters<typeof tasksPlugin.activate>[0])
+
+    expect(registeredIds).toContain('taskboard')
+    expect(registeredIds).toContain('task-consistency')
+    expect(registeredIds).toContain('order-integrity')
   })
 })

@@ -39,7 +39,16 @@ export async function runPluginHealthChecks(): Promise<HealthCheckResult[]> {
   const arrays = await Promise.all(
     defs.map(async (def) => {
       try {
-        return await def.run()
+        const rows = await def.run()
+        if (!Array.isArray(rows)) {
+          return [{
+            check: def.id,
+            status: 'error' as const,
+            message: `Plugin health check returned non-array: ${typeof rows}`,
+            autoFixable: false,
+          }]
+        }
+        return rows
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         return [{

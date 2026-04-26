@@ -369,3 +369,50 @@ describe('agent-assets component integration', () => {
     expect(afterCheck.status).toBe('ok')
   })
 })
+
+// ─── Registration smoke test ──────────────────────────────────────────────
+//
+// Spec deliverable per .claude/specs/doctor-decoupling.md §7. Catches the
+// regression "I forgot to wire ctx.registerHealthCheck() in activate()" —
+// the only failure mode the rest of the test suite cannot detect.
+
+describe('plugin registration', () => {
+  it('registers all owned health checks on activate', async () => {
+    const teamPlugin = (await import('../../../plugins/team')).default
+    const registeredIds: string[] = []
+    const noop = mock()
+    const noopAsync = mock(async () => {})
+    const ctx: Record<string, unknown> = {
+      pluginId: 'team',
+      registerRoute: noop,
+      registerExecTool: noop,
+      registerNav: noop,
+      registerSlot: noop,
+      registerSkill: noop,
+      registerWorkflow: noop,
+      registerNodeType: noop,
+      registerNotificationChannel: noop,
+      registerHealthCheck: (def: { id: string }) => { registeredIds.push(def.id); return `team.${def.id}` },
+      watchFiles: noop,
+      getSettings: () => ({}),
+      updateSettings: noop,
+      activity: { log: noop, audit: noop },
+      hooks: { register: () => () => {}, has: () => false, invoke: noopAsync },
+      search: {
+        registerContentType: noop,
+        registerFileBackedContentType: noop,
+        index: noopAsync,
+        remove: noopAsync,
+        transform: noopAsync,
+        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      },
+      storage: {},
+      events: { on: noop, emit: noop, off: noop },
+    }
+    await teamPlugin.activate(ctx as unknown as Parameters<typeof teamPlugin.activate>[0])
+
+    expect(registeredIds).toContain('agent-roster')
+    expect(registeredIds).toContain('personas')
+    expect(registeredIds).toContain('agent-assets')
+  })
+})

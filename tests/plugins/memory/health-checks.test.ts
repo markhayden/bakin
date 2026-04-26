@@ -18,6 +18,16 @@ process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
 
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => true,
+}))
+mock.module('@bakin/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => true,
+}))
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
@@ -27,6 +37,16 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
+}))
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+mock.module('../../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
 }))
 
 let mockAntflyEnabled = true
@@ -60,6 +80,44 @@ interface MockTable {
 let mockHealth: { enabled: boolean; tables: MockTable[] } = { enabled: true, tables: [] }
 mock.module('../../../src/core/search-registry', () => ({
   getSearchHealth: async () => mockHealth,
+  // The plugin-registration smoke test imports the full memory plugin,
+  // whose activate() chain reaches `ensureRegisteredTables` via
+  // memory-migration. Stub it as a no-op so activate() doesn't throw.
+  ensureRegisteredTables: async () => {},
+  buildSearchAPI: () => ({
+    registerContentType: () => {},
+    registerFileBackedContentType: () => {},
+    index: async () => {},
+    remove: async () => {},
+    transform: async () => {},
+    query: async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } }),
+  }),
+}))
+
+// memory-migration also reaches into antfly + offsets — stub the migrator
+// itself so we don't need to mock its full deps tree.
+mock.module('../../../plugins/memory/lib/memory-migration', () => ({
+  migrateIfNeeded: async () => {},
+  MEMORY_SCHEMA_VERSION: 1,
+}))
+
+// ttl-prune timer: avoid leaving a real setInterval alive.
+mock.module('../../../plugins/memory/lib/ttl-prune', () => ({
+  pruneExpired: async () => 0,
+  startTtlTimer: () => {},
+  stopTtlTimer: () => {},
+}))
+
+// openclaw-gateway — opens a WS in production. No-ops in tests.
+mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
+  gatewaySubscribe: () => ({ close: () => {} }),
+  gatewayCall: async () => null,
+  __resetGatewayClientForTests: () => {},
+}))
+
+// Indexer constructor — only called inside the plugin smoke. Stub it.
+mock.module('../../../plugins/memory/lib/indexer', () => ({
+  MemoryIndexer: class { backfill = async () => {}; sync = async () => {}; remove = async () => {} },
 }))
 
 import { checkSearchTables } from '../../../plugins/memory/lib/health-checks'
@@ -188,5 +246,38 @@ describe('checkSearchTables — failure path', () => {
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/connection refused/)
+  })
+})
+
+// ─── Registration smoke test ──────────────────────────────────────────────
+
+describe('plugin registration', () => {
+  it('registers the search-tables health check on activate', async () => {
+    const memoryPlugin = (await import('../../../plugins/memory')).default
+    const registeredIds: string[] = []
+    const noop = mock()
+    const noopAsync = mock(async () => {})
+    const ctx: Record<string, unknown> = {
+      pluginId: 'memory',
+      registerRoute: noop, registerExecTool: noop, registerNav: noop,
+      registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
+      registerNodeType: noop, registerNotificationChannel: noop,
+      registerHealthCheck: (def: { id: string }) => { registeredIds.push(def.id); return `memory.${def.id}` },
+      watchFiles: noop,
+      getSettings: () => ({ backfillDays: 0, skipSessionOverBytes: 0, skipResetBackups: false }),
+      updateSettings: noop,
+      activity: { log: noop, audit: noop },
+      hooks: { register: () => () => {}, has: () => false, invoke: noopAsync },
+      search: {
+        registerContentType: noop, registerFileBackedContentType: noop,
+        index: noopAsync, remove: noopAsync, transform: noopAsync,
+        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      },
+      storage: {},
+      events: { on: noop, emit: noop, off: noop },
+    }
+    await memoryPlugin.activate(ctx as unknown as Parameters<typeof memoryPlugin.activate>[0])
+
+    expect(registeredIds).toContain('search-tables')
   })
 })

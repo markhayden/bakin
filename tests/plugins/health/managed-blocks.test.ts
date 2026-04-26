@@ -44,6 +44,11 @@ mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
+mock.module('../../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => openClawDir,
+  getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
+  resetOpenClawHome: () => {},
+}))
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',

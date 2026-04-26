@@ -21,6 +21,16 @@ import { join } from 'path'
 
 let mockUsingBakinHome = true
 let mockContentDir = testDir
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => mockContentDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => mockUsingBakinHome,
+}))
+mock.module('@bakin/core/content-dir', () => ({
+  getContentDir: () => mockContentDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => mockUsingBakinHome,
+}))
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => mockContentDir,
   getBakinPaths: () => ({}),
@@ -31,16 +41,19 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => mockUsingBakinHome,
 }))
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+mock.module('../../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
 
 let mockServiceEnabled = false
 let mockAutoFix = false
-mock.module('../../../src/core/settings', () => ({
-  getSettings: () => ({
-    service: { enabled: mockServiceEnabled },
-    doctor: { autoFixSkill: mockAutoFix },
-  }),
-  resetSettingsCache: () => {},
-}))
 
 let mockMcporterInstalled = true
 let mockInstallMcporterReturn = true
@@ -91,7 +104,7 @@ function restoreFetch() {
   ;(globalThis as { fetch: typeof fetch }).fetch = realFetch
 }
 
-// Override settings mock to include antfly subtree (consumed by checkAntfly)
+// One unified settings mock covering every subtree any system check reads.
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     service: { enabled: mockServiceEnabled },
@@ -495,5 +508,47 @@ describe('checkPluginAssets', () => {
     expect(results[0].status).toBe('warn')
     expect(results[0].autoFixable).toBe(false)
     expect(results[0].message).toMatch(/bakin install plugin-assets/)
+  })
+})
+
+// ─── Registration smoke test ──────────────────────────────────────────────
+
+describe('plugin registration', () => {
+  it('registers all 9 system + managed-blocks health checks on activate', async () => {
+    const healthPlugin = (await import('../../../plugins/health')).default
+    const registeredIds: string[] = []
+    const noop = mock()
+    const noopAsync = mock(async () => {})
+    const ctx: Record<string, unknown> = {
+      pluginId: 'health',
+      registerRoute: noop, registerExecTool: noop, registerNav: noop,
+      registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
+      registerNodeType: noop, registerNotificationChannel: noop,
+      registerHealthCheck: (def: { id: string }) => { registeredIds.push(def.id); return `health.${def.id}` },
+      watchFiles: noop,
+      getSettings: () => ({}),
+      updateSettings: noop,
+      activity: { log: noop, audit: noop },
+      hooks: { register: () => () => {}, has: () => false, invoke: noopAsync },
+      search: {
+        registerContentType: noop, registerFileBackedContentType: noop,
+        index: noopAsync, remove: noopAsync, transform: noopAsync,
+        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      },
+      storage: {},
+      events: { on: noop, emit: noop, off: noop },
+    }
+    await healthPlugin.activate(ctx as unknown as Parameters<typeof healthPlugin.activate>[0])
+
+    // 9 system checks (C6: 3, C7: 2, C8: 3, C9: 1)
+    expect(registeredIds).toContain('content-dir')
+    expect(registeredIds).toContain('service')
+    expect(registeredIds).toContain('mcporter')
+    expect(registeredIds).toContain('gateway')
+    expect(registeredIds).toContain('antfly')
+    expect(registeredIds).toContain('orchestrator-rules')
+    expect(registeredIds).toContain('skill')
+    expect(registeredIds).toContain('plugin-assets')
+    expect(registeredIds).toContain('managed-blocks')
   })
 })

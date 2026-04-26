@@ -64,8 +64,9 @@ mock.module('@bakin/core/openclaw-config', () => ({
 }))
 
 mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => '/tmp/doctor-test-openclaw',
-  getOpenClawPath: (...parts: string[]) => ['/tmp/doctor-test-openclaw', ...parts].join('/'),
+  getOpenClawHome: () => testHome.openclaw,
+  getOpenClawPath: (...parts: string[]) => [testHome.openclaw, ...parts].join('/'),
+  resetOpenClawHome: () => {},
 }))
 
 // Mock openclaw-client
@@ -150,6 +151,33 @@ describe('doctor', () => {
     expect(typeof doctor.runDiagnostics).toBe('function')
   })
 
+  it('aggregates registered plugin checks via runPluginHealthChecks', async () => {
+    // Sanity check: when plugins ARE registered, runDiagnostics surfaces
+    // their rows. Catches the regression "runPluginHealthChecks isn't being
+    // awaited" — a class of bug invisible to the gate-only assertions below.
+    const registry = await import('../../plugins/health/lib/health-check-registry')
+    registry.registerHealthCheck({
+      runtime: 'plugin',
+      pluginId: 'doctor-test',
+      id: 'doctor-test.synthetic',
+      name: 'Synthetic',
+      run: async () => [{
+        check: 'synthetic-row',
+        status: 'ok',
+        message: 'Synthetic row from registered test plugin',
+        autoFixable: false,
+      }],
+    })
+    try {
+      const doctor = await import('@/core/doctor')
+      const results = await doctor.runDiagnostics(contentDir, tempDir)
+      expect(results.find(r => r.check === 'synthetic-row')).toBeDefined()
+      expect(results.find(r => r.check === 'onboarded')).toBeUndefined()
+    } finally {
+      registry.unregisterHealthCheck('doctor-test.synthetic')
+    }
+  })
+
   // plugin-assets coverage moved to tests/plugins/health/system-checks.test.ts
   // when checkPluginAssets migrated to plugins/health/lib/system-checks/ in #139 C8.
 
@@ -168,7 +196,9 @@ describe('doctor', () => {
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
-      vi.resetModules()
+      // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
+      // lazily inside runDiagnostics so the mockReturnValueOnce above takes
+      // effect on the next call without a forced module re-evaluation.)
       const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
       expect(results).toHaveLength(1)
@@ -187,7 +217,9 @@ describe('doctor', () => {
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
-      vi.resetModules()
+      // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
+      // lazily inside runDiagnostics so the mockReturnValueOnce above takes
+      // effect on the next call without a forced module re-evaluation.)
       const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
       // Post-migration (#139): runDiagnostics no longer runs builtin checks
@@ -208,7 +240,9 @@ describe('doctor', () => {
         openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
-      vi.resetModules()
+      // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
+      // lazily inside runDiagnostics so the mockReturnValueOnce above takes
+      // effect on the next call without a forced module re-evaluation.)
       const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
       // See note above: the gate not firing = no 'onboarded' row.
