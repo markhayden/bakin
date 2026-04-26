@@ -75,8 +75,13 @@ function sha256OfFile(path: string): string {
 /**
  * Walk a plugin's `defaults/openclaw-skills/*` directories and return
  * one entry per skill that has a `SKILL.md`. Skills are 1 directory deep.
+ *
+ * Exported so install + upgrade flows can record `installedSkills` into
+ * the lockfile (#119 hardening) — the lockfile becomes the canonical
+ * record of which skills each plugin installed, so the uninstall flow
+ * doesn't have to trust on-disk `.installedBy` markers blindly.
  */
-function findSkillsForPlugin(plugin: PluginEntry): Array<{ name: string; sourceDir: string }> {
+export function findSkillsForPlugin(plugin: PluginEntry): Array<{ name: string; sourceDir: string }> {
   const skillsRoot = join(plugin.path, 'defaults', 'openclaw-skills')
   if (!existsSync(skillsRoot)) return []
   const entries = readdirSync(skillsRoot, { withFileTypes: true })
@@ -320,26 +325,59 @@ export interface PluginAssetsRemovalPlan {
   toRemove: string[]
   /** Absolute paths of skill dirs left in place because of `.userEdited`. */
   toKeep: string[]
+  /**
+   * Skills that the lockfile says this plugin installed but which are
+   * not present (or no longer carry the matching .installedBy marker).
+   * Surfaced for diagnostics; not deleted.
+   */
+  missingFromDisk: string[]
 }
 
 /**
- * Walk `~/.openclaw/skills/` and partition every skill dir whose
- * `.installedBy.pluginId` matches into "remove" vs "keep" (the latter
- * being skills locked by a `.userEdited` sentinel).
+ * Walk `~/.openclaw/skills/` and partition skills owned by `pluginId`
+ * into "remove" vs "keep" (`.userEdited` locked).
  *
- * Returns a plan WITHOUT touching the filesystem so the caller can
- * snapshot the to-remove dirs into the .uninstalled tarball before
- * deleting them.
+ * `ownedSkills` is the authoritative allowlist — the set of skill names
+ * the LOCKFILE recorded this plugin installed at install/upgrade time.
+ * A skill dir is only removable if it appears in BOTH the allowlist AND
+ * carries a matching `.installedBy.pluginId` marker.
+ *
+ * This defeats the fake-marker scorched-earth attack (security HIGH #2):
+ * a malicious plugin that writes `{pluginId: "evil"}` into a victim's
+ * `.installedBy` cannot trick uninstall into deleting the victim's
+ * skills, because the lockfile entry for "evil" never recorded
+ * ownership of them.
  */
-export function planPluginAssetsRemoval(pluginId: string): PluginAssetsRemovalPlan {
+export function planPluginAssetsRemoval(
+  pluginId: string,
+  ownedSkills: readonly string[],
+): PluginAssetsRemovalPlan {
   const skillsRoot = getOpenClawPath('skills')
-  const plan: PluginAssetsRemovalPlan = { toRemove: [], toKeep: [] }
-  if (!existsSync(skillsRoot)) return plan
-  for (const entry of readdirSync(skillsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
-    const skillDir = join(skillsRoot, entry.name)
+  const plan: PluginAssetsRemovalPlan = { toRemove: [], toKeep: [], missingFromDisk: [] }
+  if (!existsSync(skillsRoot)) {
+    plan.missingFromDisk.push(...ownedSkills)
+    return plan
+  }
+  const onDisk = new Set(
+    readdirSync(skillsRoot, { withFileTypes: true })
+      .filter(e => e.isDirectory())
+      .map(e => e.name),
+  )
+  for (const skillName of ownedSkills) {
+    if (!onDisk.has(skillName)) {
+      plan.missingFromDisk.push(skillName)
+      continue
+    }
+    const skillDir = join(skillsRoot, skillName)
     const marker = readMarker(skillDir)
-    if (!marker || marker.pluginId !== pluginId) continue
+    if (!marker || marker.pluginId !== pluginId) {
+      // Lockfile claims ownership but the on-disk marker disagrees —
+      // either the plugin lost ownership (manual edit) or another plugin
+      // overwrote it. Don't delete; surface as missing so operators can
+      // investigate.
+      plan.missingFromDisk.push(skillName)
+      continue
+    }
     if (existsSync(join(skillDir, '.userEdited'))) {
       plan.toKeep.push(skillDir)
     } else {
@@ -351,20 +389,23 @@ export function planPluginAssetsRemoval(pluginId: string): PluginAssetsRemovalPl
 
 /**
  * Tear down OpenClaw skills owned by `pluginId`. Skips any skill with a
- * `.userEdited` sentinel and reports both counts. Used by
+ * `.userEdited` sentinel and reports counts. Used by
  * `bakin plugins remove` (#119).
  *
- * Returns counts (and the filesystem paths) so the remove orchestration
- * can render the spec'd "Cleaned N skills, kept M user-edited" output
- * without re-walking the filesystem.
+ * `ownedSkills` is the lockfile-recorded allowlist — see
+ * `planPluginAssetsRemoval` for the authority model.
  */
-export async function removePluginAssets(pluginId: string): Promise<{
+export async function removePluginAssets(
+  pluginId: string,
+  ownedSkills: readonly string[],
+): Promise<{
   removed: number
   kept: number
   removedDirs: string[]
   keptDirs: string[]
+  missingFromDisk: string[]
 }> {
-  const plan = planPluginAssetsRemoval(pluginId)
+  const plan = planPluginAssetsRemoval(pluginId, ownedSkills)
   for (const dir of plan.toRemove) {
     rmSync(dir, { recursive: true, force: true })
     log.info('Removed OpenClaw skill on plugin uninstall', { dir, pluginId })
@@ -374,5 +415,6 @@ export async function removePluginAssets(pluginId: string): Promise<{
     kept: plan.toKeep.length,
     removedDirs: plan.toRemove,
     keptDirs: plan.toKeep,
+    missingFromDisk: plan.missingFromDisk,
   }
 }

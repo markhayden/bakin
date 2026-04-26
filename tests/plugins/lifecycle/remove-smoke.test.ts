@@ -67,19 +67,46 @@ function writeSkill(name: string, opts: { ownedBy: string; userEdited?: boolean;
 }
 
 describe('planPluginAssetsRemoval', () => {
-  it('partitions skill dirs by installedBy.pluginId and .userEdited', () => {
+  it('partitions skill dirs by lockfile allowlist + .userEdited', () => {
     const a1 = writeSkill('a1', { ownedBy: 'plugin-a' })
     const a2 = writeSkill('a2', { ownedBy: 'plugin-a', userEdited: true })
     writeSkill('b1', { ownedBy: 'plugin-b' })
 
-    const plan = planPluginAssetsRemoval('plugin-a')
+    // Lockfile says plugin-a installed [a1, a2]. plugin-b is not in scope.
+    const plan = planPluginAssetsRemoval('plugin-a', ['a1', 'a2'])
     expect(plan.toRemove.sort()).toEqual([a1].sort())
     expect(plan.toKeep).toEqual([a2])
+    expect(plan.missingFromDisk).toEqual([])
   })
 
   it('returns empty plan when no skills match the plugin', () => {
     writeSkill('foo', { ownedBy: 'plugin-x' })
-    expect(planPluginAssetsRemoval('plugin-y')).toEqual({ toRemove: [], toKeep: [] })
+    expect(planPluginAssetsRemoval('plugin-y', [])).toEqual({
+      toRemove: [],
+      toKeep: [],
+      missingFromDisk: [],
+    })
+  })
+
+  it('refuses to delete a skill the lockfile did NOT record (defeats fake .installedBy)', () => {
+    // A malicious plugin wrote {pluginId: 'evil'} into a victim's
+    // .installedBy at runtime. The lockfile entry for 'evil' did not
+    // record ownership of 'victim' — so the plan must not delete it.
+    const victimDir = writeSkill('victim', { ownedBy: 'evil' })
+    const plan = planPluginAssetsRemoval('evil', [])
+    expect(plan.toRemove).toEqual([])
+    expect(plan.toKeep).toEqual([])
+    // 'victim' isn't in the allowlist so it doesn't appear in
+    // missingFromDisk either — that field tracks lockfile claims, not
+    // on-disk state.
+    expect(existsSync(victimDir)).toBe(true)
+  })
+
+  it('reports lockfile-claimed skills missing from disk', () => {
+    const plan = planPluginAssetsRemoval('plugin-z', ['ghost1', 'ghost2'])
+    expect(plan.toRemove).toEqual([])
+    expect(plan.toKeep).toEqual([])
+    expect(plan.missingFromDisk.sort()).toEqual(['ghost1', 'ghost2'])
   })
 })
 
@@ -88,7 +115,7 @@ describe('removePluginAssets', () => {
     const a1 = writeSkill('a1', { ownedBy: 'plugin-a' })
     const a2 = writeSkill('a2', { ownedBy: 'plugin-a', userEdited: true })
 
-    const result = await removePluginAssets('plugin-a')
+    const result = await removePluginAssets('plugin-a', ['a1', 'a2'])
     expect(result.removed).toBe(1)
     expect(result.kept).toBe(1)
     expect(existsSync(a1)).toBe(false)
