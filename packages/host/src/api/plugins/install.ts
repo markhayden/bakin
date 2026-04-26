@@ -39,9 +39,29 @@ import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { computeSourceTreeSha } from '@/core/plugins/upgrade'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
+import { appendAudit } from '@/core/audit'
 
 /** Hard ceiling for any plugin source we'll accept — a manifest that big is malicious. */
 const MANIFEST_MAX_BYTES = 1 * 1024 * 1024  // 1MB
+
+/**
+ * Append a `plugin.install.rejected` audit entry with `kind: 'security'`
+ * so operators can grep `~/.bakin/audit.jsonl` for the forensic trail
+ * across path-traversal rejections, core-id collisions, manifest size
+ * limits, consent-token failures, etc. Best-effort — never throws.
+ */
+function auditInstallRejected(reason: string, source: string, extra: Record<string, unknown> = {}): void {
+  try {
+    appendAudit(getContentDir(), 'plugin.install.rejected', 'system', {
+      kind: 'security',
+      reason,
+      source,
+      ...extra,
+    }, 'system')
+  } catch {
+    // best-effort
+  }
+}
 
 const log = createLogger('plugin-install')
 
@@ -257,6 +277,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         const contained = resolveAndContainLocalSource(body.source)
         if (!contained.ok) {
           rmSync(stagingDir, { recursive: true, force: true })
+          auditInstallRejected('path_traversal', body.source, { error: contained.error })
           return Response.json({ ok: false, error: contained.error }, { status: 400 })
         }
         cpSync(contained.path, stagingDir, { recursive: true, dereference: false })
@@ -264,6 +285,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         const parsedUrl = resolveGithubCloneUrl(body.source)
         if (!parsedUrl.ok) {
           rmSync(stagingDir, { recursive: true, force: true })
+          auditInstallRejected('invalid_github_url', body.source, { error: parsedUrl.error })
           return Response.json({ ok: false, error: parsedUrl.error }, { status: 400 })
         }
         // `--` ends option parsing so a bizarre URL can't be reinterpreted
@@ -289,6 +311,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       const manifestSize = statSync(manifestPath).size
       if (manifestSize > MANIFEST_MAX_BYTES) {
         rmSync(stagingDir, { recursive: true, force: true })
+        auditInstallRejected('manifest_too_large', body.source, { size: manifestSize })
         return Response.json({
           ok: false,
           error: `bakin-plugin.json is too large (${manifestSize} bytes; max ${MANIFEST_MAX_BYTES})`,
@@ -326,6 +349,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // a core plugin permanently after the next restart.
       if (isCorePlugin(id) && body.overrideCore !== true) {
         rmSync(stagingDir, { recursive: true, force: true })
+        auditInstallRejected('core_id_collision', body.source, { id })
         return Response.json({
           ok: false,
           error: `Plugin id "${id}" collides with a core plugin. Re-run with overrideCore:true to intentionally replace the built-in (rare).`,
@@ -383,16 +407,26 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // a valid token, the server has no proof the user actually saw and
       // approved this exact manifest's permissions.
       if (parsedPermissions.length > 0 && body.accepted === true) {
-        const token = body.consentToken ? verifyConsentToken(body.consentToken) : null
-        if (!token) {
+        if (!body.consentToken) {
           rmSync(stagingDir, { recursive: true, force: true })
+          auditInstallRejected('consent_token_missing', body.source, { id })
           return Response.json({
             ok: false,
-            error: 'install commit requires a valid consentToken from preflight',
+            error: 'install commit requires a consentToken from preflight (re-run install)',
+          }, { status: 400 })
+        }
+        const token = verifyConsentToken(body.consentToken)
+        if (!token) {
+          rmSync(stagingDir, { recursive: true, force: true })
+          auditInstallRejected('consent_token_invalid', body.source, { id })
+          return Response.json({
+            ok: false,
+            error: 'consentToken is invalid or expired (re-run install to re-prompt)',
           }, { status: 400 })
         }
         if (token.source !== body.source) {
           rmSync(stagingDir, { recursive: true, force: true })
+          auditInstallRejected('consent_source_mismatch', body.source, { id, tokenSource: token.source })
           return Response.json({
             ok: false,
             error: 'consentToken source does not match commit body source — re-run preflight',
