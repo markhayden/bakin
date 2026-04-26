@@ -219,6 +219,16 @@ starlight-toc nav a[aria-current="true"]::before {
   background-color: rgba(234, 234, 0, 0.08);
 }
 
+.starlight-aside--note {
+  --sl-color-asides-text-accent: var(--bakin-brand-pink);
+  --sl-color-asides-border: var(--bakin-brand-pink);
+  background-color: rgba(255, 112, 158, 0.08);
+}
+
+.starlight-aside__content {
+  font-size: 0.9rem;
+}
+
 .sl-link-button.cta-sm {
   font-size: var(--sl-text-sm);
   padding: 0.375rem 0.875rem;
