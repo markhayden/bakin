@@ -17,8 +17,8 @@ These docs explain only the OpenClaw concepts required to use Bakin. Deeper Open
 
 Use these pages for the details:
 
-- [Agent Packages](/extend/agents/packages/)
-- [Agent Knowledge](/extend/agents/knowledge/)
+- [Agent Packages](/docs/extend/agents/packages/)
+- [Agent Knowledge](/docs/extend/agents/knowledge/)
 
 ## For Coding Agents
 
@@ -32,5 +32,5 @@ When working in Bakin:
 Fetch this bundle directly:
 
 ```sh
-curl -fsSL https://docs.makinbakin.com/llms/agent-authoring.md
+curl -fsSL https://makinbakin.com/docs/llms/agent-authoring.md
 ```

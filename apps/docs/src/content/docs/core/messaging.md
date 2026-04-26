@@ -7,14 +7,11 @@ Messaging supports content planning and approval workflows. It tracks items, pla
 
 ## Common Commands
 
-```sh
-bakin messaging list --status=draft
-bakin messaging create "Launch post" patch --channels=discord
-bakin messaging approve item-123
-bakin messaging reject item-123 "Needs a clearer CTA"
-bakin messaging sessions --status=open
-bakin messaging message session-123 "Draft three options"
-```
+<!-- docs:cli-commands messaging -->
+| Command | Purpose |
+| --- | --- |
+| `bakin messaging <list|get|create|update|delete|approve|reject|sessions|session|session-create|session-update|session-delete|message|confirm|proposal> ...` | Manage messaging items and planning sessions. |
+<!-- /docs:cli-commands -->
 
 ## Operator Notes
 
@@ -24,5 +21,5 @@ bakin messaging message session-123 "Draft three options"
 
 ## Reference
 
-- [CLI Reference](/reference/generated/cli/)
-- [Exec and MCP Tool Reference](/reference/generated/exec-tools/)
+- [CLI Reference](/docs/reference/generated/cli/)
+- [Exec and MCP Tool Reference](/docs/reference/generated/exec-tools/)

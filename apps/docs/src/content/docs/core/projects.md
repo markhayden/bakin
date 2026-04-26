@@ -18,5 +18,5 @@ Use projects for durable context. Use tasks for executable work.
 
 ## Reference
 
-- [Core Plugin Catalog](/reference/generated/core-plugins/)
-- [API Reference](/reference/generated/api/)
+- [Core Plugin Catalog](/docs/reference/generated/core-plugins/)
+- [API Reference](/docs/reference/generated/api/)

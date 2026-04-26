@@ -19,5 +19,5 @@ Assets keep files and metadata available to operators, plugins, and agents. The 
 
 ## Reference
 
-- [Runtime Paths](/reference/generated/runtime-paths/)
-- [Exec and MCP Tool Reference](/reference/generated/exec-tools/)
+- [Runtime Paths](/docs/reference/generated/runtime-paths/)
+- [Exec and MCP Tool Reference](/docs/reference/generated/exec-tools/)

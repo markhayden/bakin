@@ -8,6 +8,9 @@ import { getAllRoutes } from '../../src/core/api-docs'
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'apps/docs')
 const generatedRoot = join(docsRoot, '.generated')
+const docsOrigin = 'https://makinbakin.com'
+const docsBasePath = '/docs'
+const docsUrl = `${docsOrigin}${docsBasePath}`
 const sourceRoots = [join(repoRoot, 'plugins'), join(repoRoot, 'src'), join(repoRoot, 'packages')]
 const llmBundleFiles = [
   'llms.txt',
@@ -36,6 +39,13 @@ const publicSlotNames = [
   'home-widget',
   'page:/<route>',
 ]
+const commandSnippets = {
+  tasks: ['tasks list', 'tasks create', 'tasks move', 'tasks log', 'tasks block', 'tasks depend', 'tasks complete'],
+  workflows: ['workflows list', 'workflows start', 'workflows step', 'workflows submit'],
+  health: ['doctor', 'status'],
+  schedule: ['schedule'],
+  messaging: ['messaging'],
+}
 
 function writeStableFile(path: string, contents: string): void {
   mkdirSync(dirname(path), { recursive: true })
@@ -58,6 +68,51 @@ function walkFiles(dir: string, files: string[] = []): string[] {
 
 function relativeSource(path: string): string {
   return path.replace(repoRoot, '').replace(/^\//, '')
+}
+
+function docsPath(path: string): string {
+  return `${docsBasePath}${path.startsWith('/') ? path : `/${path}`}`
+}
+
+function renderCommandSnippet(marker: string): string {
+  const names = commandSnippets[marker as keyof typeof commandSnippets]
+  if (!names) throw new Error(`Unknown CLI command snippet: ${marker}`)
+
+  const byName = new Map(CLI_COMMANDS.map(command => [command.name, command]))
+  const lines = [
+    `<!-- docs:cli-commands ${marker} -->`,
+    '| Command | Purpose |',
+    '| --- | --- |',
+  ]
+
+  for (const name of names) {
+    const command = byName.get(name)
+    if (!command) throw new Error(`Missing CLI command for docs snippet "${marker}": ${name}`)
+    lines.push(`| \`${command.usage}\` | ${command.summary} |`)
+  }
+
+  lines.push('<!-- /docs:cli-commands -->')
+  return lines.join('\n')
+}
+
+function updateCliCommandSnippets(): void {
+  const docsContentRoot = join(docsRoot, 'src/content/docs')
+  const markdownFiles: string[] = []
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (entry.name.endsWith('.md') || entry.name.endsWith('.mdx')) markdownFiles.push(path)
+    }
+  }
+  walk(docsContentRoot)
+
+  const markerPattern = /<!-- docs:cli-commands ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:cli-commands -->/g
+  for (const file of markdownFiles) {
+    const text = readFileSync(file, 'utf8')
+    const next = text.replace(markerPattern, (_match, marker: string) => renderCommandSnippet(marker))
+    if (next !== text) writeStableFile(file, next)
+  }
 }
 
 function sourceFiles(): string[] {
@@ -653,6 +708,8 @@ writeStableFile(
   renderCoverageReference(),
 )
 
+updateCliCommandSnippets()
+
 writeStableFile(
   join(docsRoot, 'public/llms.txt'),
   `# Bakin Docs
@@ -663,34 +720,34 @@ Bakin is a self-hosted dashboard, backend, CLI, and extension system for running
 
 Primary docs:
 
-- Install Bakin: https://docs.makinbakin.com/start/install/
+- Install Bakin: ${docsUrl}/start/install/
   Use this for the released one-line install path and platform notes.
 
-- Initial Setup: https://docs.makinbakin.com/start/first-time-setup/
+- Initial Setup: ${docsUrl}/start/first-time-setup/
   Use this to create the Bakin home directory and validate local dependencies.
 
-- Daily Operation: https://docs.makinbakin.com/start/operation/
+- Daily Operation: ${docsUrl}/start/operation/
   Use this for lifecycle commands, health checks, updates, and runtime operation.
 
-- Core workflows: https://docs.makinbakin.com/core/tasks/
+- Core workflows: ${docsUrl}/core/tasks/
   Use this for built-in Bakin areas such as tasks, workflows, projects, assets, schedule, messaging, memory, models, team, and health.
 
-- Plugin authoring: https://docs.makinbakin.com/extend/plugins/overview/
+- Plugin authoring: ${docsUrl}/extend/plugins/overview/
   Use this when building Bakin plugins with @bakin/sdk.
 
-- Agent authoring: https://docs.makinbakin.com/extend/agents/overview/
+- Agent authoring: ${docsUrl}/extend/agents/overview/
   Use this when creating agent packages or writing instructions for coding agents working with Bakin.
 
-- SDK docs: https://docs.makinbakin.com/extend/sdk/overview/
+- SDK docs: ${docsUrl}/extend/sdk/overview/
   Use this for @bakin/sdk imports, UI components, hooks, slots, and public extension contracts.
 
 LLM bundles:
 
-- Full context: https://docs.makinbakin.com/llms-full.txt
-- Plugin authoring bundle: https://docs.makinbakin.com/llms/plugin-authoring.md
-- Agent authoring bundle: https://docs.makinbakin.com/llms/agent-authoring.md
-- SDK reference bundle: https://docs.makinbakin.com/llms/sdk-reference.md
-- API reference bundle: https://docs.makinbakin.com/llms/api.md
+- Full context: ${docsUrl}/llms-full.txt
+- Plugin authoring bundle: ${docsUrl}/llms/plugin-authoring.md
+- Agent authoring bundle: ${docsUrl}/llms/agent-authoring.md
+- SDK reference bundle: ${docsUrl}/llms/sdk-reference.md
+- API reference bundle: ${docsUrl}/llms/api.md
 `,
 )
 
@@ -702,7 +759,7 @@ ${versionLine}
 
 Audience: coding agents, plugin authors, agent authors, and technical operators.
 
-Canonical docs: https://docs.makinbakin.com/
+Canonical docs: ${docsUrl}/
 
 ## Operating Rules
 
@@ -715,24 +772,24 @@ Canonical docs: https://docs.makinbakin.com/
 
 ## Useful Bundles
 
-- Plugin authoring: /llms/plugin-authoring.md
-- Agent authoring: /llms/agent-authoring.md
-- SDK reference: /llms/sdk-reference.md
-- API reference: /llms/api.md
-- CLI reference: /reference/generated/cli/
-- API reference: /reference/generated/api/
-- Hooks reference: /reference/generated/hooks/
-- Exec/MCP tools reference: /reference/generated/exec-tools/
-- Core plugin catalog: /reference/generated/core-plugins/
-- Settings reference: /reference/generated/settings/
-- Runtime paths: /reference/generated/runtime-paths/
-- SDK reference: /reference/generated/sdk/
+- Plugin authoring: ${docsPath('/llms/plugin-authoring.md')}
+- Agent authoring: ${docsPath('/llms/agent-authoring.md')}
+- SDK reference: ${docsPath('/llms/sdk-reference.md')}
+- API reference: ${docsPath('/llms/api.md')}
+- CLI reference: ${docsPath('/reference/generated/cli/')}
+- API reference: ${docsPath('/reference/generated/api/')}
+- Hooks reference: ${docsPath('/reference/generated/hooks/')}
+- Exec/MCP tools reference: ${docsPath('/reference/generated/exec-tools/')}
+- Core plugin catalog: ${docsPath('/reference/generated/core-plugins/')}
+- Settings reference: ${docsPath('/reference/generated/settings/')}
+- Runtime paths: ${docsPath('/reference/generated/runtime-paths/')}
+- SDK reference: ${docsPath('/reference/generated/sdk/')}
 
 ## Fetch Examples
 
 \`\`\`sh
-curl -fsSL https://docs.makinbakin.com/llms/plugin-authoring.md
-curl -fsSL https://docs.makinbakin.com/llms/agent-authoring.md
+curl -fsSL ${docsUrl}/llms/plugin-authoring.md
+curl -fsSL ${docsUrl}/llms/agent-authoring.md
 \`\`\`
 `,
 )
@@ -785,7 +842,7 @@ ${versionLine}
 
 Audience: coding agents and technical authors.
 
-Canonical docs: https://docs.makinbakin.com/
+Canonical docs: ${docsUrl}/
 
 ${body}
 `,

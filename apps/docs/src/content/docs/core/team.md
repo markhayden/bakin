@@ -14,5 +14,5 @@ The team plugin manages the agent roster and its relationship to OpenClaw. It su
 
 ## Reference
 
-- [API Reference](/reference/generated/api/)
-- [Runtime Paths](/reference/generated/runtime-paths/)
+- [API Reference](/docs/reference/generated/api/)
+- [Runtime Paths](/docs/reference/generated/runtime-paths/)

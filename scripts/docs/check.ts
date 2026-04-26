@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
+import { CLI_COMMANDS } from '../../src/core/cli/registry'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'apps/docs')
@@ -32,6 +33,52 @@ function fail(message: string): never {
   process.exit(1)
 }
 
+const cliCommandNames = new Set(CLI_COMMANDS.map(command => command.name))
+const cliAliases = new Set(CLI_COMMANDS.flatMap(command => command.aliases ?? []))
+const cliTopLevelNames = new Set([...cliCommandNames].map(name => name.split(' ')[0]))
+const builtinCliArgs = new Set(['--help', '-h', 'help'])
+
+function shellWords(line: string): string[] {
+  return line.match(/(?:[^\s"'`]+|"[^"]*"|'[^']*'|`[^`]*`)+/g) ?? []
+}
+
+function commandAfterBakin(line: string): string | undefined {
+  const stripped = line.trim()
+  if (!stripped || stripped.startsWith('#') || !/\bbakin\b/.test(stripped)) return undefined
+
+  const words = shellWords(stripped)
+  const bakinIndex = words.findIndex(word => word === 'bakin' || word.endsWith('/bakin'))
+  if (bakinIndex === -1) return undefined
+
+  const args = words.slice(bakinIndex + 1)
+  const first = args[0]
+  if (!first) return 'start'
+  if (builtinCliArgs.has(first) || cliAliases.has(first)) return first
+
+  const twoPart = args.length > 1 ? `${first} ${args[1]}` : first
+  if (cliCommandNames.has(twoPart)) return twoPart
+  if (cliCommandNames.has(first)) return first
+  if (cliTopLevelNames.has(first)) return first
+
+  return undefined
+}
+
+function validateBakinCommands(file: string, text: string): void {
+  const rel = file.replace(repoRoot, '').replace(/^\//, '')
+  const fencedBlockPattern = /```(?:sh|shell|bash)\n([\s\S]*?)```/g
+  for (const match of text.matchAll(fencedBlockPattern)) {
+    const blockStart = match.index ?? 0
+    const startLine = text.slice(0, blockStart).split('\n').length
+    for (const [offset, rawLine] of match[1].split('\n').entries()) {
+      const line = rawLine.trim()
+      const words = shellWords(line)
+      if (!words.some(word => word === 'bakin' || word.endsWith('/bakin'))) continue
+      if (commandAfterBakin(line)) continue
+      errors.push(`${rel}:${startLine + offset + 1}: unknown bakin command in shell snippet: ${line}`)
+    }
+  }
+}
+
 const errors: string[] = []
 
 for (const file of walkMarkdown(docsContentRoot)) {
@@ -43,6 +90,18 @@ for (const file of walkMarkdown(docsContentRoot)) {
   if (/\bTODO\b|placeholder/i.test(text.replace(/--column=todo/g, '--column=column-name'))) {
     errors.push(`${rel}: contains TODO/placeholder language`)
   }
+  if (text.includes('https://docs.makinbakin.com')) {
+    errors.push(`${rel}: references retired docs.makinbakin.com host`)
+  }
+  const rootDocsLinks = text.match(/\]\(\/(?!docs\/)/g)
+  if (rootDocsLinks) {
+    errors.push(`${rel}: contains root-relative docs links that should start with /docs/`)
+  }
+  const rootFrontmatterLinks = text.match(/^\s*link:\s*\/(?!docs\/)/gm)
+  if (rootFrontmatterLinks) {
+    errors.push(`${rel}: contains root-relative frontmatter links that should start with /docs/`)
+  }
+  validateBakinCommands(file, text)
 }
 
 const requiredPublicFiles = [
