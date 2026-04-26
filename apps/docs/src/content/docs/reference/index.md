@@ -27,4 +27,6 @@ Generated references currently available:
 
 - [CLI Reference](/reference/generated/cli/)
 - [API Reference](/reference/generated/api/)
+- [Hook Reference](/reference/generated/hooks/)
+- [Exec and MCP Tool Reference](/reference/generated/exec-tools/)
 - [Generated Coverage](/reference/generated/coverage/)
