@@ -20,6 +20,19 @@ bakin plugins install .
 
 The minimal server and client entries used by these docs live in `apps/docs/snippets/plugin-basic/` and are typechecked with the repo. Use that fixture as the source of truth for basic plugin shape.
 
+## Build Path
+
+1. Define `bakin-plugin.json`.
+2. Implement the server entry and register contracts from `activate(ctx)`.
+3. Implement the client entry with `registerPlugin()`.
+4. Run the plugin tests and docs checks before publishing.
+
+Use these pages for the details:
+
+- [Plugin Manifest](/extend/plugins/manifest/)
+- [Server Contracts](/extend/plugins/server-contracts/)
+- [Client UI](/extend/plugins/client-ui/)
+
 ## Import Rule
 
 Use SDK imports:

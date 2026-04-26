@@ -1,0 +1,55 @@
+{
+  "id": "content-planner",
+  "name": "Content Planner",
+  "version": "0.1.0",
+  "kind": "agent",
+  "description": "Minimal agent package used by the public Bakin docs.",
+  "bakin": ">=0.1.0",
+  "agent": {
+    "identity": {
+      "name": "Content Planner"
+    },
+    "role": "Plans and reviews short-form content workflows.",
+    "defaultModel": "gpt-5.4",
+    "dispatchableBy": [
+      "main"
+    ],
+    "tags": [
+      "content",
+      "planning"
+    ],
+    "allowedTools": [
+      "bakin_exec_tasks_list",
+      "bakin_exec_workflows_run"
+    ],
+    "allowedSkills": [
+      "content-brief"
+    ]
+  },
+  "install": {
+    "createIfMissing": true,
+    "adoptIfExists": true,
+    "writeWorkspaceFiles": true,
+    "installSkills": true,
+    "installWorkflows": true,
+    "enableKnowledge": [
+      "voice"
+    ]
+  },
+  "contributions": {
+    "workspaceFiles": [
+      "workspace/SOUL.md",
+      "workspace/IDENTITY.md",
+      "workspace/TOOLS.md"
+    ],
+    "skills": [
+      "skills/content-brief.md"
+    ],
+    "workflows": [
+      "workflows/draft-review.yaml"
+    ],
+    "knowledge": [
+      "knowledge/voice.md"
+    ]
+  }
+}

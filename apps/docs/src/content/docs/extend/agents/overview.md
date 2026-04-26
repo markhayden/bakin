@@ -9,6 +9,19 @@ Agent authoring docs explain the Bakin-specific contracts agents need: package s
 
 These docs explain only the OpenClaw concepts required to use Bakin. Deeper OpenClaw behavior belongs in OpenClaw documentation.
 
+## Build Path
+
+1. Decide whether you need an `agent`, `skill-pack`, `workflow-pack`, or `knowledge-pack`.
+2. Define `bakin-package.json`.
+3. Add workspace files, skills, workflows, and knowledge files.
+4. Install locally with `bakin agents install`.
+5. Test the agent against the tools and workflows it is allowed to use.
+
+Use these pages for the details:
+
+- [Agent Packages](/extend/agents/packages/)
+- [Agent Knowledge](/extend/agents/knowledge/)
+
 ## For Coding Agents
 
 When working in Bakin:

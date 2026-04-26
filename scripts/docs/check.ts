@@ -65,6 +65,8 @@ const requiredPublicFiles = [
 const requiredSnippetFiles = [
   'snippets/plugin-basic/index.ts',
   'snippets/plugin-basic/client.tsx',
+  'snippets/plugin-basic/bakin-plugin.json',
+  'snippets/agent-package-basic/bakin-package.json',
 ]
 
 for (const file of requiredPublicFiles) {
@@ -73,6 +75,16 @@ for (const file of requiredPublicFiles) {
 
 for (const file of requiredSnippetFiles) {
   if (!existsSync(join(docsRoot, file))) errors.push(`apps/docs/${file}: required docs snippet missing`)
+}
+
+for (const file of requiredSnippetFiles.filter((file) => file.endsWith('.json'))) {
+  const path = join(docsRoot, file)
+  if (!existsSync(path)) continue
+  try {
+    JSON.parse(readFileSync(path, 'utf8'))
+  } catch (error) {
+    errors.push(`apps/docs/${file}: invalid JSON (${error instanceof Error ? error.message : String(error)})`)
+  }
 }
 
 if (errors.length > 0) {

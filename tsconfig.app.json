@@ -11,6 +11,8 @@
     "tests/**/*.ts",
     "tests/**/*.tsx",
     "scripts/**/*.ts",
+    "apps/docs/snippets/**/*.ts",
+    "apps/docs/snippets/**/*.tsx",
     "dev/**/*.ts",
     "cli/**/*.ts",
     "server.ts",
