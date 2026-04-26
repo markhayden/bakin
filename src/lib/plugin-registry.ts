@@ -43,6 +43,7 @@ import { appendAudit } from '../core/audit'
 import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 import { buildSearchAPI } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
+import { setCorePluginCheck } from '../../packages/core/src/plugins/lockfile'
 
 /**
  * Optional static core-plugin table. Set from server.ts on startup so
@@ -70,6 +71,29 @@ const hookRegistry: HookRegistry = (globalThis as any).__bakinHookRegistry ??= n
 export function getHookRegistry(): HookRegistry {
   return hookRegistry
 }
+
+/**
+ * Set of plugin ids that ship with the Bakin binary (vs. user-installed
+ * under ~/.bakin/plugins/). Populated by `loadPlugin` after a successful
+ * core-plugin activation. globalThis-backed so the predicate stays
+ * consistent across module re-evaluations during dev HMR.
+ *
+ * Read by:
+ *   - `/api/plugins/remove` and `/api/plugins/upgrade` — refuse mutation
+ *   - `packages/core/src/plugins/lockfile.ts` mutators — defense-in-depth
+ *   - `bakin plugins list` — render the [core] marker
+ */
+const corePluginIds: Set<string> = (globalThis as any).__bakinCorePluginIds ??= new Set<string>()
+
+/** True iff the given plugin id ships with the Bakin binary. */
+export function isCorePlugin(pluginId: string): boolean {
+  return corePluginIds.has(pluginId)
+}
+
+// Wire the lockfile's defense-in-depth guard to our predicate. The lockfile
+// module can't import plugin-registry directly (circular), so it accepts a
+// setter at boot.
+setCorePluginCheck(isCorePlugin)
 
 interface PluginState {
   plugin: BakinPlugin
@@ -392,6 +416,9 @@ class PluginRegistryImpl {
         })
       }
       this.plugins.set(plugin.id, state)
+      // Mark this id as core — `loadPlugin` is the core-only entry; user
+      // plugins go through `loadUserPlugins` and never land here.
+      corePluginIds.add(plugin.id)
       console.log(`  ✓ Plugin loaded: ${plugin.name} v${plugin.version}`)
     } catch (err) {
       console.error(`  ✗ Failed to load plugin at ${pluginPath}:`, err)
@@ -422,12 +449,15 @@ class PluginRegistryImpl {
           // User plugin overrides built-in — drop the built-in's workflow
           // node kinds so the user plugin can re-register them without
           // hitting the duplicate-kind guard in registerPluginNodeType.
+          // Also drop the core marker: the active instance is now the user's
+          // and they should be able to `bakin plugins remove` their override.
           if (this.plugins.has(pluginId)) {
             console.log(`  ↻ User plugin overrides built-in: ${pluginId}`)
             unregisterPluginNodeTypes(pluginId)
             unregisterPluginNotificationChannels(pluginId)
             unregisterPluginHealthChecks(pluginId)
             this.plugins.delete(pluginId)
+            corePluginIds.delete(pluginId)
           }
 
           const serverEntry = manifest.entry?.server || 'index.ts'
