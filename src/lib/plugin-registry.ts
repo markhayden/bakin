@@ -344,7 +344,9 @@ class PluginRegistryImpl {
       hooks: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         register: (name: string, handler: (data: any) => any) => {
-          return hookRegistry.register(name, handler)
+          // Forward the plugin id so unregisterByPlugin can sweep this
+          // handler when the plugin is removed (#119).
+          return hookRegistry.register(name, handler, pluginId)
         },
         has: (name: string) => hookRegistry.has(name),
         invoke: <R>(name: string, data: unknown) => hookRegistry.invoke<R>(name, data),
