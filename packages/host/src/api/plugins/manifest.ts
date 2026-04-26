@@ -13,9 +13,15 @@
  */
 import { existsSync } from 'fs'
 import { join } from 'path'
-import { pluginRegistry } from '@/lib/plugin-registry'
+import { isCorePlugin, pluginRegistry } from '@/lib/plugin-registry'
 import { getContentDir } from '@/core/content-dir'
+import { createLogger } from '@/core/logger'
+import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { EMBEDDED_ASSETS } from '../_embedded-assets'
+
+const log = createLogger('plugin-manifest')
+
+const STALE_HINT_DAYS = 7
 
 interface ManifestPlugin {
   id: string
@@ -24,10 +30,31 @@ interface ManifestPlugin {
   clientEntry: string
   /** Optional stylesheet URL — present only if the plugin build emitted one. */
   clientCss?: string
+  /** Where the plugin came from. `core` ships with the binary; `github`/`local` are user-installed. */
+  source: 'core' | 'github' | 'local'
+  /** Lockfile entry for user-installed plugins; null for core. */
+  installed: PluginLockEntry | null
+  /**
+   * True iff a remote update is detected. Always false at C3 — C5 wires
+   * `bakin plugins list --check` to populate `lastChecked` + remote shas
+   * and compute this flag.
+   */
+  upgradeAvailable: boolean
+  /**
+   * Days since `lastChecked` if older than the staleness threshold (7 days),
+   * otherwise null. Surfaces as a "(last checked N days ago — run with
+   * --check)" hint in the CLI.
+   */
+  staleHintDays: number | null
 }
 
 interface ManifestResponse {
   plugins: ManifestPlugin[]
+}
+
+function daysSince(iso: string): number {
+  const ms = Date.now() - new Date(iso).getTime()
+  return Math.floor(ms / (1000 * 60 * 60 * 24))
 }
 
 /**
@@ -44,13 +71,40 @@ function hasClientCss(pluginId: string): boolean {
 }
 
 export async function get(_req: Request): Promise<Response> {
+  // Read the lockfile once per request; tolerate read failures so a corrupt
+  // lockfile doesn't blank the entire UI manifest.
+  let lockedPlugins: Record<string, PluginLockEntry> = {}
+  try {
+    lockedPlugins = readPluginLockfile().plugins
+  } catch (err) {
+    log.error('failed to read plugin lockfile for manifest', err as Error)
+  }
+
   const plugins: ManifestPlugin[] = []
   for (const entry of pluginRegistry.getRegistrySnapshot()) {
+    const installed = lockedPlugins[entry.id] ?? null
+    const isCore = isCorePlugin(entry.id)
+    const source: ManifestPlugin['source'] = isCore
+      ? 'core'
+      : (installed?.type ?? 'local')
+
+    let staleHintDays: number | null = null
+    if (installed?.lastChecked) {
+      const days = daysSince(installed.lastChecked)
+      if (days > STALE_HINT_DAYS) staleHintDays = days
+    }
+
     const plugin: ManifestPlugin = {
       id: entry.id,
       name: entry.name,
       version: entry.version,
       clientEntry: `/api/plugins/${entry.id}/assets/client.js`,
+      source,
+      installed,
+      // C5 wires the actual upgrade-available detection; until then every
+      // entry reports `false`.
+      upgradeAvailable: false,
+      staleHintDays,
     }
     if (hasClientCss(entry.id)) {
       plugin.clientCss = `/api/plugins/${entry.id}/assets/client.css`
