@@ -11,6 +11,7 @@ import { Skeleton } from "@bakin/sdk/ui"
 import { PluginHeader } from "@bakin/sdk/components"
 import { UnderlineTabs } from "@bakin/sdk/components"
 import { ExternalLink, Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
+import type { HealthCheckResult } from '@bakin/sdk'
 
 const USAGE_TABS = [
   { id: 'tools', label: 'Tool Usage' },
@@ -24,14 +25,8 @@ interface McpSessionInfo {
   connectedAt: string
 }
 
-interface DiagnosticResult {
-  check: string
-  status: 'ok' | 'warn' | 'error' | 'fixed'
-  message: string
-}
-
 interface DoctorData {
-  results: DiagnosticResult[]
+  results: HealthCheckResult[]
   summary: { total: number; errors: number; warnings: number }
   cachedAt?: string
 }

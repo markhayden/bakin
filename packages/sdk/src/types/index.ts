@@ -22,6 +22,8 @@ export type {
   PluginManifest,
   PluginEntry,
   BakinConfig,
+  HealthCheckResult,
+  PluginHealthCheckInput,
 } from '@bakin/core/plugin-types'
 
 export type { BakinSettings } from '@bakin/core/settings'
