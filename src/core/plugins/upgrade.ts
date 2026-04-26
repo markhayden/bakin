@@ -163,6 +163,81 @@ function gitFetchAndFastForward(
   return { from, to }
 }
 
+// ─── Upgrade-available detection (C5) ────────────────────────────────────────
+
+export interface UpgradeAvailability {
+  id: string
+  upgradeAvailable: boolean
+  /** ISO timestamp recorded into the lockfile alongside the result. */
+  lastChecked: string
+  /** Github only — last seen remote HEAD sha. */
+  remoteHeadSha?: string
+  /** Local only — last seen source tree sha. */
+  sourceTreeSha?: string
+  /** Set when the check itself failed (e.g. network error, missing source). */
+  error?: string
+}
+
+/**
+ * Check whether an upgrade is available for an installed plugin and persist
+ * the freshness markers (`lastChecked` + `remoteHeadSha`/`sourceTreeSha`)
+ * into the lockfile. Used by `bakin plugins list --check`.
+ *
+ * Network/fs errors are caught and returned in the `error` field so one
+ * plugin's failure doesn't blank the whole list.
+ */
+export async function checkUpgradeAvailable(id: string): Promise<UpgradeAvailability> {
+  const lastChecked = new Date().toISOString()
+  try {
+    const lock = readPluginLockfile()
+    const entry = lock.plugins[id]
+    if (!entry) {
+      return { id, upgradeAvailable: false, lastChecked, error: 'no lockfile entry' }
+    }
+
+    if (entry.type === 'github') {
+      if (!entry.source || !entry.ref) {
+        return { id, upgradeAvailable: false, lastChecked, error: 'lockfile missing source/ref' }
+      }
+      const remoteUrl = githubCloneUrl(entry.source)
+      const lsRemote = run('git', ['ls-remote', remoteUrl, entry.ref], getContentDir())
+      const remoteHeadSha = (lsRemote.split(/\s+/)[0] ?? '').trim()
+      if (!remoteHeadSha) {
+        return { id, upgradeAvailable: false, lastChecked, error: `no remote ref: ${entry.ref}` }
+      }
+      const upgradeAvailable = remoteHeadSha !== entry.commitSha
+      writePluginLockfile(updatePlugin(readPluginLockfile(), id, { lastChecked, remoteHeadSha }))
+      return { id, upgradeAvailable, lastChecked, remoteHeadSha }
+    }
+
+    // Local
+    if (!existsSync(entry.source)) {
+      return { id, upgradeAvailable: false, lastChecked, error: `source path missing: ${entry.source}` }
+    }
+    const liveTreeSha = computeSourceTreeSha(entry.source)
+    const upgradeAvailable = entry.sourceTreeSha ? liveTreeSha !== entry.sourceTreeSha : true
+    // Write to lastSourceTreeSha — `sourceTreeSha` is the install/upgrade
+    // time value and must not be clobbered by --check. Symmetric with
+    // remoteHeadSha vs commitSha for github.
+    writePluginLockfile(updatePlugin(readPluginLockfile(), id, { lastChecked, lastSourceTreeSha: liveTreeSha }))
+    return { id, upgradeAvailable, lastChecked, sourceTreeSha: liveTreeSha }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { id, upgradeAvailable: false, lastChecked, error: message }
+  }
+}
+
+/**
+ * Resolve a stored install source string into a git-clone-friendly URL.
+ * Mirror of the parsing in `install.ts` — extracted here so `git ls-remote`
+ * for upgrade-available checks accepts the same shorthand the user typed.
+ */
+function githubCloneUrl(source: string): string {
+  const stripped = source.startsWith('github:') ? source.slice(7) : source
+  if (stripped.startsWith('http') || stripped.startsWith('git@')) return stripped
+  return `https://github.com/${stripped}.git`
+}
+
 /**
  * Upgrade an installed user plugin in-place. Returns a structured result so
  * callers (CLI, API endpoint) can render the right message and decide
