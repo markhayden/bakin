@@ -28,6 +28,14 @@ mock.module('@/core/content-dir', () => ({
   getContentDir: () => bakinHome,
   getBakinPaths: () => ({ workflows: join(bakinHome, 'workflows') }),
 }))
+// CLAUDE.md mock-both-paths rule — the lockfile module imports its own
+// `getContentDir` from `@bakin/core/content-dir`, so without this mock
+// `syncLockfileInstalledSkills` would trip the production-content-dir
+// safety guard and silently abort.
+mock.module('@bakin/core/content-dir', () => ({
+  getContentDir: () => bakinHome,
+  getBakinPaths: () => ({ workflows: join(bakinHome, 'workflows') }),
+}))
 mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => openclawHome,
   getOpenClawPath: (...parts: string[]) => join(openclawHome, ...parts),
@@ -214,6 +222,43 @@ describe('plugin-assets onboarding component', () => {
       const installedScript = join(openclawHome, 'skills', 'cold-email', 'scripts', 'helper.sh')
       expect(existsSync(installedScript)).toBe(true)
       expect(readFileSync(installedScript, 'utf-8')).toContain('echo hi')
+    })
+
+    it('reconciles installedSkills into the lockfile entry (C25 — was silently dead in tests)', async () => {
+      // Seed a lockfile entry as if `bakin plugins install sdr` already ran.
+      // installPluginAssets should then update its installedSkills to match
+      // what's on disk in defaults/openclaw-skills/.
+      const { addPlugin, readPluginLockfile, writePluginLockfile } =
+        await import('../../../packages/core/src/plugins/lockfile')
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      writePluginLockfile(addPlugin(readPluginLockfile(), 'sdr', {
+        source: pluginDir,
+        type: 'local',
+        ref: '',
+        commitSha: '',
+        installedAt: '2026-04-26T00:00:00Z',
+        version: '1.0.0',
+        permissions: [],
+        manifestSha: 'fixture-sha',
+        // installedSkills intentionally omitted — should be populated by sync
+      }))
+
+      installPluginAssets([{ id: 'sdr', path: pluginDir }])
+
+      const entry = readPluginLockfile().plugins['sdr']
+      expect(entry?.installedSkills).toEqual(['cold-email'])
+    })
+
+    it('skips lockfile reconciliation for plugins without an entry (e.g. core)', async () => {
+      const { readPluginLockfile } = await import('../../../packages/core/src/plugins/lockfile')
+      const pluginDir = makePluginWithSkill('built-in-plugin', 'some-skill', SKILL_BODY)
+
+      // No lockfile entry seeded. Reconciliation should be a no-op.
+      installPluginAssets([{ id: 'built-in-plugin', path: pluginDir }])
+
+      // Lockfile still empty — we never created an entry for an id we
+      // didn't already know about.
+      expect(readPluginLockfile().plugins['built-in-plugin']).toBeUndefined()
     })
   })
 

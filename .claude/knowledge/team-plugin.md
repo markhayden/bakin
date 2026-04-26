@@ -146,9 +146,9 @@ The compact `<PackageStateBadge state={...} compact />` renders inline next to t
 
 The compact pill is purely visual — no text label, tooltip + aria-label preserved. Click on the agent card opens the detail page where the full Package card lives.
 
-### Surface 2 — Package Card on Profile Tab (`agent-detail.tsx`)
+### Surface 2 — Package Card on Overview Tab (`agent-detail.tsx`)
 
-A read-only `<PackageCard>` sits at the top of the Profile tab and adapts content per state:
+A read-only `<PackageCard>` is embedded inside the Overview tab (post-rework) and adapts content per state:
 
 | State | Render |
 |---|---|
@@ -161,10 +161,10 @@ Convention: **CLI hints render only when there is no UI affordance for the actio
 
 ### Surface 3 — Knowledge Tab (`agent-detail.tsx`)
 
-The "Knowledge" tab sits between Skills and Memory in the tab order — both are package-rooted concepts. Always visible, content adapts:
+The "Knowledge" tab sits between Skills and Active Context in the tab order. Always visible, content adapts:
 
-- **`managed` / `adopted`:** renders `<KnowledgeToggleList agentId={...}>` (existing component, optimistic UI, REST round-trip on toggle).
-- **Anything else:** "Coming soon" placeholder pointing the user back at the Package card on the Profile tab to adopt first. Future work replaces this with adoption-value + knowledge-explainer copy.
+- **`managed` / `adopted`:** renders `<KnowledgeToggleList agentId={...}>` — a responsive grid of cards with title + lessonId + tags + per-card package-source chip. Optimistic UI, REST round-trip on toggle.
+- **Anything else:** shared `<EmptyState>` with "Knowledge requires a package" pointing the user back at the Package card on the Overview tab to adopt first.
 
 ### Adopt Round-Trip
 
@@ -191,6 +191,84 @@ No page reload, no manual refetch from the consumer side.
 - Drift-count widget in Health plugin
 
 These all stay CLI-only until the Workshop page lands.
+
+## Agent Detail Tab Architecture
+
+The `/team/:id` page (`agent-detail.tsx`) is a thin orchestrator: header + tab bar + dispatch. All meaningful content lives in per-tab components, each in its own file. Tab order:
+
+| Tab | Component | Source |
+|---|---|---|
+| Overview | `<OverviewTab>` | `overview-tab.tsx` |
+| Identity | `<MarkdownEditTab>` | workspace `IDENTITY.md` |
+| Soul | `<MarkdownEditTab>` | workspace `SOUL.md` |
+| Memory | `<MemoryTab>` (in `agent-detail.tsx`) | `~/.openclaw/agents/<id>/memory/*.md` |
+| Heartbeat | `<HeartbeatTab>` | `heartbeat-tab.tsx` (view-only) |
+| Rules | `<MarkdownEditTab>` | workspace `AGENTS.md` |
+| Tools | `<MarkdownEditTab>` | workspace `TOOLS.md` |
+| Skills | `<SkillsTab>` (in `agent-detail.tsx`) | workspace `skills/<name>/SKILL.md` |
+| Knowledge | `<KnowledgeToggleList>` | `/api/agent-packages/:id/knowledge` |
+| Active Context | `<ActiveContextTab>` | `~/.openclaw/agents/<id>/sessions/*.jsonl` |
+
+URL state via `useQueryState('tab', 'overview')`. Unknown values fall back to `overview`.
+
+### Header Contract
+
+The header contains: back arrow, avatar (clickable for upload), name, role, gateway-restart banner (when dirty), delete button (suppressed on the main agent). It used to host the model picker, team selector, and subagent perms badge — all moved to OverviewTab so the header stays informational.
+
+### OverviewTab Composition
+
+Identity (name + role + workspace path) lives in the page header above the tab bar — OverviewTab itself does **not** repeat it.
+
+Page sections, top to bottom:
+
+- **Hero card** — accent-bordered, 2-col at lg (stacked at narrower). Two panels separated by a subtle divider:
+  - Settings (no header label) — model selector + team selector with live save
+  - Agent Package — embedded `<PackageCardBody>` (lives in `package-card.tsx`)
+- **Metrics** — 4 color-coded tiles (Skills/violet, Knowledge/cyan, Tokens/blue, Cost/emerald). When a latest-session payload is present, a secondary 4-tile row appears (Model / Messages / Cache reads / Cache writes).
+- **Activity** — 3 tiles tinted with the agent's accent color when count > 0, for 5m/1h/24h windows. Footer caption clarifies "since server start" (the recorder is in-memory and resets on restart).
+
+OverviewTab fetches stats / recent-activity / skills / knowledge in parallel on mount. Each panel handles its own loading/empty state.
+
+### MarkdownEditTab Pattern
+
+Used by Soul / Rules / Tools — Assets-style view→edit toggle. Default state renders `<MarkdownContent>`. Pencil button in the absolute top-right corner switches to a textarea. Save (green check) + Cancel (X) replace the pencil while editing. Cmd+S saves when dirty; Esc cancels. Save POSTs to the existing `/api/plugins/team/:agentId/files/:filename` endpoint.
+
+Layout uses `min-h-[calc(100vh-260px)]` so the markdown surface fills the viewport less header — replaces the prior FileEditorTab's cramped 500px container.
+
+### Heartbeat: View-Only
+
+`HeartbeatTab` renders `HEARTBEAT.md` via `<MarkdownContent>` with a "Last updated <relative>" badge. Explicitly no edit affordance — heartbeats are agent-authored narrative; user editing is meaningless.
+
+There are *two* heartbeat surfaces in the codebase that should not be confused:
+
+- `~/.bakin/heartbeats/<id>.json` — structured status JSON written by the `bakin_exec_heartbeat` MCP tool. Used by the watchdog and online-status detection. Not surfaced in the UI.
+- `<workspace>/HEARTBEAT.md` — markdown narrative the agent maintains for human consumption. This is what the Heartbeat tab shows.
+
+### Active Context: Latest Session Transcript
+
+`ActiveContextTab` fetches `/api/plugins/team/:id/active-context` and renders the parsed message stream from the agent's most recent session JSONL. One row per message with a role-colored badge (system/user/assistant/tool). Plain text via `<MarkdownContent>`; tool calls and JSON-shaped content as `<pre>`. Truncation banner appears when the underlying transcript was capped (default 200 messages on the server).
+
+Backed by `lib/session-reader.ts` — a sibling to `src/core/agent-usage.ts`. Where agent-usage sums tokens/cost across the latest session, session-reader returns the messages themselves.
+
+### New REST Endpoints (introduced in the Overview rework)
+
+Three GET routes on the team plugin, sibling to the existing `/:agentId/stats`:
+
+| Route | Returns |
+|---|---|
+| `/:agentId/heartbeat` | `{ ok, heartbeat: { content, lastUpdated } \| null }` |
+| `/:agentId/active-context?max=200` | `{ ok, transcript: SessionTranscript \| null }` |
+| `/:agentId/recent-activity` | `{ ok, activity: { windowMs, errors, sinceServerStart } }` |
+
+All three follow the existing per-agent route pattern (agentId from search params, structured ok/error response, log + 500 on errors).
+
+### What Got Killed
+
+- **Stats tab** — folded into the OverviewTab "Latest Session" panel.
+- **Profile tab** — replaced by OverviewTab. Old behavior was to re-render Soul / Rules / Tools / Heartbeat content alongside the Identity card; that was redundant since each has its own tab.
+- **FileEditorTab** — replaced by MarkdownEditTab.
+
+If a future iteration restores any of these, prefer adding back via new components rather than git-reverting — the new components have better tests + layout discipline.
 
 ## Test Coverage Map
 

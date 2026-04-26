@@ -111,7 +111,7 @@ export function AgentCardNode({ data }: NodeProps) {
 
   return (
     <div
-      className="agent-card-hover rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden w-[152px] flex flex-col cursor-pointer shadow-md"
+      className="agent-card-hover rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden w-[208px] flex flex-col cursor-pointer shadow-md"
       style={{ '--agent-glow': accentColor } as React.CSSProperties}
     >
       <Handle type="target" position={Position.Top} className="!bg-zinc-600" />
@@ -129,25 +129,30 @@ export function AgentCardNode({ data }: NodeProps) {
         >
           {agent.emoji}
         </div>
-        <div className={`absolute top-2 right-2 size-2.5 rounded-full border-2 border-zinc-900 ${dotColor}`} />
+        <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-950/80 backdrop-blur-sm shadow-lg">
+          <span className={`size-2 rounded-full ${dotColor}`} />
+          <span className="text-xs font-medium text-zinc-100 leading-none">{statusLabel}</span>
+        </div>
       </div>
-      <div className="p-2.5 flex flex-col gap-0.5">
-        <div className="flex items-center gap-1.5 leading-tight">
-          <span className="text-sm font-semibold text-zinc-100 truncate">{agent.name}</span>
+      <div className="p-3 pb-3 flex flex-col items-center text-center gap-1 flex-1">
+        <div className="flex items-center justify-center gap-1.5 leading-tight w-full">
+          <span className="text-base font-semibold text-zinc-100 truncate">{agent.name}</span>
           {showBadge && pkgState && (
             <PackageStateBadge state={pkgState.state} compact />
           )}
         </div>
-        <div className="text-xs text-zinc-500 leading-tight truncate">{agent.role}</div>
-        <div className="flex items-center gap-1.5 mt-1.5">
-          <Badge
-            variant={agent.status === 'online' || agent.status === 'working' ? 'default' : 'secondary'}
-            className="text-[10px] px-1.5 py-0"
-          >
-            {statusLabel}
-          </Badge>
-          <span className="text-[10px] text-zinc-500 font-mono truncate">{agent.model}</span>
+        <div
+          className="text-xs text-zinc-500 leading-snug w-full line-clamp-3"
+          title={agent.role || undefined}
+        >
+          {agent.role || <span className="text-zinc-700">no role</span>}
         </div>
+      </div>
+      <div
+        className="px-3 py-2 text-[11px] text-zinc-200 font-mono truncate text-center bg-black border-t border-zinc-800"
+        title={agent.model}
+      >
+        {agent.model}
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-zinc-600" />
     </div>
@@ -161,13 +166,11 @@ interface SectionNodeData extends Record<string, unknown> {
 function SectionNode({ data }: NodeProps) {
   const { label } = data as SectionNodeData
   return (
-    <div className="flex items-center gap-3 px-4">
+    <div className="flex items-center justify-center px-4">
       <Handle type="target" position={Position.Top} className="!bg-transparent !border-0" />
-      <div className="h-px flex-1 bg-zinc-700 w-16" />
       <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 whitespace-nowrap">
         {label}
       </span>
-      <div className="h-px flex-1 bg-zinc-700 w-16" />
       <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0" />
     </div>
   )

@@ -126,6 +126,7 @@ const {
   listAgents, addAgent, removeAgent, removeFromAllowLists,
   openclawExec, synthesizeIdentityMd, addToAllowLists,
   setSubagentPermissions, parseIdentityMd, updateAgentIdentity,
+  readHeartbeatRaw,
 } = require('../../../plugins/team/lib/openclaw-adapter') as typeof import('../../../plugins/team/lib/openclaw-adapter')
 
 // ---------------------------------------------------------------------------
@@ -798,5 +799,36 @@ describe('team/openclaw-adapter · updateAgentIdentity', () => {
     await updateAgentIdentity('pixel', { role: 'New Role', vibe: 'Calm' })
 
     expect(execFileMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('team/openclaw-adapter · readHeartbeatRaw', () => {
+  const pixelWs = join(testDir, 'openclaw', 'workspaces', 'heartbeat-test')
+  const heartbeatFile = join(pixelWs, 'HEARTBEAT.md')
+
+  beforeEach(() => {
+    readOpenClawConfigMock.mockReset()
+    setConfig({ agents: { list: [{ id: 'main' }, { id: 'heartbeat-test' }] } })
+    rmSync(pixelWs, { recursive: true, force: true })
+    mkdirSync(pixelWs, { recursive: true })
+  })
+
+  it('returns content + lastUpdated for an existing HEARTBEAT.md', () => {
+    const fs = require('fs') as typeof import('fs')
+    fs.writeFileSync(heartbeatFile, '## Status\n\nAlive and well.\n')
+
+    const result = readHeartbeatRaw('heartbeat-test')
+
+    expect(result).not.toBeNull()
+    expect(result!.content).toBe('## Status\n\nAlive and well.\n')
+    expect(result!.lastUpdated).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+  })
+
+  it('returns null when HEARTBEAT.md is missing', () => {
+    expect(readHeartbeatRaw('heartbeat-test')).toBeNull()
+  })
+
+  it('returns null for an unknown agent', () => {
+    expect(readHeartbeatRaw('does-not-exist')).toBeNull()
   })
 })

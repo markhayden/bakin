@@ -41,7 +41,12 @@ mock.module('../../src/core/logger', () => ({
 import { post as installPOST } from '../../packages/host/src/api/plugins/install'
 import { post as removePOST } from '../../packages/host/src/api/plugins/remove'
 
-const sourcePluginDir = join(testDir, '..', 'source-plugin')
+// Source plugin lives INSIDE the mocked content dir so it's contained by
+// the install handler's path-traversal guard (C12 hardening). The original
+// `join(testDir, '..', 'source-plugin')` placement was outside any trusted
+// root (~/.bakin/ ↔ testDir / $HOME / cwd) — exactly the case the guard
+// rejects.
+const sourcePluginDir = join(testDir, 'source-plugin')
 
 function makeRequest(body: unknown): Request {
   return new Request('http://localhost/api/plugins/install', {
@@ -60,6 +65,7 @@ async function invoke(
 }
 
 beforeAll(() => {
+  mkdirSync(testDir, { recursive: true })
   mkdirSync(sourcePluginDir, { recursive: true })
   writeFileSync(
     join(sourcePluginDir, 'bakin-plugin.json'),
@@ -114,7 +120,8 @@ describe('POST /api/plugins/install', () => {
   })
 
   it('rejects source missing bakin-plugin.json with 400', async () => {
-    const bad = join(testDir, '..', 'bad-plugin-source')
+    // Inside content dir to clear the C12 path-traversal containment guard.
+    const bad = join(testDir, 'bad-plugin-source')
     mkdirSync(bad, { recursive: true })
     try {
       const res = await invoke(installPOST, makeRequest({ source: bad, type: 'local' }))

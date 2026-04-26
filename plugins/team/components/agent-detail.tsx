@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from '@bakin/sdk/hooks'
-import { ArrowLeft, Save, Loader2, Camera, Trash2, Copy } from 'lucide-react'
+import { ArrowLeft, Loader2, Camera, Trash2, BookOpen, Sparkles, Calendar } from 'lucide-react'
 import { Badge } from "@bakin/sdk/ui"
 import { Button } from "@bakin/sdk/ui"
 import {
@@ -11,45 +11,43 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bakin/sdk/ui"
-import { AgentAvatar } from "@bakin/sdk/components"
 import { Skeleton } from "@bakin/sdk/ui"
-import { MarkdownContent } from "@bakin/sdk/components"
-import { ModelSelect } from "@bakin/sdk/components"
 import { useGatewayStatus } from "@bakin/sdk/hooks"
 import type { AvailableModel } from "@bakin/sdk/types"
 import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@bakin/sdk/hooks'
 import { useQueryState } from "@bakin/sdk/hooks"
-import { PackageStateBadge } from './package-state-badge'
-import { AdoptDialog } from './adopt-dialog'
 import { KnowledgeToggleList } from './knowledge-toggle-list'
+import { MarkdownEditTab } from './markdown-edit-tab'
+import { HeartbeatTab } from './heartbeat-tab'
+import { ActiveContextTab } from './active-context-tab'
+import { OverviewTab } from './overview-tab'
+import { EmptyState } from './empty-state'
 import type { AgentProfile, SkillSummary, PackageStateRow } from '../types'
-import type { AgentUsage } from '../../../src/core/agent-usage'
 
-type Tab = 'profile' | 'soul' | 'rules' | 'tools' | 'skills' | 'knowledge' | 'memory' | 'stats'
+type Tab = 'overview' | 'identity' | 'soul' | 'memory' | 'heartbeat' | 'rules' | 'tools' | 'skills' | 'knowledge' | 'active-context'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'profile', label: 'Profile' },
+  { id: 'overview', label: 'Overview' },
+  { id: 'identity', label: 'Identity' },
   { id: 'soul', label: 'Soul' },
+  { id: 'memory', label: 'Memory' },
+  { id: 'heartbeat', label: 'Heartbeat' },
   { id: 'rules', label: 'Rules' },
   { id: 'tools', label: 'Tools' },
   { id: 'skills', label: 'Skills' },
   { id: 'knowledge', label: 'Knowledge' },
-  { id: 'memory', label: 'Memory' },
-  { id: 'stats', label: 'Stats' },
+  { id: 'active-context', label: 'Active Context' },
 ]
 
 export function AgentDetail({ agentId }: { agentId: string }) {
   const router = useRouter()
   const accentColor = useAgentColor(agentId)
   const mainAgentId = useMainAgentId()
-  const teams = useAgentStore((s) => s.teams)
-  const displaySettings = useAgentStore((s) => s.displaySettings)
   const reload = useAgentStore((s) => s.load)
   const packageState = usePackageState(agentId)
-  const currentTeamId = displaySettings[agentId]?.teamId ?? ''
   const [profile, setProfile] = useState<AgentProfile | null>(null)
-  const [tabParam, setTabParam] = useQueryState('tab', 'profile')
-  const activeTab = (TABS.some((t) => t.id === tabParam) ? tabParam : 'profile') as Tab
+  const [tabParam, setTabParam] = useQueryState('tab', 'overview')
+  const activeTab = (TABS.some((t) => t.id === tabParam) ? tabParam : 'overview') as Tab
   const setActiveTab = (t: Tab) => setTabParam(t)
   const [loading, setLoading] = useState(true)
   const [avatarKey, setAvatarKey] = useState(0)
@@ -71,9 +69,6 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       .catch((e) => console.error('Failed to fetch available models:', e))
   }, [agentId])
 
-  const profileModel = profile?.model ?? ''
-  const resolvedModelId = availableModels.find((m) => m.id === profileModel)?.id ?? profileModel
-
   const handleModelChange = async (modelId: string) => {
     if (!profile) return
     setSavingModel(true)
@@ -93,15 +88,6 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     } finally {
       setSavingModel(false)
     }
-  }
-
-  const handleTeamChange = async (teamId: string) => {
-    const res = await fetch(`/api/plugins/team/${agentId}/team`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ teamId: teamId || null }),
-    })
-    if (res.ok) await reload()
   }
 
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -163,7 +149,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   }
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-4 pb-12">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon-sm" onClick={() => router.push('/team')}>
@@ -192,42 +178,17 @@ export function AgentDetail({ agentId }: { agentId: string }) {
             onChange={handleAvatarUpload}
           />
         </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold">{profile.name}</h1>
-          <div className="text-sm text-muted-foreground">{profile.role}</div>
-          <div className="flex items-center gap-2 mt-1">
-            {availableModels.length > 0 ? (
-              <div className="flex items-center gap-1.5">
-                <ModelSelect
-                  value={resolvedModelId}
-                  onChange={handleModelChange}
-                  models={availableModels}
-                  defaultLabel="Use default"
-                  className="h-6 w-48 text-xs"
-                />
-                {savingModel && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
-              </div>
-            ) : (
-              <span className="text-xs font-mono text-muted-foreground">{profile.model}</span>
-            )}
-            {profile.subagentPerms && (
-              <Badge variant="outline" className="text-[10px]">
-                manages: {profile.subagentPerms.join(', ')}
-              </Badge>
-            )}
-            {teams.length > 0 && (
-              <select
-                value={currentTeamId}
-                onChange={(e) => handleTeamChange(e.target.value)}
-                className="h-6 rounded border border-border bg-transparent px-1.5 text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                <option value="">No team</option>
-                {teams.map((t) => (
-                  <option key={t.id} value={t.id}>{t.label}</option>
-                ))}
-              </select>
-            )}
-          </div>
+        <div className="flex-1 min-w-0 flex items-center gap-6 flex-wrap">
+          <h1 className="text-xl font-semibold leading-tight">{profile.name}</h1>
+          {profile.role && (
+            <span className="text-sm text-muted-foreground">{profile.role}</span>
+          )}
+          <code
+            className="text-[11px] font-mono text-muted-foreground/70 truncate min-w-0 max-w-md"
+            title={profile.workspacePath}
+          >
+            {profile.workspacePath}
+          </code>
         </div>
         {agentId !== mainAgentId && (
           <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive shrink-0" onClick={() => setDeleteOpen(true)}>
@@ -274,14 +235,25 @@ export function AgentDetail({ agentId }: { agentId: string }) {
 
       {/* Tab Content */}
       <div className="min-h-[400px]">
-        {activeTab === 'profile' && <ProfileTab profile={profile} agentId={agentId} packageState={packageState} />}
-        {activeTab === 'soul' && <FileEditorTab agentId={agentId} filename="SOUL.md" content={profile.soul} />}
-        {activeTab === 'rules' && <FileEditorTab agentId={agentId} filename="AGENTS.md" content={profile.rules} />}
-        {activeTab === 'tools' && <FileEditorTab agentId={agentId} filename="TOOLS.md" content={profile.tools} />}
+        {activeTab === 'overview' && (
+          <OverviewTab
+            agentId={agentId}
+            profile={profile}
+            packageState={packageState}
+            availableModels={availableModels}
+            onModelChange={handleModelChange}
+            savingModel={savingModel}
+          />
+        )}
+        {activeTab === 'memory' && <MemoryTab agentId={agentId} />}
+        {activeTab === 'heartbeat' && <HeartbeatTab agentId={agentId} />}
+        {activeTab === 'identity' && <MarkdownEditTab agentId={agentId} filename="IDENTITY.md" initialContent={profile.identity} />}
+        {activeTab === 'soul' && <MarkdownEditTab agentId={agentId} filename="SOUL.md" initialContent={profile.soul} />}
+        {activeTab === 'rules' && <MarkdownEditTab agentId={agentId} filename="AGENTS.md" initialContent={profile.rules} />}
+        {activeTab === 'tools' && <MarkdownEditTab agentId={agentId} filename="TOOLS.md" initialContent={profile.tools} />}
         {activeTab === 'skills' && <SkillsTab agentId={agentId} />}
         {activeTab === 'knowledge' && <KnowledgeTab agentId={agentId} packageState={packageState} />}
-        {activeTab === 'memory' && <MemoryTab agentId={agentId} />}
-        {activeTab === 'stats' && <StatsTab agentId={agentId} />}
+        {activeTab === 'active-context' && <ActiveContextTab agentId={agentId} />}
       </div>
 
       {/* Delete confirmation */}
@@ -314,184 +286,6 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   )
 }
 
-// ─── Profile Tab ─────────────────────────────────────────────────────────────
-
-function ProfileSection({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <h3 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-2">{label}</h3>
-      {children}
-    </section>
-  )
-}
-
-function ProfileMarkdown({ content }: { content: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-xs [&_.prose-invert]:text-xs [&_.prose-invert]:leading-relaxed [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_p]:text-xs [&_li]:text-xs [&_code]:text-[11px] [&_pre]:text-[11px]">
-      <MarkdownContent content={content} />
-    </div>
-  )
-}
-
-function ProfileTab({
-  profile,
-  agentId,
-  packageState,
-}: {
-  profile: AgentProfile
-  agentId: string
-  packageState: PackageStateRow | undefined
-}) {
-  return (
-    <div className="space-y-5 max-w-2xl">
-      <PackageCard agentId={agentId} packageState={packageState} />
-      {profile.identity && (
-        <ProfileSection label="Identity">
-          <ProfileMarkdown content={profile.identity} />
-        </ProfileSection>
-      )}
-      {profile.soul && (
-        <ProfileSection label="Soul">
-          <ProfileMarkdown content={profile.soul} />
-        </ProfileSection>
-      )}
-      {profile.rules && (
-        <ProfileSection label="Rules">
-          <ProfileMarkdown content={profile.rules} />
-        </ProfileSection>
-      )}
-      {profile.tools && (
-        <ProfileSection label="Tools">
-          <ProfileMarkdown content={profile.tools} />
-        </ProfileSection>
-      )}
-      {profile.heartbeatMd && (
-        <ProfileSection label="Heartbeat">
-          <ProfileMarkdown content={profile.heartbeatMd} />
-        </ProfileSection>
-      )}
-      <ProfileSection label="Workspace">
-        <code className="text-[11px] text-muted-foreground font-mono">{profile.workspacePath}</code>
-      </ProfileSection>
-    </div>
-  )
-}
-
-// ─── Package Card (lives inside Profile Tab) ─────────────────────────────────
-
-function CliHint({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false)
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(command)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // clipboard api unavailable — fail quietly, the command is visible
-    }
-  }
-  return (
-    <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
-      <code className="flex-1 font-mono text-foreground">{command}</code>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={handleCopy}
-        title={copied ? 'Copied' : 'Copy'}
-        aria-label="Copy command"
-      >
-        <Copy className="size-3.5" />
-      </Button>
-    </div>
-  )
-}
-
-function PackageEntryFields({ entry, packageId }: { entry: NonNullable<PackageStateRow['entry']>; packageId?: string }) {
-  return (
-    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
-      {packageId && (
-        <>
-          <dt className="text-muted-foreground">Package</dt>
-          <dd className="font-mono text-foreground break-all">{packageId}</dd>
-        </>
-      )}
-      <dt className="text-muted-foreground">Source</dt>
-      <dd className="font-mono text-foreground break-all">{entry.source}</dd>
-      {entry.ref && (
-        <>
-          <dt className="text-muted-foreground">Ref</dt>
-          <dd className="font-mono text-foreground">{entry.ref}</dd>
-        </>
-      )}
-      {entry.commitSha && (
-        <>
-          <dt className="text-muted-foreground">Commit</dt>
-          <dd className="font-mono text-foreground">{entry.commitSha.slice(0, 7)}</dd>
-        </>
-      )}
-      <dt className="text-muted-foreground">Installed</dt>
-      <dd className="text-foreground">{entry.installedAt}</dd>
-      {entry.dependencies && entry.dependencies.length > 0 && (
-        <>
-          <dt className="text-muted-foreground">Depends on</dt>
-          <dd className="flex flex-wrap gap-1">
-            {entry.dependencies.map((d) => (
-              <Badge key={d} variant="outline" className="text-[10px] font-mono">{d}</Badge>
-            ))}
-          </dd>
-        </>
-      )}
-    </dl>
-  )
-}
-
-function PackageCard({ agentId, packageState }: { agentId: string; packageState: PackageStateRow | undefined }) {
-  // Default to "unmanaged" when the API hasn't reported a row at all — the
-  // most common reason is the agent exists in OpenClaw but has never been
-  // adopted, which is the same thing as state=unmanaged.
-  const state = packageState?.state ?? 'unmanaged'
-  const refreshPackageStates = useAgentStore((s) => s.refreshPackageStates)
-  const [adoptOpen, setAdoptOpen] = useState(false)
-  return (
-    <ProfileSection label="Package">
-      <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <PackageStateBadge state={state} packageId={packageState?.packageId} />
-          {state === 'unmanaged' && (
-            <Button size="sm" onClick={() => setAdoptOpen(true)}>
-              Adopt
-            </Button>
-          )}
-        </div>
-        {packageState?.entry && (state === 'managed' || state === 'adopted') && (
-          <PackageEntryFields entry={packageState.entry} packageId={packageState.packageId} />
-        )}
-        {state === 'drifted' && (
-          <div className="space-y-1.5">
-            <p className="text-xs text-muted-foreground">
-              Projection sha mismatch detected. Repair from the CLI:
-            </p>
-            <CliHint command="bakin install agent-assets" />
-          </div>
-        )}
-        {state === 'update-available' && (
-          <div className="space-y-1.5">
-            <p className="text-xs text-muted-foreground">
-              A newer version of the source package is available. Update from the CLI:
-            </p>
-            <CliHint command={`bakin agents update ${agentId}`} />
-          </div>
-        )}
-      </div>
-      <AdoptDialog
-        open={adoptOpen}
-        onOpenChange={setAdoptOpen}
-        agentId={agentId}
-        onAdopted={() => { refreshPackageStates() }}
-      />
-    </ProfileSection>
-  )
-}
 
 // ─── Knowledge Tab ───────────────────────────────────────────────────────────
 
@@ -499,100 +293,17 @@ function KnowledgeTab({ agentId, packageState }: { agentId: string; packageState
   const state = packageState?.state ?? 'unmanaged'
   if (state === 'managed' || state === 'adopted') {
     return (
-      <div className="max-w-2xl">
+      <div className="w-full">
         <KnowledgeToggleList agentId={agentId} />
       </div>
     )
   }
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-      <div className="text-base font-medium text-foreground mb-1">Coming soon</div>
-      <p className="text-sm max-w-md">
-        Knowledge management requires a managed agent-package. Adopt this agent in the Package card on the Profile tab to unlock per-lesson toggles.
-      </p>
-    </div>
-  )
-}
-
-// ─── File Editor Tab ─────────────────────────────────────────────────────────
-
-function FileEditorTab({ agentId, filename, content: initialContent }: {
-  agentId: string
-  filename: string
-  content: string | null
-}) {
-  const [content, setContent] = useState(initialContent ?? '')
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [dirty, setDirty] = useState(false)
-
-  useEffect(() => {
-    setContent(initialContent ?? '')
-    setDirty(false)
-    setSaved(false)
-  }, [initialContent, agentId, filename])
-
-  const handleSave = useCallback(async () => {
-    setSaving(true)
-    try {
-      await fetch(`/api/plugins/team/${agentId}/files/${filename}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-      })
-      setSaved(true)
-      setDirty(false)
-      setTimeout(() => setSaved(false), 2000)
-    } finally {
-      setSaving(false)
-    }
-  }, [agentId, filename, content])
-
-  // Ctrl+S / Cmd+S to save
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault()
-        if (dirty) handleSave()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [dirty, handleSave])
-
-  if (initialContent === null) {
-    return (
-      <div className="text-sm text-muted-foreground py-8 text-center">
-        {filename} does not exist in this agent&apos;s workspace.
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <code className="text-xs font-mono text-muted-foreground">{filename}</code>
-          {dirty && <span className="text-xs text-amber-400">modified</span>}
-          {saved && <span className="text-xs text-green-400">saved</span>}
-        </div>
-        <Button
-          size="sm"
-          variant={dirty ? 'default' : 'secondary'}
-          onClick={handleSave}
-          disabled={!dirty || saving}
-        >
-          {saving ? <Loader2 className="size-3 animate-spin mr-1.5" /> : <Save className="size-3 mr-1.5" />}
-          Save
-        </Button>
-      </div>
-      <textarea
-        value={content}
-        onChange={(e) => { setContent(e.target.value); setDirty(true) }}
-        className="w-full min-h-[500px] bg-muted/30 border border-border rounded-lg p-4 text-sm font-mono leading-relaxed text-foreground resize-y focus:outline-none focus:ring-1 focus:ring-primary"
-        spellCheck={false}
-      />
-    </div>
+    <EmptyState
+      icon={BookOpen}
+      title="Knowledge requires a package"
+      description="Knowledge lessons let you toggle individual pieces of curriculum on or off per agent — useful for narrowing the persona to a task. Adopt this agent into a package on the Overview tab to unlock per-lesson toggles."
+    />
   )
 }
 
@@ -607,7 +318,13 @@ function SkillsTab({ agentId }: { agentId: string }) {
   useEffect(() => {
     fetch(`/api/plugins/team/${agentId}/skills`)
       .then((r) => r.json())
-      .then((data) => setSkills(data.skills ?? []))
+      .then((data) => {
+        const list: SkillSummary[] = data.skills ?? []
+        setSkills(list)
+        // Auto-select the first skill on load so the user never lands on an
+        // empty pane wondering what to click.
+        if (list.length > 0) setSelectedSkill((current) => current ?? list[0].id)
+      })
       .finally(() => setLoading(false))
   }, [agentId])
 
@@ -627,11 +344,19 @@ function SkillsTab({ agentId }: { agentId: string }) {
       </div>
     )
   }
-  if (skills.length === 0) return <div className="text-sm text-muted-foreground py-8 text-center">No skills installed</div>
+  if (skills.length === 0) {
+    return (
+      <EmptyState
+        icon={Sparkles}
+        title="No skills installed"
+        description="Skills are reusable OpenClaw capabilities the agent can invoke. Install a skill-pack via the CLI to add some — `bakin packages install <source>`."
+      />
+    )
+  }
 
   return (
-    <div className="flex gap-6">
-      <div className="w-48 shrink-0 space-y-1">
+    <div className="flex gap-6 min-h-[calc(100vh-260px)]">
+      <div className="w-56 shrink-0 space-y-1 border-r border-border pr-4 max-h-[calc(100vh-260px)] overflow-auto">
         {skills.map((s) => (
           <button
             key={s.id}
@@ -647,14 +372,12 @@ function SkillsTab({ agentId }: { agentId: string }) {
       </div>
       <div className="flex-1 min-w-0">
         {skillContent ? (
-          <div className="bg-muted/30 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed max-h-[600px] overflow-auto">
+          <div className="bg-muted/30 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed h-full overflow-auto">
             {skillContent}
           </div>
         ) : selectedSkill ? (
-          <div className="text-sm text-muted-foreground">No SKILL.md found</div>
-        ) : (
-          <div className="text-sm text-muted-foreground">Select a skill to view</div>
-        )}
+          <div className="text-sm text-muted-foreground">No SKILL.md found for this skill.</div>
+        ) : null}
       </div>
     </div>
   )
@@ -671,7 +394,13 @@ function MemoryTab({ agentId }: { agentId: string }) {
   useEffect(() => {
     fetch(`/api/plugins/team/${agentId}/memory`)
       .then((r) => r.json())
-      .then((data) => setFiles(data.files ?? []))
+      .then((data) => {
+        const list: string[] = data.files ?? []
+        setFiles(list)
+        // Auto-select the most recent file on load (server returns
+        // newest-first by convention).
+        if (list.length > 0) setSelectedFile((current) => current ?? list[0])
+      })
       .finally(() => setLoading(false))
   }, [agentId])
 
@@ -691,11 +420,19 @@ function MemoryTab({ agentId }: { agentId: string }) {
       </div>
     )
   }
-  if (files.length === 0) return <div className="text-sm text-muted-foreground py-8 text-center">No memory files</div>
+  if (files.length === 0) {
+    return (
+      <EmptyState
+        icon={Calendar}
+        title="No memory yet"
+        description="Per-day memory files appear here once this agent writes its first lesson via `bakin_exec_log_memory`. Memory accumulates as the agent works through tasks."
+      />
+    )
+  }
 
   return (
-    <div className="flex gap-6">
-      <div className="w-48 shrink-0 space-y-1 max-h-[500px] overflow-auto">
+    <div className="flex gap-6 min-h-[calc(100vh-260px)]">
+      <div className="w-56 shrink-0 space-y-1 border-r border-border pr-4 max-h-[calc(100vh-260px)] overflow-auto">
         {files.map((f) => (
           <button
             key={f}
@@ -710,90 +447,14 @@ function MemoryTab({ agentId }: { agentId: string }) {
       </div>
       <div className="flex-1 min-w-0">
         {content ? (
-          <div className="bg-muted/30 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed max-h-[600px] overflow-auto">
+          <div className="bg-muted/30 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed h-full overflow-auto">
             {content}
           </div>
-        ) : selectedFile ? (
-          <Skeleton className="h-40 w-full" />
         ) : (
-          <div className="text-sm text-muted-foreground">Select a date to view</div>
+          <Skeleton className="h-40 w-full" />
         )}
       </div>
     </div>
   )
 }
 
-// ─── Stats Tab ───────────────────────────────────────────────────────────────
-
-function StatsTab({ agentId }: { agentId: string }) {
-  const [usage, setUsage] = useState<AgentUsage | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetch(`/api/plugins/team/${agentId}/stats`)
-      .then((r) => r.json())
-      .then((data) => setUsage(data.usage ?? null))
-      .finally(() => setLoading(false))
-  }, [agentId])
-
-  if (loading) {
-    return (
-      <div className="grid grid-cols-2 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-20 w-full" />
-        ))}
-      </div>
-    )
-  }
-
-  if (!usage) {
-    return <div className="text-sm text-muted-foreground py-8 text-center">No session data available</div>
-  }
-
-  const fmt = (n: number) => n.toLocaleString()
-  const fmtCost = (n: number) => `$${n.toFixed(4)}`
-
-  return (
-    <div className="max-w-lg space-y-6">
-      <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Latest Session</h3>
-        <div className="bg-muted/30 rounded-lg p-4 space-y-2">
-          <Row label="Model" value={usage.model} />
-          <Row label="Messages" value={fmt(usage.messages)} />
-          <Row label="Session started" value={usage.sessionStarted ? new Date(usage.sessionStarted).toLocaleString() : 'N/A'} />
-        </div>
-      </section>
-
-      <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Token Usage</h3>
-        <div className="bg-muted/30 rounded-lg p-4 space-y-2">
-          <Row label="Input" value={fmt(usage.tokens.input)} />
-          <Row label="Output" value={fmt(usage.tokens.output)} />
-          <Row label="Cache read" value={fmt(usage.tokens.cacheRead)} />
-          <Row label="Cache write" value={fmt(usage.tokens.cacheWrite)} />
-          <Row label="Total" value={fmt(usage.tokens.total)} highlight />
-        </div>
-      </section>
-
-      <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cost</h3>
-        <div className="bg-muted/30 rounded-lg p-4 space-y-2">
-          <Row label="Input" value={fmtCost(usage.cost.input)} />
-          <Row label="Output" value={fmtCost(usage.cost.output)} />
-          <Row label="Cache read" value={fmtCost(usage.cost.cacheRead)} />
-          <Row label="Cache write" value={fmtCost(usage.cost.cacheWrite)} />
-          <Row label="Total" value={fmtCost(usage.cost.total)} highlight />
-        </div>
-      </section>
-    </div>
-  )
-}
-
-function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="flex justify-between text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={highlight ? 'font-semibold text-foreground' : 'font-mono text-foreground'}>{value}</span>
-    </div>
-  )
-}

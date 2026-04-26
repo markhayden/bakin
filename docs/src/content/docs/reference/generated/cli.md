@@ -543,9 +543,9 @@ Reason: Mutates local package state.
 
 ## Plugins
 
-### `bakin plugins list`
+### `bakin plugins list [--check]`
 
-Lists installed plugins and versions.
+Lists installed plugins and versions. Pass --check to probe remote/source for available upgrades.
 
 - Visibility: `public`
 - Stability: `stable`
@@ -559,9 +559,9 @@ bakin plugins list
 Example test mode: `illustrative`
 Reason: Requires local server/plugin state.
 
-### `bakin plugins install <path|github:user/repo>`
+### `bakin plugins install <path|github:user/repo> [--yes]`
 
-Installs a plugin from a local path or GitHub source.
+Installs a plugin from a local path or GitHub source. --yes skips the consent prompt.
 
 - Visibility: `public`
 - Stability: `stable`
@@ -570,6 +570,22 @@ Example:
 
 ```sh
 bakin plugins install ./my-plugin
+```
+
+Example test mode: `illustrative`
+Reason: Mutates local plugin state.
+
+### `bakin plugins upgrade <id> [--yes]`
+
+Re-pulls a user plugin from its source and rebuilds. --yes skips the consent prompt.
+
+- Visibility: `public`
+- Stability: `stable`
+
+Example:
+
+```sh
+bakin plugins upgrade my-plugin
 ```
 
 Example test mode: `illustrative`

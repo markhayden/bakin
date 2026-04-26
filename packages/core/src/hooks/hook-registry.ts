@@ -8,25 +8,39 @@
 
 type HookHandler = (data: unknown) => unknown | Promise<unknown>
 
+interface HookEntry {
+  handler: HookHandler
+  /** Plugin id that registered this handler — null when registered by core. */
+  pluginId: string | null
+}
+
 export class HookRegistry {
-  private handlers = new Map<string, HookHandler[]>()
+  private handlers = new Map<string, HookEntry[]>()
 
   /**
    * Register a handler for a named hook. Returns an unsubscribe function.
    * Handlers can accept any input and return any output — type safety
    * is enforced at call sites, not at registration.
+   *
+   * The optional `pluginId` (third arg) tags the entry with the plugin
+   * that registered it, enabling `unregisterByPlugin()` for clean teardown
+   * during plugin remove (#119). Core modules pass nothing and stay
+   * untagged so they're never swept by plugin removal.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  register(name: string, handler: (data: any) => any): () => void {
+  register(name: string, handler: (data: any) => any, pluginId?: string): () => void {
     if (!this.handlers.has(name)) {
       this.handlers.set(name, [])
     }
-    const h = handler as HookHandler
-    this.handlers.get(name)!.push(h)
+    const entry: HookEntry = {
+      handler: handler as HookHandler,
+      pluginId: pluginId ?? null,
+    }
+    this.handlers.get(name)!.push(entry)
     return () => {
       const arr = this.handlers.get(name)
       if (arr) {
-        const idx = arr.indexOf(h)
+        const idx = arr.indexOf(entry)
         if (idx >= 0) arr.splice(idx, 1)
       }
     }
@@ -41,8 +55,8 @@ export class HookRegistry {
     const arr = this.handlers.get(name)
     if (!arr || arr.length === 0) return data
     let result = data
-    for (const handler of arr) {
-      const out = await handler(result)
+    for (const entry of arr) {
+      const out = await entry.handler(result)
       if (out !== undefined && out !== null) {
         result = out as T
       }
@@ -57,8 +71,8 @@ export class HookRegistry {
   async callAll(name: string, data: Record<string, unknown>): Promise<void> {
     const arr = this.handlers.get(name)
     if (!arr) return
-    for (const handler of arr) {
-      await handler(data)
+    for (const entry of arr) {
+      await entry.handler(data)
     }
   }
 
@@ -70,7 +84,7 @@ export class HookRegistry {
   async invoke<R>(name: string, data: unknown): Promise<R | undefined> {
     const arr = this.handlers.get(name)
     if (!arr || arr.length === 0) return undefined
-    return await arr[0](data) as R
+    return await arr[0].handler(data) as R
   }
 
   /** Check if any handlers are registered for a hook. */
@@ -82,6 +96,30 @@ export class HookRegistry {
   /** List all registered hook names (for diagnostics). */
   getRegisteredHooks(): string[] {
     return [...this.handlers.keys()]
+  }
+
+  /**
+   * Sweep every handler registered by `pluginId` across every hook name.
+   * Used by `bakin plugins remove` to tear down a plugin's hook
+   * subscriptions before deleting its files. Returns the count removed.
+   */
+  unregisterByPlugin(pluginId: string): number {
+    let removed = 0
+    for (const [name, arr] of this.handlers) {
+      const kept = arr.filter(entry => {
+        if (entry.pluginId === pluginId) {
+          removed++
+          return false
+        }
+        return true
+      })
+      if (kept.length === 0) {
+        this.handlers.delete(name)
+      } else if (kept.length !== arr.length) {
+        this.handlers.set(name, kept)
+      }
+    }
+    return removed
   }
 
   /** Drop every registered handler. Tests use this between cases. */
