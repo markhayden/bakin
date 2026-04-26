@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
+import { getAllRoutes } from '../../src/core/api-docs'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'apps/docs')
@@ -59,9 +60,53 @@ function renderCliReference(): string {
   return lines.join('\n')
 }
 
+function renderApiReference(): string {
+  const routes = getAllRoutes()
+  const grouped = new Map<string, typeof routes>()
+  for (const route of routes) {
+    if (!grouped.has(route.pluginId)) grouped.set(route.pluginId, [])
+    grouped.get(route.pluginId)!.push(route)
+  }
+
+  const lines = [
+    '---',
+    'title: API Reference',
+    'description: Generated reference for documented Bakin HTTP API routes.',
+    '---',
+    '',
+    '# API Reference',
+    '',
+    versionLine,
+    '',
+    'This page is generated from `src/core/api-docs.ts` and runtime route registration metadata.',
+    '',
+  ]
+
+  for (const [pluginId, pluginRoutes] of grouped) {
+    lines.push(`## ${pluginId === 'core' ? 'Core Routes' : `Plugin: ${pluginId}`}`, '')
+    for (const route of pluginRoutes) {
+      lines.push(`### \`${route.method} ${route.fullPath}\``, '')
+      lines.push(route.summary, '')
+      if (route.description) lines.push(route.description, '')
+      if (route.params) lines.push(`Parameters: \`${route.params}\``, '')
+      lines.push(`- Visibility: \`${route.visibility}\``)
+      lines.push(`- Stability: \`${route.stability}\``)
+      if (route.permissions?.length) lines.push(`- Permissions: ${route.permissions.map(p => `\`${p}\``).join(', ')}`)
+      lines.push('')
+    }
+  }
+
+  return lines.join('\n')
+}
+
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/cli.md'),
   renderCliReference(),
+)
+
+writeStableFile(
+  join(docsRoot, 'src/content/docs/reference/generated/api.md'),
+  renderApiReference(),
 )
 
 writeStableFile(
@@ -82,7 +127,7 @@ The current scaffold establishes the public coverage contract. The next implemen
 | Surface | Launch requirement | Current status |
 | --- | --- | --- |
 | CLI commands | Structured registry, examples, docs metadata | Active: ${CLI_COMMANDS.length} commands |
-| HTTP routes | Zod input schemas, examples, visibility, stability | Planned |
+| HTTP routes | Zod input schemas, examples, visibility, stability | Active: ${getAllRoutes().length} documented routes |
 | Plugin routes | Same contract as HTTP routes | Planned |
 | Hooks | Contract objects, kind, schemas, examples | Planned |
 | Slots | Contract objects, props, examples | Planned |
@@ -156,6 +201,7 @@ Canonical docs: https://docs.makinbakin.com/
 - SDK reference: /llms/sdk-reference.md
 - API reference: /llms/api.md
 - CLI reference: /reference/generated/cli/
+- API reference: /reference/generated/api/
 
 ## Fetch Examples
 

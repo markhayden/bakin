@@ -3,6 +3,8 @@ export {
   defineExecToolContract,
   defineHookContract,
   defineRouteContract,
+  defineApiRoute,
+  definePluginRoute,
   defineSlotContract,
 } from '@bakin/core/docs'
 

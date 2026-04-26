@@ -14,7 +14,7 @@ The current scaffold establishes the public coverage contract. The next implemen
 | Surface | Launch requirement | Current status |
 | --- | --- | --- |
 | CLI commands | Structured registry, examples, docs metadata | Active: 58 commands |
-| HTTP routes | Zod input schemas, examples, visibility, stability | Planned |
+| HTTP routes | Zod input schemas, examples, visibility, stability | Active: 17 documented routes |
 | Plugin routes | Same contract as HTTP routes | Planned |
 | Hooks | Contract objects, kind, schemas, examples | Planned |
 | Slots | Contract objects, props, examples | Planned |
