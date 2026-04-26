@@ -233,7 +233,7 @@ Source: `plugins/tasks/index.ts:136`
 
 ## `team.getAgent`
 
-Source: `plugins/team/index.ts:579`
+Source: `plugins/team/index.ts:581`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -241,7 +241,7 @@ Source: `plugins/team/index.ts:579`
 
 ## `team.getAgentIds`
 
-Source: `plugins/team/index.ts:584`
+Source: `plugins/team/index.ts:586`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -249,7 +249,7 @@ Source: `plugins/team/index.ts:584`
 
 ## `team.getAgentTeam`
 
-Source: `plugins/team/index.ts:591`
+Source: `plugins/team/index.ts:593`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -257,7 +257,7 @@ Source: `plugins/team/index.ts:591`
 
 ## `team.getOrgStructure`
 
-Source: `plugins/team/index.ts:597`
+Source: `plugins/team/index.ts:599`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -265,7 +265,7 @@ Source: `plugins/team/index.ts:597`
 
 ## `team.getTeamMembers`
 
-Source: `plugins/team/index.ts:588`
+Source: `plugins/team/index.ts:590`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -273,7 +273,7 @@ Source: `plugins/team/index.ts:588`
 
 ## `team.listAgents`
 
-Source: `plugins/team/index.ts:578`
+Source: `plugins/team/index.ts:580`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -281,7 +281,7 @@ Source: `plugins/team/index.ts:578`
 
 ## `team.resolveProfile`
 
-Source: `plugins/team/index.ts:585`
+Source: `plugins/team/index.ts:587`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability

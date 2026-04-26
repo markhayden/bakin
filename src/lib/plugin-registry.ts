@@ -43,6 +43,8 @@ import { appendAudit } from '../core/audit'
 import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 import { buildSearchAPI } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
+import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
+import { parseManifestPermissions } from '../../packages/core/src/plugins/permissions'
 
 /**
  * Optional static core-plugin table. Set from server.ts on startup so
@@ -56,6 +58,16 @@ import { loadPluginSkills } from './plugin-skill-loader'
 let corePluginTable: Readonly<Record<string, BakinPlugin>> = {}
 export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>): void {
   corePluginTable = table
+  // Seed corePluginIds synchronously from the static table so the predicate
+  // is correct from the moment any code can call into the registry — not
+  // just after each plugin's loadPlugin activation completes. Without this,
+  // any pre-activation lockfile write (migrations, startup hooks) would
+  // bypass the defense-in-depth guard. The activation-time add in
+  // loadPlugin still runs as a backstop for dynamic-import test paths
+  // where the table stays empty.
+  for (const plugin of Object.values(table)) {
+    if (plugin?.id) corePluginIds.add(plugin.id)
+  }
 }
 
 const log = createLogger('plugin-registry')
@@ -71,6 +83,79 @@ export function getHookRegistry(): HookRegistry {
   return hookRegistry
 }
 
+/**
+ * Set of plugin ids that ship with the Bakin binary (vs. user-installed
+ * under ~/.bakin/plugins/). Populated by `loadPlugin` after a successful
+ * core-plugin activation. globalThis-backed so the predicate stays
+ * consistent across module re-evaluations during dev HMR.
+ *
+ * Read by:
+ *   - `/api/plugins/remove` and `/api/plugins/upgrade` — refuse mutation
+ *   - `packages/core/src/plugins/lockfile.ts` mutators — defense-in-depth
+ *   - `bakin plugins list` — render the [core] marker
+ */
+const corePluginIds: Set<string> = (globalThis as any).__bakinCorePluginIds ??= new Set<string>()
+
+/** True iff the given plugin id ships with the Bakin binary. */
+export function isCorePlugin(pluginId: string): boolean {
+  return corePluginIds.has(pluginId)
+}
+
+// Wire the lockfile's defense-in-depth guard to our predicate. The lockfile
+// module can't import plugin-registry directly (circular), so it accepts a
+// setter at boot.
+setCorePluginCheck(isCorePlugin)
+
+/**
+ * #142 layer 1 — log a plugin's requested permissions on activation.
+ * Appends to ~/.bakin/audit.jsonl AND emits an info-level log line.
+ *
+ * Permission failures are tolerated here (returns []) — install/upgrade
+ * already validate; a malformed manifest at boot shouldn't block the
+ * server. The audit entry just records `(requests: ?)` in that case.
+ */
+function logPluginActivation(args: {
+  plugin: BakinPlugin
+  source: 'core' | 'user'
+  manifestPath?: string
+}): void {
+  const { plugin, source, manifestPath } = args
+  let permissions: string[] = []
+  let resolvedSource: 'core' | 'github' | 'local' = source === 'core' ? 'core' : 'local'
+
+  if (manifestPath && existsSync(manifestPath)) {
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as Record<string, unknown>
+      permissions = parseManifestPermissions(manifest.permissions)
+    } catch {
+      // Already validated at install/upgrade — silently keep permissions empty.
+    }
+  }
+
+  if (source === 'user') {
+    try {
+      const entry = readPluginLockfile().plugins[plugin.id]
+      if (entry?.type === 'github') resolvedSource = 'github'
+      else if (entry?.type === 'local') resolvedSource = 'local'
+    } catch {
+      // lockfile read failure — leave as 'local'
+    }
+  }
+
+  log.info('plugin activated', {
+    pluginId: plugin.id,
+    version: plugin.version,
+    permissions,
+    source: resolvedSource,
+  })
+  appendAudit(getContentDir(), 'plugin.activate', 'system', {
+    pluginId: plugin.id,
+    version: plugin.version,
+    permissions,
+    source: resolvedSource,
+  }, 'system')
+}
+
 interface PluginState {
   plugin: BakinPlugin
   description: string
@@ -84,6 +169,8 @@ interface PluginState {
   channelIds: string[]
   /** Namespaced health check ids registered via ctx.registerHealthCheck. */
   healthCheckIds: string[]
+  /** Cached PluginContext — handed to onUninstall during plugin remove (#119). */
+  ctx?: PluginContext
 }
 
 /** Slug a workflow definition `name` into a stable id when no `id` is supplied. */
@@ -320,7 +407,9 @@ class PluginRegistryImpl {
       hooks: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         register: (name: string, handler: (data: any) => any) => {
-          return hookRegistry.register(name, handler)
+          // Forward the plugin id so unregisterByPlugin can sweep this
+          // handler when the plugin is removed (#119).
+          return hookRegistry.register(name, handler, pluginId)
         },
         has: (name: string) => hookRegistry.has(name),
         invoke: <R>(name: string, data: unknown) => hookRegistry.invoke<R>(name, data),
@@ -385,6 +474,7 @@ class PluginRegistryImpl {
 
       const ctx = this.buildContext(plugin.id, state, storage, events)
       await plugin.activate(ctx)
+      state.ctx = ctx
       const skillResult = loadPluginSkills(pluginPath, ctx, log)
       if (skillResult.registered.length > 0) {
         log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for "${plugin.id}"`, {
@@ -392,6 +482,13 @@ class PluginRegistryImpl {
         })
       }
       this.plugins.set(plugin.id, state)
+      // Mark this id as core — `loadPlugin` is the core-only entry; user
+      // plugins go through `loadUserPlugins` and never land here.
+      corePluginIds.add(plugin.id)
+      // #142 layer 1 — log requested permissions on every activation so
+      // `cat ~/.bakin/audit.jsonl | jq 'select(.event=="plugin.activate")'`
+      // shows the full surface the user authorized.
+      logPluginActivation({ plugin, source: 'core', manifestPath })
       console.log(`  ✓ Plugin loaded: ${plugin.name} v${plugin.version}`)
     } catch (err) {
       console.error(`  ✗ Failed to load plugin at ${pluginPath}:`, err)
@@ -422,12 +519,15 @@ class PluginRegistryImpl {
           // User plugin overrides built-in — drop the built-in's workflow
           // node kinds so the user plugin can re-register them without
           // hitting the duplicate-kind guard in registerPluginNodeType.
+          // Also drop the core marker: the active instance is now the user's
+          // and they should be able to `bakin plugins remove` their override.
           if (this.plugins.has(pluginId)) {
             console.log(`  ↻ User plugin overrides built-in: ${pluginId}`)
             unregisterPluginNodeTypes(pluginId)
             unregisterPluginNotificationChannels(pluginId)
             unregisterPluginHealthChecks(pluginId)
             this.plugins.delete(pluginId)
+            corePluginIds.delete(pluginId)
           }
 
           const serverEntry = manifest.entry?.server || 'index.ts'
@@ -455,6 +555,10 @@ class PluginRegistryImpl {
 
           const ctx = this.buildContext(plugin.id, state, storage, events)
           await plugin.activate(ctx)
+          state.ctx = ctx
+          // #142 layer 1 — surface user-plugin permissions to the audit log.
+          // Source is read from the lockfile (github vs local) by the helper.
+          logPluginActivation({ plugin, source: 'user', manifestPath })
           const userPluginPath = join(userPluginsDir, entry.name)
           const skillResult = loadPluginSkills(userPluginPath, ctx, log)
           if (skillResult.registered.length > 0) {
@@ -505,6 +609,21 @@ class PluginRegistryImpl {
     return this.plugins.get(pluginId)
   }
 
+  /** Look up the BakinPlugin instance — used by remove flow to call onUninstall. */
+  getPlugin(pluginId: string): BakinPlugin | undefined {
+    return this.plugins.get(pluginId)?.plugin
+  }
+
+  /** Look up the cached PluginContext that was handed to plugin.activate(). */
+  getPluginContext(pluginId: string): PluginContext | undefined {
+    return this.plugins.get(pluginId)?.ctx
+  }
+
+  /** Drop the in-memory plugin state. Used by remove flow after fs cleanup. */
+  deletePlugin(pluginId: string): boolean {
+    return this.plugins.delete(pluginId)
+  }
+
   /**
    * Snapshot of all registered plugins for the health dashboard.
    */
@@ -521,7 +640,10 @@ class PluginRegistryImpl {
       name: state.plugin.name,
       version: state.plugin.version,
       description: state.description,
-      source: id.startsWith('user:') ? 'user' as const : 'built-in' as const,
+      // Was a `id.startsWith('user:')` heuristic that always evaluated to
+      // 'built-in' — no id is ever prefixed `user:`. Use the authoritative
+      // corePluginIds predicate instead.
+      source: isCorePlugin(id) ? 'built-in' as const : 'user' as const,
       routes: state.routes.length,
     }))
   }

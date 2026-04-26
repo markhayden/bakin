@@ -1,0 +1,186 @@
+// @vitest-environment jsdom
+
+/**
+ * OverviewTab — consolidated agent dashboard.
+ *
+ * Covers all the panels: Identity, Settings (model + team), Package
+ * card (delegated), Workspace, Capacity (skills + knowledge counts),
+ * Latest Session (folded-in Stats data), Recent Activity.
+ *
+ * Tests the wiring shape — fetches happen, UI reflects responses,
+ * model + team interactions fire the right round-trips.
+ */
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { rmSync } from 'fs'
+
+const testDir = join(tmpdir(), `bakin-test-overview-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+
+mock.module('@/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
+mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
+mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+mock.module('../../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+
+mock.module('@bakin/sdk/components', () => ({
+  ModelSelect: ({ value, onChange, models }: { value: string; onChange: (id: string) => void; models: { id: string; label: string }[] }) => (
+    <select data-testid="model-select" value={value} onChange={(e) => onChange(e.target.value)}>
+      {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+    </select>
+  ),
+  MarkdownContent: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
+}))
+
+import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
+import { OverviewTab } from '../../../plugins/team/components/overview-tab'
+import type { PackageStateRow } from '../../../plugins/team/types'
+
+const PROFILE = {
+  id: 'pixel',
+  name: 'Pixel',
+  emoji: '🎨',
+  role: 'designer',
+  headshot: '',
+  model: 'claude-opus-4-7',
+  workspacePath: '/tmp/openclaw/workspaces/pixel',
+  identity: null, soul: null, rules: null, tools: null, heartbeatMd: null,
+  subagentPerms: null,
+}
+
+interface FetchExpectation {
+  stats?: { usage: { agent: string; sessionId: string; sessionStarted: string; model: string; messages: number; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }; cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number } } | null }
+  recentActivity?: { ok: boolean; activity?: { windowMs: Record<string, number>; errors: Record<string, number>; sinceServerStart: string } }
+  skills?: { skills: Array<{ id: string }> }
+  knowledge?: { ok: boolean; lessons?: Array<{ enabled: boolean }> }
+}
+
+const teamRoutes: Array<{ url: string; init?: RequestInit }> = []
+
+function setupFetch(exp: FetchExpectation) {
+  teamRoutes.length = 0
+  global.fetch = mock((url: RequestInfo | URL, init?: RequestInit) => {
+    const u = String(url)
+    teamRoutes.push({ url: u, init })
+    if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.stats ?? { usage: null }) } as Response)
+    if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.recentActivity ?? { ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
+    if (u.endsWith('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.skills ?? { skills: [] }) } as Response)
+    if (u.includes('/api/agent-packages/') && u.endsWith('/knowledge')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.knowledge ?? { ok: true, lessons: [] }) } as Response)
+    if (u.endsWith('/team')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) } as Response)
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
+  }) as unknown as typeof global.fetch
+}
+
+afterAll(() => {
+  try { rmSync(testDir, { recursive: true, force: true }) } catch {}
+})
+
+afterEach(() => {
+  cleanup()
+})
+
+beforeEach(() => {
+  useAgentStore.setState({
+    agents: [], agentIds: [], agentMap: {}, agentsWithStatus: [],
+    displaySettings: { pixel: { teamId: 'team-design' } as never },
+    teams: [{ id: 'team-design', label: 'Design', leaderId: '', reportsTo: null }],
+    packageStates: {},
+    mainAgentId: 'main', loaded: true,
+  } as never)
+  setupFetch({})
+})
+
+describe('OverviewTab', () => {
+  function renderTab(packageState?: PackageStateRow) {
+    return render(
+      <OverviewTab
+        agentId="pixel"
+        profile={PROFILE}
+        packageState={packageState}
+        availableModels={[{ id: 'claude-opus-4-7', name: 'Opus 4.7', label: 'Opus' } as never, { id: 'claude-sonnet-4-6', name: 'Sonnet', label: 'Sonnet' } as never]}
+        onModelChange={mock(async () => {})}
+        savingModel={false}
+      />,
+    )
+  }
+
+  it('does NOT render identity (name/role/emoji) — header owns that surface', () => {
+    renderTab()
+    // OverviewTab is rendered standalone in this test (no AgentDetail
+    // header), so the identity strings should be entirely absent.
+    expect(screen.queryByText('Pixel')).toBeNull()
+    expect(screen.queryByText('designer')).toBeNull()
+    expect(screen.queryByText('🎨')).toBeNull()
+  })
+
+  it('renders the model selector pre-set to the agent\'s model', () => {
+    renderTab()
+    const select = screen.getByTestId('model-select') as HTMLSelectElement
+    expect(select.value).toBe('claude-opus-4-7')
+  })
+
+  it('renders the team selector with the current team', () => {
+    renderTab()
+    const teamSelect = screen.getAllByRole('combobox').find((s) => (s as HTMLSelectElement).value === 'team-design')
+    expect(teamSelect).toBeDefined()
+  })
+
+  it('does NOT render the workspace path — header owns that surface now', () => {
+    renderTab()
+    expect(screen.queryByText('/tmp/openclaw/workspaces/pixel')).toBeNull()
+  })
+
+  it('fetches stats / recent-activity / skills / knowledge in parallel and renders the counts', async () => {
+    setupFetch({
+      stats: { usage: { agent: 'pixel', sessionId: 's', sessionStarted: '', model: 'claude-opus-4-7', messages: 12, tokens: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 50, total: 1750 }, cost: { input: 0.01, output: 0.02, cacheRead: 0.001, cacheWrite: 0.001, total: 0.03 } } },
+      recentActivity: { ok: true, activity: { windowMs: { '5m': 1, '1h': 7, '24h': 23 }, errors: { '5m': 0, '1h': 1, '24h': 1 }, sinceServerStart: new Date().toISOString() } },
+      skills: { skills: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] },
+      knowledge: { ok: true, lessons: [{ enabled: true }, { enabled: true }, { enabled: false }, { enabled: false }, { enabled: false }] },
+    })
+    renderTab()
+    await waitFor(() => expect(screen.getByText('1,750')).toBeDefined())
+    // Distinct values per tile so getByText is unambiguous
+    expect(screen.getByText('3')).toBeDefined() // skills count
+    expect(screen.getByText('5')).toBeDefined() // knowledge total
+    expect(screen.getByText('2 enabled')).toBeDefined()
+    expect(screen.getByText('1')).toBeDefined() // 5m count
+    expect(screen.getByText('7')).toBeDefined() // 1h count
+    expect(screen.getByText('23')).toBeDefined() // 24h count
+  })
+
+  it('shows em-dash placeholders + suppresses the secondary metric row when stats is null', async () => {
+    setupFetch({ stats: { usage: null } })
+    renderTab()
+    // Top-row tiles render '—' for missing data
+    await waitFor(() => expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2))
+    // The secondary row (Model / Messages / Cache reads / Cache writes) only
+    // renders when usage is present — confirm via labels unique to that row.
+    expect(screen.queryByText('Cache reads')).toBeNull()
+    expect(screen.queryByText('Cache writes')).toBeNull()
+    expect(screen.queryByText('Messages')).toBeNull()
+  })
+
+  it('writes /team on team select change', async () => {
+    renderTab()
+    const teamSelect = screen.getAllByRole('combobox').find((s) => (s as HTMLSelectElement).value === 'team-design') as HTMLSelectElement
+    fireEvent.change(teamSelect, { target: { value: '' } })
+    await waitFor(() => {
+      const teamWrites = teamRoutes.filter((c) => c.url === '/api/plugins/team/pixel/team' && c.init?.method === 'PUT')
+      expect(teamWrites.length).toBeGreaterThan(0)
+    })
+  })
+
+  it('renders the embedded PackageCard for the agent (delegating to its own surface)', async () => {
+    renderTab({ agentId: 'pixel', state: 'managed', packageId: 'examples/pixel@0.1.0' })
+    expect(screen.getByText('managed')).toBeDefined()
+  })
+})

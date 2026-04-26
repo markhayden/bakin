@@ -6,7 +6,7 @@
  * - Tab is always visible in the tab bar (regardless of package state)
  * - For managed/adopted agents the tab renders KnowledgeToggleList
  *   (which fetches from /api/agent-packages/:id/knowledge)
- * - For unmanaged/absent/undefined the tab renders a "Coming soon"
+ * - For unmanaged/absent/undefined the tab renders a "Knowledge requires a package"
  *   placeholder with a hint pointing back at the Package card
  * - Tab click writes ?tab=knowledge to the URL via useQueryState
  */
@@ -26,6 +26,16 @@ mock.module('@bakin/core/main-agent', () => ({
 mock.module('@/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
 mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
 mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
+mock.module('@bakin/core/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+mock.module('../../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
 
 const queryState: { tab: string } = { tab: 'profile' }
 const setTabSpy = mock((v: string) => { queryState.tab = v })
@@ -54,7 +64,7 @@ const PROFILE = {
 function setupFetch() {
   global.fetch = mock((url: RequestInfo | URL) => {
     const u = String(url)
-    if (u.startsWith('/api/plugins/team/pixel') && !u.includes('/avatar')) {
+    if (u === '/api/plugins/team/pixel') {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(PROFILE) } as Response)
     }
     if (u.startsWith('/api/plugins/models/available')) {
@@ -73,6 +83,9 @@ function setupFetch() {
         }),
       } as Response)
     }
+    if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: null }) } as Response)
+    if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
+    if (u.endsWith('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) } as Response)
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
   }) as unknown as typeof global.fetch
 }
@@ -91,7 +104,7 @@ afterAll(() => {
 
 afterEach(() => {
   cleanup()
-  queryState.tab = 'profile'
+  queryState.tab = 'overview'
   setTabSpy.mockClear()
 })
 
@@ -101,7 +114,7 @@ beforeEach(() => {
 
 async function openDetail() {
   render(<AgentDetail agentId="pixel" />)
-  await waitFor(() => expect(screen.getByText('Pixel')).toBeDefined())
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Pixel' })).toBeDefined())
 }
 
 describe('AgentDetail — Knowledge tab', () => {
@@ -126,7 +139,7 @@ describe('AgentDetail — Knowledge tab', () => {
     await openDetail()
     await waitFor(() => expect(screen.getByText('Lesson One')).toBeDefined())
     expect(screen.getByText('Lesson Two')).toBeDefined()
-    expect(screen.queryByText('Coming soon')).toBeNull()
+    expect(screen.queryByText('Knowledge requires a package')).toBeNull()
   })
 
   it('renders KnowledgeToggleList for state=adopted', async () => {
@@ -138,18 +151,18 @@ describe('AgentDetail — Knowledge tab', () => {
     await waitFor(() => expect(screen.getByText('Lesson One')).toBeDefined())
   })
 
-  it('renders "Coming soon" empty state for state=unmanaged', async () => {
+  it('renders "Knowledge requires a package" empty state for state=unmanaged', async () => {
     primeState({ pixel: { agentId: 'pixel', state: 'unmanaged' } })
     queryState.tab = 'knowledge'
     await openDetail()
-    await waitFor(() => expect(screen.getByText('Coming soon')).toBeDefined())
+    await waitFor(() => expect(screen.getByText('Knowledge requires a package')).toBeDefined())
     expect(screen.queryByText('Lesson One')).toBeNull()
   })
 
-  it('renders "Coming soon" when no package state row exists', async () => {
+  it('renders "Knowledge requires a package" when no package state row exists', async () => {
     primeState()
     queryState.tab = 'knowledge'
     await openDetail()
-    await waitFor(() => expect(screen.getByText('Coming soon')).toBeDefined())
+    await waitFor(() => expect(screen.getByText('Knowledge requires a package')).toBeDefined())
   })
 })

@@ -719,7 +719,7 @@ Source: `plugins/tasks/index.ts:654`
 
 Create a new agent: registers in OpenClaw, writes persona files, configures dispatch permissions, optionally assigns to a team. Returns next-step instructions.
 
-Source: `plugins/team/index.ts:1411`
+Source: `plugins/team/index.ts:1484`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -729,7 +729,7 @@ Source: `plugins/team/index.ts:1411`
 
 Remove an agent from OpenClaw and clean up Bakin state. Requires confirm=true as a safety guard.
 
-Source: `plugins/team/index.ts:1521`
+Source: `plugins/team/index.ts:1594`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -739,7 +739,7 @@ Source: `plugins/team/index.ts:1521`
 
 List all agents with their current status (online/working/available/offline).
 
-Source: `plugins/team/index.ts:1279`
+Source: `plugins/team/index.ts:1352`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -749,7 +749,7 @@ Source: `plugins/team/index.ts:1279`
 
 Get agents that belong to a specific team (e.g. 
 
-Source: `plugins/team/index.ts:1366`
+Source: `plugins/team/index.ts:1439`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -759,7 +759,7 @@ Source: `plugins/team/index.ts:1366`
 
 Send a message to an agent via OpenClaw.
 
-Source: `plugins/team/index.ts:1342`
+Source: `plugins/team/index.ts:1415`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -769,7 +769,7 @@ Source: `plugins/team/index.ts:1342`
 
 Get the team that a specific agent belongs to, including all teammates.
 
-Source: `plugins/team/index.ts:1385`
+Source: `plugins/team/index.ts:1458`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -779,7 +779,7 @@ Source: `plugins/team/index.ts:1385`
 
 Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines.
 
-Source: `plugins/team/index.ts:1356`
+Source: `plugins/team/index.ts:1429`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -789,7 +789,7 @@ Source: `plugins/team/index.ts:1356`
 
 Get the full profile for an agent including soul, rules, and tools.
 
-Source: `plugins/team/index.ts:1298`
+Source: `plugins/team/index.ts:1371`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -799,7 +799,7 @@ Source: `plugins/team/index.ts:1298`
 
 Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md).
 
-Source: `plugins/team/index.ts:1327`
+Source: `plugins/team/index.ts:1400`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -809,7 +809,7 @@ Source: `plugins/team/index.ts:1327`
 
 Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents).
 
-Source: `plugins/team/index.ts:1566`
+Source: `plugins/team/index.ts:1639`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -819,7 +819,7 @@ Source: `plugins/team/index.ts:1566`
 
 Get the heartbeat and health status for an agent.
 
-Source: `plugins/team/index.ts:1312`
+Source: `plugins/team/index.ts:1385`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -829,7 +829,7 @@ Source: `plugins/team/index.ts:1312`
 
 Update an existing agent\
 
-Source: `plugins/team/index.ts:1486`
+Source: `plugins/team/index.ts:1559`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability

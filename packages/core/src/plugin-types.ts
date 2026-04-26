@@ -689,6 +689,19 @@ export interface BakinPlugin {
   onShutdown?(): void | Promise<void>
   /** Called when this plugin's settings are updated */
   onSettingsChange?(settings: Record<string, unknown>): void | Promise<void>
+  /**
+   * Called by `bakin plugins remove` BEFORE Bakin tears down the plugin's
+   * own bookkeeping (registry rows, settings JSON, plugin dir, etc.).
+   * Plugin's responsibility: clean up any data it wrote OUTSIDE its own
+   * dir (custom files in user dirs, rows in shared tables, etc.). Bakin
+   * handles plugin-owned bookkeeping itself.
+   *
+   * Receives the same full PluginContext that activate() received — no
+   * reduced surface. Errors are logged + audited but do NOT block the
+   * rest of the cleanup; a buggy onUninstall must not trap the user in
+   * a half-removed state.
+   */
+  onUninstall?(ctx: PluginContext): void | Promise<void>
   /** Declarative settings schema for auto-generated settings UI */
   settingsSchema?: PluginSettingsSchema
   navItems?: NavItem[]
