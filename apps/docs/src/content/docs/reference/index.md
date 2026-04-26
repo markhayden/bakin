@@ -19,16 +19,16 @@ The launch reference set covers:
 - runtime files
 - agent package contracts
 
-See [Generated Coverage](/reference/generated/coverage/) for the current inventory status.
+See [Generated Coverage](/docs/reference/generated/coverage/) for the current inventory status.
 
 Generated references currently available:
 
-- [CLI Reference](/reference/generated/cli/)
-- [API Reference](/reference/generated/api/)
-- [Hook Reference](/reference/generated/hooks/)
-- [Exec and MCP Tool Reference](/reference/generated/exec-tools/)
-- [Core Plugin Catalog](/reference/generated/core-plugins/)
-- [Settings Reference](/reference/generated/settings/)
-- [Runtime Paths](/reference/generated/runtime-paths/)
-- [SDK Reference](/reference/generated/sdk/)
-- [Generated Coverage](/reference/generated/coverage/)
+- [CLI Reference](/docs/reference/generated/cli/)
+- [API Reference](/docs/reference/generated/api/)
+- [Hook Reference](/docs/reference/generated/hooks/)
+- [Exec and MCP Tool Reference](/docs/reference/generated/exec-tools/)
+- [Core Plugin Catalog](/docs/reference/generated/core-plugins/)
+- [Settings Reference](/docs/reference/generated/settings/)
+- [Runtime Paths](/docs/reference/generated/runtime-paths/)
+- [SDK Reference](/docs/reference/generated/sdk/)
+- [Generated Coverage](/docs/reference/generated/coverage/)

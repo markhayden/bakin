@@ -7,12 +7,14 @@ Workflows coordinate multi-step work around a task. They can define steps, gates
 
 ## Common Commands
 
-```sh
-bakin workflows list
-bakin workflows start task-123 default
-bakin workflows step task-123
-bakin workflows submit task-123 step-1 '{"ok":true}'
-```
+<!-- docs:cli-commands workflows -->
+| Command | Purpose |
+| --- | --- |
+| `bakin workflows list` | List workflow definitions. |
+| `bakin workflows start <taskId> <workflowId>` | Start a workflow. |
+| `bakin workflows step <taskId>` | Get current workflow step. |
+| `bakin workflows submit <taskId> <stepId> <json>` | Submit workflow step output. |
+<!-- /docs:cli-commands -->
 
 ## Operator Notes
 
@@ -23,5 +25,5 @@ bakin workflows submit task-123 step-1 '{"ok":true}'
 
 ## Reference
 
-- [CLI Reference](/reference/generated/cli/)
-- [Hook Reference](/reference/generated/hooks/)
+- [CLI Reference](/docs/reference/generated/cli/)
+- [Hook Reference](/docs/reference/generated/hooks/)

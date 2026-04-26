@@ -7,14 +7,11 @@ Scheduled jobs let Bakin trigger recurring work. Jobs can be listed, created, pa
 
 ## Common Commands
 
-```sh
-bakin schedule list
-bakin schedule add "Weekly review" "0 9 * * MON" --agent patch --prompt "Review open work"
-bakin schedule pause job-123
-bakin schedule resume job-123
-bakin schedule run job-123
-bakin schedule runs job-123
-```
+<!-- docs:cli-commands schedule -->
+| Command | Purpose |
+| --- | --- |
+| `bakin schedule [list|add|pause|resume|remove|run|runs] ...` | Manage scheduled jobs. |
+<!-- /docs:cli-commands -->
 
 ## Operator Notes
 
@@ -24,4 +21,4 @@ bakin schedule runs job-123
 
 ## Reference
 
-- [CLI Reference](/reference/generated/cli/)
+- [CLI Reference](/docs/reference/generated/cli/)

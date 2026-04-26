@@ -23,5 +23,5 @@ Memory docs cover observability over the stored context Bakin and OpenClaw use. 
 
 ## Reference
 
-- [API Reference](/reference/generated/api/)
-- [Exec and MCP Tool Reference](/reference/generated/exec-tools/)
+- [API Reference](/docs/reference/generated/api/)
+- [Exec and MCP Tool Reference](/docs/reference/generated/exec-tools/)

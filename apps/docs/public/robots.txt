@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://docs.makinbakin.com/sitemap-index.xml
+Sitemap: https://makinbakin.com/docs/sitemap-index.xml

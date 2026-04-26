@@ -48,4 +48,4 @@ If the installer used `~/.local/bin`, make sure that directory is on your `PATH`
 
 ## Alternatives
 
-Manual release downloads and source builds are secondary paths. Contributor source setup is documented separately under [Contribute](/contribute/overview/).
+Manual release downloads and source builds are secondary paths. Contributor source setup is documented separately under [Contribute](/docs/contribute/overview/).

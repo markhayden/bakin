@@ -7,10 +7,12 @@ Health checks show whether Bakin, OpenClaw, plugins, dependencies, search, and r
 
 ## Common Commands
 
-```sh
-bakin doctor
-bakin status
-```
+<!-- docs:cli-commands health -->
+| Command | Purpose |
+| --- | --- |
+| `bakin doctor` | Run health checks. |
+| `bakin status` | Show dispatch and server status. |
+<!-- /docs:cli-commands -->
 
 ## Operator Notes
 
@@ -21,5 +23,5 @@ bakin status
 
 ## Reference
 
-- [CLI Reference](/reference/generated/cli/)
-- [Settings Reference](/reference/generated/settings/)
+- [CLI Reference](/docs/reference/generated/cli/)
+- [Settings Reference](/docs/reference/generated/settings/)

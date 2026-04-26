@@ -20,5 +20,5 @@ Model management controls the relationship between agents and available model ch
 
 ## Reference
 
-- [Settings Reference](/reference/generated/settings/)
-- [Hook Reference](/reference/generated/hooks/)
+- [Settings Reference](/docs/reference/generated/settings/)
+- [Hook Reference](/docs/reference/generated/hooks/)

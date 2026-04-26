@@ -4,7 +4,7 @@ Docs version: Bakin 1.0.0
 
 Audience: coding agents, plugin authors, agent authors, and technical operators.
 
-Canonical docs: https://docs.makinbakin.com/
+Canonical docs: https://makinbakin.com/docs/
 
 ## Operating Rules
 
@@ -17,22 +17,22 @@ Canonical docs: https://docs.makinbakin.com/
 
 ## Useful Bundles
 
-- Plugin authoring: /llms/plugin-authoring.md
-- Agent authoring: /llms/agent-authoring.md
-- SDK reference: /llms/sdk-reference.md
-- API reference: /llms/api.md
-- CLI reference: /reference/generated/cli/
-- API reference: /reference/generated/api/
-- Hooks reference: /reference/generated/hooks/
-- Exec/MCP tools reference: /reference/generated/exec-tools/
-- Core plugin catalog: /reference/generated/core-plugins/
-- Settings reference: /reference/generated/settings/
-- Runtime paths: /reference/generated/runtime-paths/
-- SDK reference: /reference/generated/sdk/
+- Plugin authoring: /docs/llms/plugin-authoring.md
+- Agent authoring: /docs/llms/agent-authoring.md
+- SDK reference: /docs/llms/sdk-reference.md
+- API reference: /docs/llms/api.md
+- CLI reference: /docs/reference/generated/cli/
+- API reference: /docs/reference/generated/api/
+- Hooks reference: /docs/reference/generated/hooks/
+- Exec/MCP tools reference: /docs/reference/generated/exec-tools/
+- Core plugin catalog: /docs/reference/generated/core-plugins/
+- Settings reference: /docs/reference/generated/settings/
+- Runtime paths: /docs/reference/generated/runtime-paths/
+- SDK reference: /docs/reference/generated/sdk/
 
 ## Fetch Examples
 
 ```sh
-curl -fsSL https://docs.makinbakin.com/llms/plugin-authoring.md
-curl -fsSL https://docs.makinbakin.com/llms/agent-authoring.md
+curl -fsSL https://makinbakin.com/docs/llms/plugin-authoring.md
+curl -fsSL https://makinbakin.com/docs/llms/agent-authoring.md
 ```

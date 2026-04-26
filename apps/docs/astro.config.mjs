@@ -4,7 +4,8 @@ import starlight from '@astrojs/starlight'
 const gtmId = process.env.PUBLIC_GTM_ID ?? 'GTM-KZQK989V'
 
 export default defineConfig({
-  site: 'https://docs.makinbakin.com',
+  site: 'https://makinbakin.com',
+  base: '/docs',
   image: {
     service: passthroughImageService(),
   },
@@ -135,7 +136,7 @@ document.addEventListener("click", function (event) {
         : [],
       defaultLocale: 'root',
       editLink: {
-        baseUrl: 'https://github.com/madeinwyo/bakin/edit/main/apps/docs/src/content/docs/',
+        baseUrl: 'https://github.com/madeinwyo/bakin/edit/main/apps/docs/',
       },
       lastUpdated: true,
       social: [

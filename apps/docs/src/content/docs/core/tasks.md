@@ -7,14 +7,17 @@ Tasks are the core work unit in Bakin. A task records what needs to happen, who 
 
 ## Common Commands
 
-```sh
-bakin tasks list
-bakin tasks create "Fix the docs" patch
-bakin tasks move task-123 done
-bakin tasks log task-123 "Updated the generated reference"
-bakin tasks block task-123 "Waiting on review"
-bakin tasks complete task-123 "Published the docs update"
-```
+<!-- docs:cli-commands tasks -->
+| Command | Purpose |
+| --- | --- |
+| `bakin tasks list [--column=<column>]` | List tasks. |
+| `bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>]` | Create a task. |
+| `bakin tasks move <id> <column>` | Move a task. |
+| `bakin tasks log <id> <message>` | Log task progress. |
+| `bakin tasks block <id> <reason>` | Block a task. |
+| `bakin tasks depend <id> <dependsOn>` | Register a task dependency. |
+| `bakin tasks complete <id> <summary>` | Complete a task. |
+<!-- /docs:cli-commands -->
 
 ## Operator Notes
 
@@ -25,5 +28,5 @@ bakin tasks complete task-123 "Published the docs update"
 
 ## Reference
 
-- [CLI Reference](/reference/generated/cli/)
-- [Core Plugin Catalog](/reference/generated/core-plugins/)
+- [CLI Reference](/docs/reference/generated/cli/)
+- [Core Plugin Catalog](/docs/reference/generated/core-plugins/)
