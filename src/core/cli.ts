@@ -49,7 +49,7 @@ Assets + search:
   reindex [--table=<name>] [--rebuild]
 
 Plugins:
-  plugins list               List installed plugins
+  plugins list [--check]     List installed plugins (--check probes remote/source for upgrades)
   plugins install <src>      Install a plugin (local path or github:user/repo)
   plugins upgrade <id> [--yes]  Re-pull a user plugin from its source and rebuild
   plugins remove <id>        Remove a plugin
@@ -182,9 +182,10 @@ function renderPluginsList(rows: ListPluginRow[]): string[] {
   return out
 }
 
-async function cmdPluginsList(): Promise<number> {
+async function cmdPluginsList(opts: { check: boolean }): Promise<number> {
   try {
-    const res = await api<{ plugins: ListPluginRow[] }>('/api/plugins/manifest')
+    const path = opts.check ? '/api/plugins/manifest?check=1' : '/api/plugins/manifest'
+    const res = await api<{ plugins: ListPluginRow[] }>(path)
     if (res.plugins.length === 0) {
       console.log('(no plugins registered)')
       return 0
@@ -409,7 +410,10 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
           console.error('Usage: bakin plugins <list|install|upgrade|remove|scaffold>')
           return { startServer: false, exitCode: 1 }
         }
-        if (sub === 'list') return { startServer: false, exitCode: await cmdPluginsList() }
+        if (sub === 'list') {
+          const check = args.slice(2).includes('--check')
+          return { startServer: false, exitCode: await cmdPluginsList({ check }) }
+        }
         if (sub === 'install') {
           if (!args[2]) {
             console.error('Usage: bakin plugins install <path|github:user/repo>')

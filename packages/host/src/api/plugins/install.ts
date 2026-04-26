@@ -25,6 +25,7 @@ import {
   writePluginLockfile,
   type PluginLockEntry,
 } from '@bakin/core/plugins/lockfile'
+import { computeSourceTreeSha } from '@/core/plugins/upgrade'
 
 const log = createLogger('plugin-install')
 
@@ -78,6 +79,18 @@ function recordInstall(args: {
       version = '0.0.0'
     }
 
+    // For local installs, capture the install-time source-tree sha so the
+    // first `bakin plugins list --check` doesn't false-positive (the check
+    // would compare against an undefined value otherwise).
+    let sourceTreeSha: string | undefined
+    if (type === 'local' && existsSync(source)) {
+      try {
+        sourceTreeSha = computeSourceTreeSha(source)
+      } catch (err) {
+        log.warn('failed to hash local source tree at install', { id, err: String(err) })
+      }
+    }
+
     const entry: PluginLockEntry = {
       source,
       type,
@@ -89,6 +102,7 @@ function recordInstall(args: {
         ? manifest.permissions.filter((p): p is string => typeof p === 'string')
         : [],
       manifestSha,
+      sourceTreeSha,
     }
 
     const lock = readPluginLockfile()
@@ -198,7 +212,12 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         }, { status: 500 })
       }
 
-      recordInstall({ id, targetDir, manifestPath, manifest, source: body.source, type: body.type })
+      // For local installs, record the resolved absolute source path so the
+      // upgrade flow can re-resolve it deterministically from any cwd.
+      const recordedSource = body.type === 'local'
+        ? (isAbsolute(body.source) ? body.source : resolve(process.cwd(), body.source))
+        : body.source
+      recordInstall({ id, targetDir, manifestPath, manifest, source: recordedSource, type: body.type })
 
       log.info(`Installed plugin "${id}"`, { source: body.source, type: body.type })
 

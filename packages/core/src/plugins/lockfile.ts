@@ -49,10 +49,20 @@ const PluginLockEntrySchema = z.object({
   manifestSha: z.string().min(1),
   /** ISO 8601, set by `bakin plugins list --check`. */
   lastChecked: z.string().optional(),
-  /** Last seen remote HEAD sha (github sources only). */
+  /** Last seen remote HEAD sha — written by `bakin plugins list --check` (github only). */
   remoteHeadSha: z.string().optional(),
-  /** Last seen local source-tree sha (local sources only). */
+  /**
+   * Local source-tree sha at install/upgrade time (local only). Symmetric
+   * with `commitSha` for github sources — captures what was on disk when
+   * the plugin was last installed/rebuilt.
+   */
   sourceTreeSha: z.string().optional(),
+  /**
+   * Live source-tree sha last observed by `bakin plugins list --check`
+   * (local only). Symmetric with `remoteHeadSha`. Compared against
+   * `sourceTreeSha` to determine whether an upgrade is available.
+   */
+  lastSourceTreeSha: z.string().optional(),
 })
 
 export const PluginLockfileSchema = z.object({

@@ -17,6 +17,7 @@ import { isCorePlugin, pluginRegistry } from '@/lib/plugin-registry'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
+import { checkUpgradeAvailable } from '@/core/plugins/upgrade'
 import { EMBEDDED_ASSETS } from '../_embedded-assets'
 
 const log = createLogger('plugin-manifest')
@@ -70,7 +71,29 @@ function hasClientCss(pluginId: string): boolean {
   return false
 }
 
-export async function get(_req: Request): Promise<Response> {
+export async function get(req: Request): Promise<Response> {
+  const url = new URL(req.url)
+  const wantCheck = url.searchParams.get('check') === '1'
+
+  // If --check requested, run the per-plugin remote/local probe in parallel
+  // for every user plugin BEFORE we read the lockfile for rendering. The
+  // checks themselves persist `lastChecked` + the appropriate sha back into
+  // the lockfile; reading after gives the caller the freshest values.
+  if (wantCheck) {
+    const userIds = pluginRegistry
+      .getRegistrySnapshot()
+      .map(e => e.id)
+      .filter(id => !isCorePlugin(id))
+    await Promise.all(
+      userIds.map(async id => {
+        const result = await checkUpgradeAvailable(id)
+        if (result.error) {
+          log.warn('plugin --check probe failed', { id, error: result.error })
+        }
+      }),
+    )
+  }
+
   // Read the lockfile once per request; tolerate read failures so a corrupt
   // lockfile doesn't blank the entire UI manifest.
   let lockedPlugins: Record<string, PluginLockEntry> = {}
@@ -94,6 +117,17 @@ export async function get(_req: Request): Promise<Response> {
       if (days > STALE_HINT_DAYS) staleHintDays = days
     }
 
+    // Compute upgrade availability from persisted markers — same source of
+    // truth whether or not --check ran this request.
+    let upgradeAvailable = false
+    if (installed && !isCore) {
+      if (installed.type === 'github' && installed.remoteHeadSha) {
+        upgradeAvailable = installed.remoteHeadSha !== installed.commitSha
+      } else if (installed.type === 'local' && installed.lastSourceTreeSha && installed.sourceTreeSha) {
+        upgradeAvailable = installed.lastSourceTreeSha !== installed.sourceTreeSha
+      }
+    }
+
     const plugin: ManifestPlugin = {
       id: entry.id,
       name: entry.name,
@@ -101,9 +135,7 @@ export async function get(_req: Request): Promise<Response> {
       clientEntry: `/api/plugins/${entry.id}/assets/client.js`,
       source,
       installed,
-      // C5 wires the actual upgrade-available detection; until then every
-      // entry reports `false`.
-      upgradeAvailable: false,
+      upgradeAvailable,
       staleHintDays,
     }
     if (hasClientCss(entry.id)) {
