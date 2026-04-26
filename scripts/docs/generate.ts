@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
+import { DEFAULT_SETTINGS } from '../../packages/core/src/settings'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
 import { getAllRoutes } from '../../src/core/api-docs'
 
@@ -97,6 +98,15 @@ function readCorePluginManifests(): PluginManifestDoc[] {
     }
   }
   return manifests
+}
+
+function flattenObject(value: unknown, prefix = ''): Array<{ key: string; value: unknown }> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [{ key: prefix, value }]
+  return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) => {
+    const next = prefix ? `${prefix}.${key}` : key
+    if (child && typeof child === 'object' && !Array.isArray(child)) return flattenObject(child, next)
+    return [{ key: next, value: child }]
+  })
 }
 
 const versionLine = `Docs version: Bakin ${APP_VERSION}`
@@ -272,6 +282,80 @@ function renderPluginCatalog(): string {
   return lines.join('\n')
 }
 
+function renderSettingsReference(): string {
+  const settings = flattenObject(DEFAULT_SETTINGS)
+  const lines = [
+    '---',
+    'title: Settings Reference',
+    'description: Generated reference for Bakin settings keys and default values.',
+    '---',
+    '',
+    '# Settings Reference',
+    '',
+    versionLine,
+    '',
+    'This page is generated from `packages/core/src/settings.ts`.',
+    '',
+    'Bakin reads settings from `settings.json` in the resolved Bakin home directory and deep-merges user values over these defaults.',
+    '',
+    '| Key | Default |',
+    '| --- | --- |',
+  ]
+  for (const setting of settings) {
+    lines.push(`| \`${setting.key}\` | \`${JSON.stringify(setting.value)}\` |`)
+  }
+  lines.push('')
+  return lines.join('\n')
+}
+
+function renderRuntimePathsReference(): string {
+  const paths = [
+    ['home', 'Resolved Bakin home/content directory.'],
+    ['settings', 'Runtime settings JSON file.'],
+    ['memoryLog', 'Bakin memory log markdown file.'],
+    ['audit', 'Append-only audit log.'],
+    ['logs', 'Server and runtime log directory.'],
+    ['assets', 'Asset plugin root.'],
+    ['assets.store', 'Month-sharded asset storage.'],
+    ['assets.inbox', 'Asset ingestion inbox.'],
+    ['assets.trash', 'Soft-deleted assets.'],
+    ['agents', 'Agent UI/runtime assets.'],
+    ['team', 'Team plugin runtime data.'],
+    ['personas', 'Agent persona files.'],
+    ['heartbeats', 'Agent heartbeat files.'],
+    ['inbox', 'General inbox directory.'],
+    ['projects', 'Project markdown/content data.'],
+    ['workflows', 'Workflow definitions, skills, and instances.'],
+  ]
+  const lines = [
+    '---',
+    'title: Runtime Paths',
+    'description: Reference for Bakin runtime files under the resolved Bakin home directory.',
+    '---',
+    '',
+    '# Runtime Paths',
+    '',
+    versionLine,
+    '',
+    'This page documents the well-known paths returned by `getBakinPaths()` in `packages/core/src/content-dir.ts`.',
+    '',
+    'Resolution order:',
+    '',
+    '1. `BAKIN_HOME` environment variable.',
+    '2. `CONTENT_DIR` compatibility environment variable.',
+    '3. `~/.bakin/` when it exists.',
+    '4. `./content/` fallback.',
+    '',
+    '| Key | Purpose |',
+    '| --- | --- |',
+  ]
+  for (const [key, description] of paths) {
+    lines.push(`| \`${key}\` | ${description} |`)
+  }
+  lines.push('')
+  return lines.join('\n')
+}
+
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/cli.md'),
   renderCliReference(),
@@ -295,6 +379,16 @@ writeStableFile(
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/core-plugins.md'),
   renderPluginCatalog(),
+)
+
+writeStableFile(
+  join(docsRoot, 'src/content/docs/reference/generated/settings.md'),
+  renderSettingsReference(),
+)
+
+writeStableFile(
+  join(docsRoot, 'src/content/docs/reference/generated/runtime-paths.md'),
+  renderRuntimePathsReference(),
 )
 
 writeStableFile(
@@ -324,6 +418,8 @@ The current scaffold establishes the public coverage contract. The next implemen
 | LLM docs | \`/llms.txt\`, \`/llms-full.txt\`, targeted bundles | Active |
 | Exec/MCP tools | Contract objects, schemas, examples | Audited: ${extractExecTools().length} registrations |
 | Core plugins | Manifest catalog from shipped plugins | Active: ${readCorePluginManifests().length} plugins |
+| Settings | Generated from default settings | Active: ${flattenObject(DEFAULT_SETTINGS).length} settings |
+| Runtime paths | Generated from path contract | Active |
 `,
 )
 
@@ -395,6 +491,8 @@ Canonical docs: https://docs.makinbakin.com/
 - Hooks reference: /reference/generated/hooks/
 - Exec/MCP tools reference: /reference/generated/exec-tools/
 - Core plugin catalog: /reference/generated/core-plugins/
+- Settings reference: /reference/generated/settings/
+- Runtime paths: /reference/generated/runtime-paths/
 
 ## Fetch Examples
 
@@ -437,6 +535,10 @@ const bundles = {
   'core-plugins.md': {
     title: 'Bakin Core Plugins',
     body: `The core plugin catalog is generated from shipped plugin manifests. Current core plugin count: ${readCorePluginManifests().length}. Public docs should pair this generated catalog with human-authored workflow pages for each plugin.`,
+  },
+  'settings.md': {
+    title: 'Bakin Settings Reference',
+    body: `The settings reference is generated from packages/core/src/settings.ts. Current flattened setting count: ${flattenObject(DEFAULT_SETTINGS).length}. Operators can override settings in settings.json under the resolved Bakin home directory.`,
   },
 }
 

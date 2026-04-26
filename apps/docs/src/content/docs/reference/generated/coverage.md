@@ -23,3 +23,5 @@ The current scaffold establishes the public coverage contract. The next implemen
 | LLM docs | `/llms.txt`, `/llms-full.txt`, targeted bundles | Active |
 | Exec/MCP tools | Contract objects, schemas, examples | Audited: 90 registrations |
 | Core plugins | Manifest catalog from shipped plugins | Active: 10 plugins |
+| Settings | Generated from default settings | Active: 52 settings |
+| Runtime paths | Generated from path contract | Active |

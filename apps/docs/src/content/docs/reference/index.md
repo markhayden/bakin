@@ -30,4 +30,6 @@ Generated references currently available:
 - [Hook Reference](/reference/generated/hooks/)
 - [Exec and MCP Tool Reference](/reference/generated/exec-tools/)
 - [Core Plugin Catalog](/reference/generated/core-plugins/)
+- [Settings Reference](/reference/generated/settings/)
+- [Runtime Paths](/reference/generated/runtime-paths/)
 - [Generated Coverage](/reference/generated/coverage/)

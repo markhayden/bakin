@@ -64,6 +64,8 @@ export default defineConfig({
             { label: 'Hook Reference', slug: 'reference/generated/hooks' },
             { label: 'Exec/MCP Tools', slug: 'reference/generated/exec-tools' },
             { label: 'Core Plugins', slug: 'reference/generated/core-plugins' },
+            { label: 'Settings', slug: 'reference/generated/settings' },
+            { label: 'Runtime Paths', slug: 'reference/generated/runtime-paths' },
           ],
         },
         {

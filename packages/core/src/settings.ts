@@ -135,7 +135,7 @@ export interface BakinSettings {
   }
 }
 
-const DEFAULTS: BakinSettings = {
+export const DEFAULT_SETTINGS: BakinSettings = {
   dispatch: {
     intervalMs: 5 * 60 * 1000,
     failureCooldownMs: 30 * 60 * 1000,
@@ -279,7 +279,7 @@ export function getSettings(): BakinSettings {
   }
 
   const settings = deepMerge(
-    DEFAULTS as unknown as Record<string, unknown>,
+    DEFAULT_SETTINGS as unknown as Record<string, unknown>,
     overrides
   ) as unknown as BakinSettings
 
