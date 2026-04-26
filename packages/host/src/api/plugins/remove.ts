@@ -1,19 +1,48 @@
 /**
- * POST /api/plugins/remove — remove an installed user plugin from
- * ~/.bakin/plugins/<id>/. Built-in core plugins (those shipped with Bakin)
- * cannot be removed via this endpoint — they live in the repo's plugins/
- * directory and are part of the Bakin install.
+ * POST /api/plugins/remove — remove an installed user plugin.
  *
- * Migrated from src/app/api/plugins/remove/route.ts for Phase B of #147.
+ * Full teardown sweep (#119):
+ *   1. Refuse if isCorePlugin(id)
+ *   2. Call plugin.onUninstall(ctx) if defined — log + continue on error
+ *   3. Snapshot Bakin-owned data into ~/.bakin/.uninstalled/<id>-<ISO>.tar.gz
+ *   4. Sweep registries: hooks, exec tools, workflow nodes, notification
+ *      channels, health checks, search content types
+ *   5. Filesystem deletes: OpenClaw skills (honors .userEdited), settings
+ *      JSON, plugin dir
+ *   6. Remove lockfile entry
  *
- * A Bakin restart is required for the plugin's UI contributions to stop
- * appearing. Server-side hooks / routes are cleared on next boot.
+ * A Bakin restart is still required for the plugin's modules to be
+ * released from the JS module cache; the registry sweep ensures no new
+ * invocations land while the in-memory state is being torn down.
  */
 import { existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
-import { isCorePlugin } from '@/lib/plugin-registry'
+import { appendAudit } from '@/core/audit'
+import {
+  getHookRegistry,
+  isCorePlugin,
+  pluginRegistry,
+} from '@/lib/plugin-registry'
+import { removeExecToolsByPlugin } from '../../../../../scripts/lib/registry'
+import { unregisterPluginNodeTypes } from '../../../../../plugins/workflows/lib/node-type-registry'
+import { unregisterPluginNotificationChannels } from '../../../../../plugins/workflows/lib/notification-channel-registry'
+import { unregisterPluginHealthChecks } from '../../../../../plugins/health/lib/health-check-registry'
+import {
+  getContentTypes,
+  purgeContentType,
+} from '@/core/search-registry'
+import {
+  planPluginAssetsRemoval,
+  removePluginAssets,
+} from '@/core/onboarding/plugin-assets'
+import { snapshotUninstall } from '@/core/plugins/uninstall-snapshot'
+import {
+  readPluginLockfile,
+  removePlugin,
+  writePluginLockfile,
+} from '@bakin/core/plugins/lockfile'
 
 const log = createLogger('plugin-remove')
 
@@ -46,23 +75,173 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   }
 
   const pluginDir = join(getContentDir(), 'plugins', pluginId)
-  if (!existsSync(pluginDir)) {
+  const settingsFile = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
+
+  if (!existsSync(pluginDir) && !readPluginLockfile().plugins[pluginId]) {
     return Response.json({
       ok: false,
-      error: `Plugin "${pluginId}" is not installed at ~/.bakin/plugins/`,
+      error: `Plugin "${pluginId}" is not installed (no lockfile entry, no plugin dir).`,
     }, { status: 404 })
   }
 
+  // ─── 1. onUninstall hook ───────────────────────────────────────────────────
+  // Run BEFORE registry sweep so the plugin still has the full context. Errors
+  // logged + audited but do not block the rest of the cleanup — a buggy
+  // onUninstall must not trap the user.
   try {
-    rmSync(pluginDir, { recursive: true, force: true })
-    log.info(`Removed plugin "${pluginId}"`)
-    return Response.json({
-      ok: true,
-      message: `Removed "${pluginId}". Restart Bakin for it to stop appearing.`,
-    })
+    const plugin = pluginRegistry.getPlugin?.(pluginId)
+    if (plugin?.onUninstall) {
+      const ctx = pluginRegistry.getPluginContext?.(pluginId)
+      if (ctx) {
+        await plugin.onUninstall(ctx)
+        log.info('plugin onUninstall complete', { pluginId })
+      } else {
+        log.warn('plugin defined onUninstall but no ctx available — skipping', { pluginId })
+      }
+    }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    log.error('Plugin remove failed', err as Error, { pluginId })
-    return Response.json({ ok: false, error: message }, { status: 500 })
+    log.error('plugin onUninstall failed', err as Error, { pluginId })
+    appendAudit(getContentDir(), 'plugin.uninstall.error', 'system', {
+      pluginId,
+      error: err instanceof Error ? err.message : String(err),
+    }, 'system')
   }
+
+  // ─── 2. Plan OpenClaw skill cleanup BEFORE snapshot ──────────────────────
+  // We snapshot the to-remove skill dirs into the tarball, then actually
+  // delete them. Capturing the plan first lets the snapshot include the
+  // exact paths the cleanup step will delete.
+  const assetsPlan = planPluginAssetsRemoval(pluginId)
+
+  // ─── 3. Snapshot ───────────────────────────────────────────────────────────
+  let snapshotPath: string | null = null
+  try {
+    const result = await snapshotUninstall({
+      pluginId,
+      pluginDir,
+      settingsFile: existsSync(settingsFile) ? settingsFile : undefined,
+      removedSkillDirs: assetsPlan.toRemove,
+    })
+    snapshotPath = result.tarballPath
+  } catch (err) {
+    log.error('plugin uninstall snapshot failed', err as Error, { pluginId })
+    appendAudit(getContentDir(), 'plugin.uninstall.snapshot_error', 'system', {
+      pluginId,
+      error: err instanceof Error ? err.message : String(err),
+    }, 'system')
+    // Snapshot failure is logged but we continue with cleanup — the user
+    // asked for the plugin to be removed; refusing to remove it because
+    // the safety-net failed would be the wrong tradeoff.
+  }
+
+  // ─── 4. Registry sweep ─────────────────────────────────────────────────────
+  const sweepReport = {
+    hooks: 0,
+    execTools: 0,
+    contentTypes: 0,
+  }
+  try {
+    sweepReport.hooks = getHookRegistry().unregisterByPlugin(pluginId)
+  } catch (err) {
+    log.warn('hook unregisterByPlugin failed', err, { pluginId })
+  }
+  try {
+    sweepReport.execTools = removeExecToolsByPlugin(pluginId)
+  } catch (err) {
+    log.warn('removeExecToolsByPlugin failed', err, { pluginId })
+  }
+  try {
+    unregisterPluginNodeTypes(pluginId)
+  } catch (err) {
+    log.warn('unregisterPluginNodeTypes failed', err, { pluginId })
+  }
+  try {
+    unregisterPluginNotificationChannels(pluginId)
+  } catch (err) {
+    log.warn('unregisterPluginNotificationChannels failed', err, { pluginId })
+  }
+  try {
+    unregisterPluginHealthChecks(pluginId)
+  } catch (err) {
+    log.warn('unregisterPluginHealthChecks failed', err, { pluginId })
+  }
+  // Purge every content type the plugin owned. Iterate a snapshot of the
+  // map so we don't mutate while iterating.
+  const ownedTables = [...getContentTypes().entries()]
+    .filter(([, def]) => def.pluginId === pluginId)
+    .map(([table]) => table)
+  for (const table of ownedTables) {
+    try {
+      await purgeContentType(table)
+      sweepReport.contentTypes++
+    } catch (err) {
+      log.warn('purgeContentType failed', err, { pluginId, table })
+    }
+  }
+
+  // ─── 5. Filesystem deletes ─────────────────────────────────────────────────
+  let skillsResult = { removed: 0, kept: 0 }
+  try {
+    const r = await removePluginAssets(pluginId)
+    skillsResult = { removed: r.removed, kept: r.kept }
+  } catch (err) {
+    log.warn('removePluginAssets failed', err, { pluginId })
+  }
+
+  if (existsSync(settingsFile)) {
+    try {
+      rmSync(settingsFile, { force: true })
+    } catch (err) {
+      log.warn('plugin-settings rm failed', err, { pluginId, settingsFile })
+    }
+  }
+
+  if (existsSync(pluginDir)) {
+    try {
+      rmSync(pluginDir, { recursive: true, force: true })
+    } catch (err) {
+      log.warn('plugin dir rm failed', err, { pluginId, pluginDir })
+    }
+  }
+
+  // ─── 6. Lockfile entry removal ─────────────────────────────────────────────
+  try {
+    const lock = readPluginLockfile()
+    if (lock.plugins[pluginId]) {
+      writePluginLockfile(removePlugin(lock, pluginId))
+    }
+  } catch (err) {
+    log.warn('lockfile entry removal failed', err, { pluginId })
+  }
+
+  // Drop the in-memory plugin state too — same shape `loadUserPlugins`
+  // does on override. Best-effort; the next restart re-bootstraps anyway.
+  try {
+    pluginRegistry.deletePlugin?.(pluginId)
+  } catch {
+    /* best-effort */
+  }
+
+  log.info(`Removed plugin "${pluginId}"`, {
+    pluginId,
+    sweepReport,
+    skillsRemoved: skillsResult.removed,
+    skillsKept: skillsResult.kept,
+    snapshot: snapshotPath,
+  })
+  appendAudit(getContentDir(), 'plugin.uninstall', 'system', {
+    pluginId,
+    sweepReport,
+    skills: skillsResult,
+    snapshot: snapshotPath,
+  }, 'system')
+
+  return Response.json({
+    ok: true,
+    id: pluginId,
+    skills: skillsResult,
+    sweep: sweepReport,
+    snapshot: snapshotPath,
+    message: `Removed "${pluginId}". Restart Bakin to fully release the plugin's modules.`,
+  })
 }

@@ -108,6 +108,8 @@ interface PluginState {
   channelIds: string[]
   /** Namespaced health check ids registered via ctx.registerHealthCheck. */
   healthCheckIds: string[]
+  /** Cached PluginContext — handed to onUninstall during plugin remove (#119). */
+  ctx?: PluginContext
 }
 
 /** Slug a workflow definition `name` into a stable id when no `id` is supplied. */
@@ -411,6 +413,7 @@ class PluginRegistryImpl {
 
       const ctx = this.buildContext(plugin.id, state, storage, events)
       await plugin.activate(ctx)
+      state.ctx = ctx
       const skillResult = loadPluginSkills(pluginPath, ctx, log)
       if (skillResult.registered.length > 0) {
         log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for "${plugin.id}"`, {
@@ -487,6 +490,7 @@ class PluginRegistryImpl {
 
           const ctx = this.buildContext(plugin.id, state, storage, events)
           await plugin.activate(ctx)
+          state.ctx = ctx
           const userPluginPath = join(userPluginsDir, entry.name)
           const skillResult = loadPluginSkills(userPluginPath, ctx, log)
           if (skillResult.registered.length > 0) {
@@ -535,6 +539,21 @@ class PluginRegistryImpl {
 
   getPluginState(pluginId: string): PluginState | undefined {
     return this.plugins.get(pluginId)
+  }
+
+  /** Look up the BakinPlugin instance — used by remove flow to call onUninstall. */
+  getPlugin(pluginId: string): BakinPlugin | undefined {
+    return this.plugins.get(pluginId)?.plugin
+  }
+
+  /** Look up the cached PluginContext that was handed to plugin.activate(). */
+  getPluginContext(pluginId: string): PluginContext | undefined {
+    return this.plugins.get(pluginId)?.ctx
+  }
+
+  /** Drop the in-memory plugin state. Used by remove flow after fs cleanup. */
+  deletePlugin(pluginId: string): boolean {
+    return this.plugins.delete(pluginId)
   }
 
   /**
