@@ -295,7 +295,14 @@ async function upgradeGithub(
     )
   }
   const { from, to } = gitFetchAndFastForward(pluginDir, id, entry.ref)
-  if (from === to) {
+  // Two no-op shapes:
+  //   (a) Working tree HEAD === remote HEAD AND lockfile commitSha matches.
+  //       Truly nothing to do.
+  //   (b) Working tree was fast-forwarded on a prior call but the lockfile
+  //       wasn't updated (consent gate held; user has now passed --yes).
+  //       Fall through and complete the upgrade — read manifest, build,
+  //       update lockfile.
+  if (from === to && entry.commitSha === to) {
     return {
       id,
       before,
