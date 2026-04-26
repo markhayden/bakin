@@ -24,7 +24,8 @@
   --sl-color-hairline: rgba(74, 71, 71, 0.35);
   --sl-color-hairline-light: rgba(120, 117, 116, 0.35);
   --sl-color-text: #ffffff;
-  --sl-color-text-accent: #ff89ab;
+  --bakin-brand-pink: #ff89ab;
+  --sl-color-text-accent: var(--bakin-brand-pink);
   --sl-color-text-invert: #4c0021;
   --sl-color-gray-1: #ffffff;
   --sl-color-gray-2: #ded8d8;
@@ -33,9 +34,9 @@
   --sl-color-gray-5: #4a4747;
   --sl-color-gray-6: #272525;
   --sl-color-black: #0f0e0e;
-  --sl-color-accent-low: rgba(227, 0, 113, 0.18);
-  --sl-color-accent: #ff709e;
-  --sl-color-accent-high: #ffb7c9;
+  --sl-color-accent-low: rgba(255, 137, 171, 0.18);
+  --sl-color-accent: var(--bakin-brand-pink);
+  --sl-color-accent-high: var(--bakin-brand-pink);
   --sl-color-white: #ffffff;
 }
 
@@ -49,7 +50,7 @@
 
 body {
   background:
-    radial-gradient(32rem 32rem at 78% -10%, rgba(227, 0, 113, 0.16), transparent 64%),
+    radial-gradient(32rem 32rem at 78% -10%, rgba(255, 137, 171, 0.16), transparent 64%),
     radial-gradient(28rem 28rem at 8% 18%, rgba(234, 234, 0, 0.08), transparent 62%),
     #0f0e0e;
   font-family: var(--font-body);
@@ -124,7 +125,7 @@ pre {
 }
 
 .hero img {
-  filter: drop-shadow(0 0 18px rgba(255, 112, 158, 0.22));
+  filter: drop-shadow(0 0 18px rgba(255, 137, 171, 0.22));
 }
 
 @media (min-width: 72rem) {
@@ -165,4 +166,22 @@ pre {
   color: var(--sl-color-gray-2);
   font-size: 0.8rem;
   line-height: 1.2;
+}
+
+starlight-toc nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+starlight-toc nav a::before {
+  content: "";
+  width: 0.42rem;
+  height: 0.42rem;
+  flex: 0 0 0.42rem;
+  background: var(--sl-color-gray-2);
+}
+
+starlight-toc nav a[aria-current="true"]::before {
+  background: var(--bakin-brand-pink);
 }
