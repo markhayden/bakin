@@ -17,6 +17,7 @@ export default defineConfig({
       },
       customCss: ['./src/styles/docs.css'],
       components: {
+        SiteTitle: './src/components/SiteTitle.astro',
         Footer: './src/components/DocsFooter.astro',
       },
       head: gtmId
