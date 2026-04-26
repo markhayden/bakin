@@ -51,6 +51,7 @@ Assets + search:
 Plugins:
   plugins list               List installed plugins
   plugins install <src>      Install a plugin (local path or github:user/repo)
+  plugins upgrade <id> [--yes]  Re-pull a user plugin from its source and rebuild
   plugins remove <id>        Remove a plugin
   plugins scaffold <name>    Create a starter plugin in ./<name>/
 
@@ -215,6 +216,57 @@ async function cmdPluginsInstall(source: string): Promise<number> {
   }
 }
 
+async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean }): Promise<number> {
+  try {
+    const res = await api<{
+      ok?: boolean
+      error?: string
+      core?: boolean
+      id?: string
+      noop?: boolean
+      awaitingConsent?: boolean
+      newPermissions?: string[]
+      before?: { version: string; commitSha: string }
+      after?: { version: string; commitSha: string }
+    }>('/api/plugins/upgrade', {
+      method: 'POST',
+      body: JSON.stringify({ pluginId, yes: opts.yes }),
+    })
+    if (res.core) {
+      console.error(`Refusing to upgrade core plugin "${pluginId}".`)
+      return 2
+    }
+    if (res.error) {
+      console.error(`Upgrade failed: ${res.error}`)
+      return 1
+    }
+    if (res.noop) {
+      const v = res.before?.version ?? '?'
+      console.log(`${pluginId} v${v}: already up to date`)
+      return 0
+    }
+    if (res.awaitingConsent) {
+      // C9 wires the actual interactive prompt. Until then, surface the
+      // diff and ask the user to re-run with --yes.
+      const newPerms = res.newPermissions ?? []
+      console.error(`Upgrade requires consent — new permissions requested:`)
+      for (const p of newPerms) console.error(`  + ${p}`)
+      console.error(`Re-run with --yes to confirm: bakin plugins upgrade ${pluginId} --yes`)
+      return 1
+    }
+    const fromV = res.before?.version ?? '?'
+    const toV = res.after?.version ?? '?'
+    const fromSha = (res.before?.commitSha ?? '').slice(0, 8)
+    const toSha = (res.after?.commitSha ?? '').slice(0, 8)
+    const shaPart = fromSha && toSha ? ` (sha ${fromSha}...${toSha})` : ''
+    console.log(`Upgraded ${pluginId} v${fromV} → v${toV}${shaPart}. Restart Bakin to activate the change: bakin stop && bakin start`)
+    return 0
+  } catch (err) {
+    console.error(`Upgrade failed: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
+}
+
 async function cmdPluginsRemove(pluginId: string): Promise<number> {
   try {
     const res = await api<{ ok?: boolean; error?: string; core?: boolean }>('/api/plugins/remove', {
@@ -354,7 +406,7 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
 
       case 'plugins': {
         if (!sub) {
-          console.error('Usage: bakin plugins <list|install|remove|scaffold>')
+          console.error('Usage: bakin plugins <list|install|upgrade|remove|scaffold>')
           return { startServer: false, exitCode: 1 }
         }
         if (sub === 'list') return { startServer: false, exitCode: await cmdPluginsList() }
@@ -364,6 +416,14 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
             return { startServer: false, exitCode: 1 }
           }
           return { startServer: false, exitCode: await cmdPluginsInstall(args[2]) }
+        }
+        if (sub === 'upgrade') {
+          if (!args[2]) {
+            console.error('Usage: bakin plugins upgrade <id> [--yes]')
+            return { startServer: false, exitCode: 1 }
+          }
+          const yes = args.slice(3).includes('--yes')
+          return { startServer: false, exitCode: await cmdPluginsUpgrade(args[2], { yes }) }
         }
         if (sub === 'remove') {
           if (!args[2]) {
