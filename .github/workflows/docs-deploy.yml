@@ -50,11 +50,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bakin-docs
-          path: apps/docs/dist
+          path: docs/dist
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy apps/docs/dist --project-name=${{ vars.CLOUDFLARE_DOCS_PROJECT_NAME || 'bakin-docs' }} --branch=${{ env.DOCS_DEPLOY_BRANCH }}
+          command: pages deploy docs/dist --project-name=${{ vars.CLOUDFLARE_DOCS_PROJECT_NAME || 'bakin-docs' }} --branch=${{ env.DOCS_DEPLOY_BRANCH }}

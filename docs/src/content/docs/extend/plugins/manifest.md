@@ -5,10 +5,10 @@ description: Define the public plugin metadata Bakin uses to install, load, vali
 
 Every plugin starts with `bakin-plugin.json`. Bakin reads this file before loading plugin code, so keep it boring, explicit, and stable.
 
-The tested manifest fixture for these docs lives at `apps/docs/snippets/plugin-basic/bakin-plugin.json`.
+The tested manifest fixture for these docs lives at `docs/snippets/plugin-basic/bakin-plugin.json`.
 
 <!-- docs:snippet plugin-basic-manifest -->
-Source: `apps/docs/snippets/plugin-basic/bakin-plugin.json`
+Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 
 ```json
 {

@@ -5,10 +5,10 @@ description: Register plugin navigation, pages, slots, and shell-integrated UI t
 
 Client entries use `registerPlugin()` from `@bakin/sdk`. Keep UI contributions small, predictable, and built from SDK components whenever possible.
 
-The tested minimal client entry lives at `apps/docs/snippets/plugin-basic/client.tsx`.
+The tested minimal client entry lives at `docs/snippets/plugin-basic/client.tsx`.
 
 <!-- docs:snippet plugin-basic-client -->
-Source: `apps/docs/snippets/plugin-basic/client.tsx`
+Source: `docs/snippets/plugin-basic/client.tsx`
 
 ```tsx
 import { registerPlugin } from '@bakin/sdk'

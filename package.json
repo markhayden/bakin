@@ -4,7 +4,7 @@
   "private": true,
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "docs"
   ],
   "bin": {
     "bakin": "./cli/bakin.ts"
@@ -30,10 +30,10 @@
     "test:watch": "bun test --watch --isolate",
     "test:coverage": "bun test --isolate --coverage",
     "docs:generate": "bun run scripts/docs/generate.ts",
-    "docs:dev": "bun run --cwd apps/docs dev",
+    "docs:dev": "bun run --cwd docs dev",
     "docs:validate": "bun run scripts/docs/check.ts",
-    "docs:build": "bun run docs:generate && bun run --cwd apps/docs build",
-    "docs:check": "bun run docs:generate && bun run docs:validate && bun run --cwd apps/docs build",
+    "docs:build": "bun run docs:generate && bun run --cwd docs build",
+    "docs:check": "bun run docs:generate && bun run docs:validate && bun run --cwd docs build",
     "dev:mock": "bun run dev/imitation-crab/index.ts --with-bakin",
     "dev:docker": "OPENCLAW_HOME=./dev/openclaw-home OPENCLAW_PATH=./dev/docker/openclaw-shim.sh BAKIN_URL=http://host.docker.internal:3737 bun run server.ts",
     "docker:setup": "bash dev/docker/setup.sh",

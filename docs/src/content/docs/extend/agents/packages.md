@@ -5,10 +5,10 @@ description: Package reusable agents, skills, workflows, knowledge, and workspac
 
 Agent packages are installable bundles for Bakin and OpenClaw-managed agent state. They use `bakin-package.json`, not `bakin-plugin.json`.
 
-The tested manifest fixture for these docs lives at `apps/docs/snippets/agent-package-basic/bakin-package.json`.
+The tested manifest fixture for these docs lives at `docs/snippets/agent-package-basic/bakin-package.json`.
 
 <!-- docs:snippet agent-package-basic-manifest -->
-Source: `apps/docs/snippets/agent-package-basic/bakin-package.json`
+Source: `docs/snippets/agent-package-basic/bakin-package.json`
 
 ```json
 {

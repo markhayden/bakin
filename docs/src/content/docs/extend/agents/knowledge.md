@@ -62,6 +62,6 @@ bakin agents knowledge disable content-planner voice
 
 ## Public Docs vs Agent Knowledge
 
-Keep public Bakin docs in `apps/docs`. Keep internal coding helper material in `.claude/knowledge`. Keep installable agent runtime knowledge inside the package that owns it.
+Keep public Bakin docs in `docs`. Keep internal coding helper material in `.claude/knowledge`. Keep installable agent runtime knowledge inside the package that owns it.
 
 When the same concept appears in more than one place, write for the audience instead of copying prose. Public docs should explain the contract; agent knowledge should tell the agent what to do with that contract.

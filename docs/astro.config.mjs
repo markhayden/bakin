@@ -136,7 +136,7 @@ document.addEventListener("click", function (event) {
         : [],
       defaultLocale: 'root',
       editLink: {
-        baseUrl: 'https://github.com/madeinwyo/bakin/edit/main/apps/docs/',
+        baseUrl: 'https://github.com/madeinwyo/bakin/edit/main/docs/',
       },
       lastUpdated: true,
       social: [

@@ -4,7 +4,7 @@ import yaml from 'js-yaml'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
-const docsRoot = join(repoRoot, 'apps/docs')
+const docsRoot = join(repoRoot, 'docs')
 const docsContentRoot = join(docsRoot, 'src/content/docs')
 const docsSnippetBlocks = {
   'plugin-basic-manifest': {
@@ -148,7 +148,7 @@ function renderDocsSnippetBlock(marker: string): string {
   const contents = readFileSync(join(docsRoot, snippet.file), 'utf8').trimEnd()
   return [
     `<!-- docs:snippet ${marker} -->`,
-    `Source: \`apps/docs/${snippet.file}\``,
+    `Source: \`docs/${snippet.file}\``,
     '',
     `\`\`\`${snippet.language}`,
     contents,
@@ -171,7 +171,7 @@ function validateDocsSnippetBlocks(file: string, text: string): void {
     }
     const expected = renderDocsSnippetBlock(marker)
     if (match[0].trimEnd() !== expected) {
-      errors.push(`${rel}: docs snippet "${marker}" is out of sync with apps/docs/${docsSnippetBlocks[marker as keyof typeof docsSnippetBlocks].file}`)
+      errors.push(`${rel}: docs snippet "${marker}" is out of sync with docs/${docsSnippetBlocks[marker as keyof typeof docsSnippetBlocks].file}`)
     }
   }
 }
@@ -243,11 +243,11 @@ const requiredSnippetFiles = [
 ]
 
 for (const file of requiredPublicFiles) {
-  if (!existsSync(join(docsRoot, file))) errors.push(`apps/docs/${file}: required docs asset missing`)
+  if (!existsSync(join(docsRoot, file))) errors.push(`docs/${file}: required docs asset missing`)
 }
 
 for (const file of requiredSnippetFiles) {
-  if (!existsSync(join(docsRoot, file))) errors.push(`apps/docs/${file}: required docs snippet missing`)
+  if (!existsSync(join(docsRoot, file))) errors.push(`docs/${file}: required docs snippet missing`)
 }
 
 for (const file of requiredSnippetFiles.filter((file) => file.endsWith('.json'))) {
@@ -256,7 +256,7 @@ for (const file of requiredSnippetFiles.filter((file) => file.endsWith('.json'))
   try {
     JSON.parse(readFileSync(path, 'utf8'))
   } catch (error) {
-    errors.push(`apps/docs/${file}: invalid JSON (${error instanceof Error ? error.message : String(error)})`)
+    errors.push(`docs/${file}: invalid JSON (${error instanceof Error ? error.message : String(error)})`)
   }
 }
 
@@ -266,14 +266,14 @@ if (existsSync(pluginManifestPath)) {
     const manifest = JSON.parse(readFileSync(pluginManifestPath, 'utf8')) as { id?: string }
     const pluginId = manifest.id
     if (!pluginId) {
-      errors.push('apps/docs/snippets/plugin-basic/bakin-plugin.json: missing id')
+      errors.push('docs/snippets/plugin-basic/bakin-plugin.json: missing id')
     } else {
       for (const file of ['snippets/plugin-basic/index.ts', 'snippets/plugin-basic/client.tsx']) {
         const path = join(docsRoot, file)
         if (!existsSync(path)) continue
         const text = readFileSync(path, 'utf8')
         if (!text.includes(`'${pluginId}'`) && !text.includes(`"${pluginId}"`)) {
-          errors.push(`apps/docs/${file}: does not reference plugin manifest id "${pluginId}"`)
+          errors.push(`docs/${file}: does not reference plugin manifest id "${pluginId}"`)
         }
       }
     }
@@ -284,7 +284,7 @@ if (existsSync(pluginManifestPath)) {
 
 for (const [marker, snippet] of Object.entries(docsSnippetBlocks)) {
   if (!referencedSnippetBlocks.has(marker)) {
-    errors.push(`apps/docs/${snippet.file}: required docs snippet is not referenced by a generated docs block (${marker})`)
+    errors.push(`docs/${snippet.file}: required docs snippet is not referenced by a generated docs block (${marker})`)
   }
 }
 

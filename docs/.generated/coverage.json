@@ -60,7 +60,7 @@
     "docsSnippets": {
       "status": "active",
       "count": 4,
-      "source": "apps/docs/snippets"
+      "source": "docs/snippets"
     },
     "llmBundles": {
       "status": "active",
