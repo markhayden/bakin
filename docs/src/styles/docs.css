@@ -123,6 +123,29 @@ pre {
 
 .sl-markdown-content table:not(:where(.not-content *)) {
   font-size: 0.9rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.sl-markdown-content th:first-child:not(:where(.not-content *)) {
+  border-top-left-radius: 0.75rem;
+}
+
+.sl-markdown-content th:last-child:not(:where(.not-content *)) {
+  border-top-right-radius: 0.75rem;
+}
+
+.sl-markdown-content th:not(:where(.not-content *)),
+.sl-markdown-content td:not(:where(.not-content *)) {
+  padding: 0.6rem 1rem;
+}
+
+.sl-markdown-content th:not(:where(.not-content *)) {
+  background: #1a1818;
+  font-weight: 600;
+  text-align: left;
 }
 
 .hero img {
@@ -187,8 +210,94 @@ starlight-toc nav a[aria-current="true"]::before {
   background: var(--bakin-brand-pink);
 }
 
+starlight-toc nav a[href="#from-the-cli"]::before,
+starlight-toc nav a[href="#for-agents"]::before {
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: left center;
+  width: 1.1em;
+  height: 1.1em;
+  flex: 0 0 1.1em;
+  margin-left: -0.25em;
+}
+
+starlight-toc nav a[href="#from-the-cli"]::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23eaea00' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='5 7 11 12 5 17'/%3E%3Cline x1='13' y1='17' x2='19' y2='17'/%3E%3C/svg%3E");
+}
+
+starlight-toc nav a[href="#for-agents"]::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23eaea00' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='8' width='16' height='12' rx='2'/%3E%3Ccircle cx='9' cy='14' r='1.2' fill='%23eaea00'/%3E%3Ccircle cx='15' cy='14' r='1.2' fill='%23eaea00'/%3E%3Cpath d='M12 4v4'/%3E%3Ccircle cx='12' cy='4' r='1' fill='%23eaea00'/%3E%3C/svg%3E");
+}
+
 .next-step-callout {
   margin-top: 50px;
+}
+
+.gap-top {
+  margin-top: 1.6rem;
+}
+
+.heading-icon {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.4em;
+  vertical-align: -0.1em;
+  color: var(--bakin-brand-yellow);
+}
+
+.screenshot-frame {
+  margin: 1.5rem 0;
+  border: 1px dashed var(--sl-color-hairline);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 3rem 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 9rem;
+  position: relative;
+}
+
+.screenshot-frame::before {
+  content: "Screenshot";
+  position: absolute;
+  top: 0.6rem;
+  left: 0.85rem;
+  color: var(--sl-color-gray-4);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.screenshot-frame figcaption {
+  color: var(--sl-color-gray-3);
+  font-size: 0.875rem;
+  text-align: center;
+  font-style: italic;
+  max-width: 36rem;
+}
+
+.screenshot-frame img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+}
+
+.screenshot-frame:has(img) {
+  border-style: solid;
+  background: transparent;
+  padding: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.screenshot-frame:has(img)::before {
+  display: none;
 }
 
 .platform-chips {

@@ -162,16 +162,18 @@ document.addEventListener("click", function (event) {
         {
           label: 'Core',
           items: [
+            { label: 'Cockpit', slug: 'core/cockpit' },
             { label: 'Tasks', slug: 'core/tasks' },
-            { label: 'Workflows', slug: 'core/workflows' },
-            { label: 'Projects', slug: 'core/projects' },
             { label: 'Assets', slug: 'core/assets' },
             { label: 'Schedule', slug: 'core/schedule' },
             { label: 'Messaging', slug: 'core/messaging' },
+            { label: 'Projects', slug: 'core/projects' },
+            { label: 'Workflows', slug: 'core/workflows' },
             { label: 'Memory', slug: 'core/memory' },
-            { label: 'Models', slug: 'core/models' },
             { label: 'Team', slug: 'core/team' },
+            { label: 'Models', slug: 'core/models' },
             { label: 'Health', slug: 'core/health' },
+            { label: 'Settings', slug: 'core/settings' },
           ],
         },
         {
