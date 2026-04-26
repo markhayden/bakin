@@ -123,6 +123,31 @@ export function writePluginLockfile(
   }
 }
 
+// ─── Defense-in-depth: core-plugin guard ─────────────────────────────────────
+
+/**
+ * Predicate registered at boot by `src/lib/plugin-registry.ts` via
+ * `setCorePluginCheck` — returns `true` for plugin ids that ship with the
+ * Bakin binary. Wired through a setter (rather than imported directly) to
+ * avoid a circular dependency: `plugin-registry` imports this module's
+ * types, so this module cannot import `plugin-registry` in turn.
+ *
+ * Unset in test environments → mutators allow any id. Tests that want to
+ * exercise the guard call `setCorePluginCheck(id => id === 'tasks')` etc.
+ */
+let corePluginCheck: ((id: string) => boolean) | null = null
+
+/** Wire the predicate. Called once during boot from plugin-registry. */
+export function setCorePluginCheck(check: ((id: string) => boolean) | null): void {
+  corePluginCheck = check
+}
+
+function assertNotCore(id: string): void {
+  if (corePluginCheck && corePluginCheck(id)) {
+    throw new Error(`refusing to mutate lockfile entry for core plugin: ${id}`)
+  }
+}
+
 // ─── Pure mutators (no fs) ───────────────────────────────────────────────────
 
 /**
@@ -134,8 +159,7 @@ export function addPlugin(
   id: string,
   entry: PluginLockEntry,
 ): PluginLockfile {
-  // TODO(C2): wire isCorePlugin defense-in-depth — refuse to mutate entries
-  // for ids that match a core plugin. Predicate doesn't exist yet at C1.
+  assertNotCore(id)
   return {
     ...lock,
     plugins: { ...lock.plugins, [id]: entry },
@@ -147,7 +171,7 @@ export function addPlugin(
  * — idempotent so remove flows can call this without first checking existence.
  */
 export function removePlugin(lock: PluginLockfile, id: string): PluginLockfile {
-  // TODO(C2): wire isCorePlugin defense-in-depth — refuse for core ids.
+  assertNotCore(id)
   if (!(id in lock.plugins)) return lock
   const { [id]: _removed, ...rest } = lock.plugins
   return { ...lock, plugins: rest }
@@ -163,7 +187,7 @@ export function updatePlugin(
   id: string,
   patch: Partial<PluginLockEntry>,
 ): PluginLockfile {
-  // TODO(C2): wire isCorePlugin defense-in-depth — refuse for core ids.
+  assertNotCore(id)
   const existing = lock.plugins[id]
   if (!existing) {
     throw new Error(`Cannot update plugin lockfile entry: id "${id}" not present`)

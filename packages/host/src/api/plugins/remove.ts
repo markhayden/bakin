@@ -13,6 +13,7 @@ import { existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
+import { isCorePlugin } from '@/lib/plugin-registry'
 
 const log = createLogger('plugin-remove')
 
@@ -34,6 +35,14 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   }
   if (!/^[a-z0-9][a-z0-9-_]{0,39}$/i.test(pluginId)) {
     return Response.json({ ok: false, error: `Invalid pluginId "${pluginId}"` }, { status: 400 })
+  }
+
+  if (isCorePlugin(pluginId)) {
+    return Response.json({
+      ok: false,
+      core: true,
+      error: `cannot remove core plugin: ${pluginId}. Core plugins ship with Bakin and are managed via the binary itself.`,
+    }, { status: 400 })
   }
 
   const pluginDir = join(getContentDir(), 'plugins', pluginId)
