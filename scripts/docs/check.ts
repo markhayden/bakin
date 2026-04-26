@@ -6,6 +6,24 @@ import { CLI_COMMANDS } from '../../src/core/cli/registry'
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'apps/docs')
 const docsContentRoot = join(docsRoot, 'src/content/docs')
+const docsSnippetBlocks = {
+  'plugin-basic-manifest': {
+    file: 'snippets/plugin-basic/bakin-plugin.json',
+    language: 'json',
+  },
+  'plugin-basic-server': {
+    file: 'snippets/plugin-basic/index.ts',
+    language: 'ts',
+  },
+  'plugin-basic-client': {
+    file: 'snippets/plugin-basic/client.tsx',
+    language: 'tsx',
+  },
+  'agent-package-basic-manifest': {
+    file: 'snippets/agent-package-basic/bakin-package.json',
+    language: 'json',
+  },
+} satisfies Record<string, { file: string; language: string }>
 
 interface Frontmatter {
   title?: string
@@ -79,6 +97,99 @@ function validateBakinCommands(file: string, text: string): void {
   }
 }
 
+const commandSnippets = {
+  tasks: ['tasks list', 'tasks create', 'tasks move', 'tasks log', 'tasks block', 'tasks depend', 'tasks complete'],
+  workflows: ['workflows list', 'workflows start', 'workflows step', 'workflows submit'],
+  health: ['doctor', 'status'],
+  schedule: ['schedule'],
+  messaging: ['messaging'],
+} satisfies Record<string, string[]>
+
+function renderCommandSnippet(marker: string): string {
+  const names = commandSnippets[marker as keyof typeof commandSnippets]
+  if (!names) return ''
+
+  const byName = new Map(CLI_COMMANDS.map(command => [command.name, command]))
+  const lines = [
+    `<!-- docs:cli-commands ${marker} -->`,
+    '| Command | Purpose |',
+    '| --- | --- |',
+  ]
+
+  for (const name of names) {
+    const command = byName.get(name)
+    if (!command) return ''
+    lines.push(`| \`${command.usage}\` | ${command.summary} |`)
+  }
+
+  lines.push('<!-- /docs:cli-commands -->')
+  return lines.join('\n')
+}
+
+function validateCliCommandBlocks(file: string, text: string): void {
+  const rel = file.replace(repoRoot, '').replace(/^\//, '')
+  const commandMarkerPattern = /<!-- docs:cli-commands ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:cli-commands -->/g
+  for (const match of text.matchAll(commandMarkerPattern)) {
+    const marker = match[1]
+    if (!commandSnippets[marker as keyof typeof commandSnippets]) {
+      errors.push(`${rel}: unknown CLI command snippet marker "${marker}"`)
+      continue
+    }
+    const expected = renderCommandSnippet(marker)
+    if (match[0].trimEnd() !== expected) {
+      errors.push(`${rel}: CLI command snippet "${marker}" is out of sync with src/core/cli/registry.ts`)
+    }
+  }
+}
+
+function renderDocsSnippetBlock(marker: string): string {
+  const snippet = docsSnippetBlocks[marker as keyof typeof docsSnippetBlocks]
+  if (!snippet) return ''
+  const contents = readFileSync(join(docsRoot, snippet.file), 'utf8').trimEnd()
+  return [
+    `<!-- docs:snippet ${marker} -->`,
+    `Source: \`apps/docs/${snippet.file}\``,
+    '',
+    `\`\`\`${snippet.language}`,
+    contents,
+    '```',
+    '<!-- /docs:snippet -->',
+  ].join('\n')
+}
+
+const referencedSnippetBlocks = new Set<string>()
+
+function validateDocsSnippetBlocks(file: string, text: string): void {
+  const rel = file.replace(repoRoot, '').replace(/^\//, '')
+  const snippetMarkerPattern = /<!-- docs:snippet ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:snippet -->/g
+  for (const match of text.matchAll(snippetMarkerPattern)) {
+    const marker = match[1]
+    referencedSnippetBlocks.add(marker)
+    if (!docsSnippetBlocks[marker as keyof typeof docsSnippetBlocks]) {
+      errors.push(`${rel}: unknown docs snippet marker "${marker}"`)
+      continue
+    }
+    const expected = renderDocsSnippetBlock(marker)
+    if (match[0].trimEnd() !== expected) {
+      errors.push(`${rel}: docs snippet "${marker}" is out of sync with apps/docs/${docsSnippetBlocks[marker as keyof typeof docsSnippetBlocks].file}`)
+    }
+  }
+}
+
+function validateJsonFences(file: string, text: string): void {
+  const rel = file.replace(repoRoot, '').replace(/^\//, '')
+  const jsonBlockPattern = /```json\n([\s\S]*?)```/g
+  for (const match of text.matchAll(jsonBlockPattern)) {
+    try {
+      JSON.parse(match[1])
+    } catch (error) {
+      const blockStart = match.index ?? 0
+      const startLine = text.slice(0, blockStart).split('\n').length
+      errors.push(`${rel}:${startLine + 1}: invalid JSON snippet (${error instanceof Error ? error.message : String(error)})`)
+    }
+  }
+}
+
 const errors: string[] = []
 
 for (const file of walkMarkdown(docsContentRoot)) {
@@ -102,6 +213,9 @@ for (const file of walkMarkdown(docsContentRoot)) {
     errors.push(`${rel}: contains root-relative frontmatter links that should start with /docs/`)
   }
   validateBakinCommands(file, text)
+  validateCliCommandBlocks(file, text)
+  validateDocsSnippetBlocks(file, text)
+  validateJsonFences(file, text)
 }
 
 const requiredPublicFiles = [
@@ -143,6 +257,34 @@ for (const file of requiredSnippetFiles.filter((file) => file.endsWith('.json'))
     JSON.parse(readFileSync(path, 'utf8'))
   } catch (error) {
     errors.push(`apps/docs/${file}: invalid JSON (${error instanceof Error ? error.message : String(error)})`)
+  }
+}
+
+const pluginManifestPath = join(docsRoot, 'snippets/plugin-basic/bakin-plugin.json')
+if (existsSync(pluginManifestPath)) {
+  try {
+    const manifest = JSON.parse(readFileSync(pluginManifestPath, 'utf8')) as { id?: string }
+    const pluginId = manifest.id
+    if (!pluginId) {
+      errors.push('apps/docs/snippets/plugin-basic/bakin-plugin.json: missing id')
+    } else {
+      for (const file of ['snippets/plugin-basic/index.ts', 'snippets/plugin-basic/client.tsx']) {
+        const path = join(docsRoot, file)
+        if (!existsSync(path)) continue
+        const text = readFileSync(path, 'utf8')
+        if (!text.includes(`'${pluginId}'`) && !text.includes(`"${pluginId}"`)) {
+          errors.push(`apps/docs/${file}: does not reference plugin manifest id "${pluginId}"`)
+        }
+      }
+    }
+  } catch {
+    // The JSON parsing loop above reports the invalid manifest.
+  }
+}
+
+for (const [marker, snippet] of Object.entries(docsSnippetBlocks)) {
+  if (!referencedSnippetBlocks.has(marker)) {
+    errors.push(`apps/docs/${snippet.file}: required docs snippet is not referenced by a generated docs block (${marker})`)
   }
 }
 
