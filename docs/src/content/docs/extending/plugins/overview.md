@@ -27,9 +27,9 @@ The minimal server and client entries used by these docs live in `docs/snippets/
 
 Use these pages for the details:
 
-- [Plugin Manifest](/docs/extend/plugins/manifest/)
-- [Server Contracts](/docs/extend/plugins/server-contracts/)
-- [Client UI](/docs/extend/plugins/client-ui/)
+- [Plugin Manifest](/docs/extending/plugins/manifest/)
+- [Server Contracts](/docs/extending/plugins/server-contracts/)
+- [Client UI](/docs/extending/plugins/client-ui/)
 
 ## Import Rule
 

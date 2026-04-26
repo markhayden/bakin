@@ -114,6 +114,8 @@ Same operations are available from the terminal when you'd rather not click:
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
+<div class="for-agents">
+
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents
 
 Agents drive tasks through MCP exec tools. The full set:
@@ -134,8 +136,10 @@ Agents drive tasks through MCP exec tools. The full set:
 
 Full schemas and arguments in the [Exec tools reference](/docs/reference/generated/exec-tools/).
 
+</div>
+
 ## Related
 
-- [Workflows](/docs/core/workflows/): multi-step work that tasks can attach to
-- [Memory](/docs/core/memory/): search across completed tasks
-- [Schedule](/docs/core/schedule/): recurring task creation
+- [Workflows](/docs/using/workflows/): multi-step work that tasks can attach to
+- [Memory](/docs/using/memory/): search across completed tasks
+- [Schedule](/docs/using/schedule/): recurring task creation

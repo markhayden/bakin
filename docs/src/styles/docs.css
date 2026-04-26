@@ -238,6 +238,84 @@ starlight-toc nav a[href="#for-agents"]::before {
   margin-top: 1.6rem;
 }
 
+.status-dot {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  vertical-align: 0.05em;
+  margin-right: 0.15em;
+}
+
+.status-dot--green {
+  background: #22c55e;
+}
+
+.status-dot--red {
+  background: #ef4444;
+}
+
+.sl-markdown-content .heading-with-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin-top: 3rem;
+}
+
+.sl-markdown-content .heading-with-chip > * {
+  margin: 0;
+}
+
+.sl-markdown-content .heading-with-chip h2 {
+  margin: 0;
+}
+
+.sl-markdown-content .heading-with-chip .sl-heading-wrapper > :first-child {
+  padding-inline-end: 0;
+}
+
+.sl-markdown-content .powered-by-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.3em 0.7em;
+  border-radius: 0.3em;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--sl-color-gray-3);
+  font-size: 0.875rem;
+  font-weight: 400;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sl-markdown-content .powered-by-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--sl-color-white);
+  text-decoration: none;
+}
+
+.sl-markdown-content .powered-by-chip svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
+.sl-markdown-content .powered-by-chip span {
+  font-size: 0.85em;
+}
+
+.sl-markdown-content .for-agents {
+  font-size: 0.75rem;
+  margin-top: 3rem;
+}
+
+.sl-markdown-content .for-agents h2 {
+  font-size: var(--sl-text-h2);
+}
+
 .heading-icon {
   display: inline-block;
   width: 0.9em;

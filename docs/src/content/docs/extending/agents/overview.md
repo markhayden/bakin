@@ -17,8 +17,8 @@ These docs explain only the OpenClaw concepts required to use Bakin. Deeper Open
 
 Use these pages for the details:
 
-- [Agent Packages](/docs/extend/agents/packages/)
-- [Agent Knowledge](/docs/extend/agents/knowledge/)
+- [Agent Packages](/docs/extending/agents/packages/)
+- [Agent Knowledge](/docs/extending/agents/knowledge/)
 
 ## For Coding Agents
 

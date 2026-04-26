@@ -2,7 +2,12 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const repoRoot = new URL('../..', import.meta.url).pathname
-const sourceRoots = [join(repoRoot, 'plugins'), join(repoRoot, 'src'), join(repoRoot, 'packages')]
+const sourceRoots = [
+  join(repoRoot, 'plugins'),
+  join(repoRoot, 'src'),
+  join(repoRoot, 'packages'),
+  join(repoRoot, 'scripts/lib'),
+]
 
 function walkFiles(dir: string, files: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -32,14 +37,18 @@ export interface ExecTool {
 
 export function extractExecTools(): ExecTool[] {
   const tools: ExecTool[] = []
+  const seen = new Set<string>()
   for (const file of sourceFiles()) {
     const text = readFileSync(file, 'utf8')
     const lines = text.split('\n')
     for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].includes('registerExecTool')) continue
+      if (!lines[i].includes('registerExecTool') && !lines[i].includes('addExecTool')) continue
       const block = lines.slice(i, Math.min(lines.length, i + 35)).join('\n')
       const name = block.match(/name:\s*['"`]([^'"`]+)['"`]/)?.[1]
       if (!name) continue
+      const key = `${name}:${file}:${i}`
+      if (seen.has(key)) continue
+      seen.add(key)
       const description = block.match(/description:\s*['"`]([^'"`]+)['"`]/)?.[1]
       tools.push({ name, description, file: relativeSource(file), line: i + 1 })
     }
