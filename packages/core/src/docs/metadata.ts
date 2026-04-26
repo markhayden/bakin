@@ -54,6 +54,8 @@ export interface CliCommandContract extends ContractMetadata {
   kind: 'cli'
   name: string
   usage: string
+  group?: string
+  aliases?: string[]
   options?: Array<{
     name: string
     description: string

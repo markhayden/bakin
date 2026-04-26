@@ -16,57 +16,9 @@
  *   2 — refusal (e.g. core-plugin removal)
  */
 import { APP_VERSION } from '../../packages/core/src/constants'
+import { renderCliUsage } from './cli/registry'
 
 const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
-
-const USAGE = `Usage: bakin <command> [options]
-
-Lifecycle:
-  start                      Start the Bakin server (default command)
-  stop                       Stop a running Bakin server
-  restart                    Stop + start
-  status                     Show dispatch + server status
-  dev                        Run the watch-mode dev loop (HMR)
-                             — only works from a bakin source tree
-  version                    Print the Bakin version
-  update                     Replace this binary with the latest release
-  doctor                     Run health checks
-
-Tasks + workflows:
-  dispatch                   Trigger immediate task dispatch
-  tasks {list,get,create,move,log,block,depend,complete}
-  workflows {list,start,step,submit}
-  agents {list,status,tasks,send}
-
-Schedule + messaging:
-  schedule {list,add,pause,resume,run,runs,remove}
-  messaging {list,get,create,update,delete,approve,reject}
-
-Assets + search:
-  trash {list,restore,empty}
-  search <query>
-  search:stats
-  reindex [--table=<name>] [--rebuild]
-
-Plugins:
-  plugins list               List installed plugins
-  plugins install <src>      Install a plugin (local path or github:user/repo)
-  plugins remove <id>        Remove a plugin
-  plugins scaffold <name>    Create a starter plugin in ./<name>/
-
-Setup + config:
-  settings {get,set}
-  setup service              macOS launchd service install/uninstall
-  onboard                    First-time setup (mkdir, settings, checks)
-  init                       Re-run onboarding
-
-  --help, -h                 Show this message
-
-Environment:
-  BAKIN_URL                  Base URL for the running server (default: ${BAKIN_URL})
-  BAKIN_HOME                 Override for ~/.bakin
-  PORT                       Port to bind when \`start\` launches (default: 3737)
-`
 
 async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BAKIN_URL}${path}`, {
@@ -227,7 +179,7 @@ async function cmdUpdate(): Promise<number> {
 }
 
 async function cmdHelp(): Promise<number> {
-  console.log(USAGE)
+  console.log(renderCliUsage({ bakinUrl: BAKIN_URL }))
   return 0
 }
 

@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
+import { CLI_COMMANDS } from '../../src/core/cli/registry'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'apps/docs')
@@ -11,6 +12,57 @@ function writeStableFile(path: string, contents: string): void {
 }
 
 const versionLine = `Docs version: Bakin ${APP_VERSION}`
+
+function renderCliReference(): string {
+  const grouped = new Map<string, typeof CLI_COMMANDS[number][]>()
+  for (const command of CLI_COMMANDS) {
+    const group = command.group ?? 'Commands'
+    if (!grouped.has(group)) grouped.set(group, [])
+    grouped.get(group)!.push(command)
+  }
+
+  const lines = [
+    '---',
+    'title: CLI Reference',
+    'description: Generated reference for public Bakin CLI commands.',
+    '---',
+    '',
+    '# CLI Reference',
+    '',
+    versionLine,
+    '',
+    'This page is generated from `src/core/cli/registry.ts`.',
+    '',
+  ]
+
+  for (const [group, commands] of grouped) {
+    lines.push(`## ${group}`, '')
+    for (const command of commands) {
+      lines.push(`### \`${command.usage}\``, '')
+      lines.push(command.description, '')
+      lines.push(`- Visibility: \`${command.visibility}\``)
+      lines.push(`- Stability: \`${command.stability}\``)
+      if (command.aliases?.length) lines.push(`- Aliases: ${command.aliases.map(a => `\`${a}\``).join(', ')}`)
+      if (command.examples?.length) {
+        lines.push('', 'Example:', '')
+        const example = command.examples[0]
+        if (example.code) {
+          lines.push('```sh', example.code, '```', '')
+        }
+        lines.push(`Example test mode: \`${example.test ?? 'unspecified'}\``)
+        if (example.reason) lines.push(`Reason: ${example.reason}`)
+      }
+      lines.push('')
+    }
+  }
+
+  return lines.join('\n')
+}
+
+writeStableFile(
+  join(docsRoot, 'src/content/docs/reference/generated/cli.md'),
+  renderCliReference(),
+)
 
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/coverage.md'),
@@ -29,7 +81,7 @@ The current scaffold establishes the public coverage contract. The next implemen
 
 | Surface | Launch requirement | Current status |
 | --- | --- | --- |
-| CLI commands | Structured registry, examples, docs metadata | Planned |
+| CLI commands | Structured registry, examples, docs metadata | Active: ${CLI_COMMANDS.length} commands |
 | HTTP routes | Zod input schemas, examples, visibility, stability | Planned |
 | Plugin routes | Same contract as HTTP routes | Planned |
 | Hooks | Contract objects, kind, schemas, examples | Planned |
@@ -103,6 +155,7 @@ Canonical docs: https://docs.makinbakin.com/
 - Agent authoring: /llms/agent-authoring.md
 - SDK reference: /llms/sdk-reference.md
 - API reference: /llms/api.md
+- CLI reference: /reference/generated/cli/
 
 ## Fetch Examples
 
@@ -129,6 +182,10 @@ const bundles = {
   'api.md': {
     title: 'Bakin API Reference',
     body: 'HTTP API docs are generated from docs-aware route definitions. Public inputs are validated with Zod at runtime. Structured outputs are validated in tests, docs generation, or development checks where practical.',
+  },
+  'cli.md': {
+    title: 'Bakin CLI Reference',
+    body: `The CLI reference is generated from src/core/cli/registry.ts. Current public command count: ${CLI_COMMANDS.length}. Help output and generated docs use the same registry.`,
   },
 }
 
