@@ -25,11 +25,18 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'fs'
 import { join, dirname } from 'path'
 import { createLogger } from '../logger'
 import { getOpenClawPath } from '../../../packages/core/src/openclaw-home'
+import {
+  type PluginLockfile,
+  readPluginLockfile,
+  updatePlugin,
+  writePluginLockfile,
+} from '../../../packages/core/src/plugins/lockfile'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
 const log = createLogger('onboarding:plugin-assets')
@@ -74,8 +81,13 @@ function sha256OfFile(path: string): string {
 /**
  * Walk a plugin's `defaults/openclaw-skills/*` directories and return
  * one entry per skill that has a `SKILL.md`. Skills are 1 directory deep.
+ *
+ * Exported so install + upgrade flows can record `installedSkills` into
+ * the lockfile (#119 hardening) — the lockfile becomes the canonical
+ * record of which skills each plugin installed, so the uninstall flow
+ * doesn't have to trust on-disk `.installedBy` markers blindly.
  */
-function findSkillsForPlugin(plugin: PluginEntry): Array<{ name: string; sourceDir: string }> {
+export function findSkillsForPlugin(plugin: PluginEntry): Array<{ name: string; sourceDir: string }> {
   const skillsRoot = join(plugin.path, 'defaults', 'openclaw-skills')
   if (!existsSync(skillsRoot)) return []
   const entries = readdirSync(skillsRoot, { withFileTypes: true })
@@ -191,6 +203,13 @@ export function installPluginAssets(plugins: PluginEntry[]): InstallReport {
       log.info('Installed plugin skill', { name: skill.name, pluginId: plugin.id })
     }
   }
+
+  // Sync lockfile installedSkills with what we just laid down. Without
+  // this, skills installed via `bakin install plugin-assets` (the
+  // onboarding component) would never appear in the lockfile allowlist
+  // — and the C14 uninstall flow would silently leave them as orphans
+  // because they wouldn't be in any plugin's `installedSkills`.
+  syncLockfileInstalledSkills(plugins)
 
   return report
 }
@@ -310,4 +329,154 @@ export const pluginAssetsComponent: OnboardingComponent = {
   name: 'plugin-assets',
   check,
   install,
+}
+
+/**
+ * Reconcile the lockfile's per-plugin `installedSkills` field with what's
+ * actually in `defaults/openclaw-skills/` for each plugin entry. Best-
+ * effort — failures are logged but never throw. Called from
+ * `installPluginAssets` so the onboarding-driven install path keeps the
+ * lockfile in sync with what was projected to `~/.openclaw/skills/`.
+ *
+ * Only touches lockfile entries that ALREADY exist (i.e., user plugins
+ * that were installed via `bakin plugins install`). Core plugins have no
+ * lockfile entry; they're skipped.
+ *
+ * Static-import (not lazy `require`) so test mocks targeting the
+ * lockfile module actually intercept these calls. The previous lazy
+ * require silently bypassed `mock.module` and the function ran against
+ * the real production code path during tests — which then tripped the
+ * content-dir safety guard and silently aborted via the swallow-all
+ * catch below. The "circular import" the lazy form claimed to dodge
+ * doesn't actually exist (lockfile only depends on content-dir).
+ */
+export function syncLockfileInstalledSkills(plugins: PluginEntry[]): void {
+  let lock: PluginLockfile
+  try {
+    lock = readPluginLockfile()
+  } catch (err) {
+    log.warn('syncLockfileInstalledSkills: lockfile read failed', { err: String(err) })
+    return
+  }
+  let mutated = false
+  for (const plugin of plugins) {
+    if (!lock.plugins[plugin.id]) continue
+    const skillNames = findSkillsForPlugin(plugin).map(s => s.name).sort()
+    const current = (lock.plugins[plugin.id].installedSkills ?? []).slice().sort()
+    if (skillNames.length === current.length && skillNames.every((n, i) => n === current[i])) continue
+    try {
+      lock = updatePlugin(lock, plugin.id, { installedSkills: skillNames })
+      mutated = true
+    } catch (err) {
+      log.warn('syncLockfileInstalledSkills: updatePlugin failed', { id: plugin.id, err: String(err) })
+    }
+  }
+  if (mutated) {
+    try {
+      writePluginLockfile(lock)
+    } catch (err) {
+      log.warn('syncLockfileInstalledSkills: write failed', { err: String(err) })
+    }
+  }
+}
+
+// ─── Removal (#119) ──────────────────────────────────────────────────────────
+
+export interface PluginAssetsRemovalPlan {
+  /** Absolute paths of skill dirs that will be removed. */
+  toRemove: string[]
+  /** Absolute paths of skill dirs left in place because of `.userEdited`. */
+  toKeep: string[]
+  /**
+   * Skills that the lockfile says this plugin installed but which are
+   * not present (or no longer carry the matching .installedBy marker).
+   * Surfaced for diagnostics; not deleted.
+   */
+  missingFromDisk: string[]
+}
+
+/**
+ * Walk `~/.openclaw/skills/` and partition skills owned by `pluginId`
+ * into "remove" vs "keep" (`.userEdited` locked).
+ *
+ * `ownedSkills` is the authoritative allowlist — the set of skill names
+ * the LOCKFILE recorded this plugin installed at install/upgrade time.
+ * A skill dir is only removable if it appears in BOTH the allowlist AND
+ * carries a matching `.installedBy.pluginId` marker.
+ *
+ * This defeats the fake-marker scorched-earth attack (security HIGH #2):
+ * a malicious plugin that writes `{pluginId: "evil"}` into a victim's
+ * `.installedBy` cannot trick uninstall into deleting the victim's
+ * skills, because the lockfile entry for "evil" never recorded
+ * ownership of them.
+ */
+export function planPluginAssetsRemoval(
+  pluginId: string,
+  ownedSkills: readonly string[],
+): PluginAssetsRemovalPlan {
+  const skillsRoot = getOpenClawPath('skills')
+  const plan: PluginAssetsRemovalPlan = { toRemove: [], toKeep: [], missingFromDisk: [] }
+  if (!existsSync(skillsRoot)) {
+    plan.missingFromDisk.push(...ownedSkills)
+    return plan
+  }
+  const onDisk = new Set(
+    readdirSync(skillsRoot, { withFileTypes: true })
+      .filter(e => e.isDirectory())
+      .map(e => e.name),
+  )
+  for (const skillName of ownedSkills) {
+    if (!onDisk.has(skillName)) {
+      plan.missingFromDisk.push(skillName)
+      continue
+    }
+    const skillDir = join(skillsRoot, skillName)
+    const marker = readMarker(skillDir)
+    if (!marker || marker.pluginId !== pluginId) {
+      // Lockfile claims ownership but the on-disk marker disagrees —
+      // either the plugin lost ownership (manual edit) or another plugin
+      // overwrote it. Don't delete; surface as missing so operators can
+      // investigate.
+      plan.missingFromDisk.push(skillName)
+      continue
+    }
+    if (existsSync(join(skillDir, '.userEdited'))) {
+      plan.toKeep.push(skillDir)
+    } else {
+      plan.toRemove.push(skillDir)
+    }
+  }
+  return plan
+}
+
+/**
+ * Tear down OpenClaw skills owned by `pluginId`. Skips any skill with a
+ * `.userEdited` sentinel and reports counts. Used by
+ * `bakin plugins remove` (#119).
+ *
+ * `ownedSkills` is the lockfile-recorded allowlist — see
+ * `planPluginAssetsRemoval` for the authority model.
+ */
+export async function removePluginAssets(
+  pluginId: string,
+  ownedSkills: readonly string[],
+): Promise<{
+  removed: number
+  kept: number
+  removedDirs: string[]
+  keptDirs: string[]
+  missingFromDisk: string[]
+}> {
+  const plan = planPluginAssetsRemoval(pluginId, ownedSkills)
+  for (const dir of plan.toRemove) {
+    rmSync(dir, { recursive: true, force: true })
+    log.info('Removed OpenClaw skill on plugin uninstall', { dir, pluginId })
+  }
+  return {
+    removed: plan.toRemove.length,
+    kept: plan.toKeep.length,
+    removedDirs: plan.toRemove,
+    keptDirs: plan.toKeep,
+    missingFromDisk: plan.missingFromDisk,
+  }
 }

@@ -1,0 +1,597 @@
+/**
+ * Plugin upgrade orchestration (commit C4).
+ *
+ * `upgradePlugin(id, opts)` re-pulls a user plugin from its recorded source
+ * (github fast-forward or local re-cpSync), rebuilds it via buildUserPlugin,
+ * and updates the lockfile entry. No-op detection short-circuits when there
+ * are no changes to apply.
+ *
+ * Consent for permission widening is detected here but the prompt itself
+ * lands in C9 — for now, callers receive `awaitingConsent: true` with the
+ * diff and decide what to do (CLI surfaces a placeholder; --yes overrides).
+ *
+ * Hot reload is out of scope (decision 13). On success, the caller is
+ * expected to surface the spec'd "Restart Bakin to activate the change"
+ * message.
+ */
+import { existsSync, readFileSync, readdirSync, statSync, cpSync, rmSync } from 'fs'
+import { join, relative } from 'path'
+import { execFileSync, type ExecFileSyncOptions } from 'child_process'
+import { createHash } from 'crypto'
+import { getContentDir } from '@/core/content-dir'
+import { createLogger } from '@/core/logger'
+import { isCorePlugin } from '@/lib/plugin-registry'
+import { appendAudit } from '@/core/audit'
+import {
+  type PluginLockEntry,
+  readPluginLockfile,
+  updatePlugin,
+  writePluginLockfile,
+} from '@bakin/core/plugins/lockfile'
+import { parseManifestPermissions, type Permission } from '@bakin/core/plugins/permissions'
+import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
+import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
+
+const log = createLogger('plugin-upgrade')
+
+export interface UpgradeOptions {
+  /** Skip consent prompt even when permissions widen. */
+  yes?: boolean
+}
+
+export interface UpgradeResult {
+  id: string
+  before: { version: string; commitSha: string }
+  after: { version: string; commitSha: string }
+  /** True when nothing changed and no rebuild ran. */
+  noop: boolean
+  /** Permissions present in the new manifest that weren't in the lockfile entry. */
+  newPermissions: string[]
+  /**
+   * True when the new manifest declares permissions not present in the
+   * lockfile entry AND the caller did not pass `--yes`. Caller is expected
+   * to surface a consent prompt (C9) and re-invoke with `yes: true` once
+   * the user accepts.
+   */
+  awaitingConsent: boolean
+}
+
+/** Tag for refusal errors so the API layer can map them to HTTP 400. */
+export class UpgradeRefusedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'UpgradeRefusedError'
+  }
+}
+
+/**
+ * Append a `plugin.upgrade.rejected` audit entry with `kind: 'security'`
+ * for forensic-trail symmetry with `auditInstallRejected` in install.ts.
+ * Best-effort — never throws. C24's docs claim "install/upgrade/remove
+ * security events all carry kind:'security'", which only matched code
+ * for install + remove until this lands.
+ */
+function auditUpgradeRejected(reason: string, pluginId: string, extra: Record<string, unknown> = {}): void {
+  try {
+    appendAudit(getContentDir(), 'plugin.upgrade.rejected', 'system', {
+      kind: 'security',
+      reason,
+      pluginId,
+      ...extra,
+    }, 'system')
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Run an external command and return stdout. Wraps execFileSync so the
+ * caller doesn't have to repeat the `stdio` boilerplate. maxBuffer caps
+ * the output at 10MB so a malicious git server can't OOM us by streaming
+ * unbounded data.
+ */
+function run(cmd: string, args: string[], cwd: string): string {
+  const opts: ExecFileSyncOptions = {
+    cwd,
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+    maxBuffer: 10 * 1024 * 1024,
+  }
+  return execFileSync(cmd, args, opts).toString().trim()
+}
+
+/**
+ * Hash a directory's path+content tree (skipping node_modules / dist / .git).
+ * Path-and-content only — mtimes intentionally excluded so the hash is
+ * stable across copies of the same source. Captured as decision in
+ * .claude/specs/plugin-lifecycle-plan.md C4 OPEN QUESTION.
+ */
+export function computeSourceTreeSha(rootDir: string): string {
+  const SKIP = new Set(['node_modules', 'dist', '.git'])
+  const files: Array<{ rel: string; data: Buffer }> = []
+  function walk(dir: string): void {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (SKIP.has(entry.name)) continue
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(full)
+      } else if (entry.isFile()) {
+        const data = readFileSync(full)
+        files.push({ rel: relative(rootDir, full), data })
+      }
+    }
+  }
+  if (statSync(rootDir).isDirectory()) walk(rootDir)
+  files.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0))
+  const hash = createHash('sha256')
+  for (const f of files) {
+    hash.update(f.rel)
+    hash.update('\0')
+    hash.update(f.data)
+    hash.update('\0')
+  }
+  return hash.digest('hex')
+}
+
+function readManifest(pluginDir: string): { manifest: Record<string, unknown>; manifestSha: string } {
+  const path = join(pluginDir, 'bakin-plugin.json')
+  if (!existsSync(path)) {
+    throw new Error(`Plugin source missing bakin-plugin.json at ${path}`)
+  }
+  const raw = readFileSync(path)
+  const manifest = JSON.parse(raw.toString('utf-8'))
+  const manifestSha = createHash('sha256').update(raw).digest('hex')
+  return { manifest, manifestSha }
+}
+
+/**
+ * Read the manifest at `<ref>:bakin-plugin.json` from the cloned git repo
+ * without touching the working tree. Used by the github upgrade flow to
+ * inspect the remote manifest BEFORE fast-forwarding so the consent gate
+ * can short-circuit cleanly when permissions widen.
+ *
+ * `git show <ref>:<path>` writes the file content to stdout — we capture
+ * it and compute the manifestSha from the bytes. Identical to what
+ * `readManifest` would compute after a checkout.
+ */
+function readRemoteManifest(pluginDir: string, ref: string): { manifest: Record<string, unknown>; manifestSha: string } {
+  const raw = run('git', ['show', `origin/${ref}:bakin-plugin.json`], pluginDir)
+  if (!raw) {
+    throw new UpgradeRefusedError(`origin/${ref} has no bakin-plugin.json`)
+  }
+  let manifest: Record<string, unknown>
+  try {
+    manifest = JSON.parse(raw)
+  } catch (err) {
+    throw new UpgradeRefusedError(
+      `origin/${ref}/bakin-plugin.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+  const manifestSha = createHash('sha256').update(raw, 'utf-8').digest('hex')
+  return { manifest, manifestSha }
+}
+
+function manifestPermissions(manifest: Record<string, unknown>, id: string): Permission[] {
+  try {
+    return parseManifestPermissions(manifest.permissions)
+  } catch (err) {
+    throw new UpgradeRefusedError(
+      `${id}: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+}
+
+/**
+ * Refuse an upgrade if the new manifest's id doesn't match the lockfile-
+ * recorded id. Otherwise a plugin can rename itself across an upgrade —
+ * a user plugin `foo` that ships a new manifest declaring `"id": "tasks"`
+ * would, after restart, get activated under `tasks` via the user-plugin
+ * override path and silently impersonate the core tasks plugin.
+ */
+function assertManifestIdStable(manifest: Record<string, unknown>, id: string): void {
+  const manifestId = typeof manifest.id === 'string' ? manifest.id : ''
+  if (manifestId !== id) {
+    auditUpgradeRejected('manifest_id_rename', id, { newManifestId: manifestId })
+    throw new UpgradeRefusedError(
+      `${id}: upgraded manifest declares id "${manifestId}" — plugins cannot rename across upgrades. Remove and reinstall as the new id if intentional.`,
+    )
+  }
+}
+
+function manifestVersion(manifest: Record<string, unknown>, fallback: string): string {
+  if (typeof manifest.version === 'string' && manifest.version.length > 0) {
+    return manifest.version
+  }
+  log.warn('plugin manifest missing version on upgrade; keeping previous', { fallback })
+  return fallback
+}
+
+/** Permissions present in `next` that weren't in `prev` — used for consent diff. */
+function diffNewPermissions(prev: string[], next: string[]): string[] {
+  const prevSet = new Set(prev)
+  return next.filter(p => !prevSet.has(p))
+}
+
+// ─── Upgrade-available detection (C5) ────────────────────────────────────────
+
+export interface UpgradeAvailability {
+  id: string
+  upgradeAvailable: boolean
+  /** ISO timestamp recorded into the lockfile alongside the result. */
+  lastChecked: string
+  /** Github only — last seen remote HEAD sha. */
+  remoteHeadSha?: string
+  /** Local only — last seen source tree sha. */
+  sourceTreeSha?: string
+  /** Set when the check itself failed (e.g. network error, missing source). */
+  error?: string
+}
+
+/**
+ * Read-only probe for one plugin — no lockfile write. Used by the batched
+ * `runChecks` so a parallel sweep can collect every result and write the
+ * lockfile ONCE at the end. Otherwise concurrent read-modify-write on a
+ * single file races and silently drops half the updates.
+ */
+async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvailability> {
+  const lastChecked = new Date().toISOString()
+  try {
+    if (entry.type === 'github') {
+      if (!entry.source || !entry.ref) {
+        return { id, upgradeAvailable: false, lastChecked, error: 'lockfile missing source/ref' }
+      }
+      const remoteUrl = githubCloneUrl(entry.source)
+      // `--` ends git option parsing — even though source + ref are
+      // Zod-validated to safe shapes, this is a cheap second line of defense.
+      const lsRemote = run('git', ['ls-remote', '--', remoteUrl, entry.ref], getContentDir())
+      const remoteHeadSha = (lsRemote.split(/\s+/)[0] ?? '').trim().toLowerCase()
+      if (!remoteHeadSha) {
+        return { id, upgradeAvailable: false, lastChecked, error: `no remote ref: ${entry.ref}` }
+      }
+      return {
+        id,
+        upgradeAvailable: remoteHeadSha !== entry.commitSha,
+        lastChecked,
+        remoteHeadSha,
+      }
+    }
+
+    if (!existsSync(entry.source)) {
+      return { id, upgradeAvailable: false, lastChecked, error: `source path missing: ${entry.source}` }
+    }
+    const liveTreeSha = computeSourceTreeSha(entry.source)
+    return {
+      id,
+      upgradeAvailable: entry.sourceTreeSha ? liveTreeSha !== entry.sourceTreeSha : true,
+      lastChecked,
+      sourceTreeSha: liveTreeSha,
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { id, upgradeAvailable: false, lastChecked, error: message }
+  }
+}
+
+/**
+ * Check whether an upgrade is available for an installed plugin and persist
+ * the freshness markers (`lastChecked` + `remoteHeadSha`/`sourceTreeSha`)
+ * into the lockfile. Used by `bakin plugins list --check` for single-plugin
+ * checks. Concurrent callers should prefer `runChecks` to avoid races.
+ *
+ * Network/fs errors are caught and returned in the `error` field so one
+ * plugin's failure doesn't blank the whole list.
+ */
+export async function checkUpgradeAvailable(id: string): Promise<UpgradeAvailability> {
+  const entry = readPluginLockfile().plugins[id]
+  if (!entry) {
+    return {
+      id,
+      upgradeAvailable: false,
+      lastChecked: new Date().toISOString(),
+      error: 'no lockfile entry',
+    }
+  }
+  const result = await probeOne(entry, id)
+  // Single-plugin path still serializes via one read-modify-write call —
+  // safe because there's no parallelism here.
+  if (!result.error) {
+    const patch: Partial<PluginLockEntry> = { lastChecked: result.lastChecked }
+    if (result.remoteHeadSha) patch.remoteHeadSha = result.remoteHeadSha
+    if (result.sourceTreeSha) patch.lastSourceTreeSha = result.sourceTreeSha
+    writePluginLockfile(updatePlugin(readPluginLockfile(), id, patch))
+  }
+  return result
+}
+
+/**
+ * Run the `--check` probe for many plugins in parallel and write the
+ * lockfile ONCE with all updates. The previous shape (each probe
+ * read-modify-writes the lockfile) raced under Promise.all and silently
+ * dropped about half the updates with 10 plugins.
+ *
+ * Errors per plugin are surfaced in the result's `error` field — a single
+ * plugin's failure does NOT block other updates from landing.
+ */
+export async function runChecks(ids: readonly string[]): Promise<UpgradeAvailability[]> {
+  const initial = readPluginLockfile()
+  const results: UpgradeAvailability[] = await Promise.all(
+    ids.map(async id => {
+      const entry = initial.plugins[id]
+      if (!entry) {
+        return {
+          id,
+          upgradeAvailable: false,
+          lastChecked: new Date().toISOString(),
+          error: 'no lockfile entry',
+        }
+      }
+      return probeOne(entry, id)
+    }),
+  )
+
+  // Re-read to pick up any concurrent install/remove that happened
+  // between the initial read and now (rare but possible). Apply every
+  // probe's update to that fresh baseline, then write once.
+  let lock = readPluginLockfile()
+  for (const r of results) {
+    if (r.error) continue
+    if (!lock.plugins[r.id]) continue
+    const patch: Partial<PluginLockEntry> = { lastChecked: r.lastChecked }
+    if (r.remoteHeadSha) patch.remoteHeadSha = r.remoteHeadSha
+    if (r.sourceTreeSha) patch.lastSourceTreeSha = r.sourceTreeSha
+    lock = updatePlugin(lock, r.id, patch)
+  }
+  writePluginLockfile(lock)
+  return results
+}
+
+/**
+ * Resolve a stored install source string into a git-clone-friendly URL.
+ * Mirror of the parsing in `install.ts` — extracted here so `git ls-remote`
+ * for upgrade-available checks accepts the same shorthand the user typed.
+ */
+function githubCloneUrl(source: string): string {
+  const stripped = source.startsWith('github:') ? source.slice(7) : source
+  // Anything that already looks like a complete URL (http(s)://, git@host:,
+  // ssh://, file://, etc.) passes through. Only the bare `user/repo`
+  // shorthand gets the github.com prefix.
+  if (
+    stripped.startsWith('http://') ||
+    stripped.startsWith('https://') ||
+    stripped.startsWith('git@') ||
+    stripped.startsWith('ssh://') ||
+    stripped.startsWith('file://')
+  ) {
+    return stripped
+  }
+  return `https://github.com/${stripped}.git`
+}
+
+/**
+ * Upgrade an installed user plugin in-place. Returns a structured result so
+ * callers (CLI, API endpoint) can render the right message and decide
+ * whether to re-prompt for permission consent.
+ */
+export async function upgradePlugin(
+  id: string,
+  opts: UpgradeOptions = {},
+): Promise<UpgradeResult> {
+  if (isCorePlugin(id)) {
+    auditUpgradeRejected('core_plugin', id)
+    throw new UpgradeRefusedError(
+      `cannot upgrade core plugin: ${id}. Core plugins ship with Bakin and are managed via the binary itself.`,
+    )
+  }
+
+  const lock = readPluginLockfile()
+  const entry = lock.plugins[id]
+  if (!entry) {
+    throw new UpgradeRefusedError(
+      `plugin "${id}" is not installed (no lockfile entry). Install it first with: bakin plugins install <source>`,
+    )
+  }
+
+  const pluginsRoot = join(getContentDir(), 'plugins')
+  const pluginDir = join(pluginsRoot, id)
+  if (!existsSync(pluginDir)) {
+    throw new UpgradeRefusedError(
+      `plugin "${id}" lockfile entry exists but ~/.bakin/plugins/${id}/ is missing. Reinstall.`,
+    )
+  }
+
+  const before = { version: entry.version, commitSha: entry.commitSha }
+
+  if (entry.type === 'github') {
+    return upgradeGithub(id, entry, pluginDir, opts, before)
+  }
+  return upgradeLocal(id, entry, pluginDir, opts, before)
+}
+
+async function upgradeGithub(
+  id: string,
+  entry: PluginLockEntry,
+  pluginDir: string,
+  opts: UpgradeOptions,
+  before: { version: string; commitSha: string },
+): Promise<UpgradeResult> {
+  if (!entry.ref) {
+    throw new UpgradeRefusedError(
+      `${id}: lockfile is missing the git ref. Reinstall.`,
+    )
+  }
+
+  // Pin `origin` to the lockfile-recorded source URL BEFORE fetching.
+  // Otherwise a malicious already-activated plugin can rewrite its own
+  // `.git/config` `origin` to point at attacker.com and the next user-
+  // initiated upgrade silently pulls + builds attacker code (no consent
+  // prompt fires when permissions are unchanged). The lockfile is the
+  // source of truth for what the user originally installed; reset every
+  // time so any in-place tampering is overridden.
+  const expectedUrl = githubCloneUrl(entry.source)
+  run('git', ['remote', 'set-url', 'origin', '--', expectedUrl], pluginDir)
+
+  // Read-only fetch — updates `.git/` but does not touch the working tree.
+  // This lets us inspect the remote manifest before deciding whether to
+  // commit the upgrade (consent gate runs against the remote state, not a
+  // post-mutation working tree).
+  run('git', ['fetch', 'origin', '--', entry.ref], pluginDir)
+
+  const remoteSha = run('git', ['rev-parse', `origin/${entry.ref}`], pluginDir).toLowerCase()
+  const localSha = run('git', ['rev-parse', 'HEAD'], pluginDir).toLowerCase()
+
+  // True noop — local HEAD already matches remote AND lockfile commitSha
+  // is in sync. Nothing on disk or in the lockfile needs to change.
+  if (localSha === remoteSha && entry.commitSha === remoteSha) {
+    return {
+      id,
+      before,
+      after: before,
+      noop: true,
+      newPermissions: [],
+      awaitingConsent: false,
+    }
+  }
+
+  // Read the remote manifest WITHOUT mutating the working tree. Consent gate
+  // runs against this. If the user declines, no disk change happens.
+  const { manifest, manifestSha } = readRemoteManifest(pluginDir, entry.ref)
+  assertManifestIdStable(manifest, id)
+  const newVersion = manifestVersion(manifest, entry.version)
+  const newPerms = manifestPermissions(manifest, id)
+  const widened = diffNewPermissions(entry.permissions, newPerms)
+
+  if (widened.length > 0 && !opts.yes) {
+    // Consent required — exit BEFORE mutating disk or lockfile.
+    return {
+      id,
+      before,
+      after: { version: newVersion, commitSha: remoteSha },
+      noop: false,
+      newPermissions: widened,
+      awaitingConsent: true,
+    }
+  }
+
+  // Consent accepted (or unnecessary). Now safe to mutate working tree.
+  // The merge-base check inside the helper still defends against a force-push
+  // that landed between fetch and merge.
+  if (localSha !== remoteSha) {
+    try {
+      execFileSync('git', ['merge-base', '--is-ancestor', localSha, remoteSha], {
+        cwd: pluginDir,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        maxBuffer: 10 * 1024 * 1024,
+      })
+    } catch {
+      auditUpgradeRejected('force_push_detected', id, {
+        ref: entry.ref,
+        localSha,
+        remoteSha,
+      })
+      throw new UpgradeRefusedError(
+        `${id}: cannot fast-forward (remote history rewritten?). Remove and reinstall.`,
+      )
+    }
+    run('git', ['merge', '--ff-only', `origin/${entry.ref}`], pluginDir)
+  }
+
+  await buildUserPlugin(pluginDir)
+
+  const installedSkills = findSkillsForPlugin({ id, path: pluginDir }).map(s => s.name)
+
+  const updated = updatePlugin(readPluginLockfile(), id, {
+    upgradedAt: new Date().toISOString(),
+    version: newVersion,
+    commitSha: remoteSha,
+    manifestSha,
+    permissions: newPerms,
+    installedSkills,
+  })
+  writePluginLockfile(updated)
+
+  return {
+    id,
+    before,
+    after: { version: newVersion, commitSha: remoteSha },
+    noop: false,
+    newPermissions: widened,
+    awaitingConsent: false,
+  }
+}
+
+async function upgradeLocal(
+  id: string,
+  entry: PluginLockEntry,
+  pluginDir: string,
+  opts: UpgradeOptions,
+  before: { version: string; commitSha: string },
+): Promise<UpgradeResult> {
+  const sourcePath = entry.source
+  if (!existsSync(sourcePath)) {
+    throw new UpgradeRefusedError(
+      `Original source path ${sourcePath} no longer exists. Reinstall with: bakin plugins install <new-path>`,
+    )
+  }
+
+  const newTreeSha = computeSourceTreeSha(sourcePath)
+  if (entry.sourceTreeSha && entry.sourceTreeSha === newTreeSha) {
+    return {
+      id,
+      before,
+      after: before,
+      noop: true,
+      newPermissions: [],
+      awaitingConsent: false,
+    }
+  }
+
+  // Read the source manifest WITHOUT mutating the plugin dir. Consent gate
+  // runs against the source state. If the user declines, the on-disk plugin
+  // (and its lockfile entry) stays exactly where it was.
+  const { manifest, manifestSha } = readManifest(sourcePath)
+  assertManifestIdStable(manifest, id)
+  const newVersion = manifestVersion(manifest, entry.version)
+  const newPerms = manifestPermissions(manifest, id)
+  const widened = diffNewPermissions(entry.permissions, newPerms)
+
+  if (widened.length > 0 && !opts.yes) {
+    // Consent required — exit BEFORE mutating disk or lockfile.
+    return {
+      id,
+      before,
+      after: { version: newVersion, commitSha: '' },
+      noop: false,
+      newPermissions: widened,
+      awaitingConsent: true,
+    }
+  }
+
+  // Consent accepted (or unnecessary). Now safe to wipe + re-copy the
+  // plugin dir. Wipe first so deletions in the source are reflected
+  // (plain cpSync would only overlay, leaving stale files).
+  rmSync(pluginDir, { recursive: true, force: true })
+  cpSync(sourcePath, pluginDir, { recursive: true, dereference: false })
+
+  await buildUserPlugin(pluginDir)
+
+  const installedSkills = findSkillsForPlugin({ id, path: pluginDir }).map(s => s.name)
+
+  const updated = updatePlugin(readPluginLockfile(), id, {
+    upgradedAt: new Date().toISOString(),
+    version: newVersion,
+    manifestSha,
+    permissions: newPerms,
+    sourceTreeSha: newTreeSha,
+    installedSkills,
+  })
+  writePluginLockfile(updated)
+
+  return {
+    id,
+    before,
+    after: { version: newVersion, commitSha: '' },
+    noop: false,
+    newPermissions: widened,
+    awaitingConsent: false,
+  }
+}

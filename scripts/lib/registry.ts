@@ -48,6 +48,23 @@ export function getExecTool(name: string): ExecToolDefinition | undefined {
   return execTools.get(name)
 }
 
+/**
+ * Remove every exec tool whose name starts with `bakin_exec_<pluginId>_`.
+ * Used by `bakin plugins remove` (#119) to tear down a plugin's MCP tools
+ * before deleting its files. Returns the number removed.
+ */
+export function removeExecToolsByPlugin(pluginId: string): number {
+  const prefix = `bakin_exec_${pluginId}_`
+  let removed = 0
+  for (const name of [...execTools.keys()]) {
+    if (name.startsWith(prefix)) {
+      execTools.delete(name)
+      removed++
+    }
+  }
+  return removed
+}
+
 // ---------------------------------------------------------------------------
 // Plugin tool context
 // ---------------------------------------------------------------------------
