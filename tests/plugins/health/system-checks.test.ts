@@ -59,9 +59,53 @@ mock.module('../../../src/core/mcporter', () => ({
   syncConfig: () => { syncConfigCalls++; return ['updated'] },
 }))
 
+let mockGatewayPing = async () => true
+let mockGatewayPingThrows: Error | null = null
+mock.module('../../../src/core/openclaw-client', () => ({
+  ping: async () => {
+    if (mockGatewayPingThrows) throw mockGatewayPingThrows
+    return mockGatewayPing()
+  },
+  sendMessage: mock(),
+}))
+
+let mockAntflyEnabled = false
+let mockAntflyUrl = 'http://127.0.0.1:8765/api/v1'
+let mockAntflyInstalled = true
+mock.module('../../../src/core/antfly-server', () => ({
+  installed: () => mockAntflyInstalled,
+}))
+
+const realFetch = globalThis.fetch
+let mockFetchOk = true
+let mockFetchHealth = 'green'
+function installMockFetch() {
+  ;(globalThis as { fetch: typeof fetch }).fetch = mock(async () => {
+    if (mockFetchOk) {
+      return new Response(JSON.stringify({ health: mockFetchHealth }), { status: 200 })
+    }
+    return new Response('{}', { status: 503 })
+  }) as unknown as typeof fetch
+}
+function restoreFetch() {
+  ;(globalThis as { fetch: typeof fetch }).fetch = realFetch
+}
+
+// Override settings mock to include antfly subtree (consumed by checkAntfly)
+mock.module('../../../src/core/settings', () => ({
+  getSettings: () => ({
+    service: { enabled: mockServiceEnabled },
+    doctor: { autoFixSkill: mockAutoFix },
+    antfly: { enabled: mockAntflyEnabled, url: mockAntflyUrl },
+  }),
+  resetSettingsCache: () => {},
+}))
+
 import { checkContentDir } from '../../../plugins/health/lib/system-checks/content-dir'
 import { checkService } from '../../../plugins/health/lib/system-checks/service'
 import { checkMcporter } from '../../../plugins/health/lib/system-checks/mcporter'
+import { checkGateway } from '../../../plugins/health/lib/system-checks/gateway'
+import { checkAntfly } from '../../../plugins/health/lib/system-checks/antfly'
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -75,10 +119,19 @@ beforeEach(() => {
   mockAgentEntries = []
   mockStaleEntries = []
   syncConfigCalls = 0
+  mockGatewayPing = async () => true
+  mockGatewayPingThrows = null
+  mockAntflyEnabled = false
+  mockAntflyInstalled = true
+  mockAntflyUrl = 'http://127.0.0.1:8765/api/v1'
+  mockFetchOk = true
+  mockFetchHealth = 'green'
+  restoreFetch()
 })
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
+  restoreFetch()
 })
 
 // ─── checkContentDir ──────────────────────────────────────────────────────
@@ -206,5 +259,88 @@ describe('checkMcporter', () => {
     const results = checkMcporter()
     expect(syncConfigCalls).toBeGreaterThanOrEqual(1)
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Config updated'))).toBe(true)
+  })
+})
+
+// ─── checkGateway ─────────────────────────────────────────────────────────
+
+describe('checkGateway', () => {
+  it('reports ok when ping succeeds', async () => {
+    mockGatewayPing = async () => true
+    const results = await checkGateway()
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toMatch(/reachable/)
+  })
+
+  it('reports error when ping returns false', async () => {
+    mockGatewayPing = async () => false
+    const results = await checkGateway()
+    expect(results[0].status).toBe('error')
+    expect(results[0].message).toMatch(/not responding/)
+  })
+
+  it('reports error when ping throws', async () => {
+    mockGatewayPingThrows = new Error('connection refused')
+    const results = await checkGateway()
+    expect(results[0].status).toBe('error')
+    expect(results[0].message).toMatch(/connection refused/)
+  })
+})
+
+// ─── checkAntfly ──────────────────────────────────────────────────────────
+
+describe('checkAntfly', () => {
+  it('warns when disabled and binary is not installed', async () => {
+    mockAntflyEnabled = false
+    mockAntflyInstalled = false
+    const results = await checkAntfly()
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toMatch(/disabled and binary not installed/)
+  })
+
+  it('reports ok when disabled but the binary is installed', async () => {
+    mockAntflyEnabled = false
+    mockAntflyInstalled = true
+    const results = await checkAntfly()
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toMatch(/Antfly disabled/)
+  })
+
+  it('reports error when enabled but the binary is missing', async () => {
+    mockAntflyEnabled = true
+    mockAntflyInstalled = false
+    const results = await checkAntfly()
+    expect(results[0].status).toBe('error')
+    expect(results[0].message).toMatch(/Antfly enabled but binary not found/)
+  })
+
+  it('reports ok when the daemon responds healthy', async () => {
+    mockAntflyEnabled = true
+    mockAntflyInstalled = true
+    mockFetchOk = true
+    mockFetchHealth = 'green'
+    installMockFetch()
+    try {
+      const results = await checkAntfly()
+      expect(results[0].status).toBe('ok')
+      expect(results[0].message).toMatch(/health: green/)
+    } finally {
+      restoreFetch()
+    }
+  })
+
+  it('reports error when every URL fails', async () => {
+    mockAntflyEnabled = true
+    mockAntflyInstalled = true
+    mockFetchOk = false
+    installMockFetch()
+    try {
+      const results = await checkAntfly()
+      expect(results[0].status).toBe('error')
+      expect(results[0].message).toMatch(/connection failed/)
+    } finally {
+      restoreFetch()
+    }
   })
 })

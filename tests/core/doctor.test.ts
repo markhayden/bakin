@@ -150,13 +150,6 @@ describe('doctor', () => {
     expect(typeof doctor.runDiagnostics).toBe('function')
   })
 
-  it('should report gateway as unreachable', async () => {
-    const doctor = await import('@/core/doctor')
-    const results = await doctor.runDiagnostics(contentDir, tempDir)
-    const gwResults = results.filter(r => r.check === 'gateway')
-    expect(gwResults[0].status).toBe('error')
-  })
-
   describe('plugin-assets section', () => {
     it('reports ok when plugin-assets check returns ok', async () => {
       mockPluginAssetsCheck.mockResolvedValue({
