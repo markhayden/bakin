@@ -361,6 +361,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `registerWorkflow(def, opts?)` | Register a plugin-shipped workflow definition. User definitions in `~/.bakin/workflows/definitions/` always win on collision; cross-plugin id collisions are logged but do not throw out of `activate()`. Same-plugin re-registration is idempotent. |
 | `registerNodeType(def)` | Register a custom xyflow node kind for the workflow canvas (namespaced to `{pluginId}.{kind}`) |
 | `registerNotificationChannel(def)` | Register a notification channel (namespaced to `{pluginId}.{id}`) |
+| `registerHealthCheck(def)` | Register a doctor check (namespaced to `{pluginId}.{id}`). Picked up by `runPluginHealthChecks` in `src/core/doctor.ts`. Per-check try/catch lives in the orchestrator. Deep ref: `.claude/knowledge/doctor-and-health-checks.md`. |
 | `watchFiles(patterns)` | Request file watcher notifications |
 | `getSettings<T>()` | Read this plugin's persisted settings from `plugin-settings/{id}.json` |
 | `updateSettings(patch)` | Merge partial update into settings, persist, notify `onSettingsChange` |

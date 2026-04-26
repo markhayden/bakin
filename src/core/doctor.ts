@@ -1,13 +1,13 @@
 /**
- * Bakin Doctor — health checks, OpenClaw sync, and auto-repair.
- * Runs on startup and on a configurable cadence to keep systems aligned.
+ * Bakin Doctor — orchestration only.
  *
- * Auto-fix policy:
- *   SAFE (auto-fix):   Creating new files, installing/updating skill, making dirs
- *   UNSAFE (notify):   Agent roster mismatches, gateway down, task DB issues,
- *                      anything requiring human judgment
+ * Cron + cache + audit + notify. Every check is plugin-registered via
+ * ctx.registerHealthCheck and contributed through runPluginHealthChecks.
+ * Deep reference: .claude/knowledge/doctor-and-health-checks.md.
  *
- * Unsafe issues are reported to the main agent via OpenClaw so they show up in conversation.
+ * Auto-fix policy is per-check: each plugin reads getSettings().doctor.autoFixSkill
+ * inline. Unsafe issues (warn / error with autoFixable=false) are escalated
+ * to the main agent via OpenClaw so they show up in conversation.
  */
 import { createLogger } from './logger'
 import { getSettings } from './settings'
@@ -16,15 +16,25 @@ import * as openclaw from './openclaw-client'
 import { isOnboarded } from './onboarding/state'
 import { getMainAgentId } from './main-agent'
 import { listHealthChecks } from '../../plugins/health/lib/health-check-registry'
+import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
+
+const log = createLogger('doctor')
+
+let doctorTimer: NodeJS.Timeout | null = null
+let lastDiagnosticResults: HealthCheckResult[] | null = null
+let lastDiagnosticTime: number = 0
+
+// Track what we've already notified about to avoid spamming the main agent
+const notifiedIssues = new Set<string>()
 
 /**
  * Run every plugin-registered health check in parallel. Per-check try/catch
  * isolates failures — a single bad handler yields one synthetic error result
  * and never crashes the doctor sweep. Exported separately from runDiagnostics
- * so the isolation behavior can be tested without mocking every builtin
- * check's dependency tree.
+ * so the isolation behavior can be tested without mocking every plugin's
+ * dependency tree.
  */
-export async function runPluginHealthChecks(): Promise<DiagnosticResult[]> {
+export async function runPluginHealthChecks(): Promise<HealthCheckResult[]> {
   const defs = listHealthChecks()
   const arrays = await Promise.all(
     defs.map(async (def) => {
@@ -44,23 +54,7 @@ export async function runPluginHealthChecks(): Promise<DiagnosticResult[]> {
   return arrays.flat()
 }
 
-const log = createLogger('doctor')
-
-let doctorTimer: NodeJS.Timeout | null = null
-let lastDiagnosticResults: DiagnosticResult[] | null = null
-let lastDiagnosticTime: number = 0
-
-// Track what we've already notified about to avoid spamming the main agent
-const notifiedIssues = new Set<string>()
-
-export interface DiagnosticResult {
-  check: string
-  status: 'ok' | 'warn' | 'error' | 'fixed'
-  message: string
-  autoFixable: boolean
-}
-
-async function notifyUnfixableIssues(results: DiagnosticResult[]): Promise<void> {
+async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void> {
   const issues = results.filter(r =>
     (r.status === 'warn' || r.status === 'error') && !r.autoFixable
   )
@@ -90,8 +84,8 @@ async function notifyUnfixableIssues(results: DiagnosticResult[]): Promise<void>
 
 export async function runDiagnostics(
   contentDir: string,
-  projectRoot: string
-): Promise<DiagnosticResult[]> {
+  _projectRoot: string,
+): Promise<HealthCheckResult[]> {
   const settings = getSettings()
 
   // Gate: if the machine has never been through first-run onboarding and
@@ -108,26 +102,8 @@ export async function runDiagnostics(
     }]
   }
 
-  const results: DiagnosticResult[] = []
+  const results = await runPluginHealthChecks()
 
-  // Migrated checks (live in their owner plugins, picked up via the
-  // plugin-check loop at the end of this function):
-  //   workflows: workflow-skills / workflow-definitions / workflow-instances (#137)
-  //   team: agent-roster / personas / agent-assets (#139 C1)
-  //   tasks: taskboard / task-consistency / order-integrity (#139 C2)
-  //   assets: assets (#139 C3)
-  //   schedule: schedule-sync (#139 C4)
-  //   memory: search-tables (#139 C5)
-  //   health: content-dir / service / mcporter (#139 C6)
-  //   health: gateway / antfly (#139 C7)
-  //   health: orchestrator-rules / skill / plugin-assets (#139 C8)
-  //   health: managed-blocks (#139 C9)
-
-  // Plugin-contributed health checks (#137). Results appended to the same
-  // list as builtins; the UI groups by status so ordering doesn't matter.
-  results.push(...await runPluginHealthChecks())
-
-  // Summarize
   const errors = results.filter(r => r.status === 'error').length
   const warnings = results.filter(r => r.status === 'warn').length
   const fixes = results.filter(r => r.status === 'fixed').length
@@ -145,10 +121,8 @@ export async function runDiagnostics(
     fixes,
   })
 
-  // Notify the main agent about things we can't auto-fix
   await notifyUnfixableIssues(results)
 
-  // Cache results for lightweight reads (e.g. health plugin polling)
   lastDiagnosticResults = results
   lastDiagnosticTime = Date.now()
 
@@ -159,14 +133,12 @@ export async function runDiagnostics(
  * Return the most recent diagnostic results without re-running checks.
  * Returns null if diagnostics have never run.
  */
-export function getLastResults(): { results: DiagnosticResult[]; timestamp: number } | null {
+export function getLastResults(): { results: HealthCheckResult[]; timestamp: number } | null {
   if (!lastDiagnosticResults) return null
   return { results: lastDiagnosticResults, timestamp: lastDiagnosticTime }
 }
 
-// ---------------------------------------------------------------------------
-// Cron
-// ---------------------------------------------------------------------------
+// ─── Cron ─────────────────────────────────────────────────────────────────
 
 export function start(contentDir: string, projectRoot: string): void {
   const settings = getSettings()
