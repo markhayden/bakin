@@ -1,0 +1,14 @@
+{
+  "id": "docs-basic",
+  "name": "Docs Basic",
+  "version": "0.1.0",
+  "bakin": ">=0.1.0",
+  "description": "Minimal plugin used by the public Bakin docs.",
+  "entry": {
+    "server": "index.ts",
+    "client": "client.tsx"
+  },
+  "permissions": [
+    "routes:read"
+  ]
+}

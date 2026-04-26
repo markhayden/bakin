@@ -37,5 +37,8 @@ jobs:
       - name: Typecheck
         run: bunx tsc --noEmit -p tsconfig.app.json
 
+      - name: Docs build
+        run: bun run docs:check
+
       - name: Tests
         run: bun test --isolate

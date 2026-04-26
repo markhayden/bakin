@@ -1,0 +1,118 @@
+---
+title: Core Plugin Catalog
+description: Generated catalog of core plugins shipped with Bakin.
+---
+
+Docs version: Bakin 1.0.0
+
+This page is generated from `plugins/*/bakin-plugin.json` manifests.
+
+## Assets
+
+Centralized content store for all artifacts with rich rendering, search, task linking, manual upload, and clipboard paste
+
+- ID: `assets`
+- Version: `2.0.0`
+- Bakin compatibility: `>=1.0.0`
+- Manifest: `plugins/assets/bakin-plugin.json`
+- Dependencies: `none`
+- Permissions: `storage.read`, `storage.write`, `events.emit`
+
+## Health
+
+System health dashboard — MCP stats, diagnostics, and uptime
+
+- ID: `health`
+- Version: `1.0.0`
+- Bakin compatibility: `>=1.0.0`
+- Manifest: `plugins/health/bakin-plugin.json`
+- Dependencies: `none`
+- Permissions: `storage.read`
+
+## Memory
+
+Observability dashboard over every OpenClaw memory tier plus Bakin's audit log
+
+- ID: `memory`
+- Version: `2.0.0`
+- Bakin compatibility: `>=1.0.0`
+- Manifest: `plugins/memory/bakin-plugin.json`
+- Dependencies: `none`
+- Permissions: `storage.read`, `events.emit`, `openclaw.read`
+
+## Messaging
+
+Content messaging with scheduling, brainstorming, and multi-agent content pipeline
+
+- ID: `messaging`
+- Version: `1.0.0`
+- Bakin compatibility: `>=1.0.0`
+- Manifest: `plugins/messaging/bakin-plugin.json`
+- Dependencies: `tasks`
+- Permissions: `storage.read`, `storage.write`, `events.emit`
+
+## Models
+
+Agent model configuration — per-agent models, aliases, task profiles, available models from Anthropic API
+
+- ID: `models`
+- Version: `2.1.0`
+- Bakin compatibility: `>=1.0.0`
+- Manifest: `plugins/models/bakin-plugin.json`
+- Dependencies: `team`
+- Permissions: `storage.read`, `storage.write`, `events.emit`
+
+## Projects
+
+Project management with specs, checklists, task linking, and agent access via MCP tools
+
+- ID: `projects`
+- Version: `1.0.0`
+- Bakin compatibility: `>=1.0.0`
+- Manifest: `plugins/projects/bakin-plugin.json`
+- Dependencies: `tasks`, `assets`
+- Permissions: `storage.read`, `storage.write`, `events.emit`
+
+## Schedule
+
+Cron job scheduling with OpenClaw bridge and task creation
+
+- ID: `schedule`
+- Version: `1.0.0`
+- Bakin compatibility: `>=1.0.0`
+- Manifest: `plugins/schedule/bakin-plugin.json`
+- Dependencies: `tasks`
+- Permissions: `storage.read`, `storage.write`, `events.emit`
+
+## Tasks
+
+Kanban task management with SQLite persistence (OpenClaw flow_runs), agent assignment, and dependency tracking
+
+- ID: `tasks`
+- Version: `2.1.0`
+- Bakin compatibility: `>=1.0.0`
+- Manifest: `plugins/tasks/bakin-plugin.json`
+- Dependencies: `none`
+- Permissions: `storage.read`, `storage.write`, `events.emit`
+
+## Team
+
+Agent team management — adapter layer over OpenClaw agent workspaces
+
+- ID: `team`
+- Version: `1.0.0`
+- Bakin compatibility: `>=1.0.0`
+- Manifest: `plugins/team/bakin-plugin.json`
+- Dependencies: `none`
+- Permissions: `storage.read`, `storage.write`, `events.emit`
+
+## Workflows
+
+Workflow runtime — enforces step-by-step agent execution with gated delivery, parallel steps, human gates, and output validation
+
+- ID: `workflows`
+- Version: `2.0.0`
+- Bakin compatibility: `>=1.0.0`
+- Manifest: `plugins/workflows/bakin-plugin.json`
+- Dependencies: `tasks`
+- Permissions: `storage.read`, `storage.write`, `events.emit`

@@ -1,0 +1,38 @@
+# Bakin Full LLM Context
+
+Docs version: Bakin 1.0.0
+
+Audience: coding agents, plugin authors, agent authors, and technical operators.
+
+Canonical docs: https://makinbakin.com/docs/
+
+## Operating Rules
+
+- Use `Bakin` for the product and `bakin` for the CLI.
+- Prefer the released one-line installer for end-user install instructions.
+- Use `@bakin/sdk/*` imports for plugin-facing code.
+- Do not import host internals or another plugin's internals from a plugin.
+- Treat public hooks, slots, CLI commands, HTTP routes, settings, and SDK exports as documented contracts.
+- Prefer tested docs snippets and generated reference over guessing APIs.
+
+## Useful Bundles
+
+- Plugin authoring: /docs/llms/plugin-authoring.md
+- Agent authoring: /docs/llms/agent-authoring.md
+- SDK reference: /docs/llms/sdk-reference.md
+- API reference: /docs/llms/api.md
+- CLI reference: /docs/reference/generated/cli/
+- API reference: /docs/reference/generated/api/
+- Hooks reference: /docs/reference/generated/hooks/
+- Exec/MCP tools reference: /docs/reference/generated/exec-tools/
+- Core plugin catalog: /docs/reference/generated/core-plugins/
+- Settings reference: /docs/reference/generated/settings/
+- Runtime paths: /docs/reference/generated/runtime-paths/
+- SDK reference: /docs/reference/generated/sdk/
+
+## Fetch Examples
+
+```sh
+curl -fsSL https://makinbakin.com/docs/llms/plugin-authoring.md
+curl -fsSL https://makinbakin.com/docs/llms/agent-authoring.md
+```

@@ -71,9 +71,10 @@ describe('CLI: bakin install/check plugin-assets', () => {
     expect(result.message).toMatch(/0 plugin assets/i)
   })
 
-  it('help output advertises both new commands', () => {
-    const cli = readFileSync(join(process.cwd(), 'cli', 'bakin.ts'), 'utf-8')
-    expect(cli).toMatch(/install plugin-assets\s+Install plugin-shipped OpenClaw skills/)
-    expect(cli).toMatch(/check plugin-assets\s+Detect plugin-shipped OpenClaw skills/)
+  it('help output advertises both new commands', async () => {
+    const { renderCliUsage } = await import('../../src/core/cli/registry')
+    const usage = renderCliUsage({ bakinUrl: 'http://localhost:3737' })
+    expect(usage).toMatch(/bakin install [^\n]*plugin-assets/)
+    expect(usage).toMatch(/bakin check [^\n]*plugin-assets/)
   })
 })
