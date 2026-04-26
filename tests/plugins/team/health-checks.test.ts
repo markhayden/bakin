@@ -20,7 +20,7 @@ const openClawDir = pathJoin(testDir, 'openclaw')
 process.env.OPENCLAW_HOME = openClawDir
 process.env.BAKIN_HOME = testDir
 
-import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterAll, afterEach, mock, spyOn } from 'bun:test'
 import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 
@@ -233,42 +233,41 @@ describe('checkPersonas', () => {
 // ─── checkAgentAssets — wrapper coverage ──────────────────────────────────
 
 describe('checkAgentAssets — wrapper', () => {
+  // Spy on the singleton's `check` method instead of mutating the export.
+  // bun:test's spyOn restoration is automatic per `afterEach` and survives
+  // assertion throws — fixes the fragility flagged in PR #173 review.
+  let checkSpy: ReturnType<typeof spyOn> | null = null
+  afterEach(() => {
+    if (checkSpy) {
+      checkSpy.mockRestore()
+      checkSpy = null
+    }
+  })
+
   it('returns ok when component check returns ok', async () => {
-    // Stub the component for this targeted test (the deeper integration
-    // tests below exercise the real component).
-    const original = agentAssetsComponent.check
-    ;(agentAssetsComponent as { check: typeof original }).check = mock(async () => ({
+    checkSpy = spyOn(agentAssetsComponent, 'check').mockImplementation(async () => ({
       name: 'agent-assets',
       status: 'ok' as const,
       message: 'no projections',
     }))
-    try {
-      const results = await checkAgentAssets()
-      expect(results).toHaveLength(1)
-      expect(results[0].check).toBe('agent-assets')
-      expect(results[0].status).toBe('ok')
-    } finally {
-      ;(agentAssetsComponent as { check: typeof original }).check = original
-    }
+    const results = await checkAgentAssets()
+    expect(results).toHaveLength(1)
+    expect(results[0].check).toBe('agent-assets')
+    expect(results[0].status).toBe('ok')
   })
 
   it('returns warn with reminder when component reports drift and autoFix=false', async () => {
-    const original = agentAssetsComponent.check
-    ;(agentAssetsComponent as { check: typeof original }).check = mock(async () => ({
+    checkSpy = spyOn(agentAssetsComponent, 'check').mockImplementation(async () => ({
       name: 'agent-assets',
       status: 'warn' as const,
       message: '1 projection drifted',
       remediation: 'Run `bakin install agent-assets` to repair.',
     }))
-    try {
-      const results = await checkAgentAssets()
-      expect(results).toHaveLength(1)
-      expect(results[0].status).toBe('warn')
-      expect(results[0].autoFixable).toBe(true)
-      expect(results[0].message).toMatch(/bakin install agent-assets/)
-    } finally {
-      ;(agentAssetsComponent as { check: typeof original }).check = original
-    }
+    const results = await checkAgentAssets()
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('warn')
+    expect(results[0].autoFixable).toBe(true)
+    expect(results[0].message).toMatch(/bakin install agent-assets/)
   })
 })
 

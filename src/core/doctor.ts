@@ -21,8 +21,8 @@ import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
 const log = createLogger('doctor')
 
 let doctorTimer: NodeJS.Timeout | null = null
-let lastDiagnosticResults: HealthCheckResult[] | null = null
-let lastDiagnosticTime: number = 0
+let lastResults: HealthCheckResult[] | null = null
+let lastResultTime: number = 0
 
 // Track what we've already notified about to avoid spamming the main agent
 const notifiedIssues = new Set<string>()
@@ -132,8 +132,8 @@ export async function runDiagnostics(
 
   await notifyUnfixableIssues(results)
 
-  lastDiagnosticResults = results
-  lastDiagnosticTime = Date.now()
+  lastResults = results
+  lastResultTime = Date.now()
 
   return results
 }
@@ -143,8 +143,8 @@ export async function runDiagnostics(
  * Returns null if diagnostics have never run.
  */
 export function getLastResults(): { results: HealthCheckResult[]; timestamp: number } | null {
-  if (!lastDiagnosticResults) return null
-  return { results: lastDiagnosticResults, timestamp: lastDiagnosticTime }
+  if (!lastResults) return null
+  return { results: lastResults, timestamp: lastResultTime }
 }
 
 // ─── Cron ─────────────────────────────────────────────────────────────────
