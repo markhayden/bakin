@@ -117,6 +117,13 @@ function recordInstall(args: {
 interface InstallBody {
   source: string
   type: 'local' | 'github'
+  /**
+   * #142 layer 2 — set true after the user accepts the consent prompt. When
+   * the manifest declares permissions and this is false, the endpoint
+   * stages, validates, and returns awaitingConsent: true with the diff
+   * before doing any irreversible work.
+   */
+  accepted?: boolean
 }
 
 export async function post(req: Request, _url: URL): Promise<Response> {
@@ -200,6 +207,23 @@ export async function post(req: Request, _url: URL): Promise<Response> {
           ok: false,
           error: `plugin "${id}": ${err instanceof Error ? err.message : String(err)}`,
         }, { status: 400 })
+      }
+
+      // #142 layer 2 — if the manifest declares permissions and the caller
+      // hasn't accepted yet, return awaitingConsent with the diff. CLI
+      // surfaces the prompt and re-invokes with accepted:true. We tear
+      // down the staging dir here so the second attempt is clean —
+      // re-cloning is cheap relative to the cost of staging cleanup bugs.
+      if (parsedPermissions.length > 0 && body.accepted !== true) {
+        const versionForPrompt = typeof manifest.version === 'string' ? manifest.version : '0.0.0'
+        rmSync(stagingDir, { recursive: true, force: true })
+        return Response.json({
+          ok: false,
+          awaitingConsent: true,
+          id,
+          version: versionForPrompt,
+          permissions: parsedPermissions,
+        })
       }
 
       const targetDir = join(pluginsRoot, id)
