@@ -1,2 +1,17 @@
 # Cloudflare Pages redirects for public docs.
 # Add redirects here before renaming or moving any published page.
+/start/overview/ /start/install/ 301
+/start/documentation-plan/ /contribute/overview/ 301
+/run/install/ /start/install/ 301
+/run/first-time-setup/ /start/first-time-setup/ 301
+/run/operation/ /start/operation/ 301
+/run/tasks/ /core/tasks/ 301
+/run/workflows/ /core/workflows/ 301
+/run/projects/ /core/projects/ 301
+/run/assets/ /core/assets/ 301
+/run/schedule/ /core/schedule/ 301
+/run/messaging/ /core/messaging/ 301
+/run/memory/ /core/memory/ 301
+/run/models/ /core/models/ 301
+/run/team/ /core/team/ 301
+/run/health/ /core/health/ 301

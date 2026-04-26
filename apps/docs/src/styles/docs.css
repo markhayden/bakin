@@ -132,3 +132,37 @@ pre {
     --sl-content-width: 58rem;
   }
 }
+
+.pagination-links {
+  gap: 0.5rem;
+}
+
+.pagination-links a {
+  gap: 0.35rem;
+  border-color: rgba(74, 71, 71, 0.35);
+  padding: 0.5rem 0.65rem;
+  color: var(--sl-color-gray-3);
+  box-shadow: none;
+  font-size: 0.75rem;
+}
+
+.pagination-links a span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.pagination-links a br {
+  display: none;
+}
+
+.pagination-links a svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.pagination-links .link-title {
+  color: var(--sl-color-gray-2);
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
