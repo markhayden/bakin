@@ -5,10 +5,10 @@ description: Register plugin routes, tools, settings, workflows, hooks, search t
 
 The server entry exports a `BakinPlugin`. Bakin calls `activate(ctx)` once the plugin is loaded. Register server-side behavior there.
 
-The tested minimal server entry lives at `apps/docs/snippets/plugin-basic/index.ts`.
+The tested minimal server entry lives at `docs/snippets/plugin-basic/index.ts`.
 
 <!-- docs:snippet plugin-basic-server -->
-Source: `apps/docs/snippets/plugin-basic/index.ts`
+Source: `docs/snippets/plugin-basic/index.ts`
 
 ```ts
 import type { BakinPlugin, PluginContext } from '@bakin/sdk/types'

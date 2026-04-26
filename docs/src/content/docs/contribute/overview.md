@@ -39,7 +39,7 @@ bun run docs:generate
 bun run docs:check
 ```
 
-Docs live in `apps/docs`. Internal coding-agent helper material belongs in `.claude/knowledge`, not public docs.
+Docs live in `docs`. Internal coding-agent helper material belongs in `.claude/knowledge`, not public docs.
 
 ## Source Links
 

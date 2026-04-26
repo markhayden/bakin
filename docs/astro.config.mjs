@@ -136,7 +136,7 @@ document.addEventListener("click", function (event) {
         : [],
       defaultLocale: 'root',
       editLink: {
-        baseUrl: 'https://github.com/markhayden/bakin/edit/main/apps/docs/',
+        baseUrl: 'https://github.com/markhayden/bakin/edit/main/docs/',
       },
       lastUpdated: true,
       social: [
