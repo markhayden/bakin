@@ -25,6 +25,8 @@
       "@bakin/sdk/slots": ["./packages/sdk/src/slots/index.tsx"],
       "@bakin/sdk/types": ["./packages/sdk/src/types/index.ts"],
       "@bakin/sdk/utils": ["./packages/sdk/src/utils/index.ts"],
+      "@bakin/sdk/metadata": ["./packages/sdk/src/metadata/index.ts"],
+      "@bakin/core/docs": ["./packages/core/src/docs/index.ts"],
       "@bakin/tasks": ["./plugins/tasks"],
       "@bakin/tasks/*": ["./plugins/tasks/*"],
       "@bakin/memory": ["./plugins/memory"],

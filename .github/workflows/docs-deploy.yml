@@ -1,0 +1,47 @@
+name: Docs Deploy
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version_ref:
+        description: 'Bakin release tag, commit SHA, or branch this docs deploy represents'
+        required: true
+        type: string
+      reason:
+        description: 'Reason for manual docs deploy'
+        required: false
+        type: string
+
+concurrency:
+  group: docs-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build docs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build docs
+        run: bun run docs:check
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bakin-docs
+          path: apps/docs/dist
