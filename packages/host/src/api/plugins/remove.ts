@@ -62,7 +62,11 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   if (!pluginId || typeof pluginId !== 'string') {
     return Response.json({ ok: false, error: 'Missing pluginId' }, { status: 400 })
   }
-  if (!/^[a-z0-9][a-z0-9-_]{0,39}$/i.test(pluginId)) {
+  // Match install.ts:311 — lowercase letters, digits, hyphen only; must
+  // start with a letter. Tightened in C12 to avoid case-insensitive macOS
+  // collisions and exec-tool name overlap from underscores; remove was
+  // missed at the time (asymmetric API contract). Now consistent.
+  if (!/^[a-z][a-z0-9-]{0,39}$/.test(pluginId)) {
     return Response.json({ ok: false, error: `Invalid pluginId "${pluginId}"` }, { status: 400 })
   }
 

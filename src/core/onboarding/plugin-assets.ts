@@ -198,6 +198,13 @@ export function installPluginAssets(plugins: PluginEntry[]): InstallReport {
     }
   }
 
+  // Sync lockfile installedSkills with what we just laid down. Without
+  // this, skills installed via `bakin install plugin-assets` (the
+  // onboarding component) would never appear in the lockfile allowlist
+  // — and the C14 uninstall flow would silently leave them as orphans
+  // because they wouldn't be in any plugin's `installedSkills`.
+  syncLockfileInstalledSkills(plugins)
+
   return report
 }
 
@@ -316,6 +323,53 @@ export const pluginAssetsComponent: OnboardingComponent = {
   name: 'plugin-assets',
   check,
   install,
+}
+
+/**
+ * Reconcile the lockfile's per-plugin `installedSkills` field with what's
+ * actually in `defaults/openclaw-skills/` for each plugin entry. Best-
+ * effort — failures are logged but never throw. Called from
+ * `installPluginAssets` so the onboarding-driven install path keeps the
+ * lockfile in sync with what was projected to `~/.openclaw/skills/`.
+ *
+ * Only touches lockfile entries that ALREADY exist (i.e., user plugins
+ * that were installed via `bakin plugins install`). Core plugins have no
+ * lockfile entry; they're skipped.
+ */
+function syncLockfileInstalledSkills(plugins: PluginEntry[]): void {
+  // Lazy require to dodge a circular import — the onboarding module is
+  // pulled in by code that's also reachable from the lockfile/registry
+  // import graph.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const lf = require('../../../packages/core/src/plugins/lockfile') as
+    typeof import('../../../packages/core/src/plugins/lockfile')
+  let lock: import('../../../packages/core/src/plugins/lockfile').PluginLockfile
+  try {
+    lock = lf.readPluginLockfile()
+  } catch (err) {
+    log.warn('syncLockfileInstalledSkills: lockfile read failed', { err: String(err) })
+    return
+  }
+  let mutated = false
+  for (const plugin of plugins) {
+    if (!lock.plugins[plugin.id]) continue
+    const skillNames = findSkillsForPlugin(plugin).map(s => s.name).sort()
+    const current = (lock.plugins[plugin.id].installedSkills ?? []).slice().sort()
+    if (skillNames.length === current.length && skillNames.every((n, i) => n === current[i])) continue
+    try {
+      lock = lf.updatePlugin(lock, plugin.id, { installedSkills: skillNames })
+      mutated = true
+    } catch (err) {
+      log.warn('syncLockfileInstalledSkills: updatePlugin failed', { id: plugin.id, err: String(err) })
+    }
+  }
+  if (mutated) {
+    try {
+      lf.writePluginLockfile(lock)
+    } catch (err) {
+      log.warn('syncLockfileInstalledSkills: write failed', { err: String(err) })
+    }
+  }
 }
 
 // ─── Removal (#119) ──────────────────────────────────────────────────────────
