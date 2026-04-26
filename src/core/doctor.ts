@@ -110,32 +110,6 @@ async function checkGateway(): Promise<DiagnosticResult[]> {
   }
 }
 
-/**
- * Taskboard: verify flow_runs SQLite table is accessible.
- */
-function openDoctorDb(dbPath: string) {
-  const { Database } = require('bun:sqlite') as typeof import('bun:sqlite')
-  const db = new Database(dbPath)
-  db.exec('PRAGMA journal_mode = WAL')
-  db.exec('PRAGMA busy_timeout = 5000')
-  return db
-}
-
-function checkTaskboard(_contentDir: string, _autoFix: boolean): DiagnosticResult[] {
-  try {
-    const dbPath = getOpenClawPath('flows', 'registry.sqlite')
-    if (!existsSync(dbPath)) {
-      return [warn('taskboard', 'OpenClaw flow_runs database not found at ' + dbPath)]
-    }
-    const db = openDoctorDb(dbPath)
-    const count = db.prepare(`SELECT count(*) as n FROM flow_runs WHERE owner_key LIKE 'bakin:task:%'`).get() as { n: number }
-    db.close()
-    return [ok('taskboard', `${count.n} tasks in flow_runs (SQLite)`)]
-  } catch (err) {
-    return [error('taskboard', `Failed to query flow_runs: ${err}`)]
-  }
-}
-
 const EXEC_TOOLS_START = '<!-- bakin:exec-tools:start -->'
 const EXEC_TOOLS_END = '<!-- bakin:exec-tools:end -->'
 
@@ -684,83 +658,6 @@ function checkService(projectRoot: string): DiagnosticResult[] {
   return results
 }
 
-/**
- * Task consistency: detect orphaned, overloaded, or stale in-progress tasks.
- * Auto-fixes orphaned dependencies on done tasks (clears dependsOn + re-triggers continuation).
- */
-async function checkTaskConsistency(contentDir: string, autoFix: boolean): Promise<DiagnosticResult[]> {
-  const results: DiagnosticResult[] = []
-  const hooks = getHookRegistry()
-
-  try {
-    interface TaskEntry { id: string; title: string; agent?: string; dependsOn?: string; log?: unknown[] }
-    const board = await hooks.invoke<{ columns: { inProgress: TaskEntry[]; done: TaskEntry[]; todo: TaskEntry[]; blocked: TaskEntry[] } }>('tasks.readTaskboard', {})
-    if (!board) { return [warn('task-consistency', 'Taskboard not available (tasks plugin not loaded)')] }
-    const { columns } = board
-    const now = Date.now()
-
-    // Known agents from openclaw.json
-    const knownAgents = new Set(getAgentIds())
-
-    // Count tasks per agent
-    const agentTaskCount: Record<string, number> = {}
-
-    for (const task of columns.inProgress) {
-      // Track agent load
-      if (task.agent) {
-        agentTaskCount[task.agent] = (agentTaskCount[task.agent] || 0) + 1
-      }
-
-      // In-progress task assigned to unknown agent
-      if (task.agent && !knownAgents.has(task.agent) && task.agent !== getMainAgentId()) {
-        results.push(warn('task-consistency', `In-progress task "${task.title}" assigned to unknown agent "${task.agent}"`))
-      }
-
-      // In-progress task with no heartbeat file
-      const heartbeatPath = join(contentDir, 'heartbeats', `${task.agent || 'unknown'}.json`)
-      if (!existsSync(heartbeatPath)) {
-        results.push(warn('task-consistency', `In-progress task "${task.title}" — no heartbeat file for agent "${task.agent || 'unassigned'}"`))
-      }
-
-      // In-progress task > 2 hours with zero logs
-      if (!task.log || task.log.length === 0) {
-        // Check if there's metadata suggesting how long it's been in progress
-        results.push(warn('task-consistency', `In-progress task "${task.title}" has zero log entries`))
-      }
-    }
-
-    // Agent with > 3 concurrent in-progress tasks
-    for (const [agent, count] of Object.entries(agentTaskCount)) {
-      if (count > 3) {
-        results.push(warn('task-consistency', `Agent "${agent}" has ${count} concurrent in-progress tasks — may be overloaded`))
-      }
-    }
-
-    // Done tasks with orphaned dependsOn
-    for (const task of columns.done) {
-      if (task.dependsOn) {
-        if (autoFix) {
-          try {
-            await hooks.invoke<void>('tasks.clearDependency', { taskId: task.id })
-            results.push(fixed('task-consistency', `Cleared orphaned dependsOn on done task "${task.title}"`))
-          } catch {
-            results.push(warn('task-consistency', `Done task "${task.title}" has orphaned dependsOn="${task.dependsOn}" — failed to clear`))
-          }
-        } else {
-          results.push(warn('task-consistency', `Done task "${task.title}" has orphaned dependsOn="${task.dependsOn}"`, true))
-        }
-      }
-    }
-
-    if (results.length === 0) {
-      results.push(ok('task-consistency', `${columns.inProgress.length} in-progress, ${columns.done.length} done — all consistent`))
-    }
-  } catch (err) {
-    results.push(error('task-consistency', `Failed to check task consistency: ${err}`))
-  }
-
-  return results
-}
 
 // ---------------------------------------------------------------------------
 // Notification — escalate unfixable issues to the main agent
@@ -1404,88 +1301,6 @@ function checkScheduleSync(autoFix: boolean): DiagnosticResult[] {
  * Run all health checks with auto-fix for safe issues.
  * Notifies the main agent via OpenClaw about issues that need human judgment.
  */
-// ---------------------------------------------------------------------------
-// Task order integrity
-// ---------------------------------------------------------------------------
-
-function checkTaskPositionIntegrity(autoFix: boolean): DiagnosticResult[] {
-  const CHECK = 'tasks.order_integrity'
-  try {
-    const dbPath = getOpenClawPath('flows', 'registry.sqlite')
-    if (!existsSync(dbPath)) return [ok(CHECK, 'No task database found (OK for fresh install)')]
-
-    const db = openDoctorDb(dbPath)
-
-    try {
-      const rows = db.prepare(
-        `SELECT flow_id, status, state_json, blocked_task_id, updated_at FROM flow_runs WHERE owner_key LIKE 'bakin:task:%'`
-      ).all() as Array<{ flow_id: string; status: string; state_json: string | null; blocked_task_id: string | null; updated_at: number }>
-
-      if (rows.length === 0) return [ok(CHECK, 'No tasks to check')]
-
-      // Check for missing or invalid order values
-      let missingCount = 0
-      const byColumn = new Map<string, Array<{ flowId: string; order: number | null; updatedAt: number }>>()
-
-      for (const row of rows) {
-        const state = row.state_json ? JSON.parse(row.state_json) : {}
-        const ord = typeof state.order === 'number' ? state.order : null
-
-        // Derive column (inlined from flow-store.ts)
-        let col: string
-        switch (row.status) {
-          case 'queued': col = state.column === 'backlog' ? 'backlog' : 'todo'; break
-          case 'running': col = 'inProgress'; break
-          case 'waiting': col = row.blocked_task_id ? 'blocked' : 'review'; break
-          case 'succeeded': col = state.archived ? 'archived' : 'done'; break
-          default: col = 'backlog'
-        }
-
-        if (ord === null) missingCount++
-        if (!byColumn.has(col)) byColumn.set(col, [])
-        byColumn.get(col)!.push({ flowId: row.flow_id, order: ord, updatedAt: row.updated_at })
-      }
-
-      // Check for duplicates within columns
-      let duplicateCount = 0
-      for (const [, colTasks] of byColumn) {
-        const orders = colTasks.filter(t => t.order !== null).map(t => t.order!)
-        const unique = new Set(orders)
-        if (unique.size < orders.length) duplicateCount += orders.length - unique.size
-      }
-
-      if (missingCount === 0 && duplicateCount === 0) {
-        return [ok(CHECK, `All ${rows.length} tasks have valid unique order values`)]
-      }
-
-      const issues = []
-      if (missingCount > 0) issues.push(`${missingCount} missing`)
-      if (duplicateCount > 0) issues.push(`${duplicateCount} duplicates`)
-
-      if (!autoFix) {
-        return [warn(CHECK, `Order issues: ${issues.join(', ')} across ${rows.length} tasks`, true)]
-      }
-
-      // Auto-fix: reassign order per column (zero-indexed) based on updated_at order
-      const stmt = db.prepare(`UPDATE flow_runs SET state_json = json_set(state_json, '$.order', ?) WHERE flow_id = ?`)
-      const tx = db.transaction(() => {
-        for (const [, colTasks] of byColumn) {
-          colTasks.sort((a, b) => b.updatedAt - a.updatedAt)
-          for (let i = 0; i < colTasks.length; i++) {
-            stmt.run(i, colTasks[i].flowId)
-          }
-        }
-      })
-      tx()
-
-      return [fixed(CHECK, `Fixed order issues (${issues.join(', ')}) across ${rows.length} tasks`)]
-    } finally {
-      db.close()
-    }
-  } catch (err) {
-    return [error(CHECK, `Order check failed: ${(err as Error).message}`)]
-  }
-}
 
 /**
  * Plugin-shipped OpenClaw skills (S-B): surface install state + drift.
@@ -1530,7 +1345,6 @@ export async function runDiagnostics(
 
   // Sync checks (fast, some auto-fixable)
   results.push(...checkContentDir())
-  results.push(...checkTaskboard(contentDir, autoFix))
   results.push(...checkAndSyncSkill(projectRoot, autoFix))
   results.push(...await checkOrchestratorRules(autoFix))
   results.push(...applyAllManagedBlocks(autoFix))
@@ -1538,12 +1352,11 @@ export async function runDiagnostics(
   // plugin-check loop at the end of this function):
   //   workflows: workflow-skills / workflow-definitions / workflow-instances (#137)
   //   team: agent-roster / personas / agent-assets (#139 C1)
-  results.push(...await checkTaskConsistency(contentDir, autoFix))
+  //   tasks: taskboard / task-consistency / order-integrity (#139 C2)
   results.push(...checkAssets(contentDir, autoFix))
   results.push(...checkScheduleSync(autoFix))
   results.push(...checkMcporter(Number(process.env.PORT || 3737), autoFix))
   results.push(...checkService(projectRoot))
-  results.push(...checkTaskPositionIntegrity(autoFix))
 
   // Async checks (network, not auto-fixable) — run in parallel
   const [gatewayResults, antflyResults, searchTableResults, pluginAssetsResults] = await Promise.all([
