@@ -76,6 +76,16 @@ mock.module('../../../src/core/search-registry', () => ({
     enabled: false,
     tables: [],
   })),
+  // plugin-registry.ts (transitively imported by health/managed-blocks via
+  // getHookRegistry) re-imports buildSearchAPI; provide a no-op stub.
+  buildSearchAPI: () => ({
+    registerContentType: mock(),
+    registerFileBackedContentType: mock(),
+    index: mock(async () => {}),
+    remove: mock(async () => {}),
+    transform: mock(async () => {}),
+    query: mock(async () => ({ results: [], aggregations: undefined, meta: { query: '', total: 0, took_ms: 0, source: 'fallback' } })),
+  }),
 }))
 
 // Defensive stub — the test isolation hook scans for plugin refs in text

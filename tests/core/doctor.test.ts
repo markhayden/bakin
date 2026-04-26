@@ -150,55 +150,8 @@ describe('doctor', () => {
     expect(typeof doctor.runDiagnostics).toBe('function')
   })
 
-  describe('plugin-assets section', () => {
-    it('reports ok when plugin-assets check returns ok', async () => {
-      mockPluginAssetsCheck.mockResolvedValue({
-        name: 'plugin-assets',
-        status: 'ok',
-        message: 'All 3 plugin asset(s) installed',
-        details: { totalAvailable: 3 },
-      })
-      const doctor = await import('@/core/doctor')
-      const results = await doctor.runDiagnostics(contentDir, tempDir)
-      const section = results.filter(r => r.check === 'plugin-assets')
-      expect(section.length).toBe(1)
-      expect(section[0].status).toBe('ok')
-      expect(section[0].message).toMatch(/3 plugin asset/)
-    })
-
-    it('reports warn with remediation reminder when drift exists', async () => {
-      mockPluginAssetsCheck.mockResolvedValue({
-        name: 'plugin-assets',
-        status: 'warn',
-        message: '2 plugin asset(s) need install (1 missing, 1 drifted)',
-        remediation: 'Run `bakin install plugin-assets` to apply.',
-        details: {
-          totalAvailable: 3,
-          missing: [{ pluginId: 'workflows', name: 'foo' }],
-          drifted: [{ pluginId: 'workflows', name: 'bar' }],
-        },
-      })
-      const doctor = await import('@/core/doctor')
-      const results = await doctor.runDiagnostics(contentDir, tempDir)
-      const section = results.filter(r => r.check === 'plugin-assets')
-      expect(section.length).toBe(1)
-      expect(section[0].status).toBe('warn')
-      expect(section[0].message).toMatch(/bakin install plugin-assets/)
-    })
-
-    it('does not auto-install — only surfaces a reminder', async () => {
-      mockPluginAssetsCheck.mockResolvedValue({
-        name: 'plugin-assets',
-        status: 'warn',
-        message: '1 plugin asset(s) need install (1 missing, 0 drifted)',
-        remediation: 'Run `bakin install plugin-assets` to apply.',
-      })
-      const doctor = await import('@/core/doctor')
-      const results = await doctor.runDiagnostics(contentDir, tempDir)
-      const section = results.filter(r => r.check === 'plugin-assets')
-      expect(section[0].autoFixable).toBe(false)
-    })
-  })
+  // plugin-assets coverage moved to tests/plugins/health/system-checks.test.ts
+  // when checkPluginAssets migrated to plugins/health/lib/system-checks/ in #139 C8.
 
   // ---------------------------------------------------------------------------
   // Onboarding gate: requireOnboard + .onboarded marker
