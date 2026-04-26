@@ -5,17 +5,32 @@
     "cliCommands": {
       "status": "active",
       "count": 58,
+      "examples": 58,
       "source": "src/core/cli/registry.ts"
     },
     "httpRoutes": {
       "status": "active",
       "count": 17,
+      "withInputSchema": 0,
+      "withOutputSchema": 0,
+      "withExamples": 0,
       "source": "src/core/api-docs.ts"
+    },
+    "pluginRoutes": {
+      "status": "partial",
+      "count": 0,
+      "source": "runtime route registration metadata"
     },
     "hookRegistrations": {
       "status": "audited",
       "count": 51,
       "source": "source scan"
+    },
+    "slots": {
+      "status": "documented",
+      "count": 6,
+      "auditedRegistrations": 1,
+      "source": "packages/sdk/src/register.ts and slot source scan"
     },
     "execTools": {
       "status": "audited",
@@ -37,9 +52,19 @@
       "count": 8,
       "source": "packages/sdk/package.json"
     },
+    "agentPackageKinds": {
+      "status": "active",
+      "count": 4,
+      "source": "packages/core/src/agent-packages/manifest.ts"
+    },
+    "docsSnippets": {
+      "status": "active",
+      "count": 4,
+      "source": "apps/docs/snippets"
+    },
     "llmBundles": {
       "status": "active",
-      "count": 10,
+      "count": 11,
       "source": "scripts/docs/generate.ts"
     }
   }

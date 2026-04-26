@@ -6,7 +6,7 @@ import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { createLogger } from './logger'
 import type { APIRoute } from '../../packages/core/src/plugin-types'
-import type { ContractStability, ContractVisibility, DocsExample, SourceLocation } from '../../packages/core/src/docs'
+import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from '../../packages/core/src/docs'
 
 const log = createLogger('api-docs')
 
@@ -18,6 +18,8 @@ export interface RouteDoc {
   summary: string
   description?: string
   params?: string
+  input?: SchemaLike
+  output?: SchemaLike
   visibility: ContractVisibility
   stability: ContractStability
   examples?: DocsExample[]
@@ -77,7 +79,7 @@ export function _resetRouteDocsForTests(): void {
 /**
  * Register a plugin route for documentation.
  */
-export function registerRouteDoc(pluginId: string, route: Pick<APIRoute, 'path' | 'method' | 'summary' | 'description' | 'params' | 'visibility' | 'stability' | 'examples' | 'source' | 'permissions'>): void {
+export function registerRouteDoc(pluginId: string, route: Pick<APIRoute, 'path' | 'method' | 'summary' | 'description' | 'params' | 'input' | 'output' | 'visibility' | 'stability' | 'examples' | 'source' | 'permissions'>): void {
   const summary = route.summary ?? route.description ?? `${route.method} ${route.path}`
   routeDocs.push({
     pluginId,
@@ -87,6 +89,8 @@ export function registerRouteDoc(pluginId: string, route: Pick<APIRoute, 'path' 
     summary,
     description: route.description,
     params: route.params,
+    input: route.input,
+    output: route.output,
     visibility: route.visibility ?? 'public',
     stability: route.stability ?? 'stable',
     examples: route.examples,
