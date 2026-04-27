@@ -120,6 +120,7 @@ export interface BakinPaths {
   heartbeats: string
   inbox: string
   projects: string
+  tasks: string
   workflows: string
   settings: string
   logs: string
@@ -143,6 +144,7 @@ export function getBakinPaths(): BakinPaths {
     heartbeats: join(home, 'heartbeats'),
     inbox: join(home, 'inbox'),
     projects: join(home, 'projects'),
+    tasks: join(home, 'tasks'),
     workflows: join(home, 'workflows'),
     settings: join(home, 'settings.json'),
     logs: join(home, 'logs'),
@@ -173,6 +175,7 @@ export function initBakinHome(targetDir?: string): { created: string[]; seeded: 
     join(home, 'inbox'),
     join(home, 'plugins'),
     join(home, 'projects'),
+    join(home, 'tasks'),
     join(home, 'team'),
     join(home, 'team', 'personas'),
     join(home, 'workflows'),
@@ -224,4 +227,3 @@ export function initBakinHome(targetDir?: string): { created: string[]; seeded: 
 
   return { created, seeded }
 }
-
