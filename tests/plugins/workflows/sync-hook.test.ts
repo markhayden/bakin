@@ -19,6 +19,8 @@ import type {
 } from '../../../src/lib/plugin-types'
 import { BakinEventBus } from '../../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapter'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const testDir = join(tmpdir(), `bakin-test-workflows-sync-${Date.now()}`)
 const defsDir = join(testDir, 'workflows', 'definitions')
@@ -101,6 +103,8 @@ function makeCtx(): CapturedCtx {
     storage,
     events,
     pluginId: 'workflows',
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore(),
     registerNav: mock(),
     registerRoute: mock(),
     registerSlot: mock(),

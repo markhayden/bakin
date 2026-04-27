@@ -46,3 +46,7 @@ export type {
   PluginHealthCheckInput,
   HealthCheckDef,
 } from '@bakin/core/plugin-types'
+export type {
+  AgentRuntimeAdapter,
+  BakinTaskStore,
+} from '@bakin/core'
