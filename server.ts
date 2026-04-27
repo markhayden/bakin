@@ -61,6 +61,8 @@ import * as pluginSettingsSchemasRoute from './packages/host/src/api/plugin-sett
 import * as pluginsInstallRoute from './packages/host/src/api/plugins/install'
 import * as pluginsRemoveRoute from './packages/host/src/api/plugins/remove'
 import * as pluginsUpgradeRoute from './packages/host/src/api/plugins/upgrade'
+import * as pluginsLinkRoute from './packages/host/src/api/plugins/link'
+import * as pluginsUnlinkRoute from './packages/host/src/api/plugins/unlink'
 import * as agentPackagesListRoute from './packages/host/src/api/agent-packages/list'
 import * as agentPackagesInstallRoute from './packages/host/src/api/agent-packages/install'
 import * as agentPackagesDynamicRoute from './packages/host/src/api/agent-packages/dynamic'
@@ -390,6 +392,16 @@ const eventBus = new BakinEventBus(broadcast)
       return
     }
 
+    if (url.pathname === '/api/plugins/link' && req.method === 'POST') {
+      dispatchWebHandler(req, res, pluginsLinkRoute.post)
+      return
+    }
+
+    if (url.pathname === '/api/plugins/unlink' && req.method === 'POST') {
+      dispatchWebHandler(req, res, pluginsUnlinkRoute.post)
+      return
+    }
+
     // ─── Agent-package routes (install / list / remove / update / knowledge) ──
     // Distinct from the runtime /api/agents/* surface below — see
     // packages/host/src/api/agent-packages/dynamic.ts for the rationale.
@@ -587,7 +599,14 @@ const eventBus = new BakinEventBus(broadcast)
     // plugin's registered route handlers. Must come LAST among /api/plugins/*
     // dispatches so the more-specific install/remove/memory/*/manifest/assets
     // routes above win.
-    if (url.pathname.startsWith('/api/plugins/') && url.pathname !== '/api/plugins/install' && url.pathname !== '/api/plugins/remove' && url.pathname !== '/api/plugins/upgrade') {
+    if (
+      url.pathname.startsWith('/api/plugins/') &&
+      url.pathname !== '/api/plugins/install' &&
+      url.pathname !== '/api/plugins/remove' &&
+      url.pathname !== '/api/plugins/upgrade' &&
+      url.pathname !== '/api/plugins/link' &&
+      url.pathname !== '/api/plugins/unlink'
+    ) {
       const method = req.method?.toLowerCase() ?? 'get'
       const handler = pluginCatchAllRoute[method === 'delete' ? 'del' : method as 'get' | 'post' | 'put' | 'patch' | 'del']
       if (handler) {
