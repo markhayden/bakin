@@ -605,7 +605,7 @@ const assetsPlugin: BakinPlugin = {
       name: 'bakin_exec_assets_delete',
       label: 'Deleted an asset',
       activityDuplicate: true,
-      description: 'Soft-delete an asset (moves to trash with 30-day expiry).',
+      description: 'Soft-delete an asset (moves to trash, restorable until trash is emptied).',
       parameters: {
         path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
       },
