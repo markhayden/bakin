@@ -9,7 +9,16 @@ import { getContentDir } from './content-dir'
 
 const log = createLogger('settings')
 
+export type RuntimeAdapterName = 'openclaw'
+export type SearchAdapterName = 'antfly'
+
 export interface BakinSettings {
+  runtime: {
+    adapter: RuntimeAdapterName
+  }
+  search: {
+    adapter: SearchAdapterName
+  }
   dispatch: {
     intervalMs: number
     /** Cooldown after a structural failure (4xx/5xx from the gateway). */
@@ -136,6 +145,12 @@ export interface BakinSettings {
 }
 
 export const DEFAULT_SETTINGS: BakinSettings = {
+  runtime: {
+    adapter: 'openclaw',
+  },
+  search: {
+    adapter: 'antfly',
+  },
   dispatch: {
     intervalMs: 5 * 60 * 1000,
     failureCooldownMs: 30 * 60 * 1000,
