@@ -50,6 +50,7 @@ import { mcporterComponent } from './mcporter'
 import { pluginAssetsComponent } from './plugin-assets'
 import { agentAssetsComponent } from './agent-assets'
 import { llmComponent, channelsComponent } from './credentials'
+import { recommendedPluginsComponent } from './recommended-plugins-component'
 import { saveState, clearMarker } from './state'
 import type { CheckResult, OnboardingComponent, OnboardingOptions } from './types'
 import type { ComponentStatus } from './state'
@@ -76,7 +77,11 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   agentAssetsComponent,
   llmComponent,
   channelsComponent,
+  recommendedPluginsComponent,
 ] as const
+
+export type { RecommendedPlugin } from './types'
+export { RECOMMENDED_PLUGINS } from './recommended-plugins'
 
 /**
  * Result of a single component's full check+install cycle, as seen by
