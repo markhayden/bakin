@@ -42,13 +42,13 @@ export function extractExecTools(): ExecTool[] {
     const text = readFileSync(file, 'utf8')
     const lines = text.split('\n')
     for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].includes('registerExecTool') && !lines[i].includes('addExecTool')) continue
-      const block = lines.slice(i, Math.min(lines.length, i + 35)).join('\n')
-      const name = block.match(/name:\s*['"`]([^'"`]+)['"`]/)?.[1]
-      if (!name) continue
-      const key = `${name}:${file}:${i}`
+      const nameMatch = lines[i].match(/name:\s*['"`](bakin_exec_[^'"`]+)['"`]/)
+      if (!nameMatch) continue
+      const name = nameMatch[1]
+      const key = `${name}:${file}`
       if (seen.has(key)) continue
       seen.add(key)
+      const block = lines.slice(i, Math.min(lines.length, i + 35)).join('\n')
       const description = block.match(/description:\s*['"`]([^'"`]+)['"`]/)?.[1]
       tools.push({ name, description, file: relativeSource(file), line: i + 1 })
     }

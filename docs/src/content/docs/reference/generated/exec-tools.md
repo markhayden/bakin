@@ -27,7 +27,7 @@ Source: `plugins/assets/index.ts:689`
 
 ## `bakin_exec_assets_delete`
 
-Soft-delete an asset (moves to trash with 30-day expiry).
+Soft-delete an asset (moves to trash, restorable until trash is emptied).
 
 Source: `plugins/assets/index.ts:604`
 
