@@ -15,6 +15,8 @@ import { tmpdir } from 'os'
 import type { PluginContext, FileBackedContentTypeDefinition, APIRoute } from '../../../src/lib/plugin-types'
 import { BakinEventBus } from '../../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapter'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const testDir = join(tmpdir(), `bakin-test-retype-preserves-${Date.now()}`)
 const assetsDir = join(testDir, 'assets')
@@ -80,6 +82,8 @@ function makeCtx(): Captured {
     storage,
     events,
     pluginId: 'assets',
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore(),
     registerNav: mock(),
     registerRoute: mock((def: APIRoute) => {
       handlers[def.method] ??= {}

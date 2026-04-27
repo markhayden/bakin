@@ -20,6 +20,8 @@ import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { FSWatcher } from 'chokidar'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const testDir = join(tmpdir(), `bakin-int-search-watcher-${process.pid}-${Date.now()}`)
 
@@ -135,6 +137,8 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     storage,
     events,
     pluginId: plugin.id,
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore(),
     registerNav: mock(),
     registerRoute: mock(),
     registerSlot: mock(),

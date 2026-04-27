@@ -34,6 +34,11 @@ import type {
   PluginNotificationChannelInput,
   PluginHealthCheckInput,
 } from '@bakin/core/plugin-types'
+import type { AppServices } from '@bakin/core/app-services'
+import { createHealthService } from '@bakin/core/app-services'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 import { registerRouteDoc } from '../core/api-docs'
 import { addExecTool } from '../../scripts/lib/registry'
 import { runMigrations } from '../core/migrations'
@@ -45,6 +50,7 @@ import { buildSearchAPI } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
 import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
 import { parseManifestPermissions } from '../../packages/core/src/plugins/permissions'
+import { maybeGetAppServices } from '../core/app-services'
 
 /**
  * Optional static core-plugin table. Set from server.ts on startup so
@@ -71,6 +77,21 @@ export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>
 }
 
 const log = createLogger('plugin-registry')
+
+function createFallbackAppServices(): AppServices {
+  const runtime = createMockRuntimeAdapter()
+  const search = createMockSearchAdapter()
+  return {
+    runtime,
+    search,
+    tasks: createMockBakinTaskStore(),
+    health: createHealthService([runtime, search]),
+  }
+}
+
+function resolveAppServices(services?: AppServices): AppServices {
+  return services ?? maybeGetAppServices() ?? createFallbackAppServices()
+}
 
 /** Singleton hook registry shared across all plugins and core modules.
  *  Backed by globalThis so a single process has exactly one hook map, even
@@ -196,9 +217,10 @@ class PluginRegistryImpl {
   private plugins = new Map<string, PluginState>()
   private initialized = false
 
-  async initialize(config: BakinConfig, storage: StorageAdapter, events: EventBus): Promise<void> {
+  async initialize(config: BakinConfig, storage: StorageAdapter, events: EventBus, services?: AppServices): Promise<void> {
     if (this.initialized) return
     this.initialized = true
+    const appServices = resolveAppServices(services)
 
     // Collect all plugin paths and their manifest dependencies
     const entries: Array<{ path: string; id: string; deps: string[] }> = []
@@ -225,11 +247,11 @@ class PluginRegistryImpl {
 
     // Activate in dependency order
     for (const entry of sorted) {
-      await this.loadPlugin(entry.path, storage, events)
+      await this.loadPlugin(entry.path, storage, events, appServices)
     }
 
     // Load user plugins from ~/.bakin/plugins/ (override by ID)
-    await this.loadUserPlugins(storage, events)
+    await this.loadUserPlugins(storage, events, appServices)
   }
 
   private topologicalSort(entries: Array<{ path: string; id: string; deps: string[] }>): Array<{ path: string; id: string; deps: string[] }> {
@@ -284,6 +306,7 @@ class PluginRegistryImpl {
     state: PluginState,
     storage: StorageAdapter,
     events: EventBus,
+    services: AppServices,
   ): PluginContext {
     // Extract as a local so both ctx.registerRoute and the search API's
     // auto-route wiring land routes in the same place (and share the
@@ -296,6 +319,8 @@ class PluginRegistryImpl {
       storage,
       events,
       pluginId,
+      runtime: services.runtime,
+      tasks: services.tasks,
       registerNav: (items: NavItem[]) => { state.navItems.push(...items) },
       registerRoute,
       registerSlot: (reg: UISlotRegistration) => { state.slots.push(reg) },
@@ -417,7 +442,7 @@ class PluginRegistryImpl {
     }
   }
 
-  private async loadPlugin(pluginPath: string, storage: StorageAdapter, events: EventBus): Promise<void> {
+  private async loadPlugin(pluginPath: string, storage: StorageAdapter, events: EventBus, services: AppServices): Promise<void> {
     try {
       // Core plugins come from the static table `server.ts` registers
       // via `registerCorePlugins` — this is what lets `bun build --compile`
@@ -472,7 +497,7 @@ class PluginRegistryImpl {
         healthCheckIds: [],
       }
 
-      const ctx = this.buildContext(plugin.id, state, storage, events)
+      const ctx = this.buildContext(plugin.id, state, storage, events, services)
       await plugin.activate(ctx)
       state.ctx = ctx
       const skillResult = loadPluginSkills(pluginPath, ctx, log)
@@ -499,7 +524,7 @@ class PluginRegistryImpl {
    * Scan ~/.bakin/plugins/ for user-installed plugins.
    * User plugins with the same ID as built-in plugins override them.
    */
-  private async loadUserPlugins(storage: StorageAdapter, events: EventBus): Promise<void> {
+  private async loadUserPlugins(storage: StorageAdapter, events: EventBus, services: AppServices): Promise<void> {
     const userPluginsDir = join(getContentDir(), 'plugins')
 
     if (!existsSync(userPluginsDir)) return
@@ -553,7 +578,7 @@ class PluginRegistryImpl {
             healthCheckIds: [],
           }
 
-          const ctx = this.buildContext(plugin.id, state, storage, events)
+          const ctx = this.buildContext(plugin.id, state, storage, events, services)
           await plugin.activate(ctx)
           state.ctx = ctx
           // #142 layer 1 — surface user-plugin permissions to the audit log.

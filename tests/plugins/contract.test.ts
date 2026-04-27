@@ -1,4 +1,6 @@
 import { describe, it, expect, afterAll, mock } from 'bun:test'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const { hoistedBakinHome, hoistedOpenClawHome } = (() => {
   const { mkdtempSync } = require('fs')
@@ -135,6 +137,8 @@ function createMockContext(pluginId: string): {
     storage,
     events,
     pluginId,
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore(),
     registerNav: (items) => navItems.push(...items),
     registerRoute: (route) => routes.push(route),
     registerSlot: () => {},

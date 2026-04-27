@@ -5,6 +5,8 @@
 
 import type { ZodRawShape, ZodType } from 'zod'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from './docs'
+import type { AgentRuntimeAdapter } from './adapters/runtime'
+import type { BakinTaskStore } from './tasks/store'
 
 // ---------------------------------------------------------------------------
 // Approval actor — identifies who decided a gate (or any reviewable action)
@@ -92,6 +94,9 @@ export interface PluginToolContext {
   storage: StorageAdapter
   events: EventBus
   pluginId: string
+  runtime: AgentRuntimeAdapter
+  tasks: BakinTaskStore
+  search: SearchAPI
   hooks: HookAPI
   activity: ActivityAPI
   getSettings<T = Record<string, unknown>>(): T
@@ -287,6 +292,8 @@ export interface PluginContext {
   storage: StorageAdapter
   events: EventBus
   pluginId: string
+  runtime: AgentRuntimeAdapter
+  tasks: BakinTaskStore
   registerNav(items: NavItem[]): void
   registerRoute(route: APIRoute): void
   registerSlot(registration: UISlotRegistration): void

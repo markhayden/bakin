@@ -31,6 +31,7 @@ import { handleSSE, broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
 import * as vault from './src/core/vault'
 import * as openclaw from './src/core/openclaw-client'
+import { createAppServices } from './src/core/app-services'
 import { getMainAgentId } from './src/core/main-agent'
 import { handleJsonPost, jsonResponse } from './src/core/middleware'
 import { writeCrossPluginSearchResponse } from './src/core/api-search-handler'
@@ -124,6 +125,9 @@ const eventBus = new BakinEventBus(broadcast)
   // Initialize vault (load credentials from disk)
   vault.initialize()
 
+  // Initialize the adapter/task service spine before plugin activation.
+  const appServices = await createAppServices()
+
   // Rebuild any stale user plugin dist/ before the registry imports them.
   // The registry dynamic-imports `<pluginDir>/<server-entry>` (typically
   // `index.ts` as-is for core plugins in the repo, but user plugins
@@ -135,7 +139,7 @@ const eventBus = new BakinEventBus(broadcast)
 
   // Initialize plugin registry
   log.info('Loading plugins...')
-  await pluginRegistry.initialize(config, storage, eventBus)
+  await pluginRegistry.initialize(config, storage, eventBus, appServices)
 
   // Layer agent-package contributions on top of plugin-registered workflows +
   // workflow-skills. Plugins have populated the `plugin` tier of the workflow

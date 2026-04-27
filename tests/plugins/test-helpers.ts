@@ -21,6 +21,8 @@ import { registerPluginNodeType } from '../../plugins/workflows/lib/node-type-re
 import { registerPluginNotificationChannel } from '../../plugins/workflows/lib/notification-channel-registry'
 import type { WorkflowDefinition } from '../../plugins/workflows/types'
 import { createLogger } from '../../src/core/logger'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const testHelperLog = createLogger('test-helpers')
 
@@ -99,6 +101,8 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     storage,
     events,
     pluginId,
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore(),
     registerNav: vi.fn(),
     registerRoute: (route) => routes.push(route),
     registerSlot: vi.fn(),
