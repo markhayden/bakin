@@ -100,7 +100,7 @@ Agents introspect and operate on the team through MCP exec tools.
 - `bakin_exec_team_create_agent`: Create a new agent: registers in OpenClaw, writes persona files, configures dispatch permissions, optionally assigns to a team. Returns next-step instructions.
 - `bakin_exec_team_delete_agent`: Remove an agent from OpenClaw and clean up Bakin state. Requires confirm=true as a safety guard.
 - `bakin_exec_team_list`: List all agents with their current status (online/working/available/offline).
-- `bakin_exec_team_members`: Get agents that belong to a specific team (e.g.
+- `bakin_exec_team_members`: Get agents that belong to a specific team (e.g. "builders", "creators").
 - `bakin_exec_team_message`: Send a message to an agent via OpenClaw.
 - `bakin_exec_team_my_team`: Get the team that a specific agent belongs to, including all teammates.
 - `bakin_exec_team_org`: Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines.
@@ -108,7 +108,7 @@ Agents introspect and operate on the team through MCP exec tools.
 - `bakin_exec_team_read_file`: Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md).
 - `bakin_exec_team_set_permissions`: Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents).
 - `bakin_exec_team_status`: Get the heartbeat and health status for an agent.
-- `bakin_exec_team_update_identity`: Update an existing agent\
+- `bakin_exec_team_update_identity`: Update an existing agent's identity fields (name, emoji, role, vibe, etc.) and/or workspace files (SOUL.md, TOOLS.md).
 <!-- /docs:exec-tools -->
 
 Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/).

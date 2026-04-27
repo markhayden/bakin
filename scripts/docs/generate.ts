@@ -107,7 +107,7 @@ function renderCommandSnippet(marker: string): string {
   for (const name of names) {
     const command = byName.get(name)
     if (!command) throw new Error(`Missing CLI command for docs snippet "${marker}": ${name}`)
-    lines.push(`| \`${command.usage}\` | ${command.summary} |`)
+    lines.push(`| \`${command.usage.replace(/\|/g, '\\|')}\` | ${command.summary} |`)
   }
 
   lines.push('<!-- /docs:cli-commands -->')

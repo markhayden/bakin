@@ -3,7 +3,7 @@ title: Schedule
 description: "Cron-driven jobs that fire tasks, agents, and workflows on a cadence. Run history, pause/resume, failure cooldown."
 ---
 
-Schedule is how recurring work gets created in Bakin. Cron expressions or "every N minutes" intervals fire jobs that spawn real tasks, optionally start workflows, and assign them to agents. Pause anything that's wrong without deleting it. Watch history to spot drift.
+Cron for normal humans. Visible, debuggable, paused with a click. Each scheduled job spawns a real task, hands it to an agent, optionally walks them through a workflow. Set it up and get on with your day. History shows you what fired, what worked, and what didn't.
 
 ## The schedule view
 
@@ -11,32 +11,40 @@ Schedule is how recurring work gets created in Bakin. Cron expressions or "every
   <figcaption>The schedule view in list mode, with today/week/month calendar toggles in the header.</figcaption>
 </figure>
 
-Four view modes from the header: **List**, **Today**, **Week**, **Month**. List is the dense table; the others are calendar grids. Filter by agent, search by name. Click a row to open the detail drawer (sidecar fields, run history, last failure).
+As close to telling the future as it gets. Four view modes from the header: **List**, **Today**, **Week**, **Month**. List is the dense table; the calendar grids lay out every job your team is about to fire. Filter by agent, search by name. Click a row to open the detail drawer (sidecar fields, run history, last failure).
 
-## Common actions
+## Job Management
 
-### Create a job
+### Create
 
 <figure class="screenshot-frame">
   <figcaption>The job form with cron expression, agent picker, task title and prompt, and optional workflow.</figcaption>
 </figure>
 
-`+ New Job` opens a side drawer. Required: cron expression (or `every`/`at` shorthand), an agent, a task title, and the task prompt. Optional: attach a workflow that fires when the bridge fires.
+`+ New Job` opens a side drawer. Type the cadence in plain English ("every day at 9am", "weekdays at noon", "first of the month") and Bakin translates it into cron. Or drop in a raw cron expression if you've got one. Pick the agent who runs it, give the task a title and a prompt, optionally attach a workflow.
 
-### Pause, resume, run now, skip next
+### Pause, run now, duplicate
 
-Each row has a menu for pause/resume, run-now, skip-next, duplicate, and delete. Same actions live in the detail drawer.
+Each row's menu has the day-to-day controls:
+
+- `Pause` to stop a job without losing its config. Resume from the same menu when you're ready.
+- `Run now` to fire the job immediately, ignoring schedule. Good for testing or backfilling.
+- `Skip next` to drop just the next firing without pausing the rest.
+- `Duplicate` to clone a job with all its settings, then tweak the copy.
+- `Delete` when you don't need it anymore.
+
+Same menu lives in the detail drawer for jobs you've already opened.
 
 ### Inspect run history
 
-The detail drawer's **History** tab lists past fires with timestamps, success/failure, and the task that resulted. Useful when scheduled work looks stale or duplicated.
+The detail drawer's `History` tab lists past fires with timestamps, success/failure, and the task that resulted. Useful when scheduled work looks stale or duplicated.
 
 ## How it works
 
-Schedule splits ownership cleanly between OpenClaw and Bakin.
+Schedule splits ownership: OpenClaw owns the cron, Bakin owns everything around it.
 
 - **OpenClaw owns the cron itself.** The actual cron daemon, expressions, and run logs live in the OpenClaw home directory. Bakin shells out to `openclaw cron add/edit/remove/run` to change them.
-- **Bakin owns sidecar metadata.** Display name, owner, agent assignment, task title and prompt, workflow link, owner, and pause/failure state live in `~/.bakin/schedule/sidecar.json`.
+- **Bakin owns sidecar metadata.** Display name, owner, agent assignment, task title and prompt, workflow link, and pause/failure state live in `~/.bakin/schedule/sidecar.json`.
 
 When a cron fires, OpenClaw POSTs the **bridge endpoint** (`/api/plugins/schedule/bridge`) with an HMAC-signed payload. Bakin verifies the signature, creates a real task, optionally starts a workflow, and dispatches the work to the assigned agent. The bridge secret auto-generates on first use.
 
@@ -60,7 +68,7 @@ Same surface from the terminal:
 <!-- docs:cli-commands schedule -->
 | Command | Purpose |
 | --- | --- |
-| `bakin schedule [list|add|pause|resume|remove|run|runs] ...` | Manage scheduled jobs. |
+| `bakin schedule [list\|add\|pause\|resume\|remove\|run\|runs] ...` | Manage scheduled jobs. |
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
@@ -72,7 +80,7 @@ Full surface in the [CLI reference](/docs/reference/generated/cli/).
 Agents can list, create, pause, run, and parse cron through MCP exec tools.
 
 <!-- docs:exec-tools schedule -->
-- `bakin_exec_schedule_briefing`: Today
+- `bakin_exec_schedule_briefing`: Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing.
 - `bakin_exec_schedule_create`: Create a new scheduled job that creates tasks on the board
 - `bakin_exec_schedule_delete`: Delete a scheduled job
 - `bakin_exec_schedule_get`: Get details for a single scheduled job
