@@ -222,6 +222,9 @@ bakin plugins install /path/to/my-plugin
 # GitHub — clones + builds
 bakin plugins install github:your-user/my-plugin
 
+# GitHub monorepo — install one plugin from a multi-plugin repo via #subpath
+bakin plugins install github:your-user/bakin-bits-official#plugins/messaging
+
 # Skip the consent prompt (CI / scripted installs)
 bakin plugins install /path/to/my-plugin --yes
 
@@ -264,6 +267,35 @@ What happens under the hood:
 User plugins with the same id as a core plugin **override** the core
 plugin (`~/.bakin/plugins/` is scanned after the built-in table). Use
 this to fork and customize any core plugin without touching the repo.
+
+### Monorepo `#subpath` syntax
+
+Multi-plugin repositories ship more than one plugin from the same git
+source — `bakin-bits-official` is the reference example. Append
+`#path/to/plugin` to the source string to install just one of them:
+
+```sh
+bakin plugins install github:madeinwyo/bakin-bits-official#plugins/messaging
+bakin plugins install github:your-user/your-monorepo#packages/foo
+```
+
+Rules for the subpath portion:
+
+- Non-empty after `#`, must match `/^[A-Za-z0-9._/-]+$/`
+- No leading or trailing `/`
+- No `..` or `.` segments (path-traversal guard)
+- Only one `#` per source string
+
+The install flow clones the parent repo to a staging directory, copies
+the subpath contents to `~/.bakin/plugins/<id>/`, and drops the rest of
+the repo (including its `.git/`). The lockfile records the full source
+string so `bakin plugins upgrade <id>` re-resolves it correctly — the
+upgrade flow re-clones to staging on each upgrade since there's no
+local `.git/` to fetch into.
+
+`#subpath` only applies to `github:` (or full URL) sources. Local
+installs should point directly at the plugin directory; using `#subpath`
+on a local install returns a clear error.
 
 ### Permissions field
 

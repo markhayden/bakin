@@ -40,10 +40,46 @@ const RefStringSchema = z.string().refine(
  * Install source — same hardening as ref, plus rejection of leading
  * `-` and control chars. The github URL gets passed positionally to
  * `git ls-remote` and `git clone`.
+ *
+ * Optional monorepo subpath via `#subpath` syntax (Phase 1). The subpath:
+ *   - must be non-empty after `#`
+ *   - matches `/^[A-Za-z0-9._/-]+$/`
+ *   - cannot start or end with `/`
+ *   - cannot contain `..` segments (path-traversal guard)
+ *
+ * Examples accepted:
+ *   github:user/repo
+ *   github:user/repo@v1.2.3
+ *   github:user/repo#plugins/foo
+ *   github:user/repo@v1.2.3#plugins/foo
+ *   /Users/me/dev/repo
+ *
+ * Examples rejected:
+ *   github:user/repo#                      (empty subpath)
+ *   github:user/repo#/plugins/foo          (leading slash)
+ *   github:user/repo#plugins/foo/          (trailing slash)
+ *   github:user/repo#plugins/../etc        (path traversal)
+ *   github:user/repo#plugins#foo           (multiple `#`)
  */
 const SourceStringSchema = z.string().min(1).refine(
-  s => !s.startsWith('-') && !/[\x00-\x1f]/.test(s),
-  { message: 'source must not start with "-" or contain control characters' },
+  (s) => {
+    if (s.startsWith('-') || /[\x00-\x1f]/.test(s)) return false
+    const hashCount = (s.match(/#/g) || []).length
+    if (hashCount === 0) return true
+    if (hashCount > 1) return false
+    const subpath = s.slice(s.indexOf('#') + 1)
+    if (subpath.length === 0) return false
+    if (!/^[A-Za-z0-9._/-]+$/.test(subpath)) return false
+    if (subpath.startsWith('/') || subpath.endsWith('/')) return false
+    if (subpath.split('/').some(seg => seg === '..' || seg === '.')) return false
+    return true
+  },
+  {
+    message:
+      'source must not start with "-" or contain control characters; ' +
+      'optional `#subpath` must be a single-segment-or-deeper relative path ' +
+      '(no leading/trailing slash, no `..`, no control chars)',
+  },
 )
 
 /**
