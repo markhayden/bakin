@@ -143,7 +143,52 @@ const PluginLockEntrySchema = z.object({
    * this field existed.
    */
   installedSkills: z.array(z.string().regex(/^[A-Za-z0-9._-]+$/)).optional(),
-})
+  /**
+   * Phase 2 (#171). True when this entry was registered via
+   * `bakin plugins link <localPath>` — i.e. the plugin dir at
+   * `~/.bakin/plugins/<id>/` is a symlink to a developer-owned source
+   * tree, NOT a copy. Used by:
+   *   - The link teardown flow: skip the tarball backup (the source is
+   *     still on the user's disk).
+   *   - The hot-reload coordinator: only watch linked plugins.
+   *   - `bakin plugins list`: render a distinct status badge.
+   *
+   * Mutually exclusive with the standard install fields; cross-field
+   * validation in PluginLockEntrySchema enforces the invariant.
+   */
+  linked: z.boolean().optional(),
+  /**
+   * Absolute path to the developer's source tree when `linked === true`.
+   * The symlink at `~/.bakin/plugins/<id>/` points here. Path safety is
+   * enforced by the link API (path-traversal guards + realpathSync); this
+   * schema only validates non-emptiness and absolute-shape.
+   */
+  linkedSource: z.string().refine(
+    s => s.length > 0 && (s.startsWith('/') || /^[A-Za-z]:\\/.test(s)),
+    { message: 'linkedSource must be a non-empty absolute path' },
+  ).optional(),
+}).refine(
+  // Cross-field invariant for link entries — both fields must be present
+  // together, and the install-shape fields must be empty (the symlink has
+  // no commit provenance and no upstream to upgrade against).
+  (e) => {
+    if (e.linked === true) {
+      if (!e.linkedSource) return false
+      if (e.type !== 'local') return false
+      if (e.commitSha !== '') return false
+      if (e.ref !== '') return false
+    } else if (e.linkedSource !== undefined) {
+      // linkedSource set without linked === true is malformed.
+      return false
+    }
+    return true
+  },
+  {
+    message:
+      'invalid lockfile entry: `linked: true` requires linkedSource + ' +
+      'type=local + empty commitSha + empty ref; linkedSource alone is not allowed',
+  },
+)
 
 export const PluginLockfileSchema = z.object({
   version: z.literal(1),
@@ -286,4 +331,28 @@ export function updatePlugin(
     ...lock,
     plugins: { ...lock.plugins, [id]: { ...existing, ...patch } },
   }
+}
+
+/**
+ * Phase 2 (#171). Add a `linked: true` plugin entry. Thin wrapper over
+ * `addPlugin` that asserts the entry shape so callers don't accidentally
+ * write malformed link entries (the schema's cross-field refine would
+ * catch it, but the assert provides a clearer error site).
+ */
+export function addLinkedPlugin(
+  lock: PluginLockfile,
+  id: string,
+  entry: PluginLockEntry,
+): PluginLockfile {
+  if (entry.linked !== true || !entry.linkedSource) {
+    throw new Error(
+      `addLinkedPlugin called with non-link entry; use addPlugin for installs`,
+    )
+  }
+  return addPlugin(lock, id, entry)
+}
+
+/** Type guard — true when the entry was registered via `bakin plugins link`. */
+export function isLinked(entry: PluginLockEntry): boolean {
+  return entry.linked === true && typeof entry.linkedSource === 'string' && entry.linkedSource.length > 0
 }

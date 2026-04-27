@@ -14,6 +14,7 @@ import { readFileSync, existsSync, statSync } from 'fs'
 import { join, extname } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { EMBEDDED_ASSETS } from '../_embedded-assets'
+import { stampPluginResponse } from '@/core/plugin-host/version-stamp'
 
 const MIME: Record<string, string> = {
   '.js': 'application/javascript; charset=utf-8',
@@ -58,14 +59,14 @@ export async function get(_req: Request, url: URL): Promise<Response> {
   const userPath = join(getContentDir(), 'plugins', pluginId, 'dist', relPath)
   if (existsSync(userPath) && statSync(userPath).isFile()) {
     const body = readFileSync(userPath)
-    return new Response(body, {
+    return stampPluginResponse(pluginId, new Response(body, {
       status: 200,
       headers: {
         'Content-Type': mimeFor(userPath),
         'Content-Length': statSync(userPath).size.toString(),
         'Cache-Control': cacheControl(),
       },
-    })
+    }))
   }
 
   // 2) Embedded core plugin (compiled binary wins here; dev mode lands on
@@ -75,14 +76,14 @@ export async function get(_req: Request, url: URL): Promise<Response> {
     const file = Bun.file(embeddedPath)
     if (await file.exists()) {
       const bytes = new Uint8Array(await file.arrayBuffer())
-      return new Response(bytes, {
+      return stampPluginResponse(pluginId, new Response(bytes, {
         status: 200,
         headers: {
           'Content-Type': mimeFor(relPath),
           'Content-Length': String(bytes.length),
           'Cache-Control': cacheControl(),
         },
-      })
+      }))
     }
   }
 
@@ -91,14 +92,14 @@ export async function get(_req: Request, url: URL): Promise<Response> {
   const repoPath = join(process.cwd(), 'plugins', pluginId, 'dist', relPath)
   if (existsSync(repoPath) && statSync(repoPath).isFile()) {
     const body = readFileSync(repoPath)
-    return new Response(body, {
+    return stampPluginResponse(pluginId, new Response(body, {
       status: 200,
       headers: {
         'Content-Type': mimeFor(repoPath),
         'Content-Length': statSync(repoPath).size.toString(),
         'Cache-Control': cacheControl(),
       },
-    })
+    }))
   }
 
   return Response.json(

@@ -102,7 +102,7 @@ interface ListPluginRow {
   source: 'core' | 'github' | 'local'
   upgradeAvailable: boolean
   staleHintDays: number | null
-  installed: { version: string } | null
+  installed: { version: string; linked?: boolean; linkedSource?: string } | null
 }
 
 function renderPluginsList(rows: ListPluginRow[]): string[] {
@@ -112,11 +112,17 @@ function renderPluginsList(rows: ListPluginRow[]): string[] {
     `  ${'ID'.padEnd(COL.id)} ${'NAME'.padEnd(COL.name)} ${'VERSION'.padEnd(COL.version)} ${'SOURCE'.padEnd(COL.source)} STATUS`,
   )
   for (const r of rows) {
-    const sourceCell = r.source === 'core' ? '[core]' : r.source
+    const isLinked = r.installed?.linked === true
+    const sourceCell = r.source === 'core'
+      ? '[core]'
+      : (isLinked ? '[linked]' : r.source)
     let status = ''
     if (r.source === 'core') {
       // Core plugins don't have lifecycle status — column stays blank.
       status = ''
+    } else if (isLinked) {
+      const target = r.installed?.linkedSource ?? '?'
+      status = `→ ${target}`
     } else if (r.upgradeAvailable) {
       status = 'upgrade available'
     } else if (r.staleHintDays !== null) {
@@ -333,6 +339,56 @@ async function cmdPluginsRemove(pluginId: string): Promise<number> {
   }
 }
 
+async function cmdPluginsLink(localPath: string, opts: { force: boolean }): Promise<number> {
+  try {
+    const res = await api<{
+      ok?: boolean
+      error?: string
+      id?: string
+      pluginDir?: string
+      linkedSource?: string
+      version?: string
+      message?: string
+    }>('/api/plugins/link', {
+      method: 'POST',
+      body: JSON.stringify({ localPath, force: opts.force }),
+    })
+    if (res.error) {
+      console.error(`Link failed: ${res.error}`)
+      return 1
+    }
+    console.log(res.message ?? `Linked "${res.id}". Restart Bakin to activate the plugin.`)
+    if (res.linkedSource) {
+      console.log(`  ~/.bakin/plugins/${res.id} → ${res.linkedSource}`)
+    }
+    return 0
+  } catch (err) {
+    console.error(`Link failed: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
+}
+
+async function cmdPluginsUnlink(pluginId: string): Promise<number> {
+  try {
+    const res = await api<{ ok?: boolean; error?: string; id?: string; message?: string }>(
+      '/api/plugins/unlink',
+      {
+        method: 'POST',
+        body: JSON.stringify({ pluginId }),
+      },
+    )
+    if (res.error) {
+      console.error(`Unlink failed: ${res.error}`)
+      return 1
+    }
+    console.log(res.message ?? `Unlinked "${res.id ?? pluginId}". Restart Bakin to release the plugin.`)
+    return 0
+  } catch (err) {
+    console.error(`Unlink failed: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
+}
+
 async function cmdPluginsScaffold(name: string): Promise<number> {
   // Implementation lands in TH4 (src/core/plugin-scaffold.ts). Use a
   // variable specifier so TypeScript doesn't complain before that file
@@ -450,7 +506,7 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
 
       case 'plugins': {
         if (!sub) {
-          console.error('Usage: bakin plugins <list|install|upgrade|remove|scaffold>')
+          console.error('Usage: bakin plugins <list|install|upgrade|remove|scaffold|link|unlink>')
           return { startServer: false, exitCode: 1 }
         }
         if (sub === 'list') {
@@ -459,7 +515,7 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
         }
         if (sub === 'install') {
           if (!args[2]) {
-            console.error('Usage: bakin plugins install <path|github:user/repo> [--yes]')
+            console.error('Usage: bakin plugins install <path|github:user/repo[#subpath]> [--yes]')
             return { startServer: false, exitCode: 1 }
           }
           const yes = args.slice(3).includes('--yes')
@@ -486,6 +542,21 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
             return { startServer: false, exitCode: 1 }
           }
           return { startServer: false, exitCode: await cmdPluginsScaffold(args[2]) }
+        }
+        if (sub === 'link') {
+          if (!args[2]) {
+            console.error('Usage: bakin plugins link <localPath> [--force]')
+            return { startServer: false, exitCode: 1 }
+          }
+          const force = args.slice(3).includes('--force')
+          return { startServer: false, exitCode: await cmdPluginsLink(args[2], { force }) }
+        }
+        if (sub === 'unlink') {
+          if (!args[2]) {
+            console.error('Usage: bakin plugins unlink <id>')
+            return { startServer: false, exitCode: 1 }
+          }
+          return { startServer: false, exitCode: await cmdPluginsUnlink(args[2]) }
         }
         console.error(`Unknown plugins subcommand: ${sub}`)
         return { startServer: false, exitCode: 1 }
