@@ -26,6 +26,7 @@ import {
 } from './lib/project-service'
 import { createLogger } from '../../src/core/logger'
 import { getMainAgentId } from '../../src/core/main-agent'
+import { chatAgentCompletion, sendAgentMessage, streamAgentMessageResponse } from '../../src/core/runtime-registry'
 import type { Project, ProjectStatus } from './types'
 
 const log = createLogger('projects')
@@ -393,7 +394,6 @@ const projectsPlugin: BakinPlugin = {
         ].join('\n')
 
         const agentId = body.agent || getMainAgentId()
-        const { streamMessage, chatCompletion } = await import('../../src/core/openclaw-client')
         const sessionKey = `projects-${body.projectId}-${Date.now()}`
 
         const stream = new ReadableStream({
@@ -405,10 +405,10 @@ const projectsPlugin: BakinPlugin = {
 
             let fullContent = ''
             let useStreaming = true
-            let gwResponse: Response | null = null
+            let gwResponse: Response | undefined
 
             try {
-              gwResponse = await streamMessage({
+              gwResponse = await streamAgentMessageResponse({
                 agentId,
                 sessionKey,
                 messages: [{ role: 'user', content: context }],
@@ -424,7 +424,6 @@ const projectsPlugin: BakinPlugin = {
                 agentId,
               })
               useStreaming = false
-              gwResponse = null
             }
 
             try {
@@ -453,7 +452,7 @@ const projectsPlugin: BakinPlugin = {
                   }
                 }
               } else {
-                fullContent = await chatCompletion({
+                fullContent = await chatAgentCompletion({
                   agentId,
                   sessionKey,
                   messages: [{ role: 'user', content: context }],
@@ -809,9 +808,8 @@ const projectsPlugin: BakinPlugin = {
         ].join('\n')
 
         try {
-          const { sendMessage } = await import('../../src/core/openclaw-client')
           const agentId = (params.agent as string) || getMainAgentId()
-          const reply = await sendMessage(agentId, context)
+          const reply = await sendAgentMessage(agentId, context)
           ctx.activity.audit('project.asked', 'system', { projectId, agent: agentId })
           return { ok: true, reply }
         } catch (err: unknown) {

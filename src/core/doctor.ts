@@ -12,7 +12,7 @@
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
-import * as openclaw from './openclaw-client'
+import { sendAgentMessage } from './runtime-registry'
 import { isOnboarded } from './onboarding/state'
 import { getMainAgentId } from './main-agent'
 import { listHealthChecks } from '../../plugins/health/lib/health-check-registry'
@@ -83,7 +83,7 @@ async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void
   const message = `Bakin Doctor found ${issues.length} issue(s) that need your attention:\n\n${lines.join('\n')}\n\nRun \`bakin doctor\` for full details.`
 
   try {
-    await openclaw.sendMessage(getMainAgentId(), message)
+    await sendAgentMessage(getMainAgentId(), message)
     log.info('Notified main agent of unfixable issues', { count: issues.length })
   } catch (err) {
     // Gateway might be the issue — can't notify about that

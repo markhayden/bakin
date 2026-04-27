@@ -5,8 +5,7 @@
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from './logger'
-import { getAgentIds } from '@bakin/core/openclaw-config'
-import * as openclaw from './openclaw-client'
+import { getRuntimeAdapter, sendAgentMessage } from './runtime-registry'
 import { readTaskboard } from '@bakin/tasks/lib/flow-store'
 
 const log = createLogger('agents')
@@ -30,10 +29,8 @@ interface AgentTask {
  * Get status for a specific agent — their current tasks and last activity.
  */
 export async function getAgentStatus(agentId: string, contentDir: string): Promise<AgentStatus> {
-  const agents = getAgentIds()
-
-  // Resolve name (agents list uses short names)
-  const name = agents.includes(agentId) ? agentId : agentId
+  const agent = await getRuntimeAdapter().agents.get(agentId)
+  const name = agent?.name ?? agentId
 
   // Get tasks assigned to this agent
   const tasks = getAgentTasks(agentId, contentDir)
@@ -93,7 +90,7 @@ export async function sendMessageToAgent(
   message: string
 ): Promise<{ ok: boolean; reply?: string; error?: string }> {
   try {
-    const reply = await openclaw.sendMessage(agentId, message)
+    const reply = await sendAgentMessage(agentId, message)
     return { ok: true, reply }
   } catch (err) {
     log.error(`Failed to send message to agent ${agentId}`, err)
@@ -107,8 +104,8 @@ export async function sendMessageToAgent(
 export async function listAgents(contentDir: string): Promise<AgentStatus[]> {
   const statuses: AgentStatus[] = []
 
-  for (const agentId of getAgentIds()) {
-    statuses.push(await getAgentStatus(agentId, contentDir))
+  for (const agent of await getRuntimeAdapter().agents.list()) {
+    statuses.push(await getAgentStatus(agent.id, contentDir))
   }
 
   return statuses

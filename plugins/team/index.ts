@@ -18,7 +18,7 @@ import { resetSettingsCache } from '../../src/core/settings'
 import { getMainAgentId } from '../../src/core/main-agent'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
-import { restartGateway } from '../../src/core/openclaw-client'
+import { restartRuntime } from '../../src/core/runtime-registry'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getStatsByMs } from '../../src/core/usage'
 import * as adapter from './lib/openclaw-adapter'
@@ -697,7 +697,7 @@ const teamPlugin: BakinPlugin = {
           const url = new URL(req.url)
           const skipRestart = url.searchParams.get('skipRestart') === 'true'
           if (!skipRestart) {
-            restartGateway().then(() => {
+            restartRuntime().then(() => {
               log.info('Gateway restarted after agent creation', { agent: id })
               try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
             }).catch((err) => {
@@ -753,7 +753,7 @@ const teamPlugin: BakinPlugin = {
           try { syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
           // Restart OpenClaw gateway
-          restartGateway().then(() => {
+          restartRuntime().then(() => {
             log.info('Gateway restarted after agent deletion', { agent: agentId })
             try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
           }).catch((err) => {
@@ -1539,7 +1539,7 @@ const teamPlugin: BakinPlugin = {
 
         let gatewayRestarted = false
         try {
-          await restartGateway()
+          await restartRuntime()
           gatewayRestarted = true
           log.info('Gateway restarted after agent creation', { agent: id })
           try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
@@ -1625,7 +1625,7 @@ const teamPlugin: BakinPlugin = {
 
         let gatewayRestarted = false
         try {
-          await restartGateway()
+          await restartRuntime()
           gatewayRestarted = true
           log.info('Gateway restarted after agent deletion', { agent: agentId })
           try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
