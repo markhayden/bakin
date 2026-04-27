@@ -7,7 +7,6 @@
 import type {
   APIRoute,
   FileBackedContentTypeDefinition,
-  FilePatternMapper,
   SearchAPI,
   SearchContentTypeDefinition,
   SearchIndexDefinition,
@@ -16,14 +15,22 @@ import type {
   SearchResult,
   SearchTransformOp,
 } from '../../packages/core/src/plugin-types'
-import * as antfly from './antfly'
-import type { IndexHealth } from './antfly'
+import type {
+  AggregationRequest,
+  Filter,
+  FacetCount,
+  Query,
+  SearchAdapter,
+  SearchHit,
+  TableConfig,
+  TableHealth,
+} from '@bakin/core/adapters/search'
+import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
 import { broadcast } from './sse'
 import { createLogger } from './logger'
-import { getSettings } from './settings'
-import { resolveEmbedder } from './embedder-resolver'
 import { registerSyncHook, registerUnlinkHook } from './watcher'
 import { getContentDir } from './content-dir'
+import { maybeGetAppServices } from './app-services'
 import {
   findMatchingMapper,
   matchesAnyPattern,
@@ -59,6 +66,7 @@ interface RegistryState {
 
 const _g = globalThis as typeof globalThis & {
   __bakinSearchRegistry?: RegistryState
+  __bakinFallbackSearchAdapter?: SearchAdapter
 }
 
 function getRegistry(): RegistryState {
@@ -73,6 +81,17 @@ function getRegistry(): RegistryState {
   return _g.__bakinSearchRegistry
 }
 
+function getSearchAdapter(): SearchAdapter {
+  const services = maybeGetAppServices()
+  if (services?.search) return services.search
+  _g.__bakinFallbackSearchAdapter ??= createMockSearchAdapter({
+    name: 'fallback-search',
+    version: '0.0.0',
+    requiredCoreVersion: '*',
+  })
+  return _g.__bakinFallbackSearchAdapter
+}
+
 // ---------------------------------------------------------------------------
 // Table name resolution
 // ---------------------------------------------------------------------------
@@ -85,41 +104,6 @@ function fullTableName(table: string): string {
 // ---------------------------------------------------------------------------
 // Table creation from schema
 // ---------------------------------------------------------------------------
-
-function schemaFieldToAntflyType(field: SearchContentTypeDefinition['schema'][string]): string[] {
-  switch (field.type) {
-    case 'text': return ['text']
-    case 'keyword': return ['keyword']
-    case 'number': return ['keyword'] // stored as keyword for filtering
-    case 'boolean': return ['keyword']
-    case 'datetime': return ['keyword']
-    case 'array': return ['keyword']
-    default: return ['keyword']
-  }
-}
-
-function buildAntflySchema(def: SearchContentTypeDefinition): { default_type: string; document_schemas: Record<string, { schema: Record<string, unknown> }> } {
-  const properties: Record<string, unknown> = {}
-  for (const [fieldName, fieldDef] of Object.entries(def.schema)) {
-    properties[fieldName] = {
-      type: 'string',
-      'x-antfly-types': schemaFieldToAntflyType(fieldDef),
-    }
-  }
-
-  return {
-    default_type: def.table,
-    document_schemas: {
-      [def.table]: {
-        schema: {
-          type: 'object',
-          properties,
-          'x-antfly-include-in-all': def.searchableFields,
-        },
-      },
-    },
-  }
-}
 
 /**
  * Compute the effective list of vector indexes for a content type. When
@@ -143,62 +127,45 @@ function getEffectiveIndexes(def: SearchContentTypeDefinition): SearchIndexDefin
   ]
 }
 
-function buildAntflyIndexes(def: SearchContentTypeDefinition): Record<string, Record<string, unknown>> {
-  const settings = getSettings()
-  const indexes: Record<string, Record<string, unknown>> = {
-    search: {
-      name: 'search',
-      type: 'full_text',
+function buildTableConfig(def: SearchContentTypeDefinition): TableConfig {
+  return {
+    fields: def.schema,
+    indexes: getEffectiveIndexes(def).map((idx) => ({
+      name: idx.name,
+      kind: 'vector',
+      fields: def.searchableFields,
+      embedderRef: idx.embedderRef,
+      template: idx.embeddingTemplate,
+      chunker: idx.chunker,
+    })),
+    adapterOptions: {
+      defaultType: def.table,
+      description: `Bakin ${def.table} - auto-created by search registry`,
+      searchableFields: def.searchableFields,
+      facets: def.facets,
+      ttl: def.ttl,
+      ttlField: def.ttlField,
+      numShards: 1,
     },
   }
-
-  for (const idx of getEffectiveIndexes(def)) {
-    const embedder = resolveEmbedder(idx.embedderRef, settings)
-    const entry: Record<string, unknown> = {
-      name: idx.name,
-      type: 'embeddings',
-      template: idx.embeddingTemplate,
-      embedder: { provider: embedder.provider, model: embedder.model },
-    }
-    if (idx.chunker?.enabled) {
-      entry.chunk_size = idx.chunker.targetTokens ?? settings.antfly.chunking.defaultTargetTokens
-      entry.chunk_overlap = idx.chunker.overlapTokens ?? settings.antfly.chunking.defaultOverlapTokens
-    }
-    indexes[idx.name] = entry
-  }
-
-  return indexes
 }
 
 /**
  * Ensure one table exists. Throws on creation failure so callers can
  * surface the error rather than silently treating it like "already
- * existed". `antfly.createTable` itself swallows errors and returns
- * `false`, so we re-list to disambiguate "skipped, already there" from
- * "tried and failed". This is critical because the most common failure
- * mode (missing embedder model) presents as a silent zero-doc reindex.
+ * existed". The adapter owns provider-specific create semantics, so we
+ * re-list after create to disambiguate "skipped, already there" from
+ * "tried and failed".
  */
-async function ensureTable(def: SearchContentTypeDefinition, existingNames?: Set<string>): Promise<'created' | 'exists'> {
+async function ensureTable(search: SearchAdapter, def: SearchContentTypeDefinition, existingNames?: Set<string>): Promise<'created' | 'exists'> {
   const tableName = fullTableName(def.table)
 
   if (existingNames?.has(tableName)) return 'exists'
 
-  const created = await antfly.createTable(tableName, {
-    description: `Bakin ${def.table} — auto-created by search registry`,
-    schema: buildAntflySchema(def),
-    indexes: buildAntflyIndexes(def),
-    num_shards: 1,
-  })
-  if (created) {
-    log.info(`Search table created: ${tableName}`)
-    return 'created'
-  }
-
-  // createTable returned false — either the table already existed or the
-  // create itself failed and got swallowed. Re-list and verify.
-  const after = await antfly.listTables()
-  if (after.some(t => t.name === tableName)) return 'exists'
-  throw new Error(`Antfly rejected create for ${tableName} — see antfly warn logs (likely missing embedder model)`)
+  await search.tables.create(tableName, buildTableConfig(def))
+  const after = await search.tables.list()
+  if (after.some(t => t.name === tableName)) return 'created'
+  throw new Error(`Search adapter rejected create for ${tableName}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -221,12 +188,13 @@ export interface EnsureTablesResult {
  */
 export async function ensureRegisteredTables(): Promise<EnsureTablesResult> {
   const registry = getRegistry()
-  if (!antfly.enabled()) {
+  const search = getSearchAdapter()
+  if (!await search.available()) {
     registry.tablesCreated = true
     return { created: 0, failures: [] }
   }
 
-  const existingTables = await antfly.listTables()
+  const existingTables = await search.tables.list()
   const existingNames = new Set(existingTables.map(t => t.name))
 
   let created = 0
@@ -234,7 +202,7 @@ export async function ensureRegisteredTables(): Promise<EnsureTablesResult> {
   for (const [tableName, def] of registry.contentTypes) {
     if (existingNames.has(tableName)) continue
     try {
-      const status = await ensureTable(def, existingNames)
+      const status = await ensureTable(search, def, existingNames)
       if (status === 'created') created++
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -289,10 +257,11 @@ export function getContentTypes(): Map<string, SearchContentTypeDefinition & { p
  */
 export async function purgeContentType(name: string): Promise<number> {
   const registry = getRegistry()
+  const search = getSearchAdapter()
   const tableName = fullTableName(name)
   const def = registry.contentTypes.get(tableName)
 
-  if (!antfly.enabled()) {
+  if (!await search.available()) {
     if (def) {
       registry.contentTypes.delete(tableName)
       if (registry.pluginTables.get(def.pluginId) === tableName) {
@@ -304,15 +273,14 @@ export async function purgeContentType(name: string): Promise<number> {
 
   let removed = 0
   try {
-    const stats = await antfly.getTableStats(tableName)
-    const docCount = (stats as Record<string, unknown> | null)?.num_docs
-    if (typeof docCount === 'number') removed = docCount
+    const stats = await search.tables.stats(tableName)
+    removed = stats?.documents ?? 0
   } catch (err) {
     log.warn('purgeContentType: failed to read row count before drop', err, { tableName })
   }
 
   try {
-    await antfly.dropTable(tableName)
+    await search.tables.drop(tableName)
   } catch (err) {
     log.error('purgeContentType: dropTable failed', err, { tableName })
     throw err
@@ -514,13 +482,13 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         log.warn(`Plugin ${pluginId} called search.index() but has no registered content type`)
         return
       }
-      await antfly.indexDocument(tableName, key, doc)
+      await getSearchAdapter().documents.index(tableName, key, doc)
     },
 
     async remove(key: string): Promise<void> {
       const tableName = registry.pluginTables.get(pluginId)
       if (!tableName) return
-      await antfly.removeDocument(tableName, key)
+      await getSearchAdapter().documents.remove(tableName, key)
     },
 
     async transform(key: string, operations: SearchTransformOp[]): Promise<void> {
@@ -541,63 +509,42 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
           fields[op.field] = op.value
         }
       }
-      await antfly.transformDocument(tableName, key, fields)
+      await getSearchAdapter().documents.transform(tableName, key, (doc) => ({ ...doc, ...fields }))
     },
 
     async query(params: SearchQueryParams): Promise<SearchResponse> {
       const tableName = registry.pluginTables.get(pluginId)
-      if (!tableName || !antfly.enabled()) {
+      const search = getSearchAdapter()
+      if (!tableName || !await search.available()) {
         return {
           results: [],
           meta: { query: params.q, total: 0, took_ms: 0, source: 'fallback' },
         }
       }
 
-      // Build aggregations from facets (term buckets) and merge with any
-      // raw aggregations the caller passed directly. Caller-provided
-      // aggregations win on key collision.
-      const facetAggs: Record<string, unknown> = {}
-      for (const f of params.facets ?? []) {
-        facetAggs[f] = { type: 'terms', field: f, size: 50 }
-      }
-      const mergedAggs = { ...facetAggs, ...(params.aggregations ?? {}) }
-      const aggregations: Record<string, unknown> | undefined =
-        Object.keys(mergedAggs).length > 0 ? mergedAggs : undefined
-
-      const result = await antfly.queryTable(tableName, params.q, {
+      const result = await search.query(tableName, {
+        text: params.q,
         limit: params.limit,
         offset: params.offset,
-        filters: params.filters,
-        aggregations,
-        indexes: getIndexNames(tableName),
+        filters: filtersFromRecord(params.filters),
+        facets: params.facets,
+        aggregations: aggregationsFromRecord(params.aggregations),
+        strategy: mapSearchStrategy(params.strategy),
         rerank: params.rerank,
-        rerankField: getRerankField(tableName),
-        strategy: params.strategy,
+        adapterOptions: {
+          indexes: getIndexNames(tableName),
+          rerankField: getRerankField(tableName),
+        },
       })
 
-      // Map aggregation results to our format
-      let mappedAggs: Record<string, Array<{ value: string; count: number }>> | undefined
-      if (result.aggregations) {
-        mappedAggs = {}
-        for (const [key, agg] of Object.entries(result.aggregations)) {
-          const aggObj = agg as { buckets?: Array<{ key: string; doc_count: number }> }
-          if (aggObj?.buckets) {
-            mappedAggs[key] = aggObj.buckets.map(b => ({
-              value: String(b.key),
-              count: b.doc_count,
-            }))
-          }
-        }
-      }
-
       return {
-        results: result.results as SearchResult[],
-        aggregations: mappedAggs,
-        rawAggregations: result.aggregations as Record<string, unknown> | undefined,
+        results: result.hits.map((hit) => adapterHitToPluginResult(hit, tableName)),
+        aggregations: mapFacetCounts(result.facets),
+        rawAggregations: result.aggregations,
         meta: {
           query: params.q,
-          total: result.total,
-          took_ms: result.took,
+          total: result.total ?? result.hits.length,
+          took_ms: result.diagnostics?.durationMs ?? 0,
           source: 'antfly',
         },
       }
@@ -616,7 +563,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
 export async function runPendingReconciles(): Promise<void> {
   const registry = getRegistry()
   if (registry.pendingReconciles.length === 0) return
-  if (!antfly.enabled()) {
+  if (!await getSearchAdapter().available()) {
     registry.pendingReconciles.length = 0
     return
   }
@@ -628,6 +575,14 @@ export async function runPendingReconciles(): Promise<void> {
       await performStartupReconcile(def, contentDir, {
         index: (key, doc) => api.index(key, doc),
         remove: (key) => api.remove(key),
+        scanIndex: async function* (tableName) {
+          for await (const { key, document } of getSearchAdapter().scan(tableName)) {
+            const mtime = typeof document[MTIME_FIELD] === 'number'
+              ? document[MTIME_FIELD]
+              : Number(document[MTIME_FIELD] ?? 0)
+            yield { key, mtimeMs: Number.isFinite(mtime) ? mtime : 0 }
+          }
+        },
       })
     } catch (err) {
       log.error('Startup reconcile failed', err, { pluginId, table: def.table })
@@ -655,9 +610,22 @@ export interface ReindexTableResult {
   pluginId: string
   indexed: number
   error?: string
-  enrichment?: IndexHealth
+  enrichment?: SearchEnrichmentHealth
   verified?: number
   verifyDiscrepancy?: number
+}
+
+export interface SearchEnrichmentHealth {
+  indexes: Array<{
+    name: string
+    type: string
+    totalIndexed: number
+    walBacklog: number
+    error?: string
+    rebuilding: boolean
+    backfillProgress?: number
+  }>
+  healthy: boolean
 }
 
 export async function reindexContentTypes(opts?: {
@@ -666,6 +634,7 @@ export async function reindexContentTypes(opts?: {
   verify?: boolean
 }): Promise<ReindexTableResult[]> {
   const registry = getRegistry()
+  const search = getSearchAdapter()
   const results: ReindexTableResult[] = []
 
   // Self-heal: make sure tables exist on Antfly before we try to write to
@@ -731,7 +700,7 @@ export async function reindexContentTypes(opts?: {
       try {
         // Rebuild indexes if requested
         if (opts?.rebuild) {
-          await antfly.rebuildIndexes(tableName)
+          await search.tables.rebuildIndexes(tableName)
           log.info(`Rebuilt indexes for ${tableName}`)
         }
 
@@ -745,17 +714,13 @@ export async function reindexContentTypes(opts?: {
           for await (const { key, doc } of def.reindex()) {
             batch.push({ key, doc: doc as Record<string, unknown> })
             if (batch.length >= BATCH_SIZE) {
-              const batchMap: Record<string, Record<string, unknown>> = {}
-              for (const b of batch) batchMap[b.key] = b.doc
-              count += await antfly.batchIndex(tableName, batchMap)
+              count += (await search.documents.batchIndex(tableName, batch)).indexed
               batch.length = 0
               broadcast({ type: 'reindex.progress', table: tableName, pluginId: def.pluginId, indexed: count })
             }
           }
           if (batch.length > 0) {
-            const batchMap: Record<string, Record<string, unknown>> = {}
-            for (const b of batch) batchMap[b.key] = b.doc
-            count += await antfly.batchIndex(tableName, batchMap)
+            count += (await search.documents.batchIndex(tableName, batch)).indexed
             broadcast({ type: 'reindex.progress', table: tableName, pluginId: def.pluginId, indexed: count })
           }
         }
@@ -766,7 +731,7 @@ export async function reindexContentTypes(opts?: {
         // Best-effort: never fails the reindex, just surfaces what Antfly reports.
         const result: ReindexTableResult = { table: tableName, pluginId: def.pluginId, indexed: count }
         try {
-          const health = await antfly.getIndexHealth(tableName)
+          const health = searchEnrichmentFromTableHealth(await search.tables.getHealth(tableName))
           if (health) {
             result.enrichment = health
             if (!health.healthy) {
@@ -787,8 +752,8 @@ export async function reindexContentTypes(opts?: {
         // Verify pass — opt-in re-query to check how many docs are actually findable.
         if (opts?.verify && count > 0) {
           try {
-            const stats = await antfly.getTableStats(tableName)
-            const docCount = (stats as Record<string, unknown> | null)?.num_docs as number ?? 0
+            const stats = await search.tables.stats(tableName)
+            const docCount = stats?.documents ?? 0
             result.verified = docCount
             result.verifyDiscrepancy = count - docCount
             if (result.verifyDiscrepancy !== 0) {
@@ -832,7 +797,8 @@ export async function crossTableSearch(q: string, opts?: {
   filters?: Record<string, string | boolean | number>
   facets?: string[]
 }): Promise<SearchResponse> {
-  if (!antfly.enabled()) {
+  const search = getSearchAdapter()
+  if (!await search.available()) {
     return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'fallback' } }
   }
 
@@ -852,25 +818,23 @@ export async function crossTableSearch(q: string, opts?: {
       return crossTableSearch(q, { ...opts, table: resolved.replace(TABLE_PREFIX, '') })
     }
 
-    const aggregations: Record<string, unknown> | undefined = (opts?.facets ?? def.facets)?.length
-      ? Object.fromEntries(
-          (opts?.facets ?? def.facets ?? []).map(f => [f, { type: 'terms', field: f, size: 50 }])
-        )
-      : undefined
-
-    const result = await antfly.queryTable(tableName, q, {
+    const result = await search.query(tableName, {
+      text: q,
       limit,
       offset: opts?.offset,
-      filters: opts?.filters,
-      aggregations,
-      indexes: getIndexNames(tableName),
-      rerankField: getRerankField(tableName),
+      filters: filtersFromRecord(opts?.filters),
+      facets: opts?.facets ?? def.facets,
+      adapterOptions: {
+        indexes: getIndexNames(tableName),
+        rerankField: getRerankField(tableName),
+      },
     })
 
     return {
-      results: result.results.map(r => ({ ...r, _table: tableName })),
-      aggregations: mapAggregations(result.aggregations),
-      meta: { query: q, total: result.total, took_ms: result.took, source: 'antfly' },
+      results: result.hits.map((hit) => ({ ...adapterHitToPluginResult(hit, tableName), _table: tableName })),
+      aggregations: mapFacetCounts(result.facets),
+      rawAggregations: result.aggregations,
+      meta: { query: q, total: result.total ?? result.hits.length, took_ms: result.diagnostics?.durationMs ?? 0, source: 'antfly' },
     }
   }
 
@@ -880,18 +844,30 @@ export async function crossTableSearch(q: string, opts?: {
     return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'antfly' } }
   }
 
-  const indexesByTable: Record<string, string[]> = {}
-  const rerankFieldByTable: Record<string, string> = {}
-  for (const t of tables) {
-    indexesByTable[t] = getIndexNames(t)
-    const field = getRerankField(t)
-    if (field) rerankFieldByTable[t] = field
-  }
-
-  const result = await antfly.multiQuery(q, tables, { limit, indexesByTable, rerankFieldByTable })
+  const perTableLimit = Math.ceil(limit / tables.length)
+  const results = await search.multiQuery(tables.map((table) => ({
+    table,
+    query: {
+      text: q,
+      limit: perTableLimit,
+      filters: filtersFromRecord(opts?.filters),
+      adapterOptions: {
+        indexes: getIndexNames(table),
+        rerankField: getRerankField(table),
+      },
+    },
+  })))
+  const hits = results.flatMap((result, index) => result.hits.map((hit) => adapterHitToPluginResult(hit, tables[index])))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
   return {
-    results: result.results.slice(0, limit),
-    meta: { query: q, total: result.total, took_ms: result.took, source: 'antfly' },
+    results: hits,
+    meta: {
+      query: q,
+      total: results.reduce((sum, result) => sum + (result.total ?? result.hits.length), 0),
+      took_ms: Math.max(0, ...results.map((result) => result.diagnostics?.durationMs ?? 0)),
+      source: 'antfly',
+    },
   }
 }
 
@@ -905,15 +881,15 @@ export async function getSearchHealth(): Promise<{
     table: string
     pluginId: string
     stats: Record<string, unknown> | null
-    indexHealth?: IndexHealth['indexes']
+    indexHealth?: SearchEnrichmentHealth['indexes']
     healthy: boolean
   }>
 }> {
   const registry = getRegistry()
-  const isEnabled = antfly.enabled()
-  const isAvailable = antfly.available()
+  const search = getSearchAdapter()
+  const isAvailable = await search.available()
 
-  if (!isEnabled || !isAvailable) {
+  if (!isAvailable) {
     return { enabled: false, tables: [] }
   }
 
@@ -921,20 +897,20 @@ export async function getSearchHealth(): Promise<{
     table: string
     pluginId: string
     stats: Record<string, unknown> | null
-    indexHealth?: IndexHealth['indexes']
+    indexHealth?: SearchEnrichmentHealth['indexes']
     healthy: boolean
   }> = []
 
   for (const [tableName, def] of registry.contentTypes) {
     let stats: Record<string, unknown> | null = null
     try {
-      stats = await antfly.getTableStats(tableName)
+      stats = await search.tables.stats(tableName) as Record<string, unknown> | null
     } catch { /* stats unavailable */ }
 
-    let indexHealth: IndexHealth['indexes'] | undefined
+    let indexHealth: SearchEnrichmentHealth['indexes'] | undefined
     let healthy = true
     try {
-      const health = await antfly.getIndexHealth(tableName)
+      const health = searchEnrichmentFromTableHealth(await search.tables.getHealth(tableName))
       if (health) {
         indexHealth = health.indexes
         healthy = health.healthy
@@ -944,22 +920,81 @@ export async function getSearchHealth(): Promise<{
     tables.push({ table: tableName, pluginId: def.pluginId, stats, indexHealth, healthy })
   }
 
-  return { enabled: isEnabled, tables }
+  return { enabled: true, tables }
 }
 
-function mapAggregations(aggs: Record<string, unknown> | undefined): Record<string, Array<{ value: string; count: number }>> | undefined {
-  if (!aggs) return undefined
-  const mapped: Record<string, Array<{ value: string; count: number }>> = {}
-  for (const [key, agg] of Object.entries(aggs)) {
-    const aggObj = agg as { buckets?: Array<{ key: string; doc_count: number }> }
-    if (aggObj?.buckets) {
-      mapped[key] = aggObj.buckets.map(b => ({
-        value: String(b.key),
-        count: b.doc_count,
-      }))
-    }
+function adapterHitToPluginResult(hit: SearchHit, tableName: string): SearchResult {
+  return {
+    id: hit.key,
+    table: tableName,
+    score: hit.score,
+    fields: hit.document,
+    rerankScore: hit.scoreBreakdown?.rerank,
+  }
+}
+
+function filtersFromRecord(filters?: Record<string, string | boolean | number>): Filter[] | undefined {
+  if (!filters || Object.keys(filters).length === 0) return undefined
+  return Object.entries(filters).map(([field, value]) => ({ field, op: 'eq', value }))
+}
+
+function aggregationsFromRecord(input?: Record<string, unknown>): AggregationRequest[] | undefined {
+  if (!input || Object.keys(input).length === 0) return undefined
+  const aggregations: AggregationRequest[] = []
+  for (const [name, raw] of Object.entries(input)) {
+    const item = raw as { type?: string; field?: string; interval?: string | number }
+    if (!item.field) continue
+    aggregations.push({
+      name,
+      type: item.type === 'date_histogram' ? 'histogram' : normalizeAggregationType(item.type),
+      field: item.field,
+      ...(item.interval === undefined ? {} : { interval: item.interval }),
+    })
+  }
+  return aggregations.length > 0 ? aggregations : undefined
+}
+
+function normalizeAggregationType(type: string | undefined): AggregationRequest['type'] {
+  switch (type) {
+    case 'sum':
+    case 'avg':
+    case 'min':
+    case 'max':
+    case 'histogram':
+      return type
+    default:
+      return 'count'
+  }
+}
+
+function mapSearchStrategy(strategy: SearchQueryParams['strategy']): Query['strategy'] {
+  switch (strategy) {
+    case 'full_text_only': return 'fts'
+    case 'semantic_only': return 'vector'
+    case 'rrf': return 'hybrid'
+    default: return undefined
+  }
+}
+
+function mapFacetCounts(facets: Record<string, FacetCount[]> | undefined): SearchResponse['aggregations'] {
+  if (!facets) return undefined
+  const mapped: NonNullable<SearchResponse['aggregations']> = {}
+  for (const [field, counts] of Object.entries(facets)) {
+    mapped[field] = counts.map((count) => ({
+      value: String(count.value),
+      count: count.count,
+    }))
   }
   return mapped
+}
+
+function searchEnrichmentFromTableHealth(health: TableHealth | null): SearchEnrichmentHealth | undefined {
+  const details = health?.details as Partial<SearchEnrichmentHealth> | undefined
+  if (!details || !Array.isArray(details.indexes)) return undefined
+  return {
+    indexes: details.indexes,
+    healthy: typeof details.healthy === 'boolean' ? details.healthy : health?.status === 'ok',
+  }
 }
 
 /**
@@ -967,4 +1002,5 @@ function mapAggregations(aggs: Record<string, unknown> | undefined): Record<stri
  */
 export function resetSearchRegistry(): void {
   _g.__bakinSearchRegistry = undefined
+  _g.__bakinFallbackSearchAdapter = undefined
 }

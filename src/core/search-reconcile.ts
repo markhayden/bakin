@@ -26,7 +26,6 @@ import type {
   FileBackedContentTypeDefinition,
   FilePatternMapper,
 } from '../../packages/core/src/plugin-types'
-import * as antfly from './antfly'
 import { createLogger } from './logger'
 
 const log = createLogger('search-reconcile')
@@ -187,7 +186,8 @@ export interface ReconcileDeps {
   remove: (key: string) => Promise<void>
   /**
    * Scan the underlying table for existing keys + their indexed mtime.
-   * Defaults to `antfly.scanTable` in production. Test seam.
+   * Defaults to an empty scan in tests. Production callers should pass the
+   * active SearchAdapter scan implementation.
    */
   scanIndex?: (tableName: string) => AsyncGenerator<{ key: string; mtimeMs: number }>
 }
@@ -195,12 +195,8 @@ export interface ReconcileDeps {
 async function* defaultScanIndex(
   tableName: string,
 ): AsyncGenerator<{ key: string; mtimeMs: number }> {
-  for await (const { key, doc } of antfly.scanTable(tableName)) {
-    const mtime = typeof doc[MTIME_FIELD] === 'number'
-      ? (doc[MTIME_FIELD] as number)
-      : Number(doc[MTIME_FIELD] ?? 0)
-    yield { key, mtimeMs: Number.isFinite(mtime) ? mtime : 0 }
-  }
+  void tableName
+  yield* []
 }
 
 /**

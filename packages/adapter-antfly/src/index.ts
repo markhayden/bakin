@@ -1,5 +1,5 @@
 import type { SearchAdapter } from '@bakin/core/adapters/search'
-import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
+import { AntflySearchAdapter } from './search'
 
 export interface AntflySearchAdapterOptions {
   settings?: Record<string, unknown>
@@ -8,10 +8,5 @@ export interface AntflySearchAdapterOptions {
 export function createAntflySearchAdapter(
   options: AntflySearchAdapterOptions = {}
 ): SearchAdapter {
-  void options
-  return createMockSearchAdapter({
-    name: 'antfly',
-    version: '0.1.0',
-    requiredCoreVersion: '^1.0.0',
-  })
+  return new AntflySearchAdapter(options)
 }

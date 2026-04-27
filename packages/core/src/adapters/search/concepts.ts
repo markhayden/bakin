@@ -24,6 +24,12 @@ export interface SearchIndexConfig {
   fields: string[]
   kind?: 'text' | 'vector' | 'hybrid'
   embedderRef?: string
+  template?: string
+  chunker?: {
+    enabled: boolean
+    targetTokens?: number
+    overlapTokens?: number
+  }
   metadata?: RuntimeMetadata
 }
 
@@ -69,6 +75,7 @@ export interface Query {
   offset?: number
   strategy?: 'auto' | 'fts' | 'vector' | 'hybrid'
   rerank?: boolean
+  adapterOptions?: Record<string, unknown>
 }
 
 export interface Filter {
