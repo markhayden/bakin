@@ -14,8 +14,9 @@ import {
   getSearchHealth,
   getContentTypes,
   getTableForPlugin,
+  getIndexNames,
+  getSearchAdapter,
 } from '../../src/core/search-registry'
-import * as antfly from '../../src/core/antfly'
 
 /**
  * Resolve a plugin id to its registered bakin_ table name.
@@ -136,10 +137,15 @@ addExecTool({
     if (!pluginId || !key) return { ok: false, error: 'Missing plugin or key parameter' }
     const resolved = resolvePluginTable(pluginId)
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    const stats = await antfly.getTableStats(resolved.table)
-    if (!stats) return { ok: false, error: `Table ${resolved.table} not found or Antfly disabled` }
-    const result = await antfly.queryTable(resolved.table, key, { limit: 1 })
-    const doc = result.results.find(r => r.id === key)
+    const search = getSearchAdapter()
+    const stats = await search.tables.stats(resolved.table)
+    if (!stats) return { ok: false, error: `Table ${resolved.table} not found or search adapter unavailable` }
+    const result = await search.query(resolved.table, {
+      text: key,
+      limit: 1,
+      adapterOptions: { indexes: getIndexNames(resolved.table) },
+    })
+    const doc = result.hits.find(r => r.key === key)
     return doc ? { ok: true, document: doc } : { ok: false, error: 'Document not found' }
   },
 })

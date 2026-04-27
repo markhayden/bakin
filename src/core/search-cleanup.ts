@@ -10,13 +10,12 @@
  * Default cadence is 7d (settings.antfly.cleanupInterval) — long
  * because it's a backstop, not the main consistency mechanism.
  *
- * Scans Antfly tables and checks each document against its plugin's
+ * Scans search tables and checks each document against its plugin's
  * verifyExists() callback. Removes orphans that no longer exist at source.
  */
 import { createLogger } from './logger'
 import { getSettings } from './settings'
-import * as antfly from './antfly'
-import { getContentTypes } from './search-registry'
+import { getContentTypes, getSearchAdapter } from './search-registry'
 
 const log = createLogger('search-cleanup')
 
@@ -50,6 +49,8 @@ export async function runCleanup(): Promise<CleanupStats[]> {
 
   try {
     const contentTypes = getContentTypes()
+    const search = getSearchAdapter()
+    if (!await search.available()) return []
 
     for (const [tableName, def] of contentTypes) {
       const stats: CleanupStats = { table: tableName, scanned: 0, orphans: 0, errors: 0 }
@@ -57,7 +58,7 @@ export async function runCleanup(): Promise<CleanupStats[]> {
       try {
         const orphanKeys: string[] = []
 
-        for await (const { key } of antfly.scanTable(tableName)) {
+        for await (const { key } of search.scan(tableName)) {
           stats.scanned++
 
           try {
@@ -72,13 +73,13 @@ export async function runCleanup(): Promise<CleanupStats[]> {
 
           // Batch remove every 100 orphans to avoid accumulating too much
           if (orphanKeys.length >= 100) {
-            await antfly.batchRemove(tableName, orphanKeys.splice(0))
+            await search.documents.batchRemove(tableName, orphanKeys.splice(0))
           }
         }
 
         // Remove remaining orphans
         if (orphanKeys.length > 0) {
-          await antfly.batchRemove(tableName, orphanKeys)
+          await search.documents.batchRemove(tableName, orphanKeys)
         }
 
         if (stats.orphans > 0) {

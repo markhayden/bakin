@@ -27,7 +27,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
-import * as antfly from './antfly'
+import { getSearchAdapter } from './search-registry'
 
 const log = createLogger('search-migration')
 
@@ -83,7 +83,8 @@ export async function migrateIfNeeded(): Promise<{
   from: number
   to: number
 }> {
-  if (!antfly.enabled()) {
+  const search = getSearchAdapter()
+  if (!await search.available()) {
     return { migrated: false, from: 0, to: SCHEMA_VERSION }
   }
 
@@ -98,14 +99,14 @@ export async function migrateIfNeeded(): Promise<{
   })
 
   try {
-    const existing = await antfly.listTables()
+    const existing = await search.tables.list()
     const bakinTables = existing
       .map(t => t.name)
       .filter(name => name.startsWith(TABLE_PREFIX))
 
     for (const tableName of bakinTables) {
       try {
-        await antfly.dropTable(tableName)
+        await search.tables.drop(tableName)
         log.info(`Dropped table for schema migration: ${tableName}`)
       } catch (err) {
         log.warn(`Failed to drop table during migration: ${tableName}`, err)

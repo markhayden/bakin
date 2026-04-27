@@ -81,7 +81,7 @@ function getRegistry(): RegistryState {
   return _g.__bakinSearchRegistry
 }
 
-function getSearchAdapter(): SearchAdapter {
+export function getSearchAdapter(): SearchAdapter {
   const services = maybeGetAppServices()
   if (services?.search) return services.search
   _g.__bakinFallbackSearchAdapter ??= createMockSearchAdapter({
