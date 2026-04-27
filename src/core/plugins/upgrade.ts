@@ -29,6 +29,7 @@ import {
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions, type Permission } from '@bakin/core/plugins/permissions'
+import { parseGithubSource } from '@bakin/core/plugins/source'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
 
@@ -347,24 +348,12 @@ export async function runChecks(ids: readonly string[]): Promise<UpgradeAvailabi
 
 /**
  * Resolve a stored install source string into a git-clone-friendly URL.
- * Mirror of the parsing in `install.ts` — extracted here so `git ls-remote`
- * for upgrade-available checks accepts the same shorthand the user typed.
+ * Thin wrapper over the shared `parseGithubSource` parser; kept as a
+ * named helper so the grep target ("githubCloneUrl") survives across the
+ * source-parser refactor for older readers.
  */
 function githubCloneUrl(source: string): string {
-  const stripped = source.startsWith('github:') ? source.slice(7) : source
-  // Anything that already looks like a complete URL (http(s)://, git@host:,
-  // ssh://, file://, etc.) passes through. Only the bare `user/repo`
-  // shorthand gets the github.com prefix.
-  if (
-    stripped.startsWith('http://') ||
-    stripped.startsWith('https://') ||
-    stripped.startsWith('git@') ||
-    stripped.startsWith('ssh://') ||
-    stripped.startsWith('file://')
-  ) {
-    return stripped
-  }
-  return `https://github.com/${stripped}.git`
+  return parseGithubSource(source).cloneUrl
 }
 
 /**
@@ -402,6 +391,13 @@ export async function upgradePlugin(
   const before = { version: entry.version, commitSha: entry.commitSha }
 
   if (entry.type === 'github') {
+    // Subpath installs (`github:user/repo#plugins/foo`) leave `pluginDir`
+    // without a `.git/`, so the in-place fetch+merge flow below cannot
+    // run. Branch to a staging-clone variant in that case.
+    const parsed = parseGithubSource(entry.source)
+    if (parsed.subpath) {
+      return upgradeGithubSubpath(id, entry, pluginDir, parsed.cloneUrl, parsed.subpath, opts, before)
+    }
     return upgradeGithub(id, entry, pluginDir, opts, before)
   }
   return upgradeLocal(id, entry, pluginDir, opts, before)
@@ -516,6 +512,123 @@ async function upgradeGithub(
     noop: false,
     newPermissions: widened,
     awaitingConsent: false,
+  }
+}
+
+/**
+ * Upgrade a github-source plugin installed from a monorepo subpath
+ * (`github:user/repo#plugins/foo`). The on-disk plugin dir does not
+ * contain `.git/` (only the subpath contents were copied at install
+ * time), so the in-place `git fetch`+`git merge` flow used by
+ * `upgradeGithub` cannot apply here. Instead: clone the source repo
+ * fresh into a staging dir, read the subpath manifest, run the same
+ * consent gate, then replace `pluginDir` with the subpath contents.
+ *
+ * Staging dir is always cleaned up — success path, consent decline path,
+ * and exception path — via the `finally` block below.
+ */
+async function upgradeGithubSubpath(
+  id: string,
+  entry: PluginLockEntry,
+  pluginDir: string,
+  cloneUrl: string,
+  subpath: string,
+  opts: UpgradeOptions,
+  before: { version: string; commitSha: string },
+): Promise<UpgradeResult> {
+  if (!entry.ref) {
+    throw new UpgradeRefusedError(
+      `${id}: lockfile is missing the git ref. Reinstall.`,
+    )
+  }
+
+  const pluginsRoot = join(getContentDir(), 'plugins')
+  const stagingDir = join(pluginsRoot, `.upgrade-staging-${id}-${Date.now()}-${process.pid}`)
+
+  try {
+    // `--` ends git option parsing; cloneUrl was Zod-validated upstream
+    // and re-validated by parseGithubSource, but defense-in-depth.
+    execFileSync(
+      'git',
+      ['clone', '--depth', '1', '--branch', entry.ref, '--', cloneUrl, stagingDir],
+      { stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 10 * 1024 * 1024 },
+    )
+
+    const remoteSha = run('git', ['rev-parse', 'HEAD'], stagingDir).toLowerCase()
+
+    // Noop fast-path — remote hasn't moved since last install/upgrade.
+    if (remoteSha === entry.commitSha) {
+      return {
+        id,
+        before,
+        after: before,
+        noop: true,
+        newPermissions: [],
+        awaitingConsent: false,
+      }
+    }
+
+    const subpathDir = join(stagingDir, subpath)
+    if (!existsSync(subpathDir)) {
+      throw new UpgradeRefusedError(
+        `${id}: subpath "${subpath}" no longer exists in ${cloneUrl}@${entry.ref}. ` +
+        `The monorepo layout may have changed; remove and reinstall.`,
+      )
+    }
+    if (!existsSync(join(subpathDir, 'bakin-plugin.json'))) {
+      throw new UpgradeRefusedError(
+        `${id}: subpath "${subpath}" no longer contains bakin-plugin.json. Remove and reinstall.`,
+      )
+    }
+
+    const { manifest, manifestSha } = readManifest(subpathDir)
+    assertManifestIdStable(manifest, id)
+    const newVersion = manifestVersion(manifest, entry.version)
+    const newPerms = manifestPermissions(manifest, id)
+    const widened = diffNewPermissions(entry.permissions, newPerms)
+
+    if (widened.length > 0 && !opts.yes) {
+      // Consent required — exit BEFORE mutating disk or lockfile.
+      return {
+        id,
+        before,
+        after: { version: newVersion, commitSha: remoteSha },
+        noop: false,
+        newPermissions: widened,
+        awaitingConsent: true,
+      }
+    }
+
+    // Consent accepted (or unnecessary). Replace the on-disk plugin with
+    // the subpath contents. Wipe first so deletions in the source are
+    // reflected (cpSync would only overlay, leaving stale files).
+    rmSync(pluginDir, { recursive: true, force: true })
+    cpSync(subpathDir, pluginDir, { recursive: true, dereference: false })
+
+    await buildUserPlugin(pluginDir)
+
+    const installedSkills = findSkillsForPlugin({ id, path: pluginDir }).map(s => s.name)
+
+    const updated = updatePlugin(readPluginLockfile(), id, {
+      upgradedAt: new Date().toISOString(),
+      version: newVersion,
+      commitSha: remoteSha,
+      manifestSha,
+      permissions: newPerms,
+      installedSkills,
+    })
+    writePluginLockfile(updated)
+
+    return {
+      id,
+      before,
+      after: { version: newVersion, commitSha: remoteSha },
+      noop: false,
+      newPermissions: widened,
+      awaitingConsent: false,
+    }
+  } finally {
+    rmSync(stagingDir, { recursive: true, force: true })
   }
 }
 
