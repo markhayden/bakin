@@ -1,53 +1,125 @@
 ---
 title: Messaging
-description: "Content calendar plus a multi-agent brainstorm surface that proposes scheduled posts and routes them through approval."
+description: "Plan with agents, schedule on a calendar, publish to your channels. One pipeline from idea to delivered."
 ---
 
-Messaging is two surfaces that work together. The Calendar holds scheduled content (posts, drafts, anything with a date and a channel). Brainstorm is a chat-style room where you and an agent (or several) plan what should land there. Approved proposals graduate from a session into real calendar items.
+Time to get creative. Sit down with any of your agents and pound out bad ass content that connects with your audience: social posts, outreach, internal updates, all of it. You build the plan together: what to post, when, who runs it. Approve and the rest is automatic. Items become scheduled tasks, your agent army picks them up, content gets made and shipped to your channels.
 
 ## Calendar
 
 <figure class="screenshot-frame">
-  <figcaption>The content calendar with day list and week grid views, filtered by agent, channel, and status.</figcaption>
+  <figcaption>The content calendar in week view, with status, agent, type, and channel filters above.</figcaption>
 </figure>
 
-The calendar is the canonical source of scheduled content. Each item has a title, scheduled date, owning agent, content type, and one or more channels. Filter by agent, status, content type. Search across everything.
+The canonical schedule. Three views from the header pill: `Month`, `Week`, `List`. Filters above the grid: agent, status, type, channel, plus search across title, brief, draft caption, and agent notes. Click any item to open the detail drawer with the full record and any draft media rendered inline.
 
-### Common actions
+Items in the calendar are color-coded by status; cells get a subtle tint of the assigned agent's color so a single glance shows who's on what. Today gets an accent ring.
 
-- **Create** an item from `+ New Item` with a date, agent, content type, and channels.
-- **Approve** or **reject** items that came in via a brainstorm proposal — rejection captures a note for context.
-- **Edit** any field inline; **delete** when the item should not ship.
+### Item lifecycle
+
+Items move through seven statuses:
+
+| Status | What it means |
+| --- | --- |
+| `draft` | Captured but not approved |
+| `scheduled` | Approved and queued |
+| `executing` | A workflow is running on it |
+| `waiting` | Workflow paused (e.g., waiting on agent-generated media) |
+| `review` | Work done, your sign-off needed before publish |
+| `published` | Sent to the channel |
+| `failed` | Something broke |
+
+Approval flow: drafts approve to `scheduled`; review items approve to `published` (or reject back to `draft` with an optional note for the agent). Everything else is workflow-driven.
+
+### What's on an item
+
+<figure class="screenshot-frame">
+  <figcaption>The item detail drawer showing fields, draft media, and the back-link to the originating brainstorm session.</figcaption>
+</figure>
+
+Each calendar item carries title, brief (what to say), tone (how to say it), scheduled date, owning agent, content type, and one or more channels. Once a workflow runs on it, a `draft` block fills in: caption, image prompt, video prompt, generated image filename, generated video filename, agent notes. Items also back-link to the brainstorm session that created them and the workflow task driving execution.
+
+### Calendar Management
+
+- `Create` an item from `+ New Item` with title, agent, scheduled date, and content type.
+- `Approve` drafts to schedule them; approve review items to publish.
+- `Reject` review items back to draft with an optional note.
+- `Edit` any field inline from the detail drawer.
+- `Delete` drafts that aren't going anywhere.
 
 ## Brainstorm
 
 <figure class="screenshot-frame">
-  <figcaption>A brainstorm session: chat thread with the assigned agent, proposal cards, and a confirm-to-calendar action.</figcaption>
+  <figcaption>A brainstorm session: chat thread on the left, proposal cards in the review panel on the right.</figcaption>
 </figure>
 
-A planning session is a stateful chat with one or more agents. The agent proposes content; you review and confirm proposals into the calendar.
+Where the work starts. Open the brainstorm view, hit `New Session`, pick an agent. Name the session something you'll recognize ("Q4 launch posts", "weekly newsletter") and start the conversation. Talk through goals, audience, voice, what's on your mind. As ideas come together, the agent drops specific suggestions into the side panel: concrete items with title, date, content type, and brief.
 
-### Common actions
+### How it works
 
-- **Start a session** with an agent — usually scoped to a campaign or theme.
-- **Send messages** back and forth; the agent emits proposals as it works.
-- **Confirm a proposal** to promote it into a calendar item with everything filled in.
-- **Reject** with a note so the agent learns what missed.
+1. You and an agent open a brainstorm session.
+2. The agent floats proposals as you work through the strategy.
+3. You approve the keepers, edit the ones close to right, reject what misses.
+4. Confirm the session. Approved proposals become calendar items.
+5. Each item moves through draft, scheduled, executing, review, and published as it gets made.
+6. When an item hits published, your channels deliver the content.
 
-## Concepts
+Every calendar item links back to the session it came from. You can always trace a published post to the conversation behind it.
 
-- **Calendar items, sessions, and proposals are three distinct shapes.** Calendar items are the canonical scheduled content. Sessions are stateful conversations. Proposals are a session's outputs that become calendar items only after confirmation.
-- **Content types are configurable.** Defaults seed on first activate; add more in the messaging settings tab.
-- **Channels** are the delivery surfaces (Slack, Discord, email, etc.) registered by the workflows plugin.
+### What are proposals?
+
+<figure class="screenshot-frame">
+  <figcaption>A proposal card with title, scheduled date, content type, brief, and inline approve/reject/edit controls.</figcaption>
+</figure>
+
+Each suggestion the agent floats is a proposal: a complete content idea you can act on. Title, scheduled date, owning agent, content type, channels, brief, tone. Same shape as a calendar item, just not committed yet.
+
+Ask the agent to revise something. Make it punchier, push the date, swap the angle. They update the existing proposal in place instead of starting a new one. Even rejected proposals can come back this way. The revision history stays attached so you can see how an idea evolved.
+
+### Reviewing proposals
+
+For each proposal you can:
+
+- `Approve` to mark it ready for the calendar.
+- `Reject` with an optional note so the agent learns what missed and iterates.
+- `Edit` to take the wheel and manually tweak title, brief, scheduled date, type, or tone before approving.
+- Or just leave it. Staying in `proposed` keeps the proposal on the table.
+
+### Confirming the session plan
+
+<figure class="screenshot-frame">
+  <figcaption>The confirm dialog with the auto-approve toggle, summarizing how many proposals will land on the calendar.</figcaption>
+</figure>
+
+Once you've got the proposals you want, hit `Confirm`. Approved proposals graduate into calendar items and the session locks. Two modes:
+
+- **Default**: each approved proposal becomes a `draft` calendar item. You approve again on the calendar to schedule it.
+- **Auto-approve**: each approved proposal lands as `scheduled` directly.
+
+Confirming flips the session to `completed` and disables further messages. Sessions stay searchable.
+
+## Content types
+
+Five seed by default: `post`, `article`, `video`, `image`, `announcement`. Add or rename in the messaging settings tab. The list drives the type facet on the calendar, the type select in the proposal editor, and the prompt fed to agents during brainstorm sessions.
+
+## Channels
+
+Channels are where published content lands. The registry lives in the [Workflows](/docs/using/workflows/) plugin and ships with Discord, Slack, email, Instagram, Twitter, YouTube, and TikTok by default. Plugins can register more.
+
+Each calendar item picks one or more channels from that registry. Channels show up as a multi-select filter on the calendar and a dropdown in the proposal editor. Or leave channels blank and delegate the delivery decision downstream.
 
 ## Where it lives
 
 ```
-~/.bakin/messaging.json              # array of all calendar items
-~/.bakin/messaging/sessions/*.json   # one file per planning session
+~/.bakin/
+  messaging.json                  # flat array of every calendar item
+  messaging/
+    sessions/<id>.json            # one file per brainstorm session
+  plugin-settings/
+    messaging.json                # content types, default view, etc.
 ```
 
-Sessions index into search (table `bakin_messaging_brainstorm`) for cross-table lookup. Calendar items filter locally rather than indexing.
+Sessions index into search (table `bakin_messaging_brainstorm`) so they reach across-plugin queries. Calendar items filter locally on the page rather than indexing.
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
@@ -63,7 +135,7 @@ Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents
 
-Agents drive messaging through MCP exec tools. The full set covers calendar items, sessions, messages, and proposals:
+Agents drive both the calendar and brainstorm sessions through MCP exec tools.
 
 <!-- docs:exec-tools messaging -->
 - `bakin_exec_messaging_approve`: Approve a messaging item (draft → scheduled, review → published)
@@ -89,6 +161,7 @@ Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/
 
 ## Related
 
-- [Team](/docs/using/team/): the agents that own and propose
-- [Schedule](/docs/using/schedule/): for recurring content items
-- [Assets](/docs/using/assets/): images and video attached to drafts render via the assets plugin
+- [Team](/docs/using/team/): the agents you brainstorm with
+- [Workflows](/docs/using/workflows/): the channel registry and the workflows that move items through `executing` and `review`
+- [Tasks](/docs/using/tasks/): workflow execution on a calendar item creates a real task
+- [Assets](/docs/using/assets/): draft images and videos live here, rendered in the detail drawer via stable filenames
