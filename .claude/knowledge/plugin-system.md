@@ -38,6 +38,48 @@ Structurally identical, different source locations and install paths:
 The runtime plugin loader doesn't care which bucket a plugin came from.
 Same manifest shape, same `dist/` layout, same `activate` contract.
 
+### Feature modules vs third-party plugins (Phase 7)
+
+The runtime treats them identically, but the **architectural** distinction
+between them shapes what core code may and may not do:
+
+- **Feature modules** — the 8 plugins that ship inside the Bakin core
+  binary: `team`, `tasks`, `workflows`, `health`, `memory`, `assets`,
+  `schedule`, `models`. (`messaging` + `projects` migrate out via
+  Phase 4-5; today they're still feature modules.) Core code MAY
+  import from these via `@bakin/{plugin}/*` path aliases — they're
+  load-bearing repo modules.
+- **Third-party plugins** — anything installed via `bakin plugins
+  install` or `bakin plugins link`. Source lives at
+  `~/.bakin/plugins/<id>/`. Core code MUST NOT import from there;
+  cross-cutting communication runs through `ctx.hooks.invoke` on the
+  server and `@bakin/sdk/hooks` on the client.
+
+Why the distinction matters:
+
+- Feature modules ship with the binary; their lifecycle is tied to a
+  Bakin release. They appear in `bakin plugins list` but `upgrade` and
+  `remove` refuse them via `isCorePlugin()`.
+- Third-party plugins lifecycle independently — they get their own
+  semver, their own release cadence, their own consent prompts on
+  install/upgrade. They can be remove'd cleanly via the teardown
+  sweep.
+
+The boundary is enforced two ways:
+
+1. **Lint** — `eslint.config.mjs` configures `no-restricted-imports`
+   to block any path that resolves into `~/.bakin/plugins/`. Catches
+   accidents at PR time.
+2. **Fitness test** — `tests/architecture/feature-module-vs-plugin
+   .test.ts` walks `src/`, `cli/`, `packages/core/` and grep-asserts
+   no source line imports from a `~/.bakin/plugins/` path. Belt +
+   suspenders against the lint rule's blast radius.
+
+Promoting an extracted plugin back to core is a deliberate
+architectural reversal — needs spec discussion. Adding a new module
+to `plugins/` is a feature-module addition by default; document an
+exception in the spec if it should be a third-party plugin instead.
+
 ## Plugin Lifecycle
 
 ```

@@ -60,7 +60,22 @@ Core plugins build to `plugins/<id>/dist/`. User plugins build to `~/.bakin/plug
 
 Routes registered as `/api/plugins/{pluginId}/{path}`. Exec tools naming: `bakin_exec_{pluginId}_{action}`.
 
-Deep references: `.claude/knowledge/plugin-system.md`, `.claude/knowledge/workflows-plugin.md`, `docs/plugin-authoring.md`.
+### Feature modules vs third-party plugins (Phase 7 layering rule)
+
+Two distinct concepts live under `plugins/`:
+
+1. **Feature modules** — the 8 plugins that ship inside the Bakin core binary: `team`, `tasks`, `workflows`, `health`, `memory`, `assets`, `schedule`, `models`. They live at `plugins/<id>/` in this repo, build at repo build time, and core code MAY import from them via `@bakin/{plugin}/...` paths (already wired in `tsconfig.json#paths`). The contract for these is documented in their own knowledge docs; treat them as load-bearing repo modules, not "plugins" in the user-facing sense.
+2. **Third-party plugins** — anything installed via `bakin plugins install` or `bakin plugins link`. Their source lives at `~/.bakin/plugins/<id>/` post-install. Core code MUST NOT import from there. Communication runs through `ctx.hooks` and the `@bakin/sdk/*` surface only.
+
+Two extracted plugins (`messaging`, `projects`) are migrating from feature modules to third-party plugins via `bakin-bits-official` (Phase 4-5). Once that migration completes the count drops to 8 feature modules.
+
+**Rules:**
+
+- New modules added to `plugins/` are feature modules by default — must justify exception in the relevant spec.
+- Promoting an extracted plugin back to core is a deliberate architectural reversal — requires spec discussion.
+- The lint rule in `eslint.config.mjs` enforces the import boundary: `no-restricted-imports` blocks any path that traverses into `~/.bakin/plugins/`. Belt + suspenders test in `tests/architecture/feature-module-vs-plugin.test.ts` walks `src/`, `cli/`, and `packages/core/` to grep-assert the same.
+
+Deep references: `.claude/knowledge/plugin-system.md`, `.claude/knowledge/workflows-plugin.md`, `docs-old/plugin-authoring.md`.
 
 ## Agent Packages
 
