@@ -206,6 +206,28 @@ import { PluginHeader } from '@bakin/sdk/components'
 Plugin authors (outside the repo) never use the `../../src/*` paths —
 they only see `@bakin/sdk/*`. The lint rule enforces this.
 
+### Feature modules vs third-party plugins (Phase 7)
+
+Two distinct categories live under `plugins/`:
+
+- **Feature modules** — the 8 plugins that ship in the core binary
+  (`team`, `tasks`, `workflows`, `health`, `memory`, `assets`,
+  `schedule`, `models`). These are load-bearing repo modules; core
+  code MAY import from them via `@bakin/{plugin}/*` aliases.
+- **Third-party plugins** — installed via `bakin plugins install` /
+  `bakin plugins link` into `~/.bakin/plugins/<id>/`. Core code MUST
+  NOT import from there.
+
+Today `messaging` + `projects` are still feature modules; they
+migrate out via Phase 4-5 once the SDK exposes the openclaw-client
++ vault surfaces those plugins consume.
+
+The layering boundary is enforced by:
+- `eslint.config.mjs` — `no-restricted-imports` for `~/.bakin/plugins`.
+- `tests/architecture/feature-module-vs-plugin.test.ts` — fitness
+  test that walks `src/`, `cli/`, `packages/core/` and grep-asserts
+  no source-line imports from a third-party plugin path.
+
 ## TypeScript Path Aliases
 
 Defined in `tsconfig.json`; bun picks them up automatically for both runtime and `bun test`:
