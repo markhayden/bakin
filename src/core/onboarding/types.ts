@@ -47,3 +47,28 @@ export interface OnboardingComponent {
   check(): Promise<CheckResult>
   install(opts: OnboardingOptions): Promise<InstallResult>
 }
+
+/**
+ * One row in the curated recommended-plugins list (Phase 6). Surfaced by
+ * the `recommended-plugins` onboarding component during interactive
+ * `bakin onboard`. The list itself is curated in
+ * `src/core/onboarding/recommended-plugins.ts` and grows as Phase 4-5
+ * extracts plugins from the bakin core into the bakin-bits-official
+ * monorepo.
+ */
+export interface RecommendedPlugin {
+  /** Plugin id — must match the manifest's id and Bakin's id regex. */
+  readonly id: string
+  /** Install source — typically `github:owner/repo#plugins/<id>` shape. */
+  readonly source: string
+  /** Display name for the prompt UI. */
+  readonly name: string
+  /** One-line description shown beneath the name in the prompt. */
+  readonly description: string
+  /**
+   * Whether the plugin is selected by default in the prompt. The user
+   * can deselect with space; defaults are surfaced for plugins that
+   * the Bakin core team considers "the canonical first install."
+   */
+  readonly defaultSelected: boolean
+}
