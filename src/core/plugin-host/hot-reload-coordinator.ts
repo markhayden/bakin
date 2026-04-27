@@ -26,7 +26,7 @@ import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import { createLogger } from '@/core/logger'
-import { broadcastPluginError } from '@/core/sse'
+import { broadcastPluginError, broadcastPluginRecover } from '@/core/sse'
 import { isLinked, readPluginLockfile } from '@bakin/core/plugins/lockfile'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
 import { runReloadPipeline } from './reload-pipeline'
@@ -59,6 +59,14 @@ interface CoordinatorState {
   inFlight: Set<string>
   pending: Set<string>
   debounceTimers: Map<string, NodeJS.Timeout>
+  /**
+   * Plugins whose previous build failed. The next successful build
+   * emits `dev:plugin:recover` so the dev overlay clears. Symmetric
+   * with the reload pipeline's own erroredPlugins set, which handles
+   * import/activate failures — together the two cover every error
+   * mode that produces dev:plugin:error.
+   */
+  buildErrored: Set<string>
   debounceMs: number
   started: boolean
 }
@@ -72,6 +80,7 @@ function getState(): CoordinatorState {
       inFlight: new Set(),
       pending: new Set(),
       debounceTimers: new Map(),
+      buildErrored: new Set(),
       debounceMs: DEFAULT_DEBOUNCE_MS,
       started: false,
     }
@@ -108,13 +117,24 @@ export function resolveWatchTargets(pluginDir: string): string[] {
  * this function is single-shot.
  */
 async function buildAndReload(pluginId: string, pluginDir: string): Promise<void> {
+  const state = getState()
   try {
     await buildUserPlugin(pluginDir)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.error('hot-reload: build failed', err as Error, { pluginId })
+    state.buildErrored.add(pluginId)
     broadcastPluginError(pluginId, `build failed: ${message}`)
     return
+  }
+
+  // Build succeeded. If we were in a build-errored state, emit recover
+  // BEFORE running the pipeline so the client can clear its overlay
+  // before the bundle swap lands. (The pipeline emits its own recover
+  // when transitioning out of import/activate failures; the two are
+  // distinct because they cover different error sources.)
+  if (state.buildErrored.delete(pluginId)) {
+    broadcastPluginRecover(pluginId)
   }
 
   const result = await runReloadPipeline({ pluginId, dir: pluginDir })
@@ -269,6 +289,7 @@ export function __resetCoordinatorForTest(): void {
   state.watchers.clear()
   state.inFlight.clear()
   state.pending.clear()
+  state.buildErrored.clear()
   for (const timer of state.debounceTimers.values()) clearTimeout(timer)
   state.debounceTimers.clear()
   state.started = false
