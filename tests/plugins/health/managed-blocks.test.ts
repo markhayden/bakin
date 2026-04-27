@@ -1,9 +1,10 @@
 /**
- * Regression test for src/core/doctor.ts managed-block behavior (Phase D-1).
+ * Regression test for plugins/health/lib/managed-blocks.ts.
  *
- * Pins the doctor's existing managed-block flow byte-equal so the
- * Phase A-4 helper (`packages/core/src/agent-packages/managed-blocks.ts`)
- * can be lifted in without changing observed behavior. Cases:
+ * Migrated from tests/core/doctor-managed-blocks.test.ts in #139 C9.
+ * Pins the existing managed-block flow byte-equal so the registered
+ * health.managed-blocks check can be lifted in without changing
+ * observed behavior. Cases:
  *
  *   - Block missing + autoFix=true → block appended with one blank line
  *     of separation; trailing newline; rest of file untouched
@@ -43,6 +44,11 @@ mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
+mock.module('../../../packages/core/src/openclaw-home', () => ({
+  getOpenClawHome: () => openClawDir,
+  getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
+  resetOpenClawHome: () => {},
+}))
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
@@ -73,7 +79,7 @@ mock.module('@bakin/core/openclaw-config', () => ({
     ].find((a) => a.id === id) ?? null,
 }))
 
-import { applyAllManagedBlocks } from '../../src/core/doctor'
+import { applyAllManagedBlocks } from '../../../plugins/health/lib/managed-blocks'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

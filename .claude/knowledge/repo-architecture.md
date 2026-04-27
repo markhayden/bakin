@@ -342,6 +342,7 @@ Created by `bakin onboard` or `initBakinHome()`.
 | Plugin loading | `src/lib/plugin-registry.ts` | Called by `server.ts` during startup |
 | MCP tools | `src/core/mcp-server.ts` | Imports `scripts/lib/*.ts` + plugin exec tools. Supports Streamable HTTP and SSE transports. |
 | Discord gateway | `src/core/discord-gateway.ts` | WebSocket client for Discord interaction events |
+| Doctor cron | `src/core/doctor.ts` | `doctor.start(contentDir, projectRoot)` from `server.ts`. ~170-line orchestrator (cron + cache + audit + notify); every check is plugin-registered. Deep ref: `.claude/knowledge/doctor-and-health-checks.md`. |
 | TanStack router | `packages/host/src/router.ts` | Boots on client, matches URL to `routes/*.tsx` |
 | Runtime plugin loader | `packages/host/src/plugin-host/PluginHost.tsx` | Dynamic-imports every plugin's `client.js` on mount |
 | Binary build | `scripts/build-binary.ts` | Runs `bun build --compile` per target triple |

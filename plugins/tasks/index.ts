@@ -30,6 +30,12 @@ import {
   triggerDispatch,
 } from '../../src/core/task-service'
 import { createLogger } from '../../src/core/logger'
+import { getContentDir } from '../../packages/core/src/content-dir'
+import {
+  checkTaskboard,
+  checkTaskConsistency,
+  checkTaskPositionIntegrity,
+} from './lib/health-checks'
 import type { Task, TaskBoard, ColumnId } from './types'
 
 const log = createLogger('tasks')
@@ -744,6 +750,25 @@ const tasksPlugin: BakinPlugin = {
         if (count > 0) log.info(`Periodic cleanup: deleted ${count} old tasks`)
       }, 6 * 60 * 60 * 1000)
     }
+
+    // ─── Health checks (migrated out of core/doctor.ts per #139 C2) ─────
+    ctx.registerHealthCheck({
+      id: 'taskboard',
+      name: 'Taskboard SQLite reachability',
+      run: () => Promise.resolve(checkTaskboard()),
+    })
+    ctx.registerHealthCheck({
+      id: 'task-consistency',
+      name: 'Task consistency (orphans, overload, stale in-progress)',
+      autoFix: true,
+      run: () => checkTaskConsistency(getContentDir()),
+    })
+    ctx.registerHealthCheck({
+      id: 'order-integrity',
+      name: 'Task position / order integrity',
+      autoFix: true,
+      run: () => Promise.resolve(checkTaskPositionIntegrity()),
+    })
   },
 
   async onReady() {

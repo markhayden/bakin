@@ -177,6 +177,7 @@ If a test does not mock the content-dir resolvers, it **will** eventually write 
 - **Onboarding** — `src/core/onboarding/` — 8 component modules with shared `check()` + `install()` contract. CLI: `bakin onboard --yes` for non-interactive setup; `bakin mkdir`, `bakin install {antfly,models,mcporter}`, `bakin check {openclaw,llm,channels,all}`, `bakin settings init`. Doctor gates on `~/.bakin/.onboarded` marker.
 - **Debug Mode** — Global client-side toggle. State in Zustand + localStorage (`bakin-debug`). Access via `useDebug()` from `@bakin/sdk/hooks`. Toggle button in header (Bug icon). URL `?debug=true` activates as a one-shot seed.
 - **Shared UI Components** — All shared UI lives under `@bakin/sdk/components` — plugins always import from there, never from `packages/host/src/components/` directly. `PluginHeader` (title + count + search + actions) and `FacetFilter` (popover multi-select, back with `useQueryArrayState`) are the most reused.
+- **Doctor & Health Checks** — Every doctor check is plugin-registered via `ctx.registerHealthCheck`. `src/core/doctor.ts` is the orchestrator (cron + cache + audit + notify). Plugin-owned checks live at `plugins/{owner}/lib/health-checks.ts`; system-level checks live in the health plugin under `plugins/health/lib/system-checks/`. The single canonical result type is `HealthCheckResult` from `@bakin/sdk`. Deep reference: `.claude/knowledge/doctor-and-health-checks.md`.
 
 ## Reference
 

@@ -17,6 +17,15 @@ import {
   getHealthCheck,
   type HealthCheckDef,
 } from './lib/health-check-registry'
+import { checkContentDir } from './lib/system-checks/content-dir'
+import { checkService } from './lib/system-checks/service'
+import { checkMcporter } from './lib/system-checks/mcporter'
+import { checkGateway } from './lib/system-checks/gateway'
+import { checkAntfly } from './lib/system-checks/antfly'
+import { checkOrchestratorRules } from './lib/system-checks/orchestrator-rules'
+import { checkAndSyncSkill } from './lib/system-checks/sync-skill'
+import { checkPluginAssets } from './lib/system-checks/plugin-assets'
+import { applyAllManagedBlocks } from './lib/managed-blocks'
 // Registry accessors live on globalThis because Next.js API routes get
 // separate webpack-compiled module instances with empty Maps. The custom
 // server (server.ts) registers the real accessors after plugin init.
@@ -276,6 +285,57 @@ const healthPlugin: BakinPlugin = {
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
+    })
+
+    // ─── System health checks (migrated out of core/doctor.ts per #139 C6+) ──
+    ctx.registerHealthCheck({
+      id: 'content-dir',
+      name: 'Content directory location',
+      run: () => Promise.resolve(checkContentDir()),
+    })
+    ctx.registerHealthCheck({
+      id: 'service',
+      name: 'macOS LaunchAgent plist',
+      run: () => Promise.resolve(checkService(process.cwd())),
+    })
+    ctx.registerHealthCheck({
+      id: 'mcporter',
+      name: 'mcporter install + per-agent config',
+      autoFix: true,
+      run: () => Promise.resolve(checkMcporter()),
+    })
+    ctx.registerHealthCheck({
+      id: 'gateway',
+      name: 'OpenClaw HTTP gateway reachability',
+      run: () => checkGateway(),
+    })
+    ctx.registerHealthCheck({
+      id: 'antfly',
+      name: 'Antfly binary + daemon connection',
+      run: () => checkAntfly(),
+    })
+    ctx.registerHealthCheck({
+      id: 'orchestrator-rules',
+      name: 'Main agent AGENTS.md orchestrator-rules block',
+      autoFix: true,
+      run: () => checkOrchestratorRules(),
+    })
+    ctx.registerHealthCheck({
+      id: 'skill',
+      name: 'Bakin SKILL.md sync to OpenClaw workspace',
+      autoFix: true,
+      run: () => Promise.resolve(checkAndSyncSkill(process.cwd())),
+    })
+    ctx.registerHealthCheck({
+      id: 'plugin-assets',
+      name: 'Plugin-shipped OpenClaw skills install state',
+      run: () => checkPluginAssets(),
+    })
+    ctx.registerHealthCheck({
+      id: 'managed-blocks',
+      name: 'Per-agent managed blocks in AGENTS.md',
+      autoFix: true,
+      run: () => Promise.resolve(applyAllManagedBlocks(getSettings().doctor.autoFixSkill)),
     })
   },
 

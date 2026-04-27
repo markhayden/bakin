@@ -160,4 +160,19 @@ describe('runPluginHealthChecks', () => {
     expect(results).toHaveLength(3)
     expect(results.map(r => r.check)).toEqual(['multi.a', 'multi.b', 'multi.c'])
   })
+
+  it('isolates a check that returns a non-array — synthetic error result', async () => {
+    registerPluginHealthCheck('test-a', {
+      id: 'bad-shape',
+      name: 'Returns undefined',
+      // Type-cast to bypass the contract — this simulates a buggy/malicious plugin
+      run: (async () => undefined) as unknown as () => Promise<import('../../packages/core/src/plugin-types').HealthCheckResult[]>,
+    })
+
+    const results = await runPluginHealthChecks()
+    expect(results).toHaveLength(1)
+    expect(results[0].check).toBe('test-a.bad-shape')
+    expect(results[0].status).toBe('error')
+    expect(results[0].message).toMatch(/non-array/)
+  })
 })
