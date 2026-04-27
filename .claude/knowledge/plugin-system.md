@@ -146,6 +146,36 @@ Zero-permission plugins skip the consent gate (no token needed).
 `--yes` short-circuits the prompt for scripted/CI installs but the
 token round-trip still runs for the binding check.
 
+#### Monorepo `#subpath` syntax (Phase 1)
+
+`bakin plugins install github:user/repo#plugins/foo` installs one
+plugin from a multi-plugin repository. The shared parser at
+`packages/core/src/plugins/source.ts` is the single source of truth for
+both the install endpoint and the upgrade flow — they used to carry
+their own copies of the same logic with a comment promising lockstep.
+
+Behavior:
+
+- Subpath is optional; without `#` the install/upgrade flows behave
+  exactly as before.
+- The install flow clones the parent repo to staging and copies only
+  `<staging>/<subpath>/` to `~/.bakin/plugins/<id>/`. The cloned repo's
+  `.git/` is dropped along with the rest.
+- The lockfile records the full source string with `#subpath` so the
+  upgrade flow can re-resolve it. Subpath upgrades take a different
+  path (`upgradeGithubSubpath`): re-clone to staging, run the same
+  consent gate against the subpath manifest, then replace the plugin
+  dir with the subpath contents. The in-place `git fetch`+`git merge`
+  flow used by non-subpath upgrades cannot apply here since there's no
+  local `.git/` to fetch into.
+- Subpath validation is enforced at three layers: the lockfile schema
+  (`SourceStringSchema` in `lockfile.ts`), the shared `parseGithubSource`
+  parser, and a defensive `realpathSync` containment check after the
+  clone. Each rejects empty subpaths, leading/trailing slashes, `..`/`.`
+  segments, and multiple `#` delimiters.
+- `#subpath` is **not** supported for `type: 'local'` installs — point
+  the local path directly at the plugin dir instead.
+
 ### Upgrade flow — `bakin plugins upgrade <id> [--yes]`
 
 `src/core/plugins/upgrade.ts`. Refuses core plugins. Reads the
