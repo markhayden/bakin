@@ -43,10 +43,15 @@ mock.module('@/core/logger', () => ({
 // is out-of-scope for these unit tests; the build is covered separately
 // in tests/api/plugins-build.test.ts. Test #5 forces a build failure by
 // switching this mock at runtime.
-let buildMock = mock(async () => {})
+let buildCount = 0
+let buildShouldThrow = false
+const buildSpy = async (): Promise<void> => {
+  buildCount += 1
+  if (buildShouldThrow) throw new Error('synthetic build failure')
+}
 mock.module(
   '../../../packages/host/src/plugin-host/user-plugin-builder',
-  () => ({ buildUserPlugin: (...args: unknown[]) => buildMock(...args) }),
+  () => ({ buildUserPlugin: buildSpy }),
 )
 
 // `isCorePlugin` is wired against a setter at boot time. For tests we
@@ -83,7 +88,8 @@ beforeEach(() => {
   rmSync(sourceDir, { recursive: true, force: true })
   rmSync(join(testDir, 'plugins'), { recursive: true, force: true })
   coreIds = new Set()
-  buildMock = mock(async () => {})
+  buildCount = 0
+  buildShouldThrow = false
 })
 
 describe('linkPlugin — happy path', () => {
@@ -97,7 +103,7 @@ describe('linkPlugin — happy path', () => {
 
     const symlinkPath = join(testDir, 'plugins', 'devplug')
     expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true)
-    expect(buildMock.mock.calls.length).toBe(1)
+    expect(buildCount).toBe(1)
 
     const lock = readPluginLockfile()
     const entry = lock.plugins.devplug!
@@ -159,7 +165,7 @@ describe('linkPlugin — refusal cases', () => {
 
   it('rolls back the symlink when initial build fails', async () => {
     writeManifest(sourceDir, { id: 'buildfail', name: 'Bf', version: '0.1.0', permissions: [] })
-    buildMock = mock(async () => { throw new Error('synthetic build failure') })
+    buildShouldThrow = true
 
     await expect(linkPlugin(sourceDir)).rejects.toThrow(/initial build/i)
 
