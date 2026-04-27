@@ -316,6 +316,18 @@ bun run lint:home-bypasses
 
 ### Manual confirmation steps
 
+**IMPORTANT — what PR 2 covers vs what PR 3 covers:** PR 2 changes
+bakin core's direct adapter consumers (`src/core/*`). It does NOT
+change the tasks plugin's `flow-store.ts`. Task creation via the
+kanban UI still goes through the tasks plugin's existing SQL path —
+that migrates in PR 3. PR 2's `task-service.ts` becomes the FIRST
+consumer of the new bakin tasks store (used by messaging + projects
+plugins for content-driven task creation), but the tasks plugin
+itself stays on the old path until PR 3.
+
+The smokes below test bakin-core paths only. Tasks-plugin smokes move
+to PR 3.
+
 1. Pull this branch (which includes PR 0 + PR 1).
 2. `bun install`
 3. Full test + lint sweep — all green.
@@ -330,28 +342,31 @@ bun run lint:home-bypasses
    - The bakin UI should render tokens identically. If the streaming
      UI behaves differently, that's a regression worth catching here
      before plugins migrate in PR 3.
-6. **Critical: trigger a task dispatch from the kanban UI.**
-   - Bakin creates a `BakinTask` JSON file at
-     `~/.bakin/tasks/YYYY-MM/task-<id>.json`.
-   - Adapter dispatches; flow_runs row is created in OpenClaw.
-   - Status updates flow back via `subscribeExecutionUpdates` and
-     update bakin's UI.
-   - **Verify both sides:** `cat ~/.bakin/tasks/YYYY-MM/task-*.json`
-     shows bakin metadata; OpenClaw's flow_runs has matching execution
-     row.
+6. **Critical: trigger a watchdog alert (or any non-tasks-plugin
+    path that hits `task-service.createTaskWithEffects`).** Watchdog
+    paths are the easiest to trigger; can also create a content piece
+    via messaging plugin's scheduling UI which calls task-service
+    indirectly.
+   - Verify the resulting task creates BOTH a bakin JSON file at
+     `getBakinPaths().tasks/YYYY-MM/task-<id>.json` AND a flow_runs
+     row in OpenClaw.
+   - Status updates flow back via `subscribeExecutionUpdates`.
+   - Tasks plugin's UI list (still SQL-direct in PR 2) shows the task
+     because it scans flow_runs which now includes the new row.
 7. **Critical: trigger a Discord notification.**
-   - Workflow gate approval or watchdog alert.
+   - Watchdog alert is the simplest non-workflow path. (Workflow
+     approval flows are tasks-plugin/workflows-plugin coupled; defer
+     full approval-flow smoke to PR 3.)
    - Discord adapter (now inside `packages/adapter-openclaw/`) posts
-     the message with buttons.
-   - Click a button — the response flows back through the adapter's
-     interaction event.
-   - Verify approval lands in workflows plugin correctly.
+     the message.
+   - Verify the notification renders correctly.
 8. **Antfly:** save a project file; verify it indexes; search returns it.
    - The score breakdown should be visible in debug mode (toggle
      debug; inspect a search result).
 9. `bakin doctor` — health checks pass identically.
-10. `bakin tasks list` — shows tasks; metadata from new store, status
-    from adapter.
+10. `bakin tasks list` — shows tasks; tasks plugin's UI still works
+    against flow_runs SQL (it migrates in PR 3); the new core-driven
+    tasks visible alongside.
 11. **Confirm OK to proceed** before opening PR 3.
 
 ### Rollback
@@ -448,34 +463,75 @@ bun run lint:home-bypasses
    - Schedule a content piece; verify it lands in the calendar.
    - Trigger a Discord post; verify it appears in Discord.
 
-   **team**
+   **team** (full agent lifecycle — expanded API)
    - Open the team UI; pick an agent; edit their identity (SOUL.md
-     equivalent).
-   - Save; verify the file is updated in the runtime's workspace
-     (via the adapter; check via `bakin paths` for the workspace path).
+     equivalent). Save; verify the file is updated in the runtime's
+     workspace (via the adapter; check via `bakin paths` for the
+     workspace path).
+   - **Create a new agent** via the UI; verify it appears in the
+     runtime's agent list (`openclaw.json` updated; new workspace
+     dir created).
+   - **Edit allowlist/permissions** on an agent; verify
+     `auth-profiles.json` updates via the adapter's
+     `writePermissions` path.
+   - **Remove a test agent** via the UI; verify it's removed from
+     the runtime's config.
+   - All four operations (create/update/remove/permissions) go through
+     `ctx.runtime.agents.*` — none through the deleted plugin-side
+     adapter file.
 
    **memory**
    - Open the memory UI; navigate the tier breakdown.
    - Each tier loads; entries display.
    - Click into a session; the session reader streams events.
 
-   **tasks**
+   **tasks** (load-bearing — most user-visible migration)
    - Open the kanban board; tasks render.
-   - Drag-drop a task between columns; the bakin task JSON file
-     updates.
-   - Create a new task; verify both bakin metadata file AND the
-     runtime's flow_runs row are created.
+   - Drag-drop a task between columns; verify the bakin task JSON
+     file updates atomically (`cat <tasks-path>/YYYY-MM/task-*.json`
+     after the drag; mtime should reflect the operation).
+   - Create a new task via UI; verify BOTH:
+     - bakin metadata file at `getBakinPaths().tasks/YYYY-MM/...`
+     - flow_runs row in OpenClaw with matching `bakin:task:<id>`
+       `owner_key`
+   - Edit a task title in bakin; verify the bakin file updates
+     and the runtime flow_run is NOT modified (metadata stays
+     bakin-side; this proves the split-layer model).
    - Mark a task complete; status flows back through
-     `subscribeExecutionUpdates`.
+     `subscribeExecutionUpdates`; bakin UI reflects new state.
+   - Delete a task; verify two-phase deletion works (file marked
+     `pendingDelete: true` → adapter cancels execution → file
+     deleted).
+   - **Restart bakin mid-flight:** create a task, kill bakin before
+     it dispatches, restart. Boot reconciliation should heal the
+     orphaned bakin file (status: not-yet-dispatched) OR re-link
+     against the runtime flow_run if dispatch had succeeded.
 
-   **workflows**
+   **workflows** (durable approval flow)
    - Trigger a workflow that has a gate.
-   - Discord approval message appears; click "Approve"; workflow
-     advances.
+   - Discord approval message appears with embedded approval ID
+     in button `custom_id`.
+   - **Critical durability test:** click "Approve" — workflow advances,
+     Discord message edits to show resolved state.
+   - **Restart durability test:** trigger a second gate. Before
+     responding, restart bakin. Click "Approve" in Discord after the
+     restart. Verify:
+     - The interaction routes back to the workflows plugin
+     - The workflow advances correctly
+     - The Discord message edits to resolved state
+     - This proves the durable approval primitive: bakin's workflow
+       state on disk + adapter's interaction routing both survived
+       the restart.
 
-   **schedule**
+   **schedule** (full CRUD — not read-only as previously spec'd)
    - Open the schedule UI; cron jobs list correctly.
-   - Verify run history displays.
+   - **Create** a new cron job via the UI; verify it appears in the
+     runtime's cron storage (`cat ~/.openclaw/cron/jobs.json` shows
+     it).
+   - **Edit** an existing job's schedule; verify the runtime updates.
+   - **Run-now** a job; verify it dispatches and a CronRun appears.
+   - **Delete** a job; verify it's removed from the runtime.
+   - Verify run history displays correctly.
 
    **health**
    - `bakin doctor` runs all checks; antfly + openclaw checks come
