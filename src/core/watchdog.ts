@@ -9,7 +9,7 @@ import { getSettings } from './settings'
 import { broadcast } from './sse'
 import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
-import * as openclaw from './openclaw-client'
+import { getAgentLastReply, sendAgentMessage, sendRuntimeChannelMessage } from './runtime-registry'
 import { getMainAgentId } from './main-agent'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { getStatsByMs } from './usage'
@@ -59,12 +59,12 @@ function getLastLogTimestamp(task: { log?: { timestamp: string }[] }): Date | nu
 function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): boolean {
   if (!agent) return true
 
-  // Primary signal: did the gateway return a successful reply from this
-  // agent recently? Recorded in openclaw-client.sendMessage() — a returned
+  // Primary signal: did the runtime return a successful reply from this
+  // agent recently? Recorded in runtime-registry.sendAgentMessage() — a returned
   // reply means the gateway routed our request and got a response back,
   // which is a stronger liveness indicator than an agent-written heartbeat
   // file (which nothing currently writes).
-  const lastReplyMs = openclaw.getAgentLastReply(agent)
+  const lastReplyMs = getAgentLastReply(agent)
   if (lastReplyMs !== null && Date.now() - lastReplyMs < 15 * 60 * 1000) {
     return false
   }
@@ -194,7 +194,7 @@ export function start(contentDir: string, port: number): void {
           }
 
           // Discord alert
-          openclaw.sendChannelMessage(
+          sendRuntimeChannelMessage(
             'discord',
             `channel:${settings.watchdog.alertChannelId}`,
             `⚠️ **Watchdog Alert**: Task "${task.title}" (@${task.agent || 'unassigned'}) has had no progress log in ${minutesStuck}+ minutes.`
@@ -235,7 +235,7 @@ export function start(contentDir: string, port: number): void {
               })
 
               if (settings.notifications.channel !== 'none') {
-                openclaw.sendChannelMessage(
+                sendRuntimeChannelMessage(
                   settings.notifications.channel,
                   settings.notifications.target || `channel:${wd.alertChannelId}`,
                   `⚠️ **MCP unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
@@ -281,7 +281,7 @@ export function start(contentDir: string, port: number): void {
               })
 
               if (settings.notifications.channel !== 'none') {
-                openclaw.sendChannelMessage(
+                sendRuntimeChannelMessage(
                   settings.notifications.channel,
                   settings.notifications.target || `channel:${wd.alertChannelId}`,
                   `⚠️ **REST API unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
@@ -393,7 +393,7 @@ export function start(contentDir: string, port: number): void {
 
             msg += `\n\nApprove or reject in Bakin UI.`
 
-            openclaw.sendChannelMessage(
+            sendRuntimeChannelMessage(
               settings.notifications.channel,
               settings.notifications.target || `channel:${settings.watchdog.alertChannelId}`,
               msg
@@ -435,7 +435,7 @@ function checkBypassPatterns(task: { id: string; title: string; agent?: string; 
         appendAudit(contentDir, 'task.bypass_detected', 'watchdog', { id: task.id, title: task.title, agent: task.agent, pattern: match[0] })
 
         // Notify the main agent
-        openclaw.sendMessage(getMainAgentId(), alertMsg).catch(() => {})
+        sendAgentMessage(getMainAgentId(), alertMsg).catch(() => {})
 
         log.warn('Bypass pattern detected', { id: task.id, title: task.title, pattern: match[0] })
         return // Only alert once per watchdog cycle per task

@@ -448,11 +448,25 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     const reader = response.body?.getReader()
     if (!reader) return
     const decoder = new TextDecoder()
+    let buffer = ''
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      const text = decoder.decode(value)
-      if (text) yield { type: 'text', content: text }
+      buffer += decoder.decode(value, { stream: true })
+      const frames = buffer.split('\n\n')
+      buffer = frames.pop() ?? ''
+      for (const frame of frames) {
+        const chunk = parseStreamFrame(frame)
+        if (chunk?.type === 'done') {
+          yield chunk
+          return
+        }
+        if (chunk) yield chunk
+      }
+    }
+    if (buffer.trim()) {
+      const chunk = parseStreamFrame(buffer)
+      if (chunk?.type === 'text') yield chunk
     }
     yield { type: 'done' }
   }
@@ -660,6 +674,32 @@ function readPath(source: Record<string, unknown>, key: string): unknown {
     current = current[part]
   }
   return current
+}
+
+function parseStreamFrame(frame: string): ChatChunk | null {
+  const dataLines = frame
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('data: '))
+    .map((line) => line.slice(6).trim())
+  if (dataLines.length === 0) {
+    const text = frame.trim()
+    return text ? { type: 'text', content: text } : null
+  }
+  const data = dataLines.join('\n')
+  if (data === '[DONE]') return { type: 'done' }
+  try {
+    const parsed = JSON.parse(data) as {
+      choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>
+      error?: { message?: string }
+    }
+    const error = parsed.error?.message
+    if (error) return { type: 'error', content: error }
+    const content = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content
+    return content ? { type: 'text', content } : null
+  } catch {
+    return data ? { type: 'text', content: data } : null
+  }
 }
 
 function agentToRuntime(agent: NonNullable<ReturnType<typeof findAgentById>>): RuntimeAgent {

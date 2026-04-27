@@ -1,6 +1,6 @@
 /**
  * Task dispatch system for Bakin.
- * Periodically checks for TODO tasks and dispatches them to agents via OpenClaw.
+ * Periodically checks for TODO tasks and dispatches them to agents via the runtime adapter.
  */
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
@@ -8,11 +8,10 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { recordUsage } from './usage'
-import * as openclaw from './openclaw-client'
+import { getRuntimeAdapter, sendAgentMessage } from './runtime-registry'
 import { isStale } from '../lib/format'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { getMainAgentId } from '@bakin/core/main-agent'
-import { getAgentIds } from '@bakin/core/openclaw-config'
 
 const log = createLogger('dispatch')
 const hooks = () => getHookRegistry()
@@ -56,7 +55,7 @@ const TRANSIENT_CODES = new Set([
 // a real outage is the safer side — worst case we wait longer than needed,
 // not shorter.
 function classifyDispatchError(err: unknown): DispatchFailureKind {
-  if (err instanceof Error && /^OpenClaw sendMessage failed \(\d+\)/.test(err.message)) {
+  if (err instanceof Error && /^OpenClaw (sendMessage|chat) failed \(\d+\)/.test(err.message)) {
     return 'structural'
   }
   if (err instanceof TypeError && err.message.includes('fetch failed')) return 'transient'
@@ -140,6 +139,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
     const { todoTasks } = getTodoTasks()
     const state = loadDispatchState(contentDir)
+    const runtimeAgentIds = new Set((await getRuntimeAdapter().agents.list()).map((agent) => agent.id))
     // Reconcile dispatch state with taskboard reality
     const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const activeIds = new Set([
@@ -207,7 +207,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         if (Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings)) continue
       }
 
-      if (task.agent && !getAgentIds().includes(task.agent)) continue
+      if (task.agent && !runtimeAgentIds.has(task.agent)) continue
 
       // Workflow-aware dispatch path
       const taskWithWorkflow = task as typeof task & { workflowId?: string }
@@ -230,7 +230,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         await moveTaskToInProgress(task.id, targetAgent)
         appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-        await openclaw.sendMessage(targetAgent, message)
+        await sendAgentMessage(targetAgent, message)
         dispatchedSet.add(task.id)
 
         appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title })
@@ -286,7 +286,8 @@ export async function dispatchSingleTask(
       return
     }
 
-    if (task.agent && !getAgentIds().includes(task.agent)) {
+    const runtimeAgentIds = new Set((await getRuntimeAdapter().agents.list()).map((agent) => agent.id))
+    if (task.agent && !runtimeAgentIds.has(task.agent)) {
       log.warn('dispatchSingleTask: agent not in allowed list', { taskId, agent: task.agent })
       return
     }
@@ -359,7 +360,7 @@ export async function dispatchSingleTask(
       await moveTaskToInProgress(task.id, targetAgent)
       appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-      await openclaw.sendMessage(targetAgent, message)
+      await sendAgentMessage(targetAgent, message)
 
       state.dispatched.push(task.id)
       saveDispatchState(contentDir, state)
@@ -626,7 +627,7 @@ async function dispatchWorkflowTask(
     const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port)
 
     try {
-      await openclaw.sendMessage(targetAgent, message)
+      await sendAgentMessage(targetAgent, message)
       dispatchedSet.add(`${task.id}:${stepId}`)
 
       appendAudit(contentDir, 'task.dispatched', targetAgent, {

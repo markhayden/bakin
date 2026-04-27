@@ -1,15 +1,15 @@
 /**
- * System check — OpenClaw HTTP gateway reachability.
+ * System check — runtime gateway reachability.
  *
  * Migrated out of src/core/doctor.ts (#139 C7). NOT auto-fixable —
  * starting the gateway requires human intervention.
  */
-import * as openclaw from '../../../../src/core/openclaw-client'
+import { pingRuntime } from '../../../../src/core/runtime-registry'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
 export async function checkGateway(): Promise<HealthCheckResult[]> {
   try {
-    const alive = await openclaw.ping()
+    const alive = await pingRuntime()
     if (alive) {
       return [{ check: 'gateway', status: 'ok', message: 'OpenClaw gateway is reachable', autoFixable: false }]
     }

@@ -26,7 +26,6 @@ import {
   confirmSession,
 } from './lib/sessions'
 import { buildMessages } from './lib/prompt-builder'
-import { streamMessage, chatCompletion } from '@/core/openclaw-client'
 import {
   buildDoc as buildBrainstormDoc,
   parseSessionFile,
@@ -35,8 +34,7 @@ import {
 } from './lib/brainstorm-search'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
-import { sendChannelMessage } from '../../src/core/openclaw-client'
-import * as vault from '../../src/core/vault'
+import { chatAgentCompletion, sendRuntimeChannelMessage, streamAgentMessageResponse } from '../../src/core/runtime-registry'
 import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import type { PlanningSession } from './types'
@@ -133,7 +131,7 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
   } else if (item.status === 'review') {
     newStatus = 'published'
 
-    // Post to Discord via HTTP (openclaw-client)
+    // Post to Discord via the active runtime channel adapter.
     try {
       const caption = item.draft?.caption || item.title
       const target = item.channelTarget || '1483917792745885768'
@@ -155,7 +153,7 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
         }
       }
 
-      await sendChannelMessage('discord', `channel:${target}`, caption, media)
+      await sendRuntimeChannelMessage('discord', `channel:${target}`, caption, media)
     } catch (err) {
       log.error('Discord post failed', err)
     }
@@ -503,34 +501,12 @@ Format: conversational response in your voice, then a JSON block:
 
 ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says: ${body.message}`
 
-          const gwToken = vault.get('gateway-token')
-          if (!gwToken) throw new Error('Gateway token not found')
-
-          const { getSettings } = await import('../../src/core/settings')
-          const settings = getSettings()
-          const gatewayBase = `${settings.openclaw.gatewayUrl}:${settings.openclaw.gatewayPort}`
           const sessionKey = `brainstorm-${body.agentId}-${Date.now()}`
-          const gwResponse = await fetch(`${gatewayBase}/v1/chat/completions`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${gwToken}`,
-              'x-openclaw-session-key': sessionKey,
-            },
-            body: JSON.stringify({
-              model: 'openclaw:main',
-              max_tokens: 2048,
-              messages: [{ role: 'user', content: fullPrompt }],
-            }),
+          const content = await chatAgentCompletion({
+            agentId: body.agentId,
+            sessionKey,
+            messages: [{ role: 'user', content: fullPrompt }],
           })
-
-          if (!gwResponse.ok) {
-            const err = await gwResponse.text()
-            throw new Error(`Gateway error: ${err}`)
-          }
-
-          const gwData = await gwResponse.json()
-          const content = gwData.choices?.[0]?.message?.content || ''
 
           let suggestions: Array<{
             title: string
@@ -716,7 +692,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
               let gwResponse: Response | null = null
 
               try {
-                gwResponse = await streamMessage({
+                gwResponse = await streamAgentMessageResponse({
                   messages,
                   agentId: session.agentId,
                   sessionKey,
@@ -771,7 +747,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
               } else {
                 // Non-streaming fallback
                 try {
-                  fullContent = await chatCompletion({
+                  fullContent = await chatAgentCompletion({
                     messages,
                     agentId: session.agentId,
                     sessionKey,
@@ -1231,7 +1207,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
         let fullContent: string
         try {
-          fullContent = await chatCompletion({
+          fullContent = await chatAgentCompletion({
             messages,
             agentId: session.agentId,
             sessionKey,

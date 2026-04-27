@@ -4,7 +4,7 @@
  */
 import { createLogger } from './logger'
 import { appendAudit } from './audit'
-import * as openclaw from './openclaw-client'
+import { sendAgentMessage } from './runtime-registry'
 import { getMainAgentId } from '@bakin/core/main-agent'
 
 const log = createLogger('continuation')
@@ -50,7 +50,7 @@ mcporter call ${mcServer}.bakin_exec_tasks_get taskId=${task.id}
         let sent = false
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           try {
-            await openclaw.sendMessage(agentId, resumeMsg)
+            await sendAgentMessage(agentId, resumeMsg)
             log.info('Continuation dispatched', { id: task.id, title: task.title, completedDep: completedTaskId, attempt })
             sent = true
             break

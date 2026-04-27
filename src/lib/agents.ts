@@ -1,12 +1,12 @@
 /**
- * Agent management — delegates to the core openclaw-client HTTP module.
+ * Agent management — delegates to the active runtime adapter.
  */
-import * as openclaw from '../core/openclaw-client'
+import { sendAgentMessage } from '../core/runtime-registry'
 
 export async function startAgent(agentId: string, message?: string) {
   const msg = message || `You are ${agentId}. Check in and begin working on any assigned tasks.`
   try {
-    await openclaw.sendMessage(agentId, msg)
+    await sendAgentMessage(agentId, msg)
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -26,7 +26,7 @@ export async function deliverTaskToAgent(agentId: string, taskTitle: string, det
   const detailBlock = details ? `\n\nDetails:\n${details}` : ''
   const msg = `Work on: ${taskTitle}${detailBlock}`
   try {
-    await openclaw.sendMessage(agentId, msg)
+    await sendAgentMessage(agentId, msg)
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
