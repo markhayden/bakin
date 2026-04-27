@@ -12,7 +12,7 @@
  * Antfly HTTP API, so a full pass costs a few seconds once per day.
  */
 import { createLogger } from '../../../src/core/logger'
-import * as antfly from '../../../src/core/antfly'
+import { getSearchAdapter } from '../../../src/core/search-registry'
 
 const log = createLogger('memory:ttl-prune')
 
@@ -42,7 +42,8 @@ export async function pruneExpired(config: TtlConfig): Promise<PruneStats> {
   const started = Date.now()
   const stats: PruneStats = { turn: 0, audit: 0, scanned: 0, tookMs: 0 }
 
-  if (!antfly.enabled()) {
+  const search = getSearchAdapter()
+  if (!await search.available()) {
     stats.tookMs = Date.now() - started
     return stats
   }
@@ -61,7 +62,7 @@ export async function pruneExpired(config: TtlConfig): Promise<PruneStats> {
   }
 
   const toDelete: string[] = []
-  for await (const { key, doc } of antfly.scanTable(TABLE)) {
+  for await (const { key, document: doc } of search.scan(TABLE)) {
     stats.scanned += 1
     const tier = typeof doc.tier === 'string' ? doc.tier : ''
     const cutoff = cutoffs[tier]
@@ -72,11 +73,11 @@ export async function pruneExpired(config: TtlConfig): Promise<PruneStats> {
     if (tier === 'turn') stats.turn += 1
     else if (tier === 'audit') stats.audit += 1
     if (toDelete.length >= BATCH_SIZE) {
-      await antfly.batchRemove(TABLE, toDelete.splice(0))
+      await search.documents.batchRemove(TABLE, toDelete.splice(0))
     }
   }
   if (toDelete.length > 0) {
-    await antfly.batchRemove(TABLE, toDelete)
+    await search.documents.batchRemove(TABLE, toDelete)
   }
 
   stats.tookMs = Date.now() - started

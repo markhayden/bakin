@@ -24,8 +24,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { dirname, join } from 'path'
 import { getContentDir } from '@bakin/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
-import * as antfly from '../../../src/core/antfly'
-import { ensureRegisteredTables } from '../../../src/core/search-registry'
+import { ensureRegisteredTables, getSearchAdapter } from '../../../src/core/search-registry'
 import { clearAllOffsets, getOffsetsFilePath } from './offsets'
 
 const log = createLogger('memory:migration')
@@ -93,8 +92,9 @@ export async function migrateIfNeeded(): Promise<MigrationResult> {
     return { migrated: false, from: stored, to: MEMORY_SCHEMA_VERSION }
   }
 
-  if (!antfly.enabled()) {
-    log.info('Antfly disabled — skipping memory migration but still bumping marker', {
+  const search = getSearchAdapter()
+  if (!await search.available()) {
+    log.info('Search adapter unavailable — skipping memory migration but still bumping marker', {
       stored,
       target: MEMORY_SCHEMA_VERSION,
     })
@@ -108,7 +108,7 @@ export async function migrateIfNeeded(): Promise<MigrationResult> {
   })
 
   try {
-    await antfly.dropTable(TABLE)
+    await search.tables.drop(TABLE)
   } catch (err) {
     log.warn('dropTable bakin_memory failed — continuing', {
       err: err instanceof Error ? err.message : String(err),

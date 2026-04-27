@@ -4,7 +4,7 @@
  * script owns the list of plugins and the externals list.
  *
  * Server entries use --target=bun and --packages=external so node_modules
- * deps (chokidar, zod, js-yaml, @antfly/sdk, etc.) stay out of the plugin
+ * deps (chokidar, zod, js-yaml, search SDKs, etc.) stay out of the plugin
  * bundle. The host process already has them installed; bun:sqlite is
  * resolved at runtime by Bun itself.
  *

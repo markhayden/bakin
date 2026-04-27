@@ -2,9 +2,8 @@
  * Memory-plugin-owned doctor check.
  *
  * Migrated out of src/core/doctor.ts (#139 C5) — verifies registered
- * Antfly tables have stats / non-empty doc counts. Runs only when
- * Antfly is enabled and connected; otherwise returns no rows (the
- * antfly check itself is the root-cause indicator).
+ * search tables have stats / non-empty doc counts. Runs only when
+ * search is enabled and connected; otherwise returns no rows.
  *
  * Memory plugin owns search infrastructure (per CLAUDE.md: "Memory
  * plugin owns the unified bakin_memory table"), so search-table
@@ -32,23 +31,14 @@ function error(check: string, message: string): HealthCheckResult {
 // ─── Search tables: registered content types have stats / non-empty docs ──
 
 /**
- * Verify registered Antfly content types have readable table stats.
- * Returns no rows when Antfly is disabled or unreachable — the antfly
- * health check itself is the root-cause indicator in those cases.
+ * Verify registered content types have readable table stats.
+ * Returns no rows when search is disabled or unreachable.
  */
 export async function checkSearchTables(): Promise<HealthCheckResult[]> {
   const settings = getSettings()
   if (!settings.antfly.enabled) return []
 
   try {
-    const antfly = await import('../../../src/core/antfly')
-    await antfly.initialize()
-
-    // If Antfly is configured but unavailable, the antfly diagnostic is the
-    // root cause. Skip downstream search-table noise until the connection is
-    // healthy again.
-    if (!antfly.available()) return []
-
     const { getSearchHealth } = await import('../../../src/core/search-registry')
     const health = await getSearchHealth()
 
@@ -57,11 +47,10 @@ export async function checkSearchTables(): Promise<HealthCheckResult[]> {
     const results: HealthCheckResult[] = []
 
     if (health.tables.length === 0) {
-      results.push(warn('search-tables', 'Antfly enabled but no content types registered — plugins may not have activated'))
+      results.push(warn('search-tables', 'Search enabled but no content types registered — plugins may not have activated'))
       return results
     }
 
-    let emptyTables = 0
     let failedTables = 0
 
     for (const t of health.tables) {
@@ -71,13 +60,13 @@ export async function checkSearchTables(): Promise<HealthCheckResult[]> {
         continue
       }
 
-      const rawNumDocs = Number((t.stats as Record<string, unknown>).num_docs)
+      const statRecord = t.stats as Record<string, unknown>
+      const rawNumDocs = Number(statRecord.documents ?? statRecord.num_docs)
       if (Number.isFinite(rawNumDocs)) {
         if (rawNumDocs === 0) {
           if (t.pluginId === 'schedule') {
             results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 persisted documents; schedule jobs are indexed at runtime`))
           } else {
-            emptyTables++
             results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 documents — reindex via POST /api/reindex?table=${t.table}`))
           }
         }
@@ -86,7 +75,6 @@ export async function checkSearchTables(): Promise<HealthCheckResult[]> {
 
       const storage = (t.stats as Record<string, unknown>).storage_status as Record<string, unknown> | undefined
       if (storage?.empty === true) {
-        emptyTables++
         results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) appears empty — reindex via POST /api/reindex?table=${t.table}`))
       }
     }
