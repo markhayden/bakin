@@ -281,6 +281,17 @@ If a future iteration restores any of these, prefer adding back via new componen
 | Write normalization + read degradation + lifecycle routes | `tests/plugins/team/routes.test.ts` |
 | Agent lifecycle MCP exec tools | `tests/plugins/team/exec-tools.test.ts` |
 | Doctor integrity check | `tests/core/onboarding/openclaw.test.ts` |
+| Owned health checks (agent-roster / personas / agent-assets) | `tests/plugins/team/health-checks.test.ts` |
+
+## Owned health checks
+
+Team registers three checks via `ctx.registerHealthCheck` in `activate()`:
+
+- **`agent-roster`** — diff Bakin's agent ids against `~/.openclaw/openclaw.json`. Not auto-fixable (requires human judgment about which side is "right").
+- **`personas`** — verify each agent has a `team/personas/{agent}.md` file. Auto-fixable: under `settings.doctor.autoFixSkill=true` it stubs missing files.
+- **`agent-assets`** — wraps `agentAssetsComponent.check()` from `src/core/onboarding/agent-assets.ts` to surface drift in projected agent-package files. Auto-fixable: under autoFix, runs the same install flow as `bakin install agent-assets`.
+
+All three live at `plugins/team/lib/health-checks.ts`. Migrated out of `src/core/doctor.ts` in #139 C1. Deep reference: `.claude/knowledge/doctor-and-health-checks.md`.
 
 ## Common Pitfalls
 

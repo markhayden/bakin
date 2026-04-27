@@ -41,6 +41,7 @@ import { createMemoryListAgentsTool } from './mcp/list-agents'
 import { createMemoryStatusTool } from './mcp/status'
 import { migrateIfNeeded } from './lib/memory-migration'
 import { pruneExpired, startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
+import { checkSearchTables } from './lib/health-checks'
 
 const log = createLogger('memory')
 
@@ -305,6 +306,13 @@ const memoryPlugin: BakinPlugin = {
         })
       }
     }
+
+    // ─── Health check (migrated out of core/doctor.ts per #139 C5) ──────
+    ctx.registerHealthCheck({
+      id: 'search-tables',
+      name: 'Antfly search-table stats',
+      run: () => checkSearchTables(),
+    })
 
     log.info('memory plugin activated', {
       backfillDays: settings.backfillDays,

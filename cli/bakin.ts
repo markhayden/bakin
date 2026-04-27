@@ -573,8 +573,9 @@ async function cmdDoctor(): Promise<void> {
 // Agent Rules
 // ---------------------------------------------------------------------------
 
-// Orchestrator rules block constants and template are owned by src/core/doctor.ts.
-// Imported lazily inside cmdAgentRules so the CLI stays a pure entry point.
+// Orchestrator rules block constants and template are owned by
+// plugins/health/lib/managed-blocks.ts. Imported lazily inside
+// cmdAgentRules so the CLI stays a pure entry point.
 
 async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
   const { readFileSync, writeFileSync, existsSync } = await import('fs')
@@ -582,7 +583,7 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
     AGENT_RULES_BLOCK_START,
     AGENT_RULES_BLOCK_END,
     resolveOrchestratorRules,
-  } = await import('../src/core/doctor')
+  } = await import('../plugins/health/lib/managed-blocks')
 
   const agentsPath = getOpenClawPath('workspace', 'AGENTS.md')
 
@@ -629,7 +630,7 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
 
   // Handle --apply-all and --check-all for all agents
   if (options.applyAll || options.checkAll) {
-    const { applyAllManagedBlocks } = await import('../src/core/doctor')
+    const { applyAllManagedBlocks } = await import('../plugins/health/lib/managed-blocks')
     const results = applyAllManagedBlocks(!!options.applyAll)
     const errors = results.filter(r => r.status === 'error')
     const warnings = results.filter(r => r.status === 'warn')

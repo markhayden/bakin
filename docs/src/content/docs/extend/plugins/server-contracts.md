@@ -78,6 +78,29 @@ ctx.registerExecTool({
 
 Exec tool examples in public docs must either be tested or clearly marked illustrative with the reason they cannot run in CI.
 
+## Health Checks
+
+Doctor checks are plugin-registered. Each `ctx.registerHealthCheck` call adds one row to the registry; the doctor cron iterates and runs them in parallel.
+
+```ts
+import type { HealthCheckResult } from '@bakin/sdk'
+
+function checkSomething(): HealthCheckResult[] {
+  return [{ check: 'something', status: 'ok', message: '...', autoFixable: false }]
+}
+
+ctx.registerHealthCheck({
+  id: 'something',
+  name: 'Friendly description shown in admin UIs',
+  autoFix: true, // metadata only — orchestrator runs every check
+  run: () => Promise.resolve(checkSomething()),
+})
+```
+
+The id is auto-namespaced to `{pluginId}.{id}`. Per-check try/catch lives in the orchestrator — throw freely. A throwing handler becomes one synthetic error result and never crashes the sweep.
+
+`HealthCheckResult` has four fields: `{ check, status, message, autoFixable }`. `status` is `'ok' | 'warn' | 'error' | 'fixed'`. The result row's `check` field is whatever the implementation emits — it does not have to match the registered id.
+
 ## Settings
 
 Use `settingsSchema` for plugin settings that should render in Bakin. The persisted shape belongs to the plugin, but the field schema is public because users and agents rely on it.

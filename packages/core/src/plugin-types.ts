@@ -245,10 +245,7 @@ export interface NotificationChannelDef extends PluginNotificationChannelInput {
 // ---------------------------------------------------------------------------
 
 /**
- * Canonical result shape for a single doctor check row. Shape-identical to
- * the existing `DiagnosticResult` in `src/core/doctor.ts` — they will be
- * collapsed into this one name once all builtin checks migrate out of core
- * (see follow-up tracked alongside #137).
+ * Canonical result shape for a single doctor check row.
  */
 export interface HealthCheckResult {
   check: string
