@@ -1,445 +1,335 @@
-# Adapter Layer — Migration Plan
+# Adapter Layer - Single PR Hard Cutover Plan
 
 **Companion to:** `.claude/specs/adapter-layer.md`
-**Author:** Claude (drafted 2026-04-27)
+**Author:** Claude (revised 2026-04-27)
 
-## Plan summary
+## Plan Summary
 
-Six PRs. Each ships self-contained; system stays functional between
-PRs. Each PR's description includes manual confirmation steps the
-user runs locally before opening the next PR.
+One implementation PR. Internal commits are review checkpoints, not deployable
+release points.
 
-| PR | Title | LOC (approx) | Risk |
-|---:|---|---:|---|
-| PR 0 | feat(tasks): bakin-side task metadata store (prep, not wired) | 500 | low |
-| PR 1 | feat(adapters): interfaces + scaffolded packages + boot wiring | 1500 | medium |
-| PR 2 | refactor(core): bakin core uses ctx.runtime / SearchAdapter primitives | 2000 | medium-high |
-| PR 3 | refactor(plugins): plugins migrate to ctx.runtime / ctx.search | 3000 | high |
-| PR 4 | chore(adapters): delete old direct-import paths + final cleanup | 1000 | low (mostly deletes) |
-| PR 5 | docs(adapters): adapter-architecture knowledge + check-adapter-boundary skill | 1500 | low |
+This plan is optimized for the actual constraint set:
 
-Total: ~9500 lines across 6 PRs over a 1-2 week window.
+- Single user.
+- Single local machine.
+- Existing local task/runtime data may be wiped.
+- Intermediate commits do not need to run.
+- Clean final architecture is more important than compatibility shims,
+  rollback layers, or deployable migration checkpoints.
 
----
+The final PR must compile, pass tests, and pass manual smokes. Intermediate
+commits should be coherent enough to review, but they do not need to preserve a
+working application.
 
-## PR 0 — Bakin task metadata store (prep)
+Principle: pretend this is the first implementation. Remove legacy paths with
+no mercy. If code exists only to help the refactor transition, it must not
+survive the PR. After public release, compatibility and import flows are product
+features with tests, not leftover scaffolding.
 
-**Branch:** `feat/bakin-tasks-store`
+## Non-Goals
 
-### Scope
+- No staged production migration.
+- No dual-write task metadata period.
+- No old import re-export shims as final artifacts.
+- No compatibility allowlists that survive the PR.
+- No local data migration required for this machine.
+- No v1 adoption API for old OpenClaw `flow_runs`. Post-release import is a
+  separate product feature, not a leftover refactor path.
 
-Add `~/.bakin/tasks/` storage layer in isolation. New code path; no
-wiring yet. Tasks plugin still uses `flow_runs` for everything. Zero
-behavior change in production.
+## Branch
 
-### Files added
+`refactor/adapter-hard-cutover`
 
-- `src/core/tasks-store/index.ts` — public API
-- `src/core/tasks-store/io.ts` — atomic JSON read/write
-- `src/core/tasks-store/types.ts` — `BakinTask` interface
-- `src/core/tasks-store/index-cache.ts` — in-memory cache for fast list
-- `tests/core/tasks-store.test.ts` — full coverage of the new module
-- `packages/core/src/content-dir.ts` — add `tasks` to `BakinPaths`
+## Implementation Checkpoints
 
-### Files modified
+| Checkpoint | Purpose | Final-state requirement |
+|---:|---|---|
+| 1 | Adapter contracts and package skeletons | Interfaces live in `packages/core`; adapter packages export factories only |
+| 2 | AppServices boot and injection spine | One bootstrapped service object reaches plugins, routes, MCP tools, CLI/scripts, lifecycle, health, and tests |
+| 3 | Tasks hard cutover | Bakin task JSON store is the only task metadata authority before broad plugin rewrites |
+| 4 | Search adapter cutover | Antfly-specific code lives under `packages/adapter-antfly/`; `search-registry` delegates through `SearchAdapter` |
+| 5 | OpenClaw runtime adapter extraction | OpenClaw-specific code lives under `packages/adapter-openclaw/` |
+| 6 | Durable approvals and channels | Approval state is Bakin-owned; channel messages are delivery refs only |
+| 7 | Plugin hard cutover | Plugins use `ctx.runtime.*`, `ctx.search.*`, and the Bakin task store only |
+| 8 | CLI/scripts/host/core hard cutover | Non-plugin callers use `AppServices` or server APIs only |
+| 9 | Boundary enforcement and tests | Forbidden imports, provider strings, and raw storage access fail lint/test |
+| 10 | Docs and Claude knowledge | Architecture is documented for future sessions |
+| 11 | Final deletion sweep | Old direct-client files, shims, and plugin-side adapters are gone |
 
-- `packages/core/src/content-dir.ts` — `getBakinPaths()` returns
-  `tasks: join(home, 'tasks')`
-- `tests/...` — any consumer of `getBakinPaths()` may need shape update
+These are commit groups inside one PR, not separate mergeable PRs.
 
-### Order of commits (5)
+## Checkpoint 1 - Adapter Contracts And Packages
 
-1. `feat(tasks-store): BakinTask interface + paths`
-2. `feat(tasks-store): atomic JSON IO`
-3. `feat(tasks-store): in-memory index cache + list/get/put/delete`
-4. `feat(tasks-store): chokidar watcher integration (broadcasts SSE)`
-5. `test(tasks-store): full coverage`
+Add the adapter interfaces and package shells.
 
-### Verification
+### Add
 
-```bash
-bunx tsc --noEmit -p tsconfig.app.json
-bun test tests/core/tasks-store.test.ts --isolate
-bun test --isolate                              # full suite still green
-bun run lint:home-bypasses
-```
-
-### Manual confirmation steps
-
-1. Pull this branch.
-2. `bun install`
-3. `bunx tsc --noEmit -p tsconfig.app.json` — should be clean.
-4. `bun test --isolate` — should be all-green; baseline +N new tests
-   for tasks-store.
-5. `bakin start` — should boot identically to main (no behavior
-   change yet).
-6. `bakin tasks list` — same task list as before (still reading
-   flow_runs).
-7. `ls ~/.bakin/tasks/` — directory should NOT exist yet (storage
-   layer is created on first write, which doesn't happen in PR 0).
-8. **Confirm OK to proceed** before opening PR 1.
-
-### Rollback
-
-`git revert <merge>` cleanly undoes the entire PR. The new module is
-unwired; revert removes it without breaking anything.
-
-### What's NOT in this PR
-
-- No tasks plugin changes.
-- No reading from the new store.
-- No data migration from flow_runs.
-- No adapter work.
-
----
-
-## PR 1 — Adapter interfaces + scaffolded packages + boot wiring
-
-**Branch:** `feat/adapter-interfaces` (stacked on PR 0)
-
-### Scope
-
-Create the two adapter interfaces in `packages/core/src/adapters/`.
-Create `packages/adapter-openclaw/` and `packages/adapter-antfly/` as
-real workspace packages. Adapters are STUB implementations that
-delegate to existing `src/core/openclaw-client.ts` / `src/core/antfly.ts`
-unchanged. `selectRuntimeAdapter` / `selectSearchAdapter` wired into
-`server.ts`. Boot-time compatibility check.
-
-Lint rules + fitness test added; they pass because nothing has
-migrated yet (the rules deliberately permit the pre-migration import
-patterns until PR 2-3 land).
-
-### Files added
-
-```
+```text
+packages/core/src/app-services.ts
 packages/core/src/adapters/runtime/
-  index.ts                      AgentRuntimeAdapter interface
-  capabilities.ts               ChannelCapability + helpers
-  concepts.ts                   Agent, Task, Skill, Channel, Asset...
-  select.ts                     selectRuntimeAdapter(name)
-  testing.ts                    createMockRuntimeAdapter
+  index.ts
+  capabilities.ts
+  concepts.ts
+  testing.ts
 
 packages/core/src/adapters/search/
-  index.ts                      SearchAdapter interface
-  concepts.ts                   Query, ScoreBreakdown, QueryDiagnostics...
-  select.ts                     selectSearchAdapter(name)
-  testing.ts                    createMockSearchAdapter
+  index.ts
+  concepts.ts
+  testing.ts
+
+packages/core/src/tasks/
+  store.ts
+  testing.ts
 
 packages/adapter-openclaw/
-  package.json                  private: true, peer @bakin/core
-  tsconfig.json                 extends root
-  src/
-    index.ts                    exports OpenClawAdapter
-    runtime.ts                  STUB — delegates to existing src/core/openclaw-client
-    lifecycle.ts                STUB
-    agents.ts                   STUB
-    messaging.ts                STUB
-    tools.ts                    STUB
-    skills.ts                   STUB
-    sessions.ts                 STUB
-    memory.ts                   STUB
-    tasks.ts                    STUB
-    cron.ts                     STUB
-    config.ts                   STUB
-    channels/index.ts           STUB
+  package.json
+  tsconfig.json
+  src/index.ts
 
 packages/adapter-antfly/
   package.json
   tsconfig.json
-  src/
-    index.ts                    exports AntflyAdapter
-    search.ts                   STUB — delegates to existing src/core/antfly
-
-src/core/plugin-types.ts        add `runtime: AgentRuntimeAdapter`
-                                add `search: SearchAPI` (already there;
-                                tightened to point at SearchAdapter)
-src/lib/plugin-registry.ts      buildContext wires ctx.runtime
-                                + bumps boot order (adapters before plugins)
-
-server.ts                       new boot sequence:
-                                  selectRuntimeAdapter('openclaw')
-                                  assertAdapterCompatibility(...)
-                                  await runtimeAdapter.initialize(...)
-                                  ...
-
-tests/architecture/adapter-boundary.test.ts   fitness test (passes today
-                                              because no migration yet;
-                                              tightens incrementally)
-eslint.config.mjs               no-restricted-imports rules
-                                (with deliberate allowlist for
-                                pre-migration call sites — to be
-                                tightened in PR 2-3)
+  src/index.ts
 ```
 
-### Order of commits (8)
+### Rules
 
-1. `feat(adapters): runtime + search interfaces in packages/core/src/adapters/`
-2. `feat(adapters): testing.ts mock factories`
-3. `chore(packages): scaffold adapter-openclaw + adapter-antfly`
-4. `feat(adapters): OpenClawAdapter stub delegates to existing core paths`
-5. `feat(adapters): AntflyAdapter stub delegates to existing core paths`
-6. `feat(boot): server.ts selects + initializes adapters before plugins`
-7. `feat(plugins): ctx.runtime + ctx.search exposed on PluginContext`
-8. `chore(eslint+arch): boundary lint rules + fitness test (lenient)`
+- `packages/adapter-openclaw/src/index.ts` exports factory functions such as
+  `createOpenClawRuntimeAdapter(...)`.
+- `packages/adapter-antfly/src/index.ts` exports factory functions such as
+  `createAntflySearchAdapter(...)`.
+- `packages/core` exports interfaces, concepts, and test mocks only. It does
+  not import concrete adapter packages.
+- App boot/server code owns the static switch from settings to concrete
+  adapter factories.
+- Do not export provider classes as public API.
+- Do not create delegating stubs that survive the final PR.
+- Add settings shape for `runtime.adapter` and `search.adapter`.
+- Add `getBakinPaths().tasks` so the task store has a Bakin-owned home before
+  any task caller is rewritten.
 
-### Verification
+## Checkpoint 2 - AppServices Boot And Injection Spine
 
-```bash
-bunx tsc --noEmit -p tsconfig.app.json
-bun run lint
-bun test --isolate
-bun run docs:check
-bun run lint:home-bypasses
-```
+Create the single application service object and thread it through every
+runtime-dependent entrypoint before moving large provider implementations.
 
-### Manual confirmation steps
+### Required Order
 
-1. Pull this branch (which includes PR 0).
-2. `bun install` — new packages add minor dep resolution.
-3. `bunx tsc --noEmit -p tsconfig.app.json` — clean.
-4. `bun run lint` — clean (rules permit pre-migration imports).
-5. `bun test --isolate` — full suite still green.
-6. `bakin start`:
-   - Boot logs should show: `Loaded runtime adapter: openclaw@1.0.0`
-   - `Loaded search adapter: antfly@1.0.0`
-   - Compatibility check passes.
-   - Plugin registry initializes without error.
-7. `bakin doctor` — runs all health checks; results identical to main.
-8. **Live test message:**
-   - In the bakin UI, send a chat message to your main agent.
-   - Expect: streams normally; no broken behavior. (The stub adapter
-     delegates straight through to existing `streamMessage` — should be
-     identical to pre-PR.)
-9. **Live test indexing:**
-   - Edit a project markdown file under `~/.bakin/projects/`.
-   - Watch SSE — should broadcast as before.
-   - Search for a snippet in the project — Antfly returns it.
-10. `bakin status` — gateway reachable; same output as before.
-11. **Confirm OK to proceed** before opening PR 2.
+1. Load Bakin settings and paths.
+2. Select runtime adapter factory from `runtime.adapter`.
+3. Select search adapter factory from `search.adapter`.
+4. Create the Bakin task store.
+5. Run adapter compatibility checks.
+6. Initialize runtime adapter.
+7. Initialize search adapter.
+8. Build `AppServices`.
+9. Pass `AppServices` to plugin registry, route handlers, MCP tools, CLI/script
+   helpers, lifecycle/health/doctor code, and tests.
+10. Activate plugins and collect search schemas.
+11. Provision/reconcile search tables after schemas are known.
+12. Start HTTP/SSE/gateway-facing services.
 
-### Rollback
+### Required Coverage
 
-`git revert` removes the adapter packages and reverts boot wiring.
-Stub delegates mean nothing was actually using the adapter for real
-work yet; revert is clean.
+- `PluginContext` exposes `ctx.runtime` and `ctx.search`.
+- Plugin route handlers in `packages/host/` receive the same services object.
+- MCP tool registration receives the same services object.
+- CLI/scripts either call `loadAppServicesForCli()` or use server HTTP APIs.
+- Server lifecycle, onboarding, doctor, watchdog, and health checks use
+  `AppServices`; they do not import provider clients directly.
+- Test helpers build mock `AppServices` once and reuse it.
 
-### What's NOT in this PR
+No plugin, route handler, MCP tool, CLI command, script, or health check may
+construct OpenClaw/Antfly/Discord clients directly after this checkpoint.
 
-- No bakin core code rewritten to use adapter (still uses
-  `openclaw-client` + `antfly` directly via the stub delegation).
-- No plugin code changed.
-- No old files deleted.
+## Checkpoint 3 - Tasks Hard Cutover
 
-### Why stubs delegate
+Move task metadata authority once, before broad plugin rewrites.
 
-This PR proves the boot sequence + interface compile + lint rules
-work, without committing to a behavior change. PR 2 fills in real
-implementations.
+### Final Ownership
 
----
+- Bakin JSON task store owns task metadata.
+- Runtime adapter owns execution dispatch/status/cancel.
+- `flow_runs` stores execution-side fields only.
+- `execution.flowId` links a Bakin task to a runtime execution.
 
-## PR 2 — Bakin core migration
+### Required Store Surface
 
-**Branch:** `refactor/core-via-adapter` (stacked on PR 1)
+Implement one shared Bakin task-store module used by all task readers/writers.
+It must cover creation, reads, list/filter, update, move/reorder, delete,
+comments, audit/log entries, dependencies/blocking, pending-delete tombstones,
+execution linking, and execution-status cache updates.
 
-### Scope
+No task caller may keep using plugin hooks as the authoritative persistence
+boundary. Hooks can be deleted or become thin event notifications after the
+store write, but they cannot own task state.
 
-Move the actual implementation logic from `src/core/openclaw-client.ts`
-and `src/core/antfly.ts` INTO the adapter packages. Refactor every
-direct call in `src/core/`, `cli/`, `packages/host/api/` to go through
-`ctx.runtime.*` (or the adapter directly for non-plugin contexts like
-boot wiring).
+### Required Behavior
 
-Plugin code is UNTOUCHED in this PR. Plugins still use the old call
-sites; PR 3 migrates them.
+Task creation writes Bakin metadata first, then dispatches execution:
 
-### Files modified
+1. Generate `bakinTaskId`.
+2. Write `<getBakinPaths().tasks>/YYYY-MM/task-<id>.json` with
+   `execution.flowId: null`.
+3. Call `runtime.tasks.dispatch({ bakinTaskId, ... })`.
+4. Receive `{ flowId }`.
+5. Update the task JSON with `execution.flowId: flowId`.
 
-- `src/core/openclaw-client.ts` — implementation moves to
-  `packages/adapter-openclaw/src/client.ts`; this file becomes a
-  thin re-export for backward compat (deleted in PR 4)
-- `src/core/antfly.ts`, `antfly-server.ts` — same pattern
-- `packages/core/src/openclaw-home.ts`, `openclaw-config.ts` — moved
-  into adapter package
-- `src/core/dispatch.ts` — uses `runtimeAdapter.messaging.send` etc
-- `src/core/task-service.ts` — uses adapter for execution dispatch
-  + bakin tasks-store for metadata (the split-layer model)
-- `src/core/agents.ts`, `agent-usage.ts` — use adapter
-- `src/core/watchdog.ts` — uses adapter
-- `src/core/continuation.ts` — uses adapter
-- `src/core/mcporter.ts` — uses adapter for runtime config writes
-- `src/core/onboarding/openclaw.ts` — delegates to adapter init
-- `src/core/onboarding/antfly.ts` — delegates to adapter init
-- `src/core/onboarding/credentials.ts` — asks adapter what creds it needs
-- `src/core/agent-packages/{installer,projector,uninstaller,...}` — uses
-  adapter for skill ops
-- `src/core/plugins/uninstall-snapshot.ts` — uses adapter
-- `src/core/search-registry.ts` — uses SearchAdapter primitives
-- `src/core/lifecycle.ts` — uses adapter shutdown
-- `src/core/discord-gateway.ts` — moves into `packages/adapter-openclaw/src/channels/discord/gateway.ts`
-- `scripts/lib/post-discord.ts` — moves into adapter
-- `cli/bakin.ts` — uses adapter for any direct calls
-- `eslint.config.mjs` — tightens the allowlist (now bans direct
-  imports from outside the adapter package)
-- `tests/architecture/adapter-boundary.test.ts` — tightens to assert
-  no direct imports from `src/core/openclaw-client` etc.
+There is no temporary mode where the old tasks plugin metadata path and the new
+JSON task store both create authoritative task metadata.
 
-### Files deleted (in this PR)
+### Delete Or Replace
 
-None yet. Old files become re-export shims; PR 4 deletes them.
+- Replace old tasks plugin metadata reads/writes with the Bakin task store.
+- Replace task-service's `tasks.createTask` hook dependency with the shared
+  task-store module.
+- Update kanban UI, task CLI, workflow integration, schedule integration, and
+  any task-service callers to use the same task-store source of truth.
+- Replace `src/core/dispatch.ts`, `src/core/agents.ts`, and
+  `src/core/continuation.ts` imports from `@bakin/tasks/lib/flow-store`.
+- Delete or rewrite task health checks so they inspect the Bakin task store and
+  runtime adapter status, not raw `flow_runs` metadata.
 
-### Order of commits (12)
+### Wipe Policy
 
-1. `refactor(adapter-openclaw): move openclaw-client implementation in`
-2. `refactor(adapter-openclaw): move openclaw-home + openclaw-config in`
-3. `refactor(adapter-antfly): move antfly + antfly-server in`
-4. `refactor(adapter-openclaw): channels/discord — move discord-gateway`
-5. `refactor(adapter-openclaw): channels/discord — move post-discord`
-6. `refactor(core): dispatch + watchdog use ctx.runtime.messaging`
-7. `refactor(core): task-service split — adapter for execution, store for metadata`
-8. `refactor(core): agents + agent-packages use ctx.runtime.agents/skills`
-9. `refactor(core): onboarding flows delegate to adapter init`
-10. `refactor(core): search-registry uses SearchAdapter primitives`
-11. `refactor(adapter-openclaw): health checks consolidate into adapter package`
-12. `chore(eslint+arch): tighten boundary rules to ban direct imports`
+For this PR, local task/runtime data may be wiped before validation. Do not
+write legacy adoption code to preserve this machine's existing data.
 
-### Verification
+If import of existing OpenClaw executions is needed after release, build it as
+a deliberate user-facing import flow with tests. Do not keep hard-cutover shims
+or unused adapter methods for that future requirement.
 
-Each commit must pass:
-```bash
-bunx tsc --noEmit -p tsconfig.app.json
-bun run lint
-bun test --isolate
-bun run lint:home-bypasses
-```
+## Checkpoint 4 - Search Adapter Cutover
 
-### Manual confirmation steps
+Move Antfly-specific implementation into `packages/adapter-antfly/`.
 
-**IMPORTANT — what PR 2 covers vs what PR 3 covers:** PR 2 changes
-bakin core's direct adapter consumers (`src/core/*`). It does NOT
-change the tasks plugin's `flow-store.ts`. Task creation via the
-kanban UI still goes through the tasks plugin's existing SQL path —
-that migrates in PR 3. PR 2's `task-service.ts` becomes the FIRST
-consumer of the new bakin tasks store (used by messaging + projects
-plugins for content-driven task creation), but the tasks plugin
-itself stays on the old path until PR 3.
+### Move Or Re-home
 
-The smokes below test bakin-core paths only. Tasks-plugin smokes move
-to PR 3.
+- `src/core/antfly.ts`
+- `src/core/antfly-server.ts`
+- Antfly daemon health/startup helpers
+- Table provisioning and reconciliation helpers
 
-1. Pull this branch (which includes PR 0 + PR 1).
-2. `bun install`
-3. Full test + lint sweep — all green.
-4. `bakin start`:
-   - Boot succeeds.
-   - **Look at gateway logs** — expect identical message-handling
-     traffic to pre-PR (the adapter wraps the existing client; same
-     HTTP calls hit OpenClaw).
-5. **Critical: send a message; see streaming response.**
-   - The adapter's `messaging.stream` returns
-     `AsyncIterable<ChatChunk>` instead of raw `Response`.
-   - The bakin UI should render tokens identically. If the streaming
-     UI behaves differently, that's a regression worth catching here
-     before plugins migrate in PR 3.
-6. **Critical: trigger a watchdog alert (or any non-tasks-plugin
-    path that hits `task-service.createTaskWithEffects`).** Watchdog
-    paths are the easiest to trigger; can also create a content piece
-    via messaging plugin's scheduling UI which calls task-service
-    indirectly.
-   - Verify the resulting task creates BOTH a bakin JSON file at
-     `getBakinPaths().tasks/YYYY-MM/task-<id>.json` AND a flow_runs
-     row in OpenClaw.
-   - Status updates flow back via `subscribeExecutionUpdates`.
-   - Tasks plugin's UI list (still SQL-direct in PR 2) shows the task
-     because it scans flow_runs which now includes the new row.
-7. **Critical: trigger a Discord notification.**
-   - Watchdog alert is the simplest non-workflow path. (Workflow
-     approval flows are tasks-plugin/workflows-plugin coupled; defer
-     full approval-flow smoke to PR 3.)
-   - Discord adapter (now inside `packages/adapter-openclaw/`) posts
-     the message.
-   - Verify the notification renders correctly.
-8. **Antfly:** save a project file; verify it indexes; search returns it.
-   - The score breakdown should be visible in debug mode (toggle
-     debug; inspect a search result).
-9. `bakin doctor` — health checks pass identically.
-10. `bakin tasks list` — shows tasks; tasks plugin's UI still works
-    against flow_runs SQL (it migrates in PR 3); the new core-driven
-    tasks visible alongside.
-11. **Confirm OK to proceed** before opening PR 3.
+### Search Requirements
 
-### Rollback
+- Search table creation happens after plugins register schemas.
+- `search-registry.ts` stores plugin schema declarations and delegates
+  provisioning/index/query work to `AppServices.search`.
+- Plugins keep using the plugin-facing `SearchAPI`; they do not see
+  Antfly-native strategy names, table DDL, or aggregation shapes.
+- `scan()` must expose stable document keys as well as documents.
+- Existing search features survive the abstraction: filters, facets,
+  aggregations, offset/limit, strategy selection, rerank data, and score
+  breakdown diagnostics.
 
-Each commit in the PR is granular enough to revert individually.
-Whole-PR revert restores `src/core/openclaw-client.ts` and friends to
-pre-PR-2 state; adapter packages stay (still scaffolded from PR 1) but
-unused. System works identically to PR 1.
+## Checkpoint 5 - Move OpenClaw Behind Runtime Adapter
 
-### What's NOT in this PR
+Move OpenClaw-specific implementation into `packages/adapter-openclaw/`.
 
-- Plugins still import from old paths. They get migrated in PR 3.
-- Old `src/core/openclaw-client.ts` etc. are NOT deleted — they
-  become re-export shims pointing at the adapter package. PR 4
-  deletes them.
+### Move Or Re-home
 
----
+- `src/core/openclaw-client.ts`
+- `packages/core/src/openclaw-home.ts`
+- `packages/core/src/openclaw-config.ts`
+- `src/core/discord-gateway.ts`
+- `scripts/lib/post-discord.ts`
+- Plugin-side OpenClaw adapter helpers from `plugins/team/` and
+  `plugins/memory/`
+- OpenClaw cron shell helpers
+- OpenClaw health/startup helpers
 
-## PR 3 — Plugin migration
+### Runtime Surfaces To Implement
 
-**Branch:** `refactor/plugins-via-adapter` (stacked on PR 2)
+- `lifecycle`
+- `messaging`
+- `agents`
+- `skills`
+- `sessions`
+- `memory`
+- `tasks`
+- `cron`
+- `channels`
+- `config`
+- `tools`
 
-### Scope
+Provider-specific details stay inside the OpenClaw adapter. Bakin core and
+plugins consume only the runtime interface.
 
-Every plugin migrates to `ctx.runtime.*` and `ctx.search.*`. Plugin-side
-adapter files (`plugins/team/lib/openclaw-adapter.ts`,
-`plugins/memory/lib/openclaw-adapter.ts`) get folded into the adapter
-package and deleted from plugins.
+Do not implement v1 adoption/list-adoptable behavior for historical
+`flow_runs`. The hard cutover assumes wipe.
 
-### Plugins touched
+## Checkpoint 6 - Durable Approvals And Channels
 
-| Plugin | Migration |
+Implement channel operations so workflow approvals are durable Bakin state, not
+provider message state.
+
+Required behavior:
+
+- Workflow gates persist a Bakin approval record before rendering channel
+  messages.
+- The record contains `approvalId`, workflow/run/step/task identity, status,
+  request details, delivery refs, response data, and timestamps.
+- Discord/Telegram/Slack message IDs are delivery refs only.
+- Channel interaction payloads embed `approvalId`; the workflow handler looks
+  up workflow/task/step identity from Bakin state after the event returns.
+- `createApproval`, `editApproval`, `resolveApproval`, and `cancelApproval` are
+  idempotent around duplicate renders, duplicate clicks, and restart retries.
+- Restart with a pending approval can rehydrate delivery refs and continue,
+  re-render, expire, or cancel the approval.
+
+## Checkpoint 7 - Plugin Hard Cutover
+
+Migrate every plugin to the final adapter surfaces in the same PR.
+
+| Plugin | Final state |
 |---|---|
-| `messaging` | imports → ctx.runtime.messaging + ctx.runtime.channels |
-| `team` | imports → ctx.runtime.agents (incl. identity); plugin-side adapter file deleted |
-| `memory` | imports → ctx.runtime.memory + ctx.runtime.sessions; plugin-side adapter files deleted |
-| `tasks` | flow-store split: bakin-store for metadata; adapter for execution |
-| `workflows` | imports → ctx.runtime.tools + ctx.runtime.channels (notifications + approvals) |
-| `schedule` | imports → ctx.runtime.cron |
-| `health` | system-checks moved into adapter packages (PR 2 already); plugin shrinks |
-| `models` | imports → ctx.runtime.config |
-| `projects` | imports → ctx.runtime.config + ctx.runtime.agents |
-| `assets` | (likely no direct adapter use; verify) |
+| `messaging` | Uses `ctx.runtime.messaging` and `ctx.runtime.channels` |
+| `team` | Uses `ctx.runtime.agents`; plugin-side OpenClaw adapter is deleted |
+| `memory` | Uses `ctx.runtime.memory` and `ctx.runtime.sessions`; plugin-side OpenClaw helpers are deleted |
+| `tasks` | Uses Bakin task store for metadata and `ctx.runtime.tasks` for execution |
+| `workflows` | Uses `ctx.runtime.tools` and `ctx.runtime.channels` |
+| `schedule` | Uses `ctx.runtime.cron` for list/create/update/delete/run-now behavior |
+| `health` | Uses adapter health/lifecycle checks |
+| `models` | Uses `ctx.runtime.config` |
+| `projects` | Uses Bakin project files plus runtime config/agent APIs where needed |
+| `assets` | Must not call OpenClaw/Antfly directly; verify no adapter boundary violation |
 
-### Files added
+## Checkpoint 8 - CLI, Scripts, Host API, And Core Lifecycle
 
-- `tests/plugins/test-helpers.ts` — updated to consume mocks from
-  `@bakin/sdk/testing`
-- `packages/sdk/src/index.ts` — re-exports `createMockRuntimeAdapter`,
-  `createMockSearchAdapter`
-- `packages/sdk/package.json` — adds `/testing` to exports map
+Migrate non-plugin callers in the same hard cut.
 
-### Files deleted (in this PR)
+Required coverage:
 
-- `plugins/team/lib/openclaw-adapter.ts`
-- `plugins/memory/lib/openclaw-adapter.ts`
-- `plugins/memory/lib/openclaw-cli.ts`
-- `plugins/memory/lib/openclaw-gateway.ts`
+- `src/`
+- `cli/`
+- `plugins/`
+- `packages/host/`
+- `packages/core/`
+- `scripts/`
 
-### Order of commits (10)
+Required final shape:
 
-1. `feat(sdk): re-export mock adapter factories from @bakin/sdk/testing`
-2. `refactor(messaging): use ctx.runtime.messaging + .channels`
-3. `refactor(team): use ctx.runtime.agents; remove plugin-side adapter`
-4. `refactor(memory): use ctx.runtime.memory + .sessions; remove adapter`
-5. `refactor(tasks): split bakin store + adapter dispatch (final wiring)`
-6. `refactor(workflows): use ctx.runtime.tools + .channels`
-7. `refactor(schedule): use ctx.runtime.cron`
-8. `refactor(models+projects): use ctx.runtime.config + .agents`
-9. `refactor(plugins/health): shrink — system checks live in adapters`
-10. `chore(tests): migrate plugin tests to canonical mocks`
+- CLI commands either bootstrap `AppServices` through the shared loader or call
+  server APIs.
+- Scripts do not import OpenClaw/Antfly/Discord helpers directly.
+- Host API routes receive services from server boot, not ad-hoc providers.
+- Core lifecycle, onboarding, doctor, watchdog, and health checks use
+  adapter health/services.
+- Agent package installer/uninstaller code receives runtime services instead
+  of importing the team/OpenClaw adapter directly.
 
-### Verification
+Any direct OpenClaw/Antfly import outside `packages/adapter-*` is a bug unless
+there is a documented final-state exception.
+
+`raw()` config access is also treated as a boundary exception. Any surviving
+use must be allowlisted, telemetry-logged, and tied to a tracked issue. The
+preferred final state is zero plugin `raw()` use.
+
+## Checkpoint 9 - Boundary Enforcement And Tests
+
+Add strict checks in the same PR. Do not land lenient pre-migration rules.
+
+### Required Checks
 
 ```bash
 bunx tsc --noEmit -p tsconfig.app.json
@@ -447,221 +337,40 @@ bun run lint
 bun test --isolate
 bun run docs:check
 bun run lint:home-bypasses
+bun test tests/architecture/adapter-boundary.test.ts --isolate
 ```
 
-### Manual confirmation steps
+The boundary test scans `src/`, `cli/`, `plugins/`, `packages/host/`,
+`packages/core/`, and `scripts/`.
 
-1. Pull this branch.
-2. `bun install`
-3. Full test + lint sweep — all green.
-4. `bakin start` — boots; every plugin activates without error.
-5. **Per-plugin smoke test (each must work end-to-end):**
+Forbidden outside `packages/adapter-*`:
 
-   **messaging**
-   - Open the messaging UI; create a brainstorm session.
-   - Send a chat message to an agent; observe streaming response.
-   - Schedule a content piece; verify it lands in the calendar.
-   - Trigger a Discord post; verify it appears in Discord.
+- `openclaw-client`
+- `openclaw-home`
+- `openclaw-config`
+- `discord-gateway`
+- `src/core/antfly`
+- `@antfly/sdk`
+- `getOpenClawPath`
+- `OPENCLAW_HOME`
+- `~/.openclaw/`
+- `flow_runs` SQL
+- Discord REST/gateway URLs or interaction payload parsing
+- shelling out to the OpenClaw binary
+- direct `bun:sqlite` access to OpenClaw-owned DB files
+- direct adapter package imports from plugin code
+- non-allowlisted `runtime.config.raw()` usage
 
-   **team** (full agent lifecycle — expanded API)
-   - Open the team UI; pick an agent; edit their identity (SOUL.md
-     equivalent). Save; verify the file is updated in the runtime's
-     workspace (via the adapter; check via `bakin paths` for the
-     workspace path).
-   - **Create a new agent** via the UI; verify it appears in the
-     runtime's agent list (`openclaw.json` updated; new workspace
-     dir created).
-   - **Edit allowlist/permissions** on an agent; verify
-     `auth-profiles.json` updates via the adapter's
-     `writePermissions` path.
-   - **Remove a test agent** via the UI; verify it's removed from
-     the runtime's config.
-   - All four operations (create/update/remove/permissions) go through
-     `ctx.runtime.agents.*` — none through the deleted plugin-side
-     adapter file.
+## Checkpoint 10 - Docs And Knowledge
 
-   **memory**
-   - Open the memory UI; navigate the tier breakdown.
-   - Each tier loads; entries display.
-   - Click into a session; the session reader streams events.
+Update docs in the same PR so future work sees the final architecture.
 
-   **tasks** (load-bearing — most user-visible migration)
-   - Open the kanban board; tasks render.
-   - Drag-drop a task between columns; verify the bakin task JSON
-     file updates atomically (`cat <tasks-path>/YYYY-MM/task-*.json`
-     after the drag; mtime should reflect the operation).
-   - Create a new task via UI; verify BOTH:
-     - bakin metadata file at `getBakinPaths().tasks/YYYY-MM/...`
-     - flow_runs row in OpenClaw with matching `bakin:task:<id>`
-       `owner_key`
-   - Edit a task title in bakin; verify the bakin file updates
-     and the runtime flow_run is NOT modified (metadata stays
-     bakin-side; this proves the split-layer model).
-   - Mark a task complete; status flows back through
-     `subscribeExecutionUpdates`; bakin UI reflects new state.
-   - Delete a task; verify two-phase deletion works (file marked
-     `pendingDelete: true` → adapter cancels execution → file
-     deleted).
-   - **Restart bakin mid-flight:** create a task, kill bakin before
-     it dispatches, restart. Boot reconciliation should heal the
-     orphaned bakin file (status: not-yet-dispatched) OR re-link
-     against the runtime flow_run if dispatch had succeeded.
+### Add
 
-   **workflows** (durable approval flow)
-   - Trigger a workflow that has a gate.
-   - Discord approval message appears with embedded approval ID
-     in button `custom_id`.
-   - **Critical durability test:** click "Approve" — workflow advances,
-     Discord message edits to show resolved state.
-   - **Restart durability test:** trigger a second gate. Before
-     responding, restart bakin. Click "Approve" in Discord after the
-     restart. Verify:
-     - The interaction routes back to the workflows plugin
-     - The workflow advances correctly
-     - The Discord message edits to resolved state
-     - This proves the durable approval primitive: bakin's workflow
-       state on disk + adapter's interaction routing both survived
-       the restart.
+- `.claude/knowledge/adapter-architecture.md`
+- `.claude/skills/check-adapter-boundary.md`
 
-   **schedule** (full CRUD — not read-only as previously spec'd)
-   - Open the schedule UI; cron jobs list correctly.
-   - **Create** a new cron job via the UI; verify it appears in the
-     runtime's cron storage (`cat ~/.openclaw/cron/jobs.json` shows
-     it).
-   - **Edit** an existing job's schedule; verify the runtime updates.
-   - **Run-now** a job; verify it dispatches and a CronRun appears.
-   - **Delete** a job; verify it's removed from the runtime.
-   - Verify run history displays correctly.
-
-   **health**
-   - `bakin doctor` runs all checks; antfly + openclaw checks come
-     from adapter packages.
-
-   **models**
-   - Open the models UI; the model list reflects the runtime config.
-
-   **projects**
-   - Create a project; verify it lands at `~/.bakin/projects/`.
-   - Edit the project markdown; SSE updates the UI.
-
-6. **Run the architecture fitness test:**
-   ```bash
-   bun test tests/architecture/adapter-boundary.test.ts --isolate
-   ```
-   Should pass: no direct openclaw-client / antfly imports outside
-   the adapter packages. The boundary is real now.
-7. **Confirm OK to proceed** before opening PR 4.
-
-### Rollback
-
-Per-plugin commits are granular. Whole-PR revert restores plugins to
-their pre-migration state; adapters keep their work from PR 2; system
-works as of PR 2.
-
-### What's NOT in this PR
-
-- Old `src/core/openclaw-client.ts` etc. are still re-export shims
-  (kept for backward-compat during migration). PR 4 deletes them.
-
----
-
-## PR 4 — Cleanup (deletions)
-
-**Branch:** `chore/adapter-cleanup` (stacked on PR 3)
-
-### Scope
-
-Delete the old re-export shims and any other now-orphaned code.
-Tighten lint rules to their final form.
-
-### Files deleted
-
-- `src/core/openclaw-client.ts` (re-export shim)
-- `src/core/openclaw-home.ts` (now in adapter package; original in
-  `packages/core/` should also be migrated — verify)
-- `packages/core/src/openclaw-home.ts` — moved fully to adapter
-- `packages/core/src/openclaw-config.ts` — moved fully to adapter
-- `src/core/antfly.ts`, `src/core/antfly-server.ts` (re-export shims)
-- `src/core/discord-gateway.ts` (moved to adapter)
-- `scripts/lib/post-discord.ts` (moved to adapter)
-- `scripts/bin/post-discord.ts` — verify still needed; if just a
-  CLI wrapper, route through adapter
-
-### Files modified
-
-- `eslint.config.mjs` — final form (no allowlist exceptions for
-  pre-migration paths; the boundary is hard now)
-- `tests/architecture/adapter-boundary.test.ts` — final assertions
-- `tsconfig.json` — clean up any path aliases that pointed at deleted
-  files
-
-### Order of commits (5)
-
-1. `chore: delete openclaw-client shim (now in adapter-openclaw)`
-2. `chore: delete antfly shim (now in adapter-antfly)`
-3. `chore: delete discord-gateway shim (now in adapter-openclaw)`
-4. `chore: delete plugin-side openclaw-adapter shims`
-5. `chore(eslint+arch): tighten boundary to final form`
-
-### Verification
-
-```bash
-bunx tsc --noEmit -p tsconfig.app.json
-bun run lint
-bun test --isolate
-bun run lint:home-bypasses
-
-# Specific check that nothing references the deleted files:
-grep -rn "openclaw-client\|antfly\.ts\|discord-gateway" src/ plugins/ packages/host/ cli/ --include="*.ts" --include="*.tsx"
-# Should return ZERO matches outside packages/adapter-*/
-```
-
-### Manual confirmation steps
-
-1. Pull this branch.
-2. `bun install`
-3. Full test + lint sweep — all green.
-4. `bakin start` — boots cleanly.
-5. **Run the boundary check skill:**
-   ```bash
-   # Skill exists from PR 5, but the grep version works in PR 4:
-   grep -rn "openclaw-client\|src/core/antfly\|discord-gateway" \
-     src/ plugins/ packages/host/ cli/ \
-     --include="*.ts" --include="*.tsx"
-   ```
-   Expect zero matches.
-6. **Run all the per-plugin smokes from PR 3 again.** Behavior should
-   be identical to PR 3.
-7. `bakin doctor` — passes.
-8. **Confirm OK to proceed** before opening PR 5.
-
-### Rollback
-
-Reverting deletes is mechanical. The architecture is otherwise
-unchanged from PR 3.
-
-### What's NOT in this PR
-
-- Documentation updates. Those land in PR 5.
-
----
-
-## PR 5 — Documentation + skills
-
-**Branch:** `docs/adapter-architecture` (stacked on PR 4)
-
-### Scope
-
-The `.claude/knowledge/` updates, CLAUDE.md update, the `check-adapter-
-boundary` skill, plugin authoring docs.
-
-### Files added
-
-- `.claude/knowledge/adapter-architecture.md` (~400 lines, canonical
-  reference)
-- `.claude/skills/check-adapter-boundary.md` (invocable audit skill)
-
-### Files modified
+### Update
 
 - `CLAUDE.md`
 - `.claude/knowledge/plugin-system.md`
@@ -671,86 +380,104 @@ boundary` skill, plugin authoring docs.
 - `.claude/knowledge/doctor-and-health-checks.md`
 - `docs-old/plugin-authoring.md`
 
-### Order of commits (4)
+## Checkpoint 11 - Final Deletion Sweep
 
-1. `docs(arch): adapter-architecture canonical knowledge`
-2. `docs(arch): update plugin-system + repo-architecture + search-system + dispatch + doctor knowledge`
-3. `docs(plugins): update plugin-authoring with ctx.runtime / ctx.search sections`
-4. `chore(skills): check-adapter-boundary invocable skill`
+Delete old paths instead of leaving shims.
 
-### Verification
+Expected deletes include:
 
-```bash
-bun run docs:check                              # Astro builds
-bun run lint                                    # docs files have no lint
-bun test --isolate                              # full suite still green
-```
+- `src/core/openclaw-client.ts`
+- `src/core/discord-gateway.ts`
+- `src/core/antfly.ts`
+- `src/core/antfly-server.ts`
+- old OpenClaw home/config modules after relocation
+- plugin-side OpenClaw adapter files
+- obsolete task metadata/flow-store paths after the tasks hard cutover
+- obsolete test mocks that patched old direct-client modules
+- unused adoption/import scaffolding for historical `flow_runs`
+- non-allowlisted `raw()` call sites
 
-### Manual confirmation steps
+If a file cannot be deleted, the PR must document why it is still part of the
+final architecture. "Kept for migration" is not an acceptable final reason.
 
-1. Pull this branch.
-2. `bun run docs:check` — docs build succeeds.
-3. `cat .claude/knowledge/adapter-architecture.md` — review for
-   accuracy + completeness.
-4. **Invoke the skill:**
-   - In a Claude Code session: `/check-adapter-boundary` (or
-     "run the adapter boundary audit")
-   - Expect: walks src/, cli/, plugins/, packages/host/,
-     packages/core/ for forbidden imports; reports clean.
-5. `cat CLAUDE.md` — verify the new "External Service Boundaries"
-   section is present and accurate.
-6. `bakin start` — final smoke; everything works as of PR 4.
-7. **Confirm done.**
+## Manual Final Smoke
 
-### Rollback
+Run after the full hard-cut PR is implementation-complete.
 
-Doc-only PR; revert is trivial.
+1. Optionally wipe local Bakin/OpenClaw task/runtime data before testing.
+2. `bun install`
+3. `bunx tsc --noEmit -p tsconfig.app.json`
+4. `bun run lint`
+5. `bun test --isolate`
+6. `bun run docs:check`
+7. `bun run lint:home-bypasses`
+8. `bakin start`
+9. Send a chat message and verify streaming response.
+10. Trigger a Discord notification.
+11. Trigger a workflow approval, approve it, and verify the workflow advances.
+12. Restart Bakin with a pending approval, then approve after restart; verify the
+    interaction routes and the message updates. Do not test clicks while Bakin
+    is down as guaranteed delivery.
+13. Create, edit, move, complete, and delete a task from the UI; verify the JSON
+    task store is the metadata source of truth.
+14. Dispatch a task; verify `flow_runs.owner_key` links to
+    `bakin:task:<id>` and runtime status flows back to Bakin.
+15. Create, edit, run-now, and delete a scheduled cron job through schedule UI.
+16. Edit a project file; verify SSE updates and search indexing.
+17. Open team UI; create/edit/remove an agent and edit permissions through
+    runtime adapter APIs.
+18. Open memory UI; verify tiers and sessions load.
+19. `bakin doctor` passes.
+20. Run the adapter boundary audit and confirm zero forbidden imports.
 
----
+## Definition Of Done
 
-## What done looks like
+- One PR contains the hard cutover.
+- No compatibility shims remain.
+- No dual-write task metadata remains.
+- `AppServices` is the only runtime/search/task/channel injection path for
+  plugins, routes, MCP tools, CLI/scripts, lifecycle, health, and tests.
+- Bakin task JSON store is the only task metadata authority.
+- Runtime adapter is the only execution/channel/agent/cron/tool boundary.
+- Search adapter is the only Antfly/search boundary.
+- Workflow approvals persist Bakin-owned approval records; channel messages are
+  delivery refs only.
+- Plugins consume `ctx.runtime.*` and `ctx.search.*` exclusively.
+- CLI, scripts, host API, and core code respect the same boundaries.
+- Boundary tests scan imports, provider strings, OpenClaw paths, direct
+  `flow_runs` SQL, Discord URLs, OpenClaw binary calls, and raw DB access.
+- Tests, lint, docs, and manual smokes pass.
+- Architecture docs describe the final state, not a temporary migration state.
 
-After all six PRs merge:
-
-- [x] Two-adapter architecture in production (OpenClaw + Antfly).
-- [x] Bakin core has zero direct imports of openclaw-client / antfly /
-      discord-gateway.
-- [x] Plugins consume `ctx.runtime.*` and `ctx.search.*` exclusively.
-- [x] `~/.bakin/tasks/` is the live task metadata store.
-- [x] Lint + fitness test enforce the boundary at PR time.
-- [x] Knowledge docs + skill make the architecture discoverable for
-      future contributors (and future Claude sessions).
-- [x] Mock adapter harness simplifies plugin testing.
-- [x] System is ready for Phase 4-5 (extracting messaging + projects)
-      because they now consume the stable `ctx.runtime.*` surface.
-
-## Sequencing into the broader plugin-architecture-v2 work
-
-```
-NOW
-├─ adapter layer work (this plan, 6 PRs)
-└─ Phase 6+7 PR (#183) — independent of adapter work, can land in parallel
-
-THEN
-├─ Phase 4: extract messaging into bakin-bits-official
-│     (now trivial: messaging consumes ctx.runtime + ctx.search;
-│      port the plugin's source verbatim)
-├─ Phase 5: extract projects (same shape)
-└─ RECOMMENDED_PLUGINS array gets populated with the extracted plugins
-
-LATER (6+ months)
-├─ Hermes adapter implementation
-├─ Other channel adapters (Telegram, Slack)
-└─ Third-party adapter authoring docs
-```
-
-## Risks across the series
+## Risks
 
 | Risk | Mitigation |
 |---|---|
-| PR 2 reveals an interface design flaw | PR 1 already proved boot + types; the surface is locked. PR 2 implements; design changes are constrained to "add new method" not "redesign existing." |
-| Plugin migration uncovers a needed ctx surface | Add to interface; bump @bakin/core minor; backfill the adapter. Doesn't block PR 3. |
-| Fitness test catches more violations than expected | Adapter package's allowlist expands. Each addition is a deliberate decision, lint-comment'd with rationale. |
-| Manual smokes uncover a regression | Halt the chain; fix in the current PR before opening the next. Smoke checklist for each PR is the gate. |
-| Hot reload coordinator (Phase 2) breaks during adapter migration | Adapter init is restart-required and lives outside the hot-reload pipeline. Verify in PR 1's manual confirmation. |
-| Discord interactions stop working mid-migration | The discord-gateway WS connection lives in the adapter from PR 2 onwards. PR 2's manual smoke includes a Discord button click. |
+| The PR is large | Keep commit groups aligned to the checkpoints above; review by checkpoint, not by trying to reason about the whole diff at once |
+| Intermediate commits do not run | Accept this explicitly; only the final PR state must be runnable |
+| Interface gap appears mid-refactor | Change the interface immediately and update both adapters/callers in the same PR |
+| Task data loss | Accepted for this local machine; wipe before final smoke if needed |
+| Hidden direct imports remain | Strict boundary test and lint run before merge |
+| Old code survives as accidental shim | Final deletion sweep requires every leftover direct-client path to justify itself as final architecture |
+
+## Sequencing Into Plugin Architecture V2
+
+The adapter hard cutover should land before extracting messaging/projects into
+external plugin packages. After this PR, extracted plugins consume stable
+`ctx.runtime.*` and `ctx.search.*` surfaces instead of repo-local OpenClaw or
+Antfly modules.
+
+```text
+NOW
+`- Adapter layer hard cutover (this one PR)
+
+THEN
+|- Extract messaging
+|- Extract projects
+`- Populate RECOMMENDED_PLUGINS
+
+LATER
+|- Hermes adapter implementation
+|- Other channel adapters
+`- Third-party adapter authoring docs
+```

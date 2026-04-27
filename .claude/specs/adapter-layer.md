@@ -1,8 +1,8 @@
 # Adapter Layer Architecture
 
-**Status:** Draft 1 — for review
+**Status:** Draft 2 — hardened review draft
 **Supersedes:** `.claude/specs/sdk-expansion-for-extraction.md` (the original SDK expansion approach is replaced by this; that earlier spec stays as historical context for the design conversation)
-**Companion:** `.claude/specs/adapter-layer-plan.md` (per-PR migration plan)
+**Companion:** `.claude/specs/adapter-layer-plan.md` (single-PR hard-cutover plan)
 **Author:** Claude (drafted 2026-04-27)
 
 ## 1. Objective
@@ -49,7 +49,7 @@ bakin commits to, with implementations that translate.
 
 ## 3. Design principles
 
-These were locked through a 7-question grill. They shape every
+These are the constraints this design is optimizing for. They shape every
 specific decision below.
 
 1. **Two adapter types, separate workspace packages.** Runtime and
@@ -58,12 +58,13 @@ specific decision below.
 2. **Interfaces in `packages/core`, implementations in their own
    packages.** Bakin owns the contract; adapter packages prove they
    satisfy it.
-3. **Static dispatch from settings.** `bakin.settings.json` declares
-   `runtime.adapter: "openclaw"`; a switch statement in core resolves
-   to the static import. Future dynamic resolution layers on without
-   changing the settings shape.
-4. **Adapters initialize before plugins activate.** Boot order:
-   settings → adapter init → plugin registry → HTTP server.
+3. **Static dispatch from app boot settings.** `getContentDir()/settings.json`
+   declares `runtime.adapter: "openclaw"` and `search.adapter: "antfly"`.
+   App boot code resolves those names to static imports. `packages/core`
+   owns interfaces only; it must not import concrete adapter packages.
+4. **Adapters initialize before plugins activate; search tables after schemas.**
+   Boot order: settings and paths -> adapter selection -> adapter init ->
+   plugin activation/schema collection -> search provisioning -> HTTP server.
 5. **Restart-required when adapter settings change.** No hot-swapping.
 6. **Channels are part of the runtime adapter.** Channel config lives
    in the runtime (e.g., OpenClaw's `openclaw.json`). Bakin code is
@@ -80,14 +81,22 @@ specific decision below.
    tags, links) in `getBakinPaths().tasks/YYYY-MM/task-*.json` (with
    `~/.bakin/tasks/` being the default resolution); runtime stores
    execution (status, blocking, retries, current_step) via the adapter.
-9. **Escape hatches are Proxy-tracked.** When the typed interface is
-   incomplete (a runtime exposes a config field bakin's `RuntimeConfig`
-   doesn't have), a `raw()` accessor returns a Proxy that logs every
-   key access. Bakin's doctor surfaces gaps so the typed interface
-   evolves toward what plugins actually need.
+9. **Escape hatches are temporary and gated.** Plugin code must not depend on
+   runtime-specific raw config in the final hard-cutover PR. Any temporary
+   `raw()` access must be allowlisted, telemetry-logged, and attached to a
+   tracked follow-up to promote it into the typed interface or delete it.
 10. **Score breakdowns are first-class.** Search results carry per-
     signal scores (`fts`, `vector`, `hybrid`, `rerank`) so debug
     visibility survives the abstraction.
+11. **One runtime injection spine.** The boot process creates one
+    `AppServices` object and passes it everywhere that needs runtime,
+    search, task, channel, or health behavior. Plugin contexts, plugin
+    route handlers, MCP tools, CLI/script entrypoints, server lifecycle
+    code, and tests all consume that same object shape.
+12. **Non-plugin code is not exempt.** `src/`, `cli/`, `scripts/`,
+    `packages/host/`, and core lifecycle/health/onboarding code follow
+    the same adapter boundary as plugins. Provider-specific code belongs
+    in adapter packages or a clearly documented boot-wiring file.
 
 ## 4. Package structure
 
@@ -95,23 +104,24 @@ specific decision below.
 packages/
 ├── core/
 │   └── src/
+│       ├── app-services.ts                         [NEW — AppServices shape]
+│       ├── tasks/
+│       │   └── store.ts                            [NEW — Bakin task store]
 │       └── adapters/                              [NEW — interfaces only]
 │           ├── runtime/
 │           │   ├── index.ts                       AgentRuntimeAdapter
 │           │   ├── concepts.ts                    Agent, Task, Skill, Channel...
 │           │   ├── capabilities.ts                ChannelCapability + helpers
-│           │   ├── select.ts                      selectRuntimeAdapter(name)
 │           │   └── testing.ts                     createMockRuntimeAdapter
 │           └── search/
 │               ├── index.ts                       SearchAdapter
 │               ├── concepts.ts                    Query, ScoreBreakdown...
-│               ├── select.ts                      selectSearchAdapter(name)
 │               └── testing.ts                     createMockSearchAdapter
 ├── adapter-openclaw/                              [NEW — workspace package]
 │   ├── package.json                               private: true; @bakin/core peer
 │   ├── tsconfig.json                              extends root
 │   └── src/
-│       ├── index.ts                               exports createOpenClawAdapter (factory only)
+│       ├── index.ts                               exports createOpenClawRuntimeAdapter (factory only)
 │       ├── runtime.ts                             AgentRuntimeAdapter impl
 │       ├── lifecycle.ts                           gateway start/stop/ping
 │       ├── agents.ts                              list/get/identity from openclaw.json
@@ -120,9 +130,9 @@ packages/
 │       ├── skills.ts                              ~/.openclaw/skills/ ops
 │       ├── sessions.ts                            agents/{id}/sessions/ readers
 │       ├── memory.ts                              workspace/memory/** + tier parsers
-│       ├── tasks.ts                               flow_runs queries + dispatch + subscribe
+│       ├── tasks.ts                               flow_runs execution queries + dispatch + subscribe
 │       ├── cron.ts                                cron/jobs.json + cron/runs/
-│       ├── config.ts                              openclaw.json reader + Proxy-tracked raw()
+│       ├── config.ts                              openclaw.json typed reader + gated raw()
 │       ├── client.ts                              [moved] gateway HTTP client
 │       ├── home.ts                                [moved] path resolution
 │       ├── channels/
@@ -139,7 +149,7 @@ packages/
 └── adapter-antfly/                                [NEW — workspace package]
     ├── package.json
     └── src/
-        ├── index.ts                               exports createAntflyAdapter (factory only)
+        ├── index.ts                               exports createAntflySearchAdapter (factory only)
         ├── search.ts                              SearchAdapter impl
         ├── server.ts                              [moved] daemon mgmt
         ├── tables.ts                              create/drop/list/stats/health
@@ -152,18 +162,21 @@ packages/
 
 Interfaces live in `packages/core/src/adapters/`. Adapter implementations
 declare `peerDependencies: { '@bakin/core': '^1.0.0' }` so they target
-a specific interface major version.
+a specific interface major version. Concrete adapter selection lives in app
+boot code outside `packages/core`; otherwise `@bakin/core` would import
+packages that also peer-depend on it.
 
 **Adapter packages export FACTORIES, not implementation classes.** Each
-adapter package's `index.ts` exports only `createXAdapter()` returning
+adapter package's `index.ts` exports only the appropriate factory
+(`createOpenClawRuntimeAdapter`, `createAntflySearchAdapter`) returning
 `AgentRuntimeAdapter` (or `SearchAdapter`). Implementation classes
 (`OpenClawAdapter`, `AntflyAdapter`) are package-internal and never
 appear in the public surface. The `package.json` `exports` map exposes
 only the factory.
 
-This pattern resolves the type-level enforcement requirement: bakin
-core imports `createOpenClawAdapter` and treats the return value as
-`AgentRuntimeAdapter` only. Plugin code that tries to
+This pattern resolves the type-level enforcement requirement: app boot imports
+`createOpenClawRuntimeAdapter` and treats the return value as `AgentRuntimeAdapter`
+only. Plugin code that tries to
 `import { OpenClawAdapter } from '@bakin/adapter-openclaw'` fails at
 both lint (no-restricted-imports rule) AND module resolution (the
 class isn't in the exports map). Defense in depth.
@@ -171,20 +184,64 @@ class isn't in the exports map). Defense in depth.
 ## 5. Boot + registration
 
 ```
-1. Load ~/.bakin/settings.json
-2. selectRuntimeAdapter(settings.runtime.adapter) → instance
-   selectSearchAdapter(settings.search.adapter) → instance
-3. assertAdapterCompatibility — boot-time check that adapters target
+1. Load Bakin paths and `getContentDir()/settings.json`
+2. App boot selects concrete adapters from static imports:
+   `runtime.adapter` -> `createOpenClawRuntimeAdapter`
+   `search.adapter` -> `createAntflySearchAdapter`
+3. assertAdapterCompatibility - boot-time check that adapters target
    the interface version this build provides
 4. await runtimeAdapter.initialize({ logger, contentDir, audit })
    await searchAdapter.initialize({ ... })
 5. registerCorePlugins(...)
-6. await pluginRegistry.initialize() — plugins activate; ctx.runtime
+6. await pluginRegistry.initialize() - plugins activate; ctx.runtime
    and ctx.search are live and usable inside their activate(ctx)
-7. HTTP server starts accepting traffic
+7. collect plugin search schemas
+8. provision/reconcile search tables
+9. HTTP server starts accepting traffic
 ```
 
-Mismatch at step 3 → loud boot error: `"adapter @bakin/adapter-openclaw@2.0.0 requires @bakin/core ^2.0.0; this build provides @bakin/core@1.5.2. Upgrade bakin or downgrade the adapter."`
+Mismatch at step 3 -> loud boot error: `"adapter @bakin/adapter-openclaw@2.0.0 requires @bakin/core ^2.0.0; this build provides @bakin/core@1.5.2. Upgrade bakin or downgrade the adapter."`
+
+### 5.1 AppServices injection spine
+
+The hard cutover introduces one application service object created by boot code
+after adapter selection and compatibility checks. It is the only sanctioned way
+for non-adapter code to access runtime/search/task/channel behavior.
+
+```ts
+interface AppServices {
+  runtime: AgentRuntimeAdapter
+  search: SearchAdapter
+  tasks: BakinTaskStore
+  health: HealthService
+}
+
+interface HealthService {
+  listChecks(): HealthCheckDefinition[]
+  runAll(): Promise<HealthCheckResult[]>
+}
+```
+
+Required consumers:
+
+- `PluginContext` exposes `ctx.runtime`, `ctx.search`, and task helpers backed
+  by this object.
+- Plugin route handlers created by `packages/host/` receive this object instead
+  of rebuilding provider-specific context per request.
+- MCP tool registration receives this object; MCP tools do not import OpenClaw,
+  Antfly, Discord, or task-flow internals directly.
+- CLI commands and scripts either bootstrap `AppServices` through a shared
+  `loadAppServicesForCli()` helper or call server HTTP APIs. They do not create
+  ad-hoc OpenClaw/Antfly clients.
+- Server lifecycle, onboarding, doctor, watchdog, and health checks use
+  `AppServices` or adapter health checks. They are not special cases.
+- Test helpers create mock `AppServices` from `createMockRuntimeAdapter`,
+  `createMockSearchAdapter`, and the in-memory task store.
+
+Only app boot/server wiring may import concrete adapter factories. Every other
+caller receives interfaces. A file that needs provider-specific behavior must
+move into an adapter package or add a final-state boundary exception before the
+PR is complete.
 
 ## 6. AgentRuntimeAdapter — full interface
 
@@ -220,7 +277,7 @@ slice the adapter owns.
 The team plugin's existing OpenClaw adapter does much more than
 list/get — it creates and removes agents, manages auth allowlists,
 edits permissions, and writes workspace files. The interface must
-cover all of those or migration will fall back to `raw()` immediately.
+cover all of those or the hard cutover will fail the boundary checks.
 
 ```ts
 agents: {
@@ -237,6 +294,12 @@ agents: {
   // Identity files (SOUL/AGENTS/IDENTITY/TOOLS — covers workspace writes)
   readIdentity(id: string): Promise<AgentIdentity>
   writeIdentity(id: string, identity: Partial<AgentIdentity>): Promise<void>
+
+  // Safe workspace files (non-recursive v1; path traversal rejected)
+  listWorkspaceFiles(id: string): Promise<WorkspaceFile[]>
+  readWorkspaceFile(id: string, filename: string): Promise<string | null>
+  writeWorkspaceFile(id: string, filename: string, content: string): Promise<void>
+  readHeartbeat(id: string): Promise<{ content: string; lastUpdated: string | null } | null>
 
   // Permissions / auth profiles (varies by runtime; abstract shape)
   readPermissions(id: string): Promise<AgentPermissions>
@@ -274,14 +337,20 @@ interface AgentIdentity {
   tools?: string
 }
 
+interface WorkspaceFile {
+  filename: string
+  size?: number
+  updatedAt?: string
+}
+
 interface AgentPermissions {
   /** Generic ACL — list of principal IDs allowed to interact. */
   allowlist?: string[]
   /** Tool names this agent may invoke (or `'*'` for unrestricted). */
   tools?: string[] | '*'
   /** Adapter-extensible field for runtime-specific permission shape
-   *  (e.g., OpenClaw's auth-profiles.json structure). Same Proxy-tracked
-   *  pattern as RuntimeConfig.raw — plugin reads logged via telemetry. */
+   *  (e.g., OpenClaw's auth-profiles.json structure). Must be documented
+   *  if final plugin behavior depends on fields outside the typed shape. */
   metadata?: Record<string, unknown>
 }
 ```
@@ -289,11 +358,14 @@ interface AgentPermissions {
 `workspacePath` is documented as informational-only. The lint rule
 flags `existsSync(agent.workspacePath)` and similar fs ops.
 
-Workspace file writes (SOUL.md, IDENTITY.md, etc) go through
-`writeIdentity`. Per-agent skill installation goes through
-`skills.install({ kind: 'agent', agentId })` (see §6.6).
-`permissions.metadata` is the escape hatch for runtime-specific auth
-fields the typed shape doesn't capture; usage is telemetry-tracked.
+Identity-oriented workspace writes (SOUL.md, IDENTITY.md, etc) go through
+`writeIdentity`. General root-level workspace file reads/writes go through the
+safe workspace file methods above. V1 is intentionally non-recursive; filenames
+containing `/`, `\`, or `..` are rejected by the adapter. Per-agent skill
+installation goes through `skills.install({ kind: 'agent', agentId })` (see
+§6.6). `permissions.metadata` is the escape hatch for runtime-specific auth
+fields the typed shape doesn't capture; usage is telemetry-tracked and must not
+be required by final plugin code without a tracked promotion issue.
 
 ### 6.3 Messaging
 
@@ -333,19 +405,27 @@ interface ToolResult {
 
 ### 6.5 Channels (load-bearing — handles the abstraction work)
 
+V1 topology: runtime adapters are initialized in-process with Bakin. They are
+not independent daemons and do not provide a durable inbound event queue. If the
+Bakin process is down, channel interactions may fail at the provider layer.
+Durability means Bakin can recover unresolved approval records after restart and
+re-render, expire, cancel, or continue them where the channel supports it.
+
 Approvals are **durable workflow primitives**, not synchronous
 function calls. Workflow gates can wait minutes, hours, or days. Bakin
 can restart, the runtime can reconnect to its messaging platforms,
 and the rendered messages may need editing after resolution. A single
 blocking `Promise<ApprovalResponse>` would die on any of those events.
 
-The split: **bakin owns durable approval state** (workflows plugin's
-on-disk state, same place gate state lives today). **Adapter owns
-delivery refs and inbound interaction wiring** (Discord message IDs,
-Telegram message IDs — ephemeral cache rebuildable from message
-metadata after restart). The approval ID is bakin-generated and
-embedded in rendered messages (Discord button `custom_id`, etc) so
-interactions echo back the right ID across restarts.
+The split: **bakin owns the durable approval record**, including logical
+approval state and latest known per-channel delivery refs. **Adapter owns
+platform-specific rendering and inbound interaction wiring** (Discord button
+IDs, Telegram callback payloads, etc). Adapter caches are allowed for speed, but
+are not authoritative. After restart, Bakin rehydrates pending approval records
+and passes their delivery refs back to the adapter when editing, resolving,
+cancelling, or re-rendering. The approval ID is Bakin-generated and embedded in
+rendered messages (Discord button `custom_id`, etc) so interactions echo back
+the right ID.
 
 ```ts
 channels: {
@@ -356,16 +436,15 @@ channels: {
   sendMessage(args: MessageArgs): Promise<DeliveryResult>
   deliverContent(args: ContentDeliveryArgs): Promise<DeliveryResult>
 
-  // Durable approval primitives — adapter persists delivery refs;
-  // bakin persists workflow-level approval state.
-  createApproval(args: CreateApprovalArgs): Promise<{ approvalId: string; deliveries: ApprovalDelivery[] }>
-  getApproval(approvalId: string): Promise<ApprovalState | null>
-  editApproval(approvalId: string, patch: ApprovalPatch): Promise<void>
-  cancelApproval(approvalId: string, reason?: string): Promise<void>
+  // Durable approval primitives — Bakin persists approval state and delivery
+  // refs; adapters render/update provider-specific messages.
+  createApproval(args: CreateApprovalArgs): Promise<ApprovalRenderResult>
+  editApproval(args: EditApprovalArgs): Promise<ApprovalRenderResult>
+  cancelApproval(args: CancelApprovalArgs): Promise<void>
   /** Bakin marks approval resolved; adapter updates rendered messages
    *  (e.g., edit Discord embed to show "approved by X"). Idempotent
    *  on duplicate calls — silent no-op when already resolved. */
-  resolveApproval(approvalId: string, response: ApprovalResponse): Promise<void>
+  resolveApproval(args: ResolveApprovalArgs): Promise<void>
   subscribeApprovalResponses(handler: (event: ApprovalResolveEvent) => void): Unsubscribe
 
   // Generic inbound (chat replies, interactions not bound to approvals)
@@ -410,18 +489,6 @@ interface ApprovalOption {
   variant?: 'primary' | 'destructive' | 'neutral'
 }
 
-interface ApprovalState {
-  approvalId: string
-  status: 'pending' | 'resolved' | 'cancelled' | 'expired'
-  createdAt: string
-  expiresAt?: string
-  resolvedAt?: string
-  response?: ApprovalResponse
-  /** Per-channel delivery refs the adapter can use to edit/cancel
-   *  the rendered message later. */
-  deliveries: ApprovalDelivery[]
-}
-
 interface ApprovalDelivery {
   channelId: string
   ref: string                                               // adapter-internal ID (e.g., Discord message ID)
@@ -442,6 +509,27 @@ interface ApprovalResponse {
   comment?: string
 }
 
+interface ApprovalRenderResult {
+  deliveries: ApprovalDelivery[]
+}
+
+interface ApprovalRenderRef {
+  approvalId: string
+  deliveries: ApprovalDelivery[]
+}
+
+interface EditApprovalArgs extends ApprovalRenderRef {
+  patch: ApprovalPatch
+}
+
+interface CancelApprovalArgs extends ApprovalRenderRef {
+  reason?: string
+}
+
+interface ResolveApprovalArgs extends ApprovalRenderRef {
+  response: ApprovalResponse
+}
+
 interface ApprovalResolveEvent {
   approvalId: string
   response: ApprovalResponse
@@ -455,14 +543,53 @@ interface ApprovalResolveEvent {
 |---|---|---|
 | Approval ID | bakin's workflow state on disk | yes — recreated from saved state |
 | Pending approval logical state (gate is waiting on approval X) | bakin's workflow state on disk | yes |
-| Per-channel delivery refs (Discord message IDs) | adapter cache (in-memory) + embedded in message metadata | yes — adapter rebuilds from message scanning OR bakin re-passes via `getApproval()` recovery |
-| Inbound interaction routing (Discord button click → bakin handler) | adapter's gateway connection | yes — gateway reconnects on adapter restart; interactions still carry the embedded approval ID |
+| Per-channel delivery refs (Discord message IDs) | bakin's workflow state on disk; adapter may cache | yes — Bakin re-passes refs to adapter on edit/resolve/cancel/re-render |
+| Inbound interaction routing (Discord button click → bakin handler) | adapter's gateway connection | no durable queue in v1 — gateway reconnects on adapter restart, but clicks while the process is down may fail at the provider layer |
+
+#### Durable approval record shape
+
+Bakin persists one approval record for every unresolved workflow gate before it
+asks the adapter to render channel messages. The concrete storage can live in
+workflow instance state, but the semantic shape is mandatory:
+
+```ts
+interface DurableApprovalRecord {
+  approvalId: string
+  owner: {
+    workflowId: string
+    runId: string
+    stepId: string
+    taskId?: string
+  }
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired'
+  request: {
+    title: string
+    body: string
+    options: ApprovalOption[]
+    expiresAt?: string
+    context?: Record<string, unknown>
+  }
+  deliveries: ApprovalDelivery[]
+  response?: ApprovalResponse
+  createdAt: string
+  updatedAt: string
+  resolvedAt?: string
+}
+```
+
+The adapter never owns this record. Discord/Telegram/Slack message IDs are
+delivery refs inside the record, not the source of truth. Button payloads and
+callback IDs embed `approvalId`; workflow/task/step IDs are looked up from
+Bakin state after the event returns. Approval resolution is therefore one
+workflow-state transition plus one best-effort rendered-message update.
 
 #### Idempotency
 
 - `createApproval` with a duplicate `approvalId` → adapter returns
-  the existing state without re-rendering. Bakin can safely retry
-  after a crash mid-creation.
+  the existing render result without re-rendering where the provider
+  supports lookup/update by embedded approval ID. Bakin can safely retry
+  after a crash mid-creation, but the system must tolerate duplicate rendered
+  messages in provider crash windows that cannot be deduplicated.
 - `resolveApproval` on an already-resolved approval → silent no-op.
   Duplicate Discord button clicks (rare but possible) don't double-fire.
 - `cancelApproval` on an already-resolved approval → marks the
@@ -477,13 +604,16 @@ When a user clicks a button in Discord:
 3. Adapter ACKs the interaction (Discord requires response within 3s).
 4. Adapter fires `subscribeApprovalResponses` event with `{ approvalId, response, channelId }`.
 5. Bakin's workflows plugin handler looks up its pending approval by ID.
-6. Workflow handler calls `resolveApproval(approvalId, response)`.
+6. Workflow handler persists the response and calls `resolveApproval({ approvalId, deliveries, response })`.
 7. Adapter edits the Discord message to show resolved state (e.g., "approved by @markhayden, 12:34pm").
 
-If bakin is down at step 4: adapter logs the unhandled approval and
-fires the event when bakin reconnects (via the SSE replay buffer).
-If adapter is down at step 1: Discord retries the interaction; once
-adapter reconnects it processes the queued interaction.
+If the process crashes after Bakin persists the approval record but before
+rendering succeeds, Bakin retries `createApproval` on restart using the same
+approval ID. If the process crashes after rendering succeeds but before Bakin
+persists delivery refs, Bakin may re-render on restart. If the process is down
+when a user clicks a channel interaction, that click is not guaranteed to be
+captured; the user may need to retry, or Bakin may re-render/expire the approval
+after restart.
 
 // Notification — fire-and-forget operational alerts
 interface NotificationArgs {
@@ -519,7 +649,7 @@ interface ContentDeliveryArgs {
 }
 
 interface Asset {
-  source: string                                            // 'asset:...' | URL | path | data:
+  source: AssetSource
   kind: 'image' | 'video' | 'document' | 'audio' | 'archive' | 'data'
   filename?: string
   mimeType?: string
@@ -533,11 +663,20 @@ interface Asset {
     pageCount?: number
   }
 }
+
+type AssetSource =
+  | { kind: 'asset'; id: string }                           // managed Bakin asset
+  | { kind: 'url'; url: string }                             // adapter downloads/embeds if allowed
+  | { kind: 'data'; data: ArrayBuffer | string; encoding?: 'base64' | 'utf8' }
 ```
 
 The four ops carry semantic weight adapters render differently.
 Discord's approval becomes interactive buttons. Telegram's becomes
 inline keyboard. Plain-text fallback is numbered options.
+Arbitrary filesystem paths are intentionally excluded from `AssetSource`.
+Plugins hand adapters managed Bakin assets, URLs, or inline data only. If a
+local file must be sent, Bakin first imports it into the asset store and passes
+an `asset` source.
 
 ### 6.6 Skills
 
@@ -624,7 +763,6 @@ tasks: {
   listExecutions(opts?: ListExecutionsOpts): Promise<TaskExecutionStatus[]>
   cancelExecution(flowId: string): Promise<void>
   subscribeExecutionUpdates(handler: (event: TaskExecutionEvent) => void): Unsubscribe
-  listAdoptableExecutions(opts?: { since?: string; limit?: number }): Promise<AdoptableExecution[]>
 }
 
 interface TaskDispatch {
@@ -647,25 +785,17 @@ interface TaskExecutionStatus {
   error?: { message: string; recoverable: boolean }
 }
 
-interface AdoptableExecution {
-  flowId: string
-  goal: string
-  agentId: string
-  startedAt: string
-  state: TaskExecutionStatus['state']
-}
 ```
 
-The "adopt existing" workflow exists for the "already using OpenClaw,
-install bakin" case: bakin reads runtime executions that have no bakin
-metadata yet, offers to create bakin-side records. Runtime continues
-executing; bakin gains ownership of metadata.
+Existing OpenClaw execution import is not part of the v1 hard cutover
+interface. If released Bakin later needs it, add a separate import adapter API
+and product flow with tests.
 
 ### 6.10 Cron
 
 The schedule plugin actively creates/edits/deletes/runs cron jobs, so
 the adapter must expose full CRUD plus on-demand triggering. Read-only
-would force `raw()` immediately.
+would be a boundary violation.
 
 ```ts
 cron: {
@@ -685,28 +815,58 @@ cron: {
 
 interface CronJob {
   id: string
-  schedule: string                                          // crontab string
-  agent?: string
-  command?: string
+  name: string
+  schedule: CronSchedule
+  session: 'main' | 'isolated'
+  callback?: CronCallback
+  payload: CronPayload
   enabled: boolean
+  timezone?: string
   metadata?: Record<string, unknown>
 }
 
 interface CronJobSpec {
   id?: string                                               // adapter generates if omitted
-  schedule: string
-  agent?: string
-  command?: string
+  name: string
+  schedule: CronSchedule
+  session?: 'main' | 'isolated'                             // default isolated for Bakin jobs
+  callback?: CronCallback
+  payload: CronPayload
   enabled?: boolean                                         // default true
+  timezone?: string
   metadata?: Record<string, unknown>
 }
 
 interface CronJobPatch {
-  schedule?: string
-  agent?: string
-  command?: string
+  name?: string
+  schedule?: CronSchedule
+  session?: 'main' | 'isolated'
+  callback?: CronCallback
+  payload?: Partial<CronPayload>
   enabled?: boolean
+  timezone?: string
   metadata?: Record<string, unknown>
+}
+
+type CronSchedule =
+  | { kind: 'cron'; expression: string }
+  | { kind: 'every'; expression: string }
+  | { kind: 'at'; isoTime: string }
+
+type CronCallback =
+  | { kind: 'webhook'; url: string }
+  | { kind: 'none' }
+
+interface CronPayload {
+  message: string
+  agentId?: string
+  workflowId?: string
+  taskPrompt?: string
+  taskTitle?: string
+  owner?: string
+  requireTriage?: boolean
+  allowOverlap?: boolean
+  maxFailures?: number
 }
 
 interface CronRun {
@@ -730,7 +890,7 @@ interface ListRunsOpts {
 ```ts
 config: {
   read(): Promise<RuntimeConfig>                            // typed; preferred path
-  raw(): Promise<RawConfigProxy>                            // Proxy-tracked fallback
+  raw?(reason: RawAccessReason): Promise<RawConfigProxy>     // gated diagnostic fallback
 }
 
 interface RuntimeConfig {
@@ -739,11 +899,18 @@ interface RuntimeConfig {
   workspaceRoot: string
   channels?: { configured: string[] }
 }
+
+interface RawAccessReason {
+  pluginId: string
+  issue: string                                             // ticket/spec link
+  justification: string
+}
 ```
 
-`raw()` returns a Proxy. Every property access logs `{ pluginId,
-keyPath, runtimeAdapter, timestamp }` to a ring buffer. Bakin's doctor
-surfaces gaps:
+`raw()` is optional and gated. It is not a normal plugin development surface.
+Any use must pass a reason that includes `pluginId`, `issue`, and a short
+justification. Every property access logs `{ pluginId, issue, keyPath,
+runtimeAdapter, timestamp }` to a ring buffer. Bakin's doctor surfaces gaps:
 
 ```
 Adapter abstraction gaps detected:
@@ -753,13 +920,26 @@ Adapter abstraction gaps detected:
   workflows   channels.discord.guildId   89
 ```
 
-The lint rule warns on `raw()` usage (soft). Telemetry data drives
-typed-promotion priorities.
+The lint rule fails on `raw()` usage unless the call site is explicitly
+allowlisted. Allowlisted uses are reviewed before release; the preferred
+outcome is promoting the field into `RuntimeConfig` or deleting the use.
 
 ## 7. SearchAdapter — full interface
 
-15-ish methods. Smaller surface; sits BELOW bakin's `search-registry.ts`
-which is unchanged from a plugin perspective.
+15-ish methods. Smaller surface; sits BELOW bakin's `search-registry.ts`,
+which remains the plugin-facing abstraction. The hard cutover may update
+`SearchAPI` so plugin-facing query types map cleanly to this adapter contract,
+but plugins must not see Antfly-native strategy names or raw Antfly aggregation
+shapes after the PR.
+
+`search-registry.ts` becomes a coordinator, not a provider. It stores plugin
+schema declarations, normalizes plugin-facing query input, and delegates table
+provisioning/index/query work to `AppServices.search`. Antfly embedder
+selection, table DDL, hybrid/RRF/rerank implementation, daemon lifecycle, and
+provider-specific aggregation translation live in `packages/adapter-antfly/`.
+If a plugin-facing option cannot be expressed without leaking Antfly-native
+types, the option is either promoted into the generic `SearchAdapter` contract
+or removed during the hard cutover.
 
 ```ts
 interface SearchAdapter {
@@ -790,7 +970,7 @@ interface SearchAdapter {
 
   query(table: string, q: Query): Promise<QueryResult>
   multiQuery(queries: Array<{ table: string; query: Query }>): Promise<QueryResult[]>
-  scan(table: string, opts?: ScanOpts): AsyncIterable<Document>
+  scan(table: string, opts?: ScanOpts): AsyncIterable<ScannedDocument>
 
   embedder: {
     hasChanged(): Promise<boolean>
@@ -854,6 +1034,11 @@ interface SearchHit {
   explanation?: unknown                                     // adapter raw explain
 }
 
+interface ScannedDocument {
+  key: string
+  document: Document
+}
+
 interface ScoreBreakdown {
   fts?: number
   vector?: number
@@ -877,9 +1062,76 @@ interface TableConfig {
   searchable?: string[]
   embedded?: { fields: string[] }
   ttl?: { field: string; days: number }
-  raw?: Record<string, unknown>                             // Proxy-tracked
+  adapterOptions?: Record<string, unknown>                  // allowlisted only
+}
+
+type Document = Record<string, unknown>
+
+interface FieldDefinition {
+  name: string
+  type: 'string' | 'number' | 'boolean' | 'date' | 'vector' | 'json'
+  required?: boolean
+  indexed?: boolean
+}
+
+interface Filter {
+  field: string
+  op: 'eq' | 'neq' | 'in' | 'not-in' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains'
+  value: string | number | boolean | Array<string | number | boolean>
+}
+
+interface SortSpec {
+  field: string
+  direction: 'asc' | 'desc'
+  mode?: 'text' | 'number' | 'date'
+}
+
+interface ScanOpts {
+  prefix?: string
+  limit?: number
+  cursor?: string
+}
+
+interface IndexItem {
+  key: string
+  document: Document
+}
+
+interface IndexOpts {
+  refresh?: boolean
+}
+
+interface BatchResult {
+  indexed: number
+  failed: Array<{ key: string; error: string }>
+}
+
+type TransformFn = (doc: Document) => Document | null
+
+interface TableInfo {
+  name: string
+  documentCount?: number
+}
+
+interface TableStats {
+  documents: number
+  bytes?: number
+}
+
+interface TableHealth {
+  ok: boolean
+  message?: string
+}
+
+interface RebuildReport {
+  rebuilt: number
+  failed: number
 }
 ```
+
+`adapterOptions` is not a general plugin escape hatch. Any use must be
+documented in the boundary exception ledger with an owner and removal condition,
+or promoted into the typed `TableConfig` shape before release.
 
 ### Query strategy is adapter's call
 
@@ -904,6 +1156,19 @@ storage path is added to `BakinPaths` in
 `CONTENT_DIR`, and the `./content/` fallback consistently with every
 other bakin storage path.
 
+The task store is a core Bakin module, not a plugin hook facade. Every task
+reader/writer uses this module after the hard cutover: kanban UI, task CLI,
+workflows, schedule, dispatch, continuation, agent assignment, and health
+checks. The old `plugins/tasks/lib/flow-store.ts` metadata path is deleted or
+rewritten to delegate to this store; no direct `flow_runs` task metadata reads
+remain outside the runtime adapter.
+
+Implementation sequencing is part of the contract: the Bakin task store is cut
+over before broad plugin rewrites. Once task metadata has one owner, plugins and
+core services can be migrated safely around that stable store. There is no
+temporary authoritative split between `flow_runs.state_json` and task JSON
+files, even inside the single hard-cutover PR.
+
 ```json
 {
   "id": "task-abc123",
@@ -915,8 +1180,22 @@ other bakin storage path.
   "tags": ["blog", "engineering"],
   "workflowId": "content-pipeline",
   "projectId": "blog-q2",
-  "executionFlowId": "fr_xyz789",
-  "log": [...],
+  "parentId": null,
+  "blockedBy": [],
+  "blocking": [],
+  "comments": [],
+  "pendingDelete": false,
+  "execution": {
+    "flowId": "fr_xyz789",
+    "state": "running",
+    "currentStep": "draft",
+    "blockingReason": null,
+    "retryCount": 0,
+    "startedAt": "2026-04-27T...",
+    "endedAt": null,
+    "lastSyncedAt": "2026-04-27T..."
+  },
+  "log": [],
   "createdAt": "2026-04-27T...",
   "updatedAt": "2026-04-27T..."
 }
@@ -927,7 +1206,135 @@ Chokidar watches the resolved tasks path for SSE broadcasts. Antfly-indexed
 for cross-cutting search via the existing `bakin_memory` table or a
 new `bakin_tasks` content type.
 
-### 8.1 Reconciliation + transactional consistency
+### 8.1 Task store API
+
+The concrete names may differ, but the hard cutover must expose one shared
+module with this semantic coverage:
+
+```ts
+interface BakinTask {
+  id: string
+  title: string
+  description?: string
+  agent?: string
+  column: string
+  order: number
+  tags: string[]
+  workflowId?: string
+  projectId?: string
+  parentId?: string | null
+  blockedBy: string[]
+  blocking: string[]
+  comments: TaskComment[]
+  pendingDelete: boolean
+  execution: {
+    flowId: string | null
+    state?: TaskExecutionStatus['state'] | 'execution-orphaned' | 'not-dispatched'
+    currentStep?: string | null
+    blockingReason?: string | null
+    retryCount?: number
+    startedAt?: string | null
+    endedAt?: string | null
+    lastSyncedAt?: string | null
+  }
+  log: TaskLogEntry[]
+  createdAt: string
+  updatedAt: string
+}
+
+interface BakinTaskStore {
+  create(input: CreateBakinTaskInput): Promise<BakinTask>
+  get(id: string): Promise<BakinTask | null>
+  list(opts?: TaskListOpts): Promise<BakinTask[]>
+  update(id: string, patch: BakinTaskPatch): Promise<BakinTask>
+  move(id: string, column: string, order?: number): Promise<BakinTask>
+  remove(id: string): Promise<void>
+
+  appendLog(id: string, entry: TaskLogEntry): Promise<void>
+  addComment(id: string, comment: TaskComment): Promise<void>
+  setDependencies(id: string, deps: TaskDependencyPatch): Promise<BakinTask>
+  markPendingDelete(id: string, pending: boolean): Promise<BakinTask>
+  linkExecution(id: string, flowId: string): Promise<BakinTask>
+  updateExecutionCache(id: string, status: TaskExecutionStatus): Promise<BakinTask>
+
+  subscribe(handler: (event: BakinTaskStoreEvent) => void): Unsubscribe
+}
+
+interface CreateBakinTaskInput {
+  id?: string
+  title: string
+  description?: string
+  agent?: string
+  column?: string
+  order?: number
+  tags?: string[]
+  workflowId?: string
+  projectId?: string
+  parentId?: string | null
+}
+
+type BakinTaskPatch = Partial<Pick<
+  BakinTask,
+  | 'title'
+  | 'description'
+  | 'agent'
+  | 'column'
+  | 'order'
+  | 'tags'
+  | 'workflowId'
+  | 'projectId'
+  | 'parentId'
+  | 'blockedBy'
+  | 'blocking'
+  | 'pendingDelete'
+>>
+
+interface TaskListOpts {
+  column?: string
+  agent?: string
+  projectId?: string
+  includePendingDelete?: boolean
+}
+
+interface TaskLogEntry {
+  at: string
+  actor: string
+  event: string
+  data?: Record<string, unknown>
+}
+
+interface TaskComment {
+  id: string
+  author: string
+  body: string
+  createdAt: string
+}
+
+interface TaskDependencyPatch {
+  blockedBy?: string[]
+  blocking?: string[]
+}
+
+interface BakinTaskStoreEvent {
+  type: 'created' | 'updated' | 'deleted'
+  taskId: string
+  task?: BakinTask
+}
+```
+
+Required invariants:
+
+- `id` is stable and never reused.
+- All writes are atomic tmp+rename writes.
+- List ordering is deterministic: column order, then numeric `order`, then
+  `updatedAt` as a tie-breaker.
+- Metadata fields are only written by Bakin.
+- Execution cache fields are derived from runtime adapter status and may be
+  rebuilt.
+- Deletion uses tombstones when an execution must be cancelled first.
+- The store emits one SSE-invalidating event per logical write.
+
+### 8.2 Reconciliation + transactional consistency
 
 Two stores held by different processes will diverge on crash, partial
 failure, retry, or external mutation. The rules below are the contract
@@ -952,27 +1359,27 @@ Bakin writes its JSON file BEFORE calling the adapter to dispatch.
 The order matters:
 
 1. Generate `bakinTaskId`.
-2. Write `<tasks>/YYYY-MM/task-<id>.json` with `executionFlowId: null`.
+2. Write `<tasks>/YYYY-MM/task-<id>.json` with `execution.flowId: null`.
    (Atomic tmp+rename.)
 3. Call `tasks.dispatch({ bakinTaskId, ... })`.
 4. Receive `{ flowId }` from the adapter.
-5. Update the bakin file with `executionFlowId: <flowId>`.
+5. Update the bakin file with `execution.flowId: <flowId>`.
 
 If the process crashes between 2 and 5, the bakin file exists with
-null `executionFlowId`. Boot-time reconciliation handles this case
+null `execution.flowId`. Boot-time reconciliation handles this case
 (see below).
 
 #### Boot-time reconciliation
 
 On every bakin boot, the tasks plugin reconciles its store against
-the adapter. Three cases:
+the adapter. Required cases:
 
 | Bakin file says | Adapter says | Action |
 |---|---|---|
-| `executionFlowId: 'fr_X'` | `'fr_X'` exists, status `running` | normal — UI shows running |
-| `executionFlowId: 'fr_X'` | `'fr_X'` not found (deleted in runtime) | mark bakin task `execution-orphaned`; UI offers re-dispatch |
-| `executionFlowId: null` | adapter has a flow with `owner_key bakin:task:<id>` | repair: write the found `flowId` into the bakin file |
-| `executionFlowId: null` | no matching flow in adapter | bakin task is in pre-dispatch limbo; UI shows "not yet dispatched"; user can dispatch or delete |
+| `execution.flowId: 'fr_X'` | `'fr_X'` exists, status `running` | normal - UI shows running |
+| `execution.flowId: 'fr_X'` | `'fr_X'` not found (deleted in runtime) | mark bakin task `execution-orphaned`; UI offers re-dispatch |
+| `execution.flowId: null` | adapter has a flow with `owner_key bakin:task:<id>` | repair: write the found `flowId` into the bakin file |
+| `execution.flowId: null` | no matching flow in adapter | bakin task is in pre-dispatch limbo; UI shows "not yet dispatched"; user can dispatch or delete |
 
 The reconciler runs once on boot and exits. It does NOT continuously
 sync; runtime changes are pushed to bakin via
@@ -986,9 +1393,8 @@ sync; runtime changes are pushed to bakin via
   runtime execution status.
 - **Metadata conflicts:** bakin wins. The runtime never edits bakin's
   metadata fields (title, column, ordering, tags). The adapter's
-  `flow_run.state_json` no longer carries those fields after the
-  migration (see PR 4 cleanup); historical state_json fields are
-  ignored.
+  `flow_run.state_json` does not carry those fields after the hard
+  cutover; historical state_json fields are ignored.
 - **`agent` field:** lives in BOTH stores intentionally. Bakin's is
   the user-mutable assignment; the runtime's is who actually runs the
   current execution. They DIVERGE if the user reassigns the agent in
@@ -1000,35 +1406,20 @@ sync; runtime changes are pushed to bakin via
 Deleting a bakin task is a two-phase operation:
 
 1. Set `pendingDelete: true` in the bakin file. UI hides the task.
-2. Call `adapter.cancelExecution(flowId)` (if executionFlowId exists).
+2. Call `adapter.cancelExecution(flowId)` (if `execution.flowId` exists).
 3. On confirmed cancel: delete the bakin file.
 
 If step 2 fails (adapter unavailable), the file stays as a tombstone
 and a background retry picks it up next time the adapter responds.
 Boot-time reconciliation also retries pending deletes.
 
-#### Adoption (existing flow_runs without bakin metadata)
+#### Explicitly excluded from hard cutover
 
-The "already using OpenClaw, install bakin" workflow:
-
-1. Bakin's tasks plugin calls `adapter.listAdoptableExecutions({...})`
-   on first install (or when invoked via UI action later).
-2. Adapter returns flow_runs with `owner_key='bakin/tasks'` that have
-   no corresponding bakin file.
-3. UI presents them as "discovered tasks; click to adopt"; user
-   confirms.
-4. On confirm: bakin generates a `bakinTaskId`, writes a JSON file
-   with `executionFlowId: <existing flowId>`, populates `title` from
-   the runtime's `goal`, etc.
-5. Reverse-link: adapter updates the flow_run's `owner_key` to
-   `bakin:task:<bakinTaskId>` so the relationship is bidirectional.
-
-Step 5 needs to be idempotent on `owner_key` rename — if the same
-flow_run gets adopted twice (race), the second adoption is a no-op.
-
-For your single-user/wipe-acceptable case, adoption is not exercised
-on day 1 (you can wipe). The API exists for future installs against
-existing OpenClaw deployments.
+Do not implement hidden adoption, dual-read, or compatibility behavior for
+existing OpenClaw `flow_runs` in this PR. This pre-release cutover may wipe
+local data. After public release, importing existing runtime executions must be
+a separate user-facing feature with its own adapter API, UI, tests, and failure
+semantics.
 
 ## 9. Versioning
 
@@ -1044,8 +1435,10 @@ Boot-time check (server.ts): adapter declares `requiredCoreVersion`;
 if it doesn't satisfy this build's `ADAPTER_INTERFACE_VERSION`, fail
 loud with version + remediation.
 
-Deprecation cycle: `@deprecated('use X — removed in Y.0')` JSDoc +
-runtime warning + at least one minor version of overlap.
+Post-release deprecation cycle: `@deprecated('use X - removed in Y.0')` JSDoc +
+runtime warning + at least one minor version of overlap. This does not apply to
+the pre-release hard cutover; no compatibility overlap is required inside this
+PR.
 
 Day-1 ship: all packages at 1.0.0 from the same monorepo. Discipline
 matters when third-party adapters land (~6+ months out).
@@ -1067,8 +1460,7 @@ scope). Banned patterns:
 - `**/src/core/antfly`, `**/src/core/antfly-server` — banned everywhere
   except `packages/adapter-antfly/**`
 - `@bakin/adapter-openclaw`, `@bakin/adapter-antfly` (and sub-paths)
-  — banned in plugin code; restricted to bakin core boot wiring
-  (the `select.ts` files in `packages/core/src/adapters/`)
+  — banned in plugin code; restricted to app boot/server wiring
 
 ### Architecture fitness test
 
@@ -1078,16 +1470,23 @@ scope). Banned patterns:
 
 - No imports of openclaw-client / openclaw-home / openclaw-config
 - No imports of src/core/antfly / antfly-server
+- No imports of `@antfly/sdk` outside `packages/adapter-antfly/**`
 - No literal `getOpenClawPath(...)` outside adapter
 - No `flow_runs` SQL outside adapter
 - No `~/.openclaw/` path strings outside adapter
+- No `OPENCLAW_HOME` environment access outside adapter or boot settings code
 - No `vault.get('gateway-token')` outside adapter
+- No Discord REST/gateway URLs or interaction payload handling outside the
+  runtime adapter's channel implementation
+- No shelling out to the OpenClaw binary outside `packages/adapter-openclaw/**`
+- No direct `bun:sqlite` access to OpenClaw-owned database files outside the
+  runtime adapter
 
 `scripts/` is included because the audit found direct OpenClaw
 client usage there (`scripts/lib/post-discord.ts`,
 `scripts/lib/generate-image.ts`, `scripts/migration/snapshot-agent.ts`,
-`scripts/migration/wipe-and-install-all.ts`). After PR 2 those
-imports route through the adapter package.
+`scripts/migration/wipe-and-install-all.ts`). After the hard cutover, those
+imports route through the adapter package or are deleted.
 
 ESLint's `files:` glob covers the same scope so the lint and
 fitness test stay in sync. Fails CI loud with file:line citations.
@@ -1129,33 +1528,51 @@ across today's tests consolidate to one canonical mock surface.
 `tests/plugins/test-helpers.ts` consumes these from `@bakin/sdk/testing`
 instead of carrying ad-hoc mocks.
 
-## 13. Migration strategy
+## 13. Cutover strategy
 
-See `.claude/specs/adapter-layer-plan.md` for the staged-PR plan.
-Six PRs (PR 0 prep + PRs 1-5 implementation). Each PR ships
-self-contained; system stays functional between PRs. Each PR's
-description includes manual confirmation steps.
+See `.claude/specs/adapter-layer-plan.md` for the single-PR hard-cutover
+plan. This is a pre-release refactor for a single-user local install; local
+data can be wiped and intermediate commits do not need to run. The goal is the
+clean final architecture, not deployable migration checkpoints.
+
+Rules:
+
+- Delete old direct-client paths instead of preserving re-export shims.
+- Move each source of truth once; do not introduce dual-write metadata paths.
+- Treat compatibility/adoption as explicit future product work, not hidden
+  refactor scaffolding.
+- Final PR state must pass tests, lint, docs, boundary checks, and manual
+  smokes.
 
 ## 14. Definition of done
 
-The full series is complete when:
+The hard-cutover PR is complete when:
 
 - [ ] `packages/adapter-openclaw/` and `packages/adapter-antfly/` exist
       and pass `bun typecheck` + `bun test`.
 - [ ] `packages/core/src/adapters/` defines both interfaces.
-- [ ] No file under `src/`, `cli/`, `plugins/`, or `packages/host/`
-      imports `openclaw-client`, `openclaw-home`, `openclaw-config`,
-      or `src/core/antfly*`.
+- [ ] `AppServices` is the shared runtime/search/task/channel injection path
+      for plugins, plugin routes, MCP tools, CLI/scripts, lifecycle, health,
+      and tests.
+- [ ] No file under `src/`, `cli/`, `plugins/`, `packages/host/`,
+      `packages/core/`, or `scripts/` imports `openclaw-client`,
+      `openclaw-home`, `openclaw-config`, `@antfly/sdk`, or
+      `src/core/antfly*`.
 - [ ] No plugin file imports from `@bakin/adapter-{openclaw,antfly}`.
 - [ ] `tests/architecture/adapter-boundary.test.ts` passes against
       a fully-migrated codebase.
+- [ ] Any remaining boundary exception is documented in an exception ledger
+      with owner, reason, linked issue, and removal condition. Empty ledger is
+      preferred.
 - [ ] `getBakinPaths().tasks` is the live task metadata store; flow_runs
       contains only execution-side fields.
+- [ ] Workflow approvals persist Bakin-owned durable approval records;
+      channel/provider message IDs are delivery refs only.
 - [ ] Every plugin's primary feature works against a freshly-cloned
       bakin instance (manual smoke per the plan doc).
 - [ ] `bun run lint`, `bun run typecheck`, `bun test --isolate`,
-      `bun run docs:check`, `bun run lint:home-bypasses` all pass
-      across every PR in the chain.
+      `bun run docs:check`, and `bun run lint:home-bypasses` all pass
+      in the final PR state.
 - [ ] `.claude/knowledge/adapter-architecture.md` exists and is
       cross-referenced from CLAUDE.md.
 - [ ] `.claude/skills/check-adapter-boundary.md` is invocable.
@@ -1164,11 +1581,11 @@ The full series is complete when:
 
 | Risk | Mitigation |
 |---|---|
-| Adapter abstraction is too leaky (specifics of OpenClaw bleed into the interface) | Telemetry-tracked `raw()` accessors surface gaps; adapter authoring docs (Tier 4) prescribe how to handle runtime-specific concerns; the rigid-mandatory model forces fallback-in-adapter rather than capability-flag-in-plugin |
+| Adapter abstraction is too leaky (specifics of OpenClaw bleed into the interface) | Boundary exception ledger plus gated `raw()`/`adapterOptions` usage exposes gaps; final plugin behavior must use typed surfaces or documented exceptions |
 | Adapter abstraction is too rigid (Hermes can't fit) | Per-channel capabilities, AsyncIterable streams, and `metadata` fields on most types provide adapter-specific wiggle room without breaking the contract |
-| Big-bang refactor introduces regressions | Staged PRs (PR 0–5); each is self-contained and tested before the next opens; manual confirmation steps in each PR |
-| Plugin tests break across all plugins simultaneously | The mock harness ships in PR 1; tests migrate to it as plugins migrate; existing ad-hoc mocks coexist during transition |
-| Tasks data loss during migration | User confirmed wipe is acceptable; one-shot adoption flow handles "OpenClaw users installing bakin" case |
+| Hard cutover introduces regressions | Use checkpointed commits for review, but require only the final PR state to run; final manual smokes cover every plugin and boundary |
+| Plugin tests break across all plugins simultaneously | Replace ad-hoc direct-client mocks with the canonical mock adapter harness in the same PR |
+| Local task/runtime data loss | Accepted pre-release for this single machine; wipe before final validation if needed |
 | flow_runs contention between bakin and OpenClaw | Bakin's adapter respects OpenClaw's `revision` column for optimistic concurrency; multiple writers don't clobber |
 | Hot reload breaks adapter init | Restart-required for adapter changes (locked at Q2.3); adapter init lives outside the hot-reload pipeline |
 | Discord migration leaves orphan auth flows | `discord-gateway.ts` moves entirely into `adapter-openclaw/channels/discord/`; init order ensures the gateway WS connects on adapter init |
@@ -1176,13 +1593,13 @@ The full series is complete when:
 
 ## 16. Open questions (to settle during implementation)
 
-- **Tasks adoption flow UX.** When existing flow_runs have no bakin
-  metadata, do we auto-adopt silently or prompt the user? Lean toward
-  prompt for the first install; auto for subsequent.
-- **Per-channel capability list specifics.** Current draft has 5
+- **Post-release task import UX.** If released Bakin needs to import existing
+  OpenClaw `flow_runs`, design it as an explicit import flow with tests. Do
+  not preserve hidden hard-cutover shims for this.
+- **Per-channel capability list specifics.** Current draft has 7
   values (`message`, `rich-content`, `interactive-approval`,
-  `modal-input`, `threaded-replies`). May surface a 6th as adapter
-  implementations land.
+  `modal-input`, `threaded-replies`, `edit-after-send`,
+  `cancel-rendered`). More may surface as adapter implementations land.
 - **Antfly adapter's stance on a non-running daemon.** Bakin currently
   tolerates `antfly.enabled: false`. The adapter should preserve that
   — `available()` returns false; bakin's search-registry no-ops; doctor
@@ -1200,5 +1617,5 @@ The full series is complete when:
   data accumulates).
 - Per-adapter README capability matrices (Tier 4).
 - Rate limiting of `ctx.runtime.*` invocations (separate spec).
-- Channel capabilities beyond the 5-value list above (extended as
+- Channel capabilities beyond the 7-value list above (extended as
   adapter implementations surface real needs).
