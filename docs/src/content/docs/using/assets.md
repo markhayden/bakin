@@ -144,13 +144,13 @@ Agents create, link, and curate assets through MCP exec tools.
 - `bakin_exec_assets_audit`: Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars.
 - `bakin_exec_assets_delete`: Soft-delete an asset (moves to trash, restorable until trash is emptied).
 - `bakin_exec_assets_empty_trash`: Permanently delete all items from trash. This cannot be undone.
-- `bakin_exec_assets_get`: Retrieve a single asset\
+- `bakin_exec_assets_get`: Retrieve a single asset's sidecar metadata by path.
 - `bakin_exec_assets_link`: Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move.
 - `bakin_exec_assets_list`: List assets with optional type filter. Returns asset count and paths.
 - `bakin_exec_assets_list_trash`: List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge.
 - `bakin_exec_assets_permanent_delete`: Permanently delete a specific trashed asset. This cannot be undone.
 - `bakin_exec_assets_restore`: Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename.
-- `bakin_exec_assets_retype`: Change an asset\
+- `bakin_exec_assets_retype`: Change an asset's type classification. Sidecar-only edit — no file move.
 - `bakin_exec_assets_save`: Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.
 - `bakin_exec_assets_update_content`: Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file.
 <!-- /docs:exec-tools -->

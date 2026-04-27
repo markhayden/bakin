@@ -18,7 +18,7 @@ Tasks are Bakin's work unit. Each one records what needs to happen, who owns it,
 
 The board is the home view. Each column is a state, each card is a task. Drag cards between columns to move work forward. Click a card to open its detail panel and see the full history.
 
-## Common actions
+## Task Management
 
 ### Create a task
 

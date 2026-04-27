@@ -120,7 +120,7 @@ function renderCommandSnippet(marker: string): string {
   for (const name of names) {
     const command = byName.get(name)
     if (!command) return ''
-    lines.push(`| \`${command.usage}\` | ${command.summary} |`)
+    lines.push(`| \`${command.usage.replace(/\|/g, '\\|')}\` | ${command.summary} |`)
   }
 
   lines.push('<!-- /docs:cli-commands -->')

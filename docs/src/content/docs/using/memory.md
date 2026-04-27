@@ -68,7 +68,7 @@ Agents query memory through MCP exec tools.
 
 <!-- docs:exec-tools memory -->
 - `bakin_exec_memory_get_session`: Fetch a session by key plus its most recent turns.
-- `bakin_exec_memory_get_turn`: Fetch a single turn by id (the
+- `bakin_exec_memory_get_turn`: Fetch a single turn by id (the `turn:<hex>` form).
 - `bakin_exec_memory_list_agents`: Agents with memory rows, each with total count and per-tier breakdown.
 - `bakin_exec_memory_search`: Hybrid search across every memory tier (sessions, turns, checkpoints, daily notes, dreams, durable, audit). Optional tier/agent filters.
 - `bakin_exec_memory_status`: Indexer health: per-tier row counts, offset tracking, snapshot timestamp.

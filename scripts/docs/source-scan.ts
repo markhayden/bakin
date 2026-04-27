@@ -49,7 +49,8 @@ export function extractExecTools(): ExecTool[] {
       if (seen.has(key)) continue
       seen.add(key)
       const block = lines.slice(i, Math.min(lines.length, i + 35)).join('\n')
-      const description = block.match(/description:\s*['"`]([^'"`]+)['"`]/)?.[1]
+      const descMatch = block.match(/description:\s*(["'`])((?:\\.|(?!\1).)*)\1/s)
+      const description = descMatch?.[2]?.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\`/g, '`')
       tools.push({ name, description, file: relativeSource(file), line: i + 1 })
     }
   }

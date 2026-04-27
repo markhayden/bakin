@@ -54,7 +54,7 @@ Sessions index into search (table `bakin_messaging_brainstorm`) for cross-table 
 <!-- docs:cli-commands messaging -->
 | Command | Purpose |
 | --- | --- |
-| `bakin messaging <list|get|create|update|delete|approve|reject|sessions|session|session-create|session-update|session-delete|message|confirm|proposal> ...` | Manage messaging items and planning sessions. |
+| `bakin messaging <list\|get\|create\|update\|delete\|approve\|reject\|sessions\|session\|session-create\|session-update\|session-delete\|message\|confirm\|proposal> ...` | Manage messaging items and planning sessions. |
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
