@@ -149,12 +149,13 @@ export type {
   BakinTaskStore,
   BakinTaskStoreEvent,
   CreateBakinTaskInput,
+  SyncBakinTaskStore,
   TaskComment,
   TaskDependencyPatch,
   TaskListOpts,
   TaskLogEntry,
 } from './tasks/store'
-export { createEmptyBakinTask } from './tasks/store'
+export { createEmptyBakinTask, createFileBakinTaskStore } from './tasks/store'
 export { createMockBakinTaskStore } from './tasks/testing'
 
 // Main agent

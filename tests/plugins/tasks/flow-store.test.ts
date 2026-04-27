@@ -1,80 +1,57 @@
 /**
- * Unit tests for flow-store.ts — SQLite-backed task store.
- * Points openDb() at a temp directory so tests hit a real in-memory-like SQLite.
+ * Unit tests for flow-store.ts — Bakin JSON-backed task store.
+ * Points BAKIN_HOME at a temp directory so tests never touch real user data.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { Database } from 'bun:sqlite'
-import { mkdirSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import type { BakinTask } from '@bakin/core/tasks/store'
 
 // ---------------------------------------------------------------------------
-// Test directory setup — fake ~/.openclaw/flows/
+// Test directory setup — fake ~/.bakin/tasks/
 // ---------------------------------------------------------------------------
 
 const testHome = join(tmpdir(), `bakin-flow-store-test-${Date.now()}`)
-const flowsDir = join(testHome, '.openclaw', 'flows')
-const dbPath = join(flowsDir, 'registry.sqlite')
+const tasksDir = join(testHome, 'tasks')
 
-mkdirSync(flowsDir, { recursive: true })
+process.env.BAKIN_HOME = testHome
 
-// Create the flow_runs table in the test database
-function initTestDb() {
-  const db = new Database(dbPath)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS flow_runs (
-      flow_id TEXT PRIMARY KEY,
-      shape TEXT,
-      sync_mode TEXT DEFAULT 'managed',
-      owner_key TEXT NOT NULL,
-      requester_origin_json TEXT,
-      controller_id TEXT,
-      revision INTEGER DEFAULT 0,
-      status TEXT NOT NULL,
-      notify_policy TEXT DEFAULT 'silent',
-      goal TEXT,
-      current_step TEXT,
-      blocked_task_id TEXT,
-      blocked_summary TEXT,
-      state_json TEXT,
-      wait_json TEXT,
-      cancel_requested_at INTEGER,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      ended_at INTEGER
-    )
-  `)
-  db.close()
+mkdirSync(tasksDir, { recursive: true })
+
+function clearTaskStore() {
+  rmSync(tasksDir, { recursive: true, force: true })
+  mkdirSync(tasksDir, { recursive: true })
 }
 
-function clearTestDb() {
-  const db = new Database(dbPath)
-  db.exec(`DELETE FROM flow_runs`)
-  db.close()
+function findTaskFile(taskId: string): string {
+  for (const shard of readdirSync(tasksDir, { withFileTypes: true })) {
+    if (!shard.isDirectory()) continue
+    const file = join(tasksDir, shard.name, `task-${taskId}.json`)
+    if (existsSync(file)) return file
+  }
+  throw new Error(`Task file not found: ${taskId}`)
 }
 
-function queryRaw(flowId: string): Record<string, unknown> | undefined {
-  const db = new Database(dbPath)
-  const row = db.prepare('SELECT * FROM flow_runs WHERE flow_id = ?').get(flowId) as Record<string, unknown> | undefined
-  db.close()
-  return row
+function readRawTask(taskId: string): BakinTask {
+  return JSON.parse(readFileSync(findTaskFile(taskId), 'utf-8')) as BakinTask
+}
+
+function writeRawTask(taskId: string, patch: Partial<BakinTask>) {
+  const file = findTaskFile(taskId)
+  const task = readRawTask(taskId)
+  writeFileSync(file, JSON.stringify({ ...task, ...patch }, null, 2), 'utf-8')
 }
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-// Redirect homedir() to test directory
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
   getMainAgentName: () => 'Main',
 }))
-
-mock.module('os', () => {
-  const actual = require('os') as typeof import('os')
-  return { ...actual, homedir: () => testHome }
-})
 
 // Mock the workflow runtime to avoid cross-plugin dependency
 mock.module('../../../plugins/workflows/lib/runtime', () => ({
@@ -105,7 +82,6 @@ import {
   getTask,
   getTaskWithColumn,
   getTasksByAgent,
-  getAgentTasks,
   VALID_TRANSITIONS,
   localDateString,
 } from '../../../plugins/tasks/lib/flow-store'
@@ -114,10 +90,8 @@ import {
 // Setup / Teardown
 // ---------------------------------------------------------------------------
 
-initTestDb()
-
 beforeEach(() => {
-  clearTestDb()
+  clearTaskStore()
   mock.clearAllMocks()
 })
 
@@ -288,13 +262,13 @@ describe('moveTask', () => {
     await expect(moveTask('ghost', 'done')).rejects.toThrow('Task not found')
   })
 
-  it('sets wait_json for review column', async () => {
+  it('moves tasks into review with date metadata', async () => {
     const task = await createTask('Review me', 'inProgress')
     await moveTask(task.id, 'review')
 
-    const row = queryRaw(task.id)!
-    const waitData = JSON.parse(row.wait_json as string)
-    expect(waitData.type).toBe('gate_approval')
+    const result = getTaskWithColumn(task.id)
+    expect(result!.column).toBe('review')
+    expect(result!.task.date).toBe(localDateString())
   })
 
   it('clears blocked fields when moving out of blocked', async () => {
@@ -306,18 +280,18 @@ describe('moveTask', () => {
 
     await moveTask(task.id, 'todo')
 
-    const row = queryRaw(task.id)!
-    expect(row.blocked_task_id).toBeNull()
-    expect(row.blocked_summary).toBeNull()
+    const result = getTask(task.id)!
+    expect(result.blockedReason).toBeUndefined()
   })
 
-  it('sets ended_at when moving to done', async () => {
+  it('marks tasks checked and dated when moving to done', async () => {
     const task = await createTask('Complete me', 'todo')
     await addTaskLog(task.id, 'pixel', 'Work done')
     await moveTask(task.id, 'done')
 
-    const row = queryRaw(task.id)!
-    expect(row.ended_at).toBeGreaterThan(0)
+    const result = getTask(task.id)!
+    expect(result.checked).toBe(true)
+    expect(result.date).toBe(localDateString())
   })
 
   it('moves done → archived', async () => {
@@ -565,11 +539,9 @@ describe('archiveOldTasks', () => {
     await addTaskLog(task.id, 'pixel', 'done')
     await moveTask(task.id, 'done')
 
-    // Manually backdate ended_at to 60 days ago
+    // Manually backdate updatedAt to 60 days ago
     const sixtyDaysAgo = Date.now() - (60 * 24 * 60 * 60 * 1000)
-    const db = new Database(dbPath)
-    db.prepare('UPDATE flow_runs SET ended_at = ? WHERE flow_id = ?').run(sixtyDaysAgo, task.id)
-    db.close()
+    writeRawTask(task.id, { updatedAt: new Date(sixtyDaysAgo).toISOString() })
 
     const count = archiveOldTasks(30)
     expect(count).toBe(1)
@@ -591,9 +563,8 @@ describe('archiveOldTasks', () => {
 
     // Even if created long ago
     const sixtyDaysAgo = Date.now() - (60 * 24 * 60 * 60 * 1000)
-    const db = new Database(dbPath)
-    db.prepare('UPDATE flow_runs SET created_at = ?, updated_at = ? WHERE flow_id = ?').run(sixtyDaysAgo, sixtyDaysAgo, task.id)
-    db.close()
+    const timestamp = new Date(sixtyDaysAgo).toISOString()
+    writeRawTask(task.id, { createdAt: timestamp, updatedAt: timestamp })
 
     const count = archiveOldTasks(30)
     expect(count).toBe(0)
@@ -791,8 +762,8 @@ describe('order-based ordering', () => {
   })
 
   it('moveTask always appends to end of target column', async () => {
-    const t1 = await createTask('anchor-1', 'todo')
-    const t2 = await createTask('anchor-2', 'todo')
+    await createTask('anchor-1', 'todo')
+    await createTask('anchor-2', 'todo')
     const t3 = await createTask('appended', 'backlog')
     await moveTask(t3.id, 'todo', 'backlog', 'human')
     const board = readTaskboard()

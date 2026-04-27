@@ -1,10 +1,10 @@
 import type { AppServices } from '@bakin/core/app-services'
 import { createHealthService } from '@bakin/core/app-services'
-import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
+import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
 import { createAntflySearchAdapter } from '@bakin/adapter-antfly'
 import { appendAudit } from './audit'
-import { getContentDir } from './content-dir'
+import { getBakinPaths, getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 
@@ -20,7 +20,7 @@ export async function createAppServices(): Promise<AppServices> {
 
   const runtime = createRuntimeAdapter(settings.runtime.adapter)
   const search = createSearchAdapter(settings.search.adapter)
-  const tasks = createMockBakinTaskStore()
+  const tasks = createFileBakinTaskStore(getBakinPaths().tasks)
 
   const adapterInit = {
     contentDir,
