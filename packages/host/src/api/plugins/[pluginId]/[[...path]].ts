@@ -23,6 +23,7 @@ import { createLogger } from '@/core/logger'
 import { buildSearchAPI } from '@/core/search-registry'
 import { appendAudit } from '@/core/audit'
 import { pluginRegistry } from '@/lib/plugin-registry'
+import { stampPluginResponse } from '@/core/plugin-host/version-stamp'
 import type { PluginContext, APIRoute } from '@/lib/plugin-types'
 
 const log = createLogger('plugin-route')
@@ -226,7 +227,7 @@ async function handle(req: Request, url: URL): Promise<Response> {
         'rest',
       )
     }
-    return res
+    return stampPluginResponse(pluginId, res)
   } catch (err) {
     const durationMs = Date.now() - startedAt
     log.error('Plugin route error', err, { pluginId, subpath, method })
@@ -237,7 +238,10 @@ async function handle(req: Request, url: URL): Promise<Response> {
       { path: subpath, status: 500, durationMs, error: err instanceof Error ? err.message : String(err) },
       'rest',
     )
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return stampPluginResponse(
+      pluginId,
+      Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 }),
+    )
   }
 }
 
