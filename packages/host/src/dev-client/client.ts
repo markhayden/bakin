@@ -33,6 +33,27 @@ interface DevHotSwapEvent {
   version: string
 }
 
+// Phase 2 P2.C9 — events broadcast by the in-process hot-reload
+// coordinator (server-side hot-reload via `bakin plugins link`).
+// Distinct from dev:hot-swap (which scripts/dev.ts emits for repo
+// core-plugin rebuilds) — same client behavior, different upstream.
+interface PluginReloadEvent {
+  type: 'dev:plugin:reload'
+  pluginId: string
+  version: number
+  hasClientCss?: boolean
+}
+interface PluginErrorEvent {
+  type: 'dev:plugin:error'
+  pluginId: string
+  message: string
+  stderr?: string
+}
+interface PluginRecoverEvent {
+  type: 'dev:plugin:recover'
+  pluginId: string
+}
+
 type HotSwapFn = (id: string, clientEntry: string, version: string) => Promise<void>
 
 const OVERLAY_ID = '__bakin-dev-overlay'
@@ -77,6 +98,32 @@ es.addEventListener('message', (ev: MessageEvent<string>) => {
       renderOverlay(event as unknown as DevErrorEvent)
       break
     case 'dev:recover':
+      dismissOverlay()
+      break
+    case 'dev:plugin:reload': {
+      // Server-side hot-reload coordinator (P2.C8) succeeded — re-fetch
+      // and remount this plugin's client bundle. Routes through the
+      // same hot-swap path scripts/dev.ts uses for core plugins.
+      const e = event as unknown as PluginReloadEvent
+      scheduleHotSwap({
+        type: 'dev:hot-swap',
+        scope: 'plugin',
+        id: e.pluginId,
+        version: String(e.version),
+      })
+      break
+    }
+    case 'dev:plugin:error': {
+      const e = event as unknown as PluginErrorEvent
+      renderOverlay({
+        type: 'dev:error',
+        scope: `plugin:${e.pluginId}`,
+        message: e.message,
+        ...(e.stderr ? { stderr: e.stderr } : {}),
+      })
+      break
+    }
+    case 'dev:plugin:recover':
       dismissOverlay()
       break
   }
