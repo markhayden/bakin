@@ -805,6 +805,116 @@ communication goes through the HookRegistry instead.
 has the same id as a built-in, it replaces it. This lets users fork
 and customize any core plugin without modifying the repo.
 
+## Hot Reload (Phase 2)
+
+`bakin plugins link <localPath>` registers a developer-owned source
+tree as a symlinked plugin. With the hot-reload coordinator running
+(`BAKIN_DEV_HOTRELOAD=1`), file saves in the linked source tree
+trigger an in-process build + module swap — no restart, no manual
+reload.
+
+### Architecture
+
+```
+File save in linked plugin
+    ↓
+chokidar watcher (per-plugin)
+    ↓ debounce 80ms
+Hot-reload coordinator
+  - Per-plugin pipeline mutex
+  - Inflight + pending: 3 saves while in-flight = 1 follow-up cycle
+    ↓
+buildUserPlugin(pluginDir) → dist/index.js + dist/client.js
+    ↓ (success)             ↓ (fail)
+                              broadcastPluginError → SSE → dev overlay
+runReloadPipeline:
+  1. plugin.onShutdown?.()                       (errors logged, never rethrow)
+  2. Sweep: removeExecToolsByPlugin,
+            HookRegistry.unregisterByPlugin,
+            unregisterPluginNodeTypes,
+            unregisterPluginNotificationChannels,
+            unregisterPluginHealthChecks,
+            purgeContentType per registered table
+  3. Clear state arrays (routes/slots/navItems/etc.)
+  4. import(`${dir}/dist/index.js?v=${attempt}`)  (cache-bust)
+  5. await newPlugin.activate(ctx)               (same ctx as before;
+                                                  closures repopulate state)
+  6. state.plugin = newPlugin
+  7. bumpVersion(pluginId)
+  8. broadcastPluginReload (+ broadcastPluginRecover if recovering
+     from a prior error)
+    ↓
+SSE event: { type: 'dev:plugin:reload', pluginId, version }
+    ↓
+Browser dev client (packages/host/src/dev-client/client.ts)
+    ↓
+PluginHost.hotSwapPlugin:
+  - unregisterPlugin(id)        (drops nav/slot contributions)
+  - swapPluginCss               (cache-busted href)
+  - import(`${clientEntry}?v=${version}`)  (re-runs registerPlugin
+                                            as a side effect)
+    ↓
+React tree re-renders with the new contributions.
+```
+
+### Version stamping (the safety net)
+
+Every response from `/api/plugins/<id>/*` carries an
+`X-Bakin-Plugin-Version: <id>:<n>` header (set by
+`stampPluginResponse` in `src/core/plugin-host/version-stamp.ts`).
+The client wraps `fetch` (`packages/host/src/plugin-host/
+version-mismatch-detector.ts`); on every plugin response it compares
+the header to the last known version. Drift dispatches the same
+hot-swap path as an SSE event would have.
+
+This belt + suspenders coverage protects against missed SSE events
+(browser tab in background, network blip): the next plugin-bound
+fetch surfaces the drift and triggers reload.
+
+The version is monotonic per plugin within a single server process.
+A server restart resets to 0 — that's intentional. The first response
+after restart either matches (0 = client default) or detects a
+"version went down" regression, both of which trigger the same reload.
+
+### Critical invariants
+
+- **Cache-bust uses an always-incrementing `importAttemptCounter`**,
+  separate from the success-only version registry. Without that, a
+  failed reload would leave the version unchanged and the next retry
+  would import the same `?v=N` URL Bun already cached as failing —
+  the user couldn't recover even after fixing the code.
+- **The same `ctx` is reused** across reloads. State arrays are
+  cleared before re-activate so the new plugin's registrations land
+  cleanly without piling on top of the swept ones.
+- **`onShutdown` errors NEVER propagate.** A buggy onShutdown can't
+  be allowed to brick the dev loop. Logged + ignored.
+- **Build failures keep the watcher live.** No manual recovery —
+  next save kicks off a fresh attempt.
+
+### Failure-recovery symmetry
+
+Two distinct error sources, each with its own tracker:
+
+- **Build errors** → coordinator broadcasts `dev:plugin:error`,
+  records in `state.buildErrored`. Next successful build emits
+  `dev:plugin:recover` BEFORE running the pipeline (so the client
+  clears its overlay before the bundle swap lands).
+- **Import / activate errors** → pipeline broadcasts
+  `dev:plugin:error`, records in its own `erroredPlugins`. Next
+  successful pipeline run emits `dev:plugin:recover` before
+  `dev:plugin:reload`.
+
+### Key files
+
+| File | Purpose |
+|---|---|
+| `src/core/plugin-host/version-stamp.ts` | Per-plugin version registry + response stamping |
+| `src/core/plugin-host/reload-pipeline.ts` | Server-side teardown + cache-bust import + activate |
+| `src/core/plugin-host/hot-reload-coordinator.ts` | Watcher + per-plugin pipeline mutex |
+| `packages/host/src/plugin-host/version-mismatch-detector.ts` | Client-side fetch wrapping + drift detection |
+| `packages/host/src/dev-client/client.ts` | SSE event handlers (`dev:plugin:reload` etc.) |
+| `packages/host/src/plugin-host/PluginHost.tsx` | `hotSwapPlugin` — re-fetch + re-mount mechanics |
+
 ## Key Files
 
 | File | Purpose |

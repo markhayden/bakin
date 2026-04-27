@@ -240,6 +240,13 @@ bakin plugins upgrade my-plugin --yes   # skip consent prompt for new permission
 
 # Remove (refuses core plugins; full teardown sweep + tarball backup)
 bakin plugins remove my-plugin
+
+# Dev mode — symlink your local source tree as a plugin (Phase 2)
+bakin plugins link ~/dev/my-plugin
+bakin plugins link ~/dev/my-plugin --force   # override id collision
+
+# Dev mode — remove the symlink
+bakin plugins unlink my-plugin
 ```
 
 What happens under the hood:
@@ -296,6 +303,115 @@ local `.git/` to fetch into.
 `#subpath` only applies to `github:` (or full URL) sources. Local
 installs should point directly at the plugin directory; using `#subpath`
 on a local install returns a clear error.
+
+### Linked plugins + hot reload
+
+`bakin plugins link <localPath>` registers a developer-owned source
+tree as a plugin via a `fs.symlink` at `~/.bakin/plugins/<id>/`. Unlike
+`install`, it doesn't copy — your working tree IS the plugin. Combined
+with the hot-reload coordinator, file saves swap the plugin's code in
+the running bakin process without a restart.
+
+```sh
+# Start bakin with the hot-reload coordinator enabled.
+BAKIN_DEV_HOTRELOAD=1 bakin start
+
+# In another terminal, link your plugin source.
+bakin plugins link ~/dev/my-plugin
+
+# Edit ~/dev/my-plugin/index.ts and save. Within ~100ms:
+#   - The coordinator detects the change.
+#   - buildUserPlugin runs.
+#   - The reload pipeline tears down old hooks/routes/exec-tools etc.
+#   - The new module is imported with cache-bust (`?v=N`).
+#   - activate(ctx) re-runs against the same context.
+#   - The browser receives an SSE event and re-fetches client.js?v=N.
+#   - registerPlugin re-runs; the React tree re-mounts.
+```
+
+#### Watching the right files
+
+The coordinator watches a curated default set inside your plugin
+directory:
+
+- `index.ts` / `index.tsx` (server entry)
+- `client.ts` / `client.tsx` (client entry)
+- `bakin-plugin.json` (manifest)
+- `package.json` (deps)
+- `components/` (UI tree)
+- `lib/` (plugin-internal modules)
+- `hooks/` (custom hooks)
+
+Override via `bakin-plugin.json#devWatch`:
+
+```json
+{
+  "id": "my-plugin",
+  "name": "My Plugin",
+  "version": "0.1.0",
+  "devWatch": ["src", "templates", "schema.ts"]
+}
+```
+
+`node_modules/`, `dist/`, dotfiles, and `.tsbuildinfo` are always
+ignored. Saves arriving in a burst (cmd-S spam, multi-file refactor)
+are debounced (~80ms) into a single rebuild cycle. While a rebuild
+is in flight, additional saves coalesce into ONE follow-up cycle —
+not a queue.
+
+#### Designing for hot reload
+
+Your `activate(ctx)` runs on every reload. State arrays
+(routes/slots/hooks/etc.) are cleared between reloads, so registrations
+re-land cleanly on every cycle without piling up.
+
+What's NOT cleared automatically:
+
+- **Module-level side effects** outside of `activate()`. A top-level
+  `setInterval`, `fs.watch`, `process.on(...)`, or external WebSocket
+  connection will leak on reload — the OLD module's timers/listeners
+  keep running while the new module also installs its own. **Put all
+  side effects inside `activate(ctx)` and tear them down in
+  `onShutdown()`.** The dev loop calls `onShutdown` (errors logged
+  but ignored — a buggy shutdown can't brick the loop).
+
+- **Hooks invoked during in-flight requests.** A request that landed
+  in the old plugin's route handler completes against the old code;
+  the next request hits the new code. Plan your migrations
+  accordingly — forward-compatible response shapes survive a reload
+  in flight; breaking shape changes can leak a stale response.
+
+- **Closures captured BEFORE the reload.** Anything outside the
+  plugin process (a browser-side WebSocket, a worker that already
+  imported a now-stale function reference) keeps the old handle.
+  This is fine for normal request handling; mostly relevant for
+  test fixtures that cache references.
+
+#### Build errors
+
+If `Bun.build()` fails (TS error, syntax error), the coordinator
+broadcasts `dev:plugin:error` and the dev client renders a fixed-
+position overlay at the top of the viewport. The OLD plugin keeps
+responding correctly — the build failure doesn't sweep registries.
+Fix the error and save; the next successful build emits
+`dev:plugin:recover` (clears the overlay) and `dev:plugin:reload`
+(swaps the module).
+
+#### Activate errors
+
+If `activate(ctx)` throws, the coordinator sweeps registries (so
+the partial-state from a half-successful activate is gone) and
+broadcasts `dev:plugin:error`. The plugin enters an effective
+"disabled" state until the next reload succeeds — every route
+returns 404, hooks aren't registered, exec tools missing.
+
+#### Production
+
+Hot reload is dev-only. The compiled production binary doesn't import
+chokidar; the coordinator's import is gated behind
+`process.env.BAKIN_DEV_HOTRELOAD === '1'`. Production plugins behave
+exactly as before: install copies source to `~/.bakin/plugins/<id>/`,
+activate runs on next restart, restart-required for code changes.
 
 ### Permissions field
 
