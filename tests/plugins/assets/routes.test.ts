@@ -259,10 +259,10 @@ describe('GET / — list assets', () => {
     }
   })
 
-  it('looks up single asset by path', async () => {
+  it('looks up single asset by filename', async () => {
     const route = findRoute(plugin.routes, 'GET', '/')!
     const { status, body } = await callRoute(route, plugin.ctx, {
-      searchParams: { path: relPathFor(README) },
+      searchParams: { filename: README },
     })
 
     expect(status).toBe(200)
@@ -271,10 +271,10 @@ describe('GET / — list assets', () => {
     expect(assets[0].filename).toBe(README)
   })
 
-  it('returns empty when path not found', async () => {
+  it('returns empty when filename not found', async () => {
     const route = findRoute(plugin.routes, 'GET', '/')!
     const { status, body } = await callRoute(route, plugin.ctx, {
-      searchParams: { path: 'assets/store/2026-03/20260320-ghost-ffffffff.png' },
+      searchParams: { filename: '20260320-ghost-ffffffff.png' },
     })
 
     expect(status).toBe(200)
@@ -326,7 +326,7 @@ describe('GET /file — serve asset file', () => {
   it('serves an existing file with correct content-type', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file', {
-      searchParams: { path: relPathFor(HERO) },
+      searchParams: { name: HERO },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -342,7 +342,7 @@ describe('GET /file — serve asset file', () => {
   it('serves a markdown file', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file', {
-      searchParams: { path: relPathFor(README) },
+      searchParams: { name: README },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -350,30 +350,30 @@ describe('GET /file — serve asset file', () => {
     expect(res.headers.get('Content-Type')).toBe('text/markdown')
   })
 
-  it('returns 400 when path is missing', async () => {
+  it('returns 400 when name is missing', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file')
     const res = await route.handler(req, plugin.ctx)
 
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toMatch(/(path|name).*required/i)
+    expect(body.error).toMatch(/name.*required/i)
   })
 
-  it('returns 400 for path traversal attempt', async () => {
+  it('returns 400 for filename traversal attempt', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file', {
-      searchParams: { path: 'assets/../../../etc/passwd' },
+      searchParams: { name: '../etc/passwd' },
     })
     const res = await route.handler(req, plugin.ctx)
 
     expect(res.status).toBe(400)
   })
 
-  it('returns 400 when path does not start with assets/', async () => {
+  it('does not accept the removed path query parameter', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file', {
-      searchParams: { path: 'projects/secret.md' },
+      searchParams: { path: relPathFor(HERO) },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -383,7 +383,7 @@ describe('GET /file — serve asset file', () => {
   it('returns 404 for nonexistent file', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file', {
-      searchParams: { path: 'assets/store/2026-03/20260320-missing-ffffffff.png' },
+      searchParams: { name: '20260320-missing-ffffffff.png' },
     })
     const res = await route.handler(req, plugin.ctx)
 

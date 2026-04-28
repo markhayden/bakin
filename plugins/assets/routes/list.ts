@@ -22,23 +22,15 @@ export async function handleList(req: Request): Promise<Response> {
   const tag = url.searchParams.get('tag') || undefined
   const includeChildren = url.searchParams.get('includeChildren') === 'true'
   const grouped = url.searchParams.get('grouped') !== 'false'
-  const pathParam = url.searchParams.get('path') || undefined
   const filename = url.searchParams.get('filename') || undefined
 
   buildIndex()
 
-  // Single-asset lookup by filename (preferred — stable under retype/relink)
-  // or by path (legacy view). Filename takes precedence; canonical filenames
-  // derive their path via the pure pathForFilename function.
-  let path: string | undefined
+  // Single-asset lookup by filename — stable under retype/relink.
   if (filename) {
     const derived = pathForFilename(filename)
-    path = derived && existsSync(join(getContentDir(), derived)) ? derived : undefined
-  } else {
-    path = pathParam
-  }
-
-  if (path) {
+    const path = derived && existsSync(join(getContentDir(), derived)) ? derived : undefined
+    if (!path) return Response.json({ assets: [], count: 0, total: 0 })
     const asset = getAsset(path)
     if (!asset) return Response.json({ assets: [], count: 0, total: 0 })
     if (grouped) {
