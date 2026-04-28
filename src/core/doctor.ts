@@ -7,14 +7,14 @@
  *
  * Auto-fix policy is per-check: each plugin reads getSettings().doctor.autoFixSkill
  * inline. Unsafe issues (warn / error with autoFixable=false) are escalated
- * to the main agent via OpenClaw so they show up in conversation.
+ * to the runtime main agent so they show up in conversation.
  */
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
-import { sendAgentMessage } from './runtime-registry'
+import { getRuntimeAdapter } from './runtime-registry'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { isOnboarded } from './onboarding/state'
-import { getMainAgentId } from './main-agent'
 import { listHealthChecks } from '../../plugins/health/lib/health-check-registry'
 import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
 
@@ -83,7 +83,9 @@ async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void
   const message = `Bakin Doctor found ${issues.length} issue(s) that need your attention:\n\n${lines.join('\n')}\n\nRun \`bakin doctor\` for full details.`
 
   try {
-    await sendAgentMessage(getMainAgentId(), message)
+    const runtime = getRuntimeAdapter()
+    const mainAgentId = await getRuntimeMainAgentId(runtime)
+    await runtime.messaging.send({ agentId: mainAgentId, content: message })
     log.info('Notified main agent of unfixable issues', { count: issues.length })
   } catch (err) {
     // Gateway might be the issue — can't notify about that
@@ -95,6 +97,7 @@ export async function runDiagnostics(
   contentDir: string,
   _projectRoot: string,
 ): Promise<HealthCheckResult[]> {
+  void _projectRoot
   const settings = getSettings()
 
   // Gate: if the machine has never been through first-run onboarding and
