@@ -117,7 +117,6 @@ const healthPlugin: BakinPlugin = {
         } : null
 
         const mcp = getMcpSessions()
-        const settings = getSettings()
         const errors1h = getErrorCount(WINDOW_MS['1h'])
 
         return Response.json({
@@ -125,7 +124,6 @@ const healthPlugin: BakinPlugin = {
           errors1h,
           activeSessions: mcp.activeSessions,
           upSince: mcp.upSince,
-          runtimePort: settings.runtime.settings.gatewayPort,
           server: {
             port: Number(port),
             pid: process.pid,

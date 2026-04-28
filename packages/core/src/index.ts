@@ -49,7 +49,7 @@ export type { BakinPaths } from './content-dir'
 
 // Settings
 export { DEFAULT_SETTINGS, getSettings, updateSettings, resetSettingsCache } from './settings'
-export type { BakinSettings, OpenClawRuntimeSettings, RuntimeAdapterName, SearchAdapterName } from './settings'
+export type { BakinSettings, RuntimeAdapterSettings, RuntimeAdapterName, SearchAdapterName } from './settings'
 
 // Adapter contracts
 export type { AppServices, HealthService } from './app-services'
