@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -6,29 +6,23 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-projects-parser-${Date.now()}`)
 const projectsDir = join(testDir, 'projects')
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
-mock.module('../../../src/core/content-dir', () => ({
-  getBakinPaths: () => ({ projects: projectsDir }),
-  getContentDir: () => testDir,
-}))
-
 import {
   parseProject,
   serializeProject,
   computeProgress,
   nextTaskItemId,
-  readProject,
-  readAllProjects,
-  writeProject,
-  deleteProjectFile,
+  createProjectRepository,
+  type ProjectRepository,
   projectToSummary,
 } from '../../../plugins/projects/lib/parser'
+import { MarkdownStorageAdapter } from '../../../packages/core/src/storage/markdown-adapter'
 import type { Project, ProjectTask } from '../../../plugins/projects/types'
+
+let repo: ProjectRepository
+let readProject: ProjectRepository['readProject']
+let readAllProjects: ProjectRepository['readAllProjects']
+let writeProject: ProjectRepository['writeProject']
+let deleteProjectFile: ProjectRepository['deleteProjectFile']
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -84,6 +78,11 @@ Empty project.
 
 beforeEach(() => {
   mkdirSync(projectsDir, { recursive: true })
+  repo = createProjectRepository(new MarkdownStorageAdapter(testDir))
+  readProject = repo.readProject
+  readAllProjects = repo.readAllProjects
+  writeProject = repo.writeProject
+  deleteProjectFile = repo.deleteProjectFile
 })
 
 afterEach(() => {

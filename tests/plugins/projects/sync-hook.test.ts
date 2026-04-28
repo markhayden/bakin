@@ -18,7 +18,7 @@ import { tmpdir } from 'os'
 import type {
   PluginContext,
   FileBackedContentTypeDefinition,
-} from '@bakin/core/plugin-types'
+} from '@bakin/sdk/types'
 import { BakinEventBus } from '../../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapter'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
@@ -26,30 +26,6 @@ import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const testDir = join(tmpdir(), `bakin-test-projects-sync-${Date.now()}`)
 const projectsDir = join(testDir, 'projects')
-
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
-mock.module('../../../src/core/content-dir', () => ({
-  getBakinPaths: () => ({ projects: projectsDir }),
-  getContentDir: () => testDir,
-}))
-
-mock.module('../../../src/core/logger', () => ({
-  createLogger: () => ({
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
-  }),
-}))
-
-mock.module('../../../src/core/audit', () => ({
-  appendAudit: mock(),
-}))
 
 import projectsPlugin from '../../../plugins/projects'
 

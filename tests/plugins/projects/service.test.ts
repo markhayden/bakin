@@ -6,39 +6,6 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-test-projects-svc-${Date.now()}`)
 const projectsDir = join(testDir, 'projects')
 
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
-
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
-mock.module('../../../src/core/content-dir', () => ({
-  getBakinPaths: () => ({ projects: projectsDir }),
-  getContentDir: () => testDir,
-}))
-
-mock.module('../../../src/core/logger', () => ({
-  createLogger: () => ({
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
-  }),
-}))
-
-mock.module('../../../src/core/audit', () => ({
-  appendAudit: mock(),
-}))
-
-const mockCreateTask = mock((_opts?: unknown) => Promise.resolve({ id: 'newtask1' }))
-mock.module('../../../src/core/task-service', () => ({
-  createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
-}))
-
 const mockTaskboardColumns = {
   todo: [{ id: 'board01', title: 'Board Task 1' }],
   inProgress: [],
@@ -49,13 +16,6 @@ const mockTaskboardColumns = {
   backlog: [],
 }
 
-mock.module('../../../src/core/task-store', () => ({
-  readTaskboard: mock(() => ({ columns: mockTaskboardColumns })),
-}))
-mock.module('@/core/task-store', () => ({
-  readTaskboard: mock(() => ({ columns: mockTaskboardColumns })),
-}))
-
 // Suppress broadcast
 ;(globalThis as any).__bakinBroadcast = mock()
 
@@ -65,26 +25,75 @@ function clearIndex() {
   ;(globalThis as any).__bakinProjectLock = undefined
 }
 
-import {
-  createProject,
-  updateProject,
-  deleteProject,
-  addChecklistItem,
-  markChecklistItem,
-  updateChecklistItem,
-  removeChecklistItem,
-  linkChecklistItem,
-  promoteItemToTask,
-  attachAsset,
-  detachAsset,
-  autoCheckLinkedItem,
-  autoUnlinkTask,
-  rebuildIndex,
-  getProjectForTask,
-  getProjectTitleForTask,
-  resolveLinkedTaskStatuses,
-} from '../../../plugins/projects/lib/project-service'
-import { readProject } from '../../../plugins/projects/lib/parser'
+import { createProjectService, type ProjectService } from '../../../plugins/projects/lib/project-service'
+import { createProjectRepository, type ProjectRepository } from '../../../plugins/projects/lib/parser'
+import { MarkdownStorageAdapter } from '../../../packages/core/src/storage/markdown-adapter'
+import type { PluginContext } from '@bakin/sdk/types'
+
+let service: ProjectService
+let repo: ProjectRepository
+let createProject: ProjectService['createProject']
+let updateProject: ProjectService['updateProject']
+let deleteProject: ProjectService['deleteProject']
+let addChecklistItem: ProjectService['addChecklistItem']
+let markChecklistItem: ProjectService['markChecklistItem']
+let updateChecklistItem: ProjectService['updateChecklistItem']
+let removeChecklistItem: ProjectService['removeChecklistItem']
+let linkChecklistItem: ProjectService['linkChecklistItem']
+let promoteItemToTask: ProjectService['promoteItemToTask']
+let attachAsset: ProjectService['attachAsset']
+let detachAsset: ProjectService['detachAsset']
+let autoCheckLinkedItem: ProjectService['autoCheckLinkedItem']
+let autoUnlinkTask: ProjectService['autoUnlinkTask']
+let rebuildIndex: ProjectService['rebuildIndex']
+let getProjectForTask: ProjectService['getProjectForTask']
+let getProjectTitleForTask: ProjectService['getProjectTitleForTask']
+let resolveLinkedTaskStatuses: ProjectService['resolveLinkedTaskStatuses']
+let readProject: ProjectRepository['readProject']
+
+function buildCtx(): PluginContext {
+  const tasks = Object.values(mockTaskboardColumns).flat().map((task) => ({
+    ...task,
+    checked: task.id === 'board02',
+    column: task.id === 'board02' ? 'done' as const : 'todo' as const,
+  }))
+  return {
+    pluginId: 'projects',
+    storage: new MarkdownStorageAdapter(testDir),
+    runtime: {} as PluginContext['runtime'],
+    events: {} as PluginContext['events'],
+    tasks: {
+      create: mock(async () => ({ id: 'newtask1', title: 'New task', checked: false, column: 'todo' as const })),
+      update: mock(async () => ({ id: 'newtask1', title: 'New task', checked: false, column: 'todo' as const })),
+      move: mock(async () => ({ id: 'newtask1', title: 'New task', checked: false, column: 'todo' as const })),
+      remove: mock(async () => {}),
+      get: mock(async () => null),
+      list: mock(async () => tasks),
+      appendLog: mock(async () => {}),
+    },
+    assets: {
+      getByFilename: mock(async () => null),
+      list: mock(async () => []),
+      exists: mock(async () => false),
+      fileRef: mock(async (filename: string) => ({ kind: 'asset' as const, filename })),
+    },
+    registerNav: mock(),
+    registerRoute: mock(),
+    registerSlot: mock(),
+    registerExecTool: mock(),
+    registerSkill: mock(),
+    registerWorkflow: mock(),
+    registerNodeType: mock(() => ''),
+    registerNotificationChannel: mock(() => ''),
+    registerHealthCheck: mock(() => ''),
+    watchFiles: mock(),
+    getSettings: (() => ({})) as PluginContext['getSettings'],
+    updateSettings: mock(),
+    activity: { log: mock(), audit: mock() },
+    search: {} as PluginContext['search'],
+    hooks: { register: mock(() => () => {}), has: mock(() => false), invoke: mock(async () => undefined) },
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Setup / Teardown
@@ -93,7 +102,28 @@ import { readProject } from '../../../plugins/projects/lib/parser'
 beforeEach(() => {
   mkdirSync(projectsDir, { recursive: true })
   clearIndex()
-  mockCreateTask.mockClear()
+  repo = createProjectRepository(new MarkdownStorageAdapter(testDir))
+  service = createProjectService(buildCtx(), repo)
+  ;({
+    createProject,
+    updateProject,
+    deleteProject,
+    addChecklistItem,
+    markChecklistItem,
+    updateChecklistItem,
+    removeChecklistItem,
+    linkChecklistItem,
+    promoteItemToTask,
+    attachAsset,
+    detachAsset,
+    autoCheckLinkedItem,
+    autoUnlinkTask,
+    rebuildIndex,
+    getProjectForTask,
+    getProjectTitleForTask,
+    resolveLinkedTaskStatuses,
+  } = service)
+  readProject = repo.readProject
 })
 
 afterEach(() => {
@@ -284,7 +314,6 @@ describe('promoteItemToTask', () => {
     const result = await promoteItemToTask(id, 't001')
 
     expect(result.taskId).toBe('newtask1')
-    expect(mockCreateTask).toHaveBeenCalledTimes(1)
 
     const project = readProject(id)
     expect(project!.tasks[0].taskId).toBe('newtask1')
