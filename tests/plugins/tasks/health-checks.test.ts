@@ -397,6 +397,9 @@ describe('plugin registration', () => {
     const noopAsync = mock(async () => {})
     const ctx: Record<string, unknown> = {
       pluginId: 'tasks',
+      runtime: {
+        agents: { list: mock(async () => mockKnownAgents.map(id => ({ id, name: id }))) },
+      },
       registerRoute: noop, registerExecTool: noop, registerNav: noop,
       registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
       registerNodeType: noop, registerNotificationChannel: noop,

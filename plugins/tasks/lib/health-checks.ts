@@ -11,9 +11,9 @@
  */
 import { existsSync } from 'fs'
 import { join } from 'path'
+import { selectRuntimeMainAgent, type AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { getSettings } from '../../../src/core/settings'
-import { getMainAgentId } from '../../../src/core/main-agent'
 import { getHookRegistry } from '../../../src/lib/plugin-registry'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
 import { maybeGetAppServices } from '../../../src/core/app-services'
@@ -33,6 +33,21 @@ function error(check: string, message: string): HealthCheckResult {
 }
 function fixed(check: string, message: string): HealthCheckResult {
   return { check, status: 'fixed', message, autoFixable: true }
+}
+
+type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
+
+async function resolveKnownAgentIds(agentReader?: RuntimeAgentReader): Promise<Set<string>> {
+  const knownAgents = new Set<string>()
+  try {
+    const agents = await (agentReader ?? maybeGetAppServices()?.runtime.agents)?.list()
+    for (const agent of agents ?? []) knownAgents.add(agent.id)
+    const mainAgent = selectRuntimeMainAgent(agents ?? [])
+    if (mainAgent) knownAgents.add(mainAgent.id)
+  } catch {
+    // Adapter health is reported separately; keep this check focused on tasks.
+  }
+  return knownAgents
 }
 
 // ─── Taskboard: Bakin JSON store reachability ──────────────────────────────
@@ -58,7 +73,10 @@ export function checkTaskboard(): HealthCheckResult[] {
  * orphaned dependsOn refs on done tasks (clears them via the
  * tasks.clearDependency hook) when settings.doctor.autoFixSkill is true.
  */
-export async function checkTaskConsistency(contentDir: string): Promise<HealthCheckResult[]> {
+export async function checkTaskConsistency(
+  contentDir: string,
+  agentReader?: RuntimeAgentReader,
+): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
   const autoFix = getSettings().doctor.autoFixSkill
   const hooks = getHookRegistry()
@@ -69,13 +87,7 @@ export async function checkTaskConsistency(contentDir: string): Promise<HealthCh
     if (!board) { return [warn('task-consistency', 'Taskboard not available (tasks plugin not loaded)')] }
     const { columns } = board
 
-    const knownAgents = new Set<string>([getMainAgentId()])
-    try {
-      const agents = await maybeGetAppServices()?.runtime.agents.list()
-      for (const agent of agents ?? []) knownAgents.add(agent.id)
-    } catch {
-      // Adapter health is reported separately; keep this check focused on tasks.
-    }
+    const knownAgents = await resolveKnownAgentIds(agentReader)
 
     // Count tasks per agent
     const agentTaskCount: Record<string, number> = {}
@@ -87,7 +99,7 @@ export async function checkTaskConsistency(contentDir: string): Promise<HealthCh
       }
 
       // In-progress task assigned to unknown agent
-      if (task.agent && !knownAgents.has(task.agent) && task.agent !== getMainAgentId()) {
+      if (task.agent && !knownAgents.has(task.agent)) {
         results.push(warn('task-consistency', `In-progress task "${task.title}" assigned to unknown agent "${task.agent}"`))
       }
 

@@ -36,7 +36,7 @@ import {
   checkTaskConsistency,
   checkTaskPositionIntegrity,
 } from './lib/health-checks'
-import type { Task, TaskBoard, ColumnId } from './types'
+import type { Task, ColumnId } from './types'
 
 const log = createLogger('tasks')
 
@@ -117,7 +117,6 @@ const tasksPlugin: BakinPlugin = {
     /** Index a task by looking it up and indexing its current state */
     async function indexTask(taskId: string): Promise<void> {
       try {
-        const { getTask } = await import('./lib/flow-store')
         const board = readTaskboard()
         const columns = board.columns as unknown as Record<string, Task[]>
         for (const [colName, tasks] of Object.entries(columns)) {
@@ -647,7 +646,7 @@ const tasksPlugin: BakinPlugin = {
         taskId: z.string().describe('Your task ID (the one that depends)'),
         dependsOn: z.string().describe('Task ID you depend on'),
       },
-      handler: async (params: Record<string, unknown>, agent: string) => {
+      handler: async (params: Record<string, unknown>) => {
         try {
           await setDependencyWithEffects(params.taskId as string, params.dependsOn as string, 'mcp')
           return { ok: true, message: `Dependency registered. You will be re-dispatched when ${params.dependsOn} completes. Stop now.` }
@@ -761,7 +760,7 @@ const tasksPlugin: BakinPlugin = {
       id: 'task-consistency',
       name: 'Task consistency (orphans, overload, stale in-progress)',
       autoFix: true,
-      run: () => checkTaskConsistency(getContentDir()),
+      run: () => checkTaskConsistency(getContentDir(), ctx.runtime.agents),
     })
     ctx.registerHealthCheck({
       id: 'order-integrity',
