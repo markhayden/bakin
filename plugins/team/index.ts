@@ -26,13 +26,12 @@ import { readHeartbeats } from '../../src/lib/content'
 import { getContentDir, getBakinPaths } from '../../packages/core/src/content-dir'
 import { startAgent, stopAgent } from '../../src/lib/agents'
 import { resetSettingsCache } from '../../src/core/settings'
-import { getMainAgentId } from '../../src/core/main-agent'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
 import { restartRuntime } from '../../src/core/runtime-registry'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getStatsByMs } from '../../src/core/usage'
-import type { AgentRuntimeAdapter, RuntimeAgent } from '@bakin/core/adapters/runtime'
+import { getRuntimeMainAgentId, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { readLatestSessionTranscript } from './lib/session-reader'
 import { checkAgentRoster, checkPersonas, checkAgentAssets } from './lib/health-checks'
 import type {
@@ -118,20 +117,11 @@ function writeTeams(teams: OrgTeam[]): void {
  * current main agent id. This decouples team.json from the specific
  * orchestrator name so installs sharing the file don't get pinned to
  * "main" (or whatever id the local main agent happens to use).
- *
- * If `getMainAgentId()` itself fails (e.g. a malformed roster), we fall
- * back to returning the value as-is rather than crashing the write path.
  */
-function normalizeReportsTo(value: unknown): string | null {
+function normalizeReportsTo(value: unknown, mainAgentId: string): string | null {
   if (value === undefined || value === null) return null
   if (typeof value !== 'string') return null
-  try {
-    if (value === getMainAgentId()) return null
-  } catch (err) {
-    log.warn('normalizeReportsTo: getMainAgentId() threw — preserving value as-is', {
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
+  if (value === mainAgentId) return null
   return value
 }
 
@@ -311,8 +301,9 @@ async function addToRuntimeAllowlists(
   newAgentId: string,
   dispatchable: 'all' | 'main' | string[],
 ): Promise<void> {
+  const mainAgentId = await getRuntimeMainAgentId(runtime)
   if (dispatchable === 'main') {
-    await runtime.agents.updateAllowlist(getMainAgentId(), { add: [newAgentId] })
+    await runtime.agents.updateAllowlist(mainAgentId, { add: [newAgentId] })
     return
   }
 
@@ -327,7 +318,7 @@ async function addToRuntimeAllowlists(
   }
 
   const targetIds = new Set(dispatchable)
-  targetIds.add(getMainAgentId())
+  targetIds.add(mainAgentId)
   targetIds.delete(newAgentId)
   await Promise.all(Array.from(targetIds).map((agentId) => runtime.agents.updateAllowlist(agentId, { add: [newAgentId] })))
 }
@@ -932,7 +923,12 @@ const teamPlugin: BakinPlugin = {
 
           const knownIds = new Set(agents.map((a) => a.id))
           const teams = degradeUnknownReportsTo(readTeams(), knownIds)
-          return Response.json({ agents: result, displaySettings, teams, mainAgentId: getMainAgentId() })
+          return Response.json({
+            agents: result,
+            displaySettings,
+            teams,
+            mainAgentId: await getRuntimeMainAgentId(ctx.runtime),
+          })
         } catch (err) {
           log.error('Failed to list agents', err)
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -1023,7 +1019,7 @@ const teamPlugin: BakinPlugin = {
           if (!agentId) return Response.json({ error: 'agentId is required' }, { status: 400 })
 
           // Prevent deleting the main agent
-          if (agentId === getMainAgentId()) {
+          if (agentId === await getRuntimeMainAgentId(ctx.runtime)) {
             return Response.json({ error: 'Cannot delete the main orchestrator agent' }, { status: 403 })
           }
 
@@ -1516,10 +1512,11 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ error: `Team "${id}" already exists` }, { status: 409 })
         }
 
+        const mainAgentId = await getRuntimeMainAgentId(ctx.runtime)
         const team: OrgTeam = {
           id,
           label: body.label as string,
-          reportsTo: normalizeReportsTo(body.reportsTo),
+          reportsTo: normalizeReportsTo(body.reportsTo, mainAgentId),
           color: body.color as string | undefined,
           order: typeof body.order === 'number' ? body.order : teams.length,
         }
@@ -1547,7 +1544,9 @@ const teamPlugin: BakinPlugin = {
 
         const body = await req.json() as Record<string, unknown>
         if (body.label !== undefined) teams[idx].label = body.label as string
-        if (body.reportsTo !== undefined) teams[idx].reportsTo = normalizeReportsTo(body.reportsTo)
+        if (body.reportsTo !== undefined) {
+          teams[idx].reportsTo = normalizeReportsTo(body.reportsTo, await getRuntimeMainAgentId(ctx.runtime))
+        }
         if (body.color !== undefined) teams[idx].color = body.color as string
         if (body.order !== undefined) teams[idx].order = body.order as number
 
@@ -1900,7 +1899,7 @@ const teamPlugin: BakinPlugin = {
         const agentId = params.agentId as string
         const confirm = params.confirm as boolean
 
-        if (agentId === getMainAgentId()) return { ok: false, error: 'Cannot delete the main orchestrator agent' }
+        if (agentId === await getRuntimeMainAgentId(ctx.runtime)) return { ok: false, error: 'Cannot delete the main orchestrator agent' }
         if (confirm !== true) return { ok: false, error: 'confirm must be true to delete an agent' }
 
         const removed = await removeRuntimeAgent(ctx.runtime, agentId)

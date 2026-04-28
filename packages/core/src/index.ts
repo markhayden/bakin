@@ -112,7 +112,13 @@ export type {
   UpdateRuntimeAgentInput,
   WorkspaceFile,
 } from './adapters/runtime'
-export { hasChannelCapability } from './adapters/runtime'
+export {
+  getRuntimeMainAgent,
+  getRuntimeMainAgentId,
+  getRuntimeMainAgentName,
+  hasChannelCapability,
+  selectRuntimeMainAgent,
+} from './adapters/runtime'
 export { createMockRuntimeAdapter } from './adapters/runtime/testing'
 export type {
   AggregationRequest,
