@@ -3,7 +3,7 @@
  *
  * Reverses an install. Removes projected files, strips knowledge markers,
  * decrements ref-counts on dependencies (recursively removing dep packs
- * that drop to zero), optionally deletes the OpenClaw agent, and updates
+ * that drop to zero), optionally deletes the runtime agent, and updates
  * the lockfile.
  *
  * Refuses to remove a package that still has active dependents (pack
@@ -51,7 +51,7 @@ export interface RemoveOptions {
   packageId: string
   /** When true, leave knowledge-marker projections in place — only strip files. */
   keepBlocks?: boolean
-  /** When true (kind:"agent" only), also call OpenClaw to delete the agent. */
+  /** When true (kind:"agent" only), also call the runtime to delete the agent. */
   deleteAgent?: boolean
   /** When true, refuse-on-dependents is downgraded to a warning + force-remove. */
   force?: boolean
@@ -164,7 +164,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
 
     writeLockfile(lock)
 
-    // 4. Optionally delete the OpenClaw agent for kind:"agent"
+    // 4. Optionally delete the runtime agent for kind:"agent"
     let deletedAgent = false
     if (entry.kind === 'agent' && entry.agentId && options.deleteAgent) {
       try {
@@ -172,7 +172,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
         await removeRuntimeAllowListReferences(entry.agentId)
         deletedAgent = true
       } catch (err) {
-        log.warn('Failed to delete OpenClaw agent', {
+        log.warn('Failed to delete runtime agent', {
           agentId: entry.agentId,
           error: err instanceof Error ? err.message : String(err),
         })

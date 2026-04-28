@@ -94,7 +94,7 @@ const AgentStanzaSchema = z.object({
 })
 
 const InstallStanzaSchema = z.object({
-  /** Create the OpenClaw agent if no agent with this id exists. */
+  /** Create the runtime agent if no agent with this id exists. */
   createIfMissing: z.boolean().optional(),
   /** If an agent with this id already exists, adopt rather than refuse. */
   adoptIfExists: z.boolean().optional(),

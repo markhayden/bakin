@@ -3,11 +3,11 @@
  *
  *   GET  /daily-notes?agent=<id>           → list (sorted by date desc)
  *   GET  /daily-notes/:agent/:filename     → render one note
- *   POST /daily-notes/compare-search       → { antfly, lancedb } side-by-side
+ *   POST /daily-notes/compare-search       → { search, runtime } side-by-side
  *
- * The compare-search endpoint is the whole point of this tier: OpenClaw
- * already maintains a LanceDB vector index over daily notes, so we surface
- * both substrates in one response so the UI can show a diff.
+ * The compare-search endpoint surfaces both Bakin's search index and the
+ * active runtime's own memory search in one response so the UI can compare
+ * substrate behavior without naming provider internals.
  */
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { getRuntimeMemoryEntry, listRuntimeMemoryEntries } from '../runtime-memory'
@@ -68,7 +68,7 @@ interface CompareSearchBody {
 export const dailyNotesCompareSearchRoute: APIRoute = {
   path: '/daily-notes/compare-search',
   method: 'POST',
-  description: 'Run the same query against Antfly (bakin_memory) and OpenClaw LanceDB',
+  description: 'Run the same query against Bakin search and runtime memory search',
   handler: async (req: Request, ctx: PluginContext) => {
     let body: CompareSearchBody
     try {
@@ -83,30 +83,30 @@ export const dailyNotesCompareSearchRoute: APIRoute = {
     const agent = typeof body.agent === 'string' && body.agent.length > 0 ? body.agent : undefined
     const limit = typeof body.limit === 'number' ? body.limit : 20
 
-    // ── Antfly side ──
+    // ── Bakin search side ──
     const filters: Record<string, string> = { tier: 'daily_note' }
     if (agent) filters.agent = agent
-    const antflyParams: SearchQueryParams = { q: query, limit, filters }
-    const antflyRes = await ctx.search.query(antflyParams)
-    const antfly = antflyRes.results.map((r) => ({ id: r.id, score: r.score, ...r.fields }))
+    const searchParams: SearchQueryParams = { q: query, limit, filters }
+    const searchRes = await ctx.search.query(searchParams)
+    const search = searchRes.results.map((r) => ({ id: r.id, score: r.score, ...r.fields }))
 
-    // ── LanceDB side ──
-    let lancedb: unknown[] = []
-    let lancedbStatus: 'ok' | 'no_index_or_no_match' | 'error' = 'ok'
-    let lancedbError: string | undefined
+    // ── Runtime memory side ──
+    let runtime: unknown[] = []
+    let runtimeStatus: 'ok' | 'no_index_or_no_match' | 'error' = 'ok'
+    let runtimeError: string | undefined
     try {
       const cliRes = await ctx.runtime.memory.search(query, { agentId: agent, limit })
       const hits = cliRes.results ?? []
       if (hits.length === 0) {
-        lancedbStatus = 'no_index_or_no_match'
+        runtimeStatus = 'no_index_or_no_match'
       } else {
-        lancedb = hits
+        runtime = hits
       }
     } catch (err) {
-      lancedbStatus = 'error'
-      lancedbError = err instanceof Error ? err.message : String(err)
+      runtimeStatus = 'error'
+      runtimeError = err instanceof Error ? err.message : String(err)
     }
 
-    return Response.json({ antfly, lancedb, lancedbStatus, lancedbError })
+    return Response.json({ search, runtime, runtimeStatus, runtimeError })
   },
 }
