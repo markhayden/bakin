@@ -302,7 +302,7 @@ const healthPlugin: BakinPlugin = {
       id: 'mcporter',
       name: 'mcporter install + per-agent config',
       autoFix: true,
-      run: () => Promise.resolve(checkMcporter()),
+      run: () => checkMcporter(),
     })
     ctx.registerHealthCheck({
       id: 'gateway',

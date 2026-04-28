@@ -110,9 +110,9 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   // it only writes when the computed entries differ from what's on disk,
   // and it returns the list of changes it made.
   const port = getPort()
-  let changes: string[] = []
+  let changes: string[]
   try {
-    changes = syncConfig(port)
+    changes = await syncConfig(port)
   } catch (err) {
     log.error('Failed to sync mcporter config', err)
     return {

@@ -982,7 +982,7 @@ const teamPlugin: BakinPlugin = {
 
           // Bust settings cache and sync mcporter so new agent gets an MCP entry
           resetSettingsCache()
-          try { syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
+          try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
           // Restart OpenClaw gateway unless caller opted out
           const url = new URL(req.url)
@@ -1041,7 +1041,7 @@ const teamPlugin: BakinPlugin = {
           ctx.activity.audit('agent.deleted', 'system', { agent: agentId })
           ctx.search.remove(agentId).catch(() => {})
           resetSettingsCache()
-          try { syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
+          try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
           // Restart OpenClaw gateway
           restartRuntime().then(() => {
@@ -1830,7 +1830,7 @@ const teamPlugin: BakinPlugin = {
         ctx.activity.audit('agent.created', 'system', { agent: id, name })
         indexAgent(id, { id, name }, params.model as string || '', 'offline')
         resetSettingsCache()
-        try { syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
+        try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
         let gatewayRestarted = false
         try {
@@ -1916,7 +1916,7 @@ const teamPlugin: BakinPlugin = {
         ctx.activity.audit('agent.deleted', 'system', { agent: agentId })
         ctx.search.remove(agentId).catch(() => {})
         resetSettingsCache()
-        try { syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
+        try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
         let gatewayRestarted = false
         try {

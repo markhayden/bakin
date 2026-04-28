@@ -63,13 +63,13 @@ let syncConfigCalls = 0
 mock.module('../../../src/core/mcporter', () => ({
   isMcporterInstalled: () => mockMcporterInstalled,
   installMcporter: () => mockInstallMcporterReturn,
-  verifyConfig: () => ({
+  verifyConfig: async () => ({
     installed: true,
     configExists: true,
     agentEntries: mockAgentEntries,
     staleEntries: mockStaleEntries,
   }),
-  syncConfig: () => { syncConfigCalls++; return ['updated'] },
+  syncConfig: async () => { syncConfigCalls++; return ['updated'] },
 }))
 
 let mockGatewayPing = async () => true
@@ -305,50 +305,50 @@ describe('checkService', () => {
 // ─── checkMcporter ────────────────────────────────────────────────────────
 
 describe('checkMcporter', () => {
-  it('warns when mcporter is not installed (no autoFix)', () => {
+  it('warns when mcporter is not installed (no autoFix)', async () => {
     mockMcporterInstalled = false
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warn')
     expect(results[0].autoFixable).toBe(true)
     expect(results[0].message).toMatch(/not installed/)
   })
 
-  it('installs mcporter under autoFix when missing', () => {
+  it('installs mcporter under autoFix when missing', async () => {
     mockMcporterInstalled = false
     mockAutoFix = true
     mockAgentEntries = [{ agent: 'main', correct: true }]
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Installed mcporter'))).toBe(true)
   })
 
-  it('returns an error when install fails under autoFix', () => {
+  it('returns an error when install fails under autoFix', async () => {
     mockMcporterInstalled = false
     mockAutoFix = true
     mockInstallMcporterReturn = false
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(results.some(r => r.status === 'error' && r.message.includes('Failed to install mcporter'))).toBe(true)
   })
 
-  it('reports ok when all agent entries are correct', () => {
+  it('reports ok when all agent entries are correct', async () => {
     mockAgentEntries = [
       { agent: 'main', correct: true },
       { agent: 'patch', correct: true },
     ]
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(results.some(r => r.status === 'ok' && r.message.includes('All 2 agent entries'))).toBe(true)
   })
 
-  it('warns when agent entries are missing or outdated (no autoFix)', () => {
+  it('warns when agent entries are missing or outdated (no autoFix)', async () => {
     mockAgentEntries = [{ agent: 'main', correct: false }]
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(results.some(r => r.status === 'warn' && r.message.includes('1 agent(s) missing or outdated'))).toBe(true)
   })
 
-  it('runs syncConfig under autoFix when entries are wrong', () => {
+  it('runs syncConfig under autoFix when entries are wrong', async () => {
     mockAutoFix = true
     mockAgentEntries = [{ agent: 'main', correct: false }]
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(syncConfigCalls).toBeGreaterThanOrEqual(1)
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Config updated'))).toBe(true)
   })
