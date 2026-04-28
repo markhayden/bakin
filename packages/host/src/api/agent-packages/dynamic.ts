@@ -9,7 +9,7 @@
  *
  * The path family is `/api/agent-packages/...` rather than `/api/agents/...`
  * to avoid collision with the existing runtime surface (`/api/agents/{id}/
- * status`, `/message`, `/tasks` used by the Teams UI for OpenClaw runtime
+ * status`, `/message`, `/tasks` used by the Teams UI for runtime
  * ops). The two surfaces are conceptually distinct: the runtime surface
  * controls a live agent; this surface controls the install record + the
  * projection state.

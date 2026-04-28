@@ -106,7 +106,7 @@ export interface BakinPlugin {
 ```ts
 export const PermissionSchema = z.enum([
   'events.emit',     // broadcast SSE events
-  'openclaw.read',   // read agent identity/skills/state from ~/.openclaw/
+  'runtime.read',    // read agent identity/skills/state from the runtime adapter
   'storage.read',    // read files in ~/.bakin/
   'storage.write',   // write files in ~/.bakin/
 ])
@@ -115,7 +115,7 @@ export type Permission = z.infer<typeof PermissionSchema>
 
 export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'events.emit':   'Broadcast Server-Sent Events to connected browsers',
-  'openclaw.read': 'Read agent identity, skills, and workspace state from ~/.openclaw/',
+  'runtime.read':  'Read agent identity, skills, and workspace state from the runtime adapter',
   'storage.read':  'Read files in ~/.bakin/',
   'storage.write': 'Write files in ~/.bakin/',
 }
@@ -155,7 +155,7 @@ Populated during `pluginRegistry.initialize()` by walking `corePluginTable` entr
 |--------|---------|----------|
 | `packages/core/src/hooks/hook-registry.ts` | `unregisterByPlugin(pluginId: string): number` | Each handler stored alongside `pluginId` (added at register time via per-plugin `ctx.hooks.register` wrapper). Returns count removed. |
 | `scripts/lib/registry.ts` | `removeExecToolsByPlugin(pluginId: string): number` | Filter by name prefix `bakin_exec_<pluginId>_`. |
-| `src/core/search-registry.ts` | `purgeContentType(name: string): Promise<number>` | Atomic SQL-style `DELETE FROM bakin_<name>` against antfly. No-op + return 0 if antfly disabled. |
+| `src/core/search-registry.ts` | `purgeContentType(name: string): Promise<number>` | Atomic delete of all rows for a Bakin search content type through the active search adapter. No-op + return 0 if search is disabled. |
 | `plugins/workflows/lib/node-type-registry.ts` | (existing) `unregisterPluginNodeTypes(pluginId)` | Now called from remove flow, not just override. |
 | `src/core/notification-channels.ts` | (existing) `unregisterPluginNotificationChannels(pluginId)` | Same. |
 | `src/core/health-checks.ts` | (existing) `unregisterPluginHealthChecks(pluginId)` | Same. |
@@ -420,7 +420,7 @@ Specific to this work:
 **Layer B — Registry cleanup unit:**
 - `hook-unregister-by-plugin.test.ts` — Register from plugin A and B, sweep A, B handlers still fire; double-sweep is no-op; sweep with no matches returns 0
 - `exec-tools-remove-by-plugin.test.ts` — Prefix filtering correctness; tools without prefix unaffected; idempotent
-- `search-purge-content-type.test.ts` — Against in-memory antfly stub: insert N rows, purge, count == N, table rebuilds clean; antfly-disabled mode → no-op returns 0
+- `search-purge-content-type.test.ts` — Against an in-memory search adapter stub: insert N rows, purge, count == N, table rebuilds clean; search-disabled mode → no-op returns 0
 
 **Layer C — Integration (real fs, hermetic git in temp dirs):**
 - `install-flow.integration.test.ts` — Local-path install → lockfile written with correct shape, manifestSha matches, permissions captured. Github install (against hermetic bare repo) → same plus commitSha + ref recorded.

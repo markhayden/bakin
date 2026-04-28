@@ -3,7 +3,7 @@
  *
  * Refetches the package's source at the same `source` + `ref` recorded in
  * the lockfile, compares the new commit SHA to the recorded one, and
- * re-projects in update mode if they differ. The OpenClaw roster is NOT
+ * re-projects in update mode if they differ. The runtime roster is NOT
  * touched (defaultModel + dispatchableBy are populated only on fresh
  * install per the settled D5 decision — the user controls models through
  * the Models UI from then on).

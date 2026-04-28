@@ -1,7 +1,7 @@
 /**
  * Memory plugin — server entry point (v2 rebuild, C2).
  *
- * Read-only observability over every OpenClaw memory tier plus Bakin's own
+ * Read-only observability over every runtime memory tier plus Bakin's own
  * audit log, surfaced through a single `bakin_memory` search table. Per-tier
  * routes, UI, and indexer logic land in subsequent commits (C3–C8).
  *
@@ -47,7 +47,7 @@ interface MemorySettings {
   backfillDays: number
   skipSessionOverBytes: number
   skipResetBackups: boolean
-  lanceDbComparisonEnabled: boolean
+  runtimeComparisonEnabled: boolean
   turnRetentionDays: number
   auditRetentionDays: number
 }
@@ -56,7 +56,7 @@ const DEFAULTS: MemorySettings = {
   backfillDays: 30,
   skipSessionOverBytes: 10 * 1024 * 1024,
   skipResetBackups: true,
-  lanceDbComparisonEnabled: true,
+  runtimeComparisonEnabled: true,
   turnRetentionDays: 7,
   auditRetentionDays: 30,
 }
@@ -97,17 +97,17 @@ const memoryPlugin: BakinPlugin = {
         default: DEFAULTS.skipResetBackups,
       },
       {
-        key: 'lanceDbComparisonEnabled',
+        key: 'runtimeComparisonEnabled',
         type: 'boolean',
-        label: 'Compare against LanceDB recall',
-        description: 'Show OpenClaw daily-note vector recall alongside Antfly results.',
-        default: DEFAULTS.lanceDbComparisonEnabled,
+        label: 'Compare against runtime recall',
+        description: 'Show runtime daily-note recall alongside Bakin search results.',
+        default: DEFAULTS.runtimeComparisonEnabled,
       },
       {
         key: 'turnRetentionDays',
         type: 'number',
         label: 'Turn retention (days)',
-        description: 'Turns older than this are dropped at write time and pruned daily. OpenClaw still owns the source JSONL.',
+        description: 'Turns older than this are dropped at write time and pruned daily. The runtime still owns the source transcript.',
         default: DEFAULTS.turnRetentionDays,
       },
       {

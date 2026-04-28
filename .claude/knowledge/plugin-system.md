@@ -323,7 +323,7 @@ Specific `plugin.upgrade.rejected` reasons (`data.reason` field):
 ```ts
 PermissionSchema = z.enum([
   'events.emit',
-  'openclaw.read',
+  'runtime.read',
   'storage.read',
   'storage.write',
 ])

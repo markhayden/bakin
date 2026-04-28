@@ -537,7 +537,7 @@ export interface FilePatternMapper {
  *
  * Plugins should reach for this helper first. Use raw `registerContentType`
  * only when the source of truth is NOT the filesystem (e.g. SQLite,
- * external API, OpenClaw adapter).
+ * external API, runtime adapter).
  */
 export interface FileBackedContentTypeDefinition extends SearchContentTypeDefinition {
   /**
@@ -585,7 +585,7 @@ export interface SearchAPI {
    * Prefer `registerFileBackedContentType` when the source of truth is
    * a file under `~/.bakin/` — it wires up watcher hooks and startup
    * reconcile automatically. Use this raw form only for non-filesystem
-   * sources (SQLite, external APIs, OpenClaw adapters).
+   * sources (SQLite, external APIs, runtime adapters).
    */
   registerContentType(def: SearchContentTypeDefinition): void
 

@@ -4,13 +4,13 @@ _Living doc for the completed memory plugin rebuild (C1–C11)._
 
 ## What it is
 
-A read-only observability dashboard over every OpenClaw memory tier plus Bakin's own audit log. All 7 tiers land in a single Antfly table (`bakin_memory`) with a `tier` facet discriminator so the whole memory system is semantically and globally searchable through one registration.
+A read-only observability dashboard over every runtime memory tier plus Bakin's own audit log. All 7 tiers land in a single Bakin search table (`bakin_memory`) with a `tier` facet discriminator so the whole memory system is semantically and globally searchable through one registration.
 
 ## Tiers
 
 | tier | source | status |
 |---|---|---|
-| `session` | OpenClaw gateway `sessions.list` + `agents/*/sessions/sessions.json` fallback | ✅ C6 |
+| `session` | runtime session listing + file-backed fallback | ✅ C6 |
 | `turn` | `agents/*/sessions/<sessionId>.jsonl` | ✅ C6 |
 | `checkpoint` | `agents/*/sessions/*.checkpoint.*.jsonl` | ✅ C7 |
 | `daily_note` | `workspace/memory/*.md` | ✅ C5 |
@@ -182,8 +182,8 @@ plugins/memory/
 
 - **Bakin reads, never writes.** No mutations to any `~/.openclaw/` path.
 - **One content type, one table.** `bakin_memory`. The contract test (`getTableForPlugin`) enforces this.
-- **The adapter is the only ~/.openclaw reader.** All other modules (indexer, parsers, routes) must go through `plugins/memory/lib/openclaw-adapter.ts`.
-- **Path resolution goes through `getOpenClawPath()` always.** No hardcoded `~/.openclaw/` strings.
+- **The runtime adapter is the only runtime-home reader.** All other modules (indexer, parsers, routes) must go through the typed runtime memory surfaces.
+- **Path resolution goes through adapter APIs.** No hardcoded runtime-home strings.
 - **Offsets are atomic.** `writeFileSync(tmp)` → `renameSync(tmp, file)` — never truncate-in-place.
 - **Tests mock everything.** `getContentDir`, logger, watcher, `openclaw-home`, `main-agent`, `vault`, `settings`, `child_process`, global `WebSocket`.
 
@@ -196,8 +196,8 @@ Lives at `~/.bakin/plugin-settings/memory.json`. Fields:
 | `backfillDays` | `30` | On first activation, index this many days of history across all tiers. |
 | `skipSessionOverBytes` | `10485760` | Transcripts larger than this are skipped. |
 | `skipResetBackups` | `true` | Skip `*.reset.*.jsonl` historical backups. |
-| `lanceDbComparisonEnabled` | `true` | Show OpenClaw daily-note vector recall alongside Antfly results. |
-| `turnRetentionDays` | `7` | Drop turn rows older than this at write time and in the daily prune. OpenClaw still owns the source JSONL. |
+| `runtimeComparisonEnabled` | `true` | Show runtime daily-note recall alongside Bakin search results. |
+| `turnRetentionDays` | `7` | Drop turn rows older than this at write time and in the daily prune. The runtime still owns the source transcript. |
 | `auditRetentionDays` | `30` | Drop audit rows older than this at write time and in the daily prune. |
 
 ## Retention + TTL prune
@@ -246,12 +246,12 @@ They're intentionally separate — a user debugging a search-quality issue wants
   - Stable row ids: `durable:<16-char-sha256(agent|basename|chunkIndex)>` — chunk count is tracked per file so shrinking a file (e.g. deleting an H1) removes the now-orphan chunk keys on reindex.
   - Adapter exposes `durableFilePath`, `durableFileMtime`, and `matchDurablePath(path)` so the watcher can map a fs path back to an `(agent, basename)` pair without re-listing agents everywhere.
   - Routes: `GET /api/plugins/memory/durable?agent=<id>` lists canonical files present for that agent; `GET /api/plugins/memory/durable/:agent/:basename` returns `{ agent, file, content }`. Both delegate to the adapter — no direct `~/.openclaw/` reads in route code.
-- C5 — `feat(memory): daily-notes tier with LanceDB/Antfly comparison toggle` ✅
-  - One row per `workspace/memory/YYYY-MM-DD*.md` file — no chunking. OpenClaw's own LanceDB index already treats daily notes as whole documents, and they tend to be short-form; splitting them would just fragment recall.
+- C5 — `feat(memory): daily-notes tier with runtime/search comparison toggle` ✅
+  - One row per runtime daily-note file — no chunking. Runtime memory search usually treats daily notes as whole documents, and they tend to be short-form; splitting them would just fragment recall.
   - Stable row ids: `daily_note:<16-char-sha256(agent|filename)>`. Filename validation via `/^(\d{4}-\d{2}-\d{2})([-.].*)?\.md$/` — `random.md` or `notes.md` return null from the parser and are skipped.
   - Adapter extended with `dailyNotePath`, `dailyNoteMtime`, `dailyNoteSize`, and `matchDailyNotePath(path)`. The matcher handles both `workspaces/<agent>/memory/` and the main-agent collapsed `workspace/memory/` layout, and excludes subdirectories like `memory/.dreams/` and `memory/dreaming/`.
-  - `POST /daily-notes/compare-search` is the whole point of this tier: it runs the same query against both substrates in parallel and returns `{ antfly, lancedb, lancedbStatus, lancedbError? }` so the UI (lands in C9) can show a diff. `lancedbStatus` is `'ok' | 'no_index_or_no_match' | 'error'` — the UI treats the last two as non-fatal since OpenClaw's index may not be populated.
-  - LanceDB side shells out via `openclaw memory search --json` through `openclaw-cli.ts`; Antfly side reuses the plugin's unified `bakin_memory` query with `{ tier: 'daily_note' }` filter.
+  - `POST /daily-notes/compare-search` is the whole point of this tier: it runs the same query against both substrates in parallel and returns `{ search, runtime, runtimeStatus, runtimeError? }` so the UI can show a diff. `runtimeStatus` is `'ok' | 'no_index_or_no_match' | 'error'` — the UI treats the last two as non-fatal since runtime memory indexes may not be populated.
+  - Runtime side calls `ctx.runtime.memory.search`; Bakin search side reuses the plugin's unified `bakin_memory` query with `{ tier: 'daily_note' }` filter.
 - C6 — `feat(memory): session + turn tiers with WS-driven live updates` ✅
   - **Session tier.** Data source is primary/fallback: try `gatewayCall('sessions.list', { agentId })` on the native WS client; on any error, fall back to `agents/<id>/sessions/sessions.json` via the adapter. Accepts both `{ sessions: {…} }` and bare `{ 'agent:…': {…} }` shapes — OpenClaw's gateway and FS disagree on the wrapper, so the extractor tolerates both without any adapter-specific branching.
   - Row ids: `session:<16-char-sha256(agent|sessionKey)>`. Orphan removal runs on every re-index — the indexer tracks `lastSessionKeys: Map<agent, Set<sessionKey>>` and `ctx.search.remove()`s any key that disappeared between runs. Session keys are never rewritten, so this is safe.

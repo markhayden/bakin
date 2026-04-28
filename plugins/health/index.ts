@@ -173,7 +173,7 @@ const healthPlugin: BakinPlugin = {
       },
     })
 
-    // Agent context/token usage from OpenClaw sessions
+    // Agent context/token usage from runtime sessions
     ctx.registerRoute({
       path: '/usage',
       method: 'GET',
