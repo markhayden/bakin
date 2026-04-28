@@ -156,7 +156,6 @@ plugins/schedule/
   lib/
     cron-parser.ts           — NL and raw cron parsing
     jobs-reader.ts           — Merges OpenClaw jobs + sidecar metadata
-    openclaw-cron.ts         — OpenClaw CLI wrapper (add/edit/remove/run)
     runs-reader.ts           — Read run history from JSONL files
     sidecar.ts               — Sidecar CRUD, pause/skip/failure logic
   components/

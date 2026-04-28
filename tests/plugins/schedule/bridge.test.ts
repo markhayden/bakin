@@ -8,7 +8,6 @@ const testDir = join(tmpdir(), `bakin-test-bridge-${Date.now()}`)
 const sidecarDir = join(testDir, 'schedule')
 const sidecarPath = join(sidecarDir, 'sidecar.json')
 const openclawDir = join(testDir, 'openclaw')
-const openclawCronDir = join(openclawDir, 'cron')
 
 // Mock external deps
 mock.module('@bakin/core/main-agent', () => ({
@@ -88,16 +87,8 @@ mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => mockHookRegistry,
 }))
 
-// Mock OpenClaw cron wrappers
-mock.module('@bakin/schedule/lib/openclaw-cron', () => ({
-  cronAdd: mock(() => Promise.resolve('new-job')),
-  cronEdit: mock(() => Promise.resolve()),
-  cronRemove: mock(() => Promise.resolve()),
-  cronRun: mock(() => Promise.resolve()),
-  cronList: mock(() => Promise.resolve([])),
-}))
-
 import { readSidecar, writeSidecar, upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
   return {
@@ -165,6 +156,7 @@ async function callBridge(
     storage: {} as any,
     events: {} as any,
     pluginId: 'schedule',
+    runtime: createMockRuntimeAdapter(),
     activity: {
       log: mock((agent: string, message: string, opts?: { taskId?: string }) => {
         const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as ((...args: unknown[]) => void) | undefined
@@ -224,12 +216,6 @@ describe('schedule/bridge', () => {
   beforeEach(() => {
     mock.clearAllMocks()
     mkdirSync(sidecarDir, { recursive: true })
-    mkdirSync(openclawCronDir, { recursive: true })
-    // Write a minimal OpenClaw jobs file so readMergedJobs doesn't wipe sidecar entries as stale
-    writeFileSync(join(openclawCronDir, 'jobs.json'), JSON.stringify({
-      version: 1,
-      jobs: [{ id: 'test-job', name: 'Test Job', schedule: { kind: 'cron', expr: '0 9 * * *' }, enabled: true }],
-    }))
     mockCreateTask.mockResolvedValue({ id: 'task-abc', workflowId: undefined })
 
     // Reset taskboard

@@ -5,18 +5,17 @@
 import { randomBytes, timingSafeEqual } from 'crypto'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
-import { readMergedJobs } from './lib/jobs-reader'
+import type { CronJob } from '@bakin/core/adapters/runtime'
+import { mergeJob } from './lib/jobs-reader'
 import { readSidecar, upsertJob, removeJob, getJob, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults } from './lib/sidecar'
-import { readRuns, getLastRun } from './lib/runs-reader'
 import { parseSchedule } from './lib/cron-parser'
-import { cronAdd, cronEdit, cronRemove, cronRun } from './lib/openclaw-cron'
 import { createTaskWithEffects } from '../../src/core/task-service'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { getMainAgentId } from '../../src/core/main-agent'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import { checkScheduleSync } from './lib/health-checks'
-import type { BakinJobMeta, BridgePayload, BridgeResult } from './types'
+import type { BakinJobMeta, BridgePayload, BridgeResult, MergedJob, RunEntry } from './types'
 
 const log = createLogger('schedule')
 
@@ -264,7 +263,7 @@ const schedulePlugin: BakinPlugin = {
   navItems: [],
   contentFiles: [],
 
-  activate(ctx: PluginContext) {
+  async activate(ctx: PluginContext) {
     pluginCtx = ctx
 
     // ─── Search Content Type Registration ─────────────────────────────
@@ -284,15 +283,55 @@ const schedulePlugin: BakinPlugin = {
       embeddingTemplate: '{{name}} {{command}}',
       facets: ['agent', 'enabled'],
       reindex: async function* () {
-        for (const job of readMergedJobs()) {
+        for (const job of await readMergedRuntimeJobs()) {
           yield { key: job.id, doc: jobToSearchDoc(job) }
         }
       },
-      verifyExists: async () => true, // Jobs are ephemeral, managed by OpenClaw
+      verifyExists: async () => true, // Jobs are ephemeral, managed by the runtime adapter.
     })
 
+    async function readMergedRuntimeJobs(): Promise<MergedJob[]> {
+      const sidecar = readSidecar()
+      const jobs = await ctx.runtime.cron.list()
+      return jobs.map((job) => mergeJob(runtimeCronToOpenClawJob(job), sidecar.jobs[job.id]))
+    }
+
+    function runtimeCronToOpenClawJob(job: CronJob) {
+      return {
+        id: job.id,
+        name: job.name,
+        schedule: {
+          kind: 'cron' as const,
+          expr: job.schedule,
+          tz: typeof job.metadata?.tz === 'string' ? job.metadata.tz : undefined,
+        },
+        enabled: job.enabled,
+        delivery: typeof job.metadata?.webhookUrl === 'string'
+          ? { mode: 'webhook' as const, url: job.metadata.webhookUrl }
+          : undefined,
+        payload: { message: job.command },
+        createdAt: typeof job.metadata?.createdAt === 'string' ? job.metadata.createdAt : undefined,
+        updatedAt: typeof job.metadata?.updatedAt === 'string' ? job.metadata.updatedAt : undefined,
+      }
+    }
+
+    function runtimeRunToEntry(run: Awaited<ReturnType<typeof ctx.runtime.cron.listRuns>>[number]): RunEntry {
+      return {
+        runId: run.id,
+        jobId: run.jobId,
+        timestamp: run.startedAt ?? new Date().toISOString(),
+        status: run.status === 'failed' ? 'failure' : run.status === 'cancelled' ? 'skipped' : 'success',
+        error: run.error,
+      }
+    }
+
+    async function getLastRuntimeRun(jobId: string): Promise<RunEntry | null> {
+      const runs = await ctx.runtime.cron.listRuns(jobId)
+      return runs[0] ? runtimeRunToEntry(runs[0]) : null
+    }
+
     /** Convert a merged job to a search document */
-    function jobToSearchDoc(job: ReturnType<typeof readMergedJobs>[number]): Record<string, unknown> {
+    function jobToSearchDoc(job: MergedJob): Record<string, unknown> {
       return {
         name: job.displayName || job.name || job.id,
         schedule: job.humanSchedule || job.schedule.value || '',
@@ -305,16 +344,18 @@ const schedulePlugin: BakinPlugin = {
 
     /** Index a job in the search index using the merged runtime view */
     function indexJob(jobId: string): void {
-      const job = readMergedJobs().find(j => j.id === jobId)
-      if (!job) return
-      ctx.search.index(jobId, jobToSearchDoc(job)).catch((err) => {
+      readMergedRuntimeJobs().then((jobs) => {
+        const job = jobs.find(j => j.id === jobId)
+        if (!job) return
+        return ctx.search.index(jobId, jobToSearchDoc(job))
+      }).catch((err) => {
         log.warn('Failed to index job', { jobId, error: err instanceof Error ? err.message : String(err) })
       })
     }
 
     /** Runtime jobs live in OpenClaw + sidecar, so sync them into search on plugin activation. */
-    function syncRuntimeJobsToSearch(): void {
-      const jobs = readMergedJobs()
+    async function syncRuntimeJobsToSearch(): Promise<void> {
+      const jobs = await readMergedRuntimeJobs()
       for (const job of jobs) {
         ctx.search.index(job.id, jobToSearchDoc(job)).catch((err) => {
           log.warn('Failed to index runtime job', { jobId: job.id, error: err instanceof Error ? err.message : String(err) })
@@ -322,13 +363,13 @@ const schedulePlugin: BakinPlugin = {
       }
     }
 
-    syncRuntimeJobsToSearch()
+    await syncRuntimeJobsToSearch()
 
     // ── API Routes ─────────────────────────────────────────────────────
 
     // GET / — list all jobs (merged)
-    const listJobsHandler = () => {
-      const jobs = readMergedJobs().map(j => ({
+    const listJobsHandler = async () => {
+      const jobs = (await readMergedRuntimeJobs()).map(j => ({
         ...j,
         cron: j.schedule.type === 'cron' ? j.schedule.value : undefined,
       }))
@@ -362,13 +403,13 @@ const schedulePlugin: BakinPlugin = {
       }
 
       const tz = body.tz || getSystemTimezone()
-      const jobId = await cronAdd({
+      const created = await ctx.runtime.cron.create({
         name: body.name,
-        cron: parsed.cron,
-        session: 'isolated',
-        webhookUrl: buildBridgeWebhookUrl(),
-        tz,
+        schedule: parsed.cron,
+        command: `bakin:schedule:${body.name}`,
+        metadata: { tz, webhookUrl: buildBridgeWebhookUrl() },
       })
+      const jobId = created.id
 
       const meta: BakinJobMeta = {
         jobId,
@@ -409,15 +450,17 @@ const schedulePlugin: BakinPlugin = {
         const meta = getJob(jobId)
         if (!meta) return json({ error: 'Job not found in sidecar' }, 404)
 
-        // Update OpenClaw fields if schedule changed
+        const runtimePatch: { name?: string; schedule?: string } = {}
         if (body.schedule && typeof body.schedule === 'string') {
           const parsed = parseSchedule(body.schedule)
           if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
-          await cronEdit(jobId, { cron: parsed.cron })
+          runtimePatch.schedule = parsed.cron
         }
         if (body.name && typeof body.name === 'string') {
-          await cronEdit(jobId, { name: body.name })
+          runtimePatch.name = body.name
+          meta.displayName = body.name
         }
+        if (Object.keys(runtimePatch).length > 0) await ctx.runtime.cron.update(jobId, runtimePatch)
 
         // Update sidecar fields
         const sidecarFields = [
@@ -442,7 +485,7 @@ const schedulePlugin: BakinPlugin = {
       path: '/:jobId',
       method: 'GET',
       description: 'Get details for a single scheduled job',
-      handler: (req: Request) => {
+      handler: async (req: Request) => {
         const url = new URL(req.url)
         const jobId = url.searchParams.get('jobId')
         if (!jobId) return json({ error: 'jobId required' }, 400)
@@ -451,7 +494,7 @@ const schedulePlugin: BakinPlugin = {
         if (!meta) return json({ error: 'Job not found' }, 404)
 
         const defaults = withDefaults(meta)
-        const lastRun = getLastRun(jobId)
+        const lastRun = await getLastRuntimeRun(jobId)
         return json({
           job: {
             id: meta.jobId,
@@ -483,7 +526,7 @@ const schedulePlugin: BakinPlugin = {
       const jobId = url.searchParams.get('jobId') || (body as Record<string, unknown>).jobId as string | undefined
       if (!jobId) return json({ error: 'jobId required' }, 400)
 
-      await cronRemove(jobId)
+      await ctx.runtime.cron.remove(jobId)
       removeJob(jobId)
       ctx.search.remove(jobId).catch(() => {})
 
@@ -543,7 +586,7 @@ const schedulePlugin: BakinPlugin = {
       const body = await readBody<{ jobId?: string }>(req).catch(() => ({}))
       const jobId = url.searchParams.get('jobId') || (body as Record<string, unknown>).jobId as string | undefined
       if (!jobId) return json({ error: 'jobId required' }, 400)
-      await cronRun(jobId, true)
+      await ctx.runtime.cron.runNow(jobId)
       ctx.activity.audit('job.run_now', 'system', { jobId })
       ctx.activity.log('system', `Triggered immediate run for "${jobId}"`)
       return json({ ok: true })
@@ -551,12 +594,12 @@ const schedulePlugin: BakinPlugin = {
     ctx.registerRoute({ path: '/:jobId/run', method: 'POST', description: 'Trigger immediate run', handler: runNowHandler })
 
     // GET /:jobId/runs — run history
-    const runsHandler = (req: Request) => {
+    const runsHandler = async (req: Request) => {
       const url = new URL(req.url)
       const jobId = url.searchParams.get('jobId')
       if (!jobId) return json({ error: 'jobId query param required' }, 400)
       const limit = parseInt(url.searchParams.get('limit') ?? '50', 10)
-      const runs = readRuns(jobId, limit)
+      const runs = (await ctx.runtime.cron.listRuns(jobId)).slice(0, limit).map(runtimeRunToEntry)
       return json({ runs })
     }
     ctx.registerRoute({ path: '/:jobId/runs', method: 'GET', description: 'Get run history for a job', handler: runsHandler })
@@ -587,7 +630,7 @@ const schedulePlugin: BakinPlugin = {
         agentId: z.string().optional().describe('Filter by assigned agent'),
       },
       handler: async (params: Record<string, unknown>) => {
-        let jobs = readMergedJobs()
+        let jobs = await readMergedRuntimeJobs()
         if (params.filter === 'bakin') jobs = jobs.filter(j => j.isBakinJob)
         if (params.agentId) jobs = jobs.filter(j => j.agentId === params.agentId)
         return {
@@ -626,13 +669,13 @@ const schedulePlugin: BakinPlugin = {
         if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
 
         const tz = getSystemTimezone()
-        const jobId = await cronAdd({
+        const created = await ctx.runtime.cron.create({
           name: params.name as string,
-          cron: parsed.cron,
-          session: 'isolated',
-          webhookUrl: buildBridgeWebhookUrl(),
-          tz,
+          schedule: parsed.cron,
+          command: `bakin:schedule:${params.name as string}`,
+          metadata: { tz, webhookUrl: buildBridgeWebhookUrl() },
         })
+        const jobId = created.id
 
         const meta: BakinJobMeta = {
           jobId,
@@ -679,9 +722,9 @@ const schedulePlugin: BakinPlugin = {
         if (params.schedule) {
           const parsed = parseSchedule(params.schedule as string)
           if (!parsed) return { ok: false, error: 'Could not parse schedule' }
-          await cronEdit(params.jobId as string, { cron: parsed.cron })
+          await ctx.runtime.cron.update(params.jobId as string, { schedule: parsed.cron })
         }
-        if (params.name) await cronEdit(params.jobId as string, { name: params.name as string })
+        if (params.name) await ctx.runtime.cron.update(params.jobId as string, { name: params.name as string })
 
         const fields = ['displayName', 'agentId', 'workflowId', 'taskPrompt', 'taskTitle']
         for (const f of fields) {
@@ -745,7 +788,7 @@ const schedulePlugin: BakinPlugin = {
       },
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
-        await cronRemove(params.jobId as string)
+        await ctx.runtime.cron.remove(params.jobId as string)
         removeJob(params.jobId as string)
         ctx.search.remove(params.jobId as string).catch(() => {})
         return { ok: true }
@@ -764,7 +807,7 @@ const schedulePlugin: BakinPlugin = {
         const meta = getJob(params.jobId as string)
         if (!meta) return { ok: false, error: 'Job not found' }
         const defaults = withDefaults(meta)
-        const lastRun = getLastRun(params.jobId as string)
+        const lastRun = await getLastRuntimeRun(params.jobId as string)
         return {
           ok: true,
           job: {
@@ -802,7 +845,7 @@ const schedulePlugin: BakinPlugin = {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
         const meta = getJob(params.jobId as string)
         if (!meta) return { ok: false, error: 'Job not found' }
-        await cronRun(params.jobId as string, true)
+        await ctx.runtime.cron.runNow(params.jobId as string)
         ctx.activity.audit('job.run_now', 'system', { jobId: params.jobId })
         return { ok: true, jobId: params.jobId }
       },
@@ -819,7 +862,7 @@ const schedulePlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
         const limit = typeof params.limit === 'number' ? params.limit : 50
-        const runs = readRuns(params.jobId as string, limit)
+        const runs = (await ctx.runtime.cron.listRuns(params.jobId as string)).slice(0, limit).map(runtimeRunToEntry)
         return { ok: true, runs }
       },
     })
@@ -847,7 +890,7 @@ const schedulePlugin: BakinPlugin = {
         date: z.string().optional().describe('ISO date to check (defaults to today)'),
       },
       handler: async (params: Record<string, unknown>) => {
-        const jobs = readMergedJobs()
+        const jobs = await readMergedRuntimeJobs()
         const bakinJobs = jobs.filter(j => j.isBakinJob)
 
         const alerts = bakinJobs.filter(j =>
@@ -893,8 +936,24 @@ const schedulePlugin: BakinPlugin = {
     log.info('Schedule plugin activated')
   },
 
-  onReady() {
-    const jobs = readMergedJobs()
+  async onReady() {
+    const runtime = pluginCtx?.runtime
+    if (!runtime) return
+    const sidecar = readSidecar()
+    const jobs = (await runtime.cron.list()).map((job) => mergeJob({
+      id: job.id,
+      name: job.name,
+      schedule: {
+        kind: 'cron' as const,
+        expr: job.schedule,
+        tz: typeof job.metadata?.tz === 'string' ? job.metadata.tz : undefined,
+      },
+      enabled: job.enabled,
+      delivery: typeof job.metadata?.webhookUrl === 'string'
+        ? { mode: 'webhook' as const, url: job.metadata.webhookUrl }
+        : undefined,
+      payload: { message: job.command },
+    }, sidecar.jobs[job.id]))
     const bakin = jobs.filter(j => j.isBakinJob)
     const paused = bakin.filter(j => j.paused)
     log.info(`Ready — ${bakin.length} bakin jobs (${paused.length} paused), ${jobs.length} total`)
