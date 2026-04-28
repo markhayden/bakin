@@ -32,7 +32,6 @@ import type { WorkflowDefinition, WorkflowStep } from '../types'
 const NODE_WIDTH = 280
 const NODE_HEIGHT = 100
 const Y_SPACING = 130
-const X_SPACING = 380
 const SUBFLOW_PADDING_X = 30
 const SUBFLOW_PADDING_TOP = 48
 const SUBFLOW_PADDING_BOTTOM = 32
@@ -64,26 +63,6 @@ function stepNodeData(step: WorkflowStep) {
       : undefined,
     workflow_id: step.type === 'workflow' ? (step as { workflow_id?: string }).workflow_id : undefined,
   }
-}
-
-/**
- * Measure the height a sub-workflow's inline expansion will take.
- * Counts its steps (skipping 'done'-targeted gate outputs) vertically.
- */
-function measureSubWorkflowHeight(def: WorkflowDefinition, subWorkflows: Record<string, WorkflowDefinition>): number {
-  let count = 0
-  for (const step of def.steps) {
-    if (step.type === 'workflow') {
-      const wfId = (step as { workflow_id?: string }).workflow_id
-      const subDef = wfId ? subWorkflows[wfId] : undefined
-      if (subDef) {
-        count += measureSubWorkflowStepCount(subDef, subWorkflows)
-        continue
-      }
-    }
-    count++
-  }
-  return count
 }
 
 function measureSubWorkflowStepCount(def: WorkflowDefinition, subWorkflows: Record<string, WorkflowDefinition>): number {

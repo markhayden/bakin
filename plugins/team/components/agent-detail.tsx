@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from '@bakin/sdk/hooks'
 import { ArrowLeft, Loader2, Camera, Trash2, BookOpen, Sparkles, Calendar } from 'lucide-react'
-import { Badge } from "@bakin/sdk/ui"
 import { Button } from "@bakin/sdk/ui"
 import {
   Dialog,

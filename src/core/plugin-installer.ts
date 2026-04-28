@@ -3,7 +3,7 @@
  * Handles installing, validating, and removing plugins.
  */
 import { existsSync, readFileSync, writeFileSync, cpSync, rmSync } from 'fs'
-import { join, basename } from 'path'
+import { join } from 'path'
 import { createLogger } from './logger'
 import type { PluginManifest } from '@bakin/core/plugin-types'
 

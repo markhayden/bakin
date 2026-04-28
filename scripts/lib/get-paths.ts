@@ -2,7 +2,6 @@
  * bakin_exec_get_paths — Get Bakin content directory paths.
  * System-level tool (stays in scripts, not plugin-specific).
  */
-import { z } from 'zod'
 import { getBakinPaths } from '../../src/core/content-dir'
 import { addExecTool } from './registry'
 

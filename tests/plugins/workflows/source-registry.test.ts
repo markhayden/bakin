@@ -271,7 +271,6 @@ describe('source-registry', () => {
   describe('globalThis persistence', () => {
     it('uses globalThis.__bakinWorkflowSources so state survives module re-evaluation', () => {
       registerPluginDefinition('workflows', 'persisted', def('Persisted'))
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const store = (globalThis as any).__bakinWorkflowSources
       expect(store).toBeDefined()
       expect(store.plugin.has('persisted')).toBe(true)

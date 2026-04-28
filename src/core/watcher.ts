@@ -42,9 +42,9 @@
  */
 import { watch, type FSWatcher } from 'chokidar'
 import { readFileSync } from 'fs'
-import { join, relative } from 'path'
+import { relative } from 'path'
 import { createLogger } from './logger'
-import { broadcast, broadcastAuditEvent } from './sse'
+import { broadcast } from './sse'
 import { appendAudit } from './audit'
 import type { BakinEventBus } from '../lib/events/event-bus'
 

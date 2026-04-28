@@ -22,13 +22,11 @@ import type {
   WorkflowInstance,
   WorkflowStep,
   StepState,
-  StepHistoryEntry,
   ParallelStep,
   AgentStep,
   GateStep,
   OutputStep,
   NestedWorkflowStep,
-  SkillDefinition,
 } from '../types'
 import { loadDefinition } from './parser'
 import { loadSkill } from './skill-loader'
@@ -157,21 +155,6 @@ function findStep(def: WorkflowDefinition, stepId: string): WorkflowStep | null 
     if (step.type === 'parallel') {
       for (const child of (step as ParallelStep).steps) {
         if (child.id === stepId) return child
-      }
-    }
-  }
-  return null
-}
-
-/**
- * Find the parent parallel step for a child step.
- */
-function findParentParallel(def: WorkflowDefinition, stepId: string): ParallelStep | null {
-  for (const step of def.steps) {
-    if (step.type === 'parallel') {
-      const parallel = step as ParallelStep
-      for (const child of parallel.steps) {
-        if (child.id === stepId) return parallel
       }
     }
   }
@@ -641,7 +624,7 @@ export function completeStep(
   notifyStepComplete(instance, stepId, step.label || stepId)
 
   // Advance the workflow
-  const advanced = advanceWorkflow(instance, def, dir)
+  advanceWorkflow(instance, def, dir)
   saveInstance(instance, dir)
 
   if (instance.status === 'complete') {

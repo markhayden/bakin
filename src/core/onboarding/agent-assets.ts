@@ -23,7 +23,6 @@
  * `bakin doctor` so the same data backs both views.
  */
 import { existsSync, readFileSync, statSync } from 'fs'
-import { createHash } from 'crypto'
 import { join } from 'path'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
@@ -245,7 +244,6 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function install(_opts: OnboardingOptions): Promise<InstallResult> {
   const start = Date.now()
   const report = scanAgentAssets()
