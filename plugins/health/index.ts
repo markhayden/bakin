@@ -20,6 +20,7 @@ import { checkContentDir } from './lib/system-checks/content-dir'
 import { checkService } from './lib/system-checks/service'
 import { checkMcporter } from './lib/system-checks/mcporter'
 import { checkRuntime } from './lib/system-checks/runtime'
+import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkOrchestratorRules } from './lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from './lib/system-checks/sync-skill'
@@ -306,6 +307,11 @@ const healthPlugin: BakinPlugin = {
       id: 'runtime',
       name: 'Runtime reachability',
       run: () => checkRuntime(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'channel-approvals',
+      name: 'Runtime channel approval responses',
+      run: () => checkChannelApprovals(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'search',

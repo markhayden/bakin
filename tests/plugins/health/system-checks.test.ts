@@ -140,6 +140,7 @@ import { checkContentDir } from '../../../plugins/health/lib/system-checks/conte
 import { checkService } from '../../../plugins/health/lib/system-checks/service'
 import { checkMcporter } from '../../../plugins/health/lib/system-checks/mcporter'
 import { checkRuntime } from '../../../plugins/health/lib/system-checks/runtime'
+import { checkChannelApprovals } from '../../../plugins/health/lib/system-checks/channel-approvals'
 import { checkSearchAdapter } from '../../../plugins/health/lib/system-checks/search'
 import { checkOrchestratorRules } from '../../../plugins/health/lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from '../../../plugins/health/lib/system-checks/sync-skill'
@@ -355,6 +356,49 @@ describe('checkRuntime', () => {
   })
 })
 
+// ─── checkChannelApprovals ────────────────────────────────────────────────
+
+describe('checkChannelApprovals', () => {
+  it('reports ok when a runtime channel supports interactive approvals', async () => {
+    mockRuntime.channels.list = async () => [{
+      id: 'discord',
+      platform: 'discord',
+      label: 'Discord',
+      capabilities: ['message', 'interactive-approval'],
+    }]
+
+    const results = await checkChannelApprovals(mockRuntime)
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toContain('Discord')
+  })
+
+  it('warns when channel approvals are render-only', async () => {
+    mockRuntime.channels.list = async () => [{
+      id: 'discord',
+      platform: 'discord',
+      label: 'Discord',
+      capabilities: ['message', 'rich-content'],
+    }]
+
+    const results = await checkChannelApprovals(mockRuntime)
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toMatch(/render-only/)
+  })
+
+  it('warns when channel capabilities cannot be inspected', async () => {
+    mockRuntime.channels.list = async () => {
+      throw new Error('channel registry unavailable')
+    }
+
+    const results = await checkChannelApprovals(mockRuntime)
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toMatch(/channel registry unavailable/)
+  })
+})
+
 // ─── checkSearchAdapter ───────────────────────────────────────────────────
 
 describe('checkSearchAdapter', () => {
@@ -528,7 +572,7 @@ describe('checkPluginAssets', () => {
 // ─── Registration smoke test ──────────────────────────────────────────────
 
 describe('plugin registration', () => {
-  it('registers all 9 system + managed-blocks health checks on activate', async () => {
+  it('registers all 10 system + managed-blocks health checks on activate', async () => {
     const healthPlugin = (await import('../../../plugins/health')).default
     const registeredIds: string[] = []
     const noop = mock()
@@ -555,11 +599,12 @@ describe('plugin registration', () => {
     }
     await healthPlugin.activate(ctx as unknown as Parameters<typeof healthPlugin.activate>[0])
 
-    // 9 system checks (C6: 3, C7: 2, C8: 3, C9: 1)
+    // 10 system checks (C6: 3, C7: 3, C8: 3, C9: 1)
     expect(registeredIds).toContain('content-dir')
     expect(registeredIds).toContain('service')
     expect(registeredIds).toContain('mcporter')
     expect(registeredIds).toContain('runtime')
+    expect(registeredIds).toContain('channel-approvals')
     expect(registeredIds).toContain('search')
     expect(registeredIds).toContain('orchestrator-rules')
     expect(registeredIds).toContain('skill')
