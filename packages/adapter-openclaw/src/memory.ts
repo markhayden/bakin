@@ -7,9 +7,9 @@ import type {
   RuntimeMemoryReadRange,
   RuntimeMemoryTier,
 } from '@bakin/core/adapters/runtime'
-import { getOpenClawHome, getOpenClawPath } from '@bakin/core/openclaw-home'
-import { readOpenClawConfig } from '@bakin/core/openclaw-config'
-import { tryGetMainAgentId } from '@bakin/core/main-agent'
+import { readOpenClawConfig } from './config'
+import { getOpenClawHome, getOpenClawPath } from './home'
+import { tryGetMainAgentId } from './main-agent'
 
 const SESSION_JSONL_RE = /^([^/.]+)\.jsonl$/
 const SESSION_RESET_RE = /\.reset(?:\.|-)/

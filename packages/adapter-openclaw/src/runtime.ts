@@ -16,15 +16,15 @@ import type {
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
-import { getOpenClawHome, getOpenClawPath } from '@bakin/core/openclaw-home'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
   findAgentById,
   getAgentList,
   readOpenClawConfig,
   resetOpenClawConfigCache,
-} from '@bakin/core/openclaw-config'
-import { tryGetMainAgentId } from '@bakin/core/main-agent'
+} from './config'
+import { getOpenClawHome, getOpenClawPath } from './home'
+import { tryGetMainAgentId } from './main-agent'
 import type { OpenClawRuntimeAdapterOptions } from './index'
 import {
   getOpenClawMemoryEntry,
