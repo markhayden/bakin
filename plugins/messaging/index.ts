@@ -74,7 +74,7 @@ const AGENT_ID_SHAPE = /^[a-z0-9-]+$/
  * - Shape guard (load-bearing): blocks path traversal. A regex-valid id
  *   cannot escape `~/.bakin/team/personas/`.
  * - Roster check (defense-in-depth): filters orphan references — shape-valid
- *   ids that aren't in the current OpenClaw roster. Best-effort: when the
+ *   ids that aren't in the current runtime roster. Best-effort: when the
  *   team plugin is unavailable or the hook throws, the shape guard alone
  *   suffices and messaging stays functional.
  */

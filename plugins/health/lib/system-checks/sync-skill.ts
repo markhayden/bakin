@@ -69,7 +69,7 @@ mcporter call bakin-<agent>.bakin_exec_post_channel channel="<name>" content="<m
 mcporter call bakin-<agent>.bakin_exec_gen_image taskId=<id> prompt="<text>" preset=social-portrait model=flash
 # Check workflow gate statuses
 mcporter call bakin-<agent>.bakin_exec_check_gates taskId=<id>
-# Create a recurring scheduled job (NEVER use openclaw cron directly)
+# Create a recurring scheduled job (NEVER use runtime-native cron directly)
 mcporter call bakin-<agent>.bakin_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="basil" taskPrompt="Post a short recipe"
 # List all scheduled jobs
 mcporter call bakin-<agent>.bakin_exec_schedule_list
