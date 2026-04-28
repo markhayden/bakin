@@ -7,7 +7,7 @@
  *   - workspace files / skills / assets / knowledge markers are on disk
  *   - the final install dir at ~/.bakin/packages/<kind>/<id>@<ver>/ holds
  *     the package source
- *   - openclaw-adapter mocks are called the right number of times in the
+ *   - runtime adapter mocks are called the right number of times in the
  *     right modes
  *   - audit events are written
  *
@@ -17,10 +17,9 @@
  */
 // IMPORTANT: env vars must land BEFORE any other import. ES-module import
 // hoisting puts our `import` lines above the `mock.module()` calls below,
-// so a transitive import of @bakin/core/openclaw-home (loaded by the
-// openclaw-adapter at module-top) reads process.env directly. Setting
-// OPENCLAW_HOME + BAKIN_HOME here is the CLAUDE.md-blessed escape for the
-// "mock arrives too late" case — the test-env safety guard in
+// so a transitive import of @bakin/core/openclaw-home can read process.env
+// directly. Setting OPENCLAW_HOME + BAKIN_HOME here is the CLAUDE.md-blessed
+// escape for the "mock arrives too late" case — the test-env safety guard in
 // packages/core/src/openclaw-home.ts compares the resolved path against
 // $HOME/.openclaw and only throws when they match. Our temp paths can't
 // match, so the guard passes.
@@ -67,39 +66,47 @@ mock.module('@bakin/core/openclaw-config', () => ({
   findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
 }))
 
-// Mock the openclaw-adapter so addAgent doesn't shell out to openclaw CLI.
-// The installer imports it via a relative path that resolves to the same
-// module the @bakin/team alias points at; mocking the alias intercepts
-// both. The adapter's module-top runs `getOpenClawHome()` at load time
-// (which fires the CC-6 test-env guard if not pre-mocked), so this mock
-// MUST be installed before the installer is imported.
 const adapterCalls: { addAgent: unknown[]; addToAllowLists: unknown[] } = {
   addAgent: [],
   addToAllowLists: [],
 }
-const adapterMockFactory = () => ({
-  addAgent: async (input: { id: string }) => {
-    adapterCalls.addAgent.push(input)
-    openClawAgents.push({ id: input.id, identity: { name: input.id } })
-    return { id: input.id, workspace: join(openClawDir, 'workspaces', input.id) }
-  },
-  addToAllowLists: (newAgentId: string, dispatchable: unknown) => {
-    adapterCalls.addToAllowLists.push({ newAgentId, dispatchable })
-  },
-  getOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  listAgents: () => [],
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  removeAgent: async () => true,
-  removeFromAllowLists: () => {},
-})
-mock.module('@bakin/team/lib/openclaw-adapter', adapterMockFactory)
-mock.module('../../plugins/team/lib/openclaw-adapter', adapterMockFactory)
+
+function installRuntimeMock(): void {
+  ;(globalThis as Record<string, unknown>).__bakinFallbackRuntimeAdapter = {
+    agents: {
+      list: async () => openClawAgents.map((agent) => ({
+        id: agent.id,
+        name: agent.identity?.name ?? agent.id,
+        status: 'active',
+      })),
+      get: async (id: string) => {
+        const agent = openClawAgents.find((entry) => entry.id === id)
+        return agent ? { id: agent.id, name: agent.identity?.name ?? agent.id, status: 'active' } : null
+      },
+      create: async (input: { id?: string; name: string; role?: string; model?: string; metadata?: Record<string, unknown> }) => {
+        const id = input.id ?? input.name.toLowerCase()
+        const call = { ...input, id, emoji: input.metadata?.emoji }
+        adapterCalls.addAgent.push(call)
+        openClawAgents.push({ id, identity: { name: input.name } })
+        return { id, name: input.name, role: input.role, model: input.model, status: 'active', metadata: input.metadata }
+      },
+      update: async (id: string, input: { name?: string }) => ({ id, name: input.name ?? id, status: 'active' }),
+      remove: async (id: string) => {
+        openClawAgents = openClawAgents.filter((agent) => agent.id !== id)
+      },
+      readWorkspaceFile: async () => null,
+      writeWorkspaceFile: async () => {},
+      updatePermissions: async () => {},
+      updateAllowlist: async (agentId: string, patch: Record<string, unknown>) => {
+        adapterCalls.addToAllowLists.push({ agentId, patch })
+      },
+      heartbeat: async () => true,
+    },
+  }
+}
 
 import { installPackage } from '../../src/core/agent-packages/installer'
-import {
-  readLockfile,
-  type Lockfile,
-} from '../../packages/core/src/agent-packages/lockfile'
+import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
 import { isInstallLockHeld } from '../../src/core/agent-packages/install-lock'
 
@@ -114,6 +121,7 @@ beforeEach(() => {
   openClawAgents = []
   adapterCalls.addAgent.length = 0
   adapterCalls.addToAllowLists.length = 0
+  installRuntimeMock()
 })
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -204,11 +212,11 @@ describe('installPackage — fresh install (kind:"agent")', () => {
     expect(addCall.emoji).toBe('🎨')
     expect(addCall.role).toBe('Image artist')
 
-    // dispatchableBy → main only
+    // dispatchableBy → main allowlist update
     expect(adapterCalls.addToAllowLists).toHaveLength(1)
     expect(adapterCalls.addToAllowLists[0]).toEqual({
-      newAgentId: 'pixel',
-      dispatchable: 'main',
+      agentId: 'main',
+      patch: { add: ['pixel'] },
     })
 
     // Lockfile entry shape

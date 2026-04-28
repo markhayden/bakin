@@ -46,31 +46,43 @@ const adapterCalls = {
   addAgent: [] as unknown[],
   addToAllowLists: [] as unknown[],
   removeAgent: [] as string[],
-  removeFromAllowLists: [] as string[],
+  removeFromAllowLists: [] as unknown[],
 }
-const adapterMockFactory = () => ({
-  addAgent: async (input: { id: string }) => {
-    adapterCalls.addAgent.push(input)
-    openClawAgents.push({ id: input.id, identity: { name: input.id } })
-    return { id: input.id, workspace: join(openClawDir, 'workspaces', input.id) }
-  },
-  addToAllowLists: (newAgentId: string, dispatchable: unknown) => {
-    adapterCalls.addToAllowLists.push({ newAgentId, dispatchable })
-  },
-  removeAgent: async (id: string) => {
-    adapterCalls.removeAgent.push(id)
-    openClawAgents = openClawAgents.filter((a) => a.id !== id)
-    return true
-  },
-  removeFromAllowLists: (id: string) => {
-    adapterCalls.removeFromAllowLists.push(id)
-  },
-  getOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  listAgents: () => [],
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-})
-mock.module('@bakin/team/lib/openclaw-adapter', adapterMockFactory)
-mock.module('../../plugins/team/lib/openclaw-adapter', adapterMockFactory)
+
+function installRuntimeMock(): void {
+  ;(globalThis as Record<string, unknown>).__bakinFallbackRuntimeAdapter = {
+    agents: {
+      list: async () => openClawAgents.map((agent) => ({
+        id: agent.id,
+        name: agent.identity?.name ?? agent.id,
+        status: 'active',
+      })),
+      get: async (id: string) => {
+        const agent = openClawAgents.find((entry) => entry.id === id)
+        return agent ? { id: agent.id, name: agent.identity?.name ?? agent.id, status: 'active' } : null
+      },
+      create: async (input: { id?: string; name: string }) => {
+        const id = input.id ?? input.name.toLowerCase()
+        adapterCalls.addAgent.push({ ...input, id })
+        openClawAgents.push({ id, identity: { name: input.name } })
+        return { id, name: input.name, status: 'active' }
+      },
+      update: async (id: string, input: { name?: string }) => ({ id, name: input.name ?? id, status: 'active' }),
+      remove: async (id: string) => {
+        adapterCalls.removeAgent.push(id)
+        openClawAgents = openClawAgents.filter((agent) => agent.id !== id)
+      },
+      readWorkspaceFile: async () => null,
+      writeWorkspaceFile: async () => {},
+      updatePermissions: async () => {},
+      updateAllowlist: async (agentId: string, patch: Record<string, unknown>) => {
+        if (patch.remove) adapterCalls.removeFromAllowLists.push({ agentId, patch })
+        else adapterCalls.addToAllowLists.push({ agentId, patch })
+      },
+      heartbeat: async () => true,
+    },
+  }
+}
 
 import { installPackage } from '../../src/core/agent-packages/installer'
 import { removePackageById } from '../../src/core/agent-packages/uninstaller'
@@ -91,6 +103,7 @@ beforeEach(() => {
   adapterCalls.addToAllowLists.length = 0
   adapterCalls.removeAgent.length = 0
   adapterCalls.removeFromAllowLists.length = 0
+  installRuntimeMock()
 })
 
 function seedAgentPackage(opts: { id?: string; deps?: string[] } = {}): string {
@@ -180,7 +193,7 @@ describe('removePackageById — basic remove', () => {
 
     expect(result.deletedAgent).toBe(true)
     expect(adapterCalls.removeAgent).toEqual(['pixel'])
-    expect(adapterCalls.removeFromAllowLists).toEqual(['pixel'])
+    expect(adapterCalls.removeFromAllowLists).toEqual([])
     expect(openClawAgents.find((a) => a.id === 'pixel')).toBeUndefined()
   })
 
