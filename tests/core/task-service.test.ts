@@ -85,7 +85,6 @@ const taskStoreMock = {
 
 mock.module('@/core/task-store', () => taskStoreMock)
 mock.module('../../src/core/task-store', () => taskStoreMock)
-mock.module('@bakin/tasks/lib/flow-store', () => taskStoreMock)
 
 const mockLoadInstance = mock((..._args: unknown[]) => null)
 const mockCreateInstance = mock((..._args: unknown[]) => undefined)

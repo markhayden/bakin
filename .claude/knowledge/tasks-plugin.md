@@ -19,7 +19,7 @@ Tasks are stored by `packages/core/src/tasks/store.ts` as one JSON document per 
 ~/.bakin/tasks/{YYYY-MM}/task-{id}.json
 ```
 
-`plugins/tasks/lib/flow-store.ts` keeps the historical function names used by routes, hooks, workflows, dispatch, and tests, but it now delegates to `createFileBakinTaskStore(getBakinPaths().tasks)`. The file name is legacy; it is not a runtime execution store adapter.
+`src/core/task-store.ts` is the shared task service used by routes, workflows, dispatch, and tests. It delegates to `createFileBakinTaskStore(getBakinPaths().tasks)` and is owned by Bakin core, not by the tasks plugin or runtime execution adapter.
 
 ### Task JSON Shape
 
@@ -125,12 +125,12 @@ archived   → done, todo
 | File | Purpose |
 |------|---------|
 | `plugins/tasks/index.ts` | Plugin entry: registers 12 API routes + 11 exec tools + 9 hooks + archival |
-| `plugins/tasks/lib/flow-store.ts` | Compatibility-named task service layer: CRUD, transitions, reorder, archive |
+| `src/core/task-store.ts` | Core task service layer: CRUD, transitions, reorder, archive |
 | `packages/core/src/tasks/store.ts` | Bakin-owned task metadata store |
 | `plugins/tasks/lib/ids.ts` | Task ID generation (crypto-safe) |
 | `plugins/tasks/types.ts` | TypeScript interfaces (Task, TaskColumns, TaskBoard, ColumnId) |
 | `plugins/tasks/constants.ts` | Column config, header maps, status dot colors, badge styles |
-| `src/lib/taskboard.ts` | Re-export shim (delegates to flow-store) |
+| `src/lib/taskboard.ts` | Re-export shim (delegates to task-store) |
 | `src/core/task-service.ts` | Service layer: wraps mutations with side effects (audit, SSE, workflow guards, continuation) |
 | `src/core/dispatch.ts` | Task dispatch engine (auto-assigns todo tasks to agents) |
 | `src/core/continuation.ts` | Dependent task unblocking when a task completes |
@@ -174,7 +174,7 @@ The board follows the official multi-list pattern:
 
 ### Real-Time Updates (SSE)
 
-1. Every write operation in `flow-store.ts` updates the Bakin task store, whose subscription calls `broadcastChange()` and fires `globalThis.__bakinBroadcast({ type: 'taskboard' })`
+1. Every write operation in `task-store.ts` updates the Bakin task store, whose subscription calls `broadcastChange()` and fires `globalThis.__bakinBroadcast({ type: 'taskboard' })`
 2. The SSE server sends this as a `type: 'taskboard'` event to all connected clients
 3. The global `use-sse.ts` hook receives the event and calls `bumpTaskboard()` on the Zustand store
 4. `kanban-board.tsx` subscribes to `taskboardVersion` and re-fetches from `/api/plugins/tasks/` on change
@@ -230,10 +230,10 @@ All routes are registered at `/api/plugins/tasks/{path}` via the plugin route sy
 ## Task Store Boundary
 
 Task metadata is owned by Bakin core, not the plugin hook registry. The shared
-store lives in `src/core/task-store.ts`, and the compatibility path
-`plugins/tasks/lib/flow-store.ts` re-exports that surface for existing internal
-imports. Core, workflows, projects, schedule, dispatch, and task-service call
-the task store directly instead of invoking `tasks.*` hooks.
+store lives in `src/core/task-store.ts`; the old
+`plugins/tasks/lib/flow-store.ts` compatibility shim is deleted and must not be
+reintroduced. Core, workflows, projects, schedule, dispatch, and task-service
+call the task store directly instead of invoking `tasks.*` hooks.
 
 Main store operations: `readTaskboard`, `createTask`, `moveTask`, `blockTask`,
 `addTaskLog`, `updateTask`, `deleteTask`, `setDependency`, `clearDependency`,
@@ -340,7 +340,7 @@ Tasks are indexed in Antfly via `ctx.search` for hybrid (semantic + full-text) s
 ## Testing
 
 Test files:
-- `tests/plugins/tasks/flow-store.test.ts` — Unit tests for the compatibility-named task store service: CRUD, transitions, ordering, archival
+- `tests/core/task-store.test.ts` — Unit tests for the core task store service: CRUD, transitions, ordering, archival
 - `tests/plugins/tasks/routes.test.ts` — Integration tests for REST API routes and MCP exec tools
 
-Run: `bun test --isolate tests/plugins/tasks/`
+Run: `bun test --isolate tests/core/task-store.test.ts tests/plugins/tasks/`

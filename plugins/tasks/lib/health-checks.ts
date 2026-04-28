@@ -16,7 +16,7 @@ import { selectRuntimeMainAgent, type AgentRuntimeAdapter } from '@bakin/core/ad
 import { getSettings } from '../../../src/core/settings'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
 import { maybeGetAppServices } from '../../../src/core/app-services'
-import { clearDependency, readTaskboard, reorderTasks } from './flow-store'
+import { clearDependency, readTaskboard, reorderTasks } from '../../../src/core/task-store'
 import type { ColumnId, Task } from '../types'
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────

@@ -61,10 +61,9 @@ Every plugin (feature module OR third-party) imports its plugin-author surface f
 
 Third-party plugin authors clone NEITHER bakin nor bakin-bits-official; they `bun add @bakin/sdk` and go.
 
-### 3.3 The four remaining `core → plugin` couplings (issue #174)
+### 3.3 Remaining `core → plugin` couplings (issue #174)
 
-Out of scope for this work, but worth listing here for clarity. After the messaging+projects extraction:
-- `src/core/agents.ts:10` → `plugins/tasks/lib/flow-store` (core agent listing reads taskboard)
+Out of scope for this work, but worth listing here for clarity. The taskboard coupling has been resolved by moving the shared task API to `src/core/task-store.ts`. After the messaging+projects extraction:
 - `src/core/agent-packages/installer.ts:72` → `plugins/team/lib/openclaw-adapter` (installer adds OpenClaw agents via team)
 - `src/core/agent-packages/uninstaller.ts:32` → `plugins/team/lib/openclaw-adapter`
 - `cli/bakin.ts:586,633` → `plugins/health/lib/managed-blocks` (CLI agent-rules subcommand)

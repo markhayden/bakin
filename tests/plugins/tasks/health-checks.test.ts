@@ -96,9 +96,9 @@ let storeBoard: StoreBoard = emptyStoreBoard()
 const clearedDependencies: string[] = []
 let clearDependencyShouldThrow = false
 
-// flow-store mock — taskboard/order checks import it directly, and the plugin
+// task-store mock — taskboard/order checks import it directly, and the plugin
 // registration smoke imports the full tasks plugin. Keep the surface complete.
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: () => storeBoard,
   getAllTasks: () => storeBoard,
   getTask: () => null,

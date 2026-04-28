@@ -6,7 +6,7 @@ import type { ComponentType } from 'react'
 
 // This registry is a pure in-memory map and never touches the filesystem,
 // but the project's test-isolation rule requires every test to mock
-// content-dir (and not pull in real flow-store) as a safety net.
+// content-dir (and not pull in real task-store) as a safety net.
 const testDir = join(tmpdir(), `bakin-test-${Date.now()}`)
 
 mock.module('@bakin/core/main-agent', () => ({
@@ -20,7 +20,7 @@ mock.module('../../../src/core/content-dir', () => ({
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   getTask: mock(),
   createTask: mock(),
   moveTask: mock(),

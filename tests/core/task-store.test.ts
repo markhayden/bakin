@@ -1,5 +1,5 @@
 /**
- * Unit tests for flow-store.ts — Bakin JSON-backed task store.
+ * Unit tests for task-store.ts — Bakin JSON-backed task store.
  * Points BAKIN_HOME at a temp directory so tests never touch real user data.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
@@ -12,7 +12,7 @@ import type { BakinTask } from '@bakin/core/tasks/store'
 // Test directory setup — fake ~/.bakin/tasks/
 // ---------------------------------------------------------------------------
 
-const testHome = join(tmpdir(), `bakin-flow-store-test-${Date.now()}`)
+const testHome = join(tmpdir(), `bakin-task-store-test-${Date.now()}`)
 const tasksDir = join(testHome, 'tasks')
 
 process.env.BAKIN_HOME = testHome
@@ -54,7 +54,7 @@ mock.module('@bakin/core/main-agent', () => ({
 }))
 
 // Mock the workflow runtime to avoid cross-plugin dependency
-mock.module('../../../plugins/workflows/lib/runtime', () => ({
+mock.module('../../plugins/workflows/lib/runtime', () => ({
   cancelInstance: mock(),
 }))
 
@@ -84,7 +84,7 @@ import {
   getTasksByAgent,
   VALID_TRANSITIONS,
   localDateString,
-} from '../../../plugins/tasks/lib/flow-store'
+} from '@/core/task-store'
 
 // ---------------------------------------------------------------------------
 // Setup / Teardown

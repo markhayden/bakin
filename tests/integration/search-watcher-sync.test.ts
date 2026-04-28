@@ -63,7 +63,7 @@ mock.module('../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-mock.module('../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('@/core/task-store', () => ({}))
 
 const indexCalls: Array<{ table: string; key: string; doc: Record<string, unknown> }> = []
 const removeCalls: Array<{ table: string; key: string }> = []

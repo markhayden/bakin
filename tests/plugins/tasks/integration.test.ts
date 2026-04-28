@@ -58,7 +58,7 @@ import {
   reorderTasks,
   getTask,
   getTaskWithColumn,
-} from '../../../plugins/tasks/lib/flow-store'
+} from '@/core/task-store'
 
 beforeEach(() => {
   clearTaskStore()

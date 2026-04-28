@@ -61,7 +61,7 @@ const mockTaskboard = {
   },
 }
 
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   getTask: mock((id: string) => {
     for (const col of Object.values(mockTaskboard.columns)) {
       const t = col.find(task => task.id === id)

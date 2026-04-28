@@ -39,9 +39,9 @@ mock.module('@/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-// flow-store is not used by use-task-filters.ts but is mocked defensively
+// task-store is not used by use-task-filters.ts but is mocked defensively
 // per CLAUDE.md isolation rules to prevent any transitive write to ~/.bakin/.
-mock.module('@bakin/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: mock(),
   createTask: mock(),
   deleteTask: mock(),

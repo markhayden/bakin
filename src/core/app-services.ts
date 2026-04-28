@@ -6,7 +6,6 @@ import { createLogger } from './logger'
 import { createRuntimeAdapter } from './runtime-adapter-factory'
 import { createSearchAdapter } from './search-adapter-factory'
 import { getSettings } from './settings'
-import { getSharedBakinTaskStore } from './task-store'
 
 type AppServicesGlobal = typeof globalThis & {
   __bakinAppServices?: AppServices
@@ -17,6 +16,7 @@ const log = createLogger('app-services')
 export async function createAppServices(): Promise<AppServices> {
   const settings = getSettings()
   const contentDir = getContentDir()
+  const { getSharedBakinTaskStore } = await import('./task-store')
 
   const runtime = createRuntimeAdapter(settings.runtime.adapter)
   const search = createSearchAdapter(settings.search.adapter)

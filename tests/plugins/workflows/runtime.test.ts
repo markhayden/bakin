@@ -72,7 +72,6 @@ const taskStoreMock = {
 
 mock.module('../../../src/core/task-store', () => taskStoreMock)
 mock.module('@/core/task-store', () => taskStoreMock)
-mock.module('../../../plugins/tasks/lib/flow-store', () => taskStoreMock)
 
 // Mock audit to prevent writes to audit.jsonl
 mock.module('../../../src/core/audit', () => ({
