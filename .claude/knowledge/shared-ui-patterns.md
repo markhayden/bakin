@@ -422,7 +422,7 @@ const onSend: BrainstormOnSend = async (prompt, history, { signal, onToken, onCu
 }
 ```
 
-The server-side helpers live in `src/core/openclaw-client.ts`: `streamMessage()` returns a raw `Response` with an SSE body; `chatCompletion()` is the non-streaming fallback used by both messaging and projects when the gateway returns non-streaming.
+Server-side streaming goes through `src/core/runtime-registry.ts`: `streamAgentMessageResponse()` returns a raw `Response` with an SSE body, and `chatAgentCompletion()` is the non-streaming fallback used by messaging and projects.
 
 ### Architecture notes
 
@@ -451,5 +451,5 @@ src/hooks/use-gateway-status.ts          — Gateway restart sync checker
 src/hooks/use-vertical-resize.ts         — Drag-to-resize hook (messaging panels + brainstorm)
 src/components/ui/dropdown-menu.tsx      — Base dropdown (focus: bg-secondary)
 src/components/ui/sheet.tsx              — Sheet primitive (used by BakinDrawer)
-src/core/openclaw-client.ts              — streamMessage + chatCompletion (SSE & JSON variants)
+src/core/runtime-registry.ts             — streamAgentMessageResponse + chatAgentCompletion
 ```

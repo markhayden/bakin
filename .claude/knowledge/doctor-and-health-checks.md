@@ -152,7 +152,7 @@ The orchestrator (`runPluginHealthChecks` in `src/core/doctor.ts`) wraps each `d
 
 - **Behavioral tests live with the plugin**: `tests/plugins/{owner}/health-checks.test.ts`. Pattern matches `tests/plugins/workflows/health-checks.test.ts`.
 - **Orchestration tests live in core**: `tests/core/doctor.test.ts` covers the gate, the audit append, and the cache. `tests/core/doctor-plugin-checks.test.ts` covers the per-check try/catch isolation.
-- **Test isolation is mandatory** (CLAUDE.md rule): every test that touches storage mocks both content-dir shims, `openclaw-home`, `openclaw-client`, and the logger. Verbatim copy `tests/plugins/workflows/health-checks.test.ts:1-67` as the scaffold.
+- **Test isolation is mandatory** (CLAUDE.md rule): every test that touches storage mocks both content-dir shims, runtime/home adapters as needed, and the logger. Verbatim copy the current plugin health-check scaffolds instead of adding new direct runtime-client mocks.
 
 ## Migration history
 

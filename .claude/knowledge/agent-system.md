@@ -76,17 +76,15 @@ Self-referencing (agent dispatching to itself) is rejected at both the MCP tool 
 
 ## Agent Communication
 
-### OpenClaw Gateway (`src/core/openclaw-client.ts`)
-Agents run as OpenClaw agent instances. Communication flows:
-1. Bakin → OpenClaw HTTP API → agent receives message/task
+### Runtime Messaging (`src/core/runtime-registry.ts`)
+Agents run behind the active runtime adapter. Communication flows:
+1. Bakin → runtime adapter messaging API → agent receives message/task
 2. Agent → MCP tools (served by Bakin) → reads/writes state
 3. Agent → `bakin_log_progress` → SSE broadcast to dashboard
 
 ### Key functions in `src/core/agents.ts`:
 - `getAgentStatus(agentId)` — reads heartbeat + task board to determine status
-- `sendMessageToAgent(agentId, message)` — delegates to OpenClaw HTTP client
-- `startAgent(agentId)` — start agent session
-- `deliverTaskToAgent(agentId, taskId)` — deliver task with context
+- `sendMessageToAgent(agentId, message)` — delegates to the active runtime adapter
 
 ## Dispatch Engine (`src/core/dispatch.ts`)
 
@@ -217,7 +215,8 @@ Monitors agent and MCP server health:
 | `src/core/agents.ts` | Agent status resolution and communication |
 | `src/core/dispatch.ts` | Task dispatch engine. Roster from `getAgentIds()` in openclaw-config |
 | `src/core/mcp-server.ts` | MCP tool server |
-| `src/core/openclaw-client.ts` | OpenClaw HTTP gateway client |
+| `src/core/runtime-registry.ts` | Runtime adapter access for messaging, tools, channels, cron, memory, and agent metadata |
+| `packages/adapter-openclaw/src/runtime.ts` | OpenClaw runtime adapter implementation |
 | `src/core/task-service.ts` | Task mutations with side effects |
 | `src/core/audit.ts` | Audit logging |
 | `src/core/sse.ts` | SSE client management |
