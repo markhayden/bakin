@@ -25,7 +25,7 @@ import { buildSearchAPI } from '@/core/search-registry'
 import { appendAudit } from '@/core/audit'
 import { pluginRegistry } from '@/lib/plugin-registry'
 import { stampPluginResponse } from '@/core/plugin-host/version-stamp'
-import type { PluginContext, APIRoute } from '@/lib/plugin-types'
+import type { PluginContext, APIRoute } from '@bakin/core/plugin-types'
 
 const log = createLogger('plugin-route')
 

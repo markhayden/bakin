@@ -6,7 +6,7 @@
  * API details stay behind the adapter boundary.
  */
 import type { AgentRuntimeAdapter, ApprovalRenderRef } from '@bakin/core/adapters/runtime'
-import type { ApprovalActor, EventBus } from '../../../src/lib/plugin-types'
+import type { ApprovalActor, EventBus } from '@bakin/core/plugin-types'
 import type { WorkflowInstance } from '../types'
 import { createLogger } from '../../../src/core/logger'
 

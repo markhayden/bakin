@@ -10,7 +10,7 @@ import { pathForFilename } from '@bakin/assets/lib/path-for-filename'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
-import type { ExecToolResult } from '../../src/lib/plugin-types'
+import type { ExecToolResult } from '@bakin/core/plugin-types'
 
 export interface PostChannelParams {
   channel: string

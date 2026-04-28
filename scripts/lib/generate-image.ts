@@ -27,7 +27,7 @@ import {
 import type { ImagePreset } from './common'
 import { saveAsset } from '../../plugins/assets/lib/save-asset'
 import { addExecTool } from './registry'
-import type { ExecToolResult } from '../../src/lib/plugin-types'
+import type { ExecToolResult } from '@bakin/core/plugin-types'
 
 const PRESET_NAMES = ['social-portrait', 'social-square', 'social-landscape', 'custom'] as const
 const MODEL_NAMES = ['flash', 'pro'] as const

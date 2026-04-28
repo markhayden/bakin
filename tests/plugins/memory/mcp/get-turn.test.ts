@@ -27,7 +27,7 @@ mock.module('../../../../src/core/logger', () => ({
 }))
 
 import { createMemoryGetTurnTool } from '../../../../plugins/memory/mcp/get-turn'
-import type { PluginContext, SearchResponse, SearchResult } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse, SearchResult } from '@bakin/core/plugin-types'
 
 function makeCtx(results: SearchResult[] = []): PluginContext {
   return {

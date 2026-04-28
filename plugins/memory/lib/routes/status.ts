@@ -13,7 +13,7 @@
  * whole response; the status view is for at-a-glance diagnostics, not a
  * source of truth.
  */
-import type { APIRoute, PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
+import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { MEMORY_TIERS, type MemoryTier } from '../types'
 import { getOffsetsFilePath } from '../offsets'
 import { existsSync, readFileSync } from 'fs'

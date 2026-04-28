@@ -3,7 +3,7 @@
  * Registers API routes, MCP exec tools, and cross-plugin hooks for task operations.
  */
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import {
   readTaskboard,
   createTask,

@@ -25,7 +25,7 @@ mock.module('@bakin/core/openclaw-home', () => ({
 import { loadDefaultWorkflows } from '@bakin/workflows/lib/load-defaults'
 import { clearSourceRegistry, getDefinition } from '@bakin/workflows/lib/source-registry'
 import { activatePlugin } from '../test-helpers'
-import type { BakinPlugin, PluginContext } from '@/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 
 const fakeLog = { warn: mock(), info: mock(), error: mock(), debug: mock() }
 

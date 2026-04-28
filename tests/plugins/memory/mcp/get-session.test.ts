@@ -31,7 +31,7 @@ mock.module('../../../../src/core/logger', () => ({
 }))
 
 import { createMemoryGetSessionTool } from '../../../../plugins/memory/mcp/get-session'
-import type { PluginContext, SearchResponse, SearchResult } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse, SearchResult } from '@bakin/core/plugin-types'
 
 function makeCtx(perTier: Record<string, SearchResult[]>): { ctx: PluginContext; calls: Array<Parameters<PluginContext['search']['query']>[0]> } {
   const calls: Array<Parameters<PluginContext['search']['query']>[0]> = []

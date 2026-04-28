@@ -32,7 +32,7 @@ mock.module('../../../../src/core/logger', () => ({
 }))
 
 import { createMemorySearchTool } from '../../../../plugins/memory/mcp/search'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 function makeCtx(results: SearchResponse['results'] = []): { ctx: PluginContext; calls: Array<Parameters<PluginContext['search']['query']>[0]> } {
   const calls: Array<Parameters<PluginContext['search']['query']>[0]> = []

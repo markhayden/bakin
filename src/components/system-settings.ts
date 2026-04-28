@@ -7,7 +7,7 @@
  * read and unflattening back to nested objects on save. The renderer never
  * needs to know.
  */
-import type { PluginSettingsSchema } from '@/lib/plugin-types'
+import type { PluginSettingsSchema } from '@bakin/core/plugin-types'
 
 export const SYSTEM_SETTINGS_TAB_ID = '__system'
 

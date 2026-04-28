@@ -38,7 +38,7 @@ import {
   dreamsListRoute,
   dreamDetailRoute,
 } from '../../../../plugins/memory/lib/routes/dreams'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 interface CtxHarness {
   ctx: PluginContext

@@ -10,7 +10,7 @@
  * into it, (c) wires the BakinCreate watch list. All tier-specific code
  * lives under plugins/memory/lib/.
  */
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '@bakin/core/content-dir'
 import { join } from 'path'

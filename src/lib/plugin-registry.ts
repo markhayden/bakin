@@ -18,7 +18,7 @@ import type {
   PluginSettingsSchema,
   WorkflowDefinitionInput,
   PluginNodeTypeInput,
-} from './plugin-types'
+} from '@bakin/core/plugin-types'
 import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'
 import type { WorkflowDefinition } from '../../plugins/workflows/types'
 import { registerPluginNodeType, unregisterPluginNodeTypes } from '../../plugins/workflows/lib/node-type-registry'

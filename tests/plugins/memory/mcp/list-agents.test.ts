@@ -27,7 +27,7 @@ mock.module('../../../../src/core/logger', () => ({
 }))
 
 import { createMemoryListAgentsTool } from '../../../../plugins/memory/mcp/list-agents'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 function makeCtx(perTierAgg: Record<string, Array<{ value: string; count: number }>>): PluginContext {
   return {

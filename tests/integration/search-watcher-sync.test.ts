@@ -80,7 +80,7 @@ import { start, stop } from '../../src/core/watcher'
 import { buildSearchAPI, resetSearchRegistry } from '../../src/core/search-registry'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
-import type { PluginContext, BakinPlugin } from '../../src/lib/plugin-types'
+import type { PluginContext, BakinPlugin } from '@bakin/core/plugin-types'
 
 import projectsPlugin from '../../plugins/projects'
 import workflowsPlugin from '../../plugins/workflows'

@@ -6,7 +6,7 @@
  * {agent, total, byTier: { session, turn, ... }} — the common shape for
  * "pick an agent, scope to a tier, search."
  */
-import type { ExecToolDefinition, PluginContext } from '../../../src/lib/plugin-types'
+import type { ExecToolDefinition, PluginContext } from '@bakin/core/plugin-types'
 import { MEMORY_TIERS, type MemoryTier } from '../lib/types'
 
 type ByTier = Record<MemoryTier, number>

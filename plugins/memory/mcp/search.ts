@@ -7,7 +7,7 @@
  * row shape.
  */
 import { z } from 'zod'
-import type { ExecToolDefinition, PluginContext, SearchQueryParams } from '../../../src/lib/plugin-types'
+import type { ExecToolDefinition, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { MemoryTierSchema } from '../lib/types'
 
 function parseMeta(raw: unknown): Record<string, unknown> | undefined {

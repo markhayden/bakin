@@ -35,7 +35,7 @@ mock.module('../../../../packages/core/src/openclaw-home', () => ({
 
 import { createMemoryStatusTool } from '../../../../plugins/memory/mcp/status'
 import { setOffset, clearAllOffsets } from '../../../../plugins/memory/lib/offsets'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 function makeCtx(perTierTotal: Record<string, number>): PluginContext {
   return {

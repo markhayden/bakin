@@ -5,7 +5,7 @@
 // External
 import { z } from 'zod'
 // Internal
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 // Relative
 import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
 import {

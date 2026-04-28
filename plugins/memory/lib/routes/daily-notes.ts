@@ -9,7 +9,7 @@
  * already maintains a LanceDB vector index over daily notes, so we surface
  * both substrates in one response so the UI can show a diff.
  */
-import type { APIRoute, PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
+import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { getRuntimeMemoryEntry, listRuntimeMemoryEntries } from '../runtime-memory'
 
 const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})([-.].*)?\.md$/
