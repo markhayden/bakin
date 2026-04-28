@@ -25,8 +25,8 @@ import {
   readdirSync,
 } from 'fs'
 import { join } from 'path'
+import { getAppServices } from '../app-services'
 import { createLogger } from '../logger'
-import { getRuntimeAdapter } from '../runtime-registry'
 import type { RuntimeSkill } from '@bakin/core/adapters/runtime'
 import {
   type PluginLockfile,
@@ -150,7 +150,7 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
     userEdited: [],
   }
 
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
   for (const plugin of plugins) {
     for (const skill of findSkillsForPlugin(plugin)) {
       report.totalAvailable++
@@ -182,7 +182,7 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
 
 export async function installPluginAssets(plugins: PluginEntry[]): Promise<InstallReport> {
   const report: InstallReport = { installed: [], unchanged: [], skipped: [] }
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
 
   for (const plugin of plugins) {
     for (const skill of findSkillsForPlugin(plugin)) {
@@ -426,7 +426,7 @@ export async function planPluginAssetsRemoval(
   pluginId: string,
   ownedSkills: readonly string[],
 ): Promise<PluginAssetsRemovalPlan> {
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
   const plan: PluginAssetsRemovalPlan = { toRemove: [], toKeep: [], missingFromDisk: [], snapshots: [] }
   for (const skillName of ownedSkills) {
     const skill = await runtime.skills.get(skillName)
@@ -475,7 +475,7 @@ export async function removePluginAssets(
   keptSkills: string[]
   missingFromDisk: string[]
 }> {
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
   const plan = existingPlan ?? await planPluginAssetsRemoval(pluginId, ownedSkills)
   for (const skillName of plan.toRemove) {
     await runtime.skills.remove(skillName)

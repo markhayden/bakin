@@ -48,7 +48,7 @@ import {
 } from '@/core/onboarding/plugin-assets'
 
 type TestGlobal = typeof globalThis & {
-  __bakinFallbackRuntimeAdapter?: AgentRuntimeAdapter
+  __bakinAppServices?: { runtime: AgentRuntimeAdapter }
 }
 
 const SKILL_BODY = `---
@@ -105,7 +105,7 @@ function readMarker(skillDir: string): unknown {
 function installRuntimeMock(): void {
   const skillRoot = join(runtimeSkillHome, 'skills')
   const skillDir = (name: string) => join(skillRoot, name)
-  ;(globalThis as TestGlobal).__bakinFallbackRuntimeAdapter = {
+  const runtime = {
     skills: {
       list: async () => [],
       get: async (name: string): Promise<RuntimeSkill | null> => {
@@ -140,6 +140,7 @@ function installRuntimeMock(): void {
       },
     },
   } as unknown as AgentRuntimeAdapter
+  ;(globalThis as TestGlobal).__bakinAppServices = { runtime }
 }
 
 describe('plugin-assets onboarding component', () => {
