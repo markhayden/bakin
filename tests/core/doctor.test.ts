@@ -44,7 +44,7 @@ mock.module('@/core/settings', () => ({
   getSettings: mock(() => ({
     runtime: {
       adapter: 'openclaw',
-      settings: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+      settings: {},
     },
     antfly: { enabled: false },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
@@ -234,7 +234,7 @@ describe('doctor', () => {
       settings.mockReturnValueOnce({
         runtime: {
           adapter: 'openclaw',
-          settings: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+          settings: {},
         },
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
@@ -258,7 +258,7 @@ describe('doctor', () => {
       settings.mockReturnValueOnce({
         runtime: {
           adapter: 'openclaw',
-          settings: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+          settings: {},
         },
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
@@ -284,7 +284,7 @@ describe('doctor', () => {
       settings.mockReturnValueOnce({
         runtime: {
           adapter: 'openclaw',
-          settings: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+          settings: {},
         },
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },

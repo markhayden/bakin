@@ -186,7 +186,7 @@ describe('onboarding credentials component', () => {
     })
 
     it('reports warn when runtime config has no channels key', async () => {
-      writeFileSync(runtimeConfigPath(), JSON.stringify({ gateway: { auth: { token: 'x' } } }))
+      writeFileSync(runtimeConfigPath(), JSON.stringify({ runtime: { auth: { token: 'x' } } }))
       const result = await channelsComponent.check()
       expect(result.status).toBe('warn')
       expect(result.message).toContain('missing')
