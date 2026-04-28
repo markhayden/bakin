@@ -16,7 +16,7 @@ process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 let mockUsingBakinHome = true
@@ -80,6 +80,12 @@ mock.module('../../../src/core/openclaw-client', () => ({
     return mockGatewayPing()
   },
   sendMessage: mock(),
+}))
+mock.module('../../../src/core/runtime-registry', () => ({
+  pingRuntime: async () => {
+    if (mockGatewayPingThrows) throw mockGatewayPingThrows
+    return mockGatewayPing()
+  },
 }))
 
 let mockAntflyEnabled = false
@@ -154,6 +160,41 @@ import { checkAntfly } from '../../../plugins/health/lib/system-checks/antfly'
 import { checkOrchestratorRules } from '../../../plugins/health/lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from '../../../plugins/health/lib/system-checks/sync-skill'
 import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import type { AgentRuntimeAdapter, RuntimeSkill } from '@bakin/core/adapters/runtime'
+
+let mockRuntime: AgentRuntimeAdapter
+let runtimeWorkspaceFiles: Map<string, string>
+let runtimeSkill: RuntimeSkill | null
+
+function runtimeFileKey(agentId: string, path: string): string {
+  return `${agentId}:${path}`
+}
+
+function makeHealthRuntime(): AgentRuntimeAdapter {
+  const runtime = createMockRuntimeAdapter()
+  runtime.agents.list = async () => [{ id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' }]
+  runtime.agents.readWorkspaceFile = async (agentId, path) => {
+    const content = runtimeWorkspaceFiles.get(runtimeFileKey(agentId, path))
+    return content === undefined ? null : { path, content }
+  }
+  runtime.agents.writeWorkspaceFile = async (agentId, file) => {
+    runtimeWorkspaceFiles.set(runtimeFileKey(agentId, file.path), file.content)
+  }
+  runtime.skills.get = async (name) => name === 'bakin' ? runtimeSkill : null
+  runtime.skills.write = async (skill) => {
+    runtimeSkill = skill
+  }
+  return runtime
+}
+
+function seedMainAgentsMd(content: string): void {
+  runtimeWorkspaceFiles.set(runtimeFileKey('main', 'AGENTS.md'), content)
+}
+
+function readMainAgentsMd(): string {
+  return runtimeWorkspaceFiles.get(runtimeFileKey('main', 'AGENTS.md')) ?? ''
+}
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -174,6 +215,9 @@ beforeEach(() => {
   mockAntflyUrl = 'http://127.0.0.1:8765/api/v1'
   mockFetchOk = true
   mockFetchHealth = 'green'
+  runtimeWorkspaceFiles = new Map()
+  runtimeSkill = null
+  mockRuntime = makeHealthRuntime()
   restoreFetch()
 })
 
@@ -396,19 +440,16 @@ describe('checkAntfly', () => {
 // ─── checkOrchestratorRules ───────────────────────────────────────────────
 
 describe('checkOrchestratorRules', () => {
-  const openClawWorkspace = pathJoin(testDir, 'openclaw', 'workspace')
-
   it('warns when AGENTS.md is missing', async () => {
-    const results = await checkOrchestratorRules()
+    const results = await checkOrchestratorRules(mockRuntime)
     expect(results[0].check).toBe('orchestrator-rules')
     expect(results[0].status).toBe('warn')
     expect(results[0].message).toMatch(/AGENTS.md not found/)
   })
 
   it('warns when block is missing without autoFix', async () => {
-    mkdirSync(openClawWorkspace, { recursive: true })
-    writeFileSync(join(openClawWorkspace, 'AGENTS.md'), '# Main\n\nNo block here.\n')
-    const results = await checkOrchestratorRules()
+    seedMainAgentsMd('# Main\n\nNo block here.\n')
+    const results = await checkOrchestratorRules(mockRuntime)
     expect(results[0].status).toBe('warn')
     expect(results[0].autoFixable).toBe(true)
     expect(results[0].message).toMatch(/missing from AGENTS.md/)
@@ -416,22 +457,19 @@ describe('checkOrchestratorRules', () => {
 
   it('adds the block under autoFix when missing', async () => {
     mockAutoFix = true
-    mkdirSync(openClawWorkspace, { recursive: true })
-    writeFileSync(join(openClawWorkspace, 'AGENTS.md'), '# Main\n')
-    const results = await checkOrchestratorRules()
+    seedMainAgentsMd('# Main\n')
+    const results = await checkOrchestratorRules(mockRuntime)
     expect(results[0].status).toBe('fixed')
-    const after = readFileSync(join(openClawWorkspace, 'AGENTS.md'), 'utf-8')
+    const after = readMainAgentsMd()
     expect(after).toContain('<!-- bakin:orchestrator-rules:start -->')
     expect(after).toContain('<!-- bakin:orchestrator-rules:end -->')
   })
 
   it('reports error when block has start marker but no end marker', async () => {
-    mkdirSync(openClawWorkspace, { recursive: true })
-    writeFileSync(
-      join(openClawWorkspace, 'AGENTS.md'),
+    seedMainAgentsMd(
       '# Main\n\n<!-- bakin:orchestrator-rules:start -->\n(missing end)\n',
     )
-    const results = await checkOrchestratorRules()
+    const results = await checkOrchestratorRules(mockRuntime)
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/no end marker/)
   })
@@ -440,38 +478,38 @@ describe('checkOrchestratorRules', () => {
 // ─── checkAndSyncSkill ────────────────────────────────────────────────────
 
 describe('checkAndSyncSkill', () => {
-  it('errors when the skill source is missing', () => {
+  it('errors when the skill source is missing', async () => {
     const projectRoot = pathJoin(testDir, 'project-no-skill')
     mkdirSync(projectRoot, { recursive: true })
-    const results = checkAndSyncSkill(projectRoot)
+    const results = await checkAndSyncSkill(projectRoot, mockRuntime)
     expect(results[0].check).toBe('skill')
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/source not found/)
   })
 
-  it('errors when the template is missing the exec-tools markers', () => {
+  it('errors when the template is missing the exec-tools markers', async () => {
     const projectRoot = pathJoin(testDir, 'project-no-markers')
     mkdirSync(join(projectRoot, 'skill'), { recursive: true })
     writeFileSync(join(projectRoot, 'skill', 'SKILL.md'), '# Bakin Skill\n(no markers)\n')
-    const results = checkAndSyncSkill(projectRoot)
+    const results = await checkAndSyncSkill(projectRoot, mockRuntime)
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/missing the .*markers/)
   })
 
-  it('warns when the rendered skill is not yet installed (no autoFix)', () => {
+  it('warns when the rendered skill is not yet installed (no autoFix)', async () => {
     const projectRoot = pathJoin(testDir, 'project-ok')
     mkdirSync(join(projectRoot, 'skill'), { recursive: true })
     writeFileSync(
       join(projectRoot, 'skill', 'SKILL.md'),
       '# Bakin Skill\n<!-- bakin:exec-tools:start -->\n<!-- bakin:exec-tools:end -->\n',
     )
-    const results = checkAndSyncSkill(projectRoot)
+    const results = await checkAndSyncSkill(projectRoot, mockRuntime)
     expect(results[0].status).toBe('warn')
     expect(results[0].autoFixable).toBe(true)
-    expect(results[0].message).toMatch(/not installed in OpenClaw/)
+    expect(results[0].message).toMatch(/not installed in runtime/)
   })
 
-  it('installs the skill under autoFix when missing', () => {
+  it('installs the skill under autoFix when missing', async () => {
     mockAutoFix = true
     const projectRoot = pathJoin(testDir, 'project-install')
     mkdirSync(join(projectRoot, 'skill'), { recursive: true })
@@ -479,9 +517,10 @@ describe('checkAndSyncSkill', () => {
       join(projectRoot, 'skill', 'SKILL.md'),
       '# Bakin Skill\n<!-- bakin:exec-tools:start -->\n<!-- bakin:exec-tools:end -->\n',
     )
-    const results = checkAndSyncSkill(projectRoot)
+    const results = await checkAndSyncSkill(projectRoot, mockRuntime)
     expect(results[0].status).toBe('fixed')
-    expect(results[0].message).toMatch(/installed in OpenClaw workspace/)
+    expect(results[0].message).toMatch(/installed in runtime/)
+    expect(runtimeSkill?.instructions).toContain('<!-- bakin:exec-tools:start -->')
   })
 })
 
@@ -537,6 +576,7 @@ describe('plugin registration', () => {
       },
       storage: {},
       events: { on: noop, emit: noop, off: noop },
+      runtime: createMockRuntimeAdapter(),
     }
     await healthPlugin.activate(ctx as unknown as Parameters<typeof healthPlugin.activate>[0])
 

@@ -156,6 +156,10 @@ async function buildWorkflowCatalog(): Promise<string> {
 export async function resolveOrchestratorRules(): Promise<string> {
   const agentId = getMainAgentId()
   const agentName = getMainAgentName()
+  return resolveOrchestratorRulesForAgent(agentId, agentName)
+}
+
+export async function resolveOrchestratorRulesForAgent(agentId: string, agentName: string): Promise<string> {
   return ORCHESTRATOR_RULES_CONTENT
     .replace('WORKFLOW_CATALOG_PLACEHOLDER', await buildWorkflowCatalog())
     .replaceAll('AGENT_ID_PLACEHOLDER', agentId)
@@ -394,9 +398,9 @@ mcporter call bakin-${agentId}.bakin_exec_schedule_create name="daily-recipe" sc
 All created content (images, video, audio, text, plans, data) MUST go to the assets directory. Use the Bakin skill for full conventions, but here's the minimum:
 
 1. **Discover paths via mcporter:** \`mcporter call bakin-${agentId}.bakin_exec_get_paths\`
-2. **Organize by task:** \`\$ASSETS_DIR/<task-id>/filename.ext\`
-   - **No task?** Write to \`\$ASSETS_DIR/_unlinked/\` — NEVER place files directly in the type root (e.g. \`assets/text/file.md\` is WRONG, use \`assets/text/_unlinked/file.md\`)
-   - **Shared/reusable?** Write to \`\$ASSETS_DIR/library/\`
+2. **Organize by task:** \`$ASSETS_DIR/<task-id>/filename.ext\`
+   - **No task?** Write to \`$ASSETS_DIR/_unlinked/\` — NEVER place files directly in the type root (e.g. \`assets/text/file.md\` is WRONG, use \`assets/text/_unlinked/file.md\`)
+   - **Shared/reusable?** Write to \`$ASSETS_DIR/library/\`
 3. **Write sidecar FIRST, then the asset.** Sidecar filename = full asset filename + \`.meta.json\` (e.g. \`20260323-hero.png.meta.json\`, NOT \`hero.meta.json\`)
 4. **Sidecar fields — use these EXACT names:**
    - \`agent\` (required, string — NOT \`author\`), \`taskId\` (required, string or null), \`created\` (required, ISO 8601 — NOT \`createdAt\`)

@@ -4,13 +4,11 @@
  * Migrated out of src/core/doctor.ts (#139 C8). Auto-fixable — safe
  * to write/update Bakin's own block (gated by start/end markers).
  */
-import { existsSync, readFileSync, writeFileSync } from 'fs'
-
 import { getSettings } from '../../../../src/core/settings'
-import { getOpenClawPath } from '../../../../packages/core/src/openclaw-home'
+import type { AgentRuntimeAdapter, RuntimeAgent } from '../../../../packages/core/src/adapters/runtime'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
-import { AGENT_RULES_BLOCK_END, AGENT_RULES_BLOCK_START, resolveOrchestratorRules } from '../managed-blocks'
+import { AGENT_RULES_BLOCK_END, AGENT_RULES_BLOCK_START, resolveOrchestratorRulesForAgent } from '../managed-blocks'
 
 function ok(message: string): HealthCheckResult {
   return { check: 'orchestrator-rules', status: 'ok', message, autoFixable: false }
@@ -25,16 +23,27 @@ function fixed(message: string): HealthCheckResult {
   return { check: 'orchestrator-rules', status: 'fixed', message, autoFixable: true }
 }
 
-export async function checkOrchestratorRules(): Promise<HealthCheckResult[]> {
-  const autoFix = getSettings().doctor.autoFixSkill
-  const agentsPath = getOpenClawPath('workspace', 'AGENTS.md')
+function resolveMainAgent(agents: RuntimeAgent[]): RuntimeAgent | null {
+  return agents.find((agent) => agent.id === 'main')
+    ?? agents.find((agent) => agent.role?.toLowerCase() === 'orchestrator')
+    ?? agents[0]
+    ?? null
+}
 
-  if (!existsSync(agentsPath)) {
+export async function checkOrchestratorRules(runtime: AgentRuntimeAdapter): Promise<HealthCheckResult[]> {
+  const autoFix = getSettings().doctor.autoFixSkill
+  const mainAgent = resolveMainAgent(await runtime.agents.list())
+  if (!mainAgent) {
+    return [warn('No runtime agents found — cannot verify orchestrator rules')]
+  }
+
+  const file = await runtime.agents.readWorkspaceFile(mainAgent.id, 'AGENTS.md')
+  if (!file) {
     return [warn('AGENTS.md not found — cannot verify orchestrator rules')]
   }
 
-  const resolvedContent = await resolveOrchestratorRules()
-  const current = readFileSync(agentsPath, 'utf-8')
+  const resolvedContent = await resolveOrchestratorRulesForAgent(mainAgent.id, mainAgent.name)
+  const current = file.content
   const startIdx = current.indexOf(AGENT_RULES_BLOCK_START)
   const endIdx = current.indexOf(AGENT_RULES_BLOCK_END)
   const hasBlock = startIdx !== -1
@@ -44,7 +53,7 @@ export async function checkOrchestratorRules(): Promise<HealthCheckResult[]> {
       return [warn('Orchestrator rules block missing from AGENTS.md — run: bakin agent-rules --apply', true)]
     }
     const block = `${AGENT_RULES_BLOCK_START}\n${resolvedContent}\n${AGENT_RULES_BLOCK_END}\n`
-    writeFileSync(agentsPath, current.trimEnd() + '\n\n' + block, 'utf-8')
+    await runtime.agents.writeWorkspaceFile(mainAgent.id, { path: 'AGENTS.md', content: current.trimEnd() + '\n\n' + block })
     return [fixed('Added orchestrator rules block to AGENTS.md')]
   }
 
@@ -65,6 +74,6 @@ export async function checkOrchestratorRules(): Promise<HealthCheckResult[]> {
 
   const block = `${AGENT_RULES_BLOCK_START}\n${resolvedContent}\n${AGENT_RULES_BLOCK_END}`
   const updated = current.slice(0, startIdx) + block + current.slice(endIdx + AGENT_RULES_BLOCK_END.length)
-  writeFileSync(agentsPath, updated, 'utf-8')
+  await runtime.agents.writeWorkspaceFile(mainAgent.id, { path: 'AGENTS.md', content: updated })
   return [fixed('Updated orchestrator rules block in AGENTS.md')]
 }
