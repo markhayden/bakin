@@ -40,10 +40,12 @@ mock.module('child_process', () => ({
 
 let mockRuntimeConfig: Record<string, unknown> = {}
 
-mock.module('../../src/core/runtime-registry', () => ({
-  getRuntimeAdapter: () => ({
-    config: {
-      get: async () => mockRuntimeConfig,
+mock.module('../../src/core/app-services', () => ({
+  getAppServices: () => ({
+    runtime: {
+      config: {
+        get: async () => mockRuntimeConfig,
+      },
     },
   }),
 }))

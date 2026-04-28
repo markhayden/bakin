@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { existsSync } from 'fs'
 import { basename, join } from 'path'
 import { getContentDir } from '@/core/content-dir'
-import { getRuntimeAdapter } from '@/core/runtime-registry'
+import { getAppServices } from '@/core/app-services'
 import { pathForFilename } from '@bakin/assets/lib/path-for-filename'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
@@ -45,7 +45,7 @@ function isTestMode(): boolean {
 
 export async function postChannel(
   params: PostChannelParams,
-  runtime: AgentRuntimeAdapter = getRuntimeAdapter(),
+  runtime: AgentRuntimeAdapter = getAppServices().runtime,
 ): Promise<ExecToolResult> {
   const requestedChannel = params.channel
   const channel = normalizeChannelTarget(isTestMode() ? TEST_CHANNEL : requestedChannel)

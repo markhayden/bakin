@@ -73,16 +73,18 @@ mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
 
-mock.module('../../src/core/runtime-registry', () => ({
-  getRuntimeAdapter: () => ({
-    agents: {
-      list: async () => [
-        { id: 'alice', name: 'Alice', role: 'Builder', status: 'active' },
-        { id: 'orchestrator', name: 'Orchestrator', role: 'Orchestrator', status: 'active' },
-      ],
-    },
-    messaging: {
-      send: async () => ({ id: 'msg-1', content: '' }),
+mock.module('../../src/core/app-services', () => ({
+  getAppServices: () => ({
+    runtime: {
+      agents: {
+        list: async () => [
+          { id: 'alice', name: 'Alice', role: 'Builder', status: 'active' },
+          { id: 'orchestrator', name: 'Orchestrator', role: 'Orchestrator', status: 'active' },
+        ],
+      },
+      messaging: {
+        send: async () => ({ id: 'msg-1', content: '' }),
+      },
     },
   }),
 }))
