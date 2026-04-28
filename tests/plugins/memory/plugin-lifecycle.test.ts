@@ -127,7 +127,7 @@ describe('memory plugin lifecycle — activate vs onReady', () => {
     await flush()
 
     // We don't assert that index() was called — the test harness has no
-    // OpenClaw agents to backfill from, so the indexer has nothing to do.
+    // runtime agents to backfill from, so the indexer has nothing to do.
     // The point is: onReady ran and the plugin is still alive.
     expect(activated.ctx).toBeDefined()
   })

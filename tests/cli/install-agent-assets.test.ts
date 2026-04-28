@@ -37,13 +37,6 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/adapter-openclaw/config', () => ({
-  readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => openClawAgents,
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
-}))
 
 import { agentAssetsComponent } from '../../src/core/onboarding/agent-assets'
 import { installPackage } from '../../src/core/agent-packages/installer'

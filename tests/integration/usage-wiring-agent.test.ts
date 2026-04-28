@@ -214,13 +214,6 @@ describe('T2.3 agent usage wiring', () => {
         dispatch: { maxRetries: 3, failureCooldownMs: 1000, transientCooldownMs: 500, maxDispatched: 200 },
       }),
     }))
-    // Dispatch now derives the agent roster from openclaw-config (T2).
-    mock.module('@bakin/adapter-openclaw/config', () => ({
-      getAgentIds: () => ['alice'],
-      findAgentById: (id: string) => (id === 'alice' ? { id: 'alice' } : null),
-      readOpenClawConfig: () => ({ agents: [{ id: 'alice' }] }),
-      resetOpenClawConfigCache: () => {},
-    }))
     // Stub taskboard lib used via dynamic import inside dispatch.
     mock.module('@/core/task-store', () => ({
       moveTaskToInProgress: mock().mockResolvedValue(undefined),

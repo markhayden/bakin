@@ -35,13 +35,6 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/adapter-openclaw/config', () => ({
-  readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => openClawAgents,
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
-}))
 
 const adapterCalls = {
   addAgent: [] as unknown[],
@@ -266,7 +259,7 @@ function seedSkillPack(name: string): string {
 }
 
 describe('removePackageById — basic remove', () => {
-  it('removes projected files + lockfile entry, leaves OpenClaw agent in place by default', async () => {
+  it('removes projected files + lockfile entry, leaves runtime agent in place by default', async () => {
     const src = seedAgentPackage()
     await installPackage({ source: src })
 
@@ -283,12 +276,12 @@ describe('removePackageById — basic remove', () => {
     // Lockfile entry gone
     expect(readLockfile().packages.pixel).toBeUndefined()
 
-    // OpenClaw still has the agent
+    // Runtime still has the agent
     expect(openClawAgents.find((a) => a.id === 'pixel')).toBeDefined()
     expect(adapterCalls.removeAgent).toEqual([])
   })
 
-  it('with --delete-agent, also removes the OpenClaw agent', async () => {
+  it('with --delete-agent, also removes the runtime agent', async () => {
     const src = seedAgentPackage()
     await installPackage({ source: src })
 

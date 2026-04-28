@@ -32,13 +32,6 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/adapter-openclaw/config', () => ({
-  readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => openClawAgents,
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
-}))
 
 type TestGlobal = typeof globalThis & {
   __bakinAppServices?: { runtime: AgentRuntimeAdapter }
