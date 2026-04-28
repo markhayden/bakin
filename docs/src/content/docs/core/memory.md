@@ -3,13 +3,13 @@ title: Memory
 description: Use Bakin memory views to inspect agent memory, audit logs, sessions, turns, dreams, checkpoints, and search state.
 ---
 
-Memory docs cover observability over the stored context Bakin and OpenClaw use. The memory plugin is primarily read-oriented and helps operators understand what agents know, what happened, and where context came from.
+Memory docs cover observability over the stored context Bakin and the configured runtime use. The memory plugin is primarily read-oriented and helps operators understand what agents know, what happened, and where context came from.
 
 ## What to Inspect
 
 - audit events
 - workspace memory
-- gateway/session memory
+- runtime session memory
 - daily notes
 - turns and checkpoints
 - recent memory activity

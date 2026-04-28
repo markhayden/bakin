@@ -9,7 +9,7 @@ Model management controls the relationship between agents and available model ch
 
 - Use model assignments to make agent behavior predictable.
 - Keep allowlists and blocklists explicit when model availability should be controlled.
-- Restart or mark gateway configuration state when model configuration changes require it.
+- Restart or mark runtime configuration state when model configuration changes require it.
 
 ## Related Settings
 

@@ -757,7 +757,7 @@ writeStableFile(
 
 ${versionLine}
 
-Bakin is a self-hosted dashboard, backend, CLI, and extension system for running agent work with OpenClaw. Use these docs to install Bakin, operate it, build plugins, author agent packages, and understand the public contracts exposed by the SDK, hooks, slots, CLI, and HTTP API.
+Bakin is a self-hosted dashboard, backend, CLI, and extension system for running agent work through a configured runtime adapter. Use these docs to install Bakin, operate it, build plugins, author agent packages, and understand the public contracts exposed by the SDK, hooks, slots, CLI, and HTTP API.
 
 Primary docs:
 
@@ -842,7 +842,7 @@ const bundles = {
   },
   'agent-authoring.md': {
     title: 'Bakin Agent Authoring',
-    body: 'Agent-facing docs are explicit and labeled. Explain only the OpenClaw concepts needed to use Bakin, then link to OpenClaw for deeper details. Agent package examples must be validated before publication.',
+    body: 'Agent-facing docs are explicit and labeled. Explain runtime-specific concepts only when a package depends on them. Agent package examples must be validated before publication.',
   },
   'api.md': {
     title: 'Bakin API Reference',
