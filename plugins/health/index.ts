@@ -20,7 +20,7 @@ import {
 import { checkContentDir } from './lib/system-checks/content-dir'
 import { checkService } from './lib/system-checks/service'
 import { checkMcporter } from './lib/system-checks/mcporter'
-import { checkGateway } from './lib/system-checks/gateway'
+import { checkRuntime } from './lib/system-checks/runtime'
 import { checkAntfly } from './lib/system-checks/antfly'
 import { checkOrchestratorRules } from './lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from './lib/system-checks/sync-skill'
@@ -125,7 +125,7 @@ const healthPlugin: BakinPlugin = {
           errors1h,
           activeSessions: mcp.activeSessions,
           upSince: mcp.upSince,
-          runtimeGatewayPort: settings.runtime.settings.gatewayPort,
+          runtimePort: settings.runtime.settings.gatewayPort,
           server: {
             port: Number(port),
             pid: process.pid,
@@ -260,7 +260,7 @@ const healthPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_health_doctor',
       label: 'Ran diagnostics',
-      description: 'Run system diagnostics (agent roster, skill sync, gateway, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.',
+      description: 'Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.',
       parameters: {
         fresh: z.boolean().optional().describe('Force fresh diagnostics instead of cached results'),
       },
@@ -305,9 +305,9 @@ const healthPlugin: BakinPlugin = {
       run: () => checkMcporter(),
     })
     ctx.registerHealthCheck({
-      id: 'gateway',
-      name: 'Runtime gateway reachability',
-      run: () => checkGateway(),
+      id: 'runtime',
+      name: 'Runtime reachability',
+      run: () => checkRuntime(),
     })
     ctx.registerHealthCheck({
       id: 'antfly',

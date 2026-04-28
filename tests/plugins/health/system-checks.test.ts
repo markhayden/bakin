@@ -148,7 +148,7 @@ mock.module('../../../scripts/lib/registry', () => ({
 import { checkContentDir } from '../../../plugins/health/lib/system-checks/content-dir'
 import { checkService } from '../../../plugins/health/lib/system-checks/service'
 import { checkMcporter } from '../../../plugins/health/lib/system-checks/mcporter'
-import { checkGateway } from '../../../plugins/health/lib/system-checks/gateway'
+import { checkRuntime } from '../../../plugins/health/lib/system-checks/runtime'
 import { checkAntfly } from '../../../plugins/health/lib/system-checks/antfly'
 import { checkOrchestratorRules } from '../../../plugins/health/lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from '../../../plugins/health/lib/system-checks/sync-skill'
@@ -347,12 +347,12 @@ describe('checkMcporter', () => {
   })
 })
 
-// ─── checkGateway ─────────────────────────────────────────────────────────
+// ─── checkRuntime ─────────────────────────────────────────────────────────
 
-describe('checkGateway', () => {
+describe('checkRuntime', () => {
   it('reports ok when ping succeeds', async () => {
     mockRuntimePing = async () => true
-    const results = await checkGateway()
+    const results = await checkRuntime()
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/reachable/)
@@ -360,14 +360,14 @@ describe('checkGateway', () => {
 
   it('reports error when ping returns false', async () => {
     mockRuntimePing = async () => false
-    const results = await checkGateway()
+    const results = await checkRuntime()
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/not responding/)
   })
 
   it('reports error when ping throws', async () => {
     mockRuntimePingThrows = new Error('connection refused')
-    const results = await checkGateway()
+    const results = await checkRuntime()
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/connection refused/)
   })
@@ -577,7 +577,7 @@ describe('plugin registration', () => {
     expect(registeredIds).toContain('content-dir')
     expect(registeredIds).toContain('service')
     expect(registeredIds).toContain('mcporter')
-    expect(registeredIds).toContain('gateway')
+    expect(registeredIds).toContain('runtime')
     expect(registeredIds).toContain('antfly')
     expect(registeredIds).toContain('orchestrator-rules')
     expect(registeredIds).toContain('skill')
