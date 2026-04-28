@@ -3,51 +3,41 @@ title: Projects
 description: "Markdown spec docs with checklists that can link to real tasks and attach assets. Durable context for multi-task work."
 ---
 
-A project is a markdown document with a checklist that can link to real tasks. Use it when a single task is too small to hold the full picture, or when several tasks roll up to one outcome. Tasks are for executable work; projects are for the context around it.
-
-## The projects view
+Some work needs more than a task can hold. Projects give you a spec, milestone tasks, pinned attachments, and a brainstorm panel where you and an agent shape the bigger picture. Tasks ship; projects orchestrate.
 
 <figure class="screenshot-frame">
-  <figcaption>The projects grid with status tabs (All / Draft / Active / Completed / Archived) and search.</figcaption>
+  <figcaption>The projects grid with status tabs and per-card progress.</figcaption>
 </figure>
 
-Card grid sorted by status. Each card shows title, owner, progress, and last update. Click into the detail view for the full spec.
+Start at the grid. Each card is a live read on how far along you and your agents are. Filter by status from the tabs, search by name or content, click in for the full spec. Hit `+ New Project` to start fresh: title, status, owner, body, done. Tasks and attachments show up once you save.
 
-## The detail view
+## Project Plan
+
+The plan sits at the heart of every project. A markdown spec covering what you're doing, why, how it'll get done, and what done looks like. Starts rough, sharpens with each pass as you and your agents work through it.
+
+### Brainstorm
 
 <figure class="screenshot-frame">
-  <figcaption>Project detail: spec body on top, checklist with task links and asset attachments below, brainstorm panel on the right.</figcaption>
+  <figcaption>The brainstorm panel inside a project: chat thread with an agent, reference material, and task suggestions in context.</figcaption>
 </figure>
 
-Three blocks: the markdown spec body, the checklist (items can be plain or linked to a task), and the asset attachments. A brainstorm panel sits on the side for working with an agent on the project.
+Most of the work happens here. Open the panel, pick an agent, start the conversation. Talk through goals, constraints, the things you haven't figured out yet. With your pinned attachments on hand, the agent grounds every suggestion in what you've got. Bit by bit the plan sharpens, tasks surface, new attachments come in. The conversation stays put so you can come back tomorrow.
 
-## Common actions
+Hammer the plan out here before any real work starts.
 
-### Create a project
+### Tasks
 
-`+ New Project` opens an editor. Title, status, owner, progress, plus a free-form markdown body. The checklist and assets sections appear once saved.
+<figure class="screenshot-frame">
+  <figcaption>The tasks panel inside a project: plain checkboxes alongside linked board tasks with live status.</figcaption>
+</figure>
 
-### Manage checklist items
+Project tasks are the plan in motion. Each one starts as a milestone in the spec, a checkbox sitting next to something that needs to happen. Small stuff you tick yourself and move on. When an item hardens into real work, promote it. One click spins up a task on the [board](/docs/using/tasks/) and wires the link back to the project.
 
-Three ways an item exists:
+From there the checkbox stops being yours to tick. It follows the task. Hits `Done` on the board, flips checked here. The progress bar tracks what actually shipped, not what you remembered to update.
 
-- **Plain** — a checkbox you toggle yourself.
-- **Linked to a task** — auto-checks when the underlying task hits Done.
-- **Promoted from a checklist** — a former plain item turned into a real task in one click. The item then becomes "linked."
+### Attachments
 
-### Attach assets
-
-Pull anything from the [Assets](/docs/using/assets/) library into the project. Detach when no longer relevant.
-
-### Filter and search
-
-Status tabs filter the grid; search runs full-text across project bodies and titles.
-
-## Concepts
-
-- **Projects are markdown files with a checklist sidecar.** Each project is one file. Edit the spec freely; the checklist and assets sections are structured but live inside the same document.
-- **Checklist items can shadow real tasks.** Linked items mirror task state, so a project's progress reflects what's actually shipped.
-- **Promote, don't duplicate.** Turning a checklist item into a task creates the task and rewires the link automatically — the item doesn't get duplicated as a separate task.
+Raw assets that give additional context or direction to the project. Customer feedback, a goals doc, some imagery, a PDF, whatever shapes the conversation. Pin anything from the [Assets](/docs/using/assets/) library and it's right there when you and your agents brainstorm. Attach yourself, or let your agent pull things in as you explore together.
 
 ## Where they live
 
