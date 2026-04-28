@@ -141,21 +141,46 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     create: async (input: CreateRuntimeAgentInput): Promise<RuntimeAgent> => {
       const id = input.id ?? slug(input.name)
       const workspace = getWorkspacePath(id)
+      if (findAgentById(id)) throw new Error(`Agent already exists: ${id}`)
       const args = ['agents', 'add', id, '--workspace', workspace, '--non-interactive', '--json']
       if (input.model) args.splice(3, 0, '--model', input.model)
       await this.exec(args)
+      const emoji = metadataValue(input.metadata, 'emoji')
+      const identityArgs = ['agents', 'set-identity', '--agent', id]
+      if (input.name) identityArgs.push('--name', input.name)
+      if (emoji) identityArgs.push('--emoji', emoji)
+      if (identityArgs.length > 4) await this.exec(identityArgs)
       resetOpenClawConfigCache()
       if (!existsSync(workspace)) mkdirSync(workspace, { recursive: true })
-      return { id, name: input.name, role: input.role, model: input.model, status: 'active', metadata: input.metadata }
+      return {
+        id,
+        name: input.name,
+        role: input.role,
+        model: input.model,
+        status: 'active',
+        metadata: { ...(input.metadata ?? {}), workspacePath: workspace },
+      }
     },
     update: async (agentId: string, input: Partial<RuntimeAgent>): Promise<RuntimeAgent> => {
+      if (!findAgentById(agentId)) throw new Error(`Agent not found: ${agentId}`)
       const args = ['agents', 'set-identity', '--agent', agentId]
       if (input.name) args.push('--name', input.name)
+      const emoji = metadataValue(input.metadata, 'emoji')
+      if (emoji) args.push('--emoji', emoji)
       if (args.length > 4) await this.exec(args)
       resetOpenClawConfigCache()
+      const refreshed = findAgentById(agentId)
+      if (refreshed) {
+        return {
+          ...agentToRuntime(refreshed),
+          ...(input.role ? { role: input.role } : {}),
+          ...(input.model ? { model: input.model } : {}),
+          metadata: { ...(agentToRuntime(refreshed).metadata ?? {}), ...(input.metadata ?? {}) },
+        }
+      }
       return {
         id: agentId,
-        name: input.name ?? findAgentById(agentId)?.identity?.name ?? agentId,
+        name: input.name ?? agentId,
         role: input.role,
         model: input.model,
         status: 'active',
@@ -166,6 +191,17 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       await this.exec(['agents', 'delete', agentId, '--force', '--json'])
       resetOpenClawConfigCache()
       removeAgentFromAllAllowlists(agentId)
+    },
+    listWorkspaceFiles: async (agentId: string): Promise<string[]> => {
+      const root = getWorkspacePath(agentId)
+      try {
+        return readdirSync(root, { withFileTypes: true })
+          .filter((entry) => entry.isFile())
+          .map((entry) => entry.name)
+          .sort()
+      } catch {
+        return []
+      }
     },
     readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
       if (!isSafeWorkspaceFile(path)) return null
@@ -303,7 +339,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         try {
           for (const entry of readdirSync(root, { withFileTypes: true })) {
             if (!entry.isDirectory()) continue
-            out.push({ name: entry.name, path: join(root, entry.name, 'SKILL.md') })
+            const path = join(root, entry.name, 'SKILL.md')
+            out.push({
+              name: entry.name,
+              ...(existsSync(path) ? { path } : {}),
+              metadata: { hasSkillMd: existsSync(path) },
+            })
           }
         } catch {
           // no skills directory
@@ -311,8 +352,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
       return out
     },
-    get: async (name: string): Promise<RuntimeSkill | null> => {
-      for (const root of [getOpenClawPath('skills'), join(getOpenClawPath('workspace'), 'skills')]) {
+    get: async (name: string, agentId?: string): Promise<RuntimeSkill | null> => {
+      const roots = agentId
+        ? [join(getWorkspacePath(agentId), 'skills')]
+        : [getOpenClawPath('skills'), join(getOpenClawPath('workspace'), 'skills')]
+      for (const root of roots) {
         const file = join(root, name, 'SKILL.md')
         try {
           return { name, path: file, instructions: readFileSync(file, 'utf-8') }
@@ -338,9 +382,49 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   memory = {
-    listTiers: async () => [],
-    listEntries: async () => [],
-    getEntry: async () => null,
+    listTiers: async () => [{
+      id: 'workspace-memory',
+      label: 'Workspace memory',
+      description: 'Markdown memory files stored in the runtime workspace.',
+    }],
+    listEntries: async (tierId: string, opts?: { agentId?: string }) => {
+      if (tierId !== 'workspace-memory' || !opts?.agentId) return []
+      const root = join(getWorkspacePath(opts.agentId), 'memory')
+      try {
+        return readdirSync(root, { withFileTypes: true })
+          .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+          .map((entry) => {
+            const file = join(root, entry.name)
+            return {
+              id: entry.name,
+              tierId,
+              agentId: opts.agentId,
+              path: entry.name,
+              content: '',
+              updatedAt: statSync(file).mtime.toISOString(),
+            }
+          })
+          .sort((a, b) => b.id.localeCompare(a.id))
+      } catch {
+        return []
+      }
+    },
+    getEntry: async (tierId: string, id: string, opts?: { agentId?: string }) => {
+      if (tierId !== 'workspace-memory' || !opts?.agentId || !isSafeWorkspaceFile(`memory/${id}`)) return null
+      const file = join(getWorkspacePath(opts.agentId), 'memory', id)
+      try {
+        return {
+          id,
+          tierId,
+          agentId: opts.agentId,
+          path: id,
+          content: readFileSync(file, 'utf-8'),
+          updatedAt: statSync(file).mtime.toISOString(),
+        }
+      } catch {
+        return null
+      }
+    },
   }
 
   tasks = {
@@ -714,8 +798,14 @@ function agentToRuntime(agent: NonNullable<ReturnType<typeof findAgentById>>): R
   return {
     id: agent.id,
     name: agent.identity?.name ?? agent.name ?? agent.id,
+    role: resolveRole(agent.id),
     model: agent.model?.primary,
     status: 'active',
+    metadata: {
+      emoji: agent.identity?.emoji ?? '',
+      workspacePath: getWorkspacePath(agent.id),
+      subagentAllowAgents: agent.subagents?.allowAgents ?? null,
+    },
   }
 }
 
@@ -731,6 +821,57 @@ function getWorkspacePath(agentId: string): string {
 
 function isSafeWorkspaceFile(path: string): boolean {
   return !path.includes('..') && !path.startsWith('/') && !path.includes('\\')
+}
+
+function readWorkspaceRootFile(agentId: string, filename: string): string | null {
+  if (!isSafeWorkspaceFile(filename)) return null
+  try {
+    return readFileSync(join(getWorkspacePath(agentId), filename), 'utf-8')
+  } catch {
+    return null
+  }
+}
+
+function matchIdentityField(identity: string, key: string): string | null {
+  const inlineRe = new RegExp(
+    `^\\s*[-*]?\\s*\\*{0,2}${key}\\*{0,2}\\s*:\\s*\\*{0,2}\\s*(.+?)\\s*\\*{0,2}\\s*$`,
+    'mi',
+  )
+  const inline = identity.match(inlineRe)
+  if (inline) {
+    const value = inline[1].trim().replace(/^\*+|\*+$/g, '').trim()
+    if (value.length > 0) return value
+  }
+  const heading = identity.match(new RegExp(`^#{1,6}\\s+${key}\\s*$\\n+([^\\n]+)`, 'mi'))
+  if (heading) {
+    const value = heading[1].trim().replace(/^\*+|\*+$/g, '').trim()
+    if (value.length > 0) return value
+  }
+  return null
+}
+
+function resolveRole(agentId: string): string {
+  const identity = readWorkspaceRootFile(agentId, 'IDENTITY.md')
+  if (identity) {
+    const role = matchIdentityField(identity, 'Role')
+    if (role) return role
+    const vibe = matchIdentityField(identity, 'Vibe')
+    if (vibe) return vibe
+  }
+
+  const soul = readWorkspaceRootFile(agentId, 'SOUL.md')
+  if (soul) {
+    const firstLine = soul.split('\n').find((line) => line.startsWith('You are ') || line.startsWith('# '))
+    if (firstLine) {
+      const dashPart = firstLine.split('—')[1] || firstLine.split('-')[1]
+      if (dashPart) {
+        const role = dashPart.replace(/\.\s*$/, '').trim()
+        if (role.length > 0 && role.length < 60) return role
+      }
+    }
+  }
+
+  return agentId === tryGetMainAgentId() ? 'Orchestrator' : ''
 }
 
 function slug(value: string): string {

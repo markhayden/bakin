@@ -11,7 +11,7 @@ process.env.OPENCLAW_HOME = openClawDir
 process.env.BAKIN_HOME = testDir
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 mock.module('@/core/content-dir', () => ({
@@ -38,21 +38,6 @@ mock.module('@bakin/core/openclaw-config', () => ({
   getAgentIds: () => openClawAgents.map((a) => a.id),
   findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
 }))
-
-const adapterMockFactory = () => ({
-  addAgent: async (input: { id: string }) => {
-    openClawAgents.push({ id: input.id, identity: { name: input.id } })
-    return { id: input.id, workspace: join(openClawDir, 'workspaces', input.id) }
-  },
-  addToAllowLists: () => {},
-  removeAgent: async () => true,
-  removeFromAllowLists: () => {},
-  getOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  listAgents: () => [],
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-})
-mock.module('@bakin/team/lib/openclaw-adapter', adapterMockFactory)
-mock.module('../../plugins/team/lib/openclaw-adapter', adapterMockFactory)
 
 import { installPackage } from '../../src/core/agent-packages/installer'
 import { updatePackageById } from '../../src/core/agent-packages/updater'

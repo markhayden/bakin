@@ -7,7 +7,18 @@
  * Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw.
  */
 import { z } from 'zod'
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'fs'
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'fs'
 import { basename, dirname, join, relative } from 'path'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { createLogger } from '../../src/core/logger'
@@ -21,10 +32,20 @@ import { sendMessageToAgent } from '../../src/core/agents'
 import { restartRuntime } from '../../src/core/runtime-registry'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getStatsByMs } from '../../src/core/usage'
-import * as adapter from './lib/openclaw-adapter'
+import type { AgentRuntimeAdapter, RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { readLatestSessionTranscript } from './lib/session-reader'
 import { checkAgentRoster, checkPersonas, checkAgentAssets } from './lib/health-checks'
-import type { AgentWithStatus, AgentDisplaySettingsMap, HeartbeatData, OrgTeam, TeamPluginSettings } from './types'
+import type {
+  AgentMeta,
+  AgentProfile,
+  AgentWithStatus,
+  AgentDisplaySettingsMap,
+  HeartbeatData,
+  HeartbeatRaw,
+  OrgTeam,
+  SkillSummary,
+  TeamPluginSettings,
+} from './types'
 
 const log = createLogger('team')
 const BAKIN_PORT = Number(process.env.PORT || 3737)
@@ -135,9 +156,9 @@ function degradeUnknownReportsTo(teams: OrgTeam[], knownIds: Set<string>): OrgTe
   })
 }
 
-function mergeDisplayDefaults(overrides: AgentDisplaySettingsMap): AgentDisplaySettingsMap {
+async function mergeDisplayDefaults(runtime: AgentRuntimeAdapter, overrides: AgentDisplaySettingsMap): Promise<AgentDisplaySettingsMap> {
   const result: AgentDisplaySettingsMap = {}
-  const ids = adapter.getAgentIds()
+  const ids = (await runtime.agents.list()).map((agent) => agent.id)
   for (const id of ids) {
     result[id] = {
       ...overrides[id],
@@ -147,10 +168,283 @@ function mergeDisplayDefaults(overrides: AgentDisplaySettingsMap): AgentDisplayS
   return result
 }
 
+interface IdentityFields {
+  name?: string
+  emoji?: string
+  role?: string
+  vibe?: string
+  primaryFunction?: string
+  defaultMode?: string
+}
+
+interface CreateAgentInput extends IdentityFields {
+  id: string
+  name: string
+  model?: string
+  soul?: string
+  tools?: string
+}
+
+function metadataString(agent: RuntimeAgent, key: string): string | undefined {
+  const value = agent.metadata?.[key]
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function metadataStringArray(agent: RuntimeAgent, key: string): string[] | null {
+  const value = agent.metadata?.[key]
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string') ? value : null
+}
+
+function agentToMeta(agent: RuntimeAgent): AgentMeta {
+  return {
+    id: agent.id,
+    name: agent.name || agent.id,
+    emoji: metadataString(agent, 'emoji') ?? '',
+    role: agent.role ?? metadataString(agent, 'role') ?? '',
+    headshot: `/api/plugins/team/${agent.id}/avatar`,
+  }
+}
+
+async function listRuntimeAgentMetas(runtime: AgentRuntimeAdapter): Promise<AgentMeta[]> {
+  return (await runtime.agents.list()).map(agentToMeta)
+}
+
+async function getRuntimeAgentIds(runtime: AgentRuntimeAdapter): Promise<string[]> {
+  return (await runtime.agents.list()).map((agent) => agent.id)
+}
+
+async function getRuntimeAgentModel(runtime: AgentRuntimeAdapter, agent: RuntimeAgent): Promise<string> {
+  if (agent.model) return agent.model
+  const config = await runtime.config.get<{
+    agents?: { defaults?: { model?: { primary?: string } } }
+  }>()
+  return config.agents?.defaults?.model?.primary ?? 'unknown'
+}
+
+async function readRuntimeWorkspaceText(
+  runtime: AgentRuntimeAdapter,
+  agentId: string,
+  path: string,
+): Promise<string | null> {
+  return (await runtime.agents.readWorkspaceFile(agentId, path))?.content ?? null
+}
+
+async function getRuntimeAgentProfile(runtime: AgentRuntimeAdapter, agentId: string): Promise<AgentProfile | null> {
+  const agent = await runtime.agents.get(agentId)
+  if (!agent) return null
+  const meta = agentToMeta(agent)
+  const model = await getRuntimeAgentModel(runtime, agent)
+  return {
+    ...meta,
+    model,
+    workspacePath: metadataString(agent, 'workspacePath') ?? '',
+    soul: await readRuntimeWorkspaceText(runtime, agent.id, 'SOUL.md'),
+    identity: await readRuntimeWorkspaceText(runtime, agent.id, 'IDENTITY.md'),
+    rules: await readRuntimeWorkspaceText(runtime, agent.id, 'AGENTS.md'),
+    tools: await readRuntimeWorkspaceText(runtime, agent.id, 'TOOLS.md'),
+    heartbeatMd: await readRuntimeWorkspaceText(runtime, agent.id, 'HEARTBEAT.md'),
+    subagentPerms: metadataStringArray(agent, 'subagentAllowAgents'),
+  }
+}
+
+function synthesizeIdentityMd(fields: IdentityFields): string {
+  const lines = ['# IDENTITY.md', '']
+  const entries: [string, string | undefined][] = [
+    ['Name', fields.name],
+    ['Role', fields.role],
+    ['Emoji', fields.emoji],
+    ['Vibe', fields.vibe],
+    ['Primary Function', fields.primaryFunction],
+    ['Default Mode', fields.defaultMode],
+  ]
+  for (const [label, value] of entries) {
+    if (value) lines.push(`- **${label}:** ${value}`)
+  }
+  lines.push('')
+  return lines.join('\n')
+}
+
+function parseIdentityMd(content: string): Record<string, string> {
+  const fields: Record<string, string> = {}
+  const regex = /^[-*]\s*\*\*(.+?):\*\*\s*(.+)/gm
+  let match
+  while ((match = regex.exec(content)) !== null) {
+    fields[match[1]] = match[2].trim()
+  }
+  return fields
+}
+
+async function createRuntimeAgent(
+  runtime: AgentRuntimeAdapter,
+  input: CreateAgentInput,
+): Promise<{ id: string; workspace: string }> {
+  const agent = await runtime.agents.create({
+    id: input.id,
+    name: input.name,
+    role: input.role,
+    model: input.model,
+    metadata: {
+      emoji: input.emoji,
+      role: input.role,
+      vibe: input.vibe,
+      primaryFunction: input.primaryFunction,
+      defaultMode: input.defaultMode,
+    },
+  })
+
+  await runtime.agents.writeWorkspaceFile(input.id, {
+    path: 'IDENTITY.md',
+    content: synthesizeIdentityMd(input),
+  })
+  if (input.soul) {
+    await runtime.agents.writeWorkspaceFile(input.id, { path: 'SOUL.md', content: input.soul })
+  }
+  if (input.tools) {
+    await runtime.agents.writeWorkspaceFile(input.id, { path: 'TOOLS.md', content: input.tools })
+  }
+
+  return { id: input.id, workspace: metadataString(agent, 'workspacePath') ?? '' }
+}
+
+async function addToRuntimeAllowlists(
+  runtime: AgentRuntimeAdapter,
+  newAgentId: string,
+  dispatchable: 'all' | 'main' | string[],
+): Promise<void> {
+  if (dispatchable === 'main') {
+    await runtime.agents.updateAllowlist(getMainAgentId(), { add: [newAgentId] })
+    return
+  }
+
+  const agents = await runtime.agents.list()
+  if (dispatchable === 'all') {
+    await Promise.all(
+      agents
+        .filter((agent) => agent.id !== newAgentId)
+        .map((agent) => runtime.agents.updateAllowlist(agent.id, { add: [newAgentId] })),
+    )
+    return
+  }
+
+  const targetIds = new Set(dispatchable)
+  targetIds.add(getMainAgentId())
+  targetIds.delete(newAgentId)
+  await Promise.all(Array.from(targetIds).map((agentId) => runtime.agents.updateAllowlist(agentId, { add: [newAgentId] })))
+}
+
+async function removeFromRuntimeAllowlists(runtime: AgentRuntimeAdapter, agentId: string): Promise<void> {
+  const agents = await runtime.agents.list()
+  await Promise.all(agents.map((agent) => runtime.agents.updateAllowlist(agent.id, { remove: [agentId] })))
+}
+
+async function removeRuntimeAgent(runtime: AgentRuntimeAdapter, agentId: string): Promise<boolean> {
+  if (!(await runtime.agents.get(agentId))) return false
+  await runtime.agents.remove(agentId)
+  return true
+}
+
+async function updateRuntimeAgentIdentity(
+  runtime: AgentRuntimeAdapter,
+  agentId: string,
+  fields: IdentityFields & { soul?: string; tools?: string },
+): Promise<string[]> {
+  const agent = await runtime.agents.get(agentId)
+  if (!agent) throw new Error(`Agent "${agentId}" not found in roster`)
+
+  const updated: string[] = []
+  if (fields.name || fields.emoji || fields.role || fields.vibe || fields.primaryFunction || fields.defaultMode) {
+    await runtime.agents.update(agentId, {
+      name: fields.name,
+      role: fields.role,
+      metadata: {
+        ...(agent.metadata ?? {}),
+        ...(fields.emoji ? { emoji: fields.emoji } : {}),
+        ...(fields.role ? { role: fields.role } : {}),
+        ...(fields.vibe ? { vibe: fields.vibe } : {}),
+        ...(fields.primaryFunction ? { primaryFunction: fields.primaryFunction } : {}),
+        ...(fields.defaultMode ? { defaultMode: fields.defaultMode } : {}),
+      },
+    })
+    if (fields.name) updated.push('name')
+    if (fields.emoji) updated.push('emoji')
+  }
+
+  const structuredFields = ['role', 'vibe', 'primaryFunction', 'defaultMode'] as const
+  const hasStructuredUpdate = structuredFields.some((field) => fields[field])
+  if (hasStructuredUpdate || fields.name || fields.emoji) {
+    const existing = await readRuntimeWorkspaceText(runtime, agentId, 'IDENTITY.md')
+    const parsed = existing ? parseIdentityMd(existing) : {}
+    const merged: IdentityFields = {
+      name: fields.name ?? parsed['Name'],
+      emoji: fields.emoji ?? parsed['Emoji'],
+      role: fields.role ?? parsed['Role'],
+      vibe: fields.vibe ?? parsed['Vibe'],
+      primaryFunction: fields.primaryFunction ?? parsed['Primary Function'],
+      defaultMode: fields.defaultMode ?? parsed['Default Mode'],
+    }
+    await runtime.agents.writeWorkspaceFile(agentId, { path: 'IDENTITY.md', content: synthesizeIdentityMd(merged) })
+    for (const field of structuredFields) {
+      if (fields[field]) updated.push(field)
+    }
+  }
+
+  if (fields.soul) {
+    await runtime.agents.writeWorkspaceFile(agentId, { path: 'SOUL.md', content: fields.soul })
+    updated.push('soul')
+  }
+  if (fields.tools) {
+    await runtime.agents.writeWorkspaceFile(agentId, { path: 'TOOLS.md', content: fields.tools })
+    updated.push('tools')
+  }
+
+  return updated
+}
+
+async function setRuntimeSubagentPermissions(
+  runtime: AgentRuntimeAdapter,
+  agentId: string,
+  allowAgents: string[],
+): Promise<void> {
+  if (allowAgents.includes(agentId)) {
+    throw new Error(`Agent "${agentId}" cannot dispatch to itself`)
+  }
+  await runtime.agents.updateAllowlist(agentId, { replace: allowAgents })
+}
+
+async function listRuntimeSkills(runtime: AgentRuntimeAdapter, agentId: string): Promise<SkillSummary[]> {
+  return (await runtime.skills.list(agentId)).map((skill) => ({
+    id: skill.name,
+    name: skill.name,
+    hasSkillMd: typeof skill.metadata?.hasSkillMd === 'boolean'
+      ? skill.metadata.hasSkillMd
+      : Boolean(skill.instructions || skill.path),
+  }))
+}
+
+async function readRuntimeSkillFile(runtime: AgentRuntimeAdapter, agentId: string, skillId: string): Promise<string | null> {
+  return (await runtime.skills.get(skillId, agentId))?.instructions ?? null
+}
+
+async function listRuntimeMemoryFiles(runtime: AgentRuntimeAdapter, agentId: string): Promise<string[]> {
+  return (await runtime.memory.listEntries('workspace-memory', { agentId }))
+    .map((entry) => basename(entry.path ?? entry.id))
+    .sort()
+    .reverse()
+}
+
+async function readRuntimeMemoryFile(runtime: AgentRuntimeAdapter, agentId: string, date: string): Promise<string | null> {
+  const entry = await runtime.memory.getEntry('workspace-memory', date, { agentId })
+  if (entry) return entry.content
+  return readRuntimeWorkspaceText(runtime, agentId, `memory/${date}`)
+}
+
+async function readRuntimeHeartbeatRaw(runtime: AgentRuntimeAdapter, agentId: string): Promise<HeartbeatRaw | null> {
+  const heartbeat = await runtime.agents.readWorkspaceFile(agentId, 'HEARTBEAT.md')
+  return heartbeat ? { content: heartbeat.content, lastUpdated: heartbeat.updatedAt ?? null } : null
+}
+
 // ─── Status Resolution ───────────────────────────────────────────────────────
 
-/** Cached stale threshold — refreshed from plugin settings on each call */
-let staleThresholdMs = DEFAULT_STALE_THRESHOLD_MS
 let staleSettingsCtx: PluginContext | null = null
 
 function getStaleThresholdMs(): number {
@@ -172,7 +466,6 @@ function getLastAuditActivity(): Record<string, number> {
   const result: Record<string, number> = {}
   try {
     if (!existsSync(auditPath)) return result
-    const { openSync, readSync, fstatSync, closeSync } = require('fs') as typeof import('fs')
     const fd = openSync(auditPath, 'r')
     const stat = fstatSync(fd)
     const TAIL_BYTES = 64 * 1024
@@ -254,18 +547,18 @@ function resolveAgentStatus(
 // ─── Org Helpers ────────────────────────────────────────────────────────────
 
 /** Get agent IDs that belong to a given team */
-function getTeamMembers(teamId: string): string[] {
-  const ds = mergeDisplayDefaults(readDisplaySettings())
+async function getTeamMembers(runtime: AgentRuntimeAdapter, teamId: string): Promise<string[]> {
+  const ds = await mergeDisplayDefaults(runtime, readDisplaySettings())
   return Object.entries(ds)
     .filter(([, s]) => s.teamId === teamId)
     .map(([id]) => id)
 }
 
 /** Get the full org structure: teams with their members */
-function getOrgStructure() {
+async function getOrgStructure(runtime: AgentRuntimeAdapter) {
   const teams = readTeams()
-  const ds = mergeDisplayDefaults(readDisplaySettings())
-  const agents = adapter.listAgents()
+  const ds = await mergeDisplayDefaults(runtime, readDisplaySettings())
+  const agents = await listRuntimeAgentMetas(runtime)
   const agentMap = new Map(agents.map((a) => [a.id, a]))
 
   return teams.map((team) => {
@@ -283,7 +576,7 @@ function getOrgStructure() {
 }
 
 /** Module-level hook for batch-indexing agents — set during activate() */
-let batchIndexAgents: () => void = () => {}
+let batchIndexAgents: () => Promise<void> = async () => {}
 
 // ─── Agent-knowledge indexing helpers ────────────────────────────────────────
 
@@ -541,8 +834,8 @@ const teamPlugin: BakinPlugin = {
     })
 
     /** Convert an agent to a search document */
-    function agentToSearchDoc(agent: { id: string; name: string }, model: string, status: string): Record<string, unknown> {
-      const profile = adapter.getAgentProfile(agent.id)
+    async function agentToSearchDoc(agent: { id: string; name: string }, model: string, status: string): Promise<Record<string, unknown>> {
+      const profile = await getRuntimeAgentProfile(ctx.runtime, agent.id)
       return {
         name: agent.name,
         agent_id: agent.id,
@@ -555,20 +848,21 @@ const teamPlugin: BakinPlugin = {
 
     /** Index a single agent in the search index */
     function indexAgent(agentId: string, agent: { id: string; name: string }, model: string, status: string): void {
-      ctx.search.index(agentId, agentToSearchDoc(agent, model, status)).catch((err) => {
+      agentToSearchDoc(agent, model, status).then((doc) => ctx.search.index(agentId, doc)).catch((err) => {
         log.warn('Failed to index agent', { agentId, error: err instanceof Error ? err.message : String(err) })
       })
     }
 
     /** Batch-index all agents from OpenClaw */
-    batchIndexAgents = () => {
+    batchIndexAgents = async () => {
       try {
-        const agents = adapter.listAgents()
+        const runtimeAgents = await ctx.runtime.agents.list()
         const heartbeats = readHeartbeats()
         const lastAuditActivity = getLastAuditActivity()
-        for (const a of agents) {
+        for (const runtimeAgent of runtimeAgents) {
+          const a = agentToMeta(runtimeAgent)
           const { status } = resolveAgentStatus(a.id, heartbeats, lastAuditActivity)
-          const model = adapter.getAgentModel(a.id)
+          const model = await getRuntimeAgentModel(ctx.runtime, runtimeAgent)
           indexAgent(a.id, a, model, status)
         }
       } catch (err) {
@@ -578,27 +872,27 @@ const teamPlugin: BakinPlugin = {
 
     // ─── Cross-Plugin Hooks ────────────────────────────────────────────
 
-    ctx.hooks.register('team.listAgents', () => adapter.listAgents())
-    ctx.hooks.register('team.getAgent', (d: Record<string, unknown>) => {
+    ctx.hooks.register('team.listAgents', () => listRuntimeAgentMetas(ctx.runtime))
+    ctx.hooks.register('team.getAgent', async (d: Record<string, unknown>) => {
       const id = d.id as string
-      const agents = adapter.listAgents()
+      const agents = await listRuntimeAgentMetas(ctx.runtime)
       return agents.find((a) => a.id === id) ?? null
     })
-    ctx.hooks.register('team.getAgentIds', () => adapter.getAgentIds())
+    ctx.hooks.register('team.getAgentIds', () => getRuntimeAgentIds(ctx.runtime))
     ctx.hooks.register('team.resolveProfile', (d: Record<string, unknown>) => {
-      return adapter.getAgentProfile(d.id as string)
+      return getRuntimeAgentProfile(ctx.runtime, d.id as string)
     })
     ctx.hooks.register('team.getTeamMembers', (d: Record<string, unknown>) => {
-      return getTeamMembers(d.teamId as string)
+      return getTeamMembers(ctx.runtime, d.teamId as string)
     })
-    ctx.hooks.register('team.getAgentTeam', (d: Record<string, unknown>) => {
-      const ds = mergeDisplayDefaults(readDisplaySettings())
+    ctx.hooks.register('team.getAgentTeam', async (d: Record<string, unknown>) => {
+      const ds = await mergeDisplayDefaults(ctx.runtime, readDisplaySettings())
       const teamId = ds[d.id as string]?.teamId
       if (!teamId) return null
       return readTeams().find((t) => t.id === teamId) ?? null
     })
     ctx.hooks.register('team.getOrgStructure', () => {
-      return getOrgStructure()
+      return getOrgStructure(ctx.runtime)
     })
 
     // ─── REST Routes ───────────────────────────────────────────────────
@@ -610,21 +904,22 @@ const teamPlugin: BakinPlugin = {
       description: 'List all agents with runtime status',
       handler: async () => {
         try {
-          const agents = adapter.listAgents()
+          const runtimeAgents = await ctx.runtime.agents.list()
+          const agents = runtimeAgents.map(agentToMeta)
           const heartbeats = readHeartbeats()
           const lastAuditActivity = getLastAuditActivity()
-          const displaySettings = mergeDisplayDefaults(readDisplaySettings())
+          const displaySettings = await mergeDisplayDefaults(ctx.runtime, readDisplaySettings())
 
-          const result: AgentWithStatus[] = agents.map((a) => {
+          const result: AgentWithStatus[] = await Promise.all(agents.map(async (a, index) => {
             const { status, heartbeat, heartbeatAge } = resolveAgentStatus(a.id, heartbeats, lastAuditActivity)
             return {
               ...a,
               status,
-              model: adapter.getAgentModel(a.id),
+              model: await getRuntimeAgentModel(ctx.runtime, runtimeAgents[index]),
               heartbeat,
               heartbeatAge,
             }
-          })
+          }))
 
           // Update search index with latest status (metadata-only, no re-embedding)
           for (const a of result) {
@@ -657,7 +952,7 @@ const teamPlugin: BakinPlugin = {
           if (!id) return Response.json({ error: 'id is required (lowercase alphanumeric)' }, { status: 400 })
           if (!body.name) return Response.json({ error: 'name is required' }, { status: 400 })
 
-          await adapter.addAgent({
+          await createRuntimeAgent(ctx.runtime, {
             id,
             name: body.name as string,
             emoji: body.emoji as string | undefined,
@@ -673,9 +968,9 @@ const teamPlugin: BakinPlugin = {
           // Handle dispatch permissions
           const dispatchable = body.dispatchable as string | string[] | undefined
           if (dispatchable) {
-            adapter.addToAllowLists(id, dispatchable as 'all' | 'main' | string[])
+            await addToRuntimeAllowlists(ctx.runtime, id, dispatchable as 'all' | 'main' | string[])
           } else {
-            adapter.addToAllowLists(id, 'main')
+            await addToRuntimeAllowlists(ctx.runtime, id, 'main')
           }
 
           // Handle team assignment
@@ -732,13 +1027,13 @@ const teamPlugin: BakinPlugin = {
             return Response.json({ error: 'Cannot delete the main orchestrator agent' }, { status: 403 })
           }
 
-          const removed = await adapter.removeAgent(agentId)
+          const removed = await removeRuntimeAgent(ctx.runtime, agentId)
           if (!removed) {
             return Response.json({ error: `Agent "${agentId}" not found` }, { status: 404 })
           }
 
           // Clean up dispatch permissions across all agents
-          adapter.removeFromAllowLists(agentId)
+          await removeFromRuntimeAllowlists(ctx.runtime, agentId)
 
           // Clean up display settings
           const ds = readDisplaySettings()
@@ -779,7 +1074,7 @@ const teamPlugin: BakinPlugin = {
           if (!agentId) return Response.json({ error: 'agentId is required' }, { status: 400 })
 
           const body = await req.json() as Record<string, unknown>
-          const updated = await adapter.updateAgentIdentity(agentId, {
+          const updated = await updateRuntimeAgentIdentity(ctx.runtime, agentId, {
             name: body.name as string | undefined,
             emoji: body.emoji as string | undefined,
             role: body.role as string | undefined,
@@ -820,13 +1115,13 @@ const teamPlugin: BakinPlugin = {
           }
 
           // Validate all target IDs exist
-          const ids = adapter.getAgentIds()
+          const ids = await getRuntimeAgentIds(ctx.runtime)
           const invalid = allowAgents.filter((id) => !ids.includes(id))
           if (invalid.length > 0) {
             return Response.json({ error: `Unknown agent IDs: ${invalid.join(', ')}` }, { status: 400 })
           }
 
-          adapter.setSubagentPermissions(agentId, allowAgents)
+          await setRuntimeSubagentPermissions(ctx.runtime, agentId, allowAgents)
           ctx.activity.audit('agent.permissions_updated', 'system', { agent: agentId, allowAgents })
           resetSettingsCache()
 
@@ -890,7 +1185,7 @@ const teamPlugin: BakinPlugin = {
         const agentId = url.searchParams.get('agentId')
         if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
 
-        const profile = adapter.getAgentProfile(agentId)
+        const profile = await getRuntimeAgentProfile(ctx.runtime, agentId)
         if (!profile) return Response.json({ error: 'Agent not found' }, { status: 404 })
 
         return Response.json(profile)
@@ -907,7 +1202,7 @@ const teamPlugin: BakinPlugin = {
         const agentId = url.searchParams.get('agentId')
         if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
 
-        const files = adapter.listWorkspaceFiles(agentId)
+        const files = await ctx.runtime.agents.listWorkspaceFiles(agentId)
         return Response.json({ files })
       },
     })
@@ -923,10 +1218,10 @@ const teamPlugin: BakinPlugin = {
         const filename = url.searchParams.get('filename')
         if (!agentId || !filename) return Response.json({ error: 'agentId and filename required' }, { status: 400 })
 
-        const content = adapter.readWorkspaceFile(agentId, filename)
-        if (content === null) return Response.json({ error: 'File not found' }, { status: 404 })
+        const file = await ctx.runtime.agents.readWorkspaceFile(agentId, filename)
+        if (file === null) return Response.json({ error: 'File not found' }, { status: 404 })
 
-        return Response.json({ filename, content })
+        return Response.json({ filename, content: file.content })
       },
     })
 
@@ -946,7 +1241,7 @@ const teamPlugin: BakinPlugin = {
         if (typeof content !== 'string') return Response.json({ error: 'content string required' }, { status: 400 })
 
         try {
-          adapter.writeWorkspaceFile(agentId, filename, content)
+          await ctx.runtime.agents.writeWorkspaceFile(agentId, { path: filename, content })
           ctx.activity.audit('team.file.updated', 'system', { agent: agentId, file: filename })
           return Response.json({ ok: true })
         } catch (err) {
@@ -965,7 +1260,7 @@ const teamPlugin: BakinPlugin = {
         const agentId = url.searchParams.get('agentId')
         if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
 
-        const skills = adapter.listSkills(agentId)
+        const skills = await listRuntimeSkills(ctx.runtime, agentId)
         return Response.json({ skills })
       },
     })
@@ -981,7 +1276,7 @@ const teamPlugin: BakinPlugin = {
         const skillId = url.searchParams.get('skillId')
         if (!agentId || !skillId) return Response.json({ error: 'agentId and skillId required' }, { status: 400 })
 
-        const content = adapter.readSkillFile(agentId, skillId)
+        const content = await readRuntimeSkillFile(ctx.runtime, agentId, skillId)
         if (content === null) return Response.json({ error: 'Skill not found' }, { status: 404 })
 
         return Response.json({ skillId, content })
@@ -998,7 +1293,7 @@ const teamPlugin: BakinPlugin = {
         const agentId = url.searchParams.get('agentId')
         if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
 
-        const files = adapter.listMemoryFiles(agentId)
+        const files = await listRuntimeMemoryFiles(ctx.runtime, agentId)
         return Response.json({ files })
       },
     })
@@ -1014,7 +1309,7 @@ const teamPlugin: BakinPlugin = {
         const date = url.searchParams.get('date')
         if (!agentId || !date) return Response.json({ error: 'agentId and date required' }, { status: 400 })
 
-        const content = adapter.readMemoryFile(agentId, date)
+        const content = await readRuntimeMemoryFile(ctx.runtime, agentId, date)
         if (content === null) return Response.json({ error: 'Memory file not found' }, { status: 404 })
 
         return Response.json({ date, content })
@@ -1049,7 +1344,7 @@ const teamPlugin: BakinPlugin = {
         if (!agentId) return Response.json({ ok: false, error: 'agentId required' }, { status: 400 })
 
         try {
-          const heartbeat = adapter.readHeartbeatRaw(agentId)
+          const heartbeat = await readRuntimeHeartbeatRaw(ctx.runtime, agentId)
           return Response.json({ ok: true, heartbeat })
         } catch (err) {
           log.error('Failed to read heartbeat', err, { agentId })
@@ -1177,7 +1472,7 @@ const teamPlugin: BakinPlugin = {
       description: 'Get agent display settings',
       handler: async () => {
         const raw = readDisplaySettings()
-        return Response.json(mergeDisplayDefaults(raw))
+        return Response.json(await mergeDisplayDefaults(ctx.runtime, raw))
       },
     })
 
@@ -1307,8 +1602,8 @@ const teamPlugin: BakinPlugin = {
         const team = teams.find((t) => t.id === teamId)
         if (!team) return Response.json({ error: 'Team not found' }, { status: 404 })
 
-        const memberIds = getTeamMembers(teamId)
-        const agents = adapter.listAgents()
+        const memberIds = await getTeamMembers(ctx.runtime, teamId)
+        const agents = await listRuntimeAgentMetas(ctx.runtime)
         const members = agents.filter((a) => memberIds.includes(a.id))
 
         return Response.json({ team, members })
@@ -1329,7 +1624,7 @@ const teamPlugin: BakinPlugin = {
         const teamId = body.teamId as string | null
 
         const ds = readDisplaySettings()
-        const merged = mergeDisplayDefaults(ds)
+        const merged = await mergeDisplayDefaults(ctx.runtime, ds)
         if (!merged[agentId]) return Response.json({ error: 'Agent not found' }, { status: 404 })
 
         if (teamId) {
@@ -1356,15 +1651,16 @@ const teamPlugin: BakinPlugin = {
       description: 'List all agents with their current status (online/working/available/offline).',
       parameters: {},
       handler: async () => {
-        const agents = adapter.listAgents()
+        const runtimeAgents = await ctx.runtime.agents.list()
+        const agents = runtimeAgents.map(agentToMeta)
         const heartbeats = readHeartbeats()
         const auditActivity = getLastAuditActivity()
         return {
           ok: true,
-          agents: agents.map((a) => {
+          agents: await Promise.all(agents.map(async (a, index) => {
             const { status } = resolveAgentStatus(a.id, heartbeats, auditActivity)
-            return { ...a, status, model: adapter.getAgentModel(a.id) }
-          }),
+            return { ...a, status, model: await getRuntimeAgentModel(ctx.runtime, runtimeAgents[index]) }
+          })),
         }
       },
     })
@@ -1377,7 +1673,7 @@ const teamPlugin: BakinPlugin = {
         agentId: z.string().describe('Agent ID'),
       },
       handler: async (params: Record<string, unknown>) => {
-        const profile = adapter.getAgentProfile(params.agentId as string)
+        const profile = await getRuntimeAgentProfile(ctx.runtime, params.agentId as string)
         if (!profile) return { ok: false, error: 'Agent not found' }
         return { ok: true, ...profile }
       },
@@ -1407,9 +1703,9 @@ const teamPlugin: BakinPlugin = {
         filename: z.string().describe('File name (e.g., SOUL.md)'),
       },
       handler: async (params: Record<string, unknown>) => {
-        const content = adapter.readWorkspaceFile(params.agentId as string, params.filename as string)
-        if (content === null) return { ok: false, error: 'File not found' }
-        return { ok: true, filename: params.filename, content }
+        const file = await ctx.runtime.agents.readWorkspaceFile(params.agentId as string, params.filename as string)
+        if (file === null) return { ok: false, error: 'File not found' }
+        return { ok: true, filename: params.filename, content: file.content }
       },
     })
 
@@ -1433,7 +1729,7 @@ const teamPlugin: BakinPlugin = {
       description: 'Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines.',
       parameters: {},
       handler: async () => {
-        return { ok: true, teams: getOrgStructure() }
+        return { ok: true, teams: await getOrgStructure(ctx.runtime) }
       },
     })
 
@@ -1449,8 +1745,8 @@ const teamPlugin: BakinPlugin = {
         const teams = readTeams()
         const team = teams.find((t) => t.id === teamId)
         if (!team) return { ok: false, error: `Team "${teamId}" not found` }
-        const memberIds = getTeamMembers(teamId)
-        const agents = adapter.listAgents()
+        const memberIds = await getTeamMembers(ctx.runtime, teamId)
+        const agents = await listRuntimeAgentMetas(ctx.runtime)
         const members = agents.filter((a) => memberIds.includes(a.id))
         return { ok: true, team, members }
       },
@@ -1465,13 +1761,13 @@ const teamPlugin: BakinPlugin = {
       },
       handler: async (params: Record<string, unknown>) => {
         const agentId = params.agentId as string
-        const ds = mergeDisplayDefaults(readDisplaySettings())
+        const ds = await mergeDisplayDefaults(ctx.runtime, readDisplaySettings())
         const teamId = ds[agentId]?.teamId
         if (!teamId) return { ok: true, team: null, teammates: [] }
         const team = readTeams().find((t) => t.id === teamId)
         if (!team) return { ok: true, team: null, teammates: [] }
-        const memberIds = getTeamMembers(teamId).filter((id) => id !== agentId)
-        const agents = adapter.listAgents()
+        const memberIds = (await getTeamMembers(ctx.runtime, teamId)).filter((id) => id !== agentId)
+        const agents = await listRuntimeAgentMetas(ctx.runtime)
         return {
           ok: true,
           team,
@@ -1506,10 +1802,10 @@ const teamPlugin: BakinPlugin = {
         if (!id) return { ok: false, error: 'Could not derive agent ID from name' }
         if (id === 'main') return { ok: false, error: 'Cannot use "main" as agent ID' }
 
-        const existingIds = adapter.getAgentIds()
+        const existingIds = await getRuntimeAgentIds(ctx.runtime)
         if (existingIds.includes(id)) return { ok: false, error: `Agent "${id}" already exists` }
 
-        const result = await adapter.addAgent({
+        const result = await createRuntimeAgent(ctx.runtime, {
           id,
           name,
           emoji: params.emoji as string | undefined,
@@ -1523,7 +1819,7 @@ const teamPlugin: BakinPlugin = {
         })
 
         const dispatchable = (params.dispatchable || 'main') as 'all' | 'main' | string[]
-        adapter.addToAllowLists(id, dispatchable)
+        await addToRuntimeAllowlists(ctx.runtime, id, dispatchable)
 
         const teamId = params.teamId as string | undefined
         if (teamId) {
@@ -1574,7 +1870,7 @@ const teamPlugin: BakinPlugin = {
       },
       handler: async (params: Record<string, unknown>) => {
         const agentId = params.agentId as string
-        const updated = await adapter.updateAgentIdentity(agentId, {
+        const updated = await updateRuntimeAgentIdentity(ctx.runtime, agentId, {
           name: params.name as string | undefined,
           emoji: params.emoji as string | undefined,
           role: params.role as string | undefined,
@@ -1607,10 +1903,10 @@ const teamPlugin: BakinPlugin = {
         if (agentId === getMainAgentId()) return { ok: false, error: 'Cannot delete the main orchestrator agent' }
         if (confirm !== true) return { ok: false, error: 'confirm must be true to delete an agent' }
 
-        const removed = await adapter.removeAgent(agentId)
+        const removed = await removeRuntimeAgent(ctx.runtime, agentId)
         if (!removed) return { ok: false, error: `Agent "${agentId}" not found` }
 
-        adapter.removeFromAllowLists(agentId)
+        await removeFromRuntimeAllowlists(ctx.runtime, agentId)
 
         const ds = readDisplaySettings()
         if (ds[agentId]) {
@@ -1649,7 +1945,7 @@ const teamPlugin: BakinPlugin = {
         const agentId = params.agentId as string
         const allowAgents = params.allowAgents as string[]
 
-        const ids = adapter.getAgentIds()
+        const ids = await getRuntimeAgentIds(ctx.runtime)
         if (!ids.includes(agentId)) return { ok: false, error: `Agent "${agentId}" not found in roster` }
 
         const invalid = allowAgents.filter((id) => !ids.includes(id))
@@ -1657,7 +1953,7 @@ const teamPlugin: BakinPlugin = {
 
         if (allowAgents.includes(agentId)) return { ok: false, error: `Agent cannot dispatch to itself` }
 
-        adapter.setSubagentPermissions(agentId, allowAgents)
+        await setRuntimeSubagentPermissions(ctx.runtime, agentId, allowAgents)
         ctx.activity.audit('agent.permissions_updated', 'system', { agent: agentId, allowAgents })
         resetSettingsCache()
 
@@ -1686,9 +1982,8 @@ const teamPlugin: BakinPlugin = {
   },
 
   async onReady() {
-    const agents = adapter.listAgents()
-    batchIndexAgents()
-    log.info(`Ready — ${agents.length} agents from OpenClaw`)
+    await batchIndexAgents()
+    log.info('Ready — team plugin using runtime agent adapter')
   },
 
   onShutdown() {
