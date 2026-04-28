@@ -642,7 +642,7 @@ const eventBus = new BakinEventBus(broadcast)
   dispatch.start(CONTENT_DIR, port)
   dispatch.reconcileOnStartup(CONTENT_DIR)
   // messagingCron.start(CONTENT_DIR, port) — deprecated: schedule plugin bridge replaces this
-  watchdog.start(CONTENT_DIR, port)
+  watchdog.start(CONTENT_DIR)
   doctor.start(CONTENT_DIR, process.cwd())
 
   // Notify all plugins that every plugin is now active

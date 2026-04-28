@@ -9,8 +9,8 @@ import { getSettings } from './settings'
 import { broadcast } from './sse'
 import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
-import { getAgentLastReply, sendAgentMessage, sendRuntimeChannelMessage } from './runtime-registry'
-import { getMainAgentId } from './main-agent'
+import { getAgentLastReply, getRuntimeAdapter } from './runtime-registry'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { getStatsByMs } from './usage'
 
@@ -60,7 +60,7 @@ function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): b
   if (!agent) return true
 
   // Primary signal: did the runtime return a successful reply from this
-  // agent recently? Recorded in runtime-registry.sendAgentMessage() — a returned
+  // agent recently? Recorded by runtime messaging — a returned
   // reply means the gateway routed our request and got a response back,
   // which is a stronger liveness indicator than an agent-written heartbeat
   // file (which nothing currently writes).
@@ -89,7 +89,23 @@ function countAutoRecoveries(task: { log?: { message: string }[] }): number {
   return task.log.filter(e => e.message.startsWith('Auto-recovered:')).length
 }
 
-export function start(contentDir: string, port: number): void {
+async function sendWatchdogChannelMessage(channel: string, target: string, message: string): Promise<void> {
+  await getRuntimeAdapter().channels.sendMessage({
+    channels: [channel],
+    message: {
+      body: message,
+      metadata: { target },
+    },
+  })
+}
+
+async function sendMainAgentAlert(message: string): Promise<void> {
+  const runtime = getRuntimeAdapter()
+  const agentId = await getRuntimeMainAgentId(runtime)
+  await runtime.messaging.send({ agentId, content: message })
+}
+
+export function start(contentDir: string): void {
   const initialSettings = getSettings()
 
   watchdogTimer = setInterval(async () => {
@@ -127,7 +143,7 @@ export function start(contentDir: string, port: number): void {
 
         if (stuckMs <= settings.watchdog.stuckThresholdMs) {
           // Task has recent activity — check for bypass patterns instead
-          checkBypassPatterns(task, contentDir, port)
+          checkBypassPatterns(task, contentDir)
           continue
         }
 
@@ -194,7 +210,7 @@ export function start(contentDir: string, port: number): void {
           }
 
           // Discord alert
-          sendRuntimeChannelMessage(
+          sendWatchdogChannelMessage(
             'discord',
             `channel:${settings.watchdog.alertChannelId}`,
             `⚠️ **Watchdog Alert**: Task "${task.title}" (@${task.agent || 'unassigned'}) has had no progress log in ${minutesStuck}+ minutes.`
@@ -235,7 +251,7 @@ export function start(contentDir: string, port: number): void {
               })
 
               if (settings.notifications.channel !== 'none') {
-                sendRuntimeChannelMessage(
+                sendWatchdogChannelMessage(
                   settings.notifications.channel,
                   settings.notifications.target || `channel:${wd.alertChannelId}`,
                   `⚠️ **MCP unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
@@ -281,7 +297,7 @@ export function start(contentDir: string, port: number): void {
               })
 
               if (settings.notifications.channel !== 'none') {
-                sendRuntimeChannelMessage(
+                sendWatchdogChannelMessage(
                   settings.notifications.channel,
                   settings.notifications.target || `channel:${wd.alertChannelId}`,
                   `⚠️ **REST API unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
@@ -393,7 +409,7 @@ export function start(contentDir: string, port: number): void {
 
             msg += `\n\nApprove or reject in Bakin UI.`
 
-            sendRuntimeChannelMessage(
+            sendWatchdogChannelMessage(
               settings.notifications.channel,
               settings.notifications.target || `channel:${settings.watchdog.alertChannelId}`,
               msg
@@ -417,7 +433,7 @@ export function start(contentDir: string, port: number): void {
 }
 
 /** Scan recent task log entries for bypass pattern language */
-function checkBypassPatterns(task: { id: string; title: string; agent?: string; log?: { message: string; timestamp: string }[] }, contentDir: string, port: number): void {
+function checkBypassPatterns(task: { id: string; title: string; agent?: string; log?: { message: string; timestamp: string }[] }, contentDir: string): void {
   if (!task.log || task.log.length === 0) return
 
   // Only check the last 3 log entries
@@ -434,8 +450,7 @@ function checkBypassPatterns(task: { id: string; title: string; agent?: string; 
         broadcast({ type: 'alert', title: task.title, agent: task.agent, message: alertMsg })
         appendAudit(contentDir, 'task.bypass_detected', 'watchdog', { id: task.id, title: task.title, agent: task.agent, pattern: match[0] })
 
-        // Notify the main agent
-        sendAgentMessage(getMainAgentId(), alertMsg).catch(() => {})
+        sendMainAgentAlert(alertMsg).catch(() => {})
 
         log.warn('Bypass pattern detected', { id: task.id, title: task.title, pattern: match[0] })
         return // Only alert once per watchdog cycle per task
