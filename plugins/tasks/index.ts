@@ -6,15 +6,9 @@ import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import {
   readTaskboard,
-  createTask,
   deleteTask,
   assignTask,
-  addTaskLog,
-  blockTask,
   updateTask,
-  moveTask,
-  setDependency,
-  clearDependency,
   reorderTasks,
   archiveOldTasks,
   autoArchiveDoneTasks,
@@ -130,22 +124,6 @@ const tasksPlugin: BakinPlugin = {
         log.warn('Failed to index task', { taskId, error: err instanceof Error ? err.message : String(err) })
       }
     }
-
-    // ─── Cross-Plugin Hooks ────────────────────────────────────────────
-
-    ctx.hooks.register('tasks.readTaskboard', () => readTaskboard())
-    ctx.hooks.register('tasks.createTask', (d: Record<string, unknown>) => createTask(d.title as string, d.column as string | undefined, d.assignee as string | undefined, d.description as string | undefined, d.workflowId as string | undefined, d.createdBy as string | undefined, d.id as string | undefined, d.parentId as string | undefined, d.projectId as string | undefined))
-    ctx.hooks.register('tasks.moveTask', (d: Record<string, unknown>) => moveTask(d.identifier as string, d.to as string, d.from as string | undefined, d.channel as string | undefined))
-    ctx.hooks.register('tasks.blockTask', (d: Record<string, unknown>) => blockTask(d.identifier as string, d.reason as string, d.agent as string | undefined))
-    ctx.hooks.register('tasks.addTaskLog', (d: Record<string, unknown>) => addTaskLog(d.identifier as string, d.author as string, d.message as string))
-    ctx.hooks.register('tasks.updateTask', (d: Record<string, unknown>) => {
-      const updates = { ...(d.updates as Record<string, unknown>) }
-      delete updates.channel // Never trust channel from hook callers — only the REST route controls this
-      return updateTask(d.identifier as string, updates)
-    })
-    ctx.hooks.register('tasks.deleteTask', (d: Record<string, unknown>) => deleteTask(d.identifier as string))
-    ctx.hooks.register('tasks.setDependency', (d: Record<string, unknown>) => setDependency(d.taskId as string, d.dependsOnId as string))
-    ctx.hooks.register('tasks.clearDependency', (d: Record<string, unknown>) => clearDependency(d.taskId as string))
 
     // ─── REST API Routes ───────────────────────────────────────────────
 
@@ -676,7 +654,7 @@ const tasksPlugin: BakinPlugin = {
           if (title !== undefined) updates.title = title
           if (description !== undefined) updates.description = description
           if (assignee !== undefined) updates.agent = assignee
-          const result = await ctx.hooks.invoke('tasks.updateTask', { identifier: taskId, updates })
+          const result = await updateTask(taskId, updates)
           ctx.activity.audit('updated', agent, { taskId })
           indexTask(taskId).catch(() => {})
           return { ok: true, result }
@@ -697,7 +675,7 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         const taskId = params.taskId as string
         try {
-          await ctx.hooks.invoke('tasks.deleteTask', { identifier: taskId })
+          await deleteTask(taskId)
           ctx.activity.audit('deleted', agent, { taskId })
           ctx.search.remove(taskId).catch(() => {})
           return { ok: true }

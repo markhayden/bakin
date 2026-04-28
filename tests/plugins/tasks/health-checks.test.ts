@@ -93,6 +93,9 @@ function emptyStoreBoard(): StoreBoard {
 
 let storeBoard: StoreBoard = emptyStoreBoard()
 
+const clearedDependencies: string[] = []
+let clearDependencyShouldThrow = false
+
 // flow-store mock — taskboard/order checks import it directly, and the plugin
 // registration smoke imports the full tasks plugin. Keep the surface complete.
 mock.module('../../../plugins/tasks/lib/flow-store', () => ({
@@ -107,7 +110,10 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   updateTask: () => undefined,
   moveTask: () => undefined,
   setDependency: () => undefined,
-  clearDependency: () => undefined,
+  clearDependency: (taskId: string) => {
+    if (clearDependencyShouldThrow) throw new Error('cleardep failed')
+    clearedDependencies.push(taskId)
+  },
   reorderTasks: async (_column: string, orderedIds: string[]) => {
     const tasks = Object.values(storeBoard.columns).flat()
     orderedIds.forEach((id, order) => {
@@ -141,26 +147,11 @@ mock.module('../../../src/core/app-services', () => ({
   }),
 }))
 
-// Hook registry — task-consistency uses tasks.readTaskboard +
-// tasks.clearDependency. Tests inject the desired board shape per case.
-type BoardShape = {
-  inProgress: Array<{ id: string; title: string; agent?: string; dependsOn?: string; log?: unknown[] }>
-  done: Array<{ id: string; title: string; agent?: string; dependsOn?: string; log?: unknown[] }>
-  todo: unknown[]
-  blocked: unknown[]
-}
-let mockBoard: { columns: BoardShape } | null = null
-const clearedDependencies: string[] = []
-let clearDependencyShouldThrow = false
+// Hook registry remains available for plugin activation tests, but task
+// metadata checks read the shared task-store service directly.
 mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => ({
-    invoke: async (name: string, data: Record<string, unknown>) => {
-      if (name === 'tasks.readTaskboard') return mockBoard
-      if (name === 'tasks.clearDependency') {
-        if (clearDependencyShouldThrow) throw new Error('cleardep failed')
-        clearedDependencies.push(data.taskId as string)
-        return undefined
-      }
+    invoke: async (_name: string, _data: Record<string, unknown>) => {
       return undefined
     },
     has: () => false,
@@ -182,7 +173,6 @@ beforeEach(() => {
   storeBoard = emptyStoreBoard()
   mockAutoFix = false
   mockKnownAgents = ['main', 'patch', 'pixel']
-  mockBoard = null
   clearedDependencies.length = 0
   clearDependencyShouldThrow = false
 })
@@ -209,16 +199,14 @@ describe('checkTaskboard', () => {
 // ─── checkTaskConsistency ─────────────────────────────────────────────────
 
 describe('checkTaskConsistency', () => {
-  it('warns when no taskboard hook is registered', async () => {
-    mockBoard = null
+  it('reports ok when the Bakin task store is available and empty', async () => {
     const results = await checkTaskConsistency(testDir)
     expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/Taskboard not available/)
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toMatch(/0 in-progress, 0 done/)
   })
 
   it('reports ok when no inProgress / done tasks exist', async () => {
-    mockBoard = { columns: { inProgress: [], done: [], todo: [], blocked: [] } }
     const results = await checkTaskConsistency(testDir)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
@@ -226,14 +214,7 @@ describe('checkTaskConsistency', () => {
   })
 
   it('flags an in-progress task assigned to an unknown agent', async () => {
-    mockBoard = {
-      columns: {
-        inProgress: [{ id: 't1', title: 'Build something', agent: 'ghost', log: [{}] }],
-        done: [],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.inProgress.push({ id: 't1', title: 'Build something', agent: 'ghost', log: [{}] })
     // Heartbeat exists so we don't ALSO flag heartbeat
     mkdirSync(pathJoin(testDir, 'heartbeats'), { recursive: true })
     writeFileSync(pathJoin(testDir, 'heartbeats', 'ghost.json'), '{}')
@@ -243,27 +224,13 @@ describe('checkTaskConsistency', () => {
   })
 
   it('flags an in-progress task with no heartbeat file', async () => {
-    mockBoard = {
-      columns: {
-        inProgress: [{ id: 't2', title: 'Heartbeatless work', agent: 'patch', log: [{}] }],
-        done: [],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.inProgress.push({ id: 't2', title: 'Heartbeatless work', agent: 'patch', log: [{}] })
     const results = await checkTaskConsistency(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('no heartbeat file'))).toBe(true)
   })
 
   it('flags an in-progress task with zero log entries', async () => {
-    mockBoard = {
-      columns: {
-        inProgress: [{ id: 't3', title: 'No logs', agent: 'patch', log: [] }],
-        done: [],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.inProgress.push({ id: 't3', title: 'No logs', agent: 'patch', log: [] })
     mkdirSync(pathJoin(testDir, 'heartbeats'), { recursive: true })
     writeFileSync(pathJoin(testDir, 'heartbeats', 'patch.json'), '{}')
     const results = await checkTaskConsistency(testDir)
@@ -273,43 +240,22 @@ describe('checkTaskConsistency', () => {
   it('flags an agent overloaded with > 3 concurrent in-progress tasks', async () => {
     mkdirSync(pathJoin(testDir, 'heartbeats'), { recursive: true })
     writeFileSync(pathJoin(testDir, 'heartbeats', 'patch.json'), '{}')
-    mockBoard = {
-      columns: {
-        inProgress: Array.from({ length: 4 }, (_, i) => ({
-          id: `t${i}`, title: `Task ${i}`, agent: 'patch', log: [{}],
-        })),
-        done: [],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.inProgress.push(...Array.from({ length: 4 }, (_, i) => ({
+      id: `t${i}`, title: `Task ${i}`, agent: 'patch', log: [{}],
+    })))
     const results = await checkTaskConsistency(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('overloaded'))).toBe(true)
   })
 
   it('warns about orphaned dependsOn on a done task without autoFix', async () => {
-    mockBoard = {
-      columns: {
-        inProgress: [],
-        done: [{ id: 'd1', title: 'Stale dep', dependsOn: 'old-task' }],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.done.push({ id: 'd1', title: 'Stale dep', dependsOn: 'old-task' })
     const results = await checkTaskConsistency(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('orphaned dependsOn') && r.autoFixable)).toBe(true)
   })
 
   it('clears orphaned dependsOn in autoFix mode', async () => {
     mockAutoFix = true
-    mockBoard = {
-      columns: {
-        inProgress: [],
-        done: [{ id: 'd2', title: 'Auto-clear', dependsOn: 'orphan' }],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.done.push({ id: 'd2', title: 'Auto-clear', dependsOn: 'orphan' })
     const results = await checkTaskConsistency(testDir)
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Cleared orphaned dependsOn'))).toBe(true)
     expect(clearedDependencies).toContain('d2')
@@ -318,14 +264,7 @@ describe('checkTaskConsistency', () => {
   it('falls back to a warn when clearDependency hook throws under autoFix', async () => {
     mockAutoFix = true
     clearDependencyShouldThrow = true
-    mockBoard = {
-      columns: {
-        inProgress: [],
-        done: [{ id: 'd3', title: 'Failed clear', dependsOn: 'orphan' }],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.done.push({ id: 'd3', title: 'Failed clear', dependsOn: 'orphan' })
     const results = await checkTaskConsistency(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('failed to clear'))).toBe(true)
   })

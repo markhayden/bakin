@@ -621,14 +621,14 @@ Same pattern is used for the plugin registry
 3. Hooks are RPC-style: one handler per hook name, returns a result.
 
 ### Hook naming convention
-`{pluginId}.{operation}` — e.g., `tasks.readTaskboard`,
+`{pluginId}.{operation}` — e.g., `workflows.loadInstance`,
 `workflows.getCurrentStep`, `projects.readProject`.
 
 ### Current hook registrations
 
 | Plugin | Hooks | Examples |
 |--------|-------|---------|
-| tasks | 9 | `tasks.readTaskboard`, `tasks.createTask`, `tasks.moveTask`, `tasks.blockTask`, `tasks.addTaskLog`, `tasks.updateTask`, `tasks.deleteTask`, `tasks.setDependency`, `tasks.clearDependency` |
+| tasks | 0 task-metadata hooks | Task metadata is owned by `src/core/task-store.ts` and is not exposed through plugin hooks |
 | workflows | 13 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.matchWorkflow`, `workflows.listDefinitions`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
 | assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.listTrash`, `assets.restoreAsset`, `assets.emptyTrash` |
 | team | 7 | `team.listAgents`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
@@ -639,7 +639,7 @@ Same pattern is used for the plugin registry
 ```typescript
 import { getHookRegistry } from '@/lib/plugin-registry'
 const hooks = getHookRegistry()
-const board = await hooks.invoke<TaskBoard>('tasks.readTaskboard', {})
+const instance = await hooks.invoke<WorkflowInstance>('workflows.loadInstance', { taskId })
 ```
 
 **Critical:** No direct imports between plugins or from core → plugins.

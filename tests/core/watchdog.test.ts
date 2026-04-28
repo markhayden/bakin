@@ -80,6 +80,51 @@ mock.module('@/core/app-services', () => ({
   getAppServices: () => mockAppServices,
 }))
 
+type WatchdogTask = {
+  id: string
+  title: string
+  agent?: string
+  workflowId?: string
+  updatedAt?: number
+  log?: Array<{ message: string; timestamp: string }>
+}
+
+type WatchdogColumns = {
+  backlog: WatchdogTask[]
+  todo: WatchdogTask[]
+  inProgress: WatchdogTask[]
+  review: WatchdogTask[]
+  done: WatchdogTask[]
+  archived: WatchdogTask[]
+  blocked: WatchdogTask[]
+}
+
+function emptyWatchdogColumns(): WatchdogColumns {
+  return { backlog: [], todo: [], inProgress: [], review: [], done: [], archived: [], blocked: [] }
+}
+
+let currentWatchdogColumns = emptyWatchdogColumns()
+const mockStoreAddTaskLog = mock(async (..._args: unknown[]) => undefined)
+const mockStoreBlockTask = mock(async (..._args: unknown[]) => undefined)
+const mockStoreMoveTask = mock(async (..._args: unknown[]) => undefined)
+
+function setWatchdogColumns(columns: Partial<WatchdogColumns>): void {
+  currentWatchdogColumns = { ...emptyWatchdogColumns(), ...columns }
+}
+
+mock.module('../../src/core/task-store', () => ({
+  readTaskboard: mock(() => ({ columns: currentWatchdogColumns })),
+  addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
+  blockTask: (...args: unknown[]) => mockStoreBlockTask(...args),
+  moveTask: (...args: unknown[]) => mockStoreMoveTask(...args),
+}))
+mock.module('@/core/task-store', () => ({
+  readTaskboard: mock(() => ({ columns: currentWatchdogColumns })),
+  addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
+  blockTask: (...args: unknown[]) => mockStoreBlockTask(...args),
+  moveTask: (...args: unknown[]) => mockStoreMoveTask(...args),
+}))
+
 mock.module('../../src/lib/plugin-registry', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock().mockResolvedValue(undefined),
@@ -95,7 +140,6 @@ mock.module('../../src/lib/format', () => ({
 import { start, stop } from '../../src/core/watchdog'
 import { appendAudit } from '../../src/core/audit'
 import { broadcast } from '../../src/core/sse'
-import { getHookRegistry } from '../../src/lib/plugin-registry'
 import { isStale } from '../../src/lib/format'
 
 describe('watchdog', () => {
@@ -107,6 +151,7 @@ describe('watchdog', () => {
     mock.clearAllMocks()
     mockRuntimeSend.mockResolvedValue({ id: 'runtime-msg' })
     mockRuntimeChannelSend.mockResolvedValue({ deliveries: [] })
+    setWatchdogColumns({})
   })
 
   afterEach(() => {
@@ -138,8 +183,7 @@ describe('watchdog', () => {
 
   describe('stuck task detection', () => {
     it('does nothing when taskboard hook returns undefined', async () => {
-      const hookRegistry = getHookRegistry()
-      vi.mocked(hookRegistry.invoke).mockResolvedValue(undefined)
+      setWatchdogColumns({})
 
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
@@ -148,10 +192,7 @@ describe('watchdog', () => {
     })
 
     it('does nothing when no in-progress tasks', async () => {
-      const hookRegistry = getHookRegistry()
-      vi.mocked(hookRegistry.invoke).mockResolvedValue({
-        columns: { todo: [], inProgress: [], done: [] },
-      })
+      setWatchdogColumns({})
 
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
@@ -160,20 +201,15 @@ describe('watchdog', () => {
     })
 
     it('alerts on stuck task with stale log', async () => {
-      const hookRegistry = getHookRegistry()
-      vi.mocked(hookRegistry.invoke).mockResolvedValue({
-        columns: {
-          todo: [],
-          inProgress: [
-            {
-              id: 'task-1',
-              title: 'Stuck task',
-              agent: 'pixel',
-              log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }],
-            },
-          ],
-          done: [],
-        },
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'task-1',
+            title: 'Stuck task',
+            agent: 'pixel',
+            log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }],
+          },
+        ],
       })
       // Agent is alive (not stale) — should alert but not auto-recover
       vi.mocked(isStale).mockReturnValue(false)
@@ -194,28 +230,15 @@ describe('watchdog', () => {
     })
 
     it('auto-recovers when agent heartbeat is stale', async () => {
-      const hookRegistry = getHookRegistry()
-      const invokeMock = vi.mocked(hookRegistry.invoke)
-
-      // First call: readTaskboard, subsequent: task operations
-      invokeMock.mockImplementation(async (name: string) => {
-        if (name === 'tasks.readTaskboard') {
-          return {
-            columns: {
-              todo: [],
-              inProgress: [
-                {
-                  id: 'task-2',
-                  title: 'Stale task',
-                  agent: 'pixel',
-                  log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }],
-                },
-              ],
-              done: [],
-            },
-          }
-        }
-        return undefined
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'task-2',
+            title: 'Stale task',
+            agent: 'pixel',
+            log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }],
+          },
+        ],
       })
 
       // Agent heartbeat is stale (no heartbeat file)
@@ -225,11 +248,8 @@ describe('watchdog', () => {
       await vi.advanceTimersByTimeAsync(1500)
 
       // Should have called moveTask to recover
-      expect(invokeMock).toHaveBeenCalledWith('tasks.addTaskLog', expect.objectContaining({
-        identifier: 'task-2',
-        message: expect.stringContaining('Auto-recovered'),
-      }))
-      expect(invokeMock).toHaveBeenCalledWith('tasks.moveTask', { identifier: 'task-2', to: 'todo' })
+      expect(mockStoreAddTaskLog).toHaveBeenCalledWith('task-2', 'watchdog', expect.stringContaining('Auto-recovered'))
+      expect(mockStoreMoveTask).toHaveBeenCalledWith('task-2', 'todo')
       expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
         tempDir,
         'task.auto_recovered',
@@ -239,31 +259,19 @@ describe('watchdog', () => {
     })
 
     it('escalates to blocked after max auto-recoveries', async () => {
-      const hookRegistry = getHookRegistry()
-      const invokeMock = vi.mocked(hookRegistry.invoke)
-
-      invokeMock.mockImplementation(async (name: string) => {
-        if (name === 'tasks.readTaskboard') {
-          return {
-            columns: {
-              todo: [],
-              inProgress: [
-                {
-                  id: 'task-3',
-                  title: 'Exhausted task',
-                  agent: 'pixel',
-                  log: [
-                    { message: 'Auto-recovered: attempt 1', timestamp: '2020-01-01T00:00:00Z' },
-                    { message: 'Auto-recovered: attempt 2', timestamp: '2020-01-01T01:00:00Z' },
-                    { message: 'Auto-recovered: attempt 3', timestamp: '2020-01-01T02:00:00Z' },
-                  ],
-                },
-              ],
-              done: [],
-            },
-          }
-        }
-        return undefined
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'task-3',
+            title: 'Exhausted task',
+            agent: 'pixel',
+            log: [
+              { message: 'Auto-recovered: attempt 1', timestamp: '2020-01-01T00:00:00Z' },
+              { message: 'Auto-recovered: attempt 2', timestamp: '2020-01-01T01:00:00Z' },
+              { message: 'Auto-recovered: attempt 3', timestamp: '2020-01-01T02:00:00Z' },
+            ],
+          },
+        ],
       })
 
       vi.mocked(isStale).mockReturnValue(true)
@@ -271,9 +279,7 @@ describe('watchdog', () => {
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
-      expect(invokeMock).toHaveBeenCalledWith('tasks.blockTask', expect.objectContaining({
-        identifier: 'task-3',
-      }))
+      expect(mockStoreBlockTask).toHaveBeenCalledWith('task-3', expect.stringContaining('Auto-recovery limit reached'))
       expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
         tempDir,
         'task.auto_recovery_exhausted',
@@ -289,30 +295,18 @@ describe('watchdog', () => {
     // queued long ago) but `updatedAt` was just bumped by dispatch's move,
     // so we key the guard off that.
     it('does not auto-recover when task.updatedAt is within the guard window', async () => {
-      const hookRegistry = getHookRegistry()
-      const invokeMock = vi.mocked(hookRegistry.invoke)
-
-      invokeMock.mockImplementation(async (name: string) => {
-        if (name === 'tasks.readTaskboard') {
-          return {
-            columns: {
-              todo: [],
-              inProgress: [
-                {
-                  id: 'race-task',
-                  title: 'Just-dispatched task',
-                  agent: 'pixel',
-                  // Log is ancient — the "stuck" check would normally fire.
-                  log: [{ message: 'Queued', timestamp: '2020-01-01T00:00:00Z' }],
-                  // But updatedAt was bumped by dispatch's moveTask 1s ago.
-                  updatedAt: Date.now() - 1000,
-                },
-              ],
-              done: [],
-            },
-          }
-        }
-        return undefined
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'race-task',
+            title: 'Just-dispatched task',
+            agent: 'pixel',
+            // Log is ancient — the "stuck" check would normally fire.
+            log: [{ message: 'Queued', timestamp: '2020-01-01T00:00:00Z' }],
+            // But updatedAt was bumped by dispatch's moveTask 1s ago.
+            updatedAt: Date.now() - 1000,
+          },
+        ],
       })
 
       // Heartbeat stale — so absent the guard this would auto-recover.
@@ -322,11 +316,12 @@ describe('watchdog', () => {
       await vi.advanceTimersByTimeAsync(1500)
 
       // Guard must block both branches of the recovery decision.
-      expect(invokeMock).not.toHaveBeenCalledWith('tasks.moveTask', expect.anything())
-      expect(invokeMock).not.toHaveBeenCalledWith('tasks.blockTask', expect.anything())
-      expect(invokeMock).not.toHaveBeenCalledWith(
-        'tasks.addTaskLog',
-        expect.objectContaining({ message: expect.stringContaining('Auto-recovered') }),
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      expect(mockStoreAddTaskLog).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.stringContaining('Auto-recovered'),
       )
       expect(vi.mocked(appendAudit)).not.toHaveBeenCalledWith(
         tempDir,
@@ -349,22 +344,17 @@ describe('watchdog', () => {
 
   describe('bypass pattern detection', () => {
     it('detects "working around" pattern in recent logs', async () => {
-      const hookRegistry = getHookRegistry()
-      vi.mocked(hookRegistry.invoke).mockResolvedValue({
-        columns: {
-          todo: [],
-          inProgress: [
-            {
-              id: 'task-bp',
-              title: 'Bypass task',
-              agent: 'pixel',
-              log: [
-                { message: 'Working around the error by skipping validation', timestamp: new Date().toISOString() },
-              ],
-            },
-          ],
-          done: [],
-        },
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'task-bp',
+            title: 'Bypass task',
+            agent: 'pixel',
+            log: [
+              { message: 'Working around the error by skipping validation', timestamp: new Date().toISOString() },
+            ],
+          },
+        ],
       })
 
       start(tempDir)
@@ -386,22 +376,17 @@ describe('watchdog', () => {
     })
 
     it('ignores watchdog own log entries', async () => {
-      const hookRegistry = getHookRegistry()
-      vi.mocked(hookRegistry.invoke).mockResolvedValue({
-        columns: {
-          todo: [],
-          inProgress: [
-            {
-              id: 'task-safe',
-              title: 'Safe task',
-              agent: 'pixel',
-              log: [
-                { message: 'ALERT: No progress logged in 30+ minutes', timestamp: new Date().toISOString() },
-              ],
-            },
-          ],
-          done: [],
-        },
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'task-safe',
+            title: 'Safe task',
+            agent: 'pixel',
+            log: [
+              { message: 'ALERT: No progress logged in 30+ minutes', timestamp: new Date().toISOString() },
+            ],
+          },
+        ],
       })
 
       start(tempDir)

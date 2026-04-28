@@ -25,6 +25,7 @@ import {
   autoCheckLinkedItem,
 } from './lib/project-service'
 import { createLogger } from '../../src/core/logger'
+import { deleteTask } from '../../src/core/task-store'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { Project, ProjectStatus } from './types'
 
@@ -216,7 +217,7 @@ const projectsPlugin: BakinPlugin = {
           if (project) {
             for (const item of project.tasks) {
               if (item.taskId) {
-                try { await ctx.hooks.invoke<void>('tasks.deleteTask', { identifier: item.taskId }) } catch { /* task may already be gone */ }
+                try { await deleteTask(item.taskId) } catch { /* task may already be gone */ }
               }
             }
           }

@@ -41,6 +41,7 @@ import {
 import { matchWorkflow } from './lib/matcher'
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../src/core/content-dir'
+import { getTask, updateTask } from '../../src/core/task-store'
 import { validateStepOutput } from './lib/schema-validator'
 import {
   parseGateApprovalId,
@@ -1035,20 +1036,14 @@ const workflowsPlugin: BakinPlugin = {
         // Look up task assignee so $assigned steps resolve correctly
         let assignee: string | undefined
         try {
-          const board = await ctx.hooks.invoke<{ columns: Record<string, Array<{ id: string; agent?: string }>> }>('tasks.readTaskboard', {})
-          if (board) {
-            for (const col of Object.values(board.columns)) {
-              const task = col.find(t => t.id === taskId)
-              if (task?.agent) { assignee = task.agent; break }
-            }
-          }
+          assignee = getTask(taskId)?.agent
         } catch { /* best effort */ }
 
         const instance = createInstance(taskId, workflowId, undefined, assignee)
 
         // Ensure the task's workflowId is persisted in Bakin task metadata
         try {
-          await ctx.hooks.invoke<void>('tasks.updateTask', { identifier: taskId, updates: { workflowId } })
+          await updateTask(taskId, { workflowId })
         } catch {
           // Non-fatal — instance is created regardless
         }
@@ -1120,19 +1115,13 @@ const workflowsPlugin: BakinPlugin = {
         try {
           let assignee: string | undefined
           try {
-            const board = await ctx.hooks.invoke<{ columns: Record<string, Array<{ id: string; agent?: string }>> }>('tasks.readTaskboard', {})
-            if (board) {
-              for (const col of Object.values(board.columns)) {
-                const task = col.find(t => t.id === taskId)
-                if (task?.agent) { assignee = task.agent; break }
-              }
-            }
+            assignee = getTask(taskId)?.agent
           } catch { /* best effort */ }
 
           const instance = createInstance(taskId, workflowId, undefined, assignee)
 
           try {
-            await ctx.hooks.invoke<void>('tasks.updateTask', { identifier: taskId, updates: { workflowId } })
+            await updateTask(taskId, { workflowId })
           } catch { /* non-fatal */ }
 
           ctx.activity.audit('started', agent, { taskId, workflowId })

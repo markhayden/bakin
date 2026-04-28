@@ -74,6 +74,45 @@ mock.module('@/core/app-services', () => ({
   getAppServices: () => mockAppServices,
 }))
 
+type DispatchTestColumns = {
+  backlog: unknown[]
+  todo: unknown[]
+  inProgress: unknown[]
+  review: unknown[]
+  done: unknown[]
+  archived: unknown[]
+  blocked: unknown[]
+}
+
+let currentDispatchColumns: DispatchTestColumns = emptyDispatchTestColumns()
+const mockStoreBlockTask = mock(async (..._args: unknown[]) => undefined)
+const mockStoreAddTaskLog = mock(async (..._args: unknown[]) => undefined)
+const mockStoreUpdateTask = mock(async (..._args: unknown[]) => undefined)
+const mockStoreMoveTask = mock(async (..._args: unknown[]) => undefined)
+
+function emptyDispatchTestColumns(): DispatchTestColumns {
+  return { backlog: [], todo: [], inProgress: [], review: [], done: [], archived: [], blocked: [] }
+}
+
+function setDispatchColumns(columns: Partial<DispatchTestColumns>): void {
+  currentDispatchColumns = { ...emptyDispatchTestColumns(), ...columns }
+}
+
+mock.module('../../src/core/task-store', () => ({
+  readTaskboard: mock(() => ({ columns: currentDispatchColumns })),
+  addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
+  updateTask: (...args: unknown[]) => mockStoreUpdateTask(...args),
+  moveTask: (...args: unknown[]) => mockStoreMoveTask(...args),
+  blockTask: (...args: unknown[]) => mockStoreBlockTask(...args),
+}))
+mock.module('@/core/task-store', () => ({
+  readTaskboard: mock(() => ({ columns: currentDispatchColumns })),
+  addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
+  updateTask: (...args: unknown[]) => mockStoreUpdateTask(...args),
+  moveTask: (...args: unknown[]) => mockStoreMoveTask(...args),
+  blockTask: (...args: unknown[]) => mockStoreBlockTask(...args),
+}))
+
 mock.module('../../src/lib/plugin-registry', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock().mockResolvedValue(undefined),
@@ -106,6 +145,11 @@ describe('dispatch', () => {
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-dispatch-'))
     vi.useFakeTimers()
+    setDispatchColumns({})
+    mockStoreBlockTask.mockClear()
+    mockStoreAddTaskLog.mockClear()
+    mockStoreUpdateTask.mockClear()
+    mockStoreMoveTask.mockClear()
   })
 
   afterEach(() => {
@@ -242,11 +286,10 @@ describe('dispatch', () => {
       }
 
       const columns: ColumnsShape = { todo: [task], inProgress: [], done: [], archived: [] }
+      setDispatchColumns(columns)
 
       const invoke = mock(async (hook: string) => {
-        if (hook === 'tasks.readTaskboard') return { columns }
         if (hook === 'workflows.getActiveAgents') return []
-        if (hook === 'tasks.blockTask') return undefined
         return undefined
       })
       vi.mocked(getHookRegistry).mockReturnValue({
@@ -319,15 +362,13 @@ describe('dispatch', () => {
     })
 
     it('escalates to blocked after maxRetries cumulative failures', async () => {
-      const blockTask = mock()
       const columns: ColumnsShape = {
         todo: [{ id: 't-exhausted', title: 'About to exhaust' }],
         inProgress: [], done: [], archived: [],
       }
-      const invoke = mock(async (hook: string, args?: unknown) => {
-        if (hook === 'tasks.readTaskboard') return { columns }
+      setDispatchColumns(columns)
+      const invoke = mock(async (hook: string) => {
         if (hook === 'workflows.getActiveAgents') return []
-        if (hook === 'tasks.blockTask') { blockTask(args); return undefined }
         return undefined
       })
       vi.mocked(getHookRegistry).mockReturnValue({
@@ -346,7 +387,7 @@ describe('dispatch', () => {
       }))
 
       await dispatchTasks(tempDir, 3737)
-      expect(blockTask).toHaveBeenCalledTimes(1)
+      expect(mockStoreBlockTask).toHaveBeenCalledTimes(1)
       expect(mockRuntimeSend).not.toHaveBeenCalled()
     })
 
@@ -390,8 +431,8 @@ describe('dispatch', () => {
         todo: [{ id: 'wf-fail', title: 'Failing workflow task', workflowId: 'img-flow', agent: 'pixel' }],
         inProgress: [], done: [], archived: [],
       }
+      setDispatchColumns(columns)
       const invoke = mock(async (hook: string) => {
-        if (hook === 'tasks.readTaskboard') return { columns }
         if (hook === 'workflows.loadInstance') return null
         if (hook === 'workflows.createInstance') return { id: 'inst-1' }
         if (hook === 'workflows.getActiveAgents') return [{ agent: 'pixel', stepId: 'step-generate' }]
@@ -429,17 +470,13 @@ describe('dispatch', () => {
         failedDispatches: {},
       }))
 
+      setDispatchColumns({
+        todo: [],
+        inProgress: [{ id: 'wf-1', title: 'Generate image', workflowId: 'image-flow', agent: 'pixel' }],
+        done: [],
+        archived: [],
+      })
       const invoke = mock(async (hook: string) => {
-        if (hook === 'tasks.readTaskboard') {
-          return {
-            columns: {
-              todo: [],
-              inProgress: [{ id: 'wf-1', title: 'Generate image', workflowId: 'image-flow', agent: 'pixel' }],
-              done: [],
-              archived: [],
-            },
-          }
-        }
         if (hook === 'workflows.getActiveAgents') {
           return [{ agent: 'pixel', stepId: 'step-generate' }]
         }

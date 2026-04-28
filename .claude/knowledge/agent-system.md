@@ -89,7 +89,7 @@ Agents run behind the active runtime adapter. Communication flows:
 ## Dispatch Engine (`src/core/dispatch.ts`)
 
 The dispatch system assigns tasks to agents:
-1. Reads the Bakin task store via `tasks.readTaskboard`
+1. Reads the Bakin task store via `src/core/task-store.ts`
 2. Checks runtime roster/availability, heartbeat, current task count, and dispatch cooldown
 3. Sends task to the assigned agent through `getAppServices().runtime.messaging`
 4. Moves task to `inProgress` column

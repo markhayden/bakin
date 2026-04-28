@@ -42,6 +42,10 @@ const DENYLIST = [
     regex: /flow_runs/,
   },
   {
+    label: 'task metadata access through plugin hooks',
+    regex: /tasks\.(?:readTaskboard|addTaskLog|updateTask|moveTask|blockTask|createTask|setDependency|clearDependency|deleteTask)/,
+  },
+  {
     label: 'raw SQLite access outside adapter packages',
     regex: /(?:bun:sqlite|new\s+Database\b|Database\()/,
   },

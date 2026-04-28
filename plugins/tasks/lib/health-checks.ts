@@ -14,10 +14,9 @@ import { join } from 'path'
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { getSettings } from '../../../src/core/settings'
-import { getHookRegistry } from '../../../src/lib/plugin-registry'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
 import { maybeGetAppServices } from '../../../src/core/app-services'
-import { readTaskboard, reorderTasks } from './flow-store'
+import { clearDependency, readTaskboard, reorderTasks } from './flow-store'
 import type { ColumnId, Task } from '../types'
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
@@ -70,8 +69,8 @@ export function checkTaskboard(): HealthCheckResult[] {
 
 /**
  * Detect orphaned, overloaded, or stale in-progress tasks. Auto-fixes
- * orphaned dependsOn refs on done tasks (clears them via the
- * tasks.clearDependency hook) when settings.doctor.autoFixSkill is true.
+ * orphaned dependsOn refs on done tasks when settings.doctor.autoFixSkill is
+ * true.
  */
 export async function checkTaskConsistency(
   contentDir: string,
@@ -79,12 +78,10 @@ export async function checkTaskConsistency(
 ): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
   const autoFix = getSettings().doctor.autoFixSkill
-  const hooks = getHookRegistry()
 
   try {
     interface TaskEntry { id: string; title: string; agent?: string; dependsOn?: string; log?: unknown[] }
-    const board = await hooks.invoke<{ columns: { inProgress: TaskEntry[]; done: TaskEntry[]; todo: TaskEntry[]; blocked: TaskEntry[] } }>('tasks.readTaskboard', {})
-    if (!board) { return [warn('task-consistency', 'Taskboard not available (tasks plugin not loaded)')] }
+    const board = readTaskboard() as unknown as { columns: { inProgress: TaskEntry[]; done: TaskEntry[]; todo: TaskEntry[]; blocked: TaskEntry[] } }
     const { columns } = board
 
     const knownAgents = await resolveKnownAgentIds(agentReader)
@@ -127,7 +124,7 @@ export async function checkTaskConsistency(
       if (task.dependsOn) {
         if (autoFix) {
           try {
-            await hooks.invoke<void>('tasks.clearDependency', { taskId: task.id })
+            await clearDependency(task.id)
             results.push(fixed('task-consistency', `Cleared orphaned dependsOn on done task "${task.title}"`))
           } catch {
             results.push(warn('task-consistency', `Done task "${task.title}" has orphaned dependsOn="${task.dependsOn}" — failed to clear`))

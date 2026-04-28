@@ -46,25 +46,24 @@ let currentColumns: { todo?: any[]; inProgress?: any[]; blocked?: any[]; done?: 
 const mockClearDependency = mock().mockResolvedValue(undefined)
 const mockAddTaskLog = mock().mockResolvedValue(undefined)
 
+const taskStoreMock = {
+  readTaskboard: mock(() => ({
+    columns: {
+      todo: currentColumns.todo || [],
+      inProgress: currentColumns.inProgress || [],
+      blocked: currentColumns.blocked || [],
+      done: currentColumns.done || [],
+    },
+  })),
+  clearDependency: (taskId: string) => mockClearDependency(taskId),
+  addTaskLog: (identifier: string, author: string, message: string) => mockAddTaskLog(identifier, author, message),
+}
+
+mock.module('../../src/core/task-store', () => taskStoreMock)
+mock.module('@/core/task-store', () => taskStoreMock)
+
 const mockInvoke = mock(async (hook: string, args?: Record<string, unknown>) => {
-  if (hook === 'tasks.readTaskboard') {
-    return {
-      columns: {
-        todo: currentColumns.todo || [],
-        inProgress: currentColumns.inProgress || [],
-        blocked: currentColumns.blocked || [],
-        done: currentColumns.done || [],
-      },
-    }
-  }
-  if (hook === 'tasks.clearDependency') {
-    await mockClearDependency(args?.taskId)
-    return undefined
-  }
-  if (hook === 'tasks.addTaskLog') {
-    await mockAddTaskLog(args?.identifier, args?.author, args?.message)
-    return undefined
-  }
+  void args
   return undefined
 })
 

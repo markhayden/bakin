@@ -227,23 +227,20 @@ All routes are registered at `/api/plugins/tasks/{path}` via the plugin route sy
 | `bakin_exec_tasks_delete` | Delete task |
 | `bakin_exec_tasks_assign` | Assign to agent |
 
-## Hook Registry
+## Task Store Boundary
 
-The tasks plugin registers 9 hooks for cross-plugin communication:
+Task metadata is owned by Bakin core, not the plugin hook registry. The shared
+store lives in `src/core/task-store.ts`, and the compatibility path
+`plugins/tasks/lib/flow-store.ts` re-exports that surface for existing internal
+imports. Core, workflows, projects, schedule, dispatch, and task-service call
+the task store directly instead of invoking `tasks.*` hooks.
 
-| Hook | Parameters | Returns | Used by |
-|------|-----------|---------|---------|
-| `tasks.readTaskboard` | `{}` | `TaskBoard` | workflows, projects, dispatch, task-service |
-| `tasks.createTask` | `{ title, column?, assignee?, description?, workflowId?, createdBy?, id?, parentId?, projectId? }` | `Task` | task-service, workflows |
-| `tasks.moveTask` | `{ identifier, to, from? }` | `void` | task-service |
-| `tasks.blockTask` | `{ identifier, reason, agent? }` | `void` | task-service |
-| `tasks.addTaskLog` | `{ identifier, author, message }` | `void` | task-service |
-| `tasks.updateTask` | `{ identifier, updates }` | `void` | task-service, workflows |
-| `tasks.deleteTask` | `{ identifier }` | `void` | task-service |
-| `tasks.setDependency` | `{ taskId, dependsOnId }` | `void` | task-service |
-| `tasks.clearDependency` | `{ taskId }` | `void` | task-service |
+Main store operations: `readTaskboard`, `createTask`, `moveTask`, `blockTask`,
+`addTaskLog`, `updateTask`, `deleteTask`, `setDependency`, `clearDependency`,
+`assignTask`, and `reorderTasks`.
 
-**Note:** `identifier` accepts either task ID or title (ID preferred, title fallback).
+**Note:** task identifiers accept either task ID or title where the store API
+documents that fallback; ID is preferred.
 
 ## Task Service Layer
 
@@ -289,7 +286,7 @@ When `autoArchiveDays > 0`, the plugin moves old Done tasks to Archived. `archiv
 - When a task moves to done or archived, `projects.autoCheckLinkedItem` hook is invoked
 
 ### Dispatch Engine
-- `src/core/dispatch.ts` reads todo tasks through `tasks.readTaskboard` and assigns them to available runtime agents
+- `src/core/dispatch.ts` reads todo tasks through `src/core/task-store.ts` and assigns them to available runtime agents
 - `moveTaskToInProgress` moves assigned tasks from todo to inProgress
 - Agents pick up tasks via MCP tools, report progress via `logProgress`, and complete via `reportComplete`
 
