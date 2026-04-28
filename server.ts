@@ -30,9 +30,8 @@ import { getContentDir, getBakinPaths, isUsingBakinHome } from './src/core/conte
 import { handleSSE, broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
 import * as vault from './src/core/vault'
-import * as openclaw from './src/core/openclaw-client'
 import { createAppServices } from './src/core/app-services'
-import { getMainAgentId } from './src/core/main-agent'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { handleJsonPost, jsonResponse } from './src/core/middleware'
 import { writeCrossPluginSearchResponse } from './src/core/api-search-handler'
 import * as watcher from './src/core/watcher'
@@ -206,13 +205,15 @@ const eventBus = new BakinEventBus(broadcast)
   // Generate API docs
   generateDocs(CONTENT_DIR)
 
-  // Create inbox handler using OpenClaw HTTP client
+  // Create inbox handler using the configured runtime adapter.
   const handleInboxFile = watcher.createInboxHandler({
     contentDir: CONTENT_DIR,
     sendNotification: (message: string) => {
-      openclaw.sendMessage(getMainAgentId(), message).catch(err => {
-        log.error('Failed to notify main agent of completion', err)
-      })
+      getRuntimeMainAgentId(appServices.runtime)
+        .then((agentId) => appServices.runtime.messaging.send({ agentId, content: message }))
+        .catch(err => {
+          log.error('Failed to notify main agent of completion', err)
+        })
     },
   })
 
