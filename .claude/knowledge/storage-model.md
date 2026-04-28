@@ -6,7 +6,7 @@ Bakin stores its own state in markdown files, JSON files, and JSONL logs under t
 
 ## Content Directory
 
-### Resolution (`packages/core/src/content-dir.ts`, re-exported via `src/core/content-dir.ts`)
+### Resolution (`packages/core/src/content-dir.ts`, app-facing facade at `src/core/content-dir.ts`)
 Priority order:
 1. `BAKIN_HOME` env var
 2. `~/.bakin/`
@@ -37,7 +37,7 @@ Returns a `BakinPaths` object with absolute paths:
 | `settings` | `settings.json` | Runtime settings |
 
 ### Initialization (`initBakinHome()`)
-Called by `bakin init` or first run. Creates the directory structure:
+Called by `bakin mkdir` / onboarding setup. Creates the directory structure:
 - `assets/`, `assets/store/`, `assets/inbox/`, `assets/.trash/` (month shards under `store/` are created on-demand by `saveAsset`)
 - `agents/`, `heartbeats/`, `inbox/`, `plugins/`, `projects/`, `tasks/`, `team/personas/`
 - `workflows/definitions/`, `workflows/skills/`, `workflows/instances/`
@@ -170,7 +170,7 @@ Configured in `BakinSettings.search`. See `.claude/knowledge/search-system.md` f
 | File | Purpose |
 |------|---------|
 | `packages/core/src/content-dir.ts` | Content directory resolution, path constants, init |
-| `src/core/content-dir.ts` | Re-export shim for backward compat |
+| `src/core/content-dir.ts` | App-facing facade over the package resolver; not provider state |
 | `src/lib/storage/markdown-adapter.ts` | StorageAdapter implementation |
 | `packages/core/src/tasks/store.ts` | Bakin task metadata store |
 | `src/core/task-store.ts` | Core task service layer over the Bakin task store |
