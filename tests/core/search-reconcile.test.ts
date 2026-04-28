@@ -18,10 +18,6 @@ mock.module('@/core/logger', () => ({
   }),
 }))
 
-mock.module('@/core/antfly', () => ({
-  scanTable: mock(async function* () {}),
-}))
-
 import {
   globToRegex,
   matchesAnyPattern,

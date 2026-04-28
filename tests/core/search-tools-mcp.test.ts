@@ -6,7 +6,7 @@
  * exercise the resolution path for all 7 tools through the in-memory
  * exec-tool registry.
  *
- * We mock src/core/search-registry and src/core/antfly so tools execute
+ * We mock src/core/search-registry so tools execute
  * end-to-end without an Antfly backend.
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'

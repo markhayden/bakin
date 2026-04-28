@@ -17,10 +17,6 @@ mock.module('@/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-mock.module('@/core/antfly', () => ({
-  indexCompletedTask: mock(() => Promise.resolve()),
-}))
-
 mock.module('@/core/continuation', () => ({
   checkAndContinueDependents: mock(() => Promise.resolve()),
 }))

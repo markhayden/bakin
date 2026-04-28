@@ -249,7 +249,7 @@ export function getContentTypes(): Map<string, SearchContentTypeDefinition & { p
  *
  * Accepts either the bare content-type name (`memory`) or the prefixed
  * full table name (`bakin_memory`). Returns the row count present at
- * purge time (best-effort via getTableStats; 0 when stats are unavailable
+ * purge time (best-effort via search adapter table stats; 0 when stats are unavailable
  * or antfly is disabled).
  *
  * No-op + returns 0 when antfly is disabled — the in-memory registration
@@ -282,7 +282,7 @@ export async function purgeContentType(name: string): Promise<number> {
   try {
     await search.tables.drop(tableName)
   } catch (err) {
-    log.error('purgeContentType: dropTable failed', err, { tableName })
+    log.error('purgeContentType: table drop failed', err, { tableName })
     throw err
   }
 
@@ -333,7 +333,7 @@ export function getIndexNames(tableName: string): string[] {
 
 /**
  * Get the rerank field for a table, or undefined if the content type did
- * not declare one. Callers that pass this to queryTable will have the
+ * not declare one. Callers that pass this to the search adapter will have the
  * cross-encoder reranker attached only when a field is set.
  */
 export function getRerankField(tableName: string): string | undefined {

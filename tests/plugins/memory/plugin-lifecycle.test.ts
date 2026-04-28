@@ -5,7 +5,7 @@
  * The memory plugin used to kick off its backfill with `void indexer.backfill`
  * inside `activate()`. Server startup in `server.ts` runs:
  *   pluginRegistry.initialize()     ← activate() here
- *   antfly.initialize()
+ *   search adapter initialization
  *   createRegisteredTables()        ← bakin_memory created here
  *   runPendingReconciles()
  *   pluginRegistry.onAllReady()     ← onReady() here
