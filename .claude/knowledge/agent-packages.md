@@ -19,7 +19,7 @@ Four `kind` values discriminate what a manifest can contain:
 | Kind | What it ships | Lockfile key |
 |---|---|---|
 | `agent` | persona files, optional skills/workflows/knowledge/assets, dispatch perms | bare id (`pixel`) |
-| `skill-pack` | reusable OpenClaw skills used by multiple agents | compound (`visual@0.3.1`) |
+| `skill-pack` | reusable runtime skills used by multiple agents | compound (`visual@0.3.1`) |
 | `workflow-pack` | reusable workflow definitions + workflow-skills | compound |
 | `knowledge-pack` | cross-agent knowledge lessons | compound |
 

@@ -127,7 +127,7 @@ packages/
 │       ├── agents.ts                              list/get/identity from openclaw.json
 │       ├── messaging.ts                           send/stream/chat (incl. AsyncIterable<ChatChunk>)
 │       ├── tools.ts                               invokeTool wrapper
-│       ├── skills.ts                              ~/.openclaw/skills/ ops
+│       ├── skills.ts                              runtime skill store ops
 │       ├── sessions.ts                            agents/{id}/sessions/ readers
 │       ├── memory.ts                              workspace/memory/** + tier parsers
 │       ├── tasks.ts                               flow_runs execution queries + dispatch + subscribe

@@ -106,7 +106,7 @@ PluginLockEntry {
   remoteHeadSha? // last seen remote sha (github only)
   sourceTreeSha? // install/upgrade time tree sha (local only)
   lastSourceTreeSha? // --check time tree sha (local only)
-  installedSkills? // OpenClaw skill names this plugin shipped — the
+  installedSkills? // runtime skill names this plugin shipped — the
                   // authoritative allowlist for uninstall (defeats fake
                   // .installedBy markers per #119 hardening)
 }
@@ -240,7 +240,7 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
    contract)
 2. Call `plugin.onUninstall(ctx)` if defined — log + audit + continue
    on error (a buggy hook must not trap the user)
-3. Plan OpenClaw skill cleanup — partition by the lockfile entry's
+3. Plan runtime skill cleanup — partition by the lockfile entry's
    `installedSkills` allowlist (the authoritative record of what this
    plugin actually installed) intersected with on-disk
    `.installedBy.pluginId` markers,
@@ -248,7 +248,7 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
 4. Snapshot Bakin-owned data via `snapshotUninstall` →
    `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz` (atomic tmp+rename via
    `Bun.spawn(['tar', ...])` against a staging dir for clean tarball
-   structure: `plugins/`, `plugin-settings/`, `openclaw-skills/`)
+   structure: `plugins/`, `plugin-settings/`, `runtime-skills/`)
 5. Sweep registries:
    - `hookRegistry.unregisterByPlugin(id)` — sweeps every handler
      tagged with the plugin id during `ctx.hooks.register`
@@ -767,10 +767,10 @@ to drop files in place.
 |-----------|--------|----------|
 | `defaults/workflows/*.yaml` | The owning plugin's `activate()` (workflows plugin uses `lib/load-defaults.ts`) | Each YAML is parsed and registered via `ctx.registerWorkflow(def, { readOnly: true })`. User copies under `~/.bakin/workflows/definitions/` always shadow these. |
 | `defaults/workflow-skills/*.md` | `src/lib/plugin-skill-loader.ts`, invoked by the plugin loader after every `activate()` | Each `.md` is parsed (YAML frontmatter for `name` + `output_schema`; body is the instruction) and registered via `ctx.registerSkill()`. In-memory only — no filesystem install. |
-| `defaults/openclaw-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `~/.openclaw/skills/{name}/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
+| `defaults/runtime-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `runtime skill store/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
 
 The first two are S-A (workflow-step skills, in-memory). The third is
-S-B (OpenClaw runtime skills, on disk). See
+S-B (runtime skills, on disk). See
 `.claude/knowledge/workflows-plugin.md` for the full breakdown.
 
 ## Storage Adapter

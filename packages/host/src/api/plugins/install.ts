@@ -144,7 +144,7 @@ function recordInstall(args: {
       }
     }
 
-    // Record the OpenClaw skills this plugin shipped — used as the
+    // Record the runtime skills this plugin shipped — used as the
     // authoritative allowlist at uninstall time.
     let installedSkills: string[] = []
     try {

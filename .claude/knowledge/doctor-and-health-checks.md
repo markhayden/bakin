@@ -2,7 +2,7 @@
 
 ## What this is
 
-The "doctor" sweep — Bakin's periodic health audit — used to be a 1762-line monolith in `src/core/doctor.ts` with 18 builtin checks for everything from agent rosters to OpenClaw skill sync. After #139, every check is **plugin-registered** via `ctx.registerHealthCheck`. `src/core/doctor.ts` is now ~170 lines: cron + cache + audit + notify, plus the `runPluginHealthChecks()` orchestrator.
+The "doctor" sweep — Bakin's periodic health audit — used to be a 1762-line monolith in `src/core/doctor.ts` with 18 builtin checks for everything from agent rosters to runtime skill sync. After #139, every check is **plugin-registered** via `ctx.registerHealthCheck`. `src/core/doctor.ts` is now ~170 lines: cron + cache + audit + notify, plus the `runPluginHealthChecks()` orchestrator.
 
 The single canonical result type is `HealthCheckResult`, exported from `@bakin/core/plugin-types` (re-exported via `@bakin/sdk` for plugin authors).
 
