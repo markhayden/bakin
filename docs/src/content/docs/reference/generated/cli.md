@@ -855,7 +855,7 @@ Reason: Depends on local log files.
 
 ### `bakin reindex [--table=<name>] [--rebuild]`
 
-Triggers content indexing to Antfly.
+Triggers content indexing through the search adapter.
 
 - Visibility: `public`
 - Stability: `stable`
@@ -867,7 +867,7 @@ bakin reindex --table=tasks
 ```
 
 Example test mode: `illustrative`
-Reason: Requires local Antfly/server state.
+Reason: Requires local search/server state.
 
 ### `bakin docs`
 
@@ -887,7 +887,7 @@ Reason: Requires a running local server.
 
 ### `bakin search <query> [--table=<name>] [--agent=<id>] [--limit=<n>] [--facets=<list>]`
 
-Searches Antfly-indexed Bakin content.
+Searches indexed Bakin content.
 
 - Visibility: `public`
 - Stability: `stable`

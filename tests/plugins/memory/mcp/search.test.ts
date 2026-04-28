@@ -59,7 +59,7 @@ function makeCtx(results: SearchResponse['results'] = []): { ctx: PluginContext;
         calls.push(p)
         return {
           results,
-          meta: { query: p.q, total: results.length, took_ms: 0, source: 'antfly' },
+          meta: { query: p.q, total: results.length, took_ms: 0, source: 'search' },
         } satisfies SearchResponse
       }),
     },

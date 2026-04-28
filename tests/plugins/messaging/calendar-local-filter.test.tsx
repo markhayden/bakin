@@ -4,7 +4,7 @@
  * Calendar local filter smoke tests.
  *
  * Per spec §5.1d, the content calendar is intentionally NOT backed by
- * Antfly — only brainstorm sessions are. C14 wired a plain client-side
+ * search — only brainstorm sessions are. C14 wired a plain client-side
  * substring filter over `title | brief | draft.caption | draft.agentNotes`
  * (case-insensitive). These tests verify the filter, the empty-state
  * behavior, and assert that this component does NOT import useSearch.
@@ -292,7 +292,7 @@ describe('ContentCalendar (local substring filter)', () => {
   })
 
   it('does not import useSearch — calendar filter is local-only', () => {
-    // Per spec §5.1d, the calendar is intentionally NOT Antfly-backed.
+    // Per spec §5.1d, the calendar is intentionally NOT search-backed.
     // Read the source file and assert no useSearch import / hook usage exists.
     // (useSearchParams from @bakin/sdk/hooks is fine — it's URL state, not
     // the Bakin search hook — so only `@/hooks/use-search` is forbidden.)

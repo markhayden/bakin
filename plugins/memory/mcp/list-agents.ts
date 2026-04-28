@@ -1,7 +1,7 @@
 /**
  * bakin_exec_memory_list_agents — list agents with per-tier row counts.
  *
- * Asks Antfly for agent + tier aggregations in one query. Rather than
+ * Asks search for agent + tier aggregations in one query. Rather than
  * returning a flat count-by-agent list, we pivot so callers can see
  * {agent, total, byTier: { session, turn, ... }} — the common shape for
  * "pick an agent, scope to a tier, search."

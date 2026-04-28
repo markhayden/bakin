@@ -8,7 +8,7 @@
  *     lastUpdated: number,  // ms
  *   }
  *
- * One Antfly query per tier with `limit: 0` — we only need `meta.total`.
+ * One search query per tier with `limit: 0` — we only need `meta.total`.
  * A failure on one tier yields 0 for that tier rather than erroring the
  * whole response; the status view is for at-a-glance diagnostics, not a
  * source of truth.

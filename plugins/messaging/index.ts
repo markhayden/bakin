@@ -262,7 +262,7 @@ const messagingPlugin: BakinPlugin = {
     }
 
     // ── Search Content Type Registration ─────────────────────────────
-    // Per spec §5.1d, ONLY brainstorm sessions get Antfly search; calendar
+    // Per spec §5.1d, ONLY brainstorm sessions get indexed search; calendar
     // items get a local substring filter in a later commit. No TTL — spec
     // does not mandate one and this is a dev machine with tens of sessions.
     ctx.search.registerFileBackedContentType({

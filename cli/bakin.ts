@@ -926,7 +926,7 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
   if (options.rebuild) params.push('rebuild=true')
   if (params.length) url += `?${params.join('&')}`
 
-  console.log(`Reindexing ${options.table || 'all content'} to Antfly${options.rebuild ? ' (rebuild indexes)' : ''}...`)
+  console.log(`Reindexing ${options.table || 'all content'} into search${options.rebuild ? ' (rebuild indexes)' : ''}...`)
   const result = await apiPost(url) as {
     ok: boolean
     total: number

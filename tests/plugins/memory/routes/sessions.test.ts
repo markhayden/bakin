@@ -258,11 +258,11 @@ describe('sessionDetailRoute — handler', () => {
 // ─── sessionTurnsRoute + turnsListRoute ────────────────────────────────────
 
 describe('sessionTurnsRoute — handler', () => {
-  it('queries Antfly with tier=turn filter scoped by sessionKey', async () => {
+  it('queries search with tier=turn filter scoped by sessionKey', async () => {
     const h = makeCtx()
     h.queryImpl({
       results: [{ id: 'turn:abc', table: 'bakin_memory', score: 0.5, fields: { title: 'hi' } }],
-      meta: { query: 'agent:chef:main', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: 'agent:chef:main', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await sessionTurnsRoute.handler(
       req('/sessions/chef/main/turns', {

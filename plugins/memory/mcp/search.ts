@@ -3,7 +3,7 @@
  *
  * Thin wrapper around ctx.search.query with tier/agent filters exposed as
  * structured args. Returns the shape specified in the rebuild spec §Feature 10
- * so agents can consume results without having to understand Antfly's full
+ * so agents can consume results without having to understand the indexed
  * row shape.
  */
 import { z } from 'zod'

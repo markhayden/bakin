@@ -197,7 +197,7 @@ describe('search-registry', () => {
     const ok = await route.handler(new Request('http://localhost/search?q=build&facets=status&limit=5'))
     expect(ok.status).toBe(200)
     const body = await ok.json()
-    expect(body.meta.source).toBe('antfly')
+    expect(body.meta.source).toBe('search')
     expect(searchHarness.calls.query).toHaveBeenCalledWith(
       'bakin_tasks',
       expect.objectContaining({ text: 'build', limit: 5 }),
@@ -260,7 +260,7 @@ describe('search-registry', () => {
         facets: ['status'],
       }),
     )
-    expect(result.meta.source).toBe('antfly')
+    expect(result.meta.source).toBe('search')
     expect(result.results).toHaveLength(1)
     expect(result.aggregations?.status).toEqual([{ value: 'active', count: 5 }])
   })
@@ -789,7 +789,7 @@ describe('search-registry', () => {
       'bakin_tasks',
       expect.objectContaining({ text: 'build', limit: 20 }),
     )
-    expect(result.meta.source).toBe('antfly')
+    expect(result.meta.source).toBe('search')
     expect(result.results).toHaveLength(1)
   })
 
@@ -809,7 +809,7 @@ describe('search-registry', () => {
     const result = await crossTableSearch('test', { table: 'nonexistent' })
 
     expect(result.results).toEqual([])
-    expect(result.meta.source).toBe('antfly')
+    expect(result.meta.source).toBe('search')
   })
 
   it('crossTableSearch queries all tables when no table specified', async () => {
@@ -840,7 +840,7 @@ describe('search-registry', () => {
       ],
     )
     expect(result.results).toHaveLength(2)
-    expect(result.meta.source).toBe('antfly')
+    expect(result.meta.source).toBe('search')
   })
 
   // ── getSearchHealth with index health (#74) ────────────────────────

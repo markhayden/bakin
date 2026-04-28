@@ -1,5 +1,5 @@
 /**
- * Search schema migration — drops and recreates Bakin's Antfly tables
+ * Search schema migration — drops and recreates Bakin's search tables
  * when the in-code schema version advances beyond the last-migrated
  * version stored on disk.
  *

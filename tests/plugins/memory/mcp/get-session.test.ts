@@ -1,7 +1,7 @@
 /**
  * Tests for plugins/memory/mcp/get-session.ts.
  *
- * Two Antfly queries: one for the session row (tier=session), one for turns
+ * Two search queries: one for the session row (tier=session), one for turns
  * (tier=turn). Matching is done by parsing each row's `meta` — we can't rely
  * on ids alone because a sessionKey can exist across agents.
  */
@@ -60,7 +60,7 @@ function makeCtx(perTier: Record<string, SearchResult[]>): { ctx: PluginContext;
         const results = perTier[tier] ?? []
         return {
           results,
-          meta: { query: p.q, total: results.length, took_ms: 0, source: 'antfly' },
+          meta: { query: p.q, total: results.length, took_ms: 0, source: 'search' },
         } satisfies SearchResponse
       }),
     },

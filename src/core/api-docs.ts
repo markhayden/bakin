@@ -39,7 +39,7 @@ const CORE_ROUTES: RouteDoc[] = [
   coreRoute('POST', '/api/internal/continuation', 'Trigger continuation check', 'Triggers dependency continuation checks.', '{"completedTaskId":"string","completedTitle":"string"}', 'internal'),
   coreRoute('POST', '/api/activity/emit', 'Emit activity event', 'Emits an activity event via SSE.', '{"agent":"string","message":"string","ts":"string"}'),
   coreRoute('GET', '/api/docs', 'Get API documentation', 'Returns API route documentation as JSON.'),
-  coreRoute('GET', '/api/search', 'Search indexed content', 'Searches across indexed content. Requires Antfly.', '?q=<query>&table=<optional>&limit=<optional>'),
+  coreRoute('GET', '/api/search', 'Search indexed content', 'Searches across indexed content through the search adapter.', '?q=<query>&table=<optional>&limit=<optional>'),
   coreRoute('GET', '/api/agents', 'List agents', 'Lists all agents with status and active tasks.'),
   coreRoute('GET', '/api/agents/:id', 'Get agent status', 'Returns agent status.'),
   coreRoute('GET', '/api/agents/:id/status', 'Get detailed agent status', 'Returns detailed status for one agent.'),
@@ -47,7 +47,7 @@ const CORE_ROUTES: RouteDoc[] = [
   coreRoute('GET', '/api/agents/:id/tasks', 'Get agent tasks', 'Returns tasks assigned to an agent.'),
   coreRoute('POST', '/api/plugins/install', 'Install plugin', 'Installs a plugin.', '{"source":"string","type":"local|github"}'),
   coreRoute('POST', '/api/plugins/remove', 'Remove plugin', 'Removes an installed plugin.', '{"pluginId":"string"}'),
-  coreRoute('POST', '/api/reindex', 'Trigger reindex', 'Triggers a full content reindex to Antfly.'),
+  coreRoute('POST', '/api/reindex', 'Trigger reindex', 'Triggers a full content reindex through the search adapter.'),
 ]
 
 function coreRoute(

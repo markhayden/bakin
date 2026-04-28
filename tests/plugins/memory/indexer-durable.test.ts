@@ -216,7 +216,7 @@ describe('MemoryIndexer.indexTier("durable")', () => {
     await idx.indexTier('durable')
     await idx.indexTier('durable')
 
-    // Both passes emit the same key — downstream Antfly upsert dedupes.
+    // Both passes emit the same key — downstream search upsert dedupes.
     const uniq = new Set(indexed.map((d) => d.key))
     expect(uniq.size).toBe(1)
     expect(indexed).toHaveLength(2)

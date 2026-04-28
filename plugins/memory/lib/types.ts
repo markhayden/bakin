@@ -1,7 +1,7 @@
 /**
  * Memory plugin — shared types and Zod schemas.
  *
- * Every row written to the `bakin_memory` Antfly table conforms to
+ * Every row written to the `bakin_memory` search table conforms to
  * `MemoryRow`. The `tier` facet discriminates row shape; per-tier details
  * are stored in `meta` (JSON-stringified) and validated at index time
  * against the per-tier meta schemas below.

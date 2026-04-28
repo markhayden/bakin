@@ -6,7 +6,7 @@
  *   GET /sessions/:agent/:sessionKey
  *         → one session's full meta
  *   GET /sessions/:agent/:sessionKey/turns[?limit=<n>&offset=<n>&eventType=<…>]
- *         → turns belonging to one session (Antfly-backed)
+ *         → turns belonging to one session (search-backed)
  *   GET /turns?agent=<id>&sessionId=<id>[&limit=<n>&offset=<n>&eventType=<…>]
  *         → convenience form of the above for callers that only know sessionId
  *

@@ -55,7 +55,7 @@ interface RegistryState {
   /**
    * File-backed registrations awaiting their first startup reconcile.
    * Reconciles are deferred until after `createRegisteredTables()` so
-   * the underlying Antfly tables exist before we try to scan them.
+   * the underlying search tables exist before we try to scan them.
    * Drained by `runPendingReconciles()`.
    */
   pendingReconciles: Array<{
@@ -109,9 +109,8 @@ function fullTableName(table: string): string {
  * Compute the effective list of vector indexes for a content type. When
  * `def.indexes` is set, returns it as-is. Otherwise synthesizes a single
  * default index named `embeddings` from the top-level `embeddingTemplate`
- * — this preserves backward compatibility with every content type
- * registered before multi-index support existed, and keeps their Antfly
- * table schemas stable across the upgrade.
+ * — this keeps older content type definitions on stable search table
+ * schemas even when they do not declare explicit indexes.
  */
 function getEffectiveIndexes(def: SearchContentTypeDefinition): SearchIndexDefinition[] {
   if (def.indexes && def.indexes.length > 0) {
@@ -178,9 +177,9 @@ export interface EnsureTablesResult {
 }
 
 /**
- * Ensure every registered content type has a corresponding Antfly table.
- * Idempotent — re-lists Antfly tables on every call so it self-heals when
- * Antfly is wiped, restarted, or otherwise drifts from Bakin's registry.
+ * Ensure every registered content type has a corresponding search table.
+ * Idempotent — re-lists adapter tables on every call so it self-heals when
+ * the search backend is wiped, restarted, or otherwise drifts from Bakin's registry.
  *
  * Returns both the count of tables created and any per-table failures so
  * callers (notably the `/api/reindex` handler) can surface real errors
@@ -242,7 +241,7 @@ export function getContentTypes(): Map<string, SearchContentTypeDefinition & { p
 }
 
 /**
- * Purge a single content type — drop the underlying Antfly table (atomic
+ * Purge a single content type — drop the underlying search table (atomic
  * delete-all) and remove the in-memory registration. Used by
  * `bakin plugins remove` (#119) to tear down a plugin's index entries
  * before deleting the plugin itself.
@@ -250,9 +249,9 @@ export function getContentTypes(): Map<string, SearchContentTypeDefinition & { p
  * Accepts either the bare content-type name (`memory`) or the prefixed
  * full table name (`bakin_memory`). Returns the row count present at
  * purge time (best-effort via search adapter table stats; 0 when stats are unavailable
- * or antfly is disabled).
+ * or the search adapter is unavailable).
  *
- * No-op + returns 0 when antfly is disabled — the in-memory registration
+ * No-op + returns 0 when the search adapter is unavailable — the in-memory registration
  * still gets cleared so the plugin can re-register on next install.
  */
 export async function purgeContentType(name: string): Promise<number> {
@@ -468,7 +467,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
       })
 
       // Schedule startup reconcile. We can't run it inline because the
-      // Antfly table doesn't exist yet — `createRegisteredTables` runs
+      // Search table doesn't exist yet — `createRegisteredTables` runs
       // after all plugins activate. The reconcile is enqueued and drained
       // by `runPendingReconciles()` in server.ts after table creation.
       if (def.buildOnStartup !== false) {
@@ -545,7 +544,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
           query: params.q,
           total: result.total ?? result.hits.length,
           took_ms: result.diagnostics?.durationMs ?? 0,
-          source: 'antfly',
+          source: 'search',
         },
       }
     },
@@ -556,7 +555,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
 
 /**
  * Drain pending startup reconciles. Called from server.ts after
- * `createRegisteredTables()` so the underlying Antfly tables exist
+ * `createRegisteredTables()` so the underlying search tables exist
  * before the reconcile tries to scan them. Failures are logged and
  * swallowed so one bad reconcile doesn't block the rest.
  */
@@ -594,10 +593,10 @@ export async function runPendingReconciles(): Promise<void> {
  * Reindex all (or one) registered content types by running their reindex() generators.
  * Returns per-table counts.
  *
- * Self-heals: ensures every registered table actually exists on Antfly
- * before iterating. If Antfly was wiped or restarted since Bakin last
- * ran createRegisteredTables, this transparently recreates the missing
- * tables instead of silently writing to nothing.
+ * Self-heals: ensures every registered table actually exists in the
+ * search backend before iterating. If the backend was wiped or restarted
+ * since Bakin last ran createRegisteredTables, this transparently
+ * recreates the missing tables instead of silently writing to nothing.
  *
  * Broadcasts two channels of events:
  *   - Per-table: reindex.start / reindex.progress / reindex.complete
@@ -637,11 +636,11 @@ export async function reindexContentTypes(opts?: {
   const search = getSearchAdapter()
   const results: ReindexTableResult[] = []
 
-  // Self-heal: make sure tables exist on Antfly before we try to write to
-  // them. Cheap when nothing's missing (one list call); critical when
-  // Antfly was wiped externally. Per-table failures are surfaced as
-  // reindex results below so the API caller sees the real reason instead
-  // of a misleading `indexed: 0`.
+  // Self-heal: make sure tables exist in the search backend before we try
+  // to write to them. Cheap when nothing's missing (one list call);
+  // critical when the backend was wiped externally. Per-table failures
+  // surface as reindex results below so the API caller sees the real
+  // reason instead of a misleading `indexed: 0`.
   const failedTables = new Map<string, string>()
   try {
     const ensured = await ensureRegisteredTables()
@@ -728,7 +727,7 @@ export async function reindexContentTypes(opts?: {
         broadcast({ type: 'reindex.complete', table: tableName, pluginId: def.pluginId, indexed: count })
 
         // Enrichment audit — poll index health after all batches complete.
-        // Best-effort: never fails the reindex, just surfaces what Antfly reports.
+        // Best-effort: never fails the reindex, just surfaces what the adapter reports.
         const result: ReindexTableResult = { table: tableName, pluginId: def.pluginId, indexed: count }
         try {
           const health = searchEnrichmentFromTableHealth(await search.tables.getHealth(tableName))
@@ -813,7 +812,7 @@ export async function crossTableSearch(q: string, opts?: {
       // Try matching by pluginId
       const resolved = registry.pluginTables.get(opts.table)
       if (!resolved) {
-        return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'antfly' } }
+        return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'search' } }
       }
       return crossTableSearch(q, { ...opts, table: resolved.replace(TABLE_PREFIX, '') })
     }
@@ -834,14 +833,14 @@ export async function crossTableSearch(q: string, opts?: {
       results: result.hits.map((hit) => ({ ...adapterHitToPluginResult(hit, tableName), _table: tableName })),
       aggregations: mapFacetCounts(result.facets),
       rawAggregations: result.aggregations,
-      meta: { query: q, total: result.total ?? result.hits.length, took_ms: result.diagnostics?.durationMs ?? 0, source: 'antfly' },
+      meta: { query: q, total: result.total ?? result.hits.length, took_ms: result.diagnostics?.durationMs ?? 0, source: 'search' },
     }
   }
 
   // Cross-table search via multiQuery
   const tables = Array.from(registry.contentTypes.keys())
   if (tables.length === 0) {
-    return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'antfly' } }
+    return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'search' } }
   }
 
   const perTableLimit = Math.ceil(limit / tables.length)
@@ -866,7 +865,7 @@ export async function crossTableSearch(q: string, opts?: {
       query: q,
       total: results.reduce((sum, result) => sum + (result.total ?? result.hits.length), 0),
       took_ms: Math.max(0, ...results.map((result) => result.diagnostics?.durationMs ?? 0)),
-      source: 'antfly',
+      source: 'search',
     },
   }
 }
