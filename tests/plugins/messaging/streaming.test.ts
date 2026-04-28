@@ -45,15 +45,6 @@ mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: mock(() => '/tmp/mock-openclaw'),
 }))
 
-// Mock runtime completions — default returns canned text, tests can override.
-const mockStreamChatCompletion = mock()
-const mockChatCompletion = mock()
-
-mock.module('../../../src/core/runtime-registry', () => ({
-  streamAgentMessageResponse: (...args: unknown[]) => mockStreamChatCompletion(...args),
-  chatAgentCompletion: (...args: unknown[]) => mockChatCompletion(...args),
-}))
-
 ;(globalThis as any).__bakinBroadcast = mock()
 
 // ---------------------------------------------------------------------------
@@ -74,21 +65,49 @@ import type { ActivatedPlugin } from '../test-helpers'
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeSSEResponse(content: string): Response {
-  const encoder = new TextEncoder()
-  const body = new ReadableStream({
-    start(controller) {
-      const words = content.split(/(\s+)/)
-      for (const word of words) {
-        if (!word) continue
-        const chunk = JSON.stringify({ choices: [{ delta: { content: word } }] })
-        controller.enqueue(encoder.encode(`data: ${chunk}\n\n`))
-      }
-      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-      controller.close()
-    },
+type RuntimeSend = ActivatedPlugin['ctx']['runtime']['messaging']['send']
+type RuntimeStream = ActivatedPlugin['ctx']['runtime']['messaging']['stream']
+
+let mockRuntimeSend = mock(async () => ({ id: 'runtime-msg', content: '' }))
+let mockRuntimeStream = mock(() => streamRuntimeText(''))
+
+async function* streamRuntimeText(content: string): AsyncIterable<{ type: 'text'; content: string }> {
+  const words = content.split(/(\s+)/)
+  for (const word of words) {
+    if (!word) continue
+    yield { type: 'text', content: word }
+  }
+}
+
+function installRuntimeMessagingMocks(): void {
+  plugin.ctx.runtime.messaging.send = mockRuntimeSend as RuntimeSend
+  plugin.ctx.runtime.messaging.stream = mockRuntimeStream as RuntimeStream
+}
+
+function resetRuntimeMessagingMocks(): void {
+  mockRuntimeSend = mock(async () => ({ id: 'runtime-msg', content: '' }))
+  mockRuntimeStream = mock(() => streamRuntimeText(''))
+  installRuntimeMessagingMocks()
+}
+
+function streamRuntimeResponse(content: string): void {
+  mockRuntimeStream.mockImplementationOnce(() => streamRuntimeText(content))
+}
+
+function sendRuntimeResponse(content: string): void {
+  mockRuntimeSend.mockImplementationOnce(async () => ({ id: 'runtime-msg', content }))
+}
+
+function failRuntimeStream(error: Error): void {
+  mockRuntimeStream.mockImplementationOnce(() => {
+    throw error
   })
-  return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+}
+
+function failRuntimeSend(error: Error): void {
+  mockRuntimeSend.mockImplementationOnce(async () => {
+    throw error
+  })
 }
 
 function parseSSEEvents(text: string): Array<{ event: string; data: Record<string, unknown> }> {
@@ -118,6 +137,7 @@ beforeAll(async () => {
   mkdirSync(testDir, { recursive: true })
   writeFileSync(join(testDir, 'messaging.json'), '[]')
   plugin = await activatePlugin(messagingPlugin, testDir)
+  installRuntimeMessagingMocks()
 })
 
 afterAll(() => {
@@ -129,6 +149,7 @@ beforeEach(() => {
   if (existsSync(sessionsDir)) rmSync(sessionsDir, { recursive: true, force: true })
   writeFileSync(join(testDir, 'messaging.json'), '[]')
   mock.clearAllMocks()
+  resetRuntimeMessagingMocks()
 })
 
 async function createTestSession(agentId = 'chef'): Promise<string> {
@@ -155,16 +176,14 @@ async function sendMessage(sessionId: string, message: string): Promise<Response
 
 describe('Streaming endpoint', () => {
   it('returns text/event-stream content type', async () => {
-    mockStreamChatCompletion.mockResolvedValueOnce(makeSSEResponse('Hello world'))
+    streamRuntimeResponse('Hello world')
     const sessionId = await createTestSession()
     const res = await sendMessage(sessionId, 'Plan next week')
     expect(res.headers.get('content-type')).toBe('text/event-stream')
   })
 
   it('streams token events from runtime SSE', async () => {
-    mockStreamChatCompletion.mockResolvedValueOnce(
-      makeSSEResponse('Here are some ideas for next week.')
-    )
+    streamRuntimeResponse('Here are some ideas for next week.')
     const sessionId = await createTestSession()
     const res = await sendMessage(sessionId, 'Plan next week')
     const text = await res.text()
@@ -179,9 +198,7 @@ describe('Streaming endpoint', () => {
   })
 
   it('sends done event after stream completes', async () => {
-    mockStreamChatCompletion.mockResolvedValueOnce(
-      makeSSEResponse('All done.')
-    )
+    streamRuntimeResponse('All done.')
     const sessionId = await createTestSession()
     const res = await sendMessage(sessionId, 'quick')
     const text = await res.text()
@@ -200,9 +217,7 @@ describe('Streaming endpoint', () => {
 [{"title":"Monday Recipe","scheduledAt":"2026-04-13T10:00:00Z","contentType":"recipe","tone":"energetic","brief":"A quick pasta dish"}]
 \`\`\``
 
-    mockStreamChatCompletion.mockResolvedValueOnce(
-      makeSSEResponse(responseWithProposals)
-    )
+    streamRuntimeResponse(responseWithProposals)
     const sessionId = await createTestSession()
     const res = await sendMessage(sessionId, 'Plan next week')
     const text = await res.text()
@@ -216,9 +231,7 @@ describe('Streaming endpoint', () => {
   })
 
   it('persists user and assistant messages to session file', async () => {
-    mockStreamChatCompletion.mockResolvedValueOnce(
-      makeSSEResponse('Sounds good, let me think...')
-    )
+    streamRuntimeResponse('Sounds good, let me think...')
     const sessionId = await createTestSession()
     const res = await sendMessage(sessionId, 'Plan content for Monday')
     await res.text() // Must consume stream to trigger side effects
@@ -235,9 +248,7 @@ describe('Streaming endpoint', () => {
 
   it('persists proposals to session file', async () => {
     const responseWithProposals = `Ideas:\n\`\`\`json\n[{"title":"Test","scheduledAt":"2026-04-13T10:00:00Z","contentType":"tip","tone":"calm","brief":"A tip"}]\n\`\`\``
-    mockStreamChatCompletion.mockResolvedValueOnce(
-      makeSSEResponse(responseWithProposals)
-    )
+    streamRuntimeResponse(responseWithProposals)
     const sessionId = await createTestSession()
     const res = await sendMessage(sessionId, 'Suggest something')
     await res.text() // Consume stream
@@ -251,9 +262,7 @@ describe('Streaming endpoint', () => {
 
   it('links proposals to their message via proposalIds', async () => {
     const responseWithProposals = `Here:\n\`\`\`json\n[{"title":"Linked","scheduledAt":"2026-04-13T10:00:00Z","contentType":"tip","tone":"calm","brief":"A tip"}]\n\`\`\``
-    mockStreamChatCompletion.mockResolvedValueOnce(
-      makeSSEResponse(responseWithProposals)
-    )
+    streamRuntimeResponse(responseWithProposals)
     const sessionId = await createTestSession()
     const res = await sendMessage(sessionId, 'Ideas')
     await res.text() // Consume stream
@@ -267,8 +276,8 @@ describe('Streaming endpoint', () => {
   })
 
   it('falls back to non-streaming when runtime streaming throws', async () => {
-    mockStreamChatCompletion.mockRejectedValueOnce(new Error('Stream not supported'))
-    mockChatCompletion.mockResolvedValueOnce('Fallback response here.')
+    failRuntimeStream(new Error('Stream not supported'))
+    sendRuntimeResponse('Fallback response here.')
 
     const sessionId = await createTestSession()
     const res = await sendMessage(sessionId, 'Plan')
@@ -284,8 +293,8 @@ describe('Streaming endpoint', () => {
   })
 
   it('sends error event when both streaming and fallback fail', async () => {
-    mockStreamChatCompletion.mockRejectedValueOnce(new Error('Stream failed'))
-    mockChatCompletion.mockRejectedValueOnce(new Error('Fallback also failed'))
+    failRuntimeStream(new Error('Stream failed'))
+    failRuntimeSend(new Error('Fallback also failed'))
 
     const sessionId = await createTestSession()
     const res = await sendMessage(sessionId, 'Plan')
@@ -318,9 +327,7 @@ describe('Streaming endpoint', () => {
 
   it('strips JSON block from stored assistant message content', async () => {
     const responseWithJson = `Great plan!\n\`\`\`json\n[{"title":"X","scheduledAt":"2026-04-13T10:00:00Z","contentType":"tip","tone":"calm","brief":"Y"}]\n\`\`\``
-    mockStreamChatCompletion.mockResolvedValueOnce(
-      makeSSEResponse(responseWithJson)
-    )
+    streamRuntimeResponse(responseWithJson)
     const sessionId = await createTestSession()
     const res = await sendMessage(sessionId, 'Plan')
     await res.text() // Consume stream
@@ -335,7 +342,7 @@ describe('Streaming endpoint', () => {
 
 describe('Session message exec tool (non-streaming)', () => {
   it('calls runtime non-streaming and returns response', async () => {
-    mockChatCompletion.mockResolvedValueOnce('Here are my ideas for you.')
+    sendRuntimeResponse('Here are my ideas for you.')
 
     const createTool = findTool(plugin.execTools, 'bakin_exec_messaging_session_create')!
     const created = await createTool.handler({ agentId: 'chef' }, 'test')
@@ -347,11 +354,11 @@ describe('Session message exec tool (non-streaming)', () => {
     expect(result.ok).toBe(true)
     expect(result.response).toBe('Here are my ideas for you.')
     expect(result.messageId).toBeDefined()
-    expect(mockChatCompletion).toHaveBeenCalled()
+    expect(mockRuntimeSend).toHaveBeenCalled()
   })
 
   it('returns error when runtime completion fails', async () => {
-    mockChatCompletion.mockRejectedValueOnce(new Error('Runtime down'))
+    failRuntimeSend(new Error('Runtime down'))
 
     const createTool = findTool(plugin.execTools, 'bakin_exec_messaging_session_create')!
     const created = await createTool.handler({ agentId: 'chef' }, 'test')

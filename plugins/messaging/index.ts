@@ -33,7 +33,6 @@ import {
 } from './lib/brainstorm-search'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
-import { chatAgentCompletion, streamAgentMessageResponse } from '../../src/core/runtime-registry'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'fs'
 import { join } from 'path'
 import type { PlanningSession } from './types'
@@ -67,6 +66,62 @@ function normalizeChannels(value: unknown): string[] {
 interface AgentMetaLike { id: string; name?: string }
 
 const AGENT_ID_SHAPE = /^[a-z0-9-]+$/
+
+interface RuntimeChatOpts {
+  agentId: string
+  messages: Array<{ role: string; content: string }>
+  sessionKey?: string
+  signal?: AbortSignal
+  model?: string
+  maxTokens?: number
+}
+
+function flattenChatMessages(messages: Array<{ role: string; content: string }>): string {
+  if (messages.length === 1) return messages[0].content
+  return messages.map((message) => `${message.role.toUpperCase()}:\n${message.content}`).join('\n\n')
+}
+
+async function chatAgentCompletion(ctx: PluginContext, opts: RuntimeChatOpts): Promise<string> {
+  void opts.signal
+  const result = await ctx.runtime.messaging.send({
+    agentId: opts.agentId,
+    content: flattenChatMessages(opts.messages),
+    threadId: opts.sessionKey,
+    metadata: { model: opts.model, maxTokens: opts.maxTokens },
+  })
+  return result.content ?? ''
+}
+
+async function streamAgentMessageResponse(ctx: PluginContext, opts: RuntimeChatOpts): Promise<Response> {
+  void opts.signal
+  const chunks = ctx.runtime.messaging.stream({
+    agentId: opts.agentId,
+    content: flattenChatMessages(opts.messages),
+    threadId: opts.sessionKey,
+    metadata: { model: opts.model, maxTokens: opts.maxTokens },
+  })
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder()
+      try {
+        for await (const chunk of chunks) {
+          if (chunk.type === 'text' && chunk.content) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: chunk.content } }] })}\n\n`))
+          } else if (chunk.type === 'error') {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: chunk.content ?? 'Runtime stream error' })}\n\n`))
+          }
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+      } catch (err) {
+        controller.error(err)
+      }
+    },
+  })
+  return new Response(stream, {
+    headers: { 'Content-Type': 'text/event-stream' },
+  })
+}
 
 /**
  * Validates an agentId against a strict shape allowlist + live team roster.
@@ -520,7 +575,7 @@ Format: conversational response in your voice, then a JSON block:
 ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says: ${body.message}`
 
           const sessionKey = `brainstorm-${body.agentId}-${Date.now()}`
-          const content = await chatAgentCompletion({
+          const content = await chatAgentCompletion(ctx, {
             agentId: body.agentId,
             sessionKey,
             messages: [{ role: 'user', content: fullPrompt }],
@@ -710,7 +765,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
               let gwResponse: Response | null = null
 
               try {
-                gwResponse = await streamAgentMessageResponse({
+                gwResponse = await streamAgentMessageResponse(ctx, {
                   messages,
                   agentId: session.agentId,
                   sessionKey,
@@ -765,7 +820,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
               } else {
                 // Non-streaming fallback
                 try {
-                  fullContent = await chatAgentCompletion({
+                  fullContent = await chatAgentCompletion(ctx, {
                     messages,
                     agentId: session.agentId,
                     sessionKey,
@@ -1218,7 +1273,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
         let fullContent: string
         try {
-          fullContent = await chatAgentCompletion({
+          fullContent = await chatAgentCompletion(ctx, {
             messages,
             agentId: session.agentId,
             sessionKey,

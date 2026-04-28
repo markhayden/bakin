@@ -51,33 +51,6 @@ mock.module('../../../src/core/watcher', () => ({
   watchDir: mock(),
 }))
 
-// Mock runtime calls so tests don't hit a real adapter.
-mock.module('../../../src/core/runtime-registry', () => ({
-  streamAgentMessageResponse: mock(async () => {
-    // Return a mock Response with SSE body
-    const encoder = new TextEncoder()
-    const body = new ReadableStream({
-      start(controller) {
-        const reply = '[mock:Chef] Acknowledged. Task understood — working on it.'
-        const words = reply.split(/(\s+)/)
-        for (const word of words) {
-          if (!word) continue
-          const chunk = JSON.stringify({ choices: [{ delta: { content: word } }] })
-          controller.enqueue(encoder.encode(`data: ${chunk}\n\n`))
-        }
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-        controller.close()
-      },
-    })
-    return new Response(body, {
-      headers: { 'Content-Type': 'text/event-stream' },
-    })
-  }),
-  chatAgentCompletion: mock(async () =>
-    '[mock:Chef] Acknowledged. Task understood — working on it.'
-  ),
-}))
-
 // Mock openclaw-home to prevent filesystem access
 mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawPath: mock(() => '/tmp/mock-openclaw.json'),
@@ -101,6 +74,32 @@ import {
 } from '../test-helpers'
 import type { ActivatedPlugin } from '../test-helpers'
 
+type RuntimeSend = ActivatedPlugin['ctx']['runtime']['messaging']['send']
+type RuntimeStream = ActivatedPlugin['ctx']['runtime']['messaging']['stream']
+
+const defaultRuntimeReply = '[mock:Chef] Acknowledged. Task understood — working on it.'
+let mockRuntimeSend = mock(async () => ({ id: 'runtime-msg', content: defaultRuntimeReply }))
+let mockRuntimeStream = mock(() => streamRuntimeText(defaultRuntimeReply))
+
+async function* streamRuntimeText(content: string): AsyncIterable<{ type: 'text'; content: string }> {
+  const words = content.split(/(\s+)/)
+  for (const word of words) {
+    if (!word) continue
+    yield { type: 'text', content: word }
+  }
+}
+
+function installRuntimeMessagingMocks(): void {
+  plugin.ctx.runtime.messaging.send = mockRuntimeSend as RuntimeSend
+  plugin.ctx.runtime.messaging.stream = mockRuntimeStream as RuntimeStream
+}
+
+function resetRuntimeMessagingMocks(): void {
+  mockRuntimeSend = mock(async () => ({ id: 'runtime-msg', content: defaultRuntimeReply }))
+  mockRuntimeStream = mock(() => streamRuntimeText(defaultRuntimeReply))
+  installRuntimeMessagingMocks()
+}
+
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
@@ -113,6 +112,7 @@ beforeAll(async () => {
   const { writeFileSync } = require('fs') as typeof import('fs')
   writeFileSync(join(testDir, 'messaging.json'), '[]')
   plugin = await activatePlugin(messagingPlugin, testDir)
+  installRuntimeMessagingMocks()
 })
 
 afterAll(() => {
@@ -129,6 +129,7 @@ beforeEach(() => {
   const { writeFileSync } = require('fs')
   writeFileSync(join(testDir, 'messaging.json'), '[]')
   mock.clearAllMocks()
+  resetRuntimeMessagingMocks()
 })
 
 // ===========================================================================
