@@ -28,13 +28,13 @@ export async function checkSearchAdapter(): Promise<HealthCheckResult[]> {
 
   if (!searchSettings.enabled) {
     if (!isSearchAdapterInstalled(adapter)) {
-      return [warn(`Search disabled and ${adapter} adapter binary not installed — install with: brew install --cask antflydb/antfly/antfly`)]
+      return [warn('Search disabled and active search adapter binary is not installed')]
     }
-    return [ok(`Search disabled — ${adapter} adapter binary installed, enable with: bakin settings set search.settings.enabled true`)]
+    return [ok('Search disabled — active search adapter binary installed, enable with: bakin settings set search.settings.enabled true')]
   }
 
   if (!isSearchAdapterInstalled(adapter)) {
-    return [error(`Search enabled but ${adapter} adapter binary not found — install with: brew install --cask antflydb/antfly/antfly`)]
+    return [error('Search enabled but active search adapter binary was not found')]
   }
 
   const urls = Array.from(new Set([

@@ -81,11 +81,11 @@ mock.module('../../../src/core/runtime-registry', () => ({
   },
 }))
 
-let mockAntflyEnabled = false
-let mockAntflyUrl = 'http://127.0.0.1:8765/api/v1'
-let mockAntflyInstalled = true
+let mockSearchEnabled = false
+let mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
+let mockSearchInstalled = true
 mock.module('../../../src/core/search-adapter-factory', () => ({
-  isSearchAdapterInstalled: () => mockAntflyInstalled,
+  isSearchAdapterInstalled: () => mockSearchInstalled,
 }))
 
 const realFetch = globalThis.fetch
@@ -108,7 +108,7 @@ mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     service: { enabled: mockServiceEnabled },
     doctor: { autoFixSkill: mockAutoFix },
-    search: { adapter: 'antfly', settings: { enabled: mockAntflyEnabled, url: mockAntflyUrl } },
+    search: { adapter: 'antfly', settings: { enabled: mockSearchEnabled, url: mockSearchUrl } },
   }),
   resetSettingsCache: () => {},
 }))
@@ -203,9 +203,9 @@ beforeEach(() => {
   syncConfigCalls = 0
   mockRuntimePing = async () => true
   mockRuntimePingThrows = null
-  mockAntflyEnabled = false
-  mockAntflyInstalled = true
-  mockAntflyUrl = 'http://127.0.0.1:8765/api/v1'
+  mockSearchEnabled = false
+  mockSearchInstalled = true
+  mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
   mockFetchOk = true
   mockFetchHealth = 'green'
   runtimeWorkspaceFiles = new Map()
@@ -368,32 +368,32 @@ describe('checkRuntime', () => {
 
 describe('checkSearchAdapter', () => {
   it('warns when disabled and binary is not installed', async () => {
-    mockAntflyEnabled = false
-    mockAntflyInstalled = false
+    mockSearchEnabled = false
+    mockSearchInstalled = false
     const results = await checkSearchAdapter()
     expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/Search disabled and antfly adapter binary not installed/)
+    expect(results[0].message).toMatch(/Search disabled and active search adapter binary is not installed/)
   })
 
   it('reports ok when disabled but the binary is installed', async () => {
-    mockAntflyEnabled = false
-    mockAntflyInstalled = true
+    mockSearchEnabled = false
+    mockSearchInstalled = true
     const results = await checkSearchAdapter()
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/Search disabled/)
   })
 
   it('reports error when enabled but the binary is missing', async () => {
-    mockAntflyEnabled = true
-    mockAntflyInstalled = false
+    mockSearchEnabled = true
+    mockSearchInstalled = false
     const results = await checkSearchAdapter()
     expect(results[0].status).toBe('error')
-    expect(results[0].message).toMatch(/Search enabled but antfly adapter binary not found/)
+    expect(results[0].message).toMatch(/Search enabled but active search adapter binary was not found/)
   })
 
   it('reports ok when the daemon responds healthy', async () => {
-    mockAntflyEnabled = true
-    mockAntflyInstalled = true
+    mockSearchEnabled = true
+    mockSearchInstalled = true
     mockFetchOk = true
     mockFetchHealth = 'green'
     installMockFetch()
@@ -407,8 +407,8 @@ describe('checkSearchAdapter', () => {
   })
 
   it('reports error when every URL fails', async () => {
-    mockAntflyEnabled = true
-    mockAntflyInstalled = true
+    mockSearchEnabled = true
+    mockSearchInstalled = true
     mockFetchOk = false
     installMockFetch()
     try {

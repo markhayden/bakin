@@ -90,7 +90,7 @@ export async function checkSearchTables(): Promise<HealthCheckResult[]> {
       } else if (failedTables > 0) {
         results.push(warn('search-tables', `${health.tables.length} tables registered; ${failedTables} table stats unavailable, but registry metadata is readable`))
       } else {
-        results.push(ok('search-tables', `${health.tables.length} tables registered; table metadata readable (document counts unavailable from current Antfly API)`))
+        results.push(ok('search-tables', `${health.tables.length} tables registered; table metadata readable (document counts unavailable from current search adapter API)`))
       }
     }
 
