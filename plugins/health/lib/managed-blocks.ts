@@ -281,12 +281,12 @@ mcporter call bakin-${agentId}.bakin_exec_get_paths
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
-- **NEVER use \`openclaw agent\` to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
+- **NEVER use runtime-native agent commands to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
 - **NEVER modify task state directly.** Use Bakin tools via mcporter only.
-- **NEVER post to Discord without explicit instruction.** Content goes through Mark's review first.
+- **NEVER post to runtime channels without explicit instruction.** Content goes through Mark's review first.
 - **NEVER hardcode file paths.** Always discover paths via \`mcporter call bakin-${agentId}.bakin_exec_get_paths\`. Hardcoded paths break when the content directory moves.
 - **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Bakin tracking — no MCP call, no Health metrics, no audit log. Always use the MCP tool via \`mcporter call bakin-${agentId}.bakin_exec_<tool> ...\` instead.
-- **NEVER use \`openclaw cron\` directly for recurring tasks.** Use \`mcporter call bakin-${agentId}.bakin_exec_schedule_create name="..." schedule="every day at 9am" agentId="..." taskPrompt="..."\` instead. Direct cron jobs bypass Bakin — no agent context, no task creation, no audit trail.`,
+- **NEVER use runtime-native cron directly for recurring tasks.** Use \`mcporter call bakin-${agentId}.bakin_exec_schedule_create name="..." schedule="every day at 9am" agentId="..." taskPrompt="..."\` instead. Direct cron jobs bypass Bakin — no agent context, no task creation, no audit trail.`,
   },
 
   {
@@ -363,7 +363,7 @@ When Bakin dispatches a workflow step to you, the dispatch message contains ever
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
-**NEVER use \`openclaw cron\` directly for recurring tasks.** Always use Bakin's schedule tools via mcporter. Direct cron jobs bypass Bakin tracking — no agent avatar, no prompt context, no task creation, no run history.
+**NEVER use runtime-native cron directly for recurring tasks.** Always use Bakin's schedule tools via mcporter. Direct cron jobs bypass Bakin tracking — no agent avatar, no prompt context, no task creation, no run history.
 
 ### Creating Scheduled Jobs
 \`\`\`bash
