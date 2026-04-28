@@ -14,12 +14,6 @@ const testHome = (() => {
   return { home, openclaw }
 })()
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testHome.home,
   getBakinPaths: () => ({
@@ -69,10 +63,26 @@ mock.module('@bakin/core/openclaw-home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-// Mock openclaw-client
-mock.module('@/core/openclaw-client', () => ({
-  ping: mock(async () => false),
-  sendMessage: mock(),
+const mockRuntimeSend = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve({ id: 'runtime-msg' })
+})
+const mockRuntimeAgentsList = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve([
+    { id: 'main', name: 'Main', status: 'active' },
+  ])
+})
+
+mock.module('@/core/runtime-registry', () => ({
+  getRuntimeAdapter: () => ({
+    agents: {
+      list: (...args: unknown[]) => mockRuntimeAgentsList(...args),
+    },
+    messaging: {
+      send: (...args: unknown[]) => mockRuntimeSend(...args),
+    },
+  }),
 }))
 
 // Mock audit (avoid file writes in tests)
@@ -140,6 +150,8 @@ describe('doctor', () => {
       message: '0 plugin assets to install',
       details: { totalAvailable: 0 },
     })
+    mockRuntimeSend.mockClear()
+    mockRuntimeAgentsList.mockClear()
   })
 
   afterEach(() => {
@@ -175,6 +187,32 @@ describe('doctor', () => {
       expect(results.find(r => r.check === 'onboarded')).toBeUndefined()
     } finally {
       registry.unregisterHealthCheck('doctor-test.synthetic')
+    }
+  })
+
+  it('notifies the runtime main agent about unfixable plugin issues', async () => {
+    const registry = await import('../../plugins/health/lib/health-check-registry')
+    registry.registerHealthCheck({
+      runtime: 'plugin',
+      pluginId: 'doctor-test',
+      id: 'doctor-test.unfixable',
+      name: 'Unfixable',
+      run: async () => [{
+        check: 'unfixable-row',
+        status: 'error',
+        message: 'Needs operator attention',
+        autoFixable: false,
+      }],
+    })
+    try {
+      const doctor = await import('@/core/doctor')
+      await doctor.runDiagnostics(contentDir, tempDir)
+      expect(mockRuntimeSend).toHaveBeenCalledWith(expect.objectContaining({
+        agentId: 'main',
+        content: expect.stringContaining('Needs operator attention'),
+      }))
+    } finally {
+      registry.unregisterHealthCheck('doctor-test.unfixable')
     }
   })
 
