@@ -5,8 +5,6 @@
 export const ASSET_TYPES = ['text', 'images', 'video', 'audio', 'plans', 'research', 'pdf', 'data', 'other'] as const
 export type AssetType = typeof ASSET_TYPES[number]
 
-export const SPECIAL_DIRS = ['_unlinked', 'library', '.trash'] as const
-
 export const EXTENSION_TO_TYPE: Record<string, AssetType> = {
   // Text
   '.md': 'text',
