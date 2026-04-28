@@ -627,39 +627,39 @@ describe('VALID_TRANSITIONS', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Promise rejection (critical bug fix verification)
+// Async error handling
 // ---------------------------------------------------------------------------
 
-describe('error handling returns rejected promises', () => {
-  it('moveTask rejects with promise on task not found', async () => {
+describe('write operation error handling', () => {
+  it('moveTask rejects on task not found', async () => {
     await expect(moveTask('ghost', 'done')).rejects.toThrow('Task not found')
   })
 
-  it('deleteTask rejects with promise on task not found', async () => {
+  it('deleteTask rejects on task not found', async () => {
     await expect(deleteTask('ghost')).rejects.toThrow('Task not found')
   })
 
-  it('assignTask rejects with promise on task not found', async () => {
+  it('assignTask rejects on task not found', async () => {
     await expect(assignTask('ghost', 'pixel')).rejects.toThrow('Task not found')
   })
 
-  it('addTaskLog rejects with promise on task not found', async () => {
+  it('addTaskLog rejects on task not found', async () => {
     await expect(addTaskLog('ghost', 'pixel', 'msg')).rejects.toThrow('Task not found')
   })
 
-  it('blockTask rejects with promise on task not found', async () => {
+  it('blockTask rejects on task not found', async () => {
     await expect(blockTask('ghost', 'reason')).rejects.toThrow('Task not found')
   })
 
-  it('updateTask rejects with promise on task not found', async () => {
+  it('updateTask rejects on task not found', async () => {
     await expect(updateTask('ghost', { title: 'nope' })).rejects.toThrow('Task not found')
   })
 
-  it('setDependency rejects with promise on task not found', async () => {
+  it('setDependency rejects on task not found', async () => {
     await expect(setDependency('ghost', 'other')).rejects.toThrow('Task not found')
   })
 
-  it('clearDependency rejects with promise on task not found', async () => {
+  it('clearDependency rejects on task not found', async () => {
     await expect(clearDependency('ghost')).rejects.toThrow('Task not found')
   })
 })
@@ -709,7 +709,7 @@ describe('two-tier permissions', () => {
 
   it('no channel (default): enforces transition guard', async () => {
     const task = await createTask('no-channel', 'backlog')
-    // No channel specified — should enforce guards (backward compat)
+    // No channel specified defaults to agent-grade guard enforcement.
     await expect(moveTask(task.id, 'done')).rejects.toThrow('Invalid transition')
   })
 
