@@ -25,6 +25,11 @@ import { createLogger } from '@/core/logger'
 import { buildSearchAPI } from '@/core/search-registry'
 import { appendAudit } from '@/core/audit'
 import { pluginRegistry } from '@/lib/plugin-registry'
+import {
+  createPluginAssetsAPI,
+  createPluginRuntimeFacade,
+  createPluginTaskService,
+} from '@/lib/plugin-context-services'
 import { stampPluginResponse } from '@/core/plugin-host/version-stamp'
 import type { PluginContext, APIRoute } from '@bakin/core/plugin-types'
 
@@ -49,12 +54,14 @@ function buildCtx(pluginId: string): PluginContext {
     if (broadcastFn) broadcastFn(data as Record<string, unknown>)
   })
   const noopRegisterRoute = () => {}
+  const assets = createPluginAssetsAPI()
   return {
     storage,
     events,
     pluginId,
-    runtime: services.runtime,
-    tasks: services.tasks,
+    runtime: state?.source === 'user' ? createPluginRuntimeFacade(services.runtime) : services.runtime,
+    tasks: createPluginTaskService(services.tasks),
+    assets,
     registerNav: () => {},
     registerRoute: noopRegisterRoute,
     registerSlot: () => {},
