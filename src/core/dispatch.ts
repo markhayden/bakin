@@ -8,13 +8,18 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { recordUsage } from './usage'
-import { getRuntimeAdapter, sendAgentMessage } from './runtime-registry'
+import { getRuntimeAdapter } from './runtime-registry'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { isStale } from '../lib/format'
 import { getHookRegistry } from '../lib/plugin-registry'
-import { getMainAgentId } from '@bakin/core/main-agent'
+import { readProject } from '../../plugins/projects/lib/parser'
 
 const log = createLogger('dispatch')
 const hooks = () => getHookRegistry()
+
+async function sendDispatchMessage(agentId: string, content: string): Promise<void> {
+  await getRuntimeAdapter().messaging.send({ agentId, content })
+}
 
 // Upstream openclaw error bodies land in task logs and audit JSONL via
 // the dispatch catch handlers. Bound the blast radius — a runaway gateway
@@ -139,7 +144,9 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
     const { todoTasks } = getTodoTasks()
     const state = loadDispatchState(contentDir)
-    const runtimeAgentIds = new Set((await getRuntimeAdapter().agents.list()).map((agent) => agent.id))
+    const runtime = getRuntimeAdapter()
+    const runtimeAgentIds = new Set((await runtime.agents.list()).map((agent) => agent.id))
+    const mainAgentId = await getRuntimeMainAgentId(runtime)
     // Reconcile dispatch state with taskboard reality
     const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const activeIds = new Set([
@@ -174,7 +181,8 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
           { ...wfTask, workflowId: wfTask.workflowId },
           contentDir, port, dispatchedSet, state,
           async () => {}, // already in progress, no column move needed
-          addTaskLog
+          addTaskLog,
+          mainAgentId,
         )
       } catch (err) {
         log.error(`Failed to re-dispatch workflow task "${task.title}"`, err)
@@ -213,16 +221,16 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       const taskWithWorkflow = task as typeof task & { workflowId?: string }
       if (taskWithWorkflow.workflowId) {
         try {
-          await dispatchWorkflowTask({ ...taskWithWorkflow, workflowId: taskWithWorkflow.workflowId }, contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog)
+          await dispatchWorkflowTask({ ...taskWithWorkflow, workflowId: taskWithWorkflow.workflowId }, contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog, mainAgentId)
         } catch (err) {
           log.error(`Failed to dispatch workflow task "${task.title}"`, err)
         }
         continue
       }
 
-      const targetAgent = task.agent ?? getMainAgentId()
+      const targetAgent = task.agent ?? mainAgentId
 
-      const message = buildDispatchMessage(task, targetAgent, contentDir, port)
+      const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId)
 
       try {
         // Move to inProgress BEFORE sending message to eliminate race condition
@@ -230,7 +238,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         await moveTaskToInProgress(task.id, targetAgent)
         appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-        await sendAgentMessage(targetAgent, message)
+        await sendDispatchMessage(targetAgent, message)
         dispatchedSet.add(task.id)
 
         appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title })
@@ -286,7 +294,9 @@ export async function dispatchSingleTask(
       return
     }
 
-    const runtimeAgentIds = new Set((await getRuntimeAdapter().agents.list()).map((agent) => agent.id))
+    const runtime = getRuntimeAdapter()
+    const runtimeAgentIds = new Set((await runtime.agents.list()).map((agent) => agent.id))
+    const mainAgentId = await getRuntimeMainAgentId(runtime)
     if (task.agent && !runtimeAgentIds.has(task.agent)) {
       log.warn('dispatchSingleTask: agent not in allowed list', { taskId, agent: task.agent })
       return
@@ -318,11 +328,11 @@ export async function dispatchSingleTask(
     if (taskWithWorkflow.workflowId) {
       const dispatchedSet = new Set(state.dispatched)
       const wfStart = Date.now()
-      const wfAgent = task.agent ?? getMainAgentId()
+      const wfAgent = task.agent ?? mainAgentId
       try {
         await dispatchWorkflowTask(
           { ...taskWithWorkflow, workflowId: taskWithWorkflow.workflowId },
-          contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog,
+          contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog, mainAgentId,
         )
         state.dispatched = [...dispatchedSet]
         saveDispatchState(contentDir, state)
@@ -351,8 +361,8 @@ export async function dispatchSingleTask(
     }
 
     // Regular task dispatch
-    const targetAgent = task.agent ?? getMainAgentId()
-    const message = buildDispatchMessage(task, targetAgent, contentDir, port)
+    const targetAgent = task.agent ?? mainAgentId
+    const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId)
     const dispatchStart = Date.now()
 
     try {
@@ -360,7 +370,7 @@ export async function dispatchSingleTask(
       await moveTaskToInProgress(task.id, targetAgent)
       appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-      await sendAgentMessage(targetAgent, message)
+      await sendDispatchMessage(targetAgent, message)
 
       state.dispatched.push(task.id)
       saveDispatchState(contentDir, state)
@@ -409,8 +419,10 @@ export function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
   agentName: string,
   contentDir: string,
-  _port: number
+  _port: number,
+  mainAgentId = 'main',
 ): string {
+  void _port
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
 
   // List attached assets by filename (stable identity). Agents open them
@@ -447,7 +459,6 @@ export function buildDispatchMessage(
   let projectBlock = ''
   if (task.projectId) {
     try {
-      const { readProject } = require('../../plugins/projects/lib/parser')
       const project = readProject(task.projectId)
       if (project) {
         projectBlock = `\n\n**Project:** "${project.title}" (id: ${project.id}, ${project.progress}% complete)\nThe project spec contains detailed requirements. Call bakin_exec_project_get to read it before starting work.`
@@ -463,7 +474,7 @@ export function buildDispatchMessage(
     return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, basil=research/strategy) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
-  if (task.agent === getMainAgentId()) {
+  if (task.agent === mainAgentId) {
     return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
@@ -573,12 +584,13 @@ async function dispatchWorkflowTask(
   state: DispatchState,
   moveTaskToInProgress: (id: string, agent: string) => Promise<void>,
   addTaskLog: (id: string, author: string, message: string) => Promise<void>,
+  mainAgentId: string,
 ): Promise<void> {
   // Load or create workflow instance.
   // Pass the task assignee so $assigned steps resolve to whoever owns the task at start time.
-  let instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
+  const instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
   if (!instance) {
-    instance = await hooks().invoke<Record<string, unknown>>('workflows.createInstance', { taskId: task.id, workflowId: task.workflowId, assignee: task.agent }) ?? {}
+    await hooks().invoke<Record<string, unknown>>('workflows.createInstance', { taskId: task.id, workflowId: task.workflowId, assignee: task.agent })
     log.info('Created workflow instance', { taskId: task.id, workflowId: task.workflowId, resolvedAgent: task.agent })
   } else if (!instance.resolvedAgent && task.agent) {
     // Backfill resolvedAgent if instance was created before $assigned resolution was wired up
@@ -601,7 +613,7 @@ async function dispatchWorkflowTask(
     const { columns: fresh } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; agent?: string; title?: string; workflowId?: string }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const stillInTodo = fresh.todo.some(t => t.id === task.id)
     if (stillInTodo) {
-      const firstAgent = activeAgents[0]?.agent || task.agent || getMainAgentId()
+      const firstAgent = activeAgents[0]?.agent || task.agent || mainAgentId
       await moveTaskToInProgress(task.id, firstAgent)
       appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
     }
@@ -627,7 +639,7 @@ async function dispatchWorkflowTask(
     const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port)
 
     try {
-      await sendAgentMessage(targetAgent, message)
+      await sendDispatchMessage(targetAgent, message)
       dispatchedSet.add(`${task.id}:${stepId}`)
 
       appendAudit(contentDir, 'task.dispatched', targetAgent, {
@@ -678,6 +690,7 @@ function buildWorkflowDispatchMessage(
   agentName: string,
   _port: number
 ): string {
+  void _port
   const lines: string[] = []
 
   // ─── Identity Frame ─────────────────────────────────────────────────
