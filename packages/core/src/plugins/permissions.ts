@@ -22,7 +22,7 @@ export type Permission = z.infer<typeof PermissionSchema>
 
 export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'events.emit':   'Broadcast Server-Sent Events to connected browsers',
-  'openclaw.read': 'Read agent identity, skills, and workspace state from ~/.openclaw/',
+  'openclaw.read': 'Read agent identity, skills, and workspace state from the runtime adapter',
   'storage.read':  'Read files in ~/.bakin/',
   'storage.write': 'Write files in ~/.bakin/',
 }

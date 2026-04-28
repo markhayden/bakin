@@ -169,7 +169,7 @@ const workflowsPlugin: BakinPlugin = {
 
   contentFiles: [],
 
-  activate(ctx: PluginContext) {
+  async activate(ctx: PluginContext) {
     // ─── Search Content Type Registration ─────────────────────────────
 
     /** Convert a workflow definition to a search document */
@@ -300,18 +300,6 @@ const workflowsPlugin: BakinPlugin = {
       }
     }
 
-    /** Index a workflow definition in search */
-    async function indexDefinition(name: string): Promise<void> {
-      try {
-        const def = loadDefinition(name)
-        if (def) {
-          await ctx.search.index(`def:${name}`, definitionToSearchDoc(name, def))
-        }
-      } catch (err) {
-        log.warn('Failed to index workflow definition', { name, error: err instanceof Error ? err.message : String(err) })
-      }
-    }
-
     // ─── Plugin-shipped workflow defaults ─────────────────────────────
     // Load every YAML in defaults/workflows/ and register through
     // ctx.registerWorkflow so disk-resident user copies still win.
@@ -337,7 +325,7 @@ const workflowsPlugin: BakinPlugin = {
     setDiscordGateSettings(discordSettings)
 
     if (discordSettings.discordGateAlerts) {
-      const discordConfig = loadDiscordConfig()
+      const discordConfig = await loadDiscordConfig()
       if (discordConfig) {
         startGateway(discordConfig, discordSettings.requireRejectReason)
 
@@ -1380,7 +1368,7 @@ const workflowsPlugin: BakinPlugin = {
     log.info(`Ready — ${defs.length} workflow definition(s) loaded`)
   },
 
-  onSettingsChange(newSettings: Record<string, unknown>) {
+  async onSettingsChange(newSettings: Record<string, unknown>) {
     const updated: DiscordGateSettings = {
       discordGateAlerts: newSettings.discordGateAlerts as boolean ?? false,
       discordGateChannel: newSettings.discordGateChannel as string ?? 'general',
@@ -1390,7 +1378,7 @@ const workflowsPlugin: BakinPlugin = {
 
     // Start or stop gateway based on setting change
     if (updated.discordGateAlerts && !isGatewayConnected()) {
-      const config = loadDiscordConfig()
+      const config = await loadDiscordConfig()
       if (config) startGateway(config, updated.requireRejectReason)
     } else if (!updated.discordGateAlerts && isGatewayConnected()) {
       stopGateway()

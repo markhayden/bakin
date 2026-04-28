@@ -90,7 +90,7 @@ describe('leak guard — openclaw-home', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(process.env.HOME, '.openclaw')
 
-    const { getOpenClawHome } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+    const { getOpenClawHome } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
     expect(() => getOpenClawHome()).toThrow(/real OpenClaw home/)
   })
 
@@ -98,7 +98,7 @@ describe('leak guard — openclaw-home', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(tmpdir(), `openclaw-leak-guard-safe-${Date.now()}`)
 
-    const { getOpenClawHome } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+    const { getOpenClawHome } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
     expect(() => getOpenClawHome()).not.toThrow()
   })
 
@@ -106,7 +106,7 @@ describe('leak guard — openclaw-home', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(process.env.HOME, '.openclaw')
 
-    const { getOpenClawPath } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+    const { getOpenClawPath } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
     expect(() => getOpenClawPath('flows', 'registry.sqlite')).toThrow(/real OpenClaw home/)
   })
 
@@ -114,13 +114,13 @@ describe('leak guard — openclaw-home', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(process.env.HOME, '.openclaw')
 
-    const { getOpenClawHome } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+    const { getOpenClawHome } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
     try {
       getOpenClawHome()
       throw new Error('expected throw')
     } catch (err) {
       const msg = (err as Error).message
-      expect(msg).toContain('mock @bakin/core/openclaw-home')
+      expect(msg).toContain('OpenClaw adapter home')
       expect(msg).toContain('OPENCLAW_HOME')
       expect(msg).toContain('CLAUDE.md')
     }

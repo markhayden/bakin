@@ -163,7 +163,7 @@ export async function postThreadReply(
   threadName: string,
   content: string,
 ): Promise<void> {
-  const config = loadDiscordConfig()
+  const config = await loadDiscordConfig()
   if (!config) return
 
   const truncatedName = threadName.slice(0, DISCORD_THREAD_NAME_CAP)
@@ -172,7 +172,7 @@ export async function postThreadReply(
     'Content-Type': 'application/json',
   }
 
-  let threadId: string | null = null
+  let threadId: string
   try {
     const startRes = await fetch(
       `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/threads`,
@@ -242,7 +242,7 @@ export async function sendDiscordGateAlert(
 ): Promise<string | null> {
   if (!settings.discordGateAlerts) return null
 
-  const config = loadDiscordConfig()
+  const config = await loadDiscordConfig()
   if (!config) {
     log.warn('Discord not configured — skipping gate alert')
     return null
@@ -365,7 +365,7 @@ export async function sendDiscordGateSummary(
 ): Promise<void> {
   if (!settings.discordGateAlerts) return
 
-  const config = loadDiscordConfig()
+  const config = await loadDiscordConfig()
   if (!config) return
 
   const channelName = settings.discordGateChannel || 'general'
@@ -453,7 +453,7 @@ export async function editDiscordGateMessage(
   decidedAt: string,
   reason?: string,
 ): Promise<void> {
-  const config = loadDiscordConfig()
+  const config = await loadDiscordConfig()
   if (!config) return
 
   const { id: channelId } = await resolveChannelId(channelName)
