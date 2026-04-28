@@ -29,7 +29,7 @@ import {
   findAgentPackage,
   readLockfile,
 } from '../../../packages/core/src/agent-packages/lockfile'
-import { getRuntimeAdapter } from '../runtime-registry'
+import { getAppServices } from '../app-services'
 
 export type AgentState = 'absent' | 'unmanaged' | 'adopted' | 'managed'
 
@@ -51,7 +51,7 @@ export interface AgentStateInfo {
  *                     Tests pass an in-memory lockfile to avoid disk IO.
  */
 async function runtimeAgentIds(): Promise<Set<string>> {
-  return new Set((await getRuntimeAdapter().agents.list()).map((agent) => agent.id))
+  return new Set((await getAppServices().runtime.agents.list()).map((agent) => agent.id))
 }
 
 export async function getAgentState(
@@ -93,7 +93,7 @@ export async function getAgentState(
  */
 export async function listAllAgentStates(lockfile?: Lockfile): Promise<AgentStateInfo[]> {
   const lock = lockfile ?? readLockfile()
-  const agents = await getRuntimeAdapter().agents.list()
+  const agents = await getAppServices().runtime.agents.list()
   const ids = new Set(agents.map((agent) => agent.id))
   const seen = new Set<string>()
   const results: AgentStateInfo[] = []

@@ -29,7 +29,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { dirname, join, basename } from 'path'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
-import { getRuntimeAdapter } from '../runtime-registry'
+import { getAppServices } from '../app-services'
 import type { RuntimeSkill, WorkspaceFile } from '@bakin/core/adapters/runtime'
 import {
   type AgentManifest,
@@ -146,7 +146,7 @@ class WriteLog {
 
   /** Roll back every op in reverse order. Best-effort — log failures. */
   async rollback(): Promise<void> {
-    const runtime = getRuntimeAdapter()
+    const runtime = getAppServices().runtime
     for (let i = this.ops.length - 1; i >= 0; i--) {
       const op = this.ops[i]
       try {
@@ -271,7 +271,7 @@ async function projectWorkspaceFiles(
   const files = manifest.contributions.workspaceFiles ?? []
   if (files.length === 0) return
 
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
 
   for (const rel of files) {
     const src = join(options.stagingDir, rel)
@@ -335,7 +335,7 @@ async function projectSkills(
 
   if (skillRels.length === 0) return
 
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
 
   for (const rel of skillRels) {
     const src = join(options.stagingDir, rel)
@@ -547,7 +547,7 @@ async function projectKnowledgeMarkers(
   result: ProjectorResult,
   writeLog: WriteLog,
 ): Promise<void> {
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
   const soulPath = runtimeWorkspaceTarget(agentId, 'SOUL.md')
   const soulFile = await runtime.agents.readWorkspaceFile(agentId, 'SOUL.md')
   if (!soulFile) {
@@ -660,7 +660,7 @@ export async function unprojectPackage(
   projections: ProjectionEntry[],
   options: { keepBlocks?: boolean } = {},
 ): Promise<void> {
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
   for (const p of projections) {
     const runtimeTarget = parseRuntimeTarget(p.target)
     if (p.kind === 'knowledge-marker') {

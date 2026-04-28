@@ -65,7 +65,7 @@ import {
   acquireInstallLock,
   releaseInstallLock,
 } from './install-lock'
-import { getRuntimeAdapter } from '../runtime-registry'
+import { getAppServices } from '../app-services'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
@@ -184,7 +184,7 @@ interface AdapterCreateAgentInput {
 }
 
 async function createRuntimeAgent(input: AdapterCreateAgentInput): Promise<void> {
-  await getRuntimeAdapter().agents.create({
+  await getAppServices().runtime.agents.create({
     id: input.id,
     name: input.name,
     role: input.role,
@@ -194,7 +194,7 @@ async function createRuntimeAgent(input: AdapterCreateAgentInput): Promise<void>
 }
 
 async function addRuntimeAllowLists(newAgentId: string, dispatchable: 'all' | 'main' | string[]): Promise<void> {
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
   if (dispatchable === 'main') {
     await runtime.agents.updateAllowlist('main', { add: [newAgentId] })
     return

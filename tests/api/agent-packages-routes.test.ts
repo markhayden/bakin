@@ -22,6 +22,7 @@ import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { createMockRuntimeAdapter } from '../../packages/core/src/adapters/runtime/testing'
+import type { WorkspaceFile } from '../../packages/core/src/adapters/runtime'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -40,7 +41,7 @@ mock.module('@bakin/core/openclaw-home', () => ({
 }))
 
 type TestGlobal = typeof globalThis & {
-  __bakinFallbackRuntimeAdapter?: ReturnType<typeof createMockRuntimeAdapter>
+  __bakinAppServices?: { runtime: ReturnType<typeof createMockRuntimeAdapter> }
 }
 
 function installRuntimeMock(): void {
@@ -50,11 +51,11 @@ function installRuntimeMock(): void {
     requiredCoreVersion: '*',
   })
   const baseAgents = runtime.agents
-  ;(globalThis as TestGlobal).__bakinFallbackRuntimeAdapter = {
+  const appRuntime = {
     ...runtime,
     agents: {
       ...baseAgents,
-      readWorkspaceFile: async (agentId, path) => {
+      readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
         const file = join(openClawDir, 'workspaces', agentId, path)
         try {
           return {
@@ -67,13 +68,14 @@ function installRuntimeMock(): void {
           return null
         }
       },
-      writeWorkspaceFile: async (agentId, file) => {
+      writeWorkspaceFile: async (agentId: string, file: WorkspaceFile) => {
         const dir = join(openClawDir, 'workspaces', agentId)
         mkdirSync(dir, { recursive: true })
         writeFileSync(join(dir, file.path), file.content, 'utf-8')
       },
     },
   }
+  ;(globalThis as TestGlobal).__bakinAppServices = { runtime: appRuntime }
 }
 
 import * as installRoute from '../../packages/host/src/api/agent-packages/install'

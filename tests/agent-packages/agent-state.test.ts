@@ -22,9 +22,11 @@ mock.module('@bakin/core/content-dir', () => ({
 
 type RuntimeRosterAgent = { id: string; name?: string }
 type TestGlobal = typeof globalThis & {
-  __bakinFallbackRuntimeAdapter?: {
-    agents: {
-      list: () => Promise<Array<{ id: string; name: string; status: 'active' }>>
+  __bakinAppServices?: {
+    runtime: {
+      agents: {
+        list: () => Promise<Array<{ id: string; name: string; status: 'active' }>>
+      }
     }
   }
 }
@@ -39,13 +41,15 @@ import type { Lockfile, PackageEntry } from '../../packages/core/src/agent-packa
 
 beforeEach(() => {
   runtimeAgents = []
-  ;(globalThis as TestGlobal).__bakinFallbackRuntimeAdapter = {
-    agents: {
-      list: async () => runtimeAgents.map((agent) => ({
-        id: agent.id,
-        name: agent.name ?? agent.id,
-        status: 'active',
-      })),
+  ;(globalThis as TestGlobal).__bakinAppServices = {
+    runtime: {
+      agents: {
+        list: async () => runtimeAgents.map((agent) => ({
+          id: agent.id,
+          name: agent.name ?? agent.id,
+          status: 'active',
+        })),
+      },
     },
   }
 })

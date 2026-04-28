@@ -29,16 +29,16 @@ import {
   acquireInstallLock,
   releaseInstallLock,
 } from './install-lock'
-import { getRuntimeAdapter } from '../runtime-registry'
+import { getAppServices } from '../app-services'
 
 const log = createLogger('agent-pkg:uninstall')
 
 async function removeRuntimeAgent(agentId: string): Promise<void> {
-  await getRuntimeAdapter().agents.remove(agentId)
+  await getAppServices().runtime.agents.remove(agentId)
 }
 
 async function removeRuntimeAllowListReferences(agentId: string): Promise<void> {
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
   const agents = await runtime.agents.list()
   await Promise.all(
     agents
