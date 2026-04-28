@@ -1,11 +1,5 @@
 import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
     info: mock(),
@@ -19,8 +13,26 @@ mock.module('../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-mock.module('../../src/core/openclaw-client', () => ({
-  sendMessage: mock().mockResolvedValue(undefined),
+const mockRuntimeSend = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve({ id: 'runtime-msg' })
+})
+const mockRuntimeAgentsList = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve([
+    { id: 'main', name: 'Main', status: 'active' },
+  ])
+})
+
+mock.module('../../src/core/runtime-registry', () => ({
+  getRuntimeAdapter: () => ({
+    agents: {
+      list: (...args: unknown[]) => mockRuntimeAgentsList(...args),
+    },
+    messaging: {
+      send: (...args: unknown[]) => mockRuntimeSend(...args),
+    },
+  }),
 }))
 
 // Mock flow-store that gets dynamically imported by continuation.ts
@@ -36,7 +48,6 @@ mock.module('@bakin/tasks/lib/flow-store', () => ({
 
 import { checkAndContinueDependents } from '../../src/core/continuation'
 import { appendAudit } from '../../src/core/audit'
-import * as openclaw from '../../src/core/openclaw-client'
 
 describe('continuation', () => {
   beforeEach(() => {
@@ -58,8 +69,8 @@ describe('continuation', () => {
       inProgress: [],
     })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', 3737)
-    expect(vi.mocked(openclaw.sendMessage)).not.toHaveBeenCalled()
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
+    expect(mockRuntimeSend).not.toHaveBeenCalled()
   })
 
   it('dispatches continuation to dependent task in todo', async () => {
@@ -68,11 +79,13 @@ describe('continuation', () => {
       inProgress: [],
     })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', 3737)
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
 
-    expect(vi.mocked(openclaw.sendMessage)).toHaveBeenCalledWith(
-      'pixel',
-      expect.stringContaining('Done Task'),
+    expect(mockRuntimeSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: 'pixel',
+        content: expect.stringContaining('Done Task'),
+      }),
     )
 
     expect(mockClearDependency).toHaveBeenCalledWith('t2')
@@ -84,11 +97,13 @@ describe('continuation', () => {
       inProgress: [],
     })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', 3737)
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
 
-    expect(vi.mocked(openclaw.sendMessage)).toHaveBeenCalledWith(
-      'main',
-      expect.any(String),
+    expect(mockRuntimeSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: 'main',
+        content: expect.any(String),
+      }),
     )
   })
 
@@ -98,9 +113,12 @@ describe('continuation', () => {
       inProgress: [],
     })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', 3737)
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
 
-    expect(vi.mocked(openclaw.sendMessage)).toHaveBeenCalledWith('main', expect.any(String))
+    expect(mockRuntimeSend).toHaveBeenCalledWith(expect.objectContaining({
+      agentId: 'main',
+      content: expect.any(String),
+    }))
   })
 
   it('skips task already in progress (dedup)', async () => {
@@ -108,9 +126,9 @@ describe('continuation', () => {
       inProgress: [{ id: 't5', title: 'Already Running', agent: 'pixel', dependsOn: 'completed-1' }],
     })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', 3737)
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
 
-    expect(vi.mocked(openclaw.sendMessage)).not.toHaveBeenCalled()
+    expect(mockRuntimeSend).not.toHaveBeenCalled()
     expect(mockClearDependency).toHaveBeenCalledWith('t5')
   })
 
@@ -121,9 +139,12 @@ describe('continuation', () => {
       blocked: [{ id: 't6', title: 'Blocked Task', agent: 'trainer', dependsOn: 'completed-1' }],
     })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', 3737)
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
 
-    expect(vi.mocked(openclaw.sendMessage)).toHaveBeenCalledWith('trainer', expect.any(String))
+    expect(mockRuntimeSend).toHaveBeenCalledWith(expect.objectContaining({
+      agentId: 'trainer',
+      content: expect.any(String),
+    }))
   })
 
   it('writes audit entry after dispatching', async () => {
@@ -132,7 +153,7 @@ describe('continuation', () => {
       inProgress: [],
     })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', 3737)
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
 
     expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
       '/tmp/test',
@@ -148,11 +169,11 @@ describe('continuation', () => {
       inProgress: [],
     })
 
-    vi.mocked(openclaw.sendMessage).mockRejectedValue(new Error('unreachable'))
+    mockRuntimeSend.mockRejectedValue(new Error('unreachable'))
     // Use real timers briefly for retry delays
     vi.useFakeTimers()
 
-    const promise = checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', 3737)
+    const promise = checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
 
     // Advance through retry delays (3 retries × 5000ms)
     await vi.advanceTimersByTimeAsync(5000)
@@ -161,7 +182,7 @@ describe('continuation', () => {
     await promise
 
     // Should have attempted 3 times
-    expect(vi.mocked(openclaw.sendMessage)).toHaveBeenCalledTimes(3)
+    expect(mockRuntimeSend).toHaveBeenCalledTimes(3)
 
     // Audit should show sent: false
     expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(

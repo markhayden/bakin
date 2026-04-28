@@ -4,8 +4,8 @@
  */
 import { createLogger } from './logger'
 import { appendAudit } from './audit'
-import { sendAgentMessage } from './runtime-registry'
-import { getMainAgentId } from '@bakin/core/main-agent'
+import { getRuntimeAdapter } from './runtime-registry'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 
 const log = createLogger('continuation')
 
@@ -15,11 +15,11 @@ const RETRY_DELAY_MS = 5000
 export async function checkAndContinueDependents(
   completedTaskId: string,
   completedTitle: string,
-  contentDir: string,
-  port: number
+  contentDir: string
 ): Promise<void> {
   const { readAllColumns, clearDependency, addTaskLog } = await import('@bakin/tasks/lib/flow-store')
   const columns = readAllColumns()
+  const runtime = getRuntimeAdapter()
 
   const columnsToScan = [columns.inProgress, columns.todo, columns.blocked]
   for (const col of columnsToScan) {
@@ -35,7 +35,7 @@ export async function checkAndContinueDependents(
 
         await clearDependency(task.id)
 
-        const agentId = task.agent ?? getMainAgentId()
+        const agentId = task.agent ?? await getRuntimeMainAgentId(runtime)
         const mcServer = `bakin-${agentId}`
         const resumeMsg = `Your dependency task "${completedTitle}" is now Done. Resume your task: "${task.title}". Continue from where you left off.
 
@@ -50,7 +50,7 @@ mcporter call ${mcServer}.bakin_exec_tasks_get taskId=${task.id}
         let sent = false
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           try {
-            await sendAgentMessage(agentId, resumeMsg)
+            await runtime.messaging.send({ agentId, content: resumeMsg })
             log.info('Continuation dispatched', { id: task.id, title: task.title, completedDep: completedTaskId, attempt })
             sent = true
             break
