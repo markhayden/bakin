@@ -6,7 +6,8 @@ import { readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from './logger'
 import { getRuntimeAdapter } from './runtime-registry'
-import { readTaskboard } from '@bakin/tasks/lib/flow-store'
+import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
+import { getBakinPaths } from './content-dir'
 
 const log = createLogger('agents')
 
@@ -54,33 +55,13 @@ export async function getAgentStatus(agentId: string, contentDir: string): Promi
  */
 export function getAgentTasks(agentId: string, _contentDir: string): AgentTask[] {
   void _contentDir
-  const board = readTaskboard()
-  const tasks: AgentTask[] = []
-
-  const columnMap: Record<string, string> = {
-    todo: 'todo',
-    inProgress: 'in-progress',
-    blocked: 'blocked',
-    done: 'done',
-    backlog: 'backlog',
-    review: 'review',
-    archived: 'archived',
-  }
-
-  for (const [colName, colTasks] of Object.entries(board.columns)) {
-    for (const task of colTasks as Array<{ id: string; title: string; agent?: string; description?: string }>) {
-      if (task.agent === agentId) {
-        tasks.push({
-          id: task.id,
-          title: task.title,
-          column: columnMap[colName] || colName,
-          description: task.description,
-        })
-      }
-    }
-  }
-
-  return tasks
+  const store = createFileBakinTaskStore(getBakinPaths().tasks)
+  return store.listSync({ agent: agentId }).map((task) => ({
+    id: task.id,
+    title: task.title,
+    column: task.column === 'inProgress' ? 'in-progress' : task.column,
+    description: task.description,
+  }))
 }
 
 /**
