@@ -16,18 +16,39 @@
  *   - Start marker without end marker → error result, no write
  *   - main agent skipped (orchestrator owns its own AGENTS.md)
  *
- * Test isolation per CC-6: mocks both content-dir and openclaw-home to
- * temp dirs and seeds a synthetic OpenClaw roster. The doctor's other
- * checks are sidestepped by calling `applyAllManagedBlocks` directly.
+ * Test isolation per CC-6: mocks app services to a temp-backed runtime
+ * adapter and seeds a synthetic roster. The doctor's other checks are
+ * sidestepped by calling `applyAllManagedBlocks` directly.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-doctor-blocks-${Date.now()}-${randomUUID()}`)
-const openClawDir = join(testDir, 'openclaw')
+const runtimeDir = join(testDir, 'runtime')
+
+const runtimeAgents = [
+  { id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' },
+  { id: 'pixel', name: 'Pixel', role: 'Image', status: 'active' },
+  { id: 'rolo', name: 'Rolo', role: 'Video', status: 'active' },
+]
+
+const appRuntime = {
+  agents: {
+    list: async () => runtimeAgents,
+    readWorkspaceFile: async (agentId: string, path: string) => {
+      const fullPath = join(runtimeDir, 'workspaces', agentId, path)
+      return existsSync(fullPath) ? { path, content: readFileSync(fullPath, 'utf-8') } : null
+    },
+    writeWorkspaceFile: async (agentId: string, file: { path: string; content: string }) => {
+      const fullPath = join(runtimeDir, 'workspaces', agentId, file.path)
+      mkdirSync(dirname(fullPath), { recursive: true })
+      writeFileSync(fullPath, file.content, 'utf-8')
+    },
+  },
+}
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -39,44 +60,9 @@ mock.module('@bakin/core/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => openClawDir,
-  getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
-  resetOpenClawHome: () => {},
-}))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
-  getOpenClawHome: () => openClawDir,
-  getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
-  resetOpenClawHome: () => {},
-}))
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-mock.module('@bakin/core/openclaw-config', () => ({
-  readOpenClawConfig: () => ({
-    agents: {
-      list: [
-        { id: 'main' },
-        { id: 'pixel', identity: { name: 'Pixel' } },
-        { id: 'rolo', identity: { name: 'Rolo' } },
-      ],
-    },
-  }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => [
-    { id: 'main' },
-    { id: 'pixel', identity: { name: 'Pixel' } },
-    { id: 'rolo', identity: { name: 'Rolo' } },
-  ],
-  getAgentIds: () => ['main', 'pixel', 'rolo'],
-  findAgentById: (id: string) =>
-    [
-      { id: 'main' },
-      { id: 'pixel', identity: { name: 'Pixel' } },
-      { id: 'rolo', identity: { name: 'Rolo' } },
-    ].find((a) => a.id === id) ?? null,
+mock.module('../../../src/core/app-services', () => ({
+  maybeGetAppServices: () => ({ runtime: appRuntime }),
+  createAppServices: async () => ({ runtime: appRuntime }),
 }))
 
 import { applyAllManagedBlocks, applyAllManagedBlocksForRuntime } from '../../../plugins/health/lib/managed-blocks'
@@ -87,7 +73,7 @@ afterAll(() => {
 })
 
 function workspacePath(agentId: string): string {
-  return join(openClawDir, 'workspaces', agentId)
+  return join(runtimeDir, 'workspaces', agentId)
 }
 
 function agentsMdPath(agentId: string): string {
@@ -102,14 +88,14 @@ function seedAgentsMd(agentId: string, content: string): void {
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
-  mkdirSync(openClawDir, { recursive: true })
+  mkdirSync(runtimeDir, { recursive: true })
 })
 
 describe('applyAllManagedBlocks — block missing', () => {
-  it('with autoFix=true, appends every managed block with one-blank-line separation and trailing newline', () => {
+  it('with autoFix=true, appends every managed block with one-blank-line separation and trailing newline', async () => {
     seedAgentsMd('pixel', '# Pixel — Image Artist\n\nResponsibilities go here.\n')
 
-    const results = applyAllManagedBlocks(true)
+    const results = await applyAllManagedBlocks(true)
     expect(results.some((r) => r.status === 'fixed')).toBe(true)
 
     const final = readFileSync(agentsMdPath('pixel'), 'utf-8')
@@ -123,11 +109,11 @@ describe('applyAllManagedBlocks — block missing', () => {
     expect(final.endsWith('\n')).toBe(true)
   })
 
-  it('with autoFix=false, returns warn diagnostics without writing', () => {
+  it('with autoFix=false, returns warn diagnostics without writing', async () => {
     seedAgentsMd('pixel', '# Pixel\n')
 
     const before = readFileSync(agentsMdPath('pixel'), 'utf-8')
-    const results = applyAllManagedBlocks(false)
+    const results = await applyAllManagedBlocks(false)
 
     expect(results.some((r) => r.status === 'warn' && r.autoFixable)).toBe(true)
     expect(readFileSync(agentsMdPath('pixel'), 'utf-8')).toBe(before)
@@ -135,19 +121,19 @@ describe('applyAllManagedBlocks — block missing', () => {
 })
 
 describe('applyAllManagedBlocks — block present', () => {
-  it('with body matching expected, returns ok, leaves file byte-equal', () => {
+  it('with body matching expected, returns ok, leaves file byte-equal', async () => {
     // Seed both rostered subagents so applyAll doesn't return warn for
     // missing AGENTS.md on rolo.
     seedAgentsMd('pixel', '# Pixel\n\nProse.\n')
     seedAgentsMd('rolo', '# Rolo\n')
 
     // First pass: write the blocks via autoFix
-    applyAllManagedBlocks(true)
+    await applyAllManagedBlocks(true)
     const pixelAfterFirst = readFileSync(agentsMdPath('pixel'), 'utf-8')
     const roloAfterFirst = readFileSync(agentsMdPath('rolo'), 'utf-8')
 
     // Second pass: scoped to pixel + rolo, should be all-ok or fixed (no warn/error)
-    const results = applyAllManagedBlocks(true)
+    const results = await applyAllManagedBlocks(true)
     expect(
       results.every((r) => r.status === 'ok' || r.status === 'fixed'),
     ).toBe(true)
@@ -159,7 +145,7 @@ describe('applyAllManagedBlocks — block present', () => {
     expect(readFileSync(agentsMdPath('rolo'), 'utf-8')).toBe(roloAfterFirst)
   })
 
-  it('with drifted body and autoFix=true, in-place updates while preserving surrounding content', () => {
+  it('with drifted body and autoFix=true, in-place updates while preserving surrounding content', async () => {
     const stale = `# Pixel
 
 Prose before.
@@ -172,7 +158,7 @@ Prose after.
 `
     seedAgentsMd('pixel', stale)
 
-    applyAllManagedBlocks(true)
+    await applyAllManagedBlocks(true)
     const final = readFileSync(agentsMdPath('pixel'), 'utf-8')
 
     // Surrounding content preserved
@@ -185,7 +171,7 @@ Prose after.
     expect(final).toContain('<!-- bakin:mission-control:end -->')
   })
 
-  it('with drifted body and autoFix=false, returns warn, no write', () => {
+  it('with drifted body and autoFix=false, returns warn, no write', async () => {
     const stale = `<!-- bakin:mission-control:start -->
 stale content
 <!-- bakin:mission-control:end -->
@@ -193,7 +179,7 @@ stale content
     seedAgentsMd('pixel', stale)
     const before = readFileSync(agentsMdPath('pixel'), 'utf-8')
 
-    const results = applyAllManagedBlocks(false)
+    const results = await applyAllManagedBlocks(false)
     expect(
       results.some(
         (r) => r.status === 'warn' && r.check === 'agent-mission-control' && r.autoFixable,
@@ -204,11 +190,11 @@ stale content
 })
 
 describe('applyAllManagedBlocks — malformed file', () => {
-  it('returns error for the malformed block, does not rewrite the orphan-start region', () => {
+  it('returns error for the malformed block, does not rewrite the orphan-start region', async () => {
     const broken = `# Pixel\n\n<!-- bakin:mission-control:start -->\nstuck content with no end marker`
     seedAgentsMd('pixel', broken)
 
-    const results = applyAllManagedBlocks(true)
+    const results = await applyAllManagedBlocks(true)
 
     // Mission-control specifically errors out — its orphan start marker stays
     // untouched (no replacement, no end marker injected by the doctor's path).
@@ -228,11 +214,11 @@ describe('applyAllManagedBlocks — malformed file', () => {
 })
 
 describe('applyAllManagedBlocks — main agent skip', () => {
-  it('does not touch main agent`s AGENTS.md', () => {
+  it('does not touch main agent`s AGENTS.md', async () => {
     seedAgentsMd('main', '# Main\n')
     seedAgentsMd('pixel', '# Pixel\n')
 
-    applyAllManagedBlocks(true)
+    await applyAllManagedBlocks(true)
 
     // main was not touched — still no markers
     const mainContent = readFileSync(agentsMdPath('main'), 'utf-8')
@@ -245,11 +231,11 @@ describe('applyAllManagedBlocks — main agent skip', () => {
 })
 
 describe('applyAllManagedBlocks — missing AGENTS.md', () => {
-  it('returns warn when an agent has no AGENTS.md, does not create one', () => {
+  it('returns warn when an agent has no AGENTS.md, does not create one', async () => {
     // pixel is in the roster but we don't seed AGENTS.md
     mkdirSync(workspacePath('pixel'), { recursive: true })
 
-    const results = applyAllManagedBlocks(true)
+    const results = await applyAllManagedBlocks(true)
     expect(results.some((r) => r.status === 'warn' && r.message.includes('AGENTS.md not found'))).toBe(true)
     expect(existsSync(agentsMdPath('pixel'))).toBe(false)
   })

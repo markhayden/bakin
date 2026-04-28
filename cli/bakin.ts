@@ -631,7 +631,7 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
   // Handle --apply-all and --check-all for all agents
   if (options.applyAll || options.checkAll) {
     const { applyAllManagedBlocks } = await import('../plugins/health/lib/managed-blocks')
-    const results = applyAllManagedBlocks(!!options.applyAll)
+    const results = await applyAllManagedBlocks(!!options.applyAll)
     const errors = results.filter(r => r.status === 'error')
     const warnings = results.filter(r => r.status === 'warn')
     const fixes = results.filter(r => r.status === 'fixed')
