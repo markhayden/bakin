@@ -53,6 +53,11 @@ import {
 import { ScopedPluginStorageAdapter } from '../../packages/core/src/storage/scoped-plugin-storage'
 import { getAppServices } from '../core/app-services'
 import type { PluginManifest as PublicPluginManifest } from '@bakin/sdk/types'
+import {
+  createPluginAssetsAPI,
+  createPluginRuntimeFacade,
+  createPluginTaskService,
+} from './plugin-context-services'
 
 /**
  * Optional static core-plugin table. Set from server.ts on startup so
@@ -455,12 +460,14 @@ class PluginRegistryImpl {
     const pluginStorage = state.source === 'user'
       ? new ScopedPluginStorageAdapter(getContentDir(), pluginId)
       : storage
+    const assets = createPluginAssetsAPI()
     return {
       storage: pluginStorage,
       events,
       pluginId,
-      runtime: services.runtime,
-      tasks: services.tasks,
+      runtime: state.source === 'user' ? createPluginRuntimeFacade(services.runtime) : services.runtime,
+      tasks: createPluginTaskService(services.tasks),
+      assets,
       registerNav: (items: NavItem[]) => { state.navItems.push(...items) },
       registerRoute,
       registerSlot: (reg: UISlotRegistration) => { state.slots.push(reg) },

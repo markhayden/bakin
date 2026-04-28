@@ -245,35 +245,54 @@ export interface RuntimeAgent {
   id: string
   name: string
   role?: string
-  status?: string
   model?: string
-  color?: string
-  emoji?: string
-  [key: string]: unknown
+  status?: 'active' | 'inactive' | 'unknown'
+  metadata?: Record<string, unknown>
 }
 
 export interface RuntimeChannel {
   id: string
+  platform: string
   label: string
-  capabilities?: string[]
+  capabilities: string[]
+  metadata?: Record<string, unknown>
+}
+
+export interface RuntimeMessageArgs {
+  agentId: string
+  content: string
+  threadId?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface RuntimeMessageResult {
+  id: string
+  content?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface RuntimeChatChunk {
+  type: 'text' | 'tool' | 'status' | 'done' | 'error'
+  content?: string
+  data?: unknown
 }
 
 export interface CronJob {
   id: string
   name: string
   schedule: string
+  command: string
   enabled: boolean
-  nextRunAt?: string | null
-  pluginId?: string
   metadata?: Record<string, unknown>
 }
 
 export interface CronRun {
   id: string
   jobId: string
-  startedAt: string
-  finishedAt?: string
-  status: 'running' | 'success' | 'error'
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+  startedAt?: string
+  endedAt?: string
+  output?: string
   error?: string
 }
 
@@ -290,28 +309,43 @@ export interface WorkspaceFile {
 export interface AgentRuntimeAdapter {
   agents: {
     list(): Promise<RuntimeAgent[]>
-    get(id: string): Promise<RuntimeAgent | null>
+    get(agentId: string): Promise<RuntimeAgent | null>
   }
   messaging: {
-    send(input: { agentId: string; content: string; taskId?: string }): Promise<unknown>
+    send(input: RuntimeMessageArgs): Promise<RuntimeMessageResult>
+    stream(input: RuntimeMessageArgs): AsyncIterable<RuntimeChatChunk>
   }
   channels: {
     list(): Promise<RuntimeChannel[]>
-    send(input: { channelId: string; content: string; files?: AssetFileRef[] }): Promise<unknown>
+    sendMessage(input: {
+      channels: string[]
+      message: { body: string; title?: string; threadId?: string; metadata?: Record<string, unknown> }
+    }): Promise<{ deliveries: Array<{ channelId: string; ref: string; renderedAt: string }> }>
+    deliverContent(input: {
+      channels: string[]
+      content: {
+        title: string
+        body?: string
+        url?: string
+        files?: AssetFileRef[]
+        metadata?: Record<string, unknown>
+      }
+    }): Promise<{ deliveries: Array<{ channelId: string; ref: string; renderedAt: string }> }>
   }
   cron: {
     list(): Promise<CronJob[]>
     get(id: string): Promise<CronJob | null>
-    create(input: Omit<CronJob, 'id'> & { id?: string }): Promise<CronJob>
-    update(id: string, patch: Partial<CronJob>): Promise<CronJob>
+    create(input: { id?: string; name: string; schedule: string; command: string; enabled?: boolean; metadata?: Record<string, unknown> }): Promise<CronJob>
+    update(id: string, patch: Partial<Omit<CronJob, 'id'>>): Promise<CronJob>
     remove(id: string): Promise<void>
-    runNow?(id: string): Promise<CronRun>
+    runNow(id: string): Promise<CronRun>
+    listRuns(jobId: string): Promise<CronRun[]>
   }
   skills?: {
     list(): Promise<RuntimeSkill[]>
   }
   models?: {
-    list(): Promise<AvailableModel[]>
+    listAvailable(opts?: { includeUnavailable?: boolean }): Promise<AvailableModel[]>
   }
 }
 
@@ -323,24 +357,38 @@ export interface TaskLogEntry {
   timestamp: string
   author: string
   message: string
+  data?: Record<string, unknown>
 }
 
 export interface Task {
   id: string
   title: string
   agent?: string
+  createdBy?: string
   checked: boolean
+  column: ColumnId
   date?: string
   blockedReason?: string
   description?: string
   log?: TaskLogEntry[]
+  dependsOn?: string
+  parentId?: string | null
+  workflowId?: string
+  scheduleJobId?: string
+  projectId?: string
+  order?: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface TaskColumns {
+  backlog: Task[]
   inProgress: Task[]
   todo: Task[]
+  review: Task[]
   done: Task[]
   blocked: Task[]
+  archived: Task[]
 }
 
 export interface TaskBoard {
@@ -351,20 +399,32 @@ export interface TaskBoard {
 export type ColumnId = keyof TaskColumns
 
 export interface TaskCreateInput {
+  id?: string
   title: string
   description?: string
   agent?: string
+  createdBy?: string
   column?: ColumnId
   date?: string
+  workflowId?: string
+  projectId?: string
+  parentId?: string | null
+  skipWorkflowReason?: string
 }
 
 export interface TaskUpdateInput {
   title?: string
   description?: string
   agent?: string
+  createdBy?: string
   checked?: boolean
+  column?: ColumnId
   date?: string
   blockedReason?: string
+  workflowId?: string
+  scheduleJobId?: string
+  projectId?: string
+  parentId?: string | null
 }
 
 export interface TaskService {
@@ -373,7 +433,8 @@ export interface TaskService {
   move(id: string, column: ColumnId): Promise<Task>
   remove(id: string): Promise<void>
   get(id: string): Promise<Task | null>
-  list(filter?: { column?: ColumnId; agent?: string }): Promise<Task[]>
+  list(filter?: { column?: ColumnId; agent?: string; projectId?: string }): Promise<Task[]>
+  appendLog(id: string, entry: TaskLogEntry): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
