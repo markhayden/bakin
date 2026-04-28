@@ -6,7 +6,7 @@
  *
  * Background: leaking test data into the developer's real ~/.bakin/ or
  * ~/.openclaw/ has repeatedly corrupted the production instance. Runtime
- * guards in content-dir.ts and openclaw-home.ts catch it at test time;
+ * guards in content-dir.ts and adapter-openclaw/home.ts catch it at test time;
  * this script catches it at lint time so the pattern never ships.
  *
  * Allowlist: the resolver modules themselves, plus the onboarding/init
@@ -22,7 +22,7 @@ const ROOT = process.cwd()
 const ALLOWLIST = [
   // Resolver modules — they ARE the source of truth
   'packages/core/src/content-dir.ts',
-  'packages/core/src/openclaw-home.ts',
+  'packages/adapter-openclaw/src/home.ts',
   // Onboarding/init legitimately needs to materialize the real directories
   'src/core/onboarding',
   // Dev mock sets its own home and must know the real one to avoid collisions
@@ -133,7 +133,7 @@ function main() {
   }
   console.error('Fix: resolve these paths via getContentDir()/getBakinPaths() from')
   console.error('packages/core/src/content-dir.ts, or getOpenClawHome()/getOpenClawPath()')
-  console.error('from packages/core/src/openclaw-home.ts. See CLAUDE.md § OpenClaw Adapter')
+  console.error('from packages/adapter-openclaw/src/home.ts. See CLAUDE.md § OpenClaw Adapter')
   console.error('Principle and § Testing Rules.')
   process.exit(1)
 }

@@ -1046,7 +1046,7 @@ const workflowsPlugin: BakinPlugin = {
 
         const instance = createInstance(taskId, workflowId, undefined, assignee)
 
-        // Ensure the task's workflowId is persisted in flow_runs
+        // Ensure the task's workflowId is persisted in Bakin task metadata
         try {
           await ctx.hooks.invoke<void>('tasks.updateTask', { identifier: taskId, updates: { workflowId } })
         } catch {

@@ -194,7 +194,7 @@ export function AgentForm({
           spellCheck={false}
         />
         <p className="text-xs text-muted-foreground">
-          Written directly to ~/.openclaw/workspaces/{'{id}'}/SOUL.md
+          Written to the selected runtime workspace as SOUL.md
         </p>
       </div>
 
