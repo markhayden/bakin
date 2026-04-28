@@ -1283,10 +1283,10 @@ describe('DELETE route integration — browser URL simulation', () => {
 
   it('old path-based URL would NOT have matched the parameterized route', () => {
     // Before the fix, the client sent:
-    // DELETE /api/plugins/assets/assets%2Fimages%2Ftask%2Ffile.png
-    // Next.js decoded this to pathSegments = ["assets", "images", "task", "file.png"]
-    // routePath = "/assets/images/task/file.png" — 4 segments vs 1 in /:assetPath
-    const routePath = '/assets/images/task/file.png'
+    // DELETE /api/plugins/assets/assets%2Fstore%2F2026-03%2Ffile.png
+    // Next.js decoded this to pathSegments = ["assets", "store", "2026-03", "file.png"]
+    // routePath = "/assets/store/2026-03/file.png" — 4 segments vs 1 in /:assetPath
+    const routePath = '/assets/store/2026-03/file.png'
     const match = matchRoute(plugin.routes, routePath, 'DELETE')
 
     // This should NOT match any route (proving the old approach was broken)
