@@ -2,9 +2,8 @@
  * Pyramid layout for the team grid — pure function, no React.
  *
  * Root is always the main agent (resolved from `mainAgentId` in the store,
- * which comes from the team plugin roster route, which itself calls
- * `getMainAgentId()` server-side). Teams in `team.json` whose `reportsTo`
- * is null/undefined are resolved at render time to `mainAgentId`. Teams
+ * which comes from the team plugin roster route). Teams in `team.json` whose
+ * `reportsTo` is null/undefined are resolved at render time to `mainAgentId`. Teams
  * whose `reportsTo` points at an unknown agent fall back to main as well
  * — we don't crash and we don't orphan them.
  *
