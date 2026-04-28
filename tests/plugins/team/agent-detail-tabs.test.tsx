@@ -60,8 +60,8 @@ mock.module('@/hooks/use-query-state', () => ({
   },
 }))
 
-mock.module('@/hooks/use-gateway-status', () => ({
-  useGatewayStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
+mock.module('@/hooks/use-runtime-status', () => ({
+  useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
 }))
 
 mock.module('../../../plugins/team/hooks/use-agent-store', () => ({

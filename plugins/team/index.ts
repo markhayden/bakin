@@ -984,21 +984,21 @@ const teamPlugin: BakinPlugin = {
           resetSettingsCache()
           try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
-          // Restart OpenClaw gateway unless caller opted out
+          // Restart the active runtime unless caller opted out
           const url = new URL(req.url)
           const skipRestart = url.searchParams.get('skipRestart') === 'true'
           if (!skipRestart) {
             restartRuntime().then(() => {
-              log.info('Gateway restarted after agent creation', { agent: id })
-              try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
+              log.info('Runtime restarted after agent creation', { agent: id })
+              try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }
             }).catch((err) => {
-              log.warn('Failed to restart gateway after agent creation', { error: err instanceof Error ? err.message : String(err) })
+              log.warn('Failed to restart runtime after agent creation', { error: err instanceof Error ? err.message : String(err) })
             })
           } else {
             try { ctx.hooks.invoke('models.markConfigDirty', {}) } catch { /* ok */ }
           }
 
-          return Response.json({ ok: true, id, gatewayRestarted: !skipRestart })
+          return Response.json({ ok: true, id, runtimeRestarted: !skipRestart })
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           const status = msg.includes('already exists') ? 409 : 500
@@ -1043,12 +1043,12 @@ const teamPlugin: BakinPlugin = {
           resetSettingsCache()
           try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
-          // Restart OpenClaw gateway
+          // Restart the active runtime
           restartRuntime().then(() => {
-            log.info('Gateway restarted after agent deletion', { agent: agentId })
-            try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
+            log.info('Runtime restarted after agent deletion', { agent: agentId })
+            try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }
           }).catch((err) => {
-            log.warn('Failed to restart gateway after agent deletion', { error: err instanceof Error ? err.message : String(err) })
+            log.warn('Failed to restart runtime after agent deletion', { error: err instanceof Error ? err.message : String(err) })
           })
 
           return Response.json({ ok: true, id: agentId })
@@ -1832,21 +1832,21 @@ const teamPlugin: BakinPlugin = {
         resetSettingsCache()
         try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
-        let gatewayRestarted = false
+        let runtimeRestarted = false
         try {
           await restartRuntime()
-          gatewayRestarted = true
-          log.info('Gateway restarted after agent creation', { agent: id })
-          try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
+          runtimeRestarted = true
+          log.info('Runtime restarted after agent creation', { agent: id })
+          try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }
         } catch (err) {
-          log.warn('Failed to restart gateway', { error: err instanceof Error ? err.message : String(err) })
+          log.warn('Failed to restart runtime', { error: err instanceof Error ? err.message : String(err) })
         }
 
         return {
           ok: true,
           id,
           workspace: result.workspace,
-          gatewayRestarted,
+          runtimeRestarted,
           instructions: `Agent created. You can now assign tasks to ${id} via bakin_exec_tasks_create. Consider writing a detailed SOUL.md to define their personality.`,
         }
       },
@@ -1918,17 +1918,17 @@ const teamPlugin: BakinPlugin = {
         resetSettingsCache()
         try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
-        let gatewayRestarted = false
+        let runtimeRestarted = false
         try {
           await restartRuntime()
-          gatewayRestarted = true
-          log.info('Gateway restarted after agent deletion', { agent: agentId })
-          try { ctx.hooks.invoke('models.markGatewayRestarted', {}) } catch { /* ok */ }
+          runtimeRestarted = true
+          log.info('Runtime restarted after agent deletion', { agent: agentId })
+          try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }
         } catch (err) {
-          log.warn('Failed to restart gateway', { error: err instanceof Error ? err.message : String(err) })
+          log.warn('Failed to restart runtime', { error: err instanceof Error ? err.message : String(err) })
         }
 
-        return { ok: true, id: agentId, trashed: true, gatewayRestarted }
+        return { ok: true, id: agentId, trashed: true, runtimeRestarted }
       },
     })
 

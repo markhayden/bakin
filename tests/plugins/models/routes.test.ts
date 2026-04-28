@@ -143,13 +143,13 @@ describe('Models Plugin Activation', () => {
       'GET /aliases',
       'GET /available',
       'GET /config',
-      'GET /gateway/status',
       'GET /profiles',
+      'GET /runtime/status',
       'POST /aliases',
       'POST /config',
       'POST /defaults',
-      'POST /gateway/restart',
       'POST /refresh',
+      'POST /runtime/restart',
       'PUT /profiles',
     ])
   })
@@ -172,7 +172,7 @@ describe('Models Plugin Activation', () => {
       'models.getAvailableModels',
       'models.getEffectiveModel',
       'models.markConfigDirty',
-      'models.markGatewayRestarted',
+      'models.markRuntimeRestarted',
     ])
   })
 
@@ -431,7 +431,7 @@ describe('GET /available — response shape invariants', () => {
   })
 })
 
-describe('POST /gateway/restart', () => {
+describe('POST /runtime/restart', () => {
   it('clears the in-memory cache after a successful restart', async () => {
     // Prime the cache via /available
     const availableRoute = findRoute(activated.routes, 'GET', '/available')!
@@ -439,7 +439,7 @@ describe('POST /gateway/restart', () => {
     expect((first.body.models as unknown[]).length).toBeGreaterThan(0)
 
     // Restart goes through the runtime adapter and clears the cache layers.
-    const restartRoute = findRoute(activated.routes, 'POST', '/gateway/restart')!
+    const restartRoute = findRoute(activated.routes, 'POST', '/runtime/restart')!
     const result = await callRoute(restartRoute, activated.ctx)
     expect(result.status).toBe(200)
     expect(runtimeMocks.restart).toHaveBeenCalled()
@@ -563,9 +563,9 @@ describe('PUT /profiles', () => {
   })
 })
 
-describe('GET /gateway/status', () => {
+describe('GET /runtime/status', () => {
   it('returns restartNeeded=false initially', async () => {
-    const route = findRoute(activated.routes, 'GET', '/gateway/status')!
+    const route = findRoute(activated.routes, 'GET', '/runtime/status')!
     const { status, body } = await callRoute(route, activated.ctx)
     expect(status).toBe(200)
     expect(typeof body.restartNeeded).toBe('boolean')
@@ -580,7 +580,7 @@ describe('GET /gateway/status', () => {
       activated.ctx
     )
 
-    const statusRoute = findRoute(activated.routes, 'GET', '/gateway/status')!
+    const statusRoute = findRoute(activated.routes, 'GET', '/runtime/status')!
     const { body } = await callRoute(statusRoute, activated.ctx)
     expect(body.restartNeeded).toBe(true)
 
