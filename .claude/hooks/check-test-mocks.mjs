@@ -30,6 +30,10 @@ function isTestFile(p) {
   return /\/tests\/.+\.test\.tsx?$/.test(p)
 }
 
+function isPureArchitectureTest(p) {
+  return /(^|\/)tests\/architecture\/.+\.test\.tsx?$/.test(p)
+}
+
 // Matches both `mock.module('...', ...)` (Bun) and `vi.mock('...', ...)` (Vitest).
 const MOCK_RE = /(?:vi\.mock|mock\.module)\(\s*['"]([^'"]+)['"]/g
 
@@ -124,14 +128,16 @@ function check(filePath) {
   }
 
   const missing = []
-  for (const req of REQUIRED_PATTERNS) {
-    const found = mockPaths.some(req.matches)
-    if (found) continue
-    if (isSelfTest(filePath, req.label)) continue
-    if (req.always) {
-      missing.push(req.label)
-    } else if (req.requiredIf && req.requiredIf(src)) {
-      missing.push(`${req.label} (referenced in this test file)`)
+  if (!isPureArchitectureTest(filePath)) {
+    for (const req of REQUIRED_PATTERNS) {
+      const found = mockPaths.some(req.matches)
+      if (found) continue
+      if (isSelfTest(filePath, req.label)) continue
+      if (req.always) {
+        missing.push(req.label)
+      } else if (req.requiredIf && req.requiredIf(src)) {
+        missing.push(`${req.label} (referenced in this test file)`)
+      }
     }
   }
 

@@ -18,11 +18,13 @@
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
+import { DEFAULT_RUNTIME_ADAPTER_SUPPORT } from '../runtime-adapter-factory'
+import { readAllowedRuntimeConfigRaw, type RuntimeConfigRawReason } from '../runtime-config-raw'
 import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 
 const log = createLogger('onboarding:credentials')
 
-const RUNTIME_DOCS = 'https://openclaw.ai/docs/'
+const RUNTIME_DOCS = DEFAULT_RUNTIME_ADAPTER_SUPPORT.docsUrl
 
 /**
  * Fields on a runtime channel entry that count as "a credential is present."
@@ -48,9 +50,12 @@ async function getRuntimeForCredentials(): Promise<AgentRuntimeAdapter> {
   return (await createAppServices()).runtime
 }
 
-async function readRuntimeRaw<T>(runtime: AgentRuntimeAdapter, key: string, reason: string): Promise<T | null> {
-  const value = await runtime.config.raw<T | null>(key, reason)
-  return value ?? null
+async function readRuntimeRaw<T>(
+  runtime: AgentRuntimeAdapter,
+  key: string,
+  reason: RuntimeConfigRawReason,
+): Promise<T | null> {
+  return readAllowedRuntimeConfigRaw<T>(runtime, key, reason)
 }
 
 // ---------------------------------------------------------------------------

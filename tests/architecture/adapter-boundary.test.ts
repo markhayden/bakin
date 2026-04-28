@@ -9,6 +9,7 @@ const SCAN_ROOTS = [
   'packages/core/src',
   'packages/host/src',
   'cli',
+  'scripts',
   'server.ts',
 ]
 const EXT_RE = /\.(ts|tsx|mjs|mts)$/
@@ -30,6 +31,7 @@ const DENYLIST = [
   {
     label: 'raw OpenClaw home/path access outside adapter-openclaw',
     regex: /(?:~\/\.openclaw|OPENCLAW_HOME|getOpenClawHome|getOpenClawPath)/,
+    allow: (rel: string) => rel === 'scripts/bin/check-home-bypasses.mjs',
   },
   {
     label: 'legacy OpenClaw implementation module',
@@ -38,6 +40,16 @@ const DENYLIST = [
   {
     label: 'legacy flow_runs task metadata',
     regex: /flow_runs/,
+  },
+  {
+    label: 'raw runtime config access outside allowlisted gate',
+    regex: /(?:config\.raw|\.raw<)/,
+    allow: (rel: string) => rel === 'src/core/runtime-config-raw.ts',
+  },
+  {
+    label: 'provider setup URL outside adapter factory',
+    regex: /openclaw\.ai/,
+    allow: (rel: string) => rel === 'src/core/runtime-adapter-factory.ts',
   },
 ]
 
