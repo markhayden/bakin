@@ -1,17 +1,17 @@
 #!/usr/bin/env npx tsx
 /**
- * CLI wrapper for bakin_exec_post_discord.
- * For debugging — agents use the MCP tool directly.
+ * CLI wrapper for bakin_exec_post_channel.
+ * For debugging - agents use the MCP tool directly.
  *
  * Usage:
- *   npx tsx scripts/bin/post-discord.ts --channel general --content "Hello world"
- *   npx tsx scripts/bin/post-discord.ts --channel content --content "New post!" --imageFilename 20260401-hero-a1b2c3d4.png
+ *   npx tsx scripts/bin/post-channel.ts --channel general --content "Hello world"
+ *   npx tsx scripts/bin/post-channel.ts --channel content --content "New post!" --imageFilename 20260401-hero-a1b2c3d4.png
  */
 import { parseArgs } from 'util'
-import { postDiscord } from '../lib/post-discord'
+import { postChannel } from '../lib/post-channel'
 
 console.error('⚠  WARNING: This CLI script bypasses Bakin tracking (no MCP call, no Health metrics, no audit log).')
-console.error('   Agents should use: mcporter call bakin-<agent>.bakin_exec_post_discord ...')
+console.error('   Agents should use: mcporter call bakin-<agent>.bakin_exec_post_channel ...')
 console.error('')
 
 const { values } = parseArgs({
@@ -27,12 +27,12 @@ const { values } = parseArgs({
 })
 
 if (values.help || !values.channel || !values.content) {
-  console.log(`Usage: npx tsx scripts/bin/post-discord.ts --channel <name> --content "..." [--imageFilename <filename>] [--videoFilename <filename>] [--taskId <id>]`)
+  console.log(`Usage: npx tsx scripts/bin/post-channel.ts --channel <name> --content "..." [--imageFilename <filename>] [--videoFilename <filename>] [--taskId <id>]`)
   process.exit(values.help ? 0 : 1)
 }
 
 async function main() {
-  const result = await postDiscord({
+  const result = await postChannel({
     channel: values.channel!,
     content: values.content!,
     imageFilename: values.imageFilename,

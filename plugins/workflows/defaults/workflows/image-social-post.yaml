@@ -111,15 +111,15 @@ steps:
     label: Publish
     agent: roscoe
     description: >
-      Post the completed social media content using bakin_exec_post_discord.
+      Post the completed social media content using bakin_exec_post_channel.
 
       From stepOutputs, extract:
         - Caption: stepOutputs['write-copy'].caption
         - Platform: stepOutputs['write-copy'].platform
         - Image: stepOutputs['generate-image'].finalOutput.imagePath
 
-      Call bakin_exec_post_discord with:
-        - channel: the appropriate Discord channel for the platform
+      Call bakin_exec_post_channel with:
+        - channel: the appropriate runtime channel for the platform
         - content: the caption text
         - imagePath: the generated image path
         - taskId: your task ID

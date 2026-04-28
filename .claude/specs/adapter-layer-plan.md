@@ -232,7 +232,7 @@ Move OpenClaw-specific implementation into `packages/adapter-openclaw/`.
 - `packages/core/src/openclaw-home.ts`
 - `packages/core/src/openclaw-config.ts`
 - `src/core/discord-gateway.ts`
-- `scripts/lib/post-discord.ts`
+- `scripts/lib/post-channel.ts`
 - Plugin-side OpenClaw adapter helpers from `plugins/team/` and
   `plugins/memory/`
 - OpenClaw cron shell helpers

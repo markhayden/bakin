@@ -1,9 +1,5 @@
 /**
- * bakin_exec_post_discord
- *
- * Kept as a tool-name compatibility wrapper for existing workflow prompts.
- * Delivery now routes through the runtime adapter channel API; this module
- * does not speak to a channel provider directly.
+ * bakin_exec_post_channel
  */
 import { z } from 'zod'
 import { existsSync } from 'fs'
@@ -16,7 +12,7 @@ import { addExecTool } from './registry'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import type { ExecToolResult } from '../../src/lib/plugin-types'
 
-export interface PostDiscordParams {
+export interface PostChannelParams {
   channel: string
   content: string
   agent: string
@@ -25,12 +21,6 @@ export interface PostDiscordParams {
   embed?: Record<string, unknown>
   taskId?: string
 }
-
-/**
- * Deprecated test hook retained so older tests can reset state without
- * importing provider internals. Runtime channel delivery keeps no cache here.
- */
-export function _resetChannelCache(): void {}
 
 /**
  * Derive an absolute file path from a canonical asset filename. Returns null
@@ -44,21 +34,21 @@ function resolveAssetAbsPath(filename: string | undefined): string | null {
   return existsSync(abs) ? abs : null
 }
 
-// When BAKIN_DISCORD_TEST_MODE=1 (or "true"), all posts are routed to
+// When BAKIN_CHANNEL_TEST_MODE=1 (or "true"), all posts are routed to
 // the testing-ground channel regardless of what the caller requested.
 const TEST_CHANNEL = 'testing-ground'
 
 function isTestMode(): boolean {
-  const val = process.env.BAKIN_DISCORD_TEST_MODE
+  const val = process.env.BAKIN_CHANNEL_TEST_MODE
   return val === '1' || val === 'true'
 }
 
-export async function postDiscord(
-  params: PostDiscordParams,
+export async function postChannel(
+  params: PostChannelParams,
   runtime: AgentRuntimeAdapter = getRuntimeAdapter(),
 ): Promise<ExecToolResult> {
   const requestedChannel = params.channel
-  const channel = isTestMode() ? TEST_CHANNEL : requestedChannel
+  const channel = normalizeChannelTarget(isTestMode() ? TEST_CHANNEL : requestedChannel)
   const { content, imageFilename, videoFilename, embed, taskId } = params
 
   const files = [
@@ -68,9 +58,9 @@ export async function postDiscord(
 
   try {
     const result = await runtime.channels.deliverContent({
-      channels: [`discord:${channel.replace(/^#/, '')}`],
+      channels: [channel],
       content: {
-        title: 'Discord post',
+        title: 'Channel post',
         body: content,
         files,
         metadata: {
@@ -78,23 +68,31 @@ export async function postDiscord(
           taskId,
           embed,
           requestedChannel,
-          ...(isTestMode() && channel !== requestedChannel ? { testMode: true } : {}),
+          ...(isTestMode() && channel !== normalizeChannelTarget(requestedChannel) ? { testMode: true } : {}),
         },
       },
     })
 
     return succeed({
       deliveries: result.deliveries,
-      channel: `#${channel.replace(/^#/, '')}`,
+      channel: displayChannel(channel),
       taskId,
-      ...(isTestMode() && channel !== requestedChannel ? {
+      ...(isTestMode() && channel !== normalizeChannelTarget(requestedChannel) ? {
         testMode: true,
-        requestedChannel: `#${requestedChannel.replace(/^#/, '')}`,
+        requestedChannel: displayChannel(normalizeChannelTarget(requestedChannel)),
       } : {}),
     })
   } catch (err) {
     return fail(`Runtime channel delivery failed: ${err instanceof Error ? err.message : String(err)}`)
   }
+}
+
+function normalizeChannelTarget(channel: string): string {
+  return channel.replace(/^#/, '')
+}
+
+function displayChannel(channel: string): string {
+  return channel.includes(':') ? channel : `#${channel}`
 }
 
 function filePayload(filename: string | undefined, path: string | null): { name: string; path: string } | null {
@@ -103,7 +101,7 @@ function filePayload(filename: string | undefined, path: string | null): { name:
 }
 
 addExecTool({
-  name: 'bakin_exec_post_discord',
+  name: 'bakin_exec_post_channel',
   label: 'Posted to channel',
   description: 'Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content.',
   source: 'core',
@@ -116,6 +114,6 @@ addExecTool({
     taskId: z.string().optional().describe('Task ID for audit trail'),
   },
   handler: async (params: Record<string, unknown>, agent: string, ctx) => {
-    return postDiscord({ ...params, agent } as PostDiscordParams, ctx?.runtime)
+    return postChannel({ ...params, agent } as PostChannelParams, ctx?.runtime)
   },
 })

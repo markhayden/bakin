@@ -130,7 +130,7 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
   } else if (item.status === 'review') {
     newStatus = 'published'
 
-    // Post to Discord via the active runtime channel adapter.
+    // Post through the active runtime channel adapter.
     try {
       const caption = item.draft?.caption || item.title
       const target = item.channelTarget || '1483917792745885768'
@@ -173,7 +173,7 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
         })
       }
     } catch (err) {
-      log.error('Discord post failed', err)
+      log.error('Channel post failed', err)
     }
   } else {
     return { error: `Cannot approve item in status: ${item.status}`, status: 400 }
