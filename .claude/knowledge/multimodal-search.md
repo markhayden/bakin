@@ -68,7 +68,7 @@ assetToSearchDoc(meta, filename, assetType, relPath)
   ↓
 ctx.search.index(relPath, doc)
   ↓
-AntflyClient.tables.batch(bakin_assets, { inserts: { [relPath]: doc } })
+SearchAdapter.batchIndex(bakin_assets, { [relPath]: doc })
   ↓
 Antfly's embedding enricher (per-shard, async):
   ├─ assets_text index: chunk → embed via BGE → store vectors

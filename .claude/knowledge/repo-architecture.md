@@ -2,9 +2,10 @@
 
 ## Overview
 
-Bakin is a single Bun workspace. The repo is three named packages under
-`packages/{core,sdk,host}`, ten first-party plugins under `plugins/<id>/`,
-a small server-side core under `src/`, and a handful of scripts. The
+Bakin is a single Bun workspace. The repo is five named packages under
+`packages/{core,sdk,host,adapter-openclaw,adapter-antfly}`, ten first-party
+plugins under `plugins/<id>/`, a small server-side core under `src/`, and a
+handful of scripts. The
 whole thing compiles via `bun build --compile` into a single-file
 binary that ships per platform.
 
@@ -26,9 +27,11 @@ Bun.
 ├── tsconfig.json              ← Path aliases + root config
 ├── bunfig.toml                ← Bun test config (preload + DOM env)
 ├── packages/
-│   ├── core/                  ← @bakin/core — shared types, utilities, settings
+│   ├── core/                  ← @bakin/core — shared types, adapter contracts, settings
 │   ├── sdk/                   ← @bakin/sdk — plugin author SDK (published to npm)
-│   └── host/                  ← @bakin/host — client shell + API handlers
+│   ├── host/                  ← @bakin/host — client shell + API handlers
+│   ├── adapter-openclaw/      ← runtime adapter implementation
+│   └── adapter-antfly/        ← search adapter implementation
 ├── plugins/                   ← 10 first-party plugins (each has bakin-plugin.json)
 │   ├── tasks/      workflows/   assets/      projects/   schedule/
 │   ├── memory/     messaging/   models/      team/       health/
@@ -63,7 +66,7 @@ packages/core/src/
 ├── content-dir.ts          ← getContentDir(), getBakinPaths(), initBakinHome()
 ├── settings.ts             ← BakinSettings, getSettings(), updateSettings()
 ├── app-services.ts         ← AppServices and health service contracts
-├── adapters/               ← runtime/search adapter contracts and helpers
+├── adapters/               ← runtime/search adapter contracts and test helpers
 ├── tasks/                  ← Bakin task store
 ├── plugin-types.ts         ← BakinPlugin, PluginContext, StorageAdapter, EventBus
 ├── logger.ts               ← createLogger()
@@ -97,6 +100,24 @@ packages/sdk/src/
 Sub-paths are declared via `exports` in `packages/sdk/package.json`:
 `@bakin/sdk/ui`, `@bakin/sdk/hooks`, `@bakin/sdk/components`,
 `@bakin/sdk/slots`, `@bakin/sdk/types`, `@bakin/sdk/utils`.
+
+### `packages/adapter-openclaw/` and `packages/adapter-antfly/`
+
+Concrete provider implementations. These are not plugin author surfaces and
+should only be imported by `src/core/runtime-adapter-factory.ts` and
+`src/core/search-adapter-factory.ts`.
+
+```
+packages/adapter-openclaw/src/
+├── index.ts                ← createOpenClawRuntimeAdapter()
+├── runtime.ts              ← AgentRuntimeAdapter implementation
+├── home.ts                 ← OPENCLAW_HOME / ~/.openclaw helpers
+└── config.ts               ← OpenClaw config parsing helpers
+
+packages/adapter-antfly/src/
+├── index.ts                ← createAntflySearchAdapter()
+└── search.ts               ← SearchAdapter implementation
+```
 
 ### `packages/host/` — `@bakin/host`
 
@@ -150,12 +171,13 @@ packages/host/
 | Types: BakinPlugin, PluginContext, StorageAdapter, EventBus | task-service.ts (side effects, SSE) |
 | Constants: APP_NAME, APP_SLUG, etc. | audit.ts (append-only writes) |
 | Settings: getSettings(), BakinSettings | sse.ts (globalThis state) |
-| Content dir: getContentDir(), getBakinPaths() | dispatch.ts (agent communication) |
+| Content dir: getContentDir(), getBakinPaths() | dispatch.ts (agent communication through AppServices.runtime) |
 | Logger: createLogger() | watcher.ts (chokidar, file events) |
 | Storage: MarkdownStorageAdapter | mcp-server.ts (tool registration) |
-| Events: BakinEventBus | agents.ts (OpenClaw integration) |
-| Vault, format utilities | antfly.ts (search indexing) |
+| Events: BakinEventBus | agents.ts (agent API through AppServices.runtime) |
+| Vault, format utilities | app-services.ts and adapter factories |
 | Hook registry | cli.ts (binary CLI dispatcher) |
+|  | runtime-config-raw.ts (allowlisted raw runtime config reads) |
 |  | plugin-scaffold.ts, self-update.ts |
 |  | onboarding/ (8 components) |
 
@@ -214,6 +236,8 @@ Defined in `tsconfig.json`; bun picks them up automatically for both runtime and
 |---|---|---|
 | `@/*` | `./src/*` | Server code + packages/host internals |
 | `@bakin/core` | `./packages/core/src/index.ts` | Workspace dependency |
+| `@bakin/adapter-openclaw` | `./packages/adapter-openclaw/src/index.ts` | Runtime adapter factory only |
+| `@bakin/adapter-antfly` | `./packages/adapter-antfly/src/index.ts` | Search adapter factory only |
 | `@bakin/sdk` + sub-paths | `./packages/sdk/src/*` | Plugin client entries |
 | `@bakin/tasks` ... `@bakin/health` | `./plugins/<id>` | App + test code (never cross-plugin) |
 

@@ -287,7 +287,7 @@ If a future iteration restores any of these, prefer adding back via new componen
 
 Team registers three checks via `ctx.registerHealthCheck` in `activate()`:
 
-- **`agent-roster`** — diff Bakin's agent ids against `~/.openclaw/openclaw.json`. Not auto-fixable (requires human judgment about which side is "right").
+- **`agent-roster`** — diff Bakin's agent ids against the active runtime adapter roster. Not auto-fixable (requires human judgment about which side is "right").
 - **`personas`** — verify each agent has a `team/personas/{agent}.md` file. Auto-fixable: under `settings.doctor.autoFixSkill=true` it stubs missing files.
 - **`agent-assets`** — wraps `agentAssetsComponent.check()` from `src/core/onboarding/agent-assets.ts` to surface drift in projected agent-package files. Auto-fixable: under autoFix, runs the same install flow as `bakin install agent-assets`.
 
@@ -296,8 +296,8 @@ All three live at `plugins/team/lib/health-checks.ts`. Migrated out of `src/core
 ## Common Pitfalls
 
 - **Don't add settings.agents back.** The field was deleted for a reason — having two sources of truth caused the original "duplicate roscoe + main" bug on production.
-- **Don't cache openclaw.json in a new spot.** `openclaw-config.ts` is the single reader. Add helpers there; don't re-stat from another module.
-- **Don't write to openclaw.json for agent add/delete.** Use the CLI adapter (`openclawExec`). The only approved direct write is `setSubagentPermissions()` for dispatch permissions.
-- **Don't write to openclaw.json from validation code.** Integrity problems are the user's job to fix — surface them via the doctor, don't auto-heal.
+- **Don't cache runtime config in a new spot.** Use typed runtime adapter surfaces first; any unavoidable raw read must go through `src/core/runtime-config-raw.ts`.
+- **Don't write provider config for agent add/delete.** Use the runtime adapter. Provider-specific mutation belongs in `packages/adapter-openclaw/`.
+- **Don't write provider config from validation code.** Integrity problems are the user's job to fix — surface them via the doctor, don't auto-heal.
 - **Don't hard-code the main agent's display name** (e.g. "Roscoe"). It varies per install. Always resolve via `getMainAgentName()` server-side or `useMainAgentId()` + `useAgent(id)` client-side.
-- **Don't skip the test mocks.** `tests/plugins/team/*` must mock `@bakin/adapter-openclaw/config`, `@bakin/adapter-openclaw/home`, and `src/core/content-dir` — leaking into `~/.openclaw/` has caused real incidents.
+- **Don't skip the test mocks.** `tests/plugins/team/*` must mock runtime adapters, `@bakin/adapter-openclaw/home`, and `src/core/content-dir` — leaking into `~/.openclaw/` has caused real incidents.
