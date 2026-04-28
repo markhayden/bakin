@@ -8,7 +8,7 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { recordUsage } from './usage'
-import { getRuntimeAdapter } from './runtime-registry'
+import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { isStale } from '../lib/format'
 import { getHookRegistry } from '../lib/plugin-registry'
@@ -18,7 +18,7 @@ const log = createLogger('dispatch')
 const hooks = () => getHookRegistry()
 
 async function sendDispatchMessage(agentId: string, content: string): Promise<void> {
-  await getRuntimeAdapter().messaging.send({ agentId, content })
+  await getAppServices().runtime.messaging.send({ agentId, content })
 }
 
 // Upstream runtime error bodies land in task logs and audit JSONL via
@@ -193,7 +193,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     // Acquire state lock for the entire cycle to prevent races with dispatchSingleTask
     await withStateLock(async () => {
     const state = loadDispatchState(contentDir)
-    const runtime = getRuntimeAdapter()
+    const runtime = getAppServices().runtime
     const runtimeAgentIds = new Set((await runtime.agents.list()).map((agent) => agent.id))
     const mainAgentId = await getRuntimeMainAgentId(runtime)
     // Reconcile dispatch state with taskboard reality
@@ -344,7 +344,7 @@ export async function dispatchSingleTask(
       return
     }
 
-    const runtime = getRuntimeAdapter()
+    const runtime = getAppServices().runtime
     const runtimeAgentIds = new Set((await runtime.agents.list()).map((agent) => agent.id))
     const mainAgentId = await getRuntimeMainAgentId(runtime)
     if (task.agent && !runtimeAgentIds.has(task.agent)) {
