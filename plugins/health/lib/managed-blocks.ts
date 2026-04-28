@@ -98,7 +98,7 @@ The skip reason is logged to the audit trail for debugging. Always verify agains
 
 11. **Gate approvals go through the UI.** When a workflow gate is reached, a notification is sent and the task card shows "Awaiting Approval" in the Bakin UI. Tell Mark a gate is waiting — do NOT approve or reject gates yourself. Mark handles gates in the task drawer.
 
-12. **MCP tools only. No REST. No CLI. Ever.** All orchestration happens through the \`bakin_exec_*\` MCP tools. OpenClaw has no native MCP client, so you reach them by shelling out to **mcporter** — a CLI shim that relays your call to Bakin's MCP server. Your server is \`bakin-AGENT_ID_PLACEHOLDER\`.
+12. **MCP tools only. No REST. No CLI. Ever.** All orchestration happens through the \`bakin_exec_*\` MCP tools. Agents reach them by shelling out to **mcporter** — a CLI shim that relays your call to Bakin's MCP server. Your server is \`bakin-AGENT_ID_PLACEHOLDER\`.
 
     **Invocation pattern (positional args):**
     \`\`\`

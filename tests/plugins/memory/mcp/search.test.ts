@@ -124,7 +124,7 @@ describe('memory_search MCP tool — handler', () => {
           agent: 'explorer',
           title: 'A',
           snippet: 'snippet',
-          source_backend: 'openclaw',
+          source_backend: 'runtime',
           source_path: '/p',
           updated_at: 1,
           meta: JSON.stringify({ sessionKey: 'sk' }),
@@ -139,7 +139,7 @@ describe('memory_search MCP tool — handler', () => {
     expect(rows[0].tier).toBe('session')
     expect(rows[0].agent).toBe('explorer')
     expect(rows[0].score).toBe(0.9)
-    expect((rows[0].sourceRef as { backend: string }).backend).toBe('openclaw')
+    expect((rows[0].sourceRef as { backend: string }).backend).toBe('runtime')
     expect((rows[0].meta as { sessionKey: string }).sessionKey).toBe('sk')
   })
 

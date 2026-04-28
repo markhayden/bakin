@@ -20,7 +20,7 @@ import config from './bakin.config'
 // Give the registry the static core-plugin table. Done here, not in
 // plugin-registry.ts, so the plugins only live in server.ts's module
 // graph — tests that import the registry don't drag every plugin +
-// every plugin-level side effect (watchers, OpenClaw path access) into
+// every plugin-level side effect (watchers, runtime path access) into
 // their module load.
 registerCorePlugins(CORE_PLUGIN_IMPORTS)
 
@@ -152,7 +152,7 @@ const eventBus = new BakinEventBus(broadcast)
   // and we trigger a full reindex after plugins are ready.
   const migration = await migrateIfNeeded()
 
-  // Create Antfly tables for all registered search content types.
+  // Create search tables for all registered search content types.
   // Plugins (including memory, which owns the audit content type)
   // registered their schemas during pluginRegistry.initialize() above.
   const { createRegisteredTables, runPendingReconciles } = await import('./src/core/search-registry')
@@ -185,7 +185,7 @@ const eventBus = new BakinEventBus(broadcast)
   const { startCleanupTimer } = await import('./src/core/search-cleanup')
   startCleanupTimer()
 
-  // Register Antfly sync hook with file watcher
+  // Register search sync hook with file watcher
   // Legacy syncFile/syncFileUnlink removed — plugins now handle their own
   // indexing via ctx.search.index() / ctx.search.remove() with correct schemas
 
@@ -257,7 +257,7 @@ const eventBus = new BakinEventBus(broadcast)
       return
     }
 
-    // Search endpoint — cross-table or per-table Antfly search
+    // Search endpoint — cross-table or per-table adapter search
     if (url.pathname === '/api/search' && req.method === 'GET') {
       writeCrossPluginSearchResponse(url, res).catch((err) => {
         log.error('Search response write failed', err)

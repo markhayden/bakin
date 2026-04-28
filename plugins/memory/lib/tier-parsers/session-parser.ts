@@ -1,7 +1,7 @@
 /**
  * Session tier parser.
  *
- * One OpenClaw session → one `MemoryRow` with `tier='session'`. The caller
+ * One runtime session → one `MemoryRow` with `tier='session'`. The caller
  * (MemoryIndexer) reads through runtime memory, which may use provider APIs
  * or filesystem fallback internally. Both paths yield the same session-object
  * shape, so this parser is agnostic.
@@ -63,7 +63,7 @@ export function parseSession(
     snippet,
     content: snippet,
     sourceRef: {
-      backend: 'openclaw',
+      backend: 'runtime',
       path: sourcePath,
       file: sessionFile ?? sourcePath,
       sessionId,

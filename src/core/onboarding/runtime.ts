@@ -27,7 +27,7 @@ import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 const log = createLogger('onboarding:runtime')
 
 const SETUP_URL = 'https://openclaw.ai/'
-const SETUP_MESSAGE = `A runtime adapter is required. Configure the active runtime adapter and rerun onboarding. Current OpenClaw adapter docs: ${SETUP_URL}`
+const SETUP_MESSAGE = `A runtime adapter is required. Configure the active runtime adapter and rerun onboarding. Current runtime adapter setup docs: ${SETUP_URL}`
 
 interface RuntimeConfigForIntegrity {
   agents?: {

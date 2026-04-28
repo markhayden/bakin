@@ -186,7 +186,7 @@ export function KanbanBoard() {
   const [debug] = useDebug()
 
   // Per-task search score map for the debug overlay. Tasks register their
-  // Antfly key as the raw `task.id` (see `plugins/tasks/index.ts` reindex
+  // search key as the raw `task.id` (see `plugins/tasks/index.ts` reindex
   // generator), so no prefix to strip. Only build/pass when debug is on AND
   // there's an active search query — the map is undefined otherwise so
   // TaskCardContent skips the overlay entirely.

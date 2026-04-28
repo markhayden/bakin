@@ -6,7 +6,7 @@
  * landed in earlier phases. The projector consumes a parsed manifest
  * plus a staging directory and produces:
  *
- *   - workspace files at {openclaw}/workspaces/<agentId>/<file>
+ *   - workspace files through the runtime adapter
  *     (fresh mode only; update mode honors --refresh-template; adopt
  *      mode skips entirely)
  *   - skills in the runtime's agent-scoped or global skill store

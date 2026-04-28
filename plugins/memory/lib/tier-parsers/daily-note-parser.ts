@@ -37,7 +37,7 @@ export function parseDailyNote(
     snippet,
     content: body,
     sourceRef: {
-      backend: 'openclaw',
+      backend: 'runtime',
       path: sourcePath,
       file: filename,
     },
@@ -47,7 +47,7 @@ export function parseDailyNote(
       file: filename,
       date,
       sizeBytes,
-      openclawIndexed: true,
+      runtimeIndexed: true,
     }),
   }
 }

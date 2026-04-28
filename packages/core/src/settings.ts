@@ -164,7 +164,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
       embedders: {
         // Default text embedder swapped to BAAI/bge-small-en-v1.5 (Termite)
         // as of search schema version 2. BGE is a stronger retrieval model
-        // than Antfly's builtin MiniLM, especially for longer documents
+        // than the search backend's builtin MiniLM, especially for longer documents
         // with diverse vocabulary (which is most of what Bakin indexes —
         // task descriptions, markdown notes, PDF bodies, audit trails).
         // Runs locally via Termite; no cloud dependency. A boot-time

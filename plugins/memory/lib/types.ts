@@ -28,7 +28,7 @@ export type MemoryTier = z.infer<typeof MemoryTierSchema>
 // ─── SourceRef ───────────────────────────────────────────────────────────────
 
 export const SourceRefSchema = z.object({
-  backend: z.enum(['openclaw', 'bakin']),
+  backend: z.enum(['runtime', 'bakin']),
   path: z.string(),
   file: z.string(),
   offset: z.number().int().nonnegative().optional(),
@@ -136,7 +136,7 @@ export const DailyNoteMetaSchema = z.object({
   file: z.string(),
   date: z.string(),
   sizeBytes: z.number().nonnegative(),
-  openclawIndexed: z.boolean(),
+  runtimeIndexed: z.boolean(),
 })
 export type DailyNoteMeta = z.infer<typeof DailyNoteMetaSchema>
 

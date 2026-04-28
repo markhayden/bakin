@@ -1,7 +1,7 @@
 /**
  * Tests for plugins/memory/lib/tier-parsers/session-parser.ts.
  *
- * Session rows represent one OpenClaw session surfaced through runtime memory.
+ * Session rows represent one session surfaced through runtime memory.
  * Runtime adapters may satisfy that from provider APIs or from on-disk
  * `agents/<id>/sessions/sessions.json` data. Both sources feed the same
  * parser.
@@ -80,7 +80,7 @@ describe('parseSession (happy path)', () => {
     expect(validated.tier).toBe('session')
     expect(validated.agent).toBe('chef')
     expect(validated.title).toBe('agent:chef:main')
-    expect(validated.sourceRef.backend).toBe('openclaw')
+    expect(validated.sourceRef.backend).toBe('runtime')
     expect(validated.sourceRef.path).toBe('/path/to/sessions.json')
   })
 
