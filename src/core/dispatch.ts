@@ -21,8 +21,8 @@ async function sendDispatchMessage(agentId: string, content: string): Promise<vo
   await getRuntimeAdapter().messaging.send({ agentId, content })
 }
 
-// Upstream openclaw error bodies land in task logs and audit JSONL via
-// the dispatch catch handlers. Bound the blast radius — a runaway gateway
+// Upstream runtime error bodies land in task logs and audit JSONL via
+// the dispatch catch handlers. Bound the blast radius — a runaway adapter
 // response (HTML error page, stack trace, accidental secret echo) should
 // not balloon the audit file or the task drawer.
 const MAX_ERR_LEN = 500
@@ -54,13 +54,13 @@ const TRANSIENT_CODES = new Set([
 //   - transient: fetch/network errors that slipped past sendMessage's in-call
 //     retry — e.g. node-undici's TypeError('fetch failed'), raw socket
 //     errors surfaced via err.cause.code. Use the short cooldown.
-//   - structural: "OpenClaw sendMessage failed (<status>): <body>" — the
-//     gateway talked to us and said no. Use the long cooldown.
+//   - structural: adapter failures with an HTTP-like status. The runtime
+//     answered and said no, so use the long cooldown.
 // Default to 'structural' on unknown errors: treating an unknown failure as
 // a real outage is the safer side — worst case we wait longer than needed,
 // not shorter.
 function classifyDispatchError(err: unknown): DispatchFailureKind {
-  if (err instanceof Error && /^OpenClaw (sendMessage|chat) failed \(\d+\)/.test(err.message)) {
+  if (err instanceof Error && /\bfailed \(\d{3}\)/.test(err.message)) {
     return 'structural'
   }
   if (err instanceof TypeError && err.message.includes('fetch failed')) return 'transient'
@@ -529,7 +529,7 @@ These tools help you accomplish the work. Use them as your primary way to save f
 # Save any file as a managed asset (handles naming + sidecar metadata)
 ${mc('bakin_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
 
-# Post to Discord (with optional image/video attachment)
+# Post to a runtime channel (with optional image/video attachment)
 ${mc('bakin_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}
 
 # Generate image via Nano Banana
@@ -839,10 +839,10 @@ function buildWorkflowDispatchMessage(
   lines.push('')
   lines.push(`# Check workflow gate statuses`)
   lines.push(`${wfMc('bakin_exec_check_gates', `taskId=${task.id}`)}`);
-  // Only include post_discord for output/publish steps (non-output steps have "NO SIDE EFFECTS" constraint)
+  // Only include channel posting for output/publish steps (non-output steps have "NO SIDE EFFECTS" constraint)
   if (stepContext.type === 'output') {
     lines.push('')
-    lines.push(`# Post to Discord (with optional image/video attachment)`)
+    lines.push(`# Post to a runtime channel (with optional image/video attachment)`)
     lines.push(`${wfMc('bakin_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}`);
   }
   lines.push('```')

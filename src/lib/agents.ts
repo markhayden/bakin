@@ -14,7 +14,7 @@ export async function startAgent(agentId: string, message?: string) {
 }
 
 export async function stopAgent(agentId: string) {
-  return { ok: false, error: `Stop is not yet supported by OpenClaw. Agent "${agentId}" continues running.` }
+  return { ok: false, error: `Stop is not yet supported by the active runtime adapter. Agent "${agentId}" continues running.` }
 }
 
 export async function restartAgent(agentId: string) {
