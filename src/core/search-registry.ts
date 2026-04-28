@@ -549,6 +549,42 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         },
       }
     },
+
+    maintenance: {
+      available(): Promise<boolean> {
+        return getSearchAdapter().available()
+      },
+
+      async *scan(): AsyncIterable<{ key: string; document: Record<string, unknown> }> {
+        const tableName = registry.pluginTables.get(pluginId)
+        const search = getSearchAdapter()
+        if (!tableName || !await search.available()) return
+        for await (const entry of search.scan(tableName)) {
+          yield entry
+        }
+      },
+
+      async batchRemove(keys: string[]): Promise<number> {
+        if (keys.length === 0) return 0
+        const tableName = registry.pluginTables.get(pluginId)
+        const search = getSearchAdapter()
+        if (!tableName || !await search.available()) return 0
+        return search.documents.batchRemove(tableName, keys)
+      },
+
+      async resetContentType(): Promise<void> {
+        const tableName = registry.pluginTables.get(pluginId)
+        if (!tableName) return
+        const search = getSearchAdapter()
+        if (!await search.available()) return
+        try {
+          await search.tables.drop(tableName)
+        } catch (err) {
+          log.warn('Plugin search table reset drop failed; recreating table anyway', err, { pluginId, tableName })
+        }
+        await ensureRegisteredTables()
+      },
+    },
   }
 
   return api

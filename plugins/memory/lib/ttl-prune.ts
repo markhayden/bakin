@@ -12,11 +12,10 @@
  * full pass costs a few seconds once per day.
  */
 import { createLogger } from '../../../src/core/logger'
-import { getSearchAdapter } from '../../../src/core/search-registry'
+import type { SearchAPI } from '@bakin/core/plugin-types'
 
 const log = createLogger('memory:ttl-prune')
 
-const TABLE = 'bakin_memory'
 const DAY_MS = 86_400_000
 const BATCH_SIZE = 100
 
@@ -38,12 +37,12 @@ export interface PruneStats {
  * Run a single prune pass. Returns counts of deleted rows by tier.
  * Safe to call multiple times — idempotent.
  */
-export async function pruneExpired(config: TtlConfig): Promise<PruneStats> {
+export async function pruneExpired(search: SearchAPI, config: TtlConfig): Promise<PruneStats> {
   const started = Date.now()
   const stats: PruneStats = { turn: 0, audit: 0, scanned: 0, tookMs: 0 }
 
-  const search = getSearchAdapter()
-  if (!await search.available()) {
+  const maintenance = search.maintenance
+  if (!maintenance || !await maintenance.available()) {
     stats.tookMs = Date.now() - started
     return stats
   }
@@ -62,7 +61,7 @@ export async function pruneExpired(config: TtlConfig): Promise<PruneStats> {
   }
 
   const toDelete: string[] = []
-  for await (const { key, document: doc } of search.scan(TABLE)) {
+  for await (const { key, document: doc } of maintenance.scan()) {
     stats.scanned += 1
     const tier = typeof doc.tier === 'string' ? doc.tier : ''
     const cutoff = cutoffs[tier]
@@ -73,11 +72,11 @@ export async function pruneExpired(config: TtlConfig): Promise<PruneStats> {
     if (tier === 'turn') stats.turn += 1
     else if (tier === 'audit') stats.audit += 1
     if (toDelete.length >= BATCH_SIZE) {
-      await search.documents.batchRemove(TABLE, toDelete.splice(0))
+      await maintenance.batchRemove(toDelete.splice(0))
     }
   }
   if (toDelete.length > 0) {
-    await search.documents.batchRemove(TABLE, toDelete)
+    await maintenance.batchRemove(toDelete)
   }
 
   stats.tookMs = Date.now() - started
@@ -99,10 +98,10 @@ const _g = globalThis as typeof globalThis & {
 const DEFAULT_INTERVAL_MS = DAY_MS
 
 /** Start the daily prune timer. Idempotent — a second call is a no-op. */
-export function startTtlTimer(config: TtlConfig, intervalMs: number = DEFAULT_INTERVAL_MS): void {
+export function startTtlTimer(search: SearchAPI, config: TtlConfig, intervalMs: number = DEFAULT_INTERVAL_MS): void {
   if (_g.__bakinMemoryTtlTimer) return
   _g.__bakinMemoryTtlTimer = setInterval(() => {
-    pruneExpired(config).catch((err) => {
+    pruneExpired(search, config).catch((err) => {
       log.warn('scheduled ttl prune failed', {
         err: err instanceof Error ? err.message : String(err),
       })
