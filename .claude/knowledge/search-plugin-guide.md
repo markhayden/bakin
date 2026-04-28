@@ -196,7 +196,7 @@ The watcher path is the safety net for writes that bypass REST entirely
 - `verifyExists()` queries the task store
 - No watcher hooks; the task store subscription drives taskboard SSE and plugin routes call search directly
 
-### OpenClaw-backed (schedule, team)
+### Runtime-adapter-backed (schedule, team)
 - Use `registerContentType()`
 - `reindex()` is empty (data loaded at runtime)
 - `verifyExists()` returns `true` always

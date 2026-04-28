@@ -16,8 +16,8 @@ the right place.
 - **Bun >= 1.2.0** — `curl -fsSL https://bun.sh/install | bash`
 - A running Bakin (the compiled binary or `bun run dev`)
 - The `bakin` CLI on your PATH
-- A working OpenClaw install (agent packages of `kind: "agent"` create
-  or adopt OpenClaw agents)
+- A working runtime adapter (agent packages of `kind: "agent"` create
+  or adopt runtime agents)
 
 ## Package kinds
 
@@ -26,12 +26,12 @@ Every package declares one `kind`:
 | Kind | What it ships | Lockfile key | Typical layout |
 |------|---------------|--------------|----------------|
 | `agent` | persona files, optional skills/workflows/knowledge/assets, dispatch perms | bare id (`pixel`) | `workspace/` + `knowledge/` + `assets/` |
-| `skill-pack` | reusable OpenClaw skills used by multiple agents | `<id>@<version>` | `skills/<name>/` |
+| `skill-pack` | reusable runtime skills used by multiple agents | `<id>@<version>` | `skills/<name>/` |
 | `workflow-pack` | reusable workflow definitions + step instructions | `<id>@<version>` | `workflows/` + `workflow-skills/` |
 | `knowledge-pack` | cross-agent knowledge lessons | `<id>@<version>` | `knowledge/` |
 
 The agent-kind uses a bare-id lockfile key because there is exactly one
-OpenClaw agent per id — two versions cannot coexist. Non-agent kinds
+runtime agent per id — two versions cannot coexist. Non-agent kinds
 use a compound `<id>@<version>` key so an update can stage the new
 version alongside the old one before flipping the pointer.
 
@@ -45,7 +45,7 @@ packs are called out where they differ.
 my-agent/
 ├── bakin-package.json        ← manifest (id, kind, name, version, agent stanza)
 ├── README.md                 ← package description, install hints, choices
-├── workspace/                ← seeded into the OpenClaw workspace on fresh install
+├── workspace/                ← seeded into the runtime workspace on fresh install
 │   ├── SOUL.md               ← persona + knowledge marker placeholders
 │   ├── IDENTITY.md           ← structured identity card
 │   ├── AGENTS.md             ← agent-specific operational rules
@@ -57,7 +57,7 @@ my-agent/
 │   └── do-the-thing.md
 ├── workflows/                ← (optional) workflow YAML definitions
 │   └── thing-flow.yaml
-├── skills/                   ← (optional) per-agent OpenClaw skills
+├── skills/                   ← (optional) per-agent runtime skills
 │   └── my-tool/
 │       ├── SKILL.md
 │       └── scripts/
@@ -152,7 +152,7 @@ Field rules:
   and become enforced at the dispatch-routing layer in a later release
   (issue #42).
 - `install` (agent kind only) — install-flow knobs:
-  - `createIfMissing` — call `addAgent` on OpenClaw when the agent doesn't exist
+  - `createIfMissing` — create the runtime agent when it doesn't exist
   - `adoptIfExists` — allow `--adopt` mode when the agent already exists
   - `writeWorkspaceFiles` — project SOUL/IDENTITY/AGENTS/TOOLS on fresh install
   - `installSkills` / `installWorkflows` — toggle those projection passes
@@ -261,12 +261,11 @@ do dispatch-time semantic retrieval; the data model is unchanged.
 Three optional contribution surfaces, all keyed off paths declared in
 the manifest:
 
-- **`contributions.skills`** — directories containing OpenClaw skills.
-  For `kind: "agent"`, these install per-agent into
-  `~/.openclaw/workspaces/<agentId>/skills/<name>/`. For
-  `kind: "skill-pack"`, they install globally into
-  `~/.openclaw/skills/<name>/` and trigger collision detection if a
-  different package already owns the same target.
+- **`contributions.skills`** — directories containing runtime skills.
+  For `kind: "agent"`, these install per-agent through
+  `runtime.skills.write(skill, agentId)`. For `kind: "skill-pack"`,
+  they install globally through `runtime.skills.write(skill)` and trigger
+  collision detection if a different package already owns the same target.
 
 - **`contributions.workflows`** — YAML workflow definitions, registered
   with the workflows plugin's source registry under the
@@ -378,7 +377,7 @@ bakin agents install ./my-agent
 # GitHub — clones at the given ref + commitSha
 bakin agents install github:your-user/bakin-agent-my-agent@v0.1.0
 
-# Adopt an existing OpenClaw agent (preserves their workspace files)
+# Adopt an existing runtime agent (preserves their workspace files)
 bakin agents install ./my-agent --adopt my-agent
 
 # Force collision resolution
@@ -394,9 +393,9 @@ What happens under the hood:
    a deeper clone + `git checkout` for commit-SHA refs.
 3. **Parse + validate** the manifest via the zod schema.
 4. **Compute install mode**:
-   - `mode=fresh` — agent absent, no `--adopt`. Calls `addAgent` on
-     OpenClaw later. Workspace files projected.
-   - `mode=adopt` — agent unmanaged in OpenClaw, `--adopt` set. Workspace
+   - `mode=fresh` — agent absent, no `--adopt`. Creates the runtime agent
+     later. Workspace files projected.
+   - `mode=adopt` — agent unmanaged in the runtime roster, `--adopt` set. Workspace
      files NOT projected; only markers, assets, and the catalog block.
    - Already managed/adopted: refuse with "use update".
 5. **Resolve dependencies** recursively, leaves-first.
@@ -406,10 +405,10 @@ What happens under the hood:
    error rolls every prior write back.
 7. **Update the lockfile** atomically (tmp + rename). Records the agent's
    immediate dependents on each transitive dep.
-8. **For fresh agent installs:** call OpenClaw `addAgent` +
-   `addToAllowLists`. `defaultModel` and `dispatchableBy` propagate to
-   `openclaw.json` here — and only here. Updates do NOT re-apply them
-   (the user owns the model choice via the Models UI post-install).
+8. **For fresh agent installs:** call `runtime.agents.create()` +
+   `runtime.agents.updateAllowlist()`. `defaultModel` and `dispatchableBy`
+   propagate to the runtime here — and only here. Updates do NOT re-apply
+   them (the user owns the model choice via the Models UI post-install).
 9. **Commit staging → install dirs** via `renameSync` (atomic on same fs).
 10. **Audit log** the operation.
 11. **Release lock** in finally.
@@ -446,10 +445,10 @@ original install timestamp.
 ## Removing
 
 ```sh
-# Untrack the package; preserve the OpenClaw agent
+# Untrack the package; preserve the runtime agent
 bakin agents remove my-agent
 
-# Remove the agent from OpenClaw too
+# Remove the runtime agent too
 bakin agents remove my-agent --delete-agent
 
 # Keep knowledge blocks in SOUL.md after removal (rare)
@@ -503,7 +502,7 @@ $EDITOR ./my-agent/knowledge/core-style.md
 bakin agents remove my-agent && bakin agents install ./my-agent
 ```
 
-For non-agent kinds (you're not destroying an OpenClaw agent on each
+For non-agent kinds (you're not destroying a runtime agent on each
 cycle), the loop is just remove + install:
 
 ```sh
@@ -580,7 +579,7 @@ Once you tag a release, anyone with Bakin and access to the repo can:
 bakin agents install github:your-user/bakin-agent-my-agent@v0.1.0
 ```
 
-…and end up with a fully provisioned OpenClaw agent, knowledge files,
+…and end up with a fully provisioned runtime agent, knowledge files,
 optional skills/workflows, and a lockfile entry tracking the package
 back to the exact commitSha you tagged.
 

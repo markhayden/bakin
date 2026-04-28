@@ -2,7 +2,12 @@
 
 ## Purpose
 
-The team plugin is Bakin's adapter layer over OpenClaw's agent roster. It derives the entire team page — every agent card, every edge, the full pyramid — from whatever `openclaw.json` reports at runtime, decorated with Bakin-owned UI data (avatars, display overrides, heartbeats). Bakin **never** copies OpenClaw state; identity, rules, tools, soul, and workspace files all stay in `{OPENCLAW_HOME}/`.
+The team plugin is Bakin's UI and route layer over the active runtime adapter's
+agent roster. It derives the entire team page — every agent card, every edge,
+the full pyramid — from `ctx.runtime.agents`, decorated with Bakin-owned UI
+data (avatars, display overrides, teams, and heartbeat status). Bakin **never**
+copies provider agent state into its own store; identity, rules, tools, soul,
+skills, sessions, and workspace files stay behind the runtime adapter.
 
 ## Client Entry
 
@@ -10,28 +15,36 @@ The team plugin is Bakin's adapter layer over OpenClaw's agent roster. It derive
 
 ## Canonical Main Agent Contract
 
-The orchestrator id is always the literal string `"main"` on every OpenClaw install. Display names come from `identity.name` on that entry. No detection heuristic, no settings override, no rename logic.
+The orchestrator id is resolved through the runtime adapter. With the current
+OpenClaw runtime implementation it is the literal string `"main"`, but plugin
+code treats that as adapter-owned knowledge. Display names come from the runtime
+agent profile. No settings override or Bakin-side roster copy exists.
 
-- `packages/adapter-openclaw/src/main-agent.ts` — `getMainAgentId()`, `tryGetMainAgentId()`, `getMainAgentName()`
-- `packages/adapter-openclaw/src/config.ts` — single mtime-cached reader for `openclaw.json`. All three helpers above call through here. Live edits are picked up on the next call.
+- `getRuntimeMainAgentId(ctx.runtime)` — canonical server-side resolver.
+- `ctx.runtime.agents.list()` / `.get(id)` — roster and profile source.
+- `packages/adapter-openclaw/src/main-agent.ts` and `config.ts` — current
+  provider implementation details, imported only by the adapter package.
 - `src/core/onboarding/runtime.ts` — doctor check that flags missing `main`, duplicate ids, duplicate workspaces. Reports only, never auto-fixes. Run via `bakin check runtime`.
 
 `BakinSettings.agents` and `BakinSettings.mainAgentId` **do not exist**. If you find a reference to them in tests or production code, it's a bug — use `getAgentIds()` / `getMainAgentId()` instead.
 
-## Read Path: openclaw-adapter → listAgents
+## Read Path: runtime adapter → listAgents
 
-`plugins/team/lib/openclaw-adapter.ts#listAgents()` is the single read entry point for "the full roster as Bakin wants to render it." It:
+`plugins/team/index.ts` builds the full roster from `ctx.runtime.agents.list()`
+and helper functions that take an `AgentRuntimeAdapter`. The read path:
 
-1. Reads `openclaw.json` via `readOpenClawConfig()` (mtime-cached).
-2. **Validates:**
-   - If no entry has `id: "main"` → returns `[]` and logs an error. The UI shows an empty team rather than a broken pyramid.
-   - Duplicate ids → first-wins, logs an error with the discarded entry.
-   - Duplicate **resolved workspaces** (explicit `workspace` field, falling back to `defaults.workspace`) → first-wins, logs an error.
-3. Merges Bakin-owned display data (`~/.bakin/plugin-settings/team.json` → accent colors, display name overrides, teamId assignments).
-4. Merges heartbeats from `~/.bakin/heartbeats/{id}.json`.
-5. Returns `AgentWithStatus[]`.
+1. Reads runtime agents through `ctx.runtime.agents`.
+2. Maps provider profiles into `AgentMeta`/`AgentWithStatus`.
+3. Resolves the main agent through `getRuntimeMainAgentId(ctx.runtime)`.
+4. Merges Bakin-owned display data (`~/.bakin/plugin-settings/team.json` →
+   accent colors, display name overrides, team assignments).
+5. Merges Bakin-owned heartbeat status from `~/.bakin/heartbeats/{id}.json`
+   plus recent audit activity.
+6. Returns `AgentWithStatus[]`.
 
-The adapter's **read** path (`listAgents`, `getAgentProfile`, etc.) never writes to `openclaw.json`. Agent lifecycle **writes** (`addAgent`, `removeAgent`, `updateAgentIdentity`) shell out to the OpenClaw CLI (`openclaw agents add/delete/set-identity`) via the `openclawExec()` helper. The only remaining direct `openclaw.json` write is `setSubagentPermissions()` — isolated because no CLI command exists for it yet.
+Provider config parsing, duplicate detection, workspace resolution, and any
+provider-specific cache invalidation happen inside the runtime adapter. The team
+plugin must not read provider files or shell out to provider CLIs.
 
 ## Pyramid Builder: build-graph.ts
 
@@ -83,19 +96,25 @@ Read path degrades too: in the GET / handler, `degradeUnknownReportsTo()` rewrit
 
 `OrgTeam.reportsTo` in `plugins/team/types.ts` is typed `string | null` to match.
 
-## CLI Adapter Layer
+## Runtime Agent Mutations
 
-`packages/adapter-openclaw` wraps OpenClaw CLI commands for agent lifecycle operations. The adapter resolves the binary via `settings.runtime.settings.binaryPath` and uses `execFileAsync`.
+All lifecycle writes go through `ctx.runtime.agents` / `AgentRuntimeAdapter`.
+The current OpenClaw adapter may shell out or edit provider config internally,
+but that is adapter-private.
 
-### Write operations (shell out to CLI)
-- `addAgent(input)` → `openclaw agents add` + `openclaw agents set-identity`, writes IDENTITY.md/SOUL.md/TOOLS.md
-- `removeAgent(agentId)` → `openclaw agents delete --force --json`
-- `updateAgentIdentity(agentId, fields)` → `openclaw agents set-identity` for name/emoji, re-synthesizes IDENTITY.md
+### Write operations
+- `runtime.agents.create(input)` creates the runtime agent.
+- `runtime.agents.remove(agentId)` removes the runtime agent.
+- `runtime.agents.update(agentId, fields)` updates identity/model fields.
+- `runtime.agents.writeWorkspaceFile(agentId, file)` writes SOUL/TOOLS/etc.
 
-### Dispatch permission helpers (direct openclaw.json write)
-- `setSubagentPermissions(agentId, allowAgents)` — replaces `subagents.allowAgents` on one agent
-- `addToAllowLists(newAgentId, dispatchable)` — adds a new agent to relevant `allowAgents` lists (`"main"`, `"all"`, or specific agents)
-- `removeFromAllowLists(agentId)` — removes an agent from all `allowAgents` lists (called on delete)
+### Dispatch permission helpers
+- `runtime.agents.updateAllowlist(agentId, { replace })` replaces an agent's
+  dispatch allowlist.
+- `addToRuntimeAllowlists(newAgentId, dispatchable)` adds a new agent to
+  relevant allowlists (`"main"`, `"all"`, or specific agents).
+- `removeFromRuntimeAllowlists(agentId)` removes an agent from all allowlists
+  during delete.
 
 ### IDENTITY.md
 Structured identity fields are synthesized into `IDENTITY.md` via `synthesizeIdentityMd()`. Fields: Name, Role, Emoji, Vibe, Primary Function, Default Mode. Only non-empty fields are included. `parseIdentityMd()` reads them back for merge-on-update.
@@ -113,7 +132,7 @@ Structured identity fields are synthesized into `IDENTITY.md` via `synthesizeIde
 
 | Tool | Purpose |
 |------|---------|
-| `bakin_exec_team_create_agent` | Full agent creation: OpenClaw registration, persona files, dispatch permissions, team assignment |
+| `bakin_exec_team_create_agent` | Full agent creation: runtime registration, persona files, dispatch permissions, team assignment |
 | `bakin_exec_team_update_identity` | Update identity fields and workspace files |
 | `bakin_exec_team_delete_agent` | Delete agent with safety guard (confirm=true required) |
 | `bakin_exec_team_set_permissions` | Update which agents a given agent can dispatch to |
@@ -201,13 +220,13 @@ The `/team/:id` page (`agent-detail.tsx`) is a thin orchestrator: header + tab b
 | Overview | `<OverviewTab>` | `overview-tab.tsx` |
 | Identity | `<MarkdownEditTab>` | workspace `IDENTITY.md` |
 | Soul | `<MarkdownEditTab>` | workspace `SOUL.md` |
-| Memory | `<MemoryTab>` (in `agent-detail.tsx`) | `~/.openclaw/agents/<id>/memory/*.md` |
+| Memory | `<MemoryTab>` (in `agent-detail.tsx`) | `ctx.runtime.memory` workspace-memory tier |
 | Heartbeat | `<HeartbeatTab>` | `heartbeat-tab.tsx` (view-only) |
 | Rules | `<MarkdownEditTab>` | workspace `AGENTS.md` |
 | Tools | `<MarkdownEditTab>` | workspace `TOOLS.md` |
 | Skills | `<SkillsTab>` (in `agent-detail.tsx`) | workspace `skills/<name>/SKILL.md` |
 | Knowledge | `<KnowledgeToggleList>` | `/api/agent-packages/:id/knowledge` |
-| Active Context | `<ActiveContextTab>` | `~/.openclaw/agents/<id>/sessions/*.jsonl` |
+| Active Context | `<ActiveContextTab>` | latest transcript via `ctx.runtime.memory` |
 
 URL state via `useQueryState('tab', 'overview')`. Unknown values fall back to `overview`.
 
@@ -274,9 +293,8 @@ If a future iteration restores any of these, prefer adding back via new componen
 
 | Concern | Test file |
 |---------|-----------|
-| mtime-cached reader + helpers | `tests/adapter-openclaw/config.test.ts` |
-| main-agent canonical resolver | `tests/core/main-agent.test.ts` |
-| Adapter validation + dedupe | `tests/plugins/team/openclaw-adapter.test.ts` |
+| Runtime main-agent resolver | `tests/core/runtime-main-agent.test.ts`, `tests/core/main-agent.test.ts` |
+| Adapter-private OpenClaw config/home helpers | `tests/core/openclaw-config.test.ts`, `tests/core/openclaw-home.test.ts` |
 | Pyramid graph builder | `tests/plugins/team/build-graph.test.ts` |
 | Write normalization + read degradation + lifecycle routes | `tests/plugins/team/routes.test.ts` |
 | Agent lifecycle MCP exec tools | `tests/plugins/team/exec-tools.test.ts` |
@@ -300,4 +318,4 @@ All three live at `plugins/team/lib/health-checks.ts`. Migrated out of `src/core
 - **Don't write provider config for agent add/delete.** Use the runtime adapter. Provider-specific mutation belongs in `packages/adapter-openclaw/`.
 - **Don't write provider config from validation code.** Integrity problems are the user's job to fix — surface them via the doctor, don't auto-heal.
 - **Don't hard-code the main agent's display name** (e.g. "Main Operator"). It varies per install. Always resolve via `getMainAgentName()` server-side or `useMainAgentId()` + `useAgent(id)` client-side.
-- **Don't skip the test mocks.** `tests/plugins/team/*` must mock runtime adapters, `@bakin/adapter-openclaw/home`, and `src/core/content-dir` — leaking into `~/.openclaw/` has caused real incidents.
+- **Don't skip the test mocks.** `tests/plugins/team/*` must mock runtime adapters and content-dir paths; adapter-private tests that touch OpenClaw home also mock `@bakin/adapter-openclaw/home` — leaking into `~/.openclaw/` has caused real incidents.

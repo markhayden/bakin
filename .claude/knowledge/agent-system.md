@@ -2,25 +2,25 @@
 
 ## Overview
 
-Bakin orchestrates a team of AI agents via the OpenClaw gateway. Each agent has a profile (identity, capabilities, tools), receives tasks through a dispatch engine, reports progress via MCP tools, and maintains a heartbeat for status tracking.
+Bakin orchestrates a team of AI agents through the active runtime adapter. Each agent has a profile (identity, capabilities, tools), receives tasks through a dispatch engine, reports progress via MCP tools, and maintains a heartbeat for status tracking.
 
 ## Agent Profiles
 
 ### Source of truth: runtime adapter via Team Plugin
 
-Agent data is runtime-owned and is accessed through `ctx.runtime` inside the team plugin. With the OpenClaw adapter, that data lives in the OpenClaw home directory. **Bakin reads from OpenClaw through the adapter. Bakin writes to OpenClaw through the adapter. Bakin never copies OpenClaw-owned agent state into core/plugin storage.**
+Agent data is runtime-owned and is accessed through `ctx.runtime` inside the team plugin. With the OpenClaw adapter, that data lives in the OpenClaw home directory. **Bakin reads provider state through the runtime adapter. Bakin writes provider state through the runtime adapter. Bakin never copies provider-owned agent state into core/plugin storage.**
 
-All OpenClaw paths are resolved via `getOpenClawHome()` / `getOpenClawPath()` from `packages/adapter-openclaw/src/home.ts`. This respects the `OPENCLAW_HOME` env var (defaults to `~/.openclaw/`), enabling dev/test environments via the Imitation Crab mock (`dev/imitation-crab/`).
+OpenClaw path handling is adapter-private. The current adapter resolves paths via `getOpenClawHome()` / `getOpenClawPath()` from `packages/adapter-openclaw/src/home.ts`. This respects the `OPENCLAW_HOME` env var (defaults to `~/.openclaw/`), enabling dev/test environments via the Imitation Crab mock (`dev/imitation-crab/`).
 
 - `{OPENCLAW_HOME}/openclaw.json` — agent roster (IDs, names, models, identity, subagent perms)
-- `{OPENCLAW_HOME}/workspace/` — main agent workspace files (resolved via `getMainAgentId()`)
+- `{OPENCLAW_HOME}/workspace/` — main agent workspace files in the current adapter layout
 - `{OPENCLAW_HOME}/workspaces/{id}/` — subagent workspace files (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md, etc.)
 
 ```typescript
 // Lightweight (dropdowns, badges) — from plugins/team/types.ts
 interface AgentMeta { id: string; name: string; emoji: string; role: string; headshot: string }
 
-// Full profile (detail pages) — merged from OpenClaw config + workspace files
+// Full profile (detail pages) — merged from runtime profile + workspace files
 interface AgentProfile extends AgentMeta {
   model: string; workspacePath: string;
   soul: string | null; identity: string | null; rules: string | null;
@@ -31,7 +31,7 @@ interface AgentProfile extends AgentMeta {
 ### Client store: `plugins/team/hooks/use-agent-store.ts`
 Single Zustand store loaded on app init. All components use `useAgent(id)`, `useAgentList()`, `useAgentIds()`, `useAgentColor(id)` from this store.
 
-### Bakin-owned display data (not in OpenClaw)
+### Bakin-owned display data (not in provider state)
 - Display settings (accent colors, display name overrides, team assignments) — `~/.bakin/plugin-settings/team.json`
 - Avatars — `~/.bakin/agents/{id}/avatar.jpg`
 - Heartbeats — `~/.bakin/heartbeats/{id}.json`
@@ -40,14 +40,14 @@ Single Zustand store loaded on app init. All components use `useAgent(id)`, `use
 Teams are a Bakin concept for grouping agents (e.g. "Builders", "Creators"). Stored in `~/.bakin/plugin-settings/team.json` alongside display settings. Each team has a `reportsTo` agent, creating the org chart hierarchy. Agents are assigned to teams via display settings (`teamId` field).
 
 ### Model management
-Agent models are changed via the models plugin API, not direct OpenClaw writes:
+Agent models are changed via the models plugin API, not direct provider writes:
 - **Agent detail page** (`/team/:id`): `ModelSelect` dropdown in the header saves via `POST /api/plugins/models/config` with `{ agentId, ownModel }`
-- **Agent creation** (`agent-form.tsx`): fetches dynamic model list from `GET /api/plugins/models/available`, which is derived from `openclaw models list --all --json` filtered to `available === true`
+- **Agent creation** (`agent-form.tsx`): fetches dynamic model list from `GET /api/plugins/models/available`, which is derived from `ctx.runtime.models.listAvailable({ includeUnavailable: true })` filtered to `available === true`
 - **Models page** (`/models`): manages `agents.defaults.model.primary`, `agents.defaults.model.fallbacks`, per-agent `model.primary`, and default/per-agent subagent model settings
-- The models plugin writes to `{OPENCLAW_HOME}/openclaw.json` and fires the `models.configChanged` hook when agent effective model changes
+- The models plugin writes via `ctx.runtime.config.replace()` and fires the `models.configChanged` hook when agent effective model changes
 
 ### Agent IDs
-Bakin uses OpenClaw's canonical agent ids verbatim — no translation layer. The orchestrator id is the literal string `"main"` on **every** install; there is no detection heuristic, no settings override, no fallback. Subagents keep whatever ids OpenClaw assigns. Display names (e.g. "Main Operator", "Crab") come from `identity.name` in `openclaw.json` at render time and never leak into storage keys.
+Bakin uses runtime canonical agent ids verbatim — no translation layer. With the current OpenClaw runtime adapter, the orchestrator id is the literal string `"main"` on **every** install; there is no detection heuristic, no settings override, no fallback. Subagents keep whatever ids the runtime assigns. Display names come from the runtime profile at render time and never leak into storage keys.
 
 Runtime helpers in `@bakin/core/adapters/runtime`:
 - `getRuntimeMainAgentId(runtime): Promise<string>` — returns `"main"` if the entry exists, throws otherwise (with a pointer to `bakin check runtime`)
@@ -66,11 +66,11 @@ The adapter is **read-only** — it never writes back to runtime config to "fix"
 
 ## Dispatch Permissions
 
-Each agent's `subagents.allowAgents` in `openclaw.json` controls which other agents it can dispatch tasks to. Managed via the team plugin's adapter layer:
+Each agent's runtime allowlist controls which other agents it can dispatch tasks to. Managed via `ctx.runtime.agents.updateAllowlist()`:
 
-- **On create:** `addToAllowLists(newId, dispatchable)` — `"main"` (default) adds to main only; `"all"` adds to every agent with an existing list; `string[]` adds to specific agents plus always main.
-- **On delete:** `removeFromAllowLists(agentId)` — removes from all agents' lists.
-- **Direct edit:** `setSubagentPermissions(agentId, allowAgents)` — full replacement of one agent's list.
+- **On create:** `addToRuntimeAllowlists(newId, dispatchable)` — `"main"` (default) adds to main only; `"all"` adds to every agent with an existing list; `string[]` adds to specific agents plus always main.
+- **On delete:** `removeFromRuntimeAllowlists(agentId)` — removes from all agents' lists.
+- **Direct edit:** `runtime.agents.updateAllowlist(agentId, { replace: allowAgents })` — full replacement of one agent's list.
 
 Self-referencing (agent dispatching to itself) is rejected at both the MCP tool and REST route level.
 
