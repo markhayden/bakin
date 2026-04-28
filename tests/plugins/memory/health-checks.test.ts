@@ -2,7 +2,7 @@
  * Memory-plugin-owned doctor check.
  *
  * Migrated out of src/core/doctor.ts (#139 C5). Behavioral coverage
- * for checkSearchTables — antfly-disabled / antfly-unavailable /
+ * for checkSearchTables — search-disabled / search-unavailable /
  * empty registry / per-table doc-count branches / aggregate ok and
  * warn paths.
  */
@@ -49,10 +49,10 @@ mock.module('../../../packages/core/src/openclaw-home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-let mockAntflyEnabled = true
+let mockSearchEnabled = true
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
-    search: { adapter: 'antfly', settings: { enabled: mockAntflyEnabled } },
+    search: { adapter: 'antfly', settings: { enabled: mockSearchEnabled } },
     doctor: { autoFixSkill: false },
   }),
   resetSettingsCache: () => {},
@@ -89,7 +89,7 @@ mock.module('../../../src/core/search-registry', () => ({
   }),
 }))
 
-// memory-migration also reaches into antfly + offsets — stub the migrator
+// memory-migration also reaches into search + offsets — stub the migrator
 // itself so we don't need to mock its full deps tree.
 mock.module('../../../plugins/memory/lib/memory-migration', () => ({
   migrateIfNeeded: async () => {},
@@ -113,7 +113,7 @@ import { checkSearchTables } from '../../../plugins/memory/lib/health-checks'
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
-  mockAntflyEnabled = true
+  mockSearchEnabled = true
   mockSearchHealthThrows = null
   mockHealth = { enabled: true, tables: [] }
 })
@@ -122,11 +122,11 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-// ─── Inert returns when antfly is off / unreachable / disabled in registry ─
+// ─── Inert returns when search is off / unreachable / disabled in registry ─
 
 describe('checkSearchTables — quiescent paths', () => {
-  it('returns no rows when antfly is disabled in settings', async () => {
-    mockAntflyEnabled = false
+  it('returns no rows when search is disabled in settings', async () => {
+    mockSearchEnabled = false
     const results = await checkSearchTables()
     expect(results).toEqual([])
   })
@@ -148,7 +148,7 @@ describe('checkSearchTables — quiescent paths', () => {
 // ─── Empty registry vs healthy aggregate ──────────────────────────────────
 
 describe('checkSearchTables — registry shape', () => {
-  it('warns when antfly is enabled but no content types are registered', async () => {
+  it('warns when search is enabled but no content types are registered', async () => {
     mockHealth = { enabled: true, tables: [] }
     const results = await checkSearchTables()
     expect(results).toHaveLength(1)
@@ -181,7 +181,7 @@ describe('checkSearchTables — registry shape', () => {
     const results = await checkSearchTables()
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/document counts unavailable from current Antfly API/)
+    expect(results[0].message).toMatch(/document counts unavailable from current search adapter API/)
   })
 })
 
