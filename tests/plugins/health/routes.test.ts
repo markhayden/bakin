@@ -56,7 +56,7 @@ mock.module('../../../src/core/settings', () => ({
 }))
 
 const mockDoctorResults = [
-  { check: 'gateway', status: 'ok', message: 'Gateway responding' },
+  { check: 'runtime', status: 'ok', message: 'Runtime responding' },
   { check: 'taskboard', status: 'warn', message: 'Missing columns' },
   { check: 'agents', status: 'error', message: 'Roster mismatch' },
 ]
@@ -161,7 +161,7 @@ describe('Health Plugin Routes', () => {
       expect(status).toBe(200)
       expect(body.doctor).toBeDefined()
       expect(body.server).toBeDefined()
-      expect(body.runtimeGatewayPort).toBe(18789)
+      expect(body.runtimePort).toBe(18789)
       expect(body.upSince).toBe('2026-04-01T00:00:00Z')
       expect(Array.isArray(body.activeSessions)).toBe(true)
       expect((body.activeSessions as unknown[]).length).toBe(1)

@@ -662,7 +662,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         const messages = buildMessages(session, body.message, promptOptions)
         const sessionKey = `session-${id}-${Date.now()}`
 
-        // Create a ReadableStream that pipes gateway SSE to the client
+        // Create a ReadableStream that pipes runtime SSE to the client
         const stream = new ReadableStream({
           async start(controller) {
             const encoder = new TextEncoder()
@@ -718,17 +718,17 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
                 const contentType = gwResponse.headers.get('content-type') || ''
                 if (!contentType.includes('text/event-stream')) {
-                  // Gateway returned non-streaming response
+                  // Runtime returned non-streaming response
                   useStreaming = false
                 }
               } catch {
-                // Gateway doesn't support streaming — fall back
+                // Runtime doesn't support streaming — fall back
                 useStreaming = false
                 gwResponse = null
               }
 
               if (useStreaming && gwResponse?.body) {
-                // Stream gateway SSE chunks to client
+                // Stream runtime SSE chunks to client
                 const reader = gwResponse.body.getReader()
                 const decoder = new TextDecoder()
                 let buffer = ''
@@ -1211,7 +1211,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
           content: params.message as string,
         })
 
-        // Non-streaming: call gateway synchronously and collect full response
+        // Non-streaming: call runtime synchronously and collect full response
         const promptOptions = await resolvePromptOptions(ctx, session.agentId)
         const messages = buildMessages(session, params.message as string, promptOptions)
         const sessionKey = `session-${params.sessionId}-${Date.now()}`

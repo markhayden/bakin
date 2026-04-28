@@ -61,7 +61,7 @@ function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): b
 
   // Primary signal: did the runtime return a successful reply from this
   // agent recently? Recorded by runtime messaging — a returned
-  // reply means the gateway routed our request and got a response back,
+  // reply means the runtime routed our request and got a response back,
   // which is a stronger liveness indicator than an agent-written heartbeat
   // file (which nothing currently writes).
   const lastReplyMs = getAgentLastReply(agent)

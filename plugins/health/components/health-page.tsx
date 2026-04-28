@@ -117,7 +117,7 @@ interface HealthSummary {
   errors1h: ErrorsByKind | null
   activeSessions: McpSessionInfo[] | null
   upSince: string | null
-  runtimeGatewayPort: number | null
+  runtimePort: number | null
   server: ServerData | null
 }
 
@@ -501,14 +501,14 @@ export function HealthPage() {
     )
   }
 
-  const { doctor, server, runtimeGatewayPort } = data
+  const { doctor, server, runtimePort } = data
 
   const memoryPercent = server?.totalMemoryMB
     ? Math.round((server.memoryMB / server.totalMemoryMB) * 100)
     : null
 
-  const runtimeGatewayUrl = runtimeGatewayPort
-    ? `${window.location.protocol}//${window.location.hostname}:${runtimeGatewayPort}`
+  const runtimeUrl = runtimePort
+    ? `${window.location.protocol}//${window.location.hostname}:${runtimePort}`
     : null
 
   return (
@@ -516,9 +516,9 @@ export function HealthPage() {
       <div className="flex items-center justify-between">
         <PluginHeader title="System Health" />
         <div className="flex items-center gap-3">
-          {runtimeGatewayUrl && (
+          {runtimeUrl && (
             <a
-              href={runtimeGatewayUrl}
+              href={runtimeUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"

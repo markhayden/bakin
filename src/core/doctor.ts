@@ -88,8 +88,8 @@ async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void
     await runtime.messaging.send({ agentId: mainAgentId, content: message })
     log.info('Notified main agent of unfixable issues', { count: issues.length })
   } catch (err) {
-    // Gateway might be the issue — can't notify about that
-    log.warn('Could not notify main agent of doctor issues (gateway may be down)', err)
+    // Runtime might be the issue — can't notify about that
+    log.warn('Could not notify main agent of doctor issues (runtime may be down)', err)
   }
 }
 
@@ -104,7 +104,7 @@ export async function runDiagnostics(
   // the config says to enforce it, return a single actionable error and
   // skip all the normal checks. Keeps doctor quiet on a fresh machine
   // and points the user at `bakin onboard` instead of drowning them in
-  // unrelated errors about missing personas, gateway down, etc.
+  // unrelated errors about missing personas, runtime down, etc.
   if (settings.doctor.requireOnboard && !isOnboarded()) {
     return [{
       check: 'onboarded',
