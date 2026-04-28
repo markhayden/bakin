@@ -28,7 +28,7 @@ interface ManifestPlugin {
   id: string
   name: string
   version: string
-  clientEntry: string
+  clientEntry?: string
   /** Optional stylesheet URL — present only if the plugin build emitted one. */
   clientCss?: string
   /** Where the plugin came from. `core` ships with the binary; `github`/`local` are user-installed. */
@@ -47,6 +47,10 @@ interface ManifestPlugin {
    * --check)" hint in the CLI.
    */
   staleHintDays: number | null
+  status: 'active' | 'failed'
+  errorCode?: string
+  errorMessage?: string
+  missingDependencies?: string[]
 }
 
 interface ManifestResponse {
@@ -129,13 +133,20 @@ export async function get(req: Request): Promise<Response> {
       id: entry.id,
       name: entry.name,
       version: entry.version,
-      clientEntry: `/api/plugins/${entry.id}/assets/client.js`,
       source,
       installed,
       upgradeAvailable,
       staleHintDays,
+      status: entry.status,
     }
-    if (hasClientCss(entry.id)) {
+    if (entry.status === 'active') {
+      plugin.clientEntry = `/api/plugins/${entry.id}/assets/client.js`
+    } else {
+      plugin.errorCode = entry.errorCode
+      plugin.errorMessage = entry.errorMessage
+      plugin.missingDependencies = entry.missingDependencies
+    }
+    if (entry.status === 'active' && hasClientCss(entry.id)) {
       plugin.clientCss = `/api/plugins/${entry.id}/assets/client.css`
     }
     plugins.push(plugin)
