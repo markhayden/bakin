@@ -8,10 +8,10 @@
  *     → search-registry.buildSearchAPI registers sync/unlink hooks
  *     → chokidar fires add / unlink
  *     → hooks invoke def.onSync / def.onUnlink (or default mapper flow)
- *     → antfly.indexDocument / removeDocument
+ *     → search adapter index/remove calls
  *
  * Chokidar is mocked so we can fire `add` / `unlink` deterministically.
- * Antfly is mocked so we can capture the resulting index/remove calls.
+ * SearchAdapter is mocked so we can capture the resulting index/remove calls.
  * Everything else (search-registry, watcher hook plumbing, plugin code)
  * is the real production code path.
  */
@@ -22,6 +22,7 @@ import { tmpdir } from 'os'
 import type { FSWatcher } from 'chokidar'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
+import { clearSearchAdapter, createSearchAdapterHarness, installSearchAdapter } from '../helpers/search-adapter'
 
 const testDir = join(tmpdir(), `bakin-int-search-watcher-${process.pid}-${Date.now()}`)
 
@@ -66,22 +67,7 @@ mock.module('../../plugins/tasks/lib/flow-store', () => ({}))
 
 const indexCalls: Array<{ table: string; key: string; doc: Record<string, unknown> }> = []
 const removeCalls: Array<{ table: string; key: string }> = []
-
-mock.module('../../src/core/antfly', () => ({
-  enabled: () => true,
-  indexDocument: mock(async (table: string, key: string, doc: Record<string, unknown>) => {
-    indexCalls.push({ table, key, doc })
-  }),
-  removeDocument: mock(async (table: string, key: string) => {
-    removeCalls.push({ table, key })
-  }),
-  getClient: mock(() => null),
-  createTable: mock(async () => {}),
-  scanTable: mock(async () => []),
-  searchTable: mock(async () => ({ hits: { hits: [], total: 0 }, took: 0 })),
-  deleteTable: mock(async () => {}),
-  getIndexHealth: mock(async () => ({ ready: 0, total: 0, queued: 0 })),
-}))
+let searchHarness: ReturnType<typeof createSearchAdapterHarness>
 
 mock.module('chokidar', () => ({
   watch: mock().mockReturnValue({
@@ -167,11 +153,20 @@ describe('integration: search ↔ watcher sync', () => {
     indexCalls.length = 0
     removeCalls.length = 0
     resetSearchRegistry()
+    searchHarness = createSearchAdapterHarness()
+    searchHarness.calls.documentsIndex.mockImplementation(async (table, key, doc) => {
+      indexCalls.push({ table, key, doc })
+    })
+    searchHarness.calls.documentsRemove.mockImplementation(async (table, key) => {
+      removeCalls.push({ table, key })
+    })
+    installSearchAdapter(searchHarness.adapter)
     mock.clearAllMocks()
   })
 
   afterEach(async () => {
     await stop()
+    clearSearchAdapter()
     rmSync(testDir, { recursive: true, force: true })
   })
 

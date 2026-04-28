@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { clearSearchAdapter, createSearchAdapterHarness, installSearchAdapter } from '../helpers/search-adapter'
 
 const testDir = join(tmpdir(), `bakin-search-registry-test-${Date.now()}`)
 
@@ -20,32 +21,6 @@ mock.module('@/core/content-dir', () => ({
     audit: join(testDir, 'audit.jsonl'),
     logs: join(testDir, 'logs'),
   }),
-}))
-
-// Mock antfly module
-mock.module('@/core/antfly', () => ({
-  enabled: mock(() => true),
-  available: mock(() => true),
-  createTable: mock(async () => true),
-  listTables: mock(async () => []),
-  indexDocument: mock(async () => {}),
-  removeDocument: mock(async () => {}),
-  transformDocument: mock(async () => {}),
-  rebuildIndexes: mock(async () => {}),
-  batchIndex: mock(async (_table: string, docs: Record<string, unknown>) => Object.keys(docs).length),
-  multiQuery: mock(async () => ({ results: [], total: 0, took: 0 })),
-  queryTable: mock(async () => ({
-    results: [
-      { id: 'doc-1', table: 'bakin_tasks', score: 0.95, fields: { title: 'Test task' } },
-    ],
-    aggregations: {
-      status: { buckets: [{ key: 'active', doc_count: 5 }] },
-    },
-    took: 12,
-    total: 1,
-  })),
-  getIndexHealth: mock(async () => null),
-  getTableStats: mock(async () => null),
 }))
 
 mock.module('@/core/settings', () => ({
@@ -92,21 +67,28 @@ import {
   crossTableSearch,
   getSearchHealth,
 } from '@/core/search-registry'
-import * as antfly from '@/core/antfly'
 import { broadcast } from '@/core/sse'
 
 describe('search-registry', () => {
+  let searchHarness: ReturnType<typeof createSearchAdapterHarness>
+
   beforeEach(() => {
     resetSearchRegistry()
+    searchHarness = createSearchAdapterHarness()
+    searchHarness.calls.query.mockImplementation(async (table) => ({
+      hits: [
+        { key: 'doc-1', document: { title: 'Test task' }, score: 0.95 },
+      ],
+      total: 1,
+      facets: { status: [{ value: 'active', count: 5 }] },
+      diagnostics: { strategy: 'hybrid', durationMs: 12 },
+    }))
+    installSearchAdapter(searchHarness.adapter)
     mock.clearAllMocks()
-    // Restore defaults — clearAllMocks resets call history but not implementations.
-    // resetAllMocks on specific mocks clears the once-queue too, preventing leaks.
-    vi.mocked(antfly.enabled).mockReturnValue(true)
-    vi.mocked(antfly.getIndexHealth).mockReset().mockResolvedValue(null)
-    vi.mocked(antfly.getTableStats).mockReset().mockResolvedValue(null)
-    vi.mocked(antfly.batchIndex).mockReset().mockImplementation(
-      async (_table: string, docs: Record<string, unknown>) => Object.keys(docs).length,
-    )
+  })
+
+  afterEach(() => {
+    clearSearchAdapter()
   })
 
   function makeDef(table = 'tasks') {
@@ -211,41 +193,40 @@ describe('search-registry', () => {
     const missing = await route.handler(new Request('http://localhost/search'))
     expect(missing.status).toBe(400)
 
-    // With `q` → 200 + antfly.queryTable hit
+    // With `q` → 200 + adapter query hit
     const ok = await route.handler(new Request('http://localhost/search?q=build&facets=status&limit=5'))
     expect(ok.status).toBe(200)
     const body = await ok.json()
     expect(body.meta.source).toBe('antfly')
-    expect(antfly.queryTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
       'bakin_tasks',
-      'build',
-      expect.objectContaining({ limit: 5 }),
+      expect.objectContaining({ text: 'build', limit: 5 }),
     )
   })
 
-  it('index calls antfly.indexDocument with resolved table', async () => {
+  it('index calls search.documents.index with resolved table', async () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
     await api.index('task-1', { title: 'Build feature' })
 
-    expect(antfly.indexDocument).toHaveBeenCalledWith(
+    expect(searchHarness.calls.documentsIndex).toHaveBeenCalledWith(
       'bakin_tasks',
       'task-1',
       { title: 'Build feature' },
     )
   })
 
-  it('remove calls antfly.removeDocument', async () => {
+  it('remove calls search.documents.remove', async () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
     await api.remove('task-1')
 
-    expect(antfly.removeDocument).toHaveBeenCalledWith('bakin_tasks', 'task-1')
+    expect(searchHarness.calls.documentsRemove).toHaveBeenCalledWith('bakin_tasks', 'task-1')
   })
 
-  it('transform calls antfly.transformDocument with $set ops', async () => {
+  it('transform calls search.documents.transform with $set ops', async () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
@@ -253,25 +234,30 @@ describe('search-registry', () => {
       { op: '$set', field: 'status', value: 'done' },
     ])
 
-    expect(antfly.transformDocument).toHaveBeenCalledWith(
+    expect(searchHarness.calls.documentsTransform).toHaveBeenCalledWith(
       'bakin_tasks',
       'task-1',
-      { status: 'done' },
+      expect.any(Function),
     )
   })
 
-  it('query calls antfly.queryTable and maps response', async () => {
+  it('query calls search.query and maps response', async () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
     const result = await api.query({ q: 'build feature', facets: ['status'] })
 
-    expect(antfly.queryTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
       'bakin_tasks',
-      'build feature',
       expect.objectContaining({
-        aggregations: { status: { type: 'terms', field: 'status', size: 50 } },
-        indexes: ['embeddings'],
+        text: 'build feature',
+        facets: ['status'],
+        adapterOptions: expect.objectContaining({ indexes: ['embeddings'] }),
+      }),
+    )
+    expect(searchHarness.calls.query.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        facets: ['status'],
       }),
     )
     expect(result.meta.source).toBe('antfly')
@@ -281,28 +267,29 @@ describe('search-registry', () => {
 
   // ── multi-index support (T3) ─────────────────────────────────────────
 
-  it('buildAntflyIndexes synthesizes a single default index when def.indexes is absent', async () => {
+  it('buildTableConfig synthesizes a single default index when def.indexes is absent', async () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
     await createRegisteredTables()
 
-    expect(antfly.createTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
       'bakin_tasks',
       expect.objectContaining({
-        indexes: expect.objectContaining({
-          search: expect.objectContaining({ type: 'full_text' }),
-          embeddings: expect.objectContaining({
-            type: 'embeddings',
+        indexes: [
+          expect.objectContaining({
+            name: 'embeddings',
+            kind: 'vector',
+            fields: ['title'],
             template: '{{title}}',
-            embedder: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
           }),
-        }),
+        ],
+        adapterOptions: expect.objectContaining({ defaultType: 'tasks' }),
       }),
     )
   })
 
-  it('buildAntflyIndexes creates one Antfly index per entry when def.indexes is set', async () => {
+  it('buildTableConfig creates one adapter index per entry when def.indexes is set', async () => {
     const api = buildSearchAPI('assets')
     api.registerContentType({
       ...makeDef('assets'),
@@ -323,29 +310,29 @@ describe('search-registry', () => {
 
     await createRegisteredTables()
 
-    expect(antfly.createTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
       'bakin_assets',
       expect.objectContaining({
-        indexes: expect.objectContaining({
-          search: expect.objectContaining({ type: 'full_text' }),
-          assets_text: expect.objectContaining({
-            type: 'embeddings',
+        indexes: [
+          expect.objectContaining({
+            name: 'assets_text',
+            kind: 'vector',
             template: '{{description}} {{tags}}',
-            embedder: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
-            chunk_size: 200,
-            chunk_overlap: 25,
+            embedderRef: 'default',
+            chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
           }),
-          assets_visual: expect.objectContaining({
-            type: 'embeddings',
+          expect.objectContaining({
+            name: 'assets_visual',
+            kind: 'vector',
             template: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
-            embedder: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
+            embedderRef: 'visual',
           }),
-        }),
+        ],
       }),
     )
   })
 
-  it('query routes multiple index names through to antfly.queryTable', async () => {
+  it('query routes multiple index names through to search.query', async () => {
     const api = buildSearchAPI('assets')
     api.registerContentType({
       ...makeDef('assets'),
@@ -357,25 +344,25 @@ describe('search-registry', () => {
 
     await api.query({ q: 'kafka diagram' })
 
-    expect(antfly.queryTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
       'bakin_assets',
-      'kafka diagram',
       expect.objectContaining({
-        indexes: ['assets_text', 'assets_visual'],
+        text: 'kafka diagram',
+        adapterOptions: expect.objectContaining({ indexes: ['assets_text', 'assets_visual'] }),
       }),
     )
   })
 
   // ── aggregations passthrough (T5) ───────────────────────────────────
 
-  it('query passes raw aggregations through to antfly.queryTable', async () => {
-    vi.mocked(antfly.queryTable).mockResolvedValueOnce({
-      results: [],
+  it('query passes raw aggregations through to search.query', async () => {
+    searchHarness.calls.query.mockResolvedValueOnce({
+      hits: [],
       aggregations: {
         byDate: { buckets: [{ key: '2026-04-01', doc_count: 3 }] },
       },
-      took: 5,
       total: 0,
+      diagnostics: { strategy: 'hybrid', durationMs: 5 },
     })
 
     const api = buildSearchAPI('tasks')
@@ -384,17 +371,17 @@ describe('search-registry', () => {
     const result = await api.query({
       q: 'any',
       aggregations: {
-        byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
+        byDate: { type: 'date_histogram', field: 'created_at', interval: 'day' },
       },
     })
 
-    expect(antfly.queryTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
       'bakin_tasks',
-      'any',
       expect.objectContaining({
-        aggregations: {
-          byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
-        },
+        text: 'any',
+        aggregations: [
+          { name: 'byDate', type: 'histogram', field: 'created_at', interval: 'day' },
+        ],
       }),
     )
     expect(result.rawAggregations).toEqual({
@@ -403,8 +390,11 @@ describe('search-registry', () => {
   })
 
   it('query merges caller aggregations with facet-derived aggregations', async () => {
-    vi.mocked(antfly.queryTable).mockResolvedValueOnce({
-      results: [], aggregations: {}, took: 1, total: 0,
+    searchHarness.calls.query.mockResolvedValueOnce({
+      hits: [],
+      aggregations: {},
+      total: 0,
+      diagnostics: { strategy: 'hybrid', durationMs: 1 },
     })
 
     const api = buildSearchAPI('tasks')
@@ -414,25 +404,28 @@ describe('search-registry', () => {
       q: 'any',
       facets: ['status'],
       aggregations: {
-        byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
+        byDate: { type: 'date_histogram', field: 'created_at', interval: 'day' },
       },
     })
 
-    expect(antfly.queryTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
       'bakin_tasks',
-      'any',
       expect.objectContaining({
-        aggregations: {
-          status: { type: 'terms', field: 'status', size: 50 },
-          byDate: { date_histogram: { field: 'created_at', interval: 'day' } },
-        },
+        text: 'any',
+        facets: ['status'],
+        aggregations: [
+          { name: 'byDate', type: 'histogram', field: 'created_at', interval: 'day' },
+        ],
       }),
     )
   })
 
-  it('caller aggregations override facet-derived ones on key collision', async () => {
-    vi.mocked(antfly.queryTable).mockResolvedValueOnce({
-      results: [], aggregations: {}, took: 1, total: 0,
+  it('caller aggregations preserve their own names alongside facets', async () => {
+    searchHarness.calls.query.mockResolvedValueOnce({
+      hits: [],
+      aggregations: {},
+      total: 0,
+      diagnostics: { strategy: 'hybrid', durationMs: 1 },
     })
 
     const api = buildSearchAPI('tasks')
@@ -442,23 +435,23 @@ describe('search-registry', () => {
       q: 'any',
       facets: ['status'],
       aggregations: {
-        // Same key as the facet, but a different shape — caller wins
         status: { type: 'terms', field: 'status', size: 500 },
       },
     })
 
-    expect(antfly.queryTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
       'bakin_tasks',
-      'any',
       expect.objectContaining({
-        aggregations: {
-          status: { type: 'terms', field: 'status', size: 500 },
-        },
+        text: 'any',
+        facets: ['status'],
+        aggregations: [
+          { name: 'status', type: 'count', field: 'status' },
+        ],
       }),
     )
   })
 
-  it('buildAntflyIndexes throws when an embedderRef is unknown', async () => {
+  it('createRegisteredTables surfaces adapter table creation failures', async () => {
     const api = buildSearchAPI('broken')
     api.registerContentType({
       ...makeDef('broken'),
@@ -467,13 +460,10 @@ describe('search-registry', () => {
       ],
     })
 
-    // createRegisteredTables swallows per-table errors and logs them, so the
-    // call itself resolves — but the resulting createTable mock should NOT
-    // have been called for this table because the error happened before it.
-    vi.mocked(antfly.createTable).mockClear()
+    searchHarness.calls.tablesCreate.mockRejectedValueOnce(new Error('bad config'))
     await createRegisteredTables()
 
-    expect(antfly.createTable).not.toHaveBeenCalledWith(
+    expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
       'bakin_broken',
       expect.anything(),
     )
@@ -487,7 +477,7 @@ describe('search-registry', () => {
     expect(result.results).toEqual([])
   })
 
-  it('createRegisteredTables calls antfly.createTable for each type', async () => {
+  it('createRegisteredTables calls search.tables.create for each type', async () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
@@ -496,14 +486,14 @@ describe('search-registry', () => {
 
     await createRegisteredTables()
 
-    expect(antfly.createTable).toHaveBeenCalledTimes(2)
-    expect(antfly.createTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.tablesCreate).toHaveBeenCalledTimes(2)
+    expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
       'bakin_tasks',
-      expect.objectContaining({ description: expect.stringContaining('tasks') }),
+      expect.objectContaining({ adapterOptions: expect.objectContaining({ description: expect.stringContaining('tasks') }) }),
     )
-    expect(antfly.createTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
       'bakin_assets',
-      expect.objectContaining({ description: expect.stringContaining('assets') }),
+      expect.objectContaining({ adapterOptions: expect.objectContaining({ description: expect.stringContaining('assets') }) }),
     )
   })
 
@@ -514,13 +504,13 @@ describe('search-registry', () => {
     await createRegisteredTables()
     await createRegisteredTables()
 
-    expect(antfly.createTable).toHaveBeenCalledTimes(1)
+    expect(searchHarness.calls.tablesCreate).toHaveBeenCalledTimes(1)
   })
 
   it('index warns and no-ops when no content type registered', async () => {
     const api = buildSearchAPI('unregistered')
     await api.index('key', { data: 'test' })
-    expect(antfly.indexDocument).not.toHaveBeenCalled()
+    expect(searchHarness.calls.documentsIndex).not.toHaveBeenCalled()
   })
 
   // ── reindexContentTypes ─────────────────────────────────────────────
@@ -541,11 +531,11 @@ describe('search-registry', () => {
     expect(results).toHaveLength(1)
     expect(results[0]!.table).toBe('bakin_tasks')
     expect(results[0]!.indexed).toBe(3)
-    expect(antfly.batchIndex).toHaveBeenCalledWith('bakin_tasks', {
-      k1: { title: 'one' },
-      k2: { title: 'two' },
-      k3: { title: 'three' },
-    })
+    expect(searchHarness.calls.documentsBatchIndex).toHaveBeenCalledWith('bakin_tasks', [
+      { key: 'k1', doc: { title: 'one' } },
+      { key: 'k2', doc: { title: 'two' } },
+      { key: 'k3', doc: { title: 'three' } },
+    ])
   })
 
   it('reindexContentTypes broadcasts start and complete events', async () => {
@@ -580,7 +570,7 @@ describe('search-registry', () => {
 
     await reindexContentTypes({ rebuild: true })
 
-    expect(antfly.rebuildIndexes).toHaveBeenCalledWith('bakin_tasks')
+    expect(searchHarness.calls.tablesRebuildIndexes).toHaveBeenCalledWith('bakin_tasks')
   })
 
   it('reindexContentTypes handles generator errors gracefully', async () => {
@@ -600,12 +590,16 @@ describe('search-registry', () => {
   // ── enrichment audit (#74) ──────────────────────────────────────────
 
   it('reindexContentTypes includes enrichment status when healthy', async () => {
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
-      indexes: [
-        { name: 'search', type: 'full_text', totalIndexed: 1, walBacklog: 0, rebuilding: false },
-        { name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 0, rebuilding: false },
-      ],
-      healthy: true,
+    searchHarness.setTableHealth('bakin_tasks', {
+      table: 'bakin_tasks',
+      status: 'ok',
+      details: {
+        indexes: [
+          { name: 'search', type: 'full_text', totalIndexed: 1, walBacklog: 0, rebuilding: false },
+          { name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 0, rebuilding: false },
+        ],
+        healthy: true,
+      },
     })
 
     const api = buildSearchAPI('tasks')
@@ -616,15 +610,19 @@ describe('search-registry', () => {
     expect(results[0]!.enrichment).toBeDefined()
     expect(results[0]!.enrichment!.healthy).toBe(true)
     expect(results[0]!.enrichment!.indexes).toHaveLength(2)
-    expect(antfly.getIndexHealth).toHaveBeenCalledWith('bakin_tasks')
+    expect(searchHarness.calls.tablesGetHealth).toHaveBeenCalledWith('bakin_tasks')
   })
 
   it('reindexContentTypes includes enrichment errors when unhealthy', async () => {
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
-      indexes: [
-        { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 0, rebuilding: false, error: 'model not found' },
-      ],
-      healthy: false,
+    searchHarness.setTableHealth('bakin_tasks', {
+      table: 'bakin_tasks',
+      status: 'warn',
+      details: {
+        indexes: [
+          { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 0, rebuilding: false, error: 'model not found' },
+        ],
+        healthy: false,
+      },
     })
 
     const api = buildSearchAPI('tasks')
@@ -638,8 +636,6 @@ describe('search-registry', () => {
   })
 
   it('reindexContentTypes omits enrichment when getIndexHealth returns null', async () => {
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
-
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
@@ -651,9 +647,13 @@ describe('search-registry', () => {
   })
 
   it('reindexContentTypes broadcasts reindex.complete before enrichment audit', async () => {
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
-      indexes: [{ name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 0, rebuilding: false }],
-      healthy: true,
+    searchHarness.setTableHealth('bakin_tasks', {
+      table: 'bakin_tasks',
+      status: 'ok',
+      details: {
+        indexes: [{ name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 0, rebuilding: false }],
+        healthy: true,
+      },
     })
 
     const api = buildSearchAPI('tasks')
@@ -671,9 +671,7 @@ describe('search-registry', () => {
   // ── verify mode (#74) ───────────────────────────────────────────────
 
   it('reindexContentTypes with verify=true checks table doc count', async () => {
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
-    // Mock getTableStats to return doc count matching indexed
-    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 1 })
+    searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 1 })
 
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
@@ -682,13 +680,11 @@ describe('search-registry', () => {
 
     expect(results[0]!.verified).toBe(1)
     expect(results[0]!.verifyDiscrepancy).toBe(0)
-    expect(antfly.getTableStats).toHaveBeenCalledWith('bakin_tasks')
+    expect(searchHarness.calls.tablesStats).toHaveBeenCalledWith('bakin_tasks')
   })
 
   it('reindexContentTypes with verify=true reports discrepancy', async () => {
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
-    // Mock getTableStats to return fewer docs than indexed
-    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 0 })
+    searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 0 })
 
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
@@ -700,20 +696,17 @@ describe('search-registry', () => {
   })
 
   it('reindexContentTypes without verify does not check doc count', async () => {
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
-
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
     const results = await reindexContentTypes()
 
     expect(results[0]!.verified).toBeUndefined()
-    expect(antfly.getTableStats).not.toHaveBeenCalled()
+    expect(searchHarness.calls.tablesStats).not.toHaveBeenCalled()
   })
 
   it('reindexContentTypes verify handles getTableStats errors gracefully', async () => {
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue(null)
-    vi.mocked(antfly.getTableStats).mockRejectedValueOnce(new Error('stats failed'))
+    searchHarness.calls.tablesStats.mockRejectedValueOnce(new Error('stats failed'))
 
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
@@ -726,12 +719,16 @@ describe('search-registry', () => {
   })
 
   it('reindexContentTypes runs enrichment audit even when batchIndex returns 0', async () => {
-    vi.mocked(antfly.batchIndex).mockResolvedValue(0)
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
-      indexes: [
-        { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 5, rebuilding: false },
-      ],
-      healthy: false,
+    searchHarness.calls.documentsBatchIndex.mockResolvedValue({ indexed: 0, failed: [] })
+    searchHarness.setTableHealth('bakin_tasks', {
+      table: 'bakin_tasks',
+      status: 'warn',
+      details: {
+        indexes: [
+          { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 5, rebuilding: false },
+        ],
+        healthy: false,
+      },
     })
 
     const api = buildSearchAPI('tasks')
@@ -744,17 +741,21 @@ describe('search-registry', () => {
     expect(results[0]!.enrichment!.healthy).toBe(false)
     // verify skipped when indexed === 0
     expect(results[0]!.verified).toBeUndefined()
-    expect(antfly.getTableStats).not.toHaveBeenCalled()
+    expect(searchHarness.calls.tablesStats).not.toHaveBeenCalled()
   })
 
   it('reindexContentTypes populates both enrichment and verify fields together', async () => {
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
-      indexes: [
-        { name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 3, rebuilding: false },
-      ],
-      healthy: false,
+    searchHarness.setTableHealth('bakin_tasks', {
+      table: 'bakin_tasks',
+      status: 'warn',
+      details: {
+        indexes: [
+          { name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 3, rebuilding: false },
+        ],
+        healthy: false,
+      },
     })
-    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 1 })
+    searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 1 })
 
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
@@ -769,8 +770,8 @@ describe('search-registry', () => {
 
   // ── crossTableSearch ────────────────────────────────────────────────
 
-  it('crossTableSearch returns fallback when antfly disabled', async () => {
-    vi.mocked(antfly.enabled).mockReturnValueOnce(false)
+  it('crossTableSearch returns fallback when search adapter is unavailable', async () => {
+    searchHarness.setAvailable(false)
 
     const result = await crossTableSearch('hello')
 
@@ -784,10 +785,9 @@ describe('search-registry', () => {
 
     const result = await crossTableSearch('build', { table: 'tasks' })
 
-    expect(antfly.queryTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
       'bakin_tasks',
-      'build',
-      expect.objectContaining({ limit: 20 }),
+      expect.objectContaining({ text: 'build', limit: 20 }),
     )
     expect(result.meta.source).toBe('antfly')
     expect(result.results).toHaveLength(1)
@@ -799,10 +799,9 @@ describe('search-registry', () => {
 
     await crossTableSearch('test', { table: 'my-plugin' })
 
-    expect(antfly.queryTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
       'bakin_widgets',
-      'test',
-      expect.anything(),
+      expect.objectContaining({ text: 'test' }),
     )
   })
 
@@ -819,21 +818,26 @@ describe('search-registry', () => {
     const api2 = buildSearchAPI('assets')
     api2.registerContentType(makeDef('assets'))
 
-    vi.mocked(antfly.multiQuery).mockResolvedValue({
-      results: [
-        { id: 'd1', table: 'bakin_tasks', score: 0.9, fields: {} },
-        { id: 'd2', table: 'bakin_assets', score: 0.8, fields: {} },
-      ],
-      total: 2,
-      took: 5,
-    })
+    searchHarness.calls.multiQuery.mockResolvedValue([
+      {
+        hits: [{ key: 'd1', document: {}, score: 0.9 }],
+        total: 1,
+        diagnostics: { strategy: 'hybrid', durationMs: 5 },
+      },
+      {
+        hits: [{ key: 'd2', document: {}, score: 0.8 }],
+        total: 1,
+        diagnostics: { strategy: 'hybrid', durationMs: 4 },
+      },
+    ])
 
     const result = await crossTableSearch('hello')
 
-    expect(antfly.multiQuery).toHaveBeenCalledWith(
-      'hello',
-      ['bakin_tasks', 'bakin_assets'],
-      expect.objectContaining({ limit: 20 }),
+    expect(searchHarness.calls.multiQuery).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ table: 'bakin_tasks', query: expect.objectContaining({ text: 'hello', limit: 10 }) }),
+        expect.objectContaining({ table: 'bakin_assets', query: expect.objectContaining({ text: 'hello', limit: 10 }) }),
+      ],
     )
     expect(result.results).toHaveLength(2)
     expect(result.meta.source).toBe('antfly')
@@ -845,13 +849,17 @@ describe('search-registry', () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
-    vi.mocked(antfly.getTableStats).mockResolvedValue({ num_docs: 42 })
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
-      indexes: [
-        { name: 'search', type: 'full_text', totalIndexed: 42, walBacklog: 0, rebuilding: false },
-        { name: 'embeddings', type: 'embeddings', totalIndexed: 42, walBacklog: 0, rebuilding: false },
-      ],
-      healthy: true,
+    searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 42 })
+    searchHarness.setTableHealth('bakin_tasks', {
+      table: 'bakin_tasks',
+      status: 'ok',
+      details: {
+        indexes: [
+          { name: 'search', type: 'full_text', totalIndexed: 42, walBacklog: 0, rebuilding: false },
+          { name: 'embeddings', type: 'embeddings', totalIndexed: 42, walBacklog: 0, rebuilding: false },
+        ],
+        healthy: true,
+      },
     })
 
     const health = await getSearchHealth()
@@ -867,12 +875,16 @@ describe('search-registry', () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
-    vi.mocked(antfly.getTableStats).mockResolvedValue({ num_docs: 10 })
-    vi.mocked(antfly.getIndexHealth).mockResolvedValue({
-      indexes: [
-        { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 0, rebuilding: false, error: 'model missing' },
-      ],
-      healthy: false,
+    searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 10 })
+    searchHarness.setTableHealth('bakin_tasks', {
+      table: 'bakin_tasks',
+      status: 'warn',
+      details: {
+        indexes: [
+          { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 0, rebuilding: false, error: 'model missing' },
+        ],
+        healthy: false,
+      },
     })
 
     const health = await getSearchHealth()
@@ -885,28 +897,18 @@ describe('search-registry', () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
-    vi.mocked(antfly.getTableStats).mockResolvedValueOnce({ num_docs: 5 })
-    vi.mocked(antfly.getIndexHealth).mockResolvedValueOnce(null)
+    searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 5 })
 
     const health = await getSearchHealth()
 
-    expect(health.tables[0]!.stats).toEqual({ num_docs: 5 })
+    expect(health.tables[0]!.stats).toEqual({ table: 'bakin_tasks', documents: 5 })
     expect(health.tables[0]!.indexHealth).toBeUndefined()
     // When index health unavailable, default to healthy (don't red-flag)
     expect(health.tables[0]!.healthy).toBe(true)
   })
 
-  it('getSearchHealth returns enabled false when antfly disabled', async () => {
-    vi.mocked(antfly.enabled).mockReturnValueOnce(false)
-
-    const health = await getSearchHealth()
-
-    expect(health.enabled).toBe(false)
-    expect(health.tables).toEqual([])
-  })
-
-  it('getSearchHealth returns enabled false when antfly is configured but unavailable', async () => {
-    vi.mocked(antfly.available).mockReturnValueOnce(false)
+  it('getSearchHealth returns enabled false when search adapter is unavailable', async () => {
+    searchHarness.setAvailable(false)
 
     const health = await getSearchHealth()
 

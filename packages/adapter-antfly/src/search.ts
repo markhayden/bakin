@@ -206,7 +206,7 @@ export class AntflySearchAdapter implements SearchAdapter {
       try {
         await client.tables.drop(name)
       } catch (err) {
-        this.logger.warn(`dropTable failed for ${name}`, err)
+        this.logger.warn(`Table drop failed for ${name}`, err)
       }
     },
 

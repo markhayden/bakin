@@ -128,7 +128,10 @@ export async function startAntflyServer(
 export function stopAntflyServer(logger: AdapterLogger = noopLogger): void {
   clearRecheckTimer()
 
-  if (!antflyProcess) return
+  if (!antflyProcess) {
+    isRunning = false
+    return
+  }
 
   logger.info('Stopping Antfly server...')
   const child = antflyProcess

@@ -110,7 +110,7 @@ export async function migrateIfNeeded(): Promise<MigrationResult> {
   try {
     await search.tables.drop(TABLE)
   } catch (err) {
-    log.warn('dropTable bakin_memory failed — continuing', {
+    log.warn('Dropping bakin_memory failed — continuing', {
       err: err instanceof Error ? err.message : String(err),
     })
   }
