@@ -13,7 +13,7 @@ import { createLogger } from './logger'
 import { recordUsage } from './usage'
 // indexCompletedTask removed — tasks plugin now handles indexing via ctx.search
 import { checkAndContinueDependents } from './continuation'
-import { getRuntimeAdapter } from './runtime-registry'
+import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '../lib/plugin-registry'
 
@@ -309,7 +309,7 @@ export async function reportComplete(
   // Notify orchestrator
   const title = await resolveTitle(taskId)
   try {
-    const runtime = getRuntimeAdapter()
+    const runtime = getAppServices().runtime
     const orchestratorId = await getRuntimeMainAgentId(runtime)
     await runtime.messaging.send({
       agentId: orchestratorId,
