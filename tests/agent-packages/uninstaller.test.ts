@@ -28,14 +28,14 @@ mock.module('@bakin/core/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openClawDir,
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
 
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/core/openclaw-config', () => ({
+mock.module('@bakin/adapter-openclaw/config', () => ({
   readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
   resetOpenClawConfigCache: () => {},
   getAgentList: () => openClawAgents,

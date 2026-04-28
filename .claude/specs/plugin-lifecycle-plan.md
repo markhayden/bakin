@@ -680,7 +680,7 @@ Each test file follows CLAUDE.md isolation:
 - Mock `getOpenClawHome` → temp dir
 - Mock logger (no-op)
 - Mock watcher (no-op)
-- Mock the active runtime boundary (`ctx.runtime` or `src/core/runtime-registry`) with in-memory state
+- Mock the active runtime boundary (`ctx.runtime` or `src/core/app-services`) with in-memory state
 - `process.env.BAKIN_HOME` + `OPENCLAW_HOME` set BEFORE imports
 - `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`
 

@@ -47,7 +47,7 @@ mock.module('../../../src/core/logger', () => ({
 mock.module('../../../src/core/watcher', () => ({
   watchFiles: mock(),
 }))
-mock.module('../../../packages/core/src/openclaw-home', () => {
+mock.module('../../../packages/adapter-openclaw/src/home', () => {
   const { join: j } = require('path') as typeof import('path')
   const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-global-search-mock`, 'openclaw')
@@ -56,9 +56,10 @@ mock.module('../../../packages/core/src/openclaw-home', () => {
     getOpenClawPath: (...parts: string[]) => j(base, ...parts),
   }
 })
-mock.module('../../../packages/core/src/main-agent', () => ({
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({

@@ -8,7 +8,7 @@ import { describe, it, expect, afterEach, mock } from 'bun:test'
 // → /tmp/module/.openclaw. Guard compares against /tmp/guard/.openclaw.
 // Paths differ → no guard trip.
 //
-// We deliberately do NOT mock @bakin/core/openclaw-home — that is the
+// We deliberately do NOT mock @bakin/adapter-openclaw/home — that is the
 // module under test. The test-mock hook skips this via its self-test
 // exception (basename of the test file matches the pattern label).
 //

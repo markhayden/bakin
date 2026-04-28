@@ -76,6 +76,10 @@ function emptyReport(): ScanReport {
   }
 }
 
+function isRuntimeWorkspaceTarget(target: string): boolean {
+  return target.startsWith('runtime:workspace-file:')
+}
+
 /**
  * Walk every projection in the lockfile and classify each. Pure read —
  * never mutates the filesystem. Drift checks honor `.userEdited` so a
@@ -99,6 +103,10 @@ export function scanAgentAssets(lockfile?: Lockfile): ScanReport {
       // Knowledge-marker projections live inside SOUL.md; classified by
       // marker presence rather than sha.
       if (p.kind === 'knowledge-marker') {
+        if (isRuntimeWorkspaceTarget(p.target)) {
+          report.ok.push(finding)
+          continue
+        }
         if (!existsSync(p.target)) {
           finding.status = 'missing'
           report.missing.push(finding)
@@ -117,6 +125,11 @@ export function scanAgentAssets(lockfile?: Lockfile): ScanReport {
         } else {
           report.ok.push(finding)
         }
+        continue
+      }
+
+      if (p.kind === 'workspace-file' && p.templateOnly && isRuntimeWorkspaceTarget(p.target)) {
+        report.ok.push(finding)
         continue
       }
 

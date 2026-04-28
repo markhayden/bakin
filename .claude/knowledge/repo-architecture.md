@@ -61,10 +61,10 @@ packages/core/src/
 ├── index.ts                ← barrel export
 ├── constants.ts            ← APP_NAME, APP_SLUG, APP_VERSION, branding
 ├── content-dir.ts          ← getContentDir(), getBakinPaths(), initBakinHome()
-├── openclaw-home.ts        ← getOpenClawHome(), getOpenClawPath()
-├── openclaw-config.ts      ← mtime-cached openclaw.json reader
 ├── settings.ts             ← BakinSettings, getSettings(), updateSettings()
-├── main-agent.ts           ← getMainAgentId(), tryGetMainAgentId()
+├── app-services.ts         ← AppServices and health service contracts
+├── adapters/               ← runtime/search adapter contracts and helpers
+├── tasks/                  ← Bakin task store
 ├── plugin-types.ts         ← BakinPlugin, PluginContext, StorageAdapter, EventBus
 ├── logger.ts               ← createLogger()
 ├── format.ts               ← formatAge(), isStale()

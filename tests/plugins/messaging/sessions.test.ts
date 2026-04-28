@@ -52,7 +52,7 @@ mock.module('../../../src/core/watcher', () => ({
 }))
 
 // Mock openclaw-home to prevent filesystem access
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawPath: mock(() => '/tmp/mock-openclaw.json'),
   getOpenClawHome: mock(() => '/tmp/mock-openclaw'),
 }))

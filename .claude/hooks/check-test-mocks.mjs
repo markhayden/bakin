@@ -58,7 +58,7 @@ function resolveRelativeMock(testFile, mockArg) {
 
 // REQUIRED_PATTERNS run against the *string argument* of vi.mock(...) calls,
 // so they need to match both relative paths ('../../../src/core/content-dir')
-// and aliases ('@/core/content-dir', '@bakin/core/openclaw-home').
+// and aliases ('@/core/content-dir', '@bakin/adapter-openclaw/home').
 const REQUIRED_PATTERNS = [
   {
     label: 'src/core/content-dir (or packages/core/src/content-dir)',
@@ -76,10 +76,12 @@ const REQUIRED_PATTERNS = [
       /flow-store|@bakin\/(tasks|workflows)|plugins\/(tasks|workflows)/.test(src),
   },
   {
-    label: 'packages/core/src/openclaw-home (or @bakin/core/openclaw-home)',
-    matches: (p) => /openclaw-home$/.test(p),
+    label: 'openclaw-home resolver (packages/adapter-openclaw/src/home or @bakin/adapter-openclaw/home)',
+    matches: (p) =>
+      /(^|\/)packages\/adapter-openclaw\/src\/home$/.test(p)
+      || /@bakin\/adapter-openclaw\/home$/.test(p),
     requiredIf: (src) =>
-      /openclaw-home|getOpenClawPath|getOpenClawHome|@bakin\/core\/openclaw/.test(src),
+      /openclaw-home|getOpenClawPath|getOpenClawHome|@bakin\/adapter-openclaw\/home/.test(src),
   },
   {
     label: 'src/core/openclaw-client',

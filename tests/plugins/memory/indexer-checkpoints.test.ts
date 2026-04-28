@@ -38,11 +38,15 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
-mock.module('../../../src/core/main-agent', () => ({ tryGetMainAgentId: () => null }))
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => null,
+  getMainAgentName: () => 'Main',
+}))
 
 interface CheckpointJsonlFile {
   agent: string

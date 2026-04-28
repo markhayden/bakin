@@ -33,12 +33,14 @@ mock.module('../../../src/core/logger', () => ({
 mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
 // Defensive: prevent matchDurablePath (called in handleWatcherEvent routing)
 // from touching the real ~/.openclaw/ home during audit-tier tests.
-mock.module('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
-mock.module('../../../src/core/main-agent', () => ({
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
+  getMainAgentId: () => 'main',
   tryGetMainAgentId: () => null,
+  getMainAgentName: () => 'Main',
 }))
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'

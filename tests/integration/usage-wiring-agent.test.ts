@@ -68,7 +68,7 @@ mock.module('@bakin/core/main-agent', () => ({
 }))
 
 // Pin openclaw home under testDir so nothing reads real ~/.openclaw.
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
@@ -156,7 +156,7 @@ describe('T2.3 agent usage wiring', () => {
       }),
     }))
     // Dispatch now derives the agent roster from openclaw-config (T2).
-    mock.module('@bakin/core/openclaw-config', () => ({
+    mock.module('@bakin/adapter-openclaw/config', () => ({
       getAgentIds: () => ['alice'],
       findAgentById: (id: string) => (id === 'alice' ? { id: 'alice' } : null),
       readOpenClawConfig: () => ({ agents: [{ id: 'alice' }] }),

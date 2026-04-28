@@ -402,10 +402,10 @@ Specific to this work:
 
 **Floor (CLAUDE.md, non-negotiable):**
 - Mock `getContentDir` (both `src/core/content-dir.ts` AND `packages/core/src/content-dir.ts`)
-- Mock `getOpenClawHome` (`@bakin/core/openclaw-home`)
+- Mock `getOpenClawHome` (`@bakin/adapter-openclaw/home`)
 - Mock the logger
 - Mock the watcher
-- Mock the active runtime boundary (`ctx.runtime` or `src/core/runtime-registry`)
+- Mock the active runtime boundary (`ctx.runtime` or `src/core/app-services`)
 - `bun test --isolate`
 - `process.env.OPENCLAW_HOME` and `process.env.BAKIN_HOME` set BEFORE imports for any module reading these at load time
 - `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`

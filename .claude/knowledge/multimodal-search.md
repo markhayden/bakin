@@ -145,7 +145,7 @@ indexes: [
 ]
 ```
 
-Add the new embedder ref to `settings.antfly.embedders`:
+Add the new embedder ref to `settings.search.settings.embedders`:
 
 ```typescript
 embedders: {

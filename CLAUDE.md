@@ -19,7 +19,7 @@ Runs on a Mac mini, accessed via Tailscale. No SaaS dependencies.
 - **Real-time:** Server-Sent Events (SSE) push updates to all connected browsers.
 - **Agents:** Managed via OpenClaw gateway, communicate through MCP tools.
 - **Search:** `@antfly/sdk` for full-text + semantic search, `ctx.search` plugin API, `bakin_` table prefix.
-- **OpenClaw Adapter Principle:** Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw. Agent identity, soul, rules, tools, models, and workspace data all live in the OpenClaw home directory (`OPENCLAW_HOME` env var, defaults to `~/.openclaw/`). Bakin owns only UI-specific data (display settings, avatars, heartbeats). Question any pattern that duplicates OpenClaw state into Bakin code or storage. All OpenClaw paths MUST use `getOpenClawPath()` from `packages/core/src/openclaw-home.ts` — never hardcode `~/.openclaw/`.
+- **OpenClaw Adapter Principle:** Bakin reads from OpenClaw through `AppServices.runtime`. Bakin writes to OpenClaw through the runtime adapter. Bakin never copies OpenClaw-owned agent identity, soul, rules, tools, models, workspace data, channels, cron jobs, or memory into core/plugin storage. Bakin owns UI data, task metadata, audit, assets, projects, workflows, plugin settings, and heartbeats. OpenClaw-specific path helpers live in `packages/adapter-openclaw/src/home.ts`; do not import them outside adapter code or adapter tests.
 - **Agent Packages:** A second primitive distinct from plugins. Plugins ship code (routes, UI, MCP tools); agent packages ship **content** — identity (SOUL/IDENTITY/AGENTS/TOOLS), OpenClaw skills, workflows, and knowledge files — that personifies an agent in OpenClaw and gives it domain perspective. Manifested as `bakin-package.json` with `kind: "agent" | "skill-pack" | "workflow-pack" | "knowledge-pack"`. Three states per agent: `unmanaged`, `adopted`, `managed`. Deep reference: `.claude/knowledge/agent-packages.md`.
 
 ## Build, Dev, CLI
@@ -44,6 +44,7 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
   assets/                  — Content files sharded by month under store/
   projects/                — Project markdown files
   heartbeats/              — Agent status heartbeats (JSON)
+  tasks/                   — Bakin-owned task metadata JSON, sharded by created month
   schedule/                — Cron job state
   workflows/               — Definitions, instances, skills
   team/                    — Contacts, personas
@@ -128,7 +129,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => { /* return paths under testDir */ },
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts) => join(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
@@ -152,7 +153,7 @@ Additional mandatory rules:
 - **Always clean up:** `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`
 - **Mock the logger:** `mock.module('../../src/core/logger', ...)` — prevents noise and avoids side effects
 - **Mock the watcher:** `mock.module('../../src/core/watcher', ...)` — prevents chokidar from watching real dirs
-- **Mock openclaw-client:** Prevents tests from sending real messages to agents
+- **Mock AppServices/runtime adapters:** Prevents tests from sending real messages to agents
 - **Never hardcode `~/.bakin/`** or `process.env.HOME` in test fixtures
 - **Use `tests/plugins/test-helpers.ts`** (`activatePlugin`, `callRoute`, `callTool`) for plugin tests — these provide properly isolated mock contexts
 
@@ -162,11 +163,11 @@ If a test does not mock the content-dir resolvers, it **will** eventually write 
 
 - **SSE Broadcasting** — `broadcast()` from `src/core/sse.ts`. Uses `globalThis.__bakinBroadcast` to survive Bun's HMR / module re-evaluation. Two channels: activity (progress) and audit (structured events).
 - **Agent Activity** — Agents report progress via `bakin_log_progress` MCP tool → `logProgress()` in task-service → SSE broadcast. Structured audit via `appendAudit()` → `audit.jsonl` + SSE + Antfly.
-- **Dispatch Failure Handling** — Two-layer defense (HTTP retry inside `openclaw-client`, then transient-vs-structural cooldown classification in `dispatch.ts`). Deep reference: `.claude/knowledge/dispatch.md`.
+- **Dispatch Failure Handling** — Two-layer defense (runtime-adapter transport retry, then transient-vs-structural cooldown classification in `dispatch.ts`). Deep reference: `.claude/knowledge/dispatch.md`.
 - **Usage Recording** — Single in-memory recorder at `src/core/usage.ts`. `recordUsage({ kind: 'mcp'|'rest'|'agent', ... })`; reads via `getUsageFeed`/`getStatsByMs`/`getErrorCount`. **Never add a parallel stat-tracking system** — fragmentation previously broke the health dashboard. Deep reference: `.claude/knowledge/usage-recording.md`.
 - **Models Cache + Catalog** — Persistent disk cache at `~/.bakin/plugin-settings/models/available.json` plus a curated catalog (`plugins/models/data/known-models.ts`) merged in server-side. **Never fabricate model metadata.** Deep reference: `.claude/knowledge/models-plugin.md`.
-- **OpenClaw Home Directory** — `getOpenClawHome()` / `getOpenClawPath()` in `packages/core/src/openclaw-home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/`. For dev without OpenClaw: `bun run dev:mock` (Imitation Crab in `dev/imitation-crab/`); reseed with `bun run mock:seed --force`.
-- **Content Directory** — `getContentDir()` in `packages/core/src/content-dir.ts`. Resolution: `BAKIN_HOME` env → `~/.bakin/` → `./content/` fallback. Well-known paths via `getBakinPaths()`.
+- **OpenClaw Home Directory** — Adapter-private `getOpenClawHome()` / `getOpenClawPath()` in `packages/adapter-openclaw/src/home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/`. For dev without OpenClaw: `bun run dev:mock` (Imitation Crab in `dev/imitation-crab/`); reseed with `bun run mock:seed --force`.
+- **Content Directory** — `getContentDir()` in `packages/core/src/content-dir.ts`. Resolution: `BAKIN_HOME` env → `~/.bakin/`. Well-known paths via `getBakinPaths()`.
 - **Plugin Communication** — Cross-plugin and core ↔ plugin calls go exclusively through the HookRegistry (`packages/core/src/hooks/hook-registry.ts`). Plugins register hooks in `activate()` via `ctx.hooks.register(name, handler)`; callers use `getHookRegistry().invoke<R>(name, data)`. Hook naming: `{pluginId}.{operation}`. No direct imports between plugins.
 - **MCP Tool Registration** — Fully dynamic. Plugins register exec tools via `ctx.registerExecTool()` during activation. Scripts self-register via `addExecTool()` on import. `mcp-server.ts` calls `getAllExecTools()` at startup.
 - **Plugin Settings** — Each plugin declares a `settingsSchema`; the settings page renders schemas via `PluginSettingsRenderer`. Values persisted at `~/.bakin/plugin-settings/{pluginId}.json`, accessible via `ctx.getSettings<T>()`. The same renderer drives a built-in **System & Alerts** tab that edits `~/.bakin/settings.json` via `/api/settings`. Watchdog re-reads settings every cycle — no restart needed.

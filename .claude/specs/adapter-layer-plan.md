@@ -229,8 +229,8 @@ Move OpenClaw-specific implementation into `packages/adapter-openclaw/`.
 ### Move Or Re-home
 
 - `src/core/openclaw-client.ts`
-- `packages/core/src/openclaw-home.ts`
-- `packages/core/src/openclaw-config.ts`
+- `packages/adapter-openclaw/src/home.ts`
+- `packages/adapter-openclaw/src/config.ts`
 - `src/core/discord-gateway.ts`
 - `scripts/lib/post-channel.ts`
 - Plugin-side OpenClaw adapter helpers from `plugins/team/` and

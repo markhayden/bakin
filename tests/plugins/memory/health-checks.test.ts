@@ -39,12 +39,12 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
