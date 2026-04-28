@@ -13,8 +13,8 @@ import { createLogger } from './logger'
 import { recordUsage } from './usage'
 // indexCompletedTask removed — tasks plugin now handles indexing via ctx.search
 import { checkAndContinueDependents } from './continuation'
-import { sendAgentMessage } from './runtime-registry'
-import { getMainAgentId } from './main-agent'
+import { getRuntimeAdapter } from './runtime-registry'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '../lib/plugin-registry'
 
 const log = createLogger('task-service')
@@ -25,7 +25,7 @@ const hooks = () => getHookRegistry()
 // ---------------------------------------------------------------------------
 
 function broadcast(data: Record<string, unknown>): void {
-  const fn = (globalThis as any).__bakinBroadcast
+  const fn = (globalThis as { __bakinBroadcast?: (data: Record<string, unknown>) => void }).__bakinBroadcast
   if (fn) fn(data)
 }
 
@@ -249,7 +249,6 @@ export async function createTaskWithEffects(opts: {
   // Start workflow instance if one was specified
   if (effectiveWorkflowId) {
     try {
-      const contentDir = getContentDir()
       await hooks().invoke<void>('workflows.createInstance', { taskId: task.id, workflowId: effectiveWorkflowId, assignee: opts.assignee })
       log.info('Started workflow', { taskId: task.id, workflowId: effectiveWorkflowId })
       broadcast({ type: 'workflow_started', taskId: task.id, workflowId: effectiveWorkflowId })
@@ -310,7 +309,12 @@ export async function reportComplete(
   // Notify orchestrator
   const title = await resolveTitle(taskId)
   try {
-    await sendAgentMessage(getMainAgentId(), `TASK COMPLETE: ${title} — ${summary}`)
+    const runtime = getRuntimeAdapter()
+    const orchestratorId = await getRuntimeMainAgentId(runtime)
+    await runtime.messaging.send({
+      agentId: orchestratorId,
+      content: `TASK COMPLETE: ${title} — ${summary}`,
+    })
   } catch (err) {
     log.warn('Failed to notify orchestrator of task completion', err)
   }
