@@ -209,14 +209,15 @@ export function start(contentDir: string): void {
             log.warn('Failed to log watchdog alert on task', err)
           }
 
-          // Discord alert
-          sendWatchdogChannelMessage(
-            'discord',
-            `channel:${settings.watchdog.alertChannelId}`,
-            `⚠️ **Watchdog Alert**: Task "${task.title}" (@${task.agent || 'unassigned'}) has had no progress log in ${minutesStuck}+ minutes.`
-          ).catch(err => {
-            log.error('Watchdog Discord alert failed', err)
-          })
+          if (settings.notifications.channel !== 'none') {
+            sendWatchdogChannelMessage(
+              settings.notifications.channel,
+              settings.notifications.target || `channel:${settings.watchdog.alertChannelId}`,
+              `⚠️ **Watchdog Alert**: Task "${task.title}" (@${task.agent || 'unassigned'}) has had no progress log in ${minutesStuck}+ minutes.`
+            ).catch(err => {
+              log.error('Watchdog channel alert failed', err)
+            })
+          }
 
           log.warn('Stuck task detected', { title: task.title, agent: task.agent, minutesStuck, agentStale })
         }
@@ -256,7 +257,7 @@ export function start(contentDir: string): void {
                   settings.notifications.target || `channel:${wd.alertChannelId}`,
                   `⚠️ **MCP unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
                 ).catch(err => {
-                  log.error('MCP 5xx Discord alert failed', err)
+                  log.error('MCP 5xx channel alert failed', err)
                 })
               }
             }
@@ -302,7 +303,7 @@ export function start(contentDir: string): void {
                   settings.notifications.target || `channel:${wd.alertChannelId}`,
                   `⚠️ **REST API unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
                 ).catch(err => {
-                  log.error('REST 5xx Discord alert failed', err)
+                  log.error('REST 5xx channel alert failed', err)
                 })
               }
             }
@@ -366,7 +367,7 @@ export function start(contentDir: string): void {
         log.error('Workflow step timeout check failed', err)
       }
 
-      // ─── Gate notification check (Discord alert) ──────────────────────
+      // ─── Gate notification check (channel alert) ──────────────────────
       if (settings.notifications.channel !== 'none' && settings.notifications.gateAlerts !== false) {
         try {
           const pendingGates = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; stepStates: Record<string, { status: string; output?: unknown }>; history: Array<Record<string, unknown>> }>>('workflows.listInstances', { statusFilter: 'pending_approval' }) ?? []
@@ -414,7 +415,7 @@ export function start(contentDir: string): void {
               settings.notifications.target || `channel:${settings.watchdog.alertChannelId}`,
               msg
             ).catch(err => {
-              log.error('Gate Discord notification failed', err, { taskId })
+              log.error('Gate channel notification failed', err, { taskId })
             })
 
             await hooks().invoke<void>('workflows.markGateNotified', { taskId, stepId: currentStepId })

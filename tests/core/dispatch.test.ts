@@ -307,7 +307,7 @@ describe('dispatch', () => {
     it('records kind="structural" on 5xx error and does NOT expire after transientCooldownMs', async () => {
       setupTodoTask({ id: 't-structural', title: 'Structural-failing task' })
       mockRuntimeSend.mockRejectedValueOnce(
-        new Error('OpenClaw sendMessage failed (500): upstream boom'),
+        new Error('Runtime adapter send failed (500): upstream boom'),
       )
 
       await dispatchTasks(tempDir, 3737)
