@@ -55,4 +55,4 @@ steps:
 
       After posting, submit output with the returned messageId and channel.
     channels:
-      - discord
+      - general

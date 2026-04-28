@@ -3,7 +3,7 @@
  *
  * Activates the workflows plugin, then asserts that the `workflows.list*`
  * / `workflows.get*` channel hooks are wired and the GET /notification-channels
- * route returns the seven built-in channels.
+ * route returns the built-in runtime channels.
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
@@ -78,14 +78,14 @@ describe('GET /notification-channels', () => {
     expect(findRoute(plugin.routes, 'GET', '/notification-channels')).toBeDefined()
   })
 
-  it('returns the seven built-in channels', async () => {
+  it('returns the built-in runtime channels', async () => {
     const route = findRoute(plugin.routes, 'GET', '/notification-channels')!
     const { status, body } = await callRoute(route, plugin.ctx)
     expect(status).toBe(200)
     const channels = body.channels as NotificationChannelDef[]
-    expect(channels.length).toBeGreaterThanOrEqual(7)
+    expect(channels.length).toBeGreaterThanOrEqual(4)
     const builtinIds = channels.filter(c => c.runtime === 'builtin').map(c => c.id).sort()
-    expect(builtinIds).toEqual(['discord', 'email', 'instagram', 'slack', 'tiktok', 'twitter', 'youtube'])
+    expect(builtinIds).toEqual(['alerts', 'announcements', 'email', 'general'])
   })
 
   it('each channel carries label, initials, and icon metadata', async () => {

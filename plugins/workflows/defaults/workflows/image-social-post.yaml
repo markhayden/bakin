@@ -35,7 +35,7 @@ steps:
         description: The post caption text, ready to publish as-is
       platform:
         type: string
-        description: "Target platform (instagram, twitter, discord, etc.)"
+        description: "Target distribution surface or runtime channel context"
       imageBrief:
         type: object
         fields:
@@ -131,7 +131,7 @@ steps:
         description: Whether the post was published successfully
       messageId:
         type: string
-        description: Discord message ID or platform post ID
+        description: Runtime delivery reference or platform post ID
       channel:
         type: string
         description: Where it was posted
@@ -139,4 +139,4 @@ steps:
         type: string
         description: Link to the published post if available
     channels:
-      - discord
+      - general
