@@ -14,7 +14,7 @@
  * plugin-check loop in src/core/doctor.ts's runPluginHealthChecks().
  */
 import { getSettings } from '../../../src/core/settings'
-import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
+import type { HealthCheckResult, SearchHealthSnapshot } from '../../../packages/core/src/plugin-types'
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
@@ -34,13 +34,18 @@ function error(check: string, message: string): HealthCheckResult {
  * Verify registered content types have readable table stats.
  * Returns no rows when search is disabled or unreachable.
  */
-export async function checkSearchTables(): Promise<HealthCheckResult[]> {
+export async function checkSearchTables(
+  readSearchHealth?: () => Promise<SearchHealthSnapshot>,
+): Promise<HealthCheckResult[]> {
   const settings = getSettings()
   if (!settings.search.settings.enabled) return []
 
   try {
-    const { getSearchHealth } = await import('../../../src/core/search-registry')
-    const health = await getSearchHealth()
+    if (!readSearchHealth) {
+      return [warn('search-tables', 'Search health API unavailable — cannot inspect registered content type stats')]
+    }
+
+    const health = await readSearchHealth()
 
     if (!health.enabled) return []
 

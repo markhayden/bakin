@@ -10,7 +10,6 @@ import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getSettings } from '../../src/core/settings'
 import { getContentDir } from '../../src/core/content-dir'
-import { getSearchHealth } from '../../src/core/search-registry'
 import { getUsageFeed, getErrorCount, getStatsByMs, WINDOW_MS, type UsageKind, type WindowKey } from '../../src/core/usage'
 import {
   listHealthChecks,
@@ -169,7 +168,8 @@ const healthPlugin: BakinPlugin = {
       path: '/search-status',
       method: 'GET',
       handler: async () => {
-        return Response.json(await getSearchHealth())
+        const health = ctx.search.health ? await ctx.search.health() : { enabled: false, tables: [] }
+        return Response.json(health)
       },
     })
 
@@ -305,7 +305,7 @@ const healthPlugin: BakinPlugin = {
     ctx.registerHealthCheck({
       id: 'runtime',
       name: 'Runtime reachability',
-      run: () => checkRuntime(),
+      run: () => checkRuntime(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'search',

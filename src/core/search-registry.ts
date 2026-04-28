@@ -9,6 +9,7 @@ import type {
   FileBackedContentTypeDefinition,
   SearchAPI,
   SearchContentTypeDefinition,
+  SearchHealthSnapshot,
   SearchIndexDefinition,
   SearchQueryParams,
   SearchResponse,
@@ -550,6 +551,10 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
       }
     },
 
+    health(): Promise<SearchHealthSnapshot> {
+      return getSearchHealth()
+    },
+
     maintenance: {
       available(): Promise<boolean> {
         return getSearchAdapter().available()
@@ -911,16 +916,7 @@ export async function crossTableSearch(q: string, opts?: {
  * Get health/stats for all registered search tables, including per-index
  * enrichment status from getIndexHealth().
  */
-export async function getSearchHealth(): Promise<{
-  enabled: boolean
-  tables: Array<{
-    table: string
-    pluginId: string
-    stats: Record<string, unknown> | null
-    indexHealth?: SearchEnrichmentHealth['indexes']
-    healthy: boolean
-  }>
-}> {
+export async function getSearchHealth(): Promise<SearchHealthSnapshot> {
   const registry = getRegistry()
   const search = getSearchAdapter()
   const isAvailable = await search.available()

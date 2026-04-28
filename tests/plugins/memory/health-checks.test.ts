@@ -17,6 +17,7 @@ process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
+import type { SearchHealthSnapshot } from '../../../packages/core/src/plugin-types'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -66,15 +67,15 @@ interface MockTable {
   table: string
   pluginId: string
   healthy: boolean
-  stats?: Record<string, unknown> | null
+  stats: Record<string, unknown> | null
 }
-let mockHealth: { enabled: boolean; tables: MockTable[] } = { enabled: true, tables: [] }
+let mockHealth: SearchHealthSnapshot = { enabled: true, tables: [] }
 let mockSearchHealthThrows: Error | null = null
+async function readMockSearchHealth(): Promise<SearchHealthSnapshot> {
+  if (mockSearchHealthThrows) throw mockSearchHealthThrows
+  return mockHealth
+}
 mock.module('../../../src/core/search-registry', () => ({
-  getSearchHealth: async () => {
-    if (mockSearchHealthThrows) throw mockSearchHealthThrows
-    return mockHealth
-  },
   // The plugin-registration smoke test imports the full memory plugin,
   // whose activate() chain reaches `ensureRegisteredTables` via
   // memory-migration. Stub it as a no-op so activate() doesn't throw.
@@ -127,12 +128,12 @@ afterAll(() => {
 describe('checkSearchTables — quiescent paths', () => {
   it('returns no rows when search is disabled in settings', async () => {
     mockSearchEnabled = false
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toEqual([])
   })
 
   it('warns when search is enabled but no content types are registered', async () => {
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warn')
     expect(results[0].message).toMatch(/no content types registered/)
@@ -140,7 +141,7 @@ describe('checkSearchTables — quiescent paths', () => {
 
   it('returns no rows when search-registry reports the search subsystem disabled', async () => {
     mockHealth = { enabled: false, tables: [] }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toEqual([])
   })
 })
@@ -150,7 +151,7 @@ describe('checkSearchTables — quiescent paths', () => {
 describe('checkSearchTables — registry shape', () => {
   it('warns when search is enabled but no content types are registered', async () => {
     mockHealth = { enabled: true, tables: [] }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toHaveLength(1)
     expect(results[0].check).toBe('search-tables')
     expect(results[0].status).toBe('warn')
@@ -165,7 +166,7 @@ describe('checkSearchTables — registry shape', () => {
         { table: 'projects', pluginId: 'projects', healthy: true, stats: { num_docs: 5 } },
       ],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/2 tables, 17 total documents/)
@@ -178,7 +179,7 @@ describe('checkSearchTables — registry shape', () => {
         { table: 'tasks', pluginId: 'tasks', healthy: true, stats: { storage_status: { empty: false } } },
       ],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/document counts unavailable from current search adapter API/)
@@ -193,7 +194,7 @@ describe('checkSearchTables — per-table branches', () => {
       enabled: true,
       tables: [{ table: 'tasks', pluginId: 'tasks', healthy: true, stats: null }],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results.some(r => r.status === 'warn' && r.message.includes('stats unavailable'))).toBe(true)
   })
 
@@ -202,7 +203,7 @@ describe('checkSearchTables — per-table branches', () => {
       enabled: true,
       tables: [{ table: 'schedule', pluginId: 'schedule', healthy: true, stats: { num_docs: 0 } }],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results.some(r => r.status === 'ok' && r.message.includes('indexed at runtime'))).toBe(true)
   })
 
@@ -211,7 +212,7 @@ describe('checkSearchTables — per-table branches', () => {
       enabled: true,
       tables: [{ table: 'tasks', pluginId: 'tasks', healthy: true, stats: { num_docs: 0 } }],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results.some(r => r.status === 'ok' && r.message.includes('reindex via POST /api/reindex?table=tasks'))).toBe(true)
   })
 
@@ -220,7 +221,7 @@ describe('checkSearchTables — per-table branches', () => {
       enabled: true,
       tables: [{ table: 'tasks', pluginId: 'tasks', healthy: true, stats: { storage_status: { empty: true } } }],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results.some(r => r.status === 'ok' && r.message.includes('appears empty'))).toBe(true)
   })
 })
@@ -230,7 +231,7 @@ describe('checkSearchTables — per-table branches', () => {
 describe('checkSearchTables — failure path', () => {
   it('returns an error row when search health throws', async () => {
     mockSearchHealthThrows = new Error('connection refused')
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/connection refused/)
@@ -261,6 +262,7 @@ describe('plugin registration', () => {
         registerContentType: noop, registerFileBackedContentType: noop,
         index: noopAsync, remove: noopAsync, transform: noopAsync,
         query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+        health: readMockSearchHealth,
       },
       storage: {},
       events: { on: noop, emit: noop, off: noop },

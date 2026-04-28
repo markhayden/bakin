@@ -283,7 +283,7 @@ const memoryPlugin: BakinPlugin = {
     ctx.registerHealthCheck({
       id: 'search-tables',
       name: 'Search table stats',
-      run: () => checkSearchTables(),
+      run: () => checkSearchTables(ctx.search.health?.bind(ctx.search)),
     })
 
     log.info('memory plugin activated', {

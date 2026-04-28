@@ -72,15 +72,6 @@ mock.module('../../../src/core/mcporter', () => ({
   syncConfig: async () => { syncConfigCalls++; return ['updated'] },
 }))
 
-let mockRuntimePing = async () => true
-let mockRuntimePingThrows: Error | null = null
-mock.module('../../../src/core/runtime-registry', () => ({
-  pingRuntime: async () => {
-    if (mockRuntimePingThrows) throw mockRuntimePingThrows
-    return mockRuntimePing()
-  },
-}))
-
 let mockSearchEnabled = false
 let mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
 let mockSearchInstalled = true
@@ -201,8 +192,6 @@ beforeEach(() => {
   mockAgentEntries = []
   mockStaleEntries = []
   syncConfigCalls = 0
-  mockRuntimePing = async () => true
-  mockRuntimePingThrows = null
   mockSearchEnabled = false
   mockSearchInstalled = true
   mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
@@ -342,23 +331,25 @@ describe('checkMcporter', () => {
 
 describe('checkRuntime', () => {
   it('reports ok when ping succeeds', async () => {
-    mockRuntimePing = async () => true
-    const results = await checkRuntime()
+    mockRuntime.ping = async () => true
+    const results = await checkRuntime(mockRuntime)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/reachable/)
   })
 
   it('reports error when ping returns false', async () => {
-    mockRuntimePing = async () => false
-    const results = await checkRuntime()
+    mockRuntime.ping = async () => false
+    const results = await checkRuntime(mockRuntime)
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/not responding/)
   })
 
   it('reports error when ping throws', async () => {
-    mockRuntimePingThrows = new Error('connection refused')
-    const results = await checkRuntime()
+    mockRuntime.ping = async () => {
+      throw new Error('connection refused')
+    }
+    const results = await checkRuntime(mockRuntime)
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/connection refused/)
   })
