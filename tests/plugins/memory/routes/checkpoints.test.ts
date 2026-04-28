@@ -2,7 +2,7 @@
  * Tests for plugins/memory/lib/routes/checkpoints.ts.
  *
  * Both endpoints hit the indexed `bakin_memory` table (tier=checkpoint) —
- * neither re-reads the filesystem. The adapter and gateway are mocked
+ * neither re-reads the filesystem. Runtime memory is mocked
  * defensively so a missing `~/.openclaw/` never leaks through.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'

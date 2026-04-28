@@ -7,7 +7,7 @@
  *   2. Registers exactly one search content type — `bakin_memory` — with the
  *      tier/agent/kind/eventType/phase/date facets called for by the spec.
  *   3. Does NOT register the legacy `audit` table.
- *   4. Does NOT register the old `/workspace` or `/gateway` routes.
+ *   4. Does NOT register the old `/workspace` route.
  *   5. Wires `ctx.watchFiles` with the spec-listed OpenClaw and Bakin paths.
  *   6. Keeps the existing nav item (`/memory`).
  */
@@ -67,7 +67,7 @@ mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     runtime: {
       adapter: 'openclaw',
-      settings: { binaryPath: '/fake/openclaw', gatewayUrl: 'http://localhost', gatewayPort: 18789 },
+      settings: {},
     },
     antfly: { auditTtl: null },
   }),
@@ -125,10 +125,9 @@ describe('memory plugin shell (C2)', () => {
     }
   })
 
-  it('does NOT register the old /workspace or /gateway routes', async () => {
+  it('does NOT register the old /workspace route', async () => {
     const activated = await activatePlugin(memoryPlugin, testDir)
     expect(findRoute(activated.routes, 'GET', '/workspace')).toBeUndefined()
-    expect(findRoute(activated.routes, 'GET', '/gateway')).toBeUndefined()
   })
 
   it('registers GET /audit (C3 audit tier)', async () => {

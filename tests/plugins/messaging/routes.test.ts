@@ -42,6 +42,22 @@ mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
+const mockChatAgentCompletion = mock(async (...args: unknown[]) => {
+  void args
+  return ''
+})
+const mockStreamAgentMessageResponse = mock(async (...args: unknown[]) => {
+  void args
+  return new Response('data: [DONE]\n\n', {
+    headers: { 'Content-Type': 'text/event-stream' },
+  })
+})
+
+mock.module('../../../src/core/runtime-registry', () => ({
+  chatAgentCompletion: (...args: unknown[]) => mockChatAgentCompletion(...args),
+  streamAgentMessageResponse: (...args: unknown[]) => mockStreamAgentMessageResponse(...args),
+}))
+
 // Suppress SSE broadcast
 ;(globalThis as any).__bakinBroadcast = mock()
 
@@ -106,6 +122,10 @@ beforeEach(() => {
   // Reset to empty messaging before each test
   seedItems([])
   mock.clearAllMocks()
+  mockChatAgentCompletion.mockResolvedValue('')
+  mockStreamAgentMessageResponse.mockResolvedValue(new Response('data: [DONE]\n\n', {
+    headers: { 'Content-Type': 'text/event-stream' },
+  }))
 })
 
 // ===========================================================================
@@ -439,86 +459,37 @@ describe('Calendar routes', () => {
       expect(body.error).toBeDefined()
     })
 
-    it('calls the LLM gateway and returns response with suggestions', async () => {
+    it('calls runtime completion and returns response with suggestions', async () => {
       // Set up persona file
       const personaDir = join(testDir, 'team', 'personas')
       mkdirSync(personaDir, { recursive: true })
       writeFileSync(join(personaDir, 'chef.md'), '# Chef\nA nutrition-focused agent.')
 
-      // Set up gateway token
-      const openclawDir = join(tmpdir(), `.openclaw-test-${Date.now()}`)
-      mkdirSync(openclawDir, { recursive: true })
-      writeFileSync(join(openclawDir, 'openclaw.json'), JSON.stringify({
-        gateway: { auth: { token: 'test-token-123' } },
-      }))
-
-      // Mock os.homedir to point to our temp dir
-      mock.module('os', () => {
-        const actual = require('os') as typeof import('os')
-        return { ...actual, homedir: () => join(openclawDir, '..') }
-      })
-
-      const llmResponse = {
-        choices: [{
-          message: {
-            content: `Great ideas coming up!\n\n\`\`\`json\n[{"title":"Morning Smoothie","scheduledAt":"2026-04-15T09:00:00Z","contentType":"recipe","tone":"energetic","brief":"A vibrant smoothie recipe post"}]\n\`\`\``,
-          },
-        }],
-      }
-
-      const originalFetch = globalThis.fetch
-      globalThis.fetch = mock().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(llmResponse),
-        text: () => Promise.resolve(JSON.stringify(llmResponse)),
-      }) as any
-
-      try {
-        const route = findRoute(plugin.routes, 'POST', '/brainstorm')!
-        const { status, body } = await callRoute(route, plugin.ctx, {
-          body: {
-            agentId: 'chef',
-            message: 'I need some recipe ideas for next week',
-            history: [],
-          },
-        })
-
-        // The test might return 500 if homedir mock doesn't work perfectly
-        // with dynamic imports, so we test what we can
-        if (status === 200) {
-          expect(body.response).toBeDefined()
-          expect(body.suggestions).toBeDefined()
-          expect(Array.isArray(body.suggestions)).toBe(true)
-        } else {
-          // Even a 500 means we hit the route properly
-          expect(status).toBe(500)
-        }
-      } finally {
-        globalThis.fetch = originalFetch
-      }
-    })
-
-    // TODO: pre-existing flake on main, unrelated to issue #81. The mock.module('os')
-    // call doesn't reliably swap homedir() after the module graph is warm, so the
-    // route hangs on an outbound fetch instead of failing fast on the missing token.
-    // Re-enable once the brainstorm route is refactored to inject homedir.
-    it.skip('returns 500 when gateway token is missing', async () => {
-      // Use a homedir with no openclaw config
-      mock.module('os', () => {
-        const actual = require('os') as typeof import('os')
-        return { ...actual, homedir: () => join(tmpdir(), 'nonexistent-dir') }
-      })
+      mockChatAgentCompletion.mockResolvedValueOnce(
+        `Great ideas coming up!\n\n\`\`\`json\n[{"title":"Morning Smoothie","scheduledAt":"2026-04-15T09:00:00Z","contentType":"recipe","tone":"energetic","brief":"A vibrant smoothie recipe post"}]\n\`\`\``,
+      )
 
       const route = findRoute(plugin.routes, 'POST', '/brainstorm')!
       const { status, body } = await callRoute(route, plugin.ctx, {
         body: {
-          agentId: 'explorer',
-          message: 'Ideas please',
+          agentId: 'chef',
+          message: 'I need some recipe ideas for next week',
           history: [],
         },
       })
-      expect(status).toBe(500)
-      expect(body.error).toBeDefined()
+
+      expect(status).toBe(200)
+      expect(body.response).toBe('Great ideas coming up!')
+      expect(body.suggestions).toEqual([
+        expect.objectContaining({
+          title: 'Morning Smoothie',
+          contentType: 'recipe',
+          tone: 'energetic',
+        }),
+      ])
+      expect(mockChatAgentCompletion).toHaveBeenCalledWith(expect.objectContaining({
+        agentId: 'chef',
+      }))
     })
   })
 })

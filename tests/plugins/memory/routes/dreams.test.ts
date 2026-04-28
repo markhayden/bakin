@@ -2,7 +2,7 @@
  * Tests for plugins/memory/lib/routes/dreams.ts.
  *
  * Both endpoints hit the indexed `bakin_memory` table (tier=dream) — routes
- * never re-read the filesystem. The adapter and gateway are mocked
+ * never re-read the filesystem. Runtime memory is mocked
  * defensively so a missing `~/.openclaw/` never leaks through.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'

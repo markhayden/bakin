@@ -168,7 +168,7 @@ describe('SessionChat — proposal forwarding over SSE', () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = mock(async () =>
       sseResponse([
-        { event: 'error', data: { message: 'gateway rejected' } },
+        { event: 'error', data: { message: 'runtime rejected' } },
       ]),
     ) as unknown as typeof fetch
     try {
@@ -179,7 +179,7 @@ describe('SessionChat — proposal forwarding over SSE', () => {
         fireEvent.keyDown(ta, { key: 'Enter' })
       })
       await waitFor(() => {
-        expect(screen.getByRole('alert').textContent).toContain('gateway rejected')
+        expect(screen.getByRole('alert').textContent).toContain('runtime rejected')
       })
     } finally {
       globalThis.fetch = originalFetch

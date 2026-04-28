@@ -103,7 +103,7 @@ describe('watchdog', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-watchdog-'))
     vi.useFakeTimers()
     mock.clearAllMocks()
-    // Default: no recorded gateway reply for any agent (forces watchdog
+    // Default: no recorded runtime reply for any agent (forces watchdog
     // to fall back to the heartbeat-file path). Individual tests override.
     mockAgentLastReply.mockReturnValue(null)
     mockRuntimeSend.mockResolvedValue({ id: 'runtime-msg' })
@@ -239,7 +239,7 @@ describe('watchdog', () => {
       )
     })
 
-    it('does not auto-recover when the gateway has a recent reply from the agent', async () => {
+    it('does not auto-recover when the runtime has a recent reply from the agent', async () => {
       const hookRegistry = getHookRegistry()
       const invokeMock = vi.mocked(hookRegistry.invoke)
 
@@ -265,7 +265,7 @@ describe('watchdog', () => {
 
       // Heartbeat file is stale...
       vi.mocked(isStale).mockReturnValue(true)
-      // ...but the gateway just replied successfully, so the agent is alive.
+      // ...but the runtime just replied successfully, so the agent is alive.
       mockAgentLastReply.mockReturnValue(Date.now())
 
       start(tempDir)
