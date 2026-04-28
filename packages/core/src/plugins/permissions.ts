@@ -13,7 +13,7 @@ import { z } from 'zod'
 
 export const PermissionSchema = z.enum([
   'events.emit',
-  'openclaw.read',
+  'runtime.read',
   'storage.read',
   'storage.write',
 ])
@@ -22,7 +22,7 @@ export type Permission = z.infer<typeof PermissionSchema>
 
 export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'events.emit':   'Broadcast Server-Sent Events to connected browsers',
-  'openclaw.read': 'Read agent identity, skills, and workspace state from the runtime adapter',
+  'runtime.read':  'Read agent identity, skills, and workspace state from the runtime adapter',
   'storage.read':  'Read files in ~/.bakin/',
   'storage.write': 'Write files in ~/.bakin/',
 }
