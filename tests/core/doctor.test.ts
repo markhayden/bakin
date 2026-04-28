@@ -42,9 +42,12 @@ mock.module('@/core/content-dir', () => ({
 // Mock settings
 mock.module('@/core/settings', () => ({
   getSettings: mock(() => ({
+    runtime: {
+      adapter: 'openclaw',
+      settings: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+    },
     antfly: { enabled: false },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
-    openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
     service: { enabled: false },
   })),
 }))
@@ -229,9 +232,12 @@ describe('doctor', () => {
       const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
+        runtime: {
+          adapter: 'openclaw',
+          settings: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+        },
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
-        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
       // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
@@ -250,9 +256,12 @@ describe('doctor', () => {
       const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
+        runtime: {
+          adapter: 'openclaw',
+          settings: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+        },
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
-        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
       // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
@@ -273,9 +282,12 @@ describe('doctor', () => {
       const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
+        runtime: {
+          adapter: 'openclaw',
+          settings: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+        },
         antfly: { enabled: false },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },
-        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
       // (vi.resetModules is a no-op in the bun:test shim — getSettings reads

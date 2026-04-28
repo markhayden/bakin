@@ -65,7 +65,10 @@ mock.module('../../../packages/core/src/main-agent', () => ({
 }))
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
-    openclaw: { binaryPath: '/fake/openclaw', gatewayUrl: 'http://localhost', gatewayPort: 18789 },
+    runtime: {
+      adapter: 'openclaw',
+      settings: { binaryPath: '/fake/openclaw', gatewayUrl: 'http://localhost', gatewayPort: 18789 },
+    },
     antfly: { auditTtl: null },
   }),
 }))

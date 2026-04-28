@@ -12,9 +12,16 @@ const log = createLogger('settings')
 export type RuntimeAdapterName = 'openclaw'
 export type SearchAdapterName = 'antfly'
 
+export interface OpenClawRuntimeSettings extends Record<string, unknown> {
+  binaryPath: string
+  gatewayUrl: string
+  gatewayPort: number
+}
+
 export interface BakinSettings {
   runtime: {
     adapter: RuntimeAdapterName
+    settings: OpenClawRuntimeSettings
   }
   search: {
     adapter: SearchAdapterName
@@ -59,11 +66,6 @@ export interface BakinSettings {
   sse: {
     maxClients: number
     keepAliveMs: number
-  }
-  openclaw: {
-    binaryPath: string
-    gatewayUrl: string
-    gatewayPort: number
   }
   models: {
     allowlist?: string[]
@@ -147,6 +149,11 @@ export interface BakinSettings {
 export const DEFAULT_SETTINGS: BakinSettings = {
   runtime: {
     adapter: 'openclaw',
+    settings: {
+      binaryPath: process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw',
+      gatewayUrl: 'http://127.0.0.1',
+      gatewayPort: 18789,
+    },
   },
   search: {
     adapter: 'antfly',
@@ -179,11 +186,6 @@ export const DEFAULT_SETTINGS: BakinSettings = {
   sse: {
     maxClients: 50,
     keepAliveMs: 30000,
-  },
-  openclaw: {
-    binaryPath: process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw',
-    gatewayUrl: 'http://127.0.0.1',
-    gatewayPort: 18789,
   },
   models: {},
   antfly: {
