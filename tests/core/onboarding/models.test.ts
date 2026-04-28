@@ -2,7 +2,7 @@
  * Tests for the models onboarding component (Termite model downloads).
  *
  * Strategy mirrors the antfly test suite:
- *   - Mock the Antfly adapter binary helper so the test can assert what happens when the
+ *   - Mock the search adapter binary helper so the test can assert what happens when the
  *     antfly binary is present vs missing
  *   - Mock child_process.spawn to fire configurable exit codes without
  *     launching real processes
@@ -65,8 +65,8 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('@bakin/adapter-antfly', () => ({
-  findAntflyBinary: () => antflyBinary,
+mock.module('../../../src/core/search-adapter-factory', () => ({
+  findSearchAdapterBinary: () => antflyBinary,
 }))
 
 mock.module('../../../src/core/logger', () => ({

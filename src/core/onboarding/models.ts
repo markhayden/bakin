@@ -23,8 +23,8 @@ import { spawn } from 'child_process'
 import { existsSync, readFileSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { findAntflyBinary } from '@bakin/adapter-antfly'
 import { createLogger } from '../logger'
+import { findSearchAdapterBinary } from '../search-adapter-factory'
 import { askYesNo } from './prompts'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
@@ -182,7 +182,7 @@ function runPull(
 async function install(opts: OnboardingOptions): Promise<InstallResult> {
   const start = Date.now()
 
-  const antfly = findAntflyBinary()
+  const antfly = findSearchAdapterBinary('antfly')
   if (!antfly) {
     return {
       name: 'models',

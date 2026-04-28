@@ -15,8 +15,8 @@
  */
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
-import { findAntflyBinary } from '@bakin/adapter-antfly'
 import { createLogger } from '../logger'
+import { findSearchAdapterBinary } from '../search-adapter-factory'
 import { askYesNo } from './prompts'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
@@ -34,7 +34,7 @@ function findBrew(): string | null {
 }
 
 async function check(): Promise<CheckResult> {
-  const binary = findAntflyBinary()
+  const binary = findSearchAdapterBinary('antfly')
   if (binary) {
     return {
       name: 'antfly',
@@ -87,7 +87,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   // Already installed? Short-circuit. The orchestrator calls check() up
   // front anyway, but we re-verify here because an individual CLI
   // invocation (`bakin install antfly`) may be run standalone.
-  const existing = findAntflyBinary()
+  const existing = findSearchAdapterBinary('antfly')
   if (existing) {
     return {
       name: 'antfly',
@@ -150,7 +150,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
       }
     }
     // Verify the binary is now discoverable.
-    const installed = findAntflyBinary()
+    const installed = findSearchAdapterBinary('antfly')
     if (!installed) {
       return {
         name: 'antfly',
