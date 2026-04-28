@@ -10,49 +10,47 @@
  * channel config, credential discovery) would be meaningless.
  *
  * Detection criteria (all must hold for status: ok):
- * 1. The OpenClaw home directory exists (`$OPENCLAW_HOME` or ~/.openclaw/)
- * 2. The openclaw binary is discoverable on a well-known path
- * 3. `openclaw.json` parses as JSON
+ * 1. The configured runtime adapter initializes
+ * 2. The runtime responds to ping()
+ * 3. Runtime agent/config integrity checks pass
  *
  * If any one of those is missing we report `missing` (not `error`) and
  * leave the hard-stop decision to the orchestrator — a single `bakin check
  * openclaw` invocation should still be able to surface the same result
  * without hard-exiting the process.
  */
-import { existsSync, readFileSync } from 'fs'
-import { homedir } from 'os'
-import { join } from 'path'
+import { selectRuntimeMainAgent, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../logger'
-import { getOpenClawHome, getOpenClawPath } from '@bakin/core/openclaw-home'
-import { readOpenClawConfig, resetOpenClawConfigCache } from '@bakin/core/openclaw-config'
-import type { OpenClawConfig } from '@bakin/core/openclaw-config'
-import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
+import { createAppServices, maybeGetAppServices } from '../app-services'
+import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 
 const log = createLogger('onboarding:openclaw')
 
 const INSTALL_URL = 'https://openclaw.ai/'
 const INSTALL_MESSAGE = `OpenClaw is required. Install it from ${INSTALL_URL} and rerun onboarding.`
 
-/**
- * Candidate paths for the openclaw binary, in order. Mirrors
- * `antfly-server.findBinary()` — same shape, different binary name.
- * Exported for tests so we can verify the candidate ordering without
- * touching the real filesystem.
- */
-export function openClawBinaryCandidates(): string[] {
-  return [
-    process.env.OPENCLAW_PATH,
-    '/opt/homebrew/bin/openclaw',
-    '/usr/local/bin/openclaw',
-    join(homedir(), '.openclaw', 'bin', 'openclaw'),
-  ].filter((p): p is string => typeof p === 'string' && p.length > 0)
+interface RuntimeConfigForIntegrity {
+  agents?: {
+    defaults?: { workspace?: string | null }
+    list?: Array<{ id?: string | null; workspace?: string | null }>
+  }
 }
 
-function findBinary(): string | null {
-  for (const candidate of openClawBinaryCandidates()) {
-    if (existsSync(candidate)) return candidate
+async function getRuntimeForOnboarding(): Promise<AgentRuntimeAdapter> {
+  const existing = maybeGetAppServices()?.runtime
+  if (existing) return existing
+  return (await createAppServices()).runtime
+}
+
+function configFromRuntimeAgents(agents: RuntimeAgent[]): RuntimeConfigForIntegrity {
+  return {
+    agents: {
+      list: agents.map((agent) => ({
+        id: agent.id,
+        workspace: typeof agent.metadata?.workspace === 'string' ? agent.metadata.workspace : undefined,
+      })),
+    },
   }
-  return null
 }
 
 /**
@@ -69,14 +67,14 @@ function findBinary(): string | null {
  * explicit: doctor and migration code must never auto-write OpenClaw's
  * config. The user owns that file and decides how to fix it.
  */
-export function validateOpenClawIntegrity(config: OpenClawConfig | null): string[] {
+export function validateOpenClawIntegrity(config: RuntimeConfigForIntegrity | null): string[] {
   const issues: string[] = []
   if (!config) return issues
 
   const list = Array.isArray(config.agents?.list) ? config.agents!.list! : []
 
   // 1. Missing main — OpenClaw's orchestrator id is always "main" on every
-  //    install; Bakin's main-agent resolver depends on that invariant.
+  //    install; Bakin's runtime helpers depend on that invariant.
   const hasMain = list.some((a) => a?.id === 'main')
   if (!hasMain) {
     issues.push(
@@ -131,84 +129,87 @@ export function validateOpenClawIntegrity(config: OpenClawConfig | null): string
 }
 
 async function check(): Promise<CheckResult> {
-  const home = getOpenClawHome()
-  if (!existsSync(home)) {
-    return {
-      name: 'openclaw',
-      status: 'missing',
-      message: `OpenClaw home directory not found at ${home}`,
-      remediation: INSTALL_MESSAGE,
-      details: { homeChecked: home, installUrl: INSTALL_URL },
-    }
-  }
-
-  const binary = findBinary()
-  if (!binary) {
-    return {
-      name: 'openclaw',
-      status: 'missing',
-      message: 'OpenClaw binary not found on any known install path',
-      remediation: INSTALL_MESSAGE,
-      details: {
-        candidatesChecked: openClawBinaryCandidates(),
-        homeChecked: home,
-        installUrl: INSTALL_URL,
-      },
-    }
-  }
-
-  // openclaw.json is the file OpenClaw's own setup populates with channel
-  // config, guild IDs, etc. Its presence is a good signal that OpenClaw
-  // has been at least minimally configured, even if individual keys are
-  // still empty (that's the `llm` and `channels` components' problem).
-  const configPath = getOpenClawPath('openclaw.json')
-  if (!existsSync(configPath)) {
-    return {
-      name: 'openclaw',
-      status: 'broken',
-      message: `OpenClaw is installed at ${binary} but ${configPath} is missing`,
-      remediation: 'Run OpenClaw once to generate its default config, then rerun onboarding.',
-      details: { binary, configPath, installUrl: INSTALL_URL },
-    }
-  }
-
+  let runtime: AgentRuntimeAdapter
   try {
-    JSON.parse(readFileSync(configPath, 'utf-8'))
+    runtime = await getRuntimeForOnboarding()
+  } catch (err) {
+    return {
+      name: 'openclaw',
+      status: 'missing',
+      message: `Runtime adapter could not initialize: ${err instanceof Error ? err.message : String(err)}`,
+      remediation: INSTALL_MESSAGE,
+      details: { installUrl: INSTALL_URL },
+    }
+  }
+
+  const available = await runtime.ping().catch(() => false)
+  if (!available) {
+    return {
+      name: 'openclaw',
+      status: 'missing',
+      message: `${runtime.name} runtime adapter is not reachable`,
+      remediation: INSTALL_MESSAGE,
+      details: { runtime: runtime.name, installUrl: INSTALL_URL },
+    }
+  }
+
+  let agents: RuntimeAgent[]
+  try {
+    agents = await runtime.agents.list()
   } catch (err) {
     return {
       name: 'openclaw',
       status: 'broken',
-      message: `openclaw.json at ${configPath} is not valid JSON`,
-      remediation: 'Fix or regenerate the file via OpenClaw, then rerun onboarding.',
-      details: { binary, configPath, parseError: String(err) },
+      message: `Runtime agent roster could not be read: ${err instanceof Error ? err.message : String(err)}`,
+      remediation: 'Fix the configured runtime adapter, then rerun onboarding.',
+      details: { runtime: runtime.name, installUrl: INSTALL_URL },
     }
   }
 
-  // Integrity scan — reports-only. Never mutates openclaw.json. We drop
-  // the mtime cache first so successive `bakin check openclaw` runs after
-  // a manual edit observe the fresh file even on coarse-mtime filesystems.
-  resetOpenClawConfigCache()
-  const config = readOpenClawConfig()
-  const integrityIssues = validateOpenClawIntegrity(config)
+  const mainAgent = selectRuntimeMainAgent(agents)
+  if (!mainAgent) {
+    return {
+      name: 'openclaw',
+      status: 'broken',
+      message: 'Runtime adapter returned no agents',
+      remediation: 'Create at least one orchestrator agent, then rerun onboarding.',
+      details: { runtime: runtime.name, installUrl: INSTALL_URL },
+    }
+  }
+
+  let config: RuntimeConfigForIntegrity | null
+  try {
+    config = await runtime.config.raw<RuntimeConfigForIntegrity | null>('*', 'onboarding.openclaw.integrity')
+  } catch (err) {
+    return {
+      name: 'openclaw',
+      status: 'broken',
+      message: `Runtime config could not be read: ${err instanceof Error ? err.message : String(err)}`,
+      remediation: 'Fix or regenerate the runtime config, then rerun onboarding.',
+      details: { runtime: runtime.name, parseError: String(err) },
+    }
+  }
+
+  const integrityIssues = validateOpenClawIntegrity(config ?? configFromRuntimeAgents(agents))
   if (integrityIssues.length > 0) {
     return {
       name: 'openclaw',
       status: 'broken',
       message: `openclaw.json has ${integrityIssues.length} integrity issue${integrityIssues.length === 1 ? '' : 's'}:\n  - ${integrityIssues.join('\n  - ')}`,
-      remediation: 'Edit openclaw.json to resolve the listed issues, then rerun `bakin check openclaw`. Bakin will not modify openclaw.json for you.',
-      details: { binary, configPath, integrityIssues },
+      remediation: 'Edit the runtime config to resolve the listed issues, then rerun `bakin check openclaw`. Bakin will not modify runtime config for you.',
+      details: { runtime: runtime.name, integrityIssues },
     }
   }
 
   return {
     name: 'openclaw',
     status: 'ok',
-    message: `OpenClaw is installed at ${binary}`,
-    details: { binary, home, configPath },
+    message: `${runtime.name} runtime adapter is available`,
+    details: { runtime: runtime.name, mainAgentId: mainAgent.id },
   }
 }
 
-async function install(_opts: OnboardingOptions): Promise<InstallResult> {
+async function install(): Promise<InstallResult> {
   // OpenClaw is never auto-installed by Bakin. Emit a noop with a helpful
   // message so the orchestrator can log it and exit cleanly.
   log.info('openclaw.install() is a noop — OpenClaw is a user-managed prerequisite')
