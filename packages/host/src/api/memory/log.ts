@@ -4,7 +4,7 @@
  *
  * Migrated from src/app/api/memory/log/route.ts for Phase B of #147.
  */
-import { readContentFile, writeContentFile } from '@/lib/content'
+import { readContentFile, writeContentFile } from '@/lib/content-files'
 import { appendAudit } from '@/lib/audit'
 
 const VALID_TYPES = ['decision', 'learned', 'note'] as const

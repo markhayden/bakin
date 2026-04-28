@@ -45,7 +45,7 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-mock.module('../../../src/lib/content', () => ({
+mock.module('../../../src/lib/content-files', () => ({
   readContentFile: mock(() => null),
   writeContentFile: mock(),
 }))
