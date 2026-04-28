@@ -53,7 +53,10 @@ mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-const mockCreateTask = mock((_opts?: unknown) => Promise.resolve({ id: 'task-new', workflowId: undefined }))
+const mockCreateTask = mock((opts?: unknown) => {
+  void opts
+  return Promise.resolve({ id: 'task-new', workflowId: undefined })
+})
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
@@ -170,6 +173,9 @@ const mockCronList = mock(async (): Promise<CronJob[]> => {
 
 mock.module('@bakin/core/adapters/runtime/testing', () => ({
   createMockRuntimeAdapter: () => ({
+    agents: {
+      list: async () => [{ id: 'main', name: 'Main', role: 'Orchestrator' }],
+    },
     cron: {
       list: mockCronList,
       get: async (id: string) => (await mockCronList()).find(job => job.id === id) ?? null,
@@ -212,8 +218,7 @@ mock.module('@bakin/schedule/lib/cron-parser', () => ({
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool, callSearchRoute } from '../test-helpers'
-// Dynamic require — ES imports are hoisted above top-level env setup above.
-const schedulePlugin = require('@bakin/schedule/index').default as typeof import('@bakin/schedule/index').default
+const schedulePlugin = (await import('@bakin/schedule/index')).default
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 
 // ---------------------------------------------------------------------------

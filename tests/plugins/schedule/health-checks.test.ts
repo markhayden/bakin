@@ -97,7 +97,7 @@ afterAll(() => {
 
 describe('checkScheduleSync - no jobs', () => {
   it('reports ok when the runtime has no cron jobs', async () => {
-    const results = await checkScheduleSync(testDir, cronReader)
+    const results = await checkScheduleSync(testDir, cronReader, 'main')
     expect(results).toHaveLength(1)
     expect(results[0].check).toBe('schedule-sync')
     expect(results[0].status).toBe('ok')
@@ -122,7 +122,7 @@ describe('checkScheduleSync - orphan detection', () => {
       },
     }))
 
-    const results = await checkScheduleSync(testDir, cronReader)
+    const results = await checkScheduleSync(testDir, cronReader, 'main')
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/1 cron job\(s\), all tracked/)
@@ -132,7 +132,7 @@ describe('checkScheduleSync - orphan detection', () => {
     runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
     writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
 
-    const results = await checkScheduleSync(testDir, cronReader)
+    const results = await checkScheduleSync(testDir, cronReader, 'main')
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warn')
     expect(results[0].autoFixable).toBe(true)
@@ -146,7 +146,7 @@ describe('checkScheduleSync - auto-adopt', () => {
     runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
     writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
 
-    const results = await checkScheduleSync(testDir, cronReader)
+    const results = await checkScheduleSync(testDir, cronReader, 'boss')
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('fixed')
     expect(results[0].message).toMatch(/Auto-adopted/)
@@ -156,6 +156,7 @@ describe('checkScheduleSync - auto-adopt', () => {
     expect(updated.jobs['orphan-1'].isBakinJob).toBe(false)
     expect(updated.jobs['orphan-1'].requireTriage).toBe(true)
     expect(updated.jobs['orphan-1'].displayName).toBe('rogue-cron')
+    expect(updated.jobs['orphan-1'].owner).toBe('boss')
     expect(updated.jobs['orphan-1'].agentId).toBeUndefined()
   })
 
@@ -165,7 +166,7 @@ describe('checkScheduleSync - auto-adopt', () => {
     rmSync(join(testDir, 'schedule'), { recursive: true, force: true })
     expect(existsSync(join(testDir, 'schedule'))).toBe(false)
 
-    await checkScheduleSync(testDir, cronReader)
+    await checkScheduleSync(testDir, cronReader, 'main')
     expect(existsSync(sidecarPath)).toBe(true)
   })
 })
@@ -173,7 +174,7 @@ describe('checkScheduleSync - auto-adopt', () => {
 describe('checkScheduleSync - runtime failures', () => {
   it('warns when the runtime cron adapter cannot list jobs', async () => {
     runtimeError = new Error('adapter unavailable')
-    const results = await checkScheduleSync(testDir, cronReader)
+    const results = await checkScheduleSync(testDir, cronReader, 'main')
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warn')
     expect(results[0].message).toMatch(/Failed to read runtime cron jobs/)
@@ -188,7 +189,10 @@ describe('plugin registration', () => {
     const noopAsync = mock(async () => {})
     const ctx: Record<string, unknown> = {
       pluginId: 'schedule',
-      runtime: { cron: { list: mock(async () => []) } },
+      runtime: {
+        agents: { list: mock(async () => [{ id: 'main', name: 'Main', role: 'Orchestrator' }]) },
+        cron: { list: mock(async () => []) },
+      },
       registerRoute: noop, registerExecTool: noop, registerNav: noop,
       registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
       registerNodeType: noop, registerNotificationChannel: noop,

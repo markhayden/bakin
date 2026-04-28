@@ -14,7 +14,6 @@ import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { createLogger } from '../../../src/core/logger'
 import { getSettings } from '../../../src/core/settings'
-import { getMainAgentId } from '../../../src/core/main-agent'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
 
 const log = createLogger('schedule:health')
@@ -48,6 +47,7 @@ function fixed(check: string, message: string): HealthCheckResult {
 export async function checkScheduleSync(
   contentDir: string,
   cron: RuntimeCronReader,
+  defaultOwner: string,
 ): Promise<HealthCheckResult[]> {
   const checkName = 'schedule-sync'
   const autoFix = getSettings().doctor.autoFixSkill
@@ -100,7 +100,7 @@ export async function checkScheduleSync(
         isBakinJob: false,
         displayName: orphan.name,
         agentId: undefined, // Don't guess — flag for triage
-        owner: getMainAgentId(),
+        owner: defaultOwner,
         requireTriage: true,
         createdAt: now,
         updatedAt: now,

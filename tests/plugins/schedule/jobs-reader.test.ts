@@ -81,6 +81,8 @@ function cronReader(jobs: CronJob[]) {
 }
 
 describe('schedule/jobs-reader', () => {
+  const defaultOwner = 'main'
+
   beforeEach(() => {
     mkdirSync(sidecarDir, { recursive: true })
     writeSidecarFile({ version: 1, jobs: {} })
@@ -114,13 +116,13 @@ describe('schedule/jobs-reader', () => {
   describe('mergeJob', () => {
     it('merges runtime job without sidecar entry', () => {
       const job = makeRuntimeJob({ id: 'j1', name: 'Raw Job' })
-      const merged = mergeJob(job, undefined)
+      const merged = mergeJob(job, undefined, 'boss')
 
       expect(merged.id).toBe('j1')
       expect(merged.name).toBe('Raw Job')
       expect(merged.isBakinJob).toBe(false)
       expect(merged.displayName).toBe('Raw Job')
-      expect(merged.owner).toBe('main')
+      expect(merged.owner).toBe('boss')
       expect(merged.paused).toBe(false)
       expect(merged.humanSchedule).toBe('Daily at 9am')
     })
@@ -134,7 +136,7 @@ describe('schedule/jobs-reader', () => {
         agentId: 'basil',
         owner: 'main',
       })
-      const merged = mergeJob(job, sidecar)
+      const merged = mergeJob(job, sidecar, defaultOwner)
 
       expect(merged.isBakinJob).toBe(true)
       expect(merged.displayName).toBe('Morning Report')
@@ -145,7 +147,7 @@ describe('schedule/jobs-reader', () => {
     it('uses sidecar defaults for missing fields', () => {
       const job = makeRuntimeJob({ id: 'j1', schedule: { type: 'cron', value: '0 * * * *' } })
       const sidecar = makeMeta({ jobId: 'j1' })
-      const merged = mergeJob(job, sidecar)
+      const merged = mergeJob(job, sidecar, defaultOwner)
 
       expect(merged.maxFailures).toBe(3)
       expect(merged.allowOverlap).toBe(false)
@@ -155,13 +157,13 @@ describe('schedule/jobs-reader', () => {
 
     it('generates human schedule for interval type', () => {
       const job = makeRuntimeJob({ schedule: { type: 'every', value: '60000' } })
-      const merged = mergeJob(job, undefined)
+      const merged = mergeJob(job, undefined, defaultOwner)
       expect(merged.humanSchedule).toBe('Every 60s')
     })
 
     it('generates human schedule for one-shot type', () => {
       const job = makeRuntimeJob({ schedule: { type: 'at', value: '2026-04-01T09:00:00Z' } })
-      const merged = mergeJob(job, undefined)
+      const merged = mergeJob(job, undefined, defaultOwner)
       expect(merged.humanSchedule).toContain('Once at')
     })
 
@@ -171,7 +173,7 @@ describe('schedule/jobs-reader', () => {
         name: 'Orphan',
         payload: { message: 'Post a daily recipe' },
       })
-      const merged = mergeJob(job, undefined)
+      const merged = mergeJob(job, undefined, defaultOwner)
       expect(merged.taskPrompt).toBe('Post a daily recipe')
       expect(merged.requireTriage).toBe(true)
       expect(merged.agentId).toBeUndefined()
@@ -183,7 +185,7 @@ describe('schedule/jobs-reader', () => {
         name: 'Lost Bakin Job',
         payload: { message: 'bakin:schedule:daily-recipe' },
       })
-      const merged = mergeJob(job, undefined)
+      const merged = mergeJob(job, undefined, defaultOwner)
       expect(merged.taskPrompt).toBe('daily-recipe')
     })
 
@@ -194,14 +196,14 @@ describe('schedule/jobs-reader', () => {
         payload: { message: 'raw message' },
       })
       const sidecar = makeMeta({ jobId: 'j1', taskPrompt: 'Bakin prompt' })
-      const merged = mergeJob(job, sidecar)
+      const merged = mergeJob(job, sidecar, defaultOwner)
       expect(merged.taskPrompt).toBe('Bakin prompt')
       expect(merged.requireTriage).toBe(false)
     })
 
     it('normalizes kind/expr to type/value', () => {
       const job = makeRuntimeJob({ schedule: { kind: 'cron', expr: '30 8 * * 1-5' } })
-      const merged = mergeJob(job, undefined)
+      const merged = mergeJob(job, undefined, defaultOwner)
       expect(merged.schedule.type).toBe('cron')
       expect(merged.schedule.value).toBe('30 8 * * 1-5')
     })
@@ -209,7 +211,7 @@ describe('schedule/jobs-reader', () => {
 
   describe('readMergedJobs', () => {
     it('returns empty array when no runtime jobs exist', async () => {
-      const jobs = await readMergedJobs(cronReader([]))
+      const jobs = await readMergedJobs(cronReader([]), defaultOwner)
       expect(jobs).toEqual([])
     })
 
@@ -224,7 +226,7 @@ describe('schedule/jobs-reader', () => {
       const jobs = await readMergedJobs(cronReader([
         makeCronJob({ id: 'j1', name: 'Job 1', schedule: '0 9 * * *' }),
         makeCronJob({ id: 'j2', name: 'Job 2', schedule: '0 17 * * *' }),
-      ]))
+      ]), defaultOwner)
       expect(jobs).toHaveLength(2)
 
       const j1 = jobs.find(j => j.id === 'j1')!
@@ -248,7 +250,7 @@ describe('schedule/jobs-reader', () => {
 
       await readMergedJobs(cronReader([
         makeCronJob({ id: 'active', name: 'Active' }),
-      ]))
+      ]), defaultOwner)
 
       const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8')) as ScheduleSidecar
       expect(sidecar.jobs.active).toBeDefined()
