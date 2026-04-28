@@ -213,10 +213,8 @@ const assetsPlugin: BakinPlugin = {
               const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
               const assetFilename = metaFile.replace('.meta.json', '')
               const key = `assets/store/${month}/${assetFilename}`
-              // Type in the sidecar is authoritative; assetToSearchDoc
-              // ignores the directory-derived fallback when meta.type is
-              // present, so the fallback is only a cushion for truly
-              // corrupt sidecars.
+              // Type in the sidecar is authoritative; the fallback only
+              // covers corrupt sidecars that predate strict validation.
               const doc = await assetToSearchDoc(raw, assetFilename, 'other', key)
               yield { key, doc }
             } catch { /* skip unreadable sidecars */ }
@@ -261,12 +259,12 @@ const assetsPlugin: BakinPlugin = {
       assetType: string,
       assetRelPath: string,
     ): Promise<Record<string, unknown>> {
-      // assetRelPath is `assets/{type}/{subdir}/{file}` (the registry key).
+      // assetRelPath is `assets/store/{YYYY-MM}/{file}` (the registry key).
       // Strip the leading `assets/` to get the path relative to the assets
       // root, which is what buildAssetFileUrl expects.
       const rel = assetRelPath.replace(/^assets\//, '')
-      // Sidecar `type` is authoritative; the directory-derived `assetType`
-      // is a fallback for legacy sidecars written before the field existed.
+      // Sidecar `type` is authoritative; `assetType` is the filename-extension
+      // fallback supplied by the store scanner.
       const metaType = typeof meta.type === 'string' && meta.type
         ? (meta.type as string)
         : assetType
