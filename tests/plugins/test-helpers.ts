@@ -179,6 +179,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
           source: 'fallback' as const,
         },
       })),
+      health: vi.fn(async () => ({ enabled: false, tables: [] })),
     },
     hooks: {
       register: vi.fn(() => () => {}),

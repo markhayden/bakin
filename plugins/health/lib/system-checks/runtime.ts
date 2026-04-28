@@ -4,12 +4,12 @@
  * Migrated out of src/core/doctor.ts (#139 C7). NOT auto-fixable —
  * starting the runtime requires human intervention.
  */
-import { pingRuntime } from '../../../../src/core/runtime-registry'
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
-export async function checkRuntime(): Promise<HealthCheckResult[]> {
+export async function checkRuntime(runtime: Pick<AgentRuntimeAdapter, 'ping'>): Promise<HealthCheckResult[]> {
   try {
-    const alive = await pingRuntime()
+    const alive = await runtime.ping()
     if (alive) {
       return [{ check: 'runtime', status: 'ok', message: 'Runtime is reachable', autoFixable: false }]
     }

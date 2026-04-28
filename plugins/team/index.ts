@@ -28,7 +28,6 @@ import { startAgent, stopAgent } from '../../src/lib/agents'
 import { resetSettingsCache } from '../../src/core/settings'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
-import { restartRuntime } from '../../src/core/runtime-registry'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getStatsByMs } from '../../src/core/usage'
 import { getRuntimeMainAgentId, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
@@ -988,7 +987,7 @@ const teamPlugin: BakinPlugin = {
           const url = new URL(req.url)
           const skipRestart = url.searchParams.get('skipRestart') === 'true'
           if (!skipRestart) {
-            restartRuntime().then(() => {
+            ctx.runtime.restart().then(() => {
               log.info('Runtime restarted after agent creation', { agent: id })
               try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }
             }).catch((err) => {
@@ -1044,7 +1043,7 @@ const teamPlugin: BakinPlugin = {
           try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
           // Restart the active runtime
-          restartRuntime().then(() => {
+          ctx.runtime.restart().then(() => {
             log.info('Runtime restarted after agent deletion', { agent: agentId })
             try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }
           }).catch((err) => {
@@ -1834,7 +1833,7 @@ const teamPlugin: BakinPlugin = {
 
         let runtimeRestarted = false
         try {
-          await restartRuntime()
+          await ctx.runtime.restart()
           runtimeRestarted = true
           log.info('Runtime restarted after agent creation', { agent: id })
           try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }
@@ -1920,7 +1919,7 @@ const teamPlugin: BakinPlugin = {
 
         let runtimeRestarted = false
         try {
-          await restartRuntime()
+          await ctx.runtime.restart()
           runtimeRestarted = true
           log.info('Runtime restarted after agent deletion', { agent: agentId })
           try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }

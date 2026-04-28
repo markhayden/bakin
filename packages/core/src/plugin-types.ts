@@ -499,6 +499,29 @@ export interface SearchResponse {
   }
 }
 
+export interface SearchHealthIndex {
+  name: string
+  type: string
+  totalIndexed: number
+  walBacklog: number
+  error?: string
+  rebuilding: boolean
+  backfillProgress?: number
+}
+
+export interface SearchHealthTable {
+  table: string
+  pluginId: string
+  stats: Record<string, unknown> | null
+  indexHealth?: SearchHealthIndex[]
+  healthy: boolean
+}
+
+export interface SearchHealthSnapshot {
+  enabled: boolean
+  tables: SearchHealthTable[]
+}
+
 /** Atomic transform operation (update fields without re-embedding) */
 export interface SearchTransformOp {
   op: '$set' | '$inc' | '$push'
@@ -614,6 +637,9 @@ export interface SearchAPI {
 
   /** Search this plugin's content type. */
   query(params: SearchQueryParams): Promise<SearchResponse>
+
+  /** Global search adapter and registered-table health snapshot. */
+  health?(): Promise<SearchHealthSnapshot>
 
   /**
    * Plugin-scoped maintenance operations for indexers that own non-file-backed
