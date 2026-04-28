@@ -88,7 +88,7 @@ mock.module('../../../src/lib/agents', () => ({
   stopAgent: mock(async () => {}),
 }))
 
-mock.module('../../../src/lib/content', () => ({
+mock.module('../../../src/lib/content-files', () => ({
   readHeartbeats: mock(() => ({})),
 }))
 

@@ -1,6 +1,5 @@
 /**
- * Content file helpers — backward-compatible bridge.
- * Internally delegates to MarkdownStorageAdapter.
+ * Content file helpers backed by the markdown storage adapter.
  */
 import fs from 'fs'
 import path from 'path'

@@ -22,7 +22,7 @@ import {
 import { basename, dirname, join, relative } from 'path'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { createLogger } from '../../src/core/logger'
-import { readHeartbeats } from '../../src/lib/content'
+import { readHeartbeats } from '../../src/lib/content-files'
 import { getContentDir, getBakinPaths } from '../../packages/core/src/content-dir'
 import { startAgent, stopAgent } from '../../src/lib/agents'
 import { resetSettingsCache } from '../../src/core/settings'
