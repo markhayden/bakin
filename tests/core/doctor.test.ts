@@ -52,14 +52,6 @@ mock.module('@/core/settings', () => ({
   })),
 }))
 
-// Mock openclaw-config — owns the authoritative agent roster after T2
-mock.module('@bakin/adapter-openclaw/config', () => ({
-  getAgentIds: mock(() => ['main', 'patch', 'pixel']),
-  findAgentById: mock((id: string) => (['main', 'patch', 'pixel'].includes(id) ? { id } : null)),
-  readOpenClawConfig: mock(() => ({ agents: [{ id: 'main' }, { id: 'patch' }, { id: 'pixel' }] })),
-  resetOpenClawConfigCache: mock(),
-}))
-
 mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => testHome.openclaw,
   getOpenClawPath: (...parts: string[]) => [testHome.openclaw, ...parts].join('/'),

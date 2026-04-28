@@ -96,8 +96,8 @@ interface OpenClawConfigShape {
 }
 
 /**
- * Pre-seed an OpenClaw agent into the temp `openClawDir` — writes both the
- * `openclaw.json` roster entry and the workspace dir + workspace files.
+ * Pre-seed a runtime agent into the temp OpenClaw adapter home — writes both
+ * the adapter roster entry and the workspace dir + workspace files.
  * Idempotent on the roster (same id → entry replaced).
  */
 export function seedOpenClawAgent(openClawDir: string, input: SeedAgentInput): void {

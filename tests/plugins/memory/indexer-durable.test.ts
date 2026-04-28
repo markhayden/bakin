@@ -1,6 +1,6 @@
 /**
  * Tests for MemoryIndexer.indexTier('durable') + handleWatcherEvent routing
- * for OpenClaw workspace canonical bootstrap files.
+ * for runtime workspace canonical bootstrap files.
  *
  * The indexer's input for this tier is (a) agent IDs from the runtime adapter,
  * (b) CANONICAL_DURABLE_FILES, and (c) runtime memory entries. All are mocked

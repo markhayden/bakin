@@ -70,25 +70,10 @@ mock.module('@/core/settings', () => ({
   resetSettingsCache: () => {},
 }))
 
-let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
 let runtimeAgents: RuntimeAgent[] = []
 let runtimeError: Error | null = null
 const runtimeAgentStore = new Map<string, RuntimeAgent>()
 const runtimeWorkspaceFiles = new Map<string, { path: string; content: string; metadata?: Record<string, unknown> }>()
-mock.module('@bakin/adapter-openclaw/config', () => ({
-  readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => openClawAgents,
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
-}))
-mock.module('../../../packages/adapter-openclaw/src/config', () => ({
-  readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => openClawAgents,
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
-}))
 
 mock.module('../../../src/core/app-services', () => ({
   getAppServices: () => ({
@@ -149,7 +134,6 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
-  openClawAgents = []
   runtimeAgents = []
   runtimeAgentStore.clear()
   runtimeWorkspaceFiles.clear()
@@ -194,7 +178,6 @@ describe('checkAgentRoster', () => {
 
 describe('checkPersonas', () => {
   beforeEach(() => {
-    openClawAgents = [{ id: 'main' }, { id: 'patch' }, { id: 'pixel' }]
     runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('patch'), makeRuntimeAgent('pixel')]
   })
 

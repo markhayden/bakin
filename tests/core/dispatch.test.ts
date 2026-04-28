@@ -125,10 +125,6 @@ mock.module('../../src/lib/format', () => ({
   isStale: mock().mockReturnValue(true),
 }))
 
-mock.module('@bakin/adapter-openclaw/config', () => ({
-  getAgentIds: mock().mockReturnValue(['main', 'pixel', 'trainer']),
-}))
-
 mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => sentinelContentDir,
   getOpenClawPath: (sub: string) => join(sentinelContentDir, sub),
