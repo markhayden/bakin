@@ -390,6 +390,7 @@ export interface AgentRuntimeAdapter {
     listWorkspaceFiles(agentId: string): Promise<string[]>
     readWorkspaceFile(agentId: string, path: string): Promise<WorkspaceFile | null>
     writeWorkspaceFile(agentId: string, file: WorkspaceFile): Promise<void>
+    removeWorkspaceFile(agentId: string, path: string): Promise<void>
     updatePermissions(agentId: string, patch: RuntimePermissionPatch): Promise<void>
     updateAllowlist(agentId: string, patch: RuntimeAllowlistPatch): Promise<void>
     heartbeat(agentId: string): Promise<boolean>
@@ -422,8 +423,8 @@ export interface AgentRuntimeAdapter {
   skills: {
     list(agentId?: string): Promise<RuntimeSkill[]>
     get(name: string, agentId?: string): Promise<RuntimeSkill | null>
-    write(skill: RuntimeSkill): Promise<void>
-    remove(name: string): Promise<void>
+    write(skill: RuntimeSkill, agentId?: string): Promise<void>
+    remove(name: string, agentId?: string): Promise<void>
   }
 
   sessions: {

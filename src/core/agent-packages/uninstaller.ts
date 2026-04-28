@@ -90,7 +90,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
 
     // 1. Unproject parent
     if (entry.projections && entry.projections.length > 0) {
-      unprojectPackage(entry.projections, { keepBlocks: options.keepBlocks })
+      await unprojectPackage(entry.projections, { keepBlocks: options.keepBlocks })
     }
 
     // 2. Remove the install dir under ~/.bakin/packages/<kind>s/<id>@<ver>/
@@ -112,11 +112,11 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
     // Cascade recurses N levels: when a dep's refCount hits 0 we remove it
     // AND walk its own `dependencies`, decrementing each by the now-removed
     // intermediate. This handles 3+-deep chains correctly.
-    const cascadeRemove = (
+    const cascadeRemove = async (
       currentLock: typeof lock,
       depKeys: string[],
       dependentKey: string,
-    ): typeof lock => {
+    ): Promise<typeof lock> => {
       let l = currentLock
       for (const depKey of depKeys) {
         l = decrementRefCount(l, depKey, dependentKey)
@@ -126,7 +126,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
           // Orphaned — unproject + remove install dir + recurse into its
           // own deps before dropping the lockfile entry.
           if (depEntry.projections && depEntry.projections.length > 0) {
-            unprojectPackage(depEntry.projections, { keepBlocks: options.keepBlocks })
+            await unprojectPackage(depEntry.projections, { keepBlocks: options.keepBlocks })
           }
           const depInstallDir = getPackageSourceDir(
             getContentDir(),
@@ -147,7 +147,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
           // Recurse — the orphaned dep's transitive deps cascade with the
           // orphan as the dependent (NOT the original package being removed).
           if (depEntry.dependencies && depEntry.dependencies.length > 0) {
-            l = cascadeRemove(l, depEntry.dependencies, depKey)
+            l = await cascadeRemove(l, depEntry.dependencies, depKey)
           }
           l = removePackage(l, depKey)
           removed.push(depKey)
@@ -160,7 +160,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
 
     lock = removePackage(lock, options.packageId)
     removed.push(options.packageId)
-    lock = cascadeRemove(lock, entry.dependencies ?? [], options.packageId)
+    lock = await cascadeRemove(lock, entry.dependencies ?? [], options.packageId)
 
     writeLockfile(lock)
 

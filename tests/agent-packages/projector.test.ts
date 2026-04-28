@@ -18,10 +18,11 @@
  *   - unprojectPackage removes files + strips markers
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
+import type { AgentRuntimeAdapter, RuntimeSkill, WorkspaceFile } from '@bakin/core/adapters/runtime'
 
 const testDir = join(tmpdir(), `bakin-test-projector-${Date.now()}-${randomUUID()}`)
 const openClawDir = join(testDir, 'openclaw')
@@ -49,6 +50,7 @@ import {
   installedByPath,
   markUserEdited,
   readInstalledBy,
+  writeInstalledBy,
 } from '../../packages/core/src/agent-packages/markers'
 import {
   extractBlock,
@@ -60,6 +62,10 @@ import type {
   SkillPackManifest,
 } from '../../packages/core/src/agent-packages/manifest'
 
+type TestGlobal = typeof globalThis & {
+  __bakinFallbackRuntimeAdapter?: AgentRuntimeAdapter
+}
+
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
@@ -68,6 +74,7 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
+  installRuntimeMock()
 })
 
 const NOW = '2026-04-24T12:00:00Z'
@@ -144,11 +151,115 @@ function freshOptions(): ProjectorOptions {
   }
 }
 
+function readJson(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
+function readSkillTree(root: string, prefix = ''): Record<string, string> {
+  const files: Record<string, string> = {}
+  for (const entry of readdirSync(join(root, prefix), { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+    const abs = join(root, rel)
+    if (entry.isDirectory()) {
+      Object.assign(files, readSkillTree(root, rel))
+    } else if (entry.isFile()) {
+      if (entry.name === '.installedBy' || entry.name === '.userEdited') continue
+      files[rel] = readFileSync(abs, 'utf-8')
+    }
+  }
+  return files
+}
+
+function runtimeWorkspaceFile(agentId: string, path: string): string {
+  return join(openClawDir, 'workspaces', agentId, path)
+}
+
+function runtimeSkillDir(name: string, agentId?: string): string {
+  return agentId
+    ? join(openClawDir, 'workspaces', agentId, 'skills', name)
+    : join(openClawDir, 'skills', name)
+}
+
+function installRuntimeMock(): void {
+  ;(globalThis as TestGlobal).__bakinFallbackRuntimeAdapter = {
+    agents: {
+      listWorkspaceFiles: async () => [],
+      readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
+        const file = runtimeWorkspaceFile(agentId, path)
+        if (!existsSync(file)) return null
+        return {
+          path,
+          content: readFileSync(file, 'utf-8'),
+          updatedAt: statSync(file).mtime.toISOString(),
+          metadata: {
+            installedBy: readJson(`${file}.installedBy`),
+            userEdited: existsSync(`${file}.userEdited`),
+          },
+        }
+      },
+      writeWorkspaceFile: async (agentId: string, file: WorkspaceFile) => {
+        const target = runtimeWorkspaceFile(agentId, file.path)
+        mkdirSync(dirname(target), { recursive: true })
+        writeFileSync(target, file.content, 'utf-8')
+        if (file.metadata?.installedBy) {
+          writeFileSync(`${target}.installedBy`, JSON.stringify(file.metadata.installedBy, null, 2), 'utf-8')
+        } else {
+          rmSync(`${target}.installedBy`, { force: true })
+        }
+      },
+      removeWorkspaceFile: async (agentId: string, path: string) => {
+        rmSync(runtimeWorkspaceFile(agentId, path), { force: true })
+        rmSync(`${runtimeWorkspaceFile(agentId, path)}.installedBy`, { force: true })
+      },
+    },
+    skills: {
+      list: async () => [],
+      get: async (name: string, agentId?: string): Promise<RuntimeSkill | null> => {
+        const dir = runtimeSkillDir(name, agentId)
+        const skillPath = join(dir, 'SKILL.md')
+        if (!existsSync(skillPath)) return null
+        return {
+          name,
+          path: skillPath,
+          instructions: readFileSync(skillPath, 'utf-8'),
+          files: readSkillTree(dir),
+          metadata: {
+            installedBy: readJson(join(dir, '.installedBy')),
+            userEdited: existsSync(join(dir, '.userEdited')),
+          },
+        }
+      },
+      write: async (skill: RuntimeSkill, agentId?: string) => {
+        const dir = runtimeSkillDir(skill.name, agentId)
+        const files = skill.files ?? { 'SKILL.md': skill.instructions ?? '' }
+        for (const [rel, content] of Object.entries(files)) {
+          const target = join(dir, rel)
+          mkdirSync(dirname(target), { recursive: true })
+          writeFileSync(target, content, 'utf-8')
+        }
+        if (skill.metadata?.installedBy) {
+          writeFileSync(join(dir, '.installedBy'), JSON.stringify(skill.metadata.installedBy, null, 2), 'utf-8')
+        } else {
+          rmSync(join(dir, '.installedBy'), { force: true })
+        }
+      },
+      remove: async (name: string, agentId?: string) => {
+        rmSync(runtimeSkillDir(name, agentId), { recursive: true, force: true })
+      },
+    },
+  } as unknown as AgentRuntimeAdapter
+}
+
 // ─── Fresh install ───────────────────────────────────────────────────────────
 
 describe('projectPackage — fresh install (kind:"agent")', () => {
-  it('writes every workspace file with sidecar', () => {
-    const result = projectPackage(freshOptions())
+  it('writes every workspace file with sidecar', async () => {
+    const result = await projectPackage(freshOptions())
 
     const soul = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
     const identity = join(openClawDir, 'workspaces', 'pixel', 'IDENTITY.md')
@@ -162,23 +273,23 @@ describe('projectPackage — fresh install (kind:"agent")', () => {
     expect(workspaceProjections.every((p) => p.templateOnly === true)).toBe(true)
   })
 
-  it('projects skills per-agent for kind:"agent"', () => {
-    projectPackage(freshOptions())
+  it('projects skills per-agent for kind:"agent"', async () => {
+    await projectPackage(freshOptions())
     const skillDir = join(openClawDir, 'workspaces', 'pixel', 'skills', 'test-skill')
     expect(existsSync(join(skillDir, 'SKILL.md'))).toBe(true)
     expect(readInstalledBy(skillDir)?.package).toBe('pixel')
   })
 
-  it('copies assets to ~/.bakin/agents/<id>/', () => {
-    projectPackage(freshOptions())
+  it('copies assets to ~/.bakin/agents/<id>/', async () => {
+    await projectPackage(freshOptions())
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
     expect(existsSync(avatar)).toBe(true)
     expect(readFileSync(avatar, 'utf-8')).toBe('fake-jpg-bytes')
     expect(readInstalledBy(avatar)?.package).toBe('pixel')
   })
 
-  it('injects knowledge catalog + enabled-lesson blocks into SOUL.md', () => {
-    projectPackage(freshOptions())
+  it('injects knowledge catalog + enabled-lesson blocks into SOUL.md', async () => {
+    await projectPackage(freshOptions())
     const soul = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
 
     expect(hasBlock(soul, 'knowledge-catalog')).toBe(true)
@@ -192,8 +303,8 @@ describe('projectPackage — fresh install (kind:"agent")', () => {
     expect(hasBlock(soul, 'knowledge:pixel:social-media')).toBe(false)
   })
 
-  it('records knowledge-marker projections for catalog + each enabled lesson', () => {
-    const result = projectPackage(freshOptions())
+  it('records knowledge-marker projections for catalog + each enabled lesson', async () => {
+    const result = await projectPackage(freshOptions())
     const markers = result.projections.filter((p) => p.kind === 'knowledge-marker')
     expect(markers).toHaveLength(2) // catalog + prompt-style-system
     const blockIds = markers.map((m) => m.blockId)
@@ -201,10 +312,10 @@ describe('projectPackage — fresh install (kind:"agent")', () => {
     expect(blockIds).toContain('knowledge:pixel:prompt-style-system')
   })
 
-  it('falls back to defaultEnabled frontmatter when install.enableKnowledge is undefined', () => {
+  it('falls back to defaultEnabled frontmatter when install.enableKnowledge is undefined', async () => {
     const opts = freshOptions()
     opts.manifest = { ...opts.manifest, install: { ...(opts.manifest as AgentManifest).install, enableKnowledge: undefined } } as Manifest
-    projectPackage(opts)
+    await projectPackage(opts)
     const soul = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
     // prompt-style-system has defaultEnabled: true → block present
     expect(hasBlock(soul, 'knowledge:pixel:prompt-style-system')).toBe(true)
@@ -212,10 +323,10 @@ describe('projectPackage — fresh install (kind:"agent")', () => {
     expect(hasBlock(soul, 'knowledge:pixel:social-media')).toBe(false)
   })
 
-  it('honors enabledKnowledge override', () => {
+  it('honors enabledKnowledge override', async () => {
     const opts = freshOptions()
     opts.enabledKnowledge = ['social-media'] // only social-media enabled
-    projectPackage(opts)
+    await projectPackage(opts)
     const soul = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
     expect(hasBlock(soul, 'knowledge:pixel:social-media')).toBe(true)
     expect(hasBlock(soul, 'knowledge:pixel:prompt-style-system')).toBe(false)
@@ -225,7 +336,7 @@ describe('projectPackage — fresh install (kind:"agent")', () => {
 // ─── Adopt mode ──────────────────────────────────────────────────────────────
 
 describe('projectPackage — adopt mode', () => {
-  it('preserves existing workspace files and only injects markers', () => {
+  it('preserves existing workspace files and only injects markers', async () => {
     const wsDir = join(openClawDir, 'workspaces', 'pixel')
     mkdirSync(wsDir, { recursive: true })
     writeFileSync(join(wsDir, 'SOUL.md'), `# Existing Pixel SOUL\n\nUser-written content.\n`)
@@ -234,7 +345,7 @@ describe('projectPackage — adopt mode', () => {
     const opts = freshOptions()
     opts.mode = 'adopt'
 
-    const result = projectPackage(opts)
+    const result = await projectPackage(opts)
 
     // Existing IDENTITY.md is untouched
     expect(readFileSync(join(wsDir, 'IDENTITY.md'), 'utf-8')).toBe('# Existing Identity')
@@ -258,21 +369,20 @@ describe('projectPackage — adopt mode', () => {
 // ─── Update mode ─────────────────────────────────────────────────────────────
 
 describe('projectPackage — update mode', () => {
-  it('without refreshTemplate, does NOT rewrite workspace files', () => {
+  it('without refreshTemplate, does NOT rewrite workspace files', async () => {
     // Pre-seed updated workspace via fresh install
-    projectPackage(freshOptions())
+    await projectPackage(freshOptions())
     const soulBefore = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
 
     // Now agent edits the SOUL.md
     const soulPath = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
     writeFileSync(soulPath, `${soulBefore}\n\nAgent-added new section.\n`)
-    const editedSoul = readFileSync(soulPath, 'utf-8')
 
     // Run an update — should re-inject markers but not rewrite the template
     const opts = freshOptions()
     opts.mode = 'update'
     opts.refreshTemplate = false
-    projectPackage(opts)
+    await projectPackage(opts)
 
     const after = readFileSync(soulPath, 'utf-8')
     // Agent's added prose is preserved (markers were re-injected via injectBlock
@@ -280,15 +390,15 @@ describe('projectPackage — update mode', () => {
     expect(after).toContain('Agent-added new section.')
   })
 
-  it('with refreshTemplate=true, rewrites workspace files', () => {
-    projectPackage(freshOptions())
+  it('with refreshTemplate=true, rewrites workspace files', async () => {
+    await projectPackage(freshOptions())
     const identityPath = join(openClawDir, 'workspaces', 'pixel', 'IDENTITY.md')
     writeFileSync(identityPath, `# Drifted IDENTITY\n\nAgent overwrote this.\n`)
 
     const opts = freshOptions()
     opts.mode = 'update'
     opts.refreshTemplate = true
-    projectPackage(opts)
+    await projectPackage(opts)
 
     expect(readFileSync(identityPath, 'utf-8')).toBe('# IDENTITY\n\n- **Name:** Pixel\n')
   })
@@ -297,9 +407,9 @@ describe('projectPackage — update mode', () => {
 // ─── .userEdited semantics ───────────────────────────────────────────────────
 
 describe('projectPackage — .userEdited honored', () => {
-  it('skips a workspace file marked userEdited and records it in result.skipped', () => {
+  it('skips a workspace file marked userEdited and records it in result.skipped', async () => {
     // First fresh install lays down SOUL.md
-    projectPackage(freshOptions())
+    await projectPackage(freshOptions())
     const soulPath = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
     writeFileSync(soulPath, '# user owns this now')
     markUserEdited(soulPath)
@@ -307,23 +417,23 @@ describe('projectPackage — .userEdited honored', () => {
     const opts = freshOptions()
     opts.mode = 'update'
     opts.refreshTemplate = true // even with refresh-template, userEdited wins
-    const result = projectPackage(opts)
+    const result = await projectPackage(opts)
 
     // File untouched
     expect(readFileSync(soulPath, 'utf-8')).toBe('# user owns this now')
     // Recorded as skipped
-    expect(result.skipped.some((s) => s.target === soulPath)).toBe(true)
+    expect(result.skipped.some((s) => s.target.includes('SOUL.md'))).toBe(true)
   })
 
-  it('skips an asset marked userEdited', () => {
-    projectPackage(freshOptions())
+  it('skips an asset marked userEdited', async () => {
+    await projectPackage(freshOptions())
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
     writeFileSync(avatar, 'user-edited avatar')
     markUserEdited(avatar)
 
     const opts = freshOptions()
     opts.mode = 'update'
-    const result = projectPackage(opts)
+    const result = await projectPackage(opts)
 
     expect(readFileSync(avatar, 'utf-8')).toBe('user-edited avatar')
     expect(result.skipped.some((s) => s.target === avatar)).toBe(true)
@@ -333,43 +443,40 @@ describe('projectPackage — .userEdited honored', () => {
 // ─── Rollback on failure ─────────────────────────────────────────────────────
 
 describe('projectPackage — atomic rollback', () => {
-  it('rolls back every prior write when an asset path is invalid mid-projection', () => {
+  it('rolls back runtime writes and stale sidecars when a later projection fails', async () => {
+    const wsDir = join(openClawDir, 'workspaces', 'pixel')
+    mkdirSync(wsDir, { recursive: true })
+    writeFileSync(join(wsDir, 'SOUL.md'), '# existing soul\n')
+    writeFileSync(join(wsDir, 'IDENTITY.md'), '# existing identity\n')
+
+    const assetDir = join(testDir, 'agents', 'pixel')
+    mkdirSync(assetDir, { recursive: true })
+    const avatar = join(assetDir, 'avatar.jpg')
+    writeFileSync(avatar, 'owned avatar')
+    writeInstalledBy(avatar, { ...fixedInstalledBy(), package: 'other-package', sha256: 'owned' })
+
     const opts = freshOptions()
-    // Sabotage: tell the manifest about an asset that doesn't exist on staging.
-    // This triggers a warn-and-continue path, NOT a throw — so we need a
-    // different sabotage to force a throw.
-    // Force a real error: clobber the staging dir mid-project by removing
-    // the asset directory after workspace files write but before assets.
-    // Easiest forced failure: pass a manifest with a workspace file that
-    // points outside the staging dir — the absSource won't exist, so
-    // projector logs a warning and continues. Need a hard-throw failure.
-    // The sha computation throws if the target isn't a regular file —
-    // we can engineer that. But it's brittle.
-    //
-    // Simpler: pass a manifest with no agentId — projectPackage throws
-    // before any write happens. That confirms the throw path, but
-    // doesn't exercise rollback. Use a different manifest shape: mark
-    // a knowledge file path that has a frontmatter parse failure path
-    // doesn't exist.
-    //
-    // Alternative — we can patch the implementation to expose a hook
-    // that simulates a throw. For V1 we keep this simpler: assert that
-    // when the manifest has `agentId` undefined for a kind:"agent"
-    // package, the projector throws BEFORE any write happens.
-    opts.agentId = undefined
+    opts.mode = 'update'
+    opts.refreshTemplate = true
 
-    expect(() => projectPackage(opts)).toThrow(/agentId required/)
+    await expect(projectPackage(opts)).rejects.toThrow(/Projection collision/)
 
-    // No files were written
-    expect(existsSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'))).toBe(false)
-    expect(existsSync(join(testDir, 'agents', 'pixel', 'avatar.jpg'))).toBe(false)
+    const soul = join(wsDir, 'SOUL.md')
+    const identity = join(wsDir, 'IDENTITY.md')
+    expect(readFileSync(soul, 'utf-8')).toBe('# existing soul\n')
+    expect(readFileSync(identity, 'utf-8')).toBe('# existing identity\n')
+    expect(existsSync(`${soul}.installedBy`)).toBe(false)
+    expect(existsSync(`${identity}.installedBy`)).toBe(false)
+    expect(existsSync(join(wsDir, 'skills', 'test-skill'))).toBe(false)
+    expect(readFileSync(avatar, 'utf-8')).toBe('owned avatar')
+    expect(readInstalledBy(avatar)?.package).toBe('other-package')
   })
 })
 
 // ─── skill-pack projection ───────────────────────────────────────────────────
 
 describe('projectPackage — skill-pack', () => {
-  it('projects skills to ~/.openclaw/skills/ globally', () => {
+  it('projects skills to ~/.openclaw/skills/ globally', async () => {
     const stagingDir = join(testDir, 'staging-skill-pack')
     mkdirSync(join(stagingDir, 'skills', 'image-gen'), { recursive: true })
     writeFileSync(join(stagingDir, 'skills', 'image-gen', 'SKILL.md'), '# image-gen')
@@ -382,7 +489,7 @@ describe('projectPackage — skill-pack', () => {
       contributions: { skills: ['skills/image-gen'] },
     }
 
-    const result = projectPackage({
+    const result = await projectPackage({
       manifest,
       stagingDir,
       mode: 'fresh',
@@ -392,20 +499,20 @@ describe('projectPackage — skill-pack', () => {
     const target = join(openClawDir, 'skills', 'image-gen')
     expect(existsSync(join(target, 'SKILL.md'))).toBe(true)
     expect(readInstalledBy(target)?.package).toBe('visual')
-    expect(result.projections.some((p) => p.kind === 'skill' && p.target === target)).toBe(true)
+    expect(result.projections.some((p) => p.kind === 'skill' && p.target === 'runtime:global-skill:image-gen')).toBe(true)
   })
 })
 
 // ─── unprojectPackage ────────────────────────────────────────────────────────
 
 describe('unprojectPackage', () => {
-  it('removes every projected file + sidecar', () => {
-    const result = projectPackage(freshOptions())
+  it('removes every projected file + sidecar', async () => {
+    const result = await projectPackage(freshOptions())
 
     const soul = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
 
-    unprojectPackage(result.projections)
+    await unprojectPackage(result.projections)
 
     expect(existsSync(soul)).toBe(false)
     expect(existsSync(installedByPath(soul))).toBe(false)
@@ -413,11 +520,11 @@ describe('unprojectPackage', () => {
     expect(existsSync(join(openClawDir, 'workspaces', 'pixel', 'skills', 'test-skill'))).toBe(false)
   })
 
-  it('with keepBlocks=true, leaves knowledge markers intact', () => {
-    const result = projectPackage(freshOptions())
+  it('with keepBlocks=true, leaves knowledge markers intact', async () => {
+    const result = await projectPackage(freshOptions())
     const soul = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
 
-    unprojectPackage(result.projections, { keepBlocks: true })
+    await unprojectPackage(result.projections, { keepBlocks: true })
 
     // workspace-file removed
     expect(existsSync(soul)).toBe(false)
@@ -427,12 +534,12 @@ describe('unprojectPackage', () => {
     // case where unproject removes everything.)
   })
 
-  it('skips files marked userEdited even on uninstall', () => {
-    const result = projectPackage(freshOptions())
+  it('skips files marked userEdited even on uninstall', async () => {
+    const result = await projectPackage(freshOptions())
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
     markUserEdited(avatar)
 
-    unprojectPackage(result.projections)
+    await unprojectPackage(result.projections)
 
     // userEdited asset survives uninstall
     expect(existsSync(avatar)).toBe(true)

@@ -364,7 +364,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     // ─── 6. Project dependencies first (leaves-first) ─────────────────────
     for (const dep of resolved) {
       log.info('Projecting dependency', { dep: dep.resolvedId, pulledBy: dep.pulledBy })
-      const result = projectPackage({
+      const result = await projectPackage({
         manifest: dep.manifest,
         stagingDir: dep.fetched.stagingDir,
         agentId: undefined,
@@ -383,7 +383,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
 
     // ─── 7. Project the parent package ─────────────────────────────────────
     log.info('Projecting parent package', { id: resolvedTopId, kind: manifest.kind, mode })
-    const parentResult = projectPackage({
+    const parentResult = await projectPackage({
       manifest,
       stagingDir: topFetched.stagingDir,
       agentId,
@@ -544,7 +544,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     // Roll back projections (every staged write so far)
     for (const p of [...projected].reverse()) {
       try {
-        unprojectPackage(p.result.projections)
+        await unprojectPackage(p.result.projections)
       } catch (rollbackErr) {
         log.warn('Rollback during install failure threw', {
           packageId: p.resolvedId,

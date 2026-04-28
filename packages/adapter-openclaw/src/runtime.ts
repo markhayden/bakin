@@ -238,6 +238,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           content: readFileSync(file, 'utf-8'),
           updatedAt: statSync(file).mtime.toISOString(),
           metadata: {
+            installedBy: readJsonFile(`${file}.installedBy`),
             userEdited: isUserEdited(file),
           },
         }
@@ -250,6 +251,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const target = join(getWorkspacePath(agentId), file.path)
       mkdirSync(dirname(target), { recursive: true })
       writeFileSync(target, file.content, 'utf-8')
+      const installedBy = file.metadata?.installedBy
+      if (installedBy) {
+        writeFileSync(`${target}.installedBy`, JSON.stringify(installedBy, null, 2), 'utf-8')
+      } else {
+        rmSync(`${target}.installedBy`, { force: true })
+      }
+    },
+    removeWorkspaceFile: async (agentId: string, path: string): Promise<void> => {
+      if (!isSafeWorkspaceFile(path)) throw new Error(`Invalid workspace file path: ${path}`)
+      const target = join(getWorkspacePath(agentId), path)
+      rmSync(target, { force: true })
+      rmSync(`${target}.installedBy`, { force: true })
     },
     updatePermissions: async (agentId: string, patch: { allow?: string[]; deny?: string[]; replace?: boolean }): Promise<void> => {
       updateAgentAllowlist(agentId, (current) => {
@@ -409,8 +422,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
       return null
     },
-    write: async (skill: RuntimeSkill): Promise<void> => {
-      const dir = join(getOpenClawPath('skills'), skill.name)
+    write: async (skill: RuntimeSkill, agentId?: string): Promise<void> => {
+      const dir = agentId
+        ? join(getWorkspacePath(agentId), 'skills', skill.name)
+        : join(getOpenClawPath('skills'), skill.name)
       mkdirSync(dir, { recursive: true })
       const files = skill.files ?? { 'SKILL.md': skill.instructions ?? '' }
       for (const [rel, content] of Object.entries(files)) {
@@ -422,10 +437,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const installedBy = skill.metadata?.installedBy
       if (installedBy) {
         writeFileSync(join(dir, '.installedBy'), JSON.stringify(installedBy, null, 2), 'utf-8')
+      } else {
+        rmSync(join(dir, '.installedBy'), { force: true })
       }
     },
-    remove: async (name: string): Promise<void> => {
-      rmSync(join(getOpenClawPath('skills'), name), { recursive: true, force: true })
+    remove: async (name: string, agentId?: string): Promise<void> => {
+      const dir = agentId
+        ? join(getWorkspacePath(agentId), 'skills', name)
+        : join(getOpenClawPath('skills'), name)
+      rmSync(dir, { recursive: true, force: true })
     },
   }
 
@@ -924,6 +944,7 @@ function readSkillTree(root: string): Record<string, string> {
       if (entry.isDirectory()) {
         walk(abs, rel)
       } else if (entry.isFile()) {
+        if (entry.name === '.installedBy' || entry.name === '.userEdited') continue
         files[rel] = readFileSync(abs, 'utf-8')
       }
     }
