@@ -25,8 +25,7 @@ import {
   autoCheckLinkedItem,
 } from './lib/project-service'
 import { createLogger } from '../../src/core/logger'
-import { getMainAgentId } from '../../src/core/main-agent'
-import { chatAgentCompletion, sendAgentMessage, streamAgentMessageResponse } from '../../src/core/runtime-registry'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { Project, ProjectStatus } from './types'
 
 const log = createLogger('projects')
@@ -178,9 +177,10 @@ const projectsPlugin: BakinPlugin = {
     const createHandler = async (req: Request) => {
       const body = await readBody<{ title: string; body?: string; owner?: string; tasks?: string[] }>(req)
       if (!body.title) return json({ error: 'Missing title' }, 400)
-      const result = await createProject(body)
-      ctx.activity.audit('created', body.owner || 'system', { projectId: result.id, title: body.title })
-      ctx.activity.log(body.owner || 'system', `Created project "${body.title}"`)
+      const owner = body.owner ?? await getRuntimeMainAgentId(ctx.runtime)
+      const result = await createProject({ ...body, owner })
+      ctx.activity.audit('created', owner, { projectId: result.id, title: body.title })
+      ctx.activity.log(owner, `Created project "${body.title}"`)
       indexProject(result.id).catch(() => {})
       return json({ ok: true, ...result })
     }
@@ -393,7 +393,7 @@ const projectsPlugin: BakinPlugin = {
           'Respond concisely. If suggesting tasks, format them as a numbered list.',
         ].join('\n')
 
-        const agentId = body.agent || getMainAgentId()
+        const agentId = body.agent || await getRuntimeMainAgentId(ctx.runtime)
         const sessionKey = `projects-${body.projectId}-${Date.now()}`
 
         const stream = new ReadableStream({
@@ -405,16 +405,14 @@ const projectsPlugin: BakinPlugin = {
 
             let fullContent = ''
             let useStreaming = true
-            let gwResponse: Response | undefined
+            let chunks: AsyncIterable<{ type: string; content?: string }> | undefined
 
             try {
-              gwResponse = await streamAgentMessageResponse({
+              chunks = ctx.runtime.messaging.stream({
                 agentId,
-                sessionKey,
-                messages: [{ role: 'user', content: context }],
+                content: context,
+                threadId: sessionKey,
               })
-              const contentType = gwResponse.headers.get('content-type') || ''
-              if (!contentType.includes('text/event-stream')) useStreaming = false
             } catch (err) {
               // Fallback to non-streaming chatCompletion below. Log at warn level
               // so a real gateway outage (4xx/5xx, network) is still debuggable —
@@ -427,36 +425,22 @@ const projectsPlugin: BakinPlugin = {
             }
 
             try {
-              if (useStreaming && gwResponse?.body) {
-                const reader = gwResponse.body.getReader()
-                const decoder = new TextDecoder()
-                let buffer = ''
-                while (true) {
-                  const { done, value } = await reader.read()
-                  if (done) break
-                  buffer += decoder.decode(value, { stream: true })
-                  const lines = buffer.split('\n')
-                  buffer = lines.pop() || ''
-                  for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue
-                    const data = line.slice(6).trim()
-                    if (data === '[DONE]') continue
-                    try {
-                      const parsed = JSON.parse(data)
-                      const token = parsed.choices?.[0]?.delta?.content
-                      if (token) {
-                        fullContent += token
-                        send('token', { text: token })
-                      }
-                    } catch { /* skip malformed chunks */ }
+              if (useStreaming && chunks) {
+                for await (const chunk of chunks) {
+                  if (chunk.type === 'text' && chunk.content) {
+                    fullContent += chunk.content
+                    send('token', { text: chunk.content })
+                  } else if (chunk.type === 'error') {
+                    throw new Error(chunk.content ?? 'Runtime stream error')
                   }
                 }
               } else {
-                fullContent = await chatAgentCompletion({
+                const result = await ctx.runtime.messaging.send({
                   agentId,
-                  sessionKey,
-                  messages: [{ role: 'user', content: context }],
+                  content: context,
+                  threadId: sessionKey,
                 })
+                fullContent = result.content ?? ''
                 if (fullContent) send('token', { text: fullContent })
               }
               send('done', { content: fullContent })
@@ -808,8 +792,9 @@ const projectsPlugin: BakinPlugin = {
         ].join('\n')
 
         try {
-          const agentId = (params.agent as string) || getMainAgentId()
-          const reply = await sendAgentMessage(agentId, context)
+          const agentId = (params.agent as string) || await getRuntimeMainAgentId(ctx.runtime)
+          const result = await ctx.runtime.messaging.send({ agentId, content: context })
+          const reply = result.content ?? ''
           ctx.activity.audit('project.asked', 'system', { projectId, agent: agentId })
           return { ok: true, reply }
         } catch (err: unknown) {
