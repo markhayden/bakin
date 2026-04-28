@@ -26,9 +26,9 @@ async function countForTier(ctx: PluginContext, tier: MemoryTier): Promise<numbe
   //   - q: '*' so full-text matches every doc (empty q scores nothing
   //     and returns total=0, which looked like an empty backfill).
   //   - strategy: 'full_text_only' so semantic search is skipped. With
-  //     the default RRF strategy, Antfly rejects limit: 0 queries with
-  //     "semantic search requires topk limit to be positive" and the
-  //     status route silently returned 0 for every tier.
+  //     the default RRF strategy, semantic adapters can reject limit: 0
+  //     queries because topk must be positive, and the status route would
+  //     silently return 0 for every tier.
   const params: SearchQueryParams = {
     q: '*',
     filters: { tier },

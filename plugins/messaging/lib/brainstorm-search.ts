@@ -52,8 +52,8 @@ export function buildDoc(session: PlanningSession): Record<string, unknown> {
     message_body: messageBody,
     proposal_summaries: proposalSummaries,
   }
-  // Antfly rejects empty strings for `datetime` fields — omit the key
-  // entirely when the value is missing rather than forcing a coerce.
+  // Datetime fields should be omitted when missing rather than forced
+  // through adapter-specific empty-string coercion.
   if (session.createdAt) doc.created_at = session.createdAt
   if (session.updatedAt) doc.updated_at = session.updatedAt
   return doc

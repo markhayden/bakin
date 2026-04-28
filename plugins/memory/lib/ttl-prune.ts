@@ -8,8 +8,8 @@
  * by their own source-file count and don't need a retention window.
  *
  * Scan-and-delete is O(table) but the `bakin_memory` table is small (≤100k
- * rows even with debug data) and the scan runs at ~20k docs/sec over the
- * Antfly HTTP API, so a full pass costs a few seconds once per day.
+ * rows even with debug data) and the adapter scan is fast enough that a
+ * full pass costs a few seconds once per day.
  */
 import { createLogger } from '../../../src/core/logger'
 import { getSearchAdapter } from '../../../src/core/search-registry'

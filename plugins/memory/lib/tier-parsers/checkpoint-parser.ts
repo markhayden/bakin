@@ -7,7 +7,7 @@
  * `summary` is the human-readable payload. First compaction wins — if a
  * file contains multiple (rare), subsequent ones are ignored.
  *
- * Real OpenClaw files carry `tokensBefore` and `fromHook`, but never
+ * Runtime checkpoint files carry `tokensBefore` and `fromHook`, but never
  * `tokensAfter`, so the parser surfaces `tokensAfter` as null. `trigger`
  * derives from `fromHook`:
  *   true  → 'auto'     (compaction was hook-triggered)
@@ -96,7 +96,7 @@ export function parseCheckpoint(
     snippet,
     content,
     sourceRef: {
-      backend: 'openclaw',
+      backend: 'runtime',
       path: sourcePath,
       file: filename,
       sessionId,

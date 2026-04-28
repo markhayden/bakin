@@ -54,7 +54,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     const message = err instanceof Error ? err.message : String(err)
     log.error('agents/install failed', err as Error, { source: parsed.data.source })
     // 409 for "already managed" / collisions; 500 otherwise. Cheap heuristic.
-    const isConflict = /already managed|already adopted|exists in OpenClaw|collision/i.test(message)
+    const isConflict = /already managed|already adopted|exists in runtime|collision/i.test(message)
     return Response.json({ ok: false, error: message }, { status: isConflict ? 409 : 500 })
   }
 }
