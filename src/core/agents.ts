@@ -5,7 +5,7 @@
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from './logger'
-import { getRuntimeAdapter, sendAgentMessage } from './runtime-registry'
+import { getRuntimeAdapter } from './runtime-registry'
 import { readTaskboard } from '@bakin/tasks/lib/flow-store'
 
 const log = createLogger('agents')
@@ -53,6 +53,7 @@ export async function getAgentStatus(agentId: string, contentDir: string): Promi
  * Get all tasks assigned to an agent across all columns.
  */
 export function getAgentTasks(agentId: string, _contentDir: string): AgentTask[] {
+  void _contentDir
   const board = readTaskboard()
   const tasks: AgentTask[] = []
 
@@ -90,8 +91,8 @@ export async function sendMessageToAgent(
   message: string
 ): Promise<{ ok: boolean; reply?: string; error?: string }> {
   try {
-    const reply = await sendAgentMessage(agentId, message)
-    return { ok: true, reply }
+    const result = await getRuntimeAdapter().messaging.send({ agentId, content: message })
+    return { ok: true, reply: result.content ?? '' }
   } catch (err) {
     log.error(`Failed to send message to agent ${agentId}`, err)
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
