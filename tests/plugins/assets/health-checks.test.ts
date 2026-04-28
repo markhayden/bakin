@@ -15,7 +15,7 @@ process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 mock.module('@/core/content-dir', () => ({
@@ -150,7 +150,8 @@ describe('checkAssets — missing sidecars', () => {
     expect(existsSync(join(taskDir, 'hero.png.meta.json'))).toBe(true)
     const stub = JSON.parse(readFileSync(join(taskDir, 'hero.png.meta.json'), 'utf-8'))
     expect(stub.agent).toBe('unknown')
-    expect(stub.taskId).toBe('task-abc')
+    expect(stub.taskId).toBeNull()
+    expect(stub.type).toBe('images')
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Created 1 stub sidecar'))).toBe(true)
   })
 })
@@ -303,7 +304,7 @@ describe('checkAssets — disk usage', () => {
     // Write a sparse 6 GB file via fs.truncateSync — fast on macOS APFS
     const bigFile = join(taskDir, 'huge.bin')
     writeFileSync(bigFile, '')
-    require('fs').truncateSync(bigFile, 6 * 1024 * 1024 * 1024)
+    truncateSync(bigFile, 6 * 1024 * 1024 * 1024)
     // Sanity: file is reported as 6 GB
     expect(statSync(bigFile).size).toBe(6 * 1024 * 1024 * 1024)
     // Pair sidecar so it doesn't trip the missing-meta path
