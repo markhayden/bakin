@@ -7,8 +7,8 @@
 import { z } from 'zod'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { getContentDir } from '@/core/content-dir'
+import { getRuntimeAdapter } from '@/core/runtime-registry'
 import { pathForFilename } from '@bakin/assets/lib/path-for-filename'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
@@ -23,18 +23,26 @@ export interface DiscordConfig {
   guildId: string
 }
 
-export function loadDiscordConfig(): DiscordConfig | null {
+interface RuntimeDiscordConfig {
+  channels?: {
+    discord?: {
+      token?: unknown
+      guilds?: Record<string, unknown>
+    }
+  }
+}
+
+export async function loadDiscordConfig(): Promise<DiscordConfig | null> {
   // 1. Check env vars first
   if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID) {
     return { botToken: process.env.DISCORD_BOT_TOKEN, guildId: process.env.DISCORD_GUILD_ID }
   }
 
-  // 2. Read from openclaw.json
+  // 2. Read through the runtime adapter config surface.
   try {
-    const configPath = getOpenClawPath('openclaw.json')
-    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
+    const config = await getRuntimeAdapter().config.get<RuntimeDiscordConfig>()
     const discord = config.channels?.discord
-    if (!discord?.token) return null
+    if (typeof discord?.token !== 'string') return null
     const guildId = discord.guilds ? Object.keys(discord.guilds)[0] : null
     if (!guildId) return null
     return { botToken: discord.token, guildId }
@@ -81,7 +89,7 @@ async function discoverChannels(config: DiscordConfig): Promise<Record<string, s
 }
 
 export async function resolveChannelId(channel: string): Promise<{ id: string | null; available: string[] }> {
-  const config = loadDiscordConfig()
+  const config = await loadDiscordConfig()
   if (!config) return { id: null, available: [] }
 
   const map = await discoverChannels(config)
@@ -131,9 +139,9 @@ export async function postDiscord(params: PostDiscordParams): Promise<ExecToolRe
   const imagePath = resolveAssetAbsPath(imageFilename)
   const videoPath = resolveAssetAbsPath(videoFilename)
 
-  const config = loadDiscordConfig()
+  const config = await loadDiscordConfig()
   if (!config) {
-    return fail('Discord not configured. Set DISCORD_BOT_TOKEN + DISCORD_GUILD_ID env vars, or configure channels.discord in ~/.openclaw/openclaw.json')
+    return fail('Discord not configured. Set DISCORD_BOT_TOKEN + DISCORD_GUILD_ID env vars, or configure channels.discord in the runtime config')
   }
 
   const { id: channelId, available } = await resolveChannelId(channel)

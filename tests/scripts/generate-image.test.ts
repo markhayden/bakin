@@ -38,24 +38,23 @@ mock.module('child_process', () => ({
   execFileSync: mock(() => Buffer.from('1080,1920')),
 }))
 
-let mockOpenClawConfig: string | null = null
+let mockRuntimeConfig: Record<string, unknown> = {}
+
+mock.module('../../src/core/runtime-registry', () => ({
+  getRuntimeAdapter: () => ({
+    config: {
+      get: async () => mockRuntimeConfig,
+    },
+  }),
+}))
 
 mock.module('fs', () => {
   const actual = require('fs') as Record<string, unknown>
-  const origReadFileSync = actual.readFileSync as Function
   return {
     ...actual,
     existsSync: mock(() => true),
     mkdirSync: mock(),
     writeFileSync: mock(),
-    readFileSync: mock((...args: unknown[]) => {
-      // Block reading openclaw config in tests unless a test explicitly provides it.
-      if (typeof args[0] === 'string' && (args[0] as string).includes('openclaw.json')) {
-        if (mockOpenClawConfig !== null) return mockOpenClawConfig
-        throw new Error('mocked: not found')
-      }
-      return origReadFileSync(...args)
-    }),
   }
 })
 
@@ -83,7 +82,7 @@ const mockSaveAsset = vi.mocked(saveAsset)
 describe('generateImage', () => {
   beforeEach(() => {
     mock.clearAllMocks()
-    mockOpenClawConfig = null
+    mockRuntimeConfig = {}
     // Set API key for tests
     process.env.GEMINI_API_KEY = 'test-key-123'
   })
@@ -195,10 +194,10 @@ describe('generateImage', () => {
     expect(result.error).toContain('No Gemini API key')
   })
 
-  it('reads Gemini API key from openclaw skill env config', async () => {
+  it('reads Gemini API key from runtime skill env config', async () => {
     delete process.env.GEMINI_API_KEY
     delete process.env.GOOGLE_AI_API_KEY
-    mockOpenClawConfig = JSON.stringify({
+    mockRuntimeConfig = {
       skills: {
         entries: {
           'nano-banana-pro': {
@@ -208,7 +207,7 @@ describe('generateImage', () => {
           },
         },
       },
-    })
+    }
 
     spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
     mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })

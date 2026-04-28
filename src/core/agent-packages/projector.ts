@@ -9,8 +9,7 @@
  *   - workspace files at {openclaw}/workspaces/<agentId>/<file>
  *     (fresh mode only; update mode honors --refresh-template; adopt
  *      mode skips entirely)
- *   - skills at {openclaw}/workspaces/<agentId>/skills/<name>/  for kind:"agent"
- *     or  ~/.openclaw/skills/<name>/                            for kind:"skill-pack"
+ *   - skills in the runtime's agent-scoped or global skill store
  *   - assets at ~/.bakin/agents/<agentId>/<file>
  *   - knowledge markers injected into the agent's SOUL.md (catalog +
  *     per-enabled-lesson blocks)
@@ -363,7 +362,7 @@ async function projectSkills(
 
     // Collision check: if the target already has a sidecar pointing at a
     // DIFFERENT package, refuse unless --replace was passed. This is the
-    // primary collision path for global ~/.openclaw/skills/<name>/ where
+    // primary collision path for global runtime skills where
     // two skill-packs could both ship the same skill name.
     if (targetExisted) {
       const existingMarker = runtimeInstalledBy(existingSkill)

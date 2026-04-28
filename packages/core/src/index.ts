@@ -164,9 +164,6 @@ export type {
 export { createEmptyBakinTask, createFileBakinTaskStore } from './tasks/store'
 export { createMockBakinTaskStore } from './tasks/testing'
 
-// Main agent
-export { getMainAgentId } from './main-agent'
-
 // Logger
 export { createLogger } from './logger'
 

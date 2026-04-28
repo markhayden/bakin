@@ -136,7 +136,7 @@ const PluginLockEntrySchema = z.object({
    * OpenClaw skill names (one segment, no slashes) this plugin installed
    * via `defaults/openclaw-skills/<name>/SKILL.md` at install/upgrade
    * time. The remove flow uses this as the authoritative allowlist when
-   * deciding which `~/.openclaw/skills/*` dirs to delete — defeats the
+   * deciding which runtime skill entries to delete — defeats the
    * fake-`.installedBy` scorched-earth attack (security HIGH #2).
    *
    * Optional; consumers should default to [] for entries written before

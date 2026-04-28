@@ -77,7 +77,7 @@ describe('Discord gate notifications', () => {
 
   beforeEach(() => {
     mockFetch.mockReset()
-    vi.mocked(loadDiscordConfig).mockReturnValue({ botToken: 'test-bot-token', guildId: 'test-guild-id' })
+    vi.mocked(loadDiscordConfig).mockResolvedValue({ botToken: 'test-bot-token', guildId: 'test-guild-id' })
     vi.mocked(resolveChannelId).mockResolvedValue({ id: 'ch-123', available: ['general', 'approvals'] })
   })
 
@@ -135,7 +135,7 @@ describe('Discord gate notifications', () => {
     })
 
     it('returns null when Discord is not configured', async () => {
-      vi.mocked(loadDiscordConfig).mockReturnValue(null)
+      vi.mocked(loadDiscordConfig).mockResolvedValue(null)
 
       const result = await sendDiscordGateAlert(
         mockInstance,
@@ -295,7 +295,7 @@ describe('Discord gate notifications', () => {
     })
 
     it('skips edit when Discord is not configured', async () => {
-      vi.mocked(loadDiscordConfig).mockReturnValue(null)
+      vi.mocked(loadDiscordConfig).mockResolvedValue(null)
 
       await editDiscordGateMessage('approvals', 'msg-789', 'approved', approver, decidedAt)
 

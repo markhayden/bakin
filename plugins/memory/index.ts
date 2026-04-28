@@ -205,8 +205,8 @@ const memoryPlugin: BakinPlugin = {
 
     // Fan watcher events into the indexer. BakinEventBus handlers receive
     // (event, data) where data = { file, event, content }. Core's watcher
-    // only covers ~/.bakin/ — OpenClaw filesystem watching for the tiers
-    // under ~/.openclaw/ is owned by the indexer itself (lands in C3+).
+    // only covers Bakin-owned files; runtime filesystem watching for
+    // provider-owned tiers is owned by the indexer itself.
     // Events that fire before onReady() would hit a missing table, so we
     // gate them behind the same ready flag as the initial backfill.
     ctx.events.on('file.add', (_event, data) => {
