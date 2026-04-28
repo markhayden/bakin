@@ -3,9 +3,6 @@
  * Bakin CLI — command-line interface for Bakin orchestration platform.
  * All commands are thin wrappers around the Bakin HTTP API.
  */
-import { getAgentIds } from '@bakin/core/openclaw-config'
-import { getMainAgentId } from '@bakin/core/main-agent'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
@@ -15,12 +12,20 @@ import { renderCliUsage } from '../src/core/cli/registry'
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
 // Lazy so importing this module (e.g. from src/core/cli.ts when the
-// compiled binary delegates unknown commands here) doesn't read
-// ~/.openclaw/ at binary startup. Resolved once on first use.
+// compiled binary delegates unknown commands here) does not initialize
+// runtime services at binary startup. Resolved once on first use.
 let __cliAgent: string | undefined
-function getCliAgent(): string {
-  if (__cliAgent === undefined) __cliAgent = getMainAgentId()
+async function getCliAgent(): Promise<string> {
+  if (__cliAgent === undefined) {
+    const roster = await getCliRoster()
+    __cliAgent = roster.mainAgentId ?? roster.agentIds[0] ?? 'main'
+  }
   return __cliAgent
+}
+
+interface CliRoster {
+  agentIds: string[]
+  mainAgentId?: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +48,19 @@ async function api(path: string, options?: RequestInit): Promise<unknown> {
 
 async function apiGet(path: string): Promise<unknown> {
   return api(path)
+}
+
+async function getCliRoster(): Promise<CliRoster> {
+  const result = await apiGet('/api/plugins/team/') as {
+    agents?: Array<{ id?: unknown }>
+    mainAgentId?: string | null
+  }
+  return {
+    agentIds: (result.agents ?? [])
+      .map((agent) => agent.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    mainAgentId: result.mainAgentId,
+  }
 }
 
 async function apiPost(path: string, body?: unknown): Promise<unknown> {
@@ -89,13 +107,14 @@ function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
 // ---------------------------------------------------------------------------
 async function cmdStatus(): Promise<void> {
   const dispatch = await apiGet('/api/dispatch') as Record<string, unknown>
+  const roster = await getCliRoster()
 
   console.log('=== Bakin Status ===')
   console.log(`Dispatch interval: ${dispatch.intervalMin}min`)
   console.log(`Last run: ${dispatch.lastRun || 'never'}`)
   console.log(`Next run: ${dispatch.nextRun} (${dispatch.secondsUntilNext}s)`)
   console.log(`Tasks dispatched: ${dispatch.dispatchedCount}`)
-  console.log(`Agents: ${getAgentIds().join(', ')}`)
+  console.log(`Agents: ${roster.agentIds.join(', ')}`)
 }
 
 async function cmdDispatch(): Promise<void> {
@@ -147,7 +166,7 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
 }
 
 async function cmdTasksMove(id: string, to: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to, agent: getCliAgent() })
+  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to, agent: await getCliAgent() })
   print(result)
 }
 
@@ -578,21 +597,28 @@ async function cmdDoctor(): Promise<void> {
 // cmdAgentRules so the CLI stays a pure entry point.
 
 async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
-  const { readFileSync, writeFileSync, existsSync } = await import('fs')
   const {
     AGENT_RULES_BLOCK_START,
     AGENT_RULES_BLOCK_END,
     resolveOrchestratorRules,
   } = await import('../plugins/health/lib/managed-blocks')
+  const { createAppServices, maybeGetAppServices } = await import('../src/core/app-services')
+  const { selectRuntimeMainAgent } = await import('@bakin/core/adapters/runtime')
 
-  const agentsPath = getOpenClawPath('workspace', 'AGENTS.md')
-
-  if (!existsSync(agentsPath)) {
-    console.error(`[FAIL] AGENTS.md not found at ${agentsPath}`)
+  const runtime = (maybeGetAppServices() ?? await createAppServices()).runtime
+  const mainAgent = selectRuntimeMainAgent(await runtime.agents.list())
+  if (!mainAgent) {
+    console.error('[FAIL] No runtime agents found')
     process.exit(1)
   }
 
-  const current = readFileSync(agentsPath, 'utf-8')
+  const agentsFile = await runtime.agents.readWorkspaceFile(mainAgent.id, 'AGENTS.md')
+  if (!agentsFile) {
+    console.error(`[FAIL] AGENTS.md not found for orchestrator agent ${mainAgent.id}`)
+    process.exit(1)
+  }
+
+  const current = agentsFile.content
   const hasBlock = current.includes(AGENT_RULES_BLOCK_START)
   const resolvedContent = await resolveOrchestratorRules()
 
@@ -666,7 +692,7 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
     console.log('[OK] Added orchestrator rules block to AGENTS.md')
   }
 
-  writeFileSync(agentsPath, updated, 'utf-8')
+  await runtime.agents.writeWorkspaceFile(mainAgent.id, { path: 'AGENTS.md', content: updated })
 }
 
 async function cmdPaths(key?: string): Promise<void> {
@@ -1067,8 +1093,8 @@ async function cmdStart(): Promise<void> {
         console.log(`[OK] Bakin is up (${data.version})`)
         console.log('')
         console.log('MCP endpoints:')
-        const agents = getAgentIds()
-        for (const agent of agents) {
+        const roster = await getCliRoster()
+        for (const agent of roster.agentIds) {
           console.log(`  ${agent}: mcporter call bakin-${agent}.<tool> ...`)
         }
         console.log('')
@@ -1205,12 +1231,12 @@ async function cmdSetupMcporter(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdTasksLog(id: string, message: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: getCliAgent(), message })
+  const result = await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: await getCliAgent(), message })
   print(result)
 }
 
 async function cmdTasksBlock(id: string, reason: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/tasks/${id}/block`, { id, reason, agent: getCliAgent() })
+  const result = await apiPost(`/api/plugins/tasks/${id}/block`, { id, reason, agent: await getCliAgent() })
   print(result)
 }
 
@@ -1220,9 +1246,10 @@ async function cmdTasksDepend(id: string, dependsOn: string): Promise<void> {
 }
 
 async function cmdTasksComplete(id: string, summary: string): Promise<void> {
+  const agent = await getCliAgent()
   // Log the summary, then move to done
-  await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: getCliAgent(), message: `Task complete: ${summary}` })
-  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to: 'done', agent: getCliAgent() })
+  await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: agent, message: `Task complete: ${summary}` })
+  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to: 'done', agent })
   print(result)
 }
 
@@ -1269,7 +1296,7 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
     console.error('Invalid JSON for output. Usage: bakin workflows submit <taskId> <stepId> \'{"key":"value"}\'')
     process.exit(1)
   }
-  const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: getCliAgent(), output })
+  const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: await getCliAgent(), output })
   print(result)
 }
 
