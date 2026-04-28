@@ -523,7 +523,7 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
   - NEW `src/core/agent-packages/installer.ts`
   - NEW `tests/agent-packages/installer.test.ts`
   - NEW `tests/agent-packages/installer-integration.test.ts` (against real `agents/pixel/`)
-- **Deps:** A-2, A-3, E-1, E-2, E-3, E-4, plugins/team/lib/openclaw-adapter
+- **Deps:** A-2, A-3, E-1, E-2, E-3, E-4, runtime agent adapter
 - **Complexity:** L
 - **Acceptance:**
   - `installPackage({ source, type, mode: 'fresh' | 'adopt', adoptAgentId?, replace?, installAs? }): Promise<InstallResult>`:
@@ -532,7 +532,7 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
     3. Validate manifest (A-1)
     4. Resolve dependencies (E-4)
     5. Pre-flight collision check against lockfile
-    6. For `kind: "agent"` + `mode === 'fresh'`: call `addAgent()` from openclaw-adapter; on `mode === 'adopt'`: verify agentId exists, set `--adopt`
+    6. For `kind: "agent"` + `mode === 'fresh'`: call `runtime.agents.create()`; on `mode === 'adopt'`: verify agentId exists, set `--adopt`
     7. Project package + dependencies (E-3)
     8. Update lockfile entry with all projections + commitSha + dep ref-counts
     9. Append audit event (CC-1 — `agent_pkg.installed` or `agent_pkg.adopted`)

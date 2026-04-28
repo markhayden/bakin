@@ -7,8 +7,7 @@
  * updater coordination work end-to-end.
  *
  * Setup mirrors tests/agent-packages/installer.test.ts — env-var redirect
- * for OPENCLAW_HOME / BAKIN_HOME, plus mock.module for the openclaw-adapter
- * so addAgent doesn't shell out.
+ * for OPENCLAW_HOME / BAKIN_HOME so route tests never touch real OpenClaw.
  */
 import { tmpdir } from 'os'
 import { join as pathJoin } from 'path'
@@ -47,24 +46,6 @@ mock.module('@bakin/core/openclaw-config', () => ({
   getAgentIds: () => openClawAgents.map((a) => a.id),
   findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
 }))
-
-const adapterMockFactory = () => ({
-  addAgent: async (input: { id: string }) => {
-    openClawAgents.push({ id: input.id, identity: { name: input.id } })
-    return { id: input.id, workspace: join(openClawDir, 'workspaces', input.id) }
-  },
-  addToAllowLists: () => {},
-  removeAgent: async (id: string) => {
-    openClawAgents = openClawAgents.filter((a) => a.id !== id)
-    return true
-  },
-  removeFromAllowLists: () => {},
-  getOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  listAgents: () => [],
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-})
-mock.module('@bakin/team/lib/openclaw-adapter', adapterMockFactory)
-mock.module('../../plugins/team/lib/openclaw-adapter', adapterMockFactory)
 
 import * as installRoute from '../../packages/host/src/api/agent-packages/install'
 import * as listRoute from '../../packages/host/src/api/agent-packages/list'

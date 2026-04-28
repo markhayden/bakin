@@ -89,21 +89,6 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-const adapterMockFactory = () => ({
-  addAgent: async (input: { id: string }) => {
-    openClawAgents.push({ id: input.id, identity: { name: input.id } })
-    return { id: input.id, workspace: join(openClawDir, 'workspaces', input.id) }
-  },
-  addToAllowLists: () => {},
-  removeAgent: async () => true,
-  removeFromAllowLists: () => {},
-  getOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  listAgents: () => [],
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-})
-mock.module('@bakin/team/lib/openclaw-adapter', adapterMockFactory)
-mock.module('../../../plugins/team/lib/openclaw-adapter', adapterMockFactory)
-
 import { agentAssetsComponent } from '../../../src/core/onboarding/agent-assets'
 import { installPackage } from '../../../src/core/agent-packages/installer'
 import {

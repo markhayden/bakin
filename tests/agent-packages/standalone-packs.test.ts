@@ -54,20 +54,6 @@ mock.module('@bakin/core/openclaw-config', () => ({
   findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
 }))
 
-const adapterMockFactory = () => ({
-  addAgent: async (input: { id: string }) => {
-    openClawAgents.push({ id: input.id, identity: { name: input.id } })
-    return { id: input.id, workspace: join(openClawDir, 'workspaces', input.id) }
-  },
-  addToAllowLists: () => {},
-  removeAgent: async () => true,
-  removeFromAllowLists: () => {},
-  getOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  listAgents: () => [],
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-})
-mock.module('@bakin/team/lib/openclaw-adapter', adapterMockFactory)
-mock.module('../../plugins/team/lib/openclaw-adapter', adapterMockFactory)
 mock.module('@bakin/tasks/lib/flow-store', () => ({}))
 
 import { installPackage } from '../../src/core/agent-packages/installer'

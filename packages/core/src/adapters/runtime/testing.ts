@@ -45,6 +45,7 @@ export function createMockRuntimeAdapter(
       remove: async (agentId) => {
         agents.delete(agentId)
       },
+      listWorkspaceFiles: async () => [],
       readWorkspaceFile: async () => null,
       writeWorkspaceFile: async () => {},
       updatePermissions: async () => {},

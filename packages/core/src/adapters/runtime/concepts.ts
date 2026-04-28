@@ -345,6 +345,7 @@ export interface AgentRuntimeAdapter {
     create(input: CreateRuntimeAgentInput): Promise<RuntimeAgent>
     update(agentId: string, input: UpdateRuntimeAgentInput): Promise<RuntimeAgent>
     remove(agentId: string): Promise<void>
+    listWorkspaceFiles(agentId: string): Promise<string[]>
     readWorkspaceFile(agentId: string, path: string): Promise<WorkspaceFile | null>
     writeWorkspaceFile(agentId: string, file: WorkspaceFile): Promise<void>
     updatePermissions(agentId: string, patch: RuntimePermissionPatch): Promise<void>
@@ -378,7 +379,7 @@ export interface AgentRuntimeAdapter {
 
   skills: {
     list(agentId?: string): Promise<RuntimeSkill[]>
-    get(name: string): Promise<RuntimeSkill | null>
+    get(name: string, agentId?: string): Promise<RuntimeSkill | null>
     write(skill: RuntimeSkill): Promise<void>
     remove(name: string): Promise<void>
   }
@@ -391,7 +392,7 @@ export interface AgentRuntimeAdapter {
   memory: {
     listTiers(): Promise<RuntimeMemoryTier[]>
     listEntries(tierId: string, opts?: { agentId?: string }): Promise<RuntimeMemoryEntry[]>
-    getEntry(tierId: string, id: string): Promise<RuntimeMemoryEntry | null>
+    getEntry(tierId: string, id: string, opts?: { agentId?: string }): Promise<RuntimeMemoryEntry | null>
   }
 
   tasks: {

@@ -75,7 +75,7 @@ interface OpenClawConfig {
 }
 
 function resolveWorkspace(agentId: string): string {
-  // Mirror the resolution in plugins/team/lib/openclaw-adapter.ts: explicit
+  // Mirror the OpenClaw runtime adapter's workspace resolution: explicit
   // entry.workspace > defaults.workspace (for main) > workspaces/<id>/ for
   // subagents. We don't import the adapter to keep this script self-contained
   // and runnable from a clean checkout.
