@@ -29,13 +29,6 @@ mock.module('../../../src/core/watcher', () => ({
   watchFiles: mock(),
 }))
 
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendMessage: mock(),
-  sendChannelMessage: mock(),
-  streamMessage: mock(),
-  chatCompletion: mock(),
-}))
-
 mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, ...props }: Record<string, unknown>) => (
     <button onClick={onClick as () => void} disabled={disabled as boolean} {...props}>

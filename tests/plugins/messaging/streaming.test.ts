@@ -45,15 +45,13 @@ mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: mock(() => '/tmp/mock-openclaw'),
 }))
 
-// Mock gateway — default returns canned text, tests can override
+// Mock runtime completions — default returns canned text, tests can override.
 const mockStreamChatCompletion = mock()
 const mockChatCompletion = mock()
 
-mock.module('../../../src/core/openclaw-client', () => ({
-  streamMessage: (...args: unknown[]) => mockStreamChatCompletion(...args),
-  chatCompletion: (...args: unknown[]) => mockChatCompletion(...args),
-  sendMessage: mock(),
-  sendChannelMessage: mock(),
+mock.module('../../../src/core/runtime-registry', () => ({
+  streamAgentMessageResponse: (...args: unknown[]) => mockStreamChatCompletion(...args),
+  chatAgentCompletion: (...args: unknown[]) => mockChatCompletion(...args),
 }))
 
 ;(globalThis as any).__bakinBroadcast = mock()
@@ -163,7 +161,7 @@ describe('Streaming endpoint', () => {
     expect(res.headers.get('content-type')).toBe('text/event-stream')
   })
 
-  it('streams token events from gateway SSE', async () => {
+  it('streams token events from runtime SSE', async () => {
     mockStreamChatCompletion.mockResolvedValueOnce(
       makeSSEResponse('Here are some ideas for next week.')
     )
@@ -268,7 +266,7 @@ describe('Streaming endpoint', () => {
     expect(assistantMsg.proposalIds[0]).toBe(session.proposals[0].id)
   })
 
-  it('falls back to non-streaming when gateway throws', async () => {
+  it('falls back to non-streaming when runtime streaming throws', async () => {
     mockStreamChatCompletion.mockRejectedValueOnce(new Error('Stream not supported'))
     mockChatCompletion.mockResolvedValueOnce('Fallback response here.')
 
@@ -336,7 +334,7 @@ describe('Streaming endpoint', () => {
 })
 
 describe('Session message exec tool (non-streaming)', () => {
-  it('calls gateway non-streaming and returns response', async () => {
+  it('calls runtime non-streaming and returns response', async () => {
     mockChatCompletion.mockResolvedValueOnce('Here are my ideas for you.')
 
     const createTool = findTool(plugin.execTools, 'bakin_exec_messaging_session_create')!
@@ -352,8 +350,8 @@ describe('Session message exec tool (non-streaming)', () => {
     expect(mockChatCompletion).toHaveBeenCalled()
   })
 
-  it('returns error when gateway fails', async () => {
-    mockChatCompletion.mockRejectedValueOnce(new Error('Gateway down'))
+  it('returns error when runtime completion fails', async () => {
+    mockChatCompletion.mockRejectedValueOnce(new Error('Runtime down'))
 
     const createTool = findTool(plugin.execTools, 'bakin_exec_messaging_session_create')!
     const created = await createTool.handler({ agentId: 'basil' }, 'test')
@@ -363,6 +361,6 @@ describe('Session message exec tool (non-streaming)', () => {
     const result = await tool.handler({ sessionId, message: 'Plan' }, 'test')
 
     expect(result.ok).toBe(false)
-    expect(result.error).toContain('Gateway down')
+    expect(result.error).toContain('Runtime down')
   })
 })

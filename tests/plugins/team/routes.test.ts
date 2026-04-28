@@ -6,8 +6,8 @@
  * /search route is auto-registered via the test helpers (per C16 wiring),
  * and verify a representative non-search route is registered.
  *
- * The team plugin is an adapter over OpenClaw; all OpenClaw-touching
- * modules are stubbed so the test never reads from ~/.openclaw/.
+ * The team plugin delegates to the active runtime adapter; runtime-facing
+ * modules are stubbed so the test never reads from the user's real config.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'fs'
@@ -69,16 +69,6 @@ mock.module('../../../src/core/logger', () => ({
 mock.module('../../../src/core/watcher', () => ({
   registerSyncHook: mock(),
   registerUnlinkHook: mock(),
-}))
-
-// OpenClaw HTTP client — no real gateway calls
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendMessage: mock(async () => 'ok'),
-  invokeTool: mock(async () => ({ ok: true })),
-  sendChannelMessage: mock(async () => 'ok'),
-  restartGateway: mock(async () => {}),
-  ping: mock(async () => true),
-  getAgentLastReply: mock(() => null),
 }))
 
 // Settings — return a fully-shaped stub

@@ -39,14 +39,6 @@ mock.module('@/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-mock.module('@/core/openclaw-client', () => ({
-  sendToAgent: mock(),
-  sendMessage: mock(),
-  sendChannelMessage: mock(),
-  streamMessage: mock(),
-  chatCompletion: mock(),
-}))
-
 import {
   buildDoc,
   parseSessionFile,

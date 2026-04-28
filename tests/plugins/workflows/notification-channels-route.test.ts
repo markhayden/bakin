@@ -30,19 +30,21 @@ mock.module('@bakin/core/main-agent', () => ({
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
 }))
 mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
 }))
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('../../../src/core/audit', () => ({ appendAudit: mock() }))
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendMessage: mock(),
-  sendChannelMessage: mock(),
-}))
 mock.module('../../../src/core/watcher', () => ({
   watchFiles: mock(),
   registerSyncHook: mock(() => () => {}),

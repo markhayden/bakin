@@ -68,13 +68,6 @@ mock.module('../../src/core/watcher', () => ({
   stop: mock(),
 }))
 
-mock.module('../../src/core/openclaw-client', () => ({
-  sendChannelMessage: mock(async () => ({ ok: true })),
-  sendMessage: mock(async () => ({ ok: true })),
-  isHealthy: mock(async () => true),
-  callGateway: mock(async () => ({ ok: true })),
-}))
-
 // ---------------------------------------------------------------------------
 // search-registry mock — controls plugin → table resolution and query results
 // ---------------------------------------------------------------------------
@@ -137,32 +130,31 @@ const getTableForPluginMock = mock((pluginId: string): string | null => {
   return KNOWN_PLUGINS[pluginId] ?? null
 })
 
+const searchStatsMock = mock(async (table: string) => ({ name: table, docs: 1 }))
+const searchQueryMock = mock(async (_table: string, query: { text: string }) => ({
+  hits: [
+    {
+      key: query.text,
+      id: query.text,
+      title: 'hello',
+      body: 'world',
+    },
+  ],
+  total: 1,
+}))
+
 mock.module('../../src/core/search-registry', () => ({
   crossTableSearch: crossTableSearchMock,
   reindexContentTypes: reindexContentTypesMock,
   getSearchHealth: getSearchHealthMock,
   getContentTypes: getContentTypesMock,
   getTableForPlugin: getTableForPluginMock,
+  getIndexNames: mock(() => ['embeddings']),
+  getSearchAdapter: mock(() => ({
+    tables: { stats: searchStatsMock },
+    query: searchQueryMock,
+  })),
   buildSearchAPI: mock(() => ({})),
-}))
-
-// ---------------------------------------------------------------------------
-// antfly mock — search_lookup goes directly through antfly.queryTable
-// ---------------------------------------------------------------------------
-
-const getTableStatsMock = mock(async (table: string) => ({ table, total: 1 }))
-const queryTableMock = mock(async (_table: string, key: string) => ({
-  results: [{ id: key, title: 'hello', body: 'world' }],
-  total: 1,
-  took: 2,
-}))
-
-mock.module('../../src/core/antfly', () => ({
-  enabled: () => true,
-  available: () => true,
-  getTableStats: getTableStatsMock,
-  queryTable: queryTableMock,
-  multiQuery: mock(),
 }))
 
 // ---------------------------------------------------------------------------
@@ -240,8 +232,8 @@ describe('MCP search tools — plugin param coverage', () => {
       const tool = await getTool('bakin_exec_search_lookup')
       const result = await tool.handler({ plugin: 'projects', key: 'doc-1' }, {} as never)
       expect(result.ok).toBe(true)
-      expect(getTableStatsMock).toHaveBeenCalledWith('bakin_projects')
-      expect(queryTableMock).toHaveBeenCalled()
+      expect(searchStatsMock).toHaveBeenCalledWith('bakin_projects')
+      expect(searchQueryMock).toHaveBeenCalled()
       expect((result as unknown as { document: { id: string } }).document.id).toBe('doc-1')
     })
   })

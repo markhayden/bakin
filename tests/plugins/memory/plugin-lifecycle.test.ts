@@ -51,7 +51,6 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
-mock.module('../../../src/core/openclaw-client', () => ({ sendMessage: mock() }))
 mock.module('../../../packages/core/src/openclaw-home', () => {
   const { join: j } = require('path') as typeof import('path')
   const { tmpdir: t } = require('os') as typeof import('os')

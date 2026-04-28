@@ -52,15 +52,6 @@ mock.module('../../../src/core/watcher', () => ({
   unregisterWatcher: mock(),
 }))
 
-mock.module('../../../src/core/openclaw-client', () => ({
-  streamMessage: mock(async () => new Response('data: [DONE]\n\n', {
-    headers: { 'Content-Type': 'text/event-stream' },
-  })),
-  chatCompletion: mock(async () => 'mock response'),
-  sendMessage: mock(),
-  sendChannelMessage: mock(),
-}))
-
 // Suppress SSE broadcast
 ;(globalThis as any).__bakinBroadcast = mock()
 

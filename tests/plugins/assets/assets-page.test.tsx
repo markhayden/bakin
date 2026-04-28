@@ -69,10 +69,6 @@ mock.module('@/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-mock.module('@/core/openclaw-client', () => ({
-  sendToAgent: mock(),
-}))
-
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 // ─── Hook stubs ───────────────────────────────────────────────────────────

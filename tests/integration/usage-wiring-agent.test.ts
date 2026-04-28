@@ -28,11 +28,6 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-mock.module('../../src/core/openclaw-client', () => ({
-  sendMessage: mock().mockResolvedValue(undefined),
-  openclaw: { sendMessage: mock().mockResolvedValue(undefined) },
-}))
-
 // Mock audit so it doesn't try to write jsonl with real paths pulled in elsewhere.
 mock.module('../../src/core/audit', () => ({
   appendAudit: mock(),
@@ -76,6 +71,20 @@ mock.module('@bakin/core/main-agent', () => ({
 mock.module('@bakin/core/openclaw-home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
+}))
+
+mock.module('../../src/core/runtime-registry', () => ({
+  getRuntimeAdapter: () => ({
+    agents: {
+      list: async () => [
+        { id: 'alice', name: 'Alice', role: 'Builder', status: 'active' },
+        { id: 'orchestrator', name: 'Orchestrator', role: 'Orchestrator', status: 'active' },
+      ],
+    },
+    messaging: {
+      send: async () => ({ id: 'msg-1', content: '' }),
+    },
+  }),
 }))
 
 import { clearUsage, getUsageFeed } from '../../src/core/usage'
