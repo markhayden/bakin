@@ -42,22 +42,6 @@ mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-const mockChatAgentCompletion = mock(async (...args: unknown[]) => {
-  void args
-  return ''
-})
-const mockStreamAgentMessageResponse = mock(async (...args: unknown[]) => {
-  void args
-  return new Response('data: [DONE]\n\n', {
-    headers: { 'Content-Type': 'text/event-stream' },
-  })
-})
-
-mock.module('../../../src/core/runtime-registry', () => ({
-  chatAgentCompletion: (...args: unknown[]) => mockChatAgentCompletion(...args),
-  streamAgentMessageResponse: (...args: unknown[]) => mockStreamAgentMessageResponse(...args),
-}))
-
 // Suppress SSE broadcast
 ;(globalThis as any).__bakinBroadcast = mock()
 
@@ -76,6 +60,32 @@ import {
   callTool,
 } from '../test-helpers'
 import type { ActivatedPlugin } from '../test-helpers'
+
+type RuntimeSend = ActivatedPlugin['ctx']['runtime']['messaging']['send']
+type RuntimeStream = ActivatedPlugin['ctx']['runtime']['messaging']['stream']
+
+let mockRuntimeSend = mock(async () => ({ id: 'runtime-msg', content: '' }))
+let mockRuntimeStream = mock(() => emptyRuntimeStream())
+
+async function* emptyRuntimeStream(): AsyncIterable<never> {
+  const items: never[] = []
+  for (const item of items) yield item
+}
+
+function installRuntimeMessagingMocks(): void {
+  plugin.ctx.runtime.messaging.send = mockRuntimeSend as RuntimeSend
+  plugin.ctx.runtime.messaging.stream = mockRuntimeStream as RuntimeStream
+}
+
+function resetRuntimeMessagingMocks(): void {
+  mockRuntimeSend = mock(async () => ({ id: 'runtime-msg', content: '' }))
+  mockRuntimeStream = mock(() => emptyRuntimeStream())
+  installRuntimeMessagingMocks()
+}
+
+function sendRuntimeResponse(content: string): void {
+  mockRuntimeSend.mockImplementationOnce(async () => ({ id: 'runtime-msg', content }))
+}
 
 // ---------------------------------------------------------------------------
 // Seed data helpers
@@ -112,6 +122,7 @@ beforeAll(async () => {
   mkdirSync(testDir, { recursive: true })
   seedItems([])
   plugin = await activatePlugin(messagingPlugin, testDir)
+  installRuntimeMessagingMocks()
 })
 
 afterAll(() => {
@@ -122,10 +133,7 @@ beforeEach(() => {
   // Reset to empty messaging before each test
   seedItems([])
   mock.clearAllMocks()
-  mockChatAgentCompletion.mockResolvedValue('')
-  mockStreamAgentMessageResponse.mockResolvedValue(new Response('data: [DONE]\n\n', {
-    headers: { 'Content-Type': 'text/event-stream' },
-  }))
+  resetRuntimeMessagingMocks()
 })
 
 // ===========================================================================
@@ -465,7 +473,7 @@ describe('Calendar routes', () => {
       mkdirSync(personaDir, { recursive: true })
       writeFileSync(join(personaDir, 'basil.md'), '# Basil\nA nutrition-focused agent.')
 
-      mockChatAgentCompletion.mockResolvedValueOnce(
+      sendRuntimeResponse(
         `Great ideas coming up!\n\n\`\`\`json\n[{"title":"Morning Smoothie","scheduledAt":"2026-04-15T09:00:00Z","contentType":"recipe","tone":"energetic","brief":"A vibrant smoothie recipe post"}]\n\`\`\``,
       )
 
@@ -487,7 +495,7 @@ describe('Calendar routes', () => {
           tone: 'energetic',
         }),
       ])
-      expect(mockChatAgentCompletion).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mockRuntimeSend).toHaveBeenCalledWith(expect.objectContaining({
         agentId: 'basil',
       }))
     })
