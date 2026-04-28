@@ -216,7 +216,7 @@ async function handleKnowledgeToggle(
   }
 
   try {
-    const result = setKnowledgeEnabled(packageId, lessonId, parsed.data.enabled)
+    const result = await setKnowledgeEnabled(packageId, lessonId, parsed.data.enabled)
     return Response.json({ ok: true, result })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

@@ -43,6 +43,7 @@ export interface WorkspaceFile {
   path: string
   content: string
   updatedAt?: string
+  metadata?: RuntimeMetadata
 }
 
 export interface MessageArgs {

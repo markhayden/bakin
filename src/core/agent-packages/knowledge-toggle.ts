@@ -10,12 +10,12 @@
  * the marker injection always reflects the file content currently on disk
  * (handles the case where a `bakin agents update` ran between toggles).
  */
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { basename, join } from 'path'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
+import { getRuntimeAdapter } from '../runtime-registry'
 import {
   type AgentManifest,
   type Manifest,
@@ -31,7 +31,6 @@ import {
   injectBlock,
   removeBlock,
 } from '../../../packages/core/src/agent-packages/managed-blocks'
-import { isUserEdited } from '../../../packages/core/src/agent-packages/markers'
 
 const log = createLogger('agent-pkg:knowledge')
 
@@ -78,11 +77,11 @@ export interface ToggleResult {
  * Enable or disable a single lesson. Idempotent — toggling an already-on
  * lesson on returns `changed: false` with no writes.
  */
-export function setKnowledgeEnabled(
+export async function setKnowledgeEnabled(
   packageId: string,
   lessonId: string,
   enabled: boolean,
-): ToggleResult {
+): Promise<ToggleResult> {
   const lock = readLockfile()
   const entry = lock.packages[packageId]
   if (!entry) {
@@ -122,19 +121,20 @@ export function setKnowledgeEnabled(
     return { packageId, lessonId, enabled, changed: false }
   }
 
-  // Mutate the SOUL.md
-  const soulPath = getOpenClawPath('workspaces', entry.agentId, 'SOUL.md')
-  if (!existsSync(soulPath)) {
-    throw new Error(`SOUL.md missing for agent "${entry.agentId}" at ${soulPath}`)
+  // Mutate the SOUL.md through the runtime workspace API.
+  const runtime = getRuntimeAdapter()
+  const soulFile = await runtime.agents.readWorkspaceFile(entry.agentId, 'SOUL.md')
+  if (!soulFile) {
+    throw new Error(`SOUL.md missing for agent "${entry.agentId}" in the runtime workspace.`)
   }
-  if (isUserEdited(soulPath)) {
+  if (soulFile.metadata?.userEdited === true) {
     throw new Error(
       `SOUL.md is marked .userEdited — refusing to mutate. Remove the sentinel to re-enable knowledge toggling.`,
     )
   }
 
   const blockId = `knowledge:${packageId}:${lessonId}`
-  let soul = readFileSync(soulPath, 'utf-8')
+  let soul = soulFile.content
   if (enabled) {
     const lesson = parseLessonFile(target.abs, target.rel, currentEnabled)
     soul = injectBlock(soul, blockId, lesson.body)
@@ -148,7 +148,7 @@ export function setKnowledgeEnabled(
   const allLessons = lessonPaths.map((l) => parseLessonFile(l.abs, l.rel, currentEnabled))
   soul = injectBlock(soul, 'knowledge-catalog', buildCatalogBody(packageId, allLessons, currentEnabled))
 
-  writeFileSync(soulPath, soul, 'utf-8')
+  await runtime.agents.writeWorkspaceFile(entry.agentId, { path: 'SOUL.md', content: soul })
 
   // Update lockfile
   const nextEntry = { ...entry, knowledgeEnabled: Array.from(currentEnabled).sort() }
