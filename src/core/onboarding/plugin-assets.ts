@@ -426,8 +426,10 @@ export async function planPluginAssetsRemoval(
   pluginId: string,
   ownedSkills: readonly string[],
 ): Promise<PluginAssetsRemovalPlan> {
-  const runtime = getAppServices().runtime
   const plan: PluginAssetsRemovalPlan = { toRemove: [], toKeep: [], missingFromDisk: [], snapshots: [] }
+  if (ownedSkills.length === 0) return plan
+
+  const runtime = getAppServices().runtime
   for (const skillName of ownedSkills) {
     const skill = await runtime.skills.get(skillName)
     if (!skill) {
@@ -475,8 +477,18 @@ export async function removePluginAssets(
   keptSkills: string[]
   missingFromDisk: string[]
 }> {
-  const runtime = getAppServices().runtime
   const plan = existingPlan ?? await planPluginAssetsRemoval(pluginId, ownedSkills)
+  if (plan.toRemove.length === 0) {
+    return {
+      removed: 0,
+      kept: plan.toKeep.length,
+      removedSkills: [],
+      keptSkills: plan.toKeep,
+      missingFromDisk: plan.missingFromDisk,
+    }
+  }
+
+  const runtime = getAppServices().runtime
   for (const skillName of plan.toRemove) {
     await runtime.skills.remove(skillName)
     log.info('Removed runtime skill on plugin uninstall', { skillName, pluginId })
