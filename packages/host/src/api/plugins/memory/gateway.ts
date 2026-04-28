@@ -1,28 +1,22 @@
 /**
- * GET /api/plugins/memory/gateway — paginated OpenClaw gateway log
- * (`/tmp/openclaw/openclaw-{date}.log`) view.
- *
- * Migrated from src/app/api/plugins/memory/gateway/route.ts for Phase B
- * of #147.
+ * GET /api/plugins/memory/gateway - paginated runtime gateway log view.
  */
-import { readFileSync, existsSync } from 'fs'
-import { join } from 'path'
+import { getAppServices } from '@/core/app-services'
 
-const LOG_DIR = '/tmp/openclaw'
+const GATEWAY_LOG_TIER = 'runtime-gateway-log'
 
 export async function get(_req: Request, url: URL): Promise<Response> {
   const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10)
   const offset = parseInt(url.searchParams.get('offset') || '0', 10)
   const limit = parseInt(url.searchParams.get('limit') || '100', 10)
 
-  const logPath = join(LOG_DIR, `openclaw-${date}.log`)
-
-  if (!existsSync(logPath)) {
-    return Response.json({ entries: [], total: 0, hasMore: false })
-  }
-
   try {
-    const raw = readFileSync(logPath, 'utf-8')
+    const entry = await getAppServices().runtime.memory.getEntry(GATEWAY_LOG_TIER, date)
+    if (!entry?.content) {
+      return Response.json({ entries: [], total: 0, hasMore: false })
+    }
+
+    const raw = entry.content
     const lines = raw.split('\n').filter(Boolean)
 
     const entries = lines

@@ -15,6 +15,9 @@ const SESSION_JSONL_RE = /^([^/.]+)\.jsonl$/
 const SESSION_RESET_RE = /\.reset(?:\.|-)/
 const CHECKPOINT_RE = /^([^/]+)\.checkpoint\.[^/]+\.jsonl$/
 const CHECKPOINT_PARTS_RE = /^([^/.]+)\.checkpoint\.([^/.]+)\.jsonl$/
+const GATEWAY_LOG_DIR = '/tmp/openclaw'
+const GATEWAY_LOG_RE = /^openclaw-(\d{4}-\d{2}-\d{2})\.log$/
+const DATE_ID_RE = /^\d{4}-\d{2}-\d{2}$/
 
 export const OPENCLAW_MEMORY_SOURCE_KINDS = {
   durable: 'durable',
@@ -25,6 +28,7 @@ export const OPENCLAW_MEMORY_SOURCE_KINDS = {
   checkpoint: 'checkpoint',
   dreamPhase: 'dream_phase',
   dreamSignal: 'dream_signal',
+  gatewayLog: 'gateway_log',
 } as const
 
 export const OPENCLAW_MEMORY_TIERS = {
@@ -36,6 +40,7 @@ export const OPENCLAW_MEMORY_TIERS = {
   checkpoint: 'openclaw-checkpoint',
   dreamPhase: 'openclaw-dream-phase',
   dreamSignal: 'openclaw-dream-signal',
+  gatewayLog: 'runtime-gateway-log',
 } as const
 
 export const CANONICAL_DURABLE_FILES = [
@@ -72,6 +77,7 @@ export function listOpenClawMemoryTiers(): RuntimeMemoryTier[] {
     tier(OPENCLAW_MEMORY_TIERS.checkpoint, 'Checkpoints', 'Session checkpoint JSONL files.', OPENCLAW_MEMORY_SOURCE_KINDS.checkpoint),
     tier(OPENCLAW_MEMORY_TIERS.dreamPhase, 'Dream phase docs', 'Markdown dream phase documents.', OPENCLAW_MEMORY_SOURCE_KINDS.dreamPhase),
     tier(OPENCLAW_MEMORY_TIERS.dreamSignal, 'Dream signals', 'Dream signal artifacts.', OPENCLAW_MEMORY_SOURCE_KINDS.dreamSignal),
+    tier(OPENCLAW_MEMORY_TIERS.gatewayLog, 'Gateway logs', 'Runtime gateway log files.', OPENCLAW_MEMORY_SOURCE_KINDS.gatewayLog),
   ]
 }
 
@@ -79,6 +85,9 @@ export function listOpenClawMemoryEntries(
   tierId: string,
   opts: { agentId?: string } = {},
 ): RuntimeMemoryEntry[] {
+  if (tierId === OPENCLAW_MEMORY_TIERS.gatewayLog) {
+    return listGatewayLogRefs().map((ref) => entryFromRef(ref, '', statFile(ref.path)))
+  }
   const agents = opts.agentId ? [opts.agentId] : listAgentIds()
   const out: RuntimeMemoryEntry[] = []
   for (const agentId of agents) {
@@ -178,6 +187,7 @@ export function getOpenClawMemoryWatchPaths(): string[] {
     getOpenClawPath('workspaces', '*', 'skills', '*', 'SKILL.md'),
     getOpenClawPath('workspace', 'memory', '**', '*'),
     getOpenClawPath('workspaces', '*', 'memory', '**', '*'),
+    join(GATEWAY_LOG_DIR, 'openclaw-*.log'),
   ]
 }
 
@@ -208,12 +218,17 @@ function listSourceRefs(tierId: string, agentId: string): SourceRef[] {
       return listDreamPhaseRefs(agentId)
     case OPENCLAW_MEMORY_TIERS.dreamSignal:
       return listDreamSignalRefs(agentId)
+    case OPENCLAW_MEMORY_TIERS.gatewayLog:
+      return listGatewayLogRefs()
     default:
       return []
   }
 }
 
 function sourceRefFor(tierId: string, id: string, agentId?: string): SourceRef | null {
+  if (tierId === OPENCLAW_MEMORY_TIERS.gatewayLog) {
+    return gatewayLogRef(id)
+  }
   if (!agentId) return null
   if (!isSafeRelPath(id)) return null
   switch (tierId) {
@@ -235,6 +250,32 @@ function sourceRefFor(tierId: string, id: string, agentId?: string): SourceRef |
       return isSafeRelPath(id) ? dreamSignalRef(agentId, id) : null
     default:
       return null
+  }
+}
+
+function listGatewayLogRefs(): SourceRef[] {
+  if (!existsSync(GATEWAY_LOG_DIR)) return []
+  try {
+    return readdirSync(GATEWAY_LOG_DIR)
+      .map((name) => {
+        const match = GATEWAY_LOG_RE.exec(name)
+        return match ? gatewayLogRef(match[1]) : null
+      })
+      .filter((ref): ref is SourceRef => Boolean(ref))
+  } catch {
+    return []
+  }
+}
+
+function gatewayLogRef(date: string): SourceRef | null {
+  if (!DATE_ID_RE.test(date)) return null
+  return {
+    tierId: OPENCLAW_MEMORY_TIERS.gatewayLog,
+    sourceKind: OPENCLAW_MEMORY_SOURCE_KINDS.gatewayLog,
+    id: date,
+    agentId: 'runtime',
+    path: join(GATEWAY_LOG_DIR, `openclaw-${date}.log`),
+    metadata: { sourceKind: OPENCLAW_MEMORY_SOURCE_KINDS.gatewayLog, date },
   }
 }
 
@@ -471,6 +512,11 @@ function dreamSignalRef(agentId: string, relPath: string): SourceRef {
 }
 
 function matchSourcePath(path: string): SourceRef | null {
+  if (path.startsWith(GATEWAY_LOG_DIR + '/')) {
+    const match = GATEWAY_LOG_RE.exec(path.slice(GATEWAY_LOG_DIR.length + 1))
+    if (match) return gatewayLogRef(match[1])
+  }
+
   for (const agentId of listAgentIds()) {
     const match = matchAgentPath(agentId, path)
     if (match) return match
