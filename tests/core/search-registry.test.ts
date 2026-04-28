@@ -78,7 +78,7 @@ describe('search-registry', () => {
   beforeEach(() => {
     resetSearchRegistry()
     searchHarness = createSearchAdapterHarness()
-    searchHarness.calls.query.mockImplementation(async (table) => ({
+    searchHarness.calls.query.mockImplementation(async () => ({
       hits: [
         { key: 'doc-1', document: { title: 'Test task' }, score: 0.95 },
       ],
@@ -306,7 +306,7 @@ describe('search-registry', () => {
         {
           name: 'assets_visual',
           embedderRef: 'visual',
-          embeddingTemplate: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
+          mediaUrlField: 'image_url',
         },
       ],
     })
@@ -327,7 +327,7 @@ describe('search-registry', () => {
           expect.objectContaining({
             name: 'assets_visual',
             kind: 'vector',
-            template: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
+            mediaUrlField: 'image_url',
             embedderRef: 'visual',
           }),
         ],
@@ -341,7 +341,7 @@ describe('search-registry', () => {
       ...makeDef('assets'),
       indexes: [
         { name: 'assets_text', embedderRef: 'default', embeddingTemplate: '{{description}}' },
-        { name: 'assets_visual', embedderRef: 'visual', embeddingTemplate: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}' },
+        { name: 'assets_visual', embedderRef: 'visual', mediaUrlField: 'image_url' },
       ],
     })
 
@@ -580,7 +580,10 @@ describe('search-registry', () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType({
       ...makeDef('tasks'),
-      reindex: async function* () { throw new Error('boom') },
+      reindex: async function* () {
+        yield* []
+        throw new Error('boom')
+      },
     })
 
     const results = await reindexContentTypes()

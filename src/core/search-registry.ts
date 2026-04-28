@@ -135,6 +135,7 @@ function buildTableConfig(def: SearchContentTypeDefinition): TableConfig {
       fields: def.searchableFields,
       embedderRef: idx.embedderRef,
       template: idx.embeddingTemplate,
+      mediaUrlField: idx.mediaUrlField,
       chunker: idx.chunker,
     })),
     adapterOptions: {

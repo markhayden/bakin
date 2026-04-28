@@ -24,7 +24,10 @@ export interface SearchIndexConfig {
   fields: string[]
   kind?: 'text' | 'vector' | 'hybrid'
   embedderRef?: string
+  /** Text template for embedding input. Provider-specific helper syntax belongs in adapters. */
   template?: string
+  /** Document field containing a URL to media bytes for visual/multimodal embedding input. */
+  mediaUrlField?: string
   chunker?: {
     enabled: boolean
     targetTokens?: number

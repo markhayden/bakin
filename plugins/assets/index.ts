@@ -81,18 +81,15 @@ const assetsPlugin: BakinPlugin = {
         file_name: { type: 'text' },
         tool: { type: 'keyword' },
         updated_at: { type: 'datetime' },
-        // `content` is populated server-side by extractAssetContent —
+        // `content` is populated server-side by extractAssetContent:
         // plain text for .md/.txt/.json/.csv/.yaml, pdf-parse output for
-        // .pdf, empty for everything else. We extract in Bakin rather
-        // than letting Antfly's {{remotePDF}}/{{remoteText}} helpers run
-        // because Antfly's Go PDF library silently fails on any PDF with
-        // complex font encoding (see Bakin issue #72).
+        // .pdf, empty for everything else. Bakin owns extraction so the
+        // search adapter receives plain document text instead of reaching
+        // back into local files during indexing.
         content: { type: 'text' },
         // `image_url` is a file:// URL for raster images that CLIP can
         // actually decode. Populated at index time by computeMediaUrls.
-        // The visual index template dereferences it via {{remoteMedia}}
-        // — that path works because `file://` skips Antfly's scraping
-        // layer's hardcoded private-IP block.
+        // The search adapter owns provider-specific media dereferencing.
         image_url: { type: 'keyword' },
       },
       searchableFields: ['description', 'tags', 'file_name', 'content'],
@@ -105,7 +102,7 @@ const assetsPlugin: BakinPlugin = {
       // without the reranker. See .claude/knowledge/search-system.md for
       // the full rationale and the queries that surfaced the problem.
       // Unused when `indexes` is set, but the type requires it. Kept as the
-      // equivalent template to keep the legacy synthesis path readable.
+      // equivalent template for the default-index synthesis path.
       embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{content}}',
       indexes: [
         {
@@ -117,7 +114,7 @@ const assetsPlugin: BakinPlugin = {
         {
           name: 'assets_visual',
           embedderRef: 'visual',
-          embeddingTemplate: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
+          mediaUrlField: 'image_url',
         },
       ],
       facets: ['asset_type', 'agent', 'tool'],
@@ -229,11 +226,8 @@ const assetsPlugin: BakinPlugin = {
 
     /**
      * Compute image_url for the visual index. Only raster image formats
-     * that CLIP can actually decode get a URL — SVG and ICO are excluded
-     * because Antfly's image processor (Go's standard image library)
-     * cannot handle vector or indexed-palette formats, and CLIP needs
-     * raster pixel data anyway. The {{#if image_url}} guard in the
-     * visual index template skips the helper when the URL is empty.
+     * that CLIP can actually decode get a URL. SVG and ICO are excluded
+     * because the visual embedder needs raster pixel data.
      */
     function computeImageUrl(
       assetRelPath: string,

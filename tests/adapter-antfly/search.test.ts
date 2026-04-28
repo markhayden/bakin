@@ -247,6 +247,27 @@ describe('AntflySearchAdapter', () => {
     expect(result.hits[0].scoreBreakdown?.rerank).toBe(0.94)
   })
 
+  it('maps generic media URL indexes to Antfly media templates', async () => {
+    const adapter = await createInitializedAdapter()
+
+    await adapter.tables.create('bakin_assets', {
+      fields: {
+        image_url: { type: 'keyword' },
+      },
+      indexes: [{
+        name: 'assets_visual',
+        fields: ['image_url'],
+        kind: 'vector',
+        embedderRef: 'visual',
+        mediaUrlField: 'image_url',
+      }],
+    })
+
+    const created = (mockTablesCreate.mock.calls as unknown as Array<[string, Record<string, unknown>]>)[0][1]
+    const indexes = created.indexes as Record<string, { template?: string }>
+    expect(indexes.assets_visual.template).toBe('{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}')
+  })
+
   it('maps index health and returns null when health lookup fails', async () => {
     mockIndexesList.mockResolvedValueOnce({
       embeddings: {
