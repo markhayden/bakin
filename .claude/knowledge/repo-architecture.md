@@ -185,23 +185,25 @@ packages/host/
 opens connections, uses globalThis) it stays in `src/core/`. If it's a
 pure type, utility, or configurable service, it goes in `@bakin/core`.
 
-### Re-export shim pattern
+### Core Package Facades
 
-Original module locations (`src/core/*.ts`, `src/lib/*.ts`) are kept as
-thin re-export shims pointing at `packages/core/src/`. This preserves
-existing imports across the codebase:
+A small set of source-tree facades (`src/core/*.ts`, `src/lib/*.ts`) point at
+`packages/core/src/` while shared code is split into `@bakin/core`. These are
+package-split facades, not provider-client compatibility shims. Do not add new
+facades for adapter/provider internals; runtime/search provider details belong
+behind `packages/adapter-*` and the adapter factories.
 
 ```typescript
-// src/core/logger.ts (shim)
+// src/core/logger.ts
 export { createLogger } from '../../packages/core/src/logger'
 
-// src/core/content-dir.ts (shim)
+// src/core/content-dir.ts
 export { getContentDir, getBakinPaths, ... } from '../../packages/core/src/content-dir'
 ```
 
 Tests **must** mock both paths (see `CLAUDE.md` testing rules) because
-either path may be imported and a missed mock leaks writes to
-`~/.bakin/`.
+either path may be imported while the package split exists, and a missed mock
+leaks writes to `~/.bakin/`.
 
 ## Plugin Import Rules
 

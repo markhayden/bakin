@@ -115,7 +115,7 @@ Conventional commits with scope:
 
 **Every test file MUST mock the content-dir resolver AND the OpenClaw home resolver to use temp directories.** Tests that touch storage, assets, tasks, agent packages, or any plugin MUST NOT read from or write to `~/.bakin/` or `~/.openclaw/`. Leaked test data into either production directory has caused real incidents.
 
-Because `src/core/content-dir.ts` is a thin shim over `packages/core/src/content-dir.ts`, **mock both**. Any consumer may import from either path (or the `@/core/content-dir` alias), and missing one leaves a leak surface. Same applies to OpenClaw home.
+Because `src/core/content-dir.ts` is an app-facing facade over `packages/core/src/content-dir.ts`, **mock both**. Any consumer may import from either path (or the `@/core/content-dir` alias), and missing one leaves a leak surface. Same applies to OpenClaw home.
 
 Required mocks for any test that touches the filesystem:
 ```typescript
