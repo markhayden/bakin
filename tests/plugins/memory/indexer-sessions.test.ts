@@ -44,12 +44,12 @@ const {
   mockListAgentIds,
   mockReadSessionStore,
   mockMatchSessionStorePath,
-  mockGatewayCall,
+  mockRuntimeSessionList,
 } = (() => ({
   mockListAgentIds: mock<() => string[]>(),
   mockReadSessionStore: mock<(agent: string) => unknown>(),
   mockMatchSessionStorePath: mock<(path: string) => { agent: string } | null>(),
-  mockGatewayCall: mock<(method: string, params: unknown) => Promise<unknown>>(),
+  mockRuntimeSessionList: mock<(method: string, params: unknown) => Promise<unknown>>(),
 }))()
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
@@ -84,7 +84,7 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
           if (id !== 'sessions.json' || !opts?.agentId) return null
           let value: unknown
           try {
-            value = await mockGatewayCall('sessions.list', { agentId: opts.agentId })
+            value = await mockRuntimeSessionList('sessions.list', { agentId: opts.agentId })
           } catch {
             value = mockReadSessionStore(opts.agentId)
           }
@@ -154,7 +154,7 @@ beforeEach(() => {
   mockListAgentIds.mockReset()
   mockReadSessionStore.mockReset()
   mockMatchSessionStorePath.mockReset()
-  mockGatewayCall.mockReset()
+  mockRuntimeSessionList.mockReset()
   mockMatchSessionStorePath.mockReturnValue(null)
 })
 
@@ -162,10 +162,10 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-describe('MemoryIndexer.indexTier("session") — gateway path', () => {
-  it('indexes one row per session when gatewayCall succeeds', async () => {
+describe('MemoryIndexer.indexTier("session") — runtime memory path', () => {
+  it('indexes one row per session when runtime memory returns sessions', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockResolvedValue({
+    mockRuntimeSessionList.mockResolvedValue({
       sessions: {
         'agent:basil:main': session({ sessionId: 'a' }),
         'agent:basil:openai:xyz': session({ sessionId: 'b' }),
@@ -184,9 +184,9 @@ describe('MemoryIndexer.indexTier("session") — gateway path', () => {
     expect(mockReadSessionStore).not.toHaveBeenCalled()
   })
 
-  it('accepts the gateway returning a bare map (no "sessions" wrapper)', async () => {
+  it('accepts a bare session map (no "sessions" wrapper)', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockResolvedValue({
+    mockRuntimeSessionList.mockResolvedValue({
       'agent:basil:main': session({ sessionId: 'a' }),
     })
 
@@ -199,9 +199,9 @@ describe('MemoryIndexer.indexTier("session") — gateway path', () => {
 })
 
 describe('MemoryIndexer.indexTier("session") — FS fallback', () => {
-  it('falls back to readSessionStore when gatewayCall throws', async () => {
+  it('falls back to readSessionStore when runtime memory throws', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockRejectedValue(new Error('gateway unreachable'))
+    mockRuntimeSessionList.mockRejectedValue(new Error('runtime unavailable'))
     mockReadSessionStore.mockReturnValue({
       'agent:basil:main': session({ sessionId: 'fs-a' }),
     })
@@ -215,9 +215,9 @@ describe('MemoryIndexer.indexTier("session") — FS fallback', () => {
     expect(mockReadSessionStore).toHaveBeenCalledWith('basil')
   })
 
-  it('is a no-op for an agent with neither gateway nor FS data', async () => {
+  it('is a no-op for an agent with neither runtime nor FS data', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockRejectedValue(new Error('gateway unreachable'))
+    mockRuntimeSessionList.mockRejectedValue(new Error('runtime unavailable'))
     mockReadSessionStore.mockReturnValue(null)
 
     const { ctx, indexed } = makeCtx()
@@ -233,7 +233,7 @@ describe('MemoryIndexer.indexTier("session") — backfill window', () => {
     const now = Date.now()
     const day = 24 * 60 * 60 * 1000
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockResolvedValue({
+    mockRuntimeSessionList.mockResolvedValue({
       'agent:basil:recent': session({ sessionId: 'r', updatedAt: now - 5 * day }),
       'agent:basil:old': session({ sessionId: 'o', updatedAt: now - 60 * day }),
     })
@@ -250,7 +250,7 @@ describe('MemoryIndexer.indexTier("session") — backfill window', () => {
 describe('MemoryIndexer.indexTier("session") — orphan removal', () => {
   it('removes rows for sessions that disappear from the roster between runs', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall
+    mockRuntimeSessionList
       .mockResolvedValueOnce({
         'agent:basil:a': session({ sessionId: 'sa' }),
         'agent:basil:b': session({ sessionId: 'sb' }),
@@ -273,7 +273,7 @@ describe('MemoryIndexer.indexTier("session") — orphan removal', () => {
 describe('MemoryIndexer.handleWatcherEvent — sessions.json', () => {
   it('routes a sessions.json change to indexTier("session") for that agent', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockResolvedValue({
+    mockRuntimeSessionList.mockResolvedValue({
       'agent:basil:main': session({ sessionId: 'a' }),
     })
     mockMatchSessionStorePath.mockImplementation((p) =>
