@@ -13,18 +13,40 @@ import { z } from 'zod'
 
 export const PermissionSchema = z.enum([
   'events.emit',
+  'assets.read',
   'runtime.read',
+  'runtime.agents',
+  'runtime.messaging',
+  'runtime.channels',
+  'runtime.cron',
+  'runtime.skills',
+  'runtime.models',
+  'search.read',
+  'search.write',
   'storage.read',
   'storage.write',
+  'tasks.read',
+  'tasks.write',
 ])
 
 export type Permission = z.infer<typeof PermissionSchema>
 
 export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'events.emit':   'Broadcast Server-Sent Events to connected browsers',
-  'runtime.read':  'Read agent identity, skills, and workspace state from the runtime adapter',
+  'assets.read':   'Read asset metadata and runtime-deliverable asset references',
+  'runtime.read':  'Read general runtime adapter state',
+  'runtime.agents': 'Read runtime agent identity and status',
+  'runtime.messaging': 'Send messages through the runtime adapter',
+  'runtime.channels': 'Send messages or content to configured runtime channels',
+  'runtime.cron': 'Create and manage runtime cron jobs',
+  'runtime.skills': 'Read runtime skills',
+  'runtime.models': 'Read runtime model metadata',
+  'search.read': 'Query Bakin search indexes',
+  'search.write': 'Register or mutate plugin-owned search indexes',
   'storage.read':  'Read files in ~/.bakin/',
   'storage.write': 'Write files in ~/.bakin/',
+  'tasks.read': 'Read tasks through the public task service',
+  'tasks.write': 'Create and mutate tasks through the public task service',
 }
 
 const KNOWN_PERMISSIONS: readonly Permission[] = PermissionSchema.options
