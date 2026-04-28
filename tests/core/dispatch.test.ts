@@ -56,15 +56,22 @@ const mockRuntimeAgentsList = mock((...args: unknown[]) => {
   ])
 })
 
-mock.module('../../src/core/runtime-registry', () => ({
-  getRuntimeAdapter: () => ({
+const mockAppServices = {
+  runtime: {
     agents: {
       list: (...args: unknown[]) => mockRuntimeAgentsList(...args),
     },
     messaging: {
       send: (...args: unknown[]) => mockRuntimeSend(...args),
     },
-  }),
+  },
+}
+
+mock.module('../../src/core/app-services', () => ({
+  getAppServices: () => mockAppServices,
+}))
+mock.module('@/core/app-services', () => ({
+  getAppServices: () => mockAppServices,
 }))
 
 mock.module('../../src/lib/plugin-registry', () => ({

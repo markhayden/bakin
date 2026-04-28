@@ -4,7 +4,7 @@
  */
 import { createLogger } from './logger'
 import { appendAudit } from './audit'
-import { getRuntimeAdapter } from './runtime-registry'
+import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '../lib/plugin-registry'
 
@@ -31,7 +31,7 @@ export async function checkAndContinueDependents(
     todo: board?.columns.todo ?? [],
     blocked: board?.columns.blocked ?? [],
   }
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
 
   const columnsToScan = [columns.inProgress, columns.todo, columns.blocked]
   for (const col of columnsToScan) {
