@@ -240,7 +240,7 @@ const parallelFormFields: FormField[] = [
 const outputFormFields: FormField[] = [
   { name: 'agent', type: 'agent' },
   { name: 'skill', type: 'skill' },
-  { name: 'channels', type: 'list', description: 'Output channels (e.g. discord, slack)' },
+  { name: 'channels', type: 'list', description: 'Runtime channel IDs (e.g. general, announcements)' },
   { name: 'content', type: 'text', description: 'Content map (key → value)' },
   { name: 'schedule', type: 'string', description: 'Cron expression for recurring outputs' },
 ]

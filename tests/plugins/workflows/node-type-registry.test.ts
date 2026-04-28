@@ -154,7 +154,7 @@ describe('node-type-registry', () => {
         id: 'out',
         type: 'output',
         label: 'Publish',
-        channels: ['discord'],
+        channels: ['general'],
         content: { message: 'hi' },
       })
       expect(result.success).toBe(true)

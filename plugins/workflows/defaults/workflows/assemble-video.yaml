@@ -40,6 +40,6 @@ steps:
     type: output
     label: Publish
     channels:
-      - discord
+      - general
     agent: main-operator
     description: Post the final video to the channel

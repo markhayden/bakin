@@ -225,10 +225,9 @@ export interface PluginNodeTypeInput<T = unknown> {
 /**
  * Input shape plugins pass to `ctx.registerNotificationChannel`. The plugin id
  * is prepended to `id` automatically (`{pluginId}.{id}`), matching the node-
- * type precedent. Built-in workflows-plugin channels (discord, slack, email,
- * instagram, twitter, youtube, tiktok) self-register at module load in
- * `plugins/workflows/lib/notification-channel-registry.ts` and keep their
- * short ids for backwards compat with existing workflow YAML.
+ * type precedent. Built-in workflows-plugin runtime channels (general,
+ * announcements, alerts, email) self-register at module load in
+ * `plugins/workflows/lib/notification-channel-registry.ts`.
  */
 export interface PluginNotificationChannelInput {
   id: string

@@ -42,7 +42,7 @@ import {
   unregisterPluginNotificationChannels,
 } from '../../../plugins/workflows/lib/notification-channel-registry'
 
-const BUILTIN_IDS = ['discord', 'slack', 'email', 'instagram', 'twitter', 'youtube', 'tiktok']
+const BUILTIN_IDS = ['general', 'announcements', 'alerts', 'email']
 
 // Track ids we add per-test so we can clean up without touching builtins.
 const added: string[] = []
@@ -52,19 +52,19 @@ afterEach(() => {
 })
 
 describe('notification-channel-registry — builtins', () => {
-  it('self-registers 7 builtins at module load', () => {
+  it('self-registers built-in runtime channels at module load', () => {
     const all = listNotificationChannels()
     const builtinIds = all.filter(c => c.runtime === 'builtin').map(c => c.id).sort()
     expect(builtinIds).toEqual([...BUILTIN_IDS].sort())
   })
 
   it('builtin channels carry display metadata', () => {
-    const discord = getNotificationChannel('discord')
-    expect(discord).toEqual(expect.objectContaining({
+    const general = getNotificationChannel('general')
+    expect(general).toEqual(expect.objectContaining({
       runtime: 'builtin',
-      id: 'discord',
-      label: 'Discord',
-      initials: 'DC',
+      id: 'general',
+      label: 'General',
+      initials: 'GE',
       icon: 'MessageSquare',
     }))
   })
