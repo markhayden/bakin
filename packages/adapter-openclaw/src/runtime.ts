@@ -4,7 +4,9 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import type {
   AgentRuntimeAdapter,
+  ApprovalResolveEvent,
   ChatChunk,
+  ChannelInfo,
   CronJob,
   CronRun,
   CreateRuntimeAgentInput,
@@ -62,6 +64,10 @@ const TRANSIENT_FETCH_CODES = new Set([
 ])
 
 const SEND_MESSAGE_RETRY_BACKOFF_MS = [1000, 2000]
+const RENDER_ONLY_APPROVAL_NOTICE = [
+  'Runtime channel approvals are render-only in the current OpenClaw adapter.',
+  'Approve or reject this gate in the Bakin UI; channel replies and buttons are not wired back yet.',
+].join(' ')
 
 interface OpenClawCronStore {
   version?: number
@@ -113,6 +119,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private settings: OpenClawSettings
   private logger: AdapterLogger = noopLogger
+  private approvalResponsesWarningLogged = false
+  private approvalResolveWarningLogged = false
 
   constructor(options: OpenClawRuntimeAdapterOptions = {}) {
     this.settings = mergeSettings(options.settings)
@@ -142,19 +150,31 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   getHealthChecks(): AdapterHealthCheckDefinition[] {
-    return [{
-      id: 'gateway',
-      name: 'OpenClaw gateway',
-      run: async () => {
-        const reachable = await this.ping()
-        return [{
-          check: 'openclaw.gateway',
-          status: reachable ? 'ok' : 'warn',
-          message: reachable ? 'OpenClaw gateway is reachable' : 'OpenClaw gateway is unreachable',
-          autoFixable: false,
-        }]
+    return [
+      {
+        id: 'gateway',
+        name: 'OpenClaw gateway',
+        run: async () => {
+          const reachable = await this.ping()
+          return [{
+            check: 'openclaw.gateway',
+            status: reachable ? 'ok' : 'warn',
+            message: reachable ? 'OpenClaw gateway is reachable' : 'OpenClaw gateway is unreachable',
+            autoFixable: false,
+          }]
+        },
       },
-    }]
+      {
+        id: 'channel-approval-responses',
+        name: 'OpenClaw channel approval responses',
+        run: async () => [{
+          check: 'openclaw.channel-approval-responses',
+          status: 'warn',
+          message: 'OpenClaw channel approval requests are render-only. Approve/reject workflow gates in the Bakin UI until interactive channel responses are implemented.',
+          autoFixable: false,
+        }],
+      },
+    ]
   }
 
   agents = {
@@ -316,7 +336,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   channels = {
-    list: async () => [],
+    list: async (): Promise<ChannelInfo[]> => readChannelInfos(),
     sendNotification: async (args: { channels: string[]; notification: { severity: string; title: string; body: string; metadata?: RuntimeMetadata } }) => {
       return this.channels.sendMessage({
         channels: args.channels,
@@ -371,15 +391,30 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         channels: args.channels,
         message: {
           title: args.request.title,
-          body: `${args.request.title}\n\n${args.request.body}\n\n${optionText}`,
+          body: `${args.request.title}\n\n${args.request.body}\n\n${optionText}\n\n${RENDER_ONLY_APPROVAL_NOTICE}`,
           metadata: { ...(args.request.context ?? {}), approvalId: args.approvalId },
         },
       })
     },
     editApproval: async (args: { deliveries: Array<{ channelId: string; ref: string; renderedAt: string }> }) => ({ deliveries: args.deliveries }),
     cancelApproval: async () => {},
-    resolveApproval: async () => {},
-    subscribeApprovalResponses: () => () => {},
+    resolveApproval: async () => {
+      if (!this.approvalResolveWarningLogged) {
+        this.logger.warn(
+          'OpenClaw approval resolve is render-only; provider approval messages are not edited or resolved. The durable Bakin approval record remains canonical.'
+        )
+        this.approvalResolveWarningLogged = true
+      }
+    },
+    subscribeApprovalResponses: (_handler: (event: ApprovalResolveEvent) => void) => {
+      if (!this.approvalResponsesWarningLogged) {
+        this.logger.warn(
+          'OpenClaw channel approval responses are not implemented; approval requests are render-only. Approve/reject workflow gates in the Bakin UI.'
+        )
+        this.approvalResponsesWarningLogged = true
+      }
+      return () => {}
+    },
     onMessage: () => () => {},
     onInteraction: () => () => {},
   }
@@ -735,6 +770,35 @@ function splitChannelRef(channelId: string, metadata: RuntimeMetadata | undefine
   const [channel, ...targetParts] = channelId.split(':')
   if (channel && targetParts.length > 0) return { channel, target: targetParts.join(':') }
   return { channel: channelId }
+}
+
+function readChannelInfos(): ChannelInfo[] {
+  const config = readOpenClawConfig() as { channels?: unknown } | null
+  const channels = config?.channels
+  if (!channels || typeof channels !== 'object' || Array.isArray(channels)) return []
+
+  return Object.entries(channels as Record<string, unknown>).map(([id, raw]): ChannelInfo => {
+    const entry = isRecord(raw) ? raw : {}
+    return {
+      id,
+      platform: typeof entry.platform === 'string' ? entry.platform : id,
+      label: typeof entry.label === 'string' ? entry.label : humanizeChannelId(id),
+      capabilities: ['message', 'rich-content'],
+      metadata: { approvalResponses: 'render-only' },
+    }
+  })
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function humanizeChannelId(id: string): string {
+  return id
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(' ') || id
 }
 
 function metadataValue(metadata: RuntimeMetadata | undefined, key: string): string | undefined {

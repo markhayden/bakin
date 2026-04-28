@@ -49,6 +49,13 @@ and `runtime.channels.sendNotification()` where appropriate. These calls are
 fire-and-forget: channel delivery failures log but never block workflow
 progression. The workflow instance and audit log remain canonical.
 
+Current OpenClaw channel approvals are render-only. `createApproval()` posts a
+provider message, but channel replies/buttons do not feed approve/reject
+decisions back into Bakin yet. The OpenClaw adapter marks this in the rendered
+message and the health plugin warns until a runtime channel reports the
+`interactive-approval` capability. Humans must approve or reject gates in the
+Bakin UI for now.
+
 ## Long Prior Outputs
 
 Prior output previews are rendered by Bakin before they are sent to the adapter.
