@@ -13,6 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { EventEmitter } from 'events'
+import * as actualFs from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 
@@ -59,14 +60,12 @@ function virtualInstall(modelDir: string) {
   virtualSizes.set(weightsPath, 42)
 }
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
-mock.module('../../../src/core/search-adapter-factory', () => ({
-  findSearchAdapterBinary: () => antflyBinary,
+mock.module('../../../packages/adapter-antfly/src/server', () => ({
+  findAntflyBinary: () => antflyBinary,
+  isAntflyInstalled: () => antflyBinary !== null,
+  isAntflyRunning: () => false,
+  startAntflyServer: () => Promise.resolve(false),
+  stopAntflyServer: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -79,19 +78,18 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 mock.module('fs', () => {
-  const actual = require('fs') as typeof import('fs')
   return {
-    ...actual,
+    ...actualFs,
     existsSync: (p: unknown) => existingPaths.has(String(p)),
     readFileSync: (p: unknown, ...rest: unknown[]) => {
       const key = String(p)
       if (virtualFiles.has(key)) return virtualFiles.get(key)!
-      return (actual.readFileSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
+      return (actualFs.readFileSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
     },
     statSync: (p: unknown, ...rest: unknown[]) => {
       const key = String(p)
       if (virtualSizes.has(key)) return { size: virtualSizes.get(key)! }
-      return (actual.statSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
+      return (actualFs.statSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
     },
   }
 })
@@ -128,15 +126,10 @@ mock.module('child_process', () => ({
   },
 }))
 
-mock.module('../../../src/core/onboarding/prompts', () => ({
-  askYesNo: () => Promise.resolve(askYesNoReturn),
-  readLine: () => Promise.resolve(''),
-}))
-
 describe('onboarding models component', () => {
-  let modelsComponent: typeof import('../../../src/core/onboarding/models').modelsComponent
-  let REQUIRED_MODELS: typeof import('../../../src/core/onboarding/models').REQUIRED_MODELS
-  let termiteModelsRoot: typeof import('../../../src/core/onboarding/models').termiteModelsRoot
+  let modelsComponent: NonNullable<ReturnType<typeof import('../../../packages/adapter-antfly/src/setup').createAntflySearchSetup>['models']>
+  let REQUIRED_MODELS: typeof import('../../../packages/adapter-antfly/src/setup').REQUIRED_MODELS
+  let termiteModelsRoot: typeof import('../../../packages/adapter-antfly/src/setup').termiteModelsRoot
 
   beforeEach(async () => {
     antflyBinary = '/opt/homebrew/bin/antfly'
@@ -149,8 +142,8 @@ describe('onboarding models component', () => {
     askYesNoReturn = true
     spawnCreatesFiles = true
     vi.resetModules()
-    const mod = await import('../../../src/core/onboarding/models')
-    modelsComponent = mod.modelsComponent
+    const mod = await import('../../../packages/adapter-antfly/src/setup')
+    modelsComponent = mod.createAntflySearchSetup().models!
     REQUIRED_MODELS = mod.REQUIRED_MODELS
     termiteModelsRoot = mod.termiteModelsRoot
   })
@@ -165,6 +158,7 @@ describe('onboarding models component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
   const optsInteractive = {
     interactive: true,
@@ -172,6 +166,7 @@ describe('onboarding models component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
   const optsNonInteractiveNoYes = {
     interactive: false,
@@ -179,6 +174,7 @@ describe('onboarding models component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
 
   /** Seed every required model as a complete virtual install. */
