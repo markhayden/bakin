@@ -69,7 +69,15 @@ beforeAll(() => {
   mkdirSync(sourcePluginDir, { recursive: true })
   writeFileSync(
     join(sourcePluginDir, 'bakin-plugin.json'),
-    JSON.stringify({ id: 'hello', name: 'Hello', version: '1.0.0' }, null, 2),
+    JSON.stringify({
+      id: 'hello',
+      name: 'Hello',
+      version: '1.0.0',
+      bakin: '>=1.0.0',
+      description: 'Test plugin',
+      entry: { server: 'index.ts' },
+      permissions: [],
+    }, null, 2),
   )
   writeFileSync(join(sourcePluginDir, 'index.ts'), '// stub\n')
 })
