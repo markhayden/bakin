@@ -1019,7 +1019,7 @@ async function cmdStart(): Promise<void> {
 
   // Step 2: Sync mcporter config
   console.log('[..] Syncing mcporter config...')
-  const changes = mcporter.syncConfig(port)
+  const changes = await mcporter.syncConfig(port)
   if (changes.length > 0) {
     for (const c of changes) console.log(`  ${c}`)
     console.log(`[OK] mcporter config updated (${changes.length} changes)`)
@@ -1173,7 +1173,7 @@ async function cmdSetupMcporter(): Promise<void> {
   }
 
   console.log('[..] Syncing mcporter config...')
-  const changes = mcporter.syncConfig(port)
+  const changes = await mcporter.syncConfig(port)
   if (changes.length > 0) {
     for (const c of changes) console.log(`  ${c}`)
     console.log(`[OK] Config updated`)
@@ -1182,7 +1182,7 @@ async function cmdSetupMcporter(): Promise<void> {
   }
 
   // Verify
-  const status = mcporter.verifyConfig(port)
+  const status = await mcporter.verifyConfig(port)
   console.log('')
   console.log('Agent MCP entries:')
   for (const entry of status.agentEntries) {

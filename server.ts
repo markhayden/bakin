@@ -632,7 +632,7 @@ const eventBus = new BakinEventBus(broadcast)
 
   // Setup mcporter (install if needed + sync per-agent config)
   try {
-    mcporter.setup(port)
+    await mcporter.setup(port)
   } catch (err) {
     log.warn('mcporter setup failed — agents can still use REST/CLI', err)
   }
