@@ -193,8 +193,7 @@ export function ContentCalendar() {
     if (statusFilter.length > 0 && !statusFilter.includes(i.status)) return false
     if (typeFilter.length > 0 && !typeFilter.includes(i.contentType)) return false
     if (channelFilter.length > 0) {
-      const itemChannels = i.channels || (i.channel ? [i.channel] : [])
-      if (!channelFilter.some(ch => itemChannels.includes(ch))) return false
+      if (!channelFilter.some(ch => i.channels.includes(ch))) return false
     }
     if (search) {
       const q = search.toLowerCase()
@@ -246,11 +245,6 @@ export function ContentCalendar() {
 
   const openEdit = () => pushMode('edit')
   const cancelEdit = () => setMode('')  // back to detail view, keeps itemId
-
-  const closeForm = () => {
-    updateParams({ mode: null, date: null })
-    fetchItems()
-  }
 
   async function handleApprove(id: string) {
     await fetch(`/api/plugins/messaging/${id}/approve`, {

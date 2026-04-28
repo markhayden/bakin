@@ -2,12 +2,11 @@
 // Identifier aliases — all plain strings.
 //
 // These used to be string-literal unions tied to one installation's roster
-// (agents: chef/explorer/trainer/coach; channels: discord/instagram/...; content
+// (agents: chef/explorer/trainer/coach; channels: general/announcements/...; content
 // types: recipe/tip/motivation/...). They now exist as documented aliases
 // so call sites self-describe what the string represents:
-//   - ContentAgent   resolves against the OpenClaw roster via team.* hooks
-//   - ContentChannel will be constrained by a future notificationChannels
-//                    registry (plugin-system spec); today it's free string
+//   - ContentAgent   resolves against the runtime roster via team.* hooks
+//   - ContentChannel is an opaque runtime channel id
 //   - ContentType    resolves against MessagingSettings.contentTypes
 // ---------------------------------------------------------------------------
 export type ContentAgent = string
@@ -22,13 +21,12 @@ export interface CalendarItem {
   updatedAt: string
   scheduledAt: string
   agent: ContentAgent
-  channel: ContentChannel
-  channelTarget: string
   contentType: ContentType
   title: string
   brief: string
   tone: ContentTone
   status: ContentStatus
+  channels: ContentChannel[]
   draft?: {
     caption: string
     imagePrompt?: string
@@ -42,7 +40,6 @@ export interface CalendarItem {
   taskId?: string
   rejectionNote?: string
   sessionId?: string
-  channels?: string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +58,7 @@ export interface ProposedItem {
   contentType: string
   tone: string
   brief: string
-  channels?: string[]
+  channels?: ContentChannel[]
   status: ProposalStatus
   calendarItemId?: string
   rejectionNote?: string
@@ -87,7 +84,7 @@ export interface PlanningSession {
   participants?: string[]
 }
 
-export const DISCORD_GENERAL = '1483917792745885768'
+export const DEFAULT_CHANNEL = 'general'
 
 // ---------------------------------------------------------------------------
 // Plugin settings

@@ -12,7 +12,7 @@ import {
   getItem,
 } from './lib/storage'
 import type { CalendarItem, ContentStatus, ProposalStatus, MessagingSettings } from './types'
-import { DEFAULT_CONTENT_TYPES } from './types'
+import { DEFAULT_CHANNEL, DEFAULT_CONTENT_TYPES } from './types'
 import {
   createSession,
   loadSession,
@@ -53,6 +53,15 @@ function json(data: unknown, status = 200): Response {
 
 async function readBody<T>(req: Request): Promise<T> {
   return req.json() as Promise<T>
+}
+
+function normalizeChannels(value: unknown): string[] {
+  if (!Array.isArray(value)) return [DEFAULT_CHANNEL]
+  const channels = value
+    .filter((channel): channel is string => typeof channel === 'string')
+    .map(channel => channel.trim())
+    .filter(Boolean)
+  return channels.length > 0 ? channels : [DEFAULT_CHANNEL]
 }
 
 interface AgentMetaLike { id: string; name?: string }
@@ -133,7 +142,7 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
     // Post through the active runtime channel adapter.
     try {
       const caption = item.draft?.caption || item.title
-      const target = item.channelTarget || '1483917792745885768'
+      const channels = normalizeChannels(item.channels)
 
       // Derive filename → absolute path via the pure path function.
       let media: string | undefined
@@ -152,23 +161,20 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
         }
       }
 
-      const channelTarget = `channel:${target}`
       if (media) {
         await ctx.runtime.channels.deliverContent({
-          channels: ['discord'],
+          channels,
           content: {
             title: item.title,
             body: caption,
             files: [{ name: mediaFilename ?? 'media', path: media }],
-            metadata: { target: channelTarget },
           },
         })
       } else {
         await ctx.runtime.channels.sendMessage({
-          channels: ['discord'],
+          channels,
           message: {
             body: caption,
-            metadata: { target: channelTarget },
           },
         })
       }
@@ -202,7 +208,7 @@ const messagingPlugin: BakinPlugin = {
     fields: [
       { key: 'defaultView', type: 'select', label: 'Default view', description: 'Default messaging view on page load', options: [{ value: 'month', label: 'Month' }, { value: 'week', label: 'Week' }, { value: 'list', label: 'List' }], default: 'month' },
       { key: 'showScheduleJobs', type: 'boolean', label: 'Show schedule jobs', description: 'Display recurring schedule jobs on the content calendar', default: false },
-      { key: 'channels', type: 'string', label: 'Channels', description: 'Comma-separated list of available distribution channels (e.g., discord,instagram,email)', default: 'discord' },
+      { key: 'channels', type: 'string', label: 'Channels', description: 'Comma-separated runtime channel IDs available for distribution (e.g., general,announcements,email)', default: DEFAULT_CHANNEL },
       {
         key: 'contentTypes',
         type: 'list',
@@ -314,16 +320,14 @@ const messagingPlugin: BakinPlugin = {
 
     // ── API Routes ─────────────────────────────────────────────────────
 
-    // GET / — list items (optional ?month=YYYY-MM&channel=discord filter)
+    // GET / — list items (optional ?month=YYYY-MM&channel=general filter)
     const listHandler = async (req: Request) => {
       const url = new URL(req.url)
       const month = url.searchParams.get('month')
       const channel = url.searchParams.get('channel')
       let items = loadMessagingItems()
       if (month) items = items.filter(i => i.scheduledAt.startsWith(month))
-      if (channel) items = items.filter(i =>
-        (i.channels && i.channels.includes(channel)) || i.channel === channel
-      )
+      if (channel) items = items.filter(i => i.channels.includes(channel))
       items.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
       return json({ items })
     }
@@ -343,18 +347,16 @@ const messagingPlugin: BakinPlugin = {
     // POST / — create item
     const createHandler = async (req: Request) => {
       const body = await readBody<Record<string, unknown>>(req)
-      const { title, agent, channel, channelTarget, contentType, tone, scheduledAt, brief, status, channels } = body as Record<string, unknown>
+      const { title, agent, contentType, tone, scheduledAt, brief, status, channels } = body as Record<string, unknown>
 
       if (!title || !agent || !scheduledAt) {
         return json({ error: 'title, agent, and scheduledAt required' }, 400)
       }
 
-      const resolvedChannels = (channels as string[]) || (channel ? [channel as string] : ['discord'])
+      const resolvedChannels = normalizeChannels(channels)
       const item = createItem({
         title: title as string,
         agent: (agent as string) as CalendarItem['agent'],
-        channel: ((channel as string) || resolvedChannels[0] || 'discord') as CalendarItem['channel'],
-        channelTarget: (channelTarget as string) || '1483917792745885768',
         contentType: ((contentType as string) || 'post') as CalendarItem['contentType'],
         tone: ((tone as string) || 'conversational') as CalendarItem['tone'],
         scheduledAt: scheduledAt as string,
@@ -930,7 +932,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         month: z.string().optional().describe('Filter by month (YYYY-MM)'),
         status: z.string().optional().describe('Filter by status (draft, scheduled, review, published, etc.)'),
         agent: z.string().optional().describe('Filter by assigned agent'),
-        channel: z.string().optional().describe('Filter by channel (e.g. discord, instagram)'),
+        channel: z.string().optional().describe('Filter by runtime channel ID (e.g. general, announcements)'),
       },
       handler: async (params: Record<string, unknown>) => {
         let items = loadMessagingItems()
@@ -939,9 +941,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         if (params.agent) items = items.filter(i => i.agent === params.agent)
         if (params.channel) {
           const ch = params.channel as string
-          items = items.filter(i =>
-            (i.channels && i.channels.includes(ch)) || i.channel === ch
-          )
+          items = items.filter(i => i.channels.includes(ch))
         }
         items.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
         return {
@@ -953,7 +953,6 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
             agent: i.agent,
             status: i.status,
             scheduledAt: i.scheduledAt,
-            channel: i.channel,
             channels: i.channels,
             contentType: i.contentType,
           })),
@@ -985,9 +984,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         title: z.string().describe('Item title (required)'),
         agent: z.string().describe('Assigned agent (required)'),
         scheduledAt: z.string().describe('ISO datetime for scheduling (required)'),
-        channel: z.string().optional().describe('Channel (default: discord)'),
-        channels: z.array(z.string()).optional().describe('Distribution channels (e.g. ["discord", "instagram"])'),
-        channelTarget: z.string().optional().describe('Channel target ID'),
+        channels: z.array(z.string()).optional().describe('Runtime channel IDs (default: ["general"])'),
         contentType: z.string().optional().describe('Content type id from the messaging contentTypes setting (e.g. post, article, video)'),
         tone: z.string().optional().describe('Content tone (energetic, calm, educational, etc.)'),
         brief: z.string().optional().describe('Content brief'),
@@ -997,14 +994,12 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         if (!params.title || !params.agent || !params.scheduledAt) {
           return { ok: false, error: 'title, agent, and scheduledAt required' }
         }
-        const channels = (params.channels as string[]) || (params.channel ? [params.channel as string] : ['discord'])
+        const channels = normalizeChannels(params.channels)
         const item = createItem({
           title: params.title as string,
           agent: params.agent as CalendarItem['agent'],
           scheduledAt: params.scheduledAt as string,
-          channel: ((params.channel as string) || channels[0] || 'discord') as CalendarItem['channel'],
           channels,
-          channelTarget: (params.channelTarget as string) || '1483917792745885768',
           contentType: ((params.contentType as string) || 'post') as CalendarItem['contentType'],
           tone: ((params.tone as string) || 'conversational') as CalendarItem['tone'],
           brief: (params.brief as string) || '',

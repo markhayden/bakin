@@ -118,7 +118,7 @@ describe('messaging-cron', () => {
           contentType: 'social',
           tone: 'casual',
           brief: 'Write a post',
-          channelTarget: '#general',
+          channels: ['general'],
         },
       ])
 
@@ -159,7 +159,7 @@ describe('messaging-cron', () => {
           contentType: 'blog',
           tone: 'professional',
           brief: 'Write a blog post',
-          channelTarget: '#blog',
+          channels: ['blog'],
         },
       ])
 
@@ -185,7 +185,7 @@ describe('messaging-cron', () => {
           contentType: 'social',
           tone: 'casual',
           brief: 'test',
-          channelTarget: '#general',
+          channels: ['general'],
         },
       ])
 
@@ -215,7 +215,7 @@ describe('messaging-cron', () => {
           contentType: 'social',
           tone: 'casual',
           brief: 'test',
-          channelTarget: '#general',
+          channels: ['general'],
         },
       ])
 
@@ -243,7 +243,7 @@ describe('messaging-cron', () => {
           contentType: 'image',
           tone: 'playful',
           brief: 'Create a fun image',
-          channelTarget: '#art',
+          channels: ['art'],
         },
       ])
 
@@ -262,7 +262,7 @@ describe('messaging-cron', () => {
       expect(desc).toContain('**Tone:** playful')
       expect(desc).toContain('Create a fun image')
       expect(desc).toContain('localhost:4000')
-      expect(desc).toContain('#art')
+      expect(desc).toContain('**Channels:** art')
     })
   })
 })

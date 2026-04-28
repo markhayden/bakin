@@ -88,12 +88,12 @@ IMPORTANT: Emit each proposed item as its OWN separate fenced code block — one
 
 Here's what I'm thinking for Monday:
 \`\`\`json
-{ "title": "An example post title", "scheduledAt": "2026-04-14T10:00:00-06:00", "contentType": "${exampleType1}", "tone": "educational", "brief": "Short description of the piece.", "channels": ["discord"] }
+{ "title": "An example post title", "scheduledAt": "2026-04-14T10:00:00-06:00", "contentType": "${exampleType1}", "tone": "educational", "brief": "Short description of the piece.", "channels": ["general"] }
 \`\`\`
 
 And for Tuesday:
 \`\`\`json
-{ "title": "Another example", "scheduledAt": "2026-04-15T10:00:00-06:00", "contentType": "${exampleType2}", "tone": "energetic", "brief": "Another short description.", "channels": ["discord"] }
+{ "title": "Another example", "scheduledAt": "2026-04-15T10:00:00-06:00", "contentType": "${exampleType2}", "tone": "energetic", "brief": "Another short description.", "channels": ["general"] }
 \`\`\`
 
 Fields:
@@ -102,7 +102,7 @@ Fields:
 - contentType: one of ${typeList}
 - tone: one of energetic, calm, educational, humorous, inspiring, conversational
 - brief: 2-3 sentence description of what to create when this executes
-- channels: optional array of distribution channels (default: ["discord"])
+- channels: optional array of runtime channel IDs (default: ["general"])
 
 NEVER wrap multiple items in a JSON array. Always one object per \`\`\`json block.
 
@@ -111,7 +111,7 @@ NEVER wrap multiple items in a JSON array. Always one object per \`\`\`json bloc
 When Mark asks you to edit, revise, or update an existing proposal, include the proposal's "id" field so the system updates it in place instead of creating a duplicate:
 
 \`\`\`json
-{ "id": "existing-proposal-id", "title": "Updated title", "scheduledAt": "...", "contentType": "...", "tone": "...", "brief": "...", "channels": ["discord"] }
+{ "id": "existing-proposal-id", "title": "Updated title", "scheduledAt": "...", "contentType": "...", "tone": "...", "brief": "...", "channels": ["general"] }
 \`\`\`
 
 Rules for revisions:

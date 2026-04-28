@@ -74,8 +74,7 @@ function makeItem(overrides: Partial<CalendarItem> = {}): CalendarItem {
     id: 'item-1',
     title: 'Test Post',
     agent: 'chef',
-    channel: 'discord',
-    channelTarget: '1483917792745885768',
+    channels: ['general'],
     contentType: 'tip',
     tone: 'conversational',
     scheduledAt: '2026-04-10T12:00:00Z',
@@ -178,7 +177,7 @@ describe('Calendar routes', () => {
           title: 'New Post',
           agent: 'explorer',
           scheduledAt: '2026-04-15T10:00:00Z',
-          channel: 'discord',
+          channels: ['general'],
           contentType: 'recipe',
           tone: 'energetic',
           brief: 'Make something tasty',
@@ -199,13 +198,13 @@ describe('Calendar routes', () => {
       expect(body.error).toBeDefined()
     })
 
-    it('defaults channel to discord and status to draft', async () => {
+    it('defaults channels to general and status to draft', async () => {
       const route = findRoute(plugin.routes, 'POST', '/')!
       const { body } = await callRoute(route, plugin.ctx, {
         body: { title: 'Defaults Test', agent: 'trainer', scheduledAt: '2026-04-20T08:00:00Z' },
       })
       const item = body.item as CalendarItem
-      expect(item.channel).toBe('discord')
+      expect(item.channels).toEqual(['general'])
       expect(item.status).toBe('draft')
     })
 
@@ -337,10 +336,9 @@ describe('Calendar routes', () => {
       expect(body.ok).toBe(true)
       expect((body.item as CalendarItem).status).toBe('published')
       expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-        channels: ['discord'],
+        channels: ['general'],
         message: expect.objectContaining({
           body: 'Hello!',
-          metadata: { target: 'channel:1483917792745885768' },
         }),
       }))
     })
@@ -634,7 +632,7 @@ describe('Calendar exec tools', () => {
         title: 'Tool Created',
         agent: 'trainer',
         scheduledAt: '2026-04-18T14:00:00Z',
-        channel: 'discord',
+        channels: ['general'],
         contentType: 'workout',
         tone: 'energetic',
         brief: 'High energy workout post',
@@ -658,7 +656,7 @@ describe('Calendar exec tools', () => {
       })
       expect(result.ok).toBe(true)
       const item = result.item as CalendarItem
-      expect(item.channel).toBe('discord')
+      expect(item.channels).toEqual(['general'])
       expect(item.contentType).toBe('post')
       expect(item.tone).toBe('conversational')
       expect(item.status).toBe('draft')

@@ -1,6 +1,6 @@
 # Messaging Plugin
 
-The messaging plugin (formerly "calendar") handles content planning and scheduling across channels (Discord, Instagram, email, etc.). It has two sub-pages accessed via sidebar sub-navigation.
+The messaging plugin (formerly "calendar") handles content planning and scheduling across runtime channel IDs such as `general`, `announcements`, or `email`. It has two sub-pages accessed via sidebar sub-navigation.
 
 ## Sub-Pages
 
@@ -73,7 +73,7 @@ Calendar items have `ContentStatus = 'draft' | 'scheduled' | 'executing' | 'wait
 |------|--------|-----|-------|
 | `draft` | Approve (Schedule) | `scheduled` | `POST /:itemId/approve` |
 | `scheduled` | **Unapprove** | `draft` | `POST /:itemId/unapprove` |
-| `review` | Approve & Publish | `published` (posts to Discord) | `POST /:itemId/approve` |
+| `review` | Approve & Publish | `published` (posts through the active runtime channel adapter) | `POST /:itemId/approve` |
 | `review` | Reject | `draft` (with note) | `POST /:itemId/reject` |
 
 The unapprove action is surfaced as a button in `ItemDetailDrawer` when `status === 'scheduled'`. Delete is confirmed via a proper `<Dialog>` — not an in-menu two-click pattern (the earlier pattern broke because `DropdownMenu.onOpenChange` reset the confirm state when the menu closed).
@@ -89,7 +89,7 @@ in `plugins/messaging/index.ts`:
    A request whose `agentId` fails the regex returns `400 { error: 'invalid agentId' }`
    without any read.
 2. **Roster check** — `team.getAgentIds` hook. Defense-in-depth. Rejects
-   shape-valid ids that aren't in the current OpenClaw roster (orphan refs).
+   shape-valid ids that aren't in the current runtime roster (orphan refs).
    When the team plugin is unavailable or the hook throws, the shape guard
    alone gates the request and messaging stays functional.
 
