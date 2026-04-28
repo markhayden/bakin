@@ -3,7 +3,6 @@
  */
 import type { AgentRuntimeAdapter, CronJob, RuntimeMetadata } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../src/core/logger'
-import { getMainAgentId } from '../../../src/core/main-agent'
 import { readSidecar, writeSidecar, withDefaults } from './sidecar'
 import { cronToHuman } from './cron-parser'
 import type { RuntimeCronJobSnapshot, MergedJob, BakinJobMeta } from '../types'
@@ -53,8 +52,12 @@ function extractOrphanContext(job: RuntimeCronJobSnapshot): { prompt?: string } 
 }
 
 /** Merge a single runtime cron job with its sidecar entry, if any. */
-export function mergeJob(job: RuntimeCronJobSnapshot, sidecar: BakinJobMeta | undefined): MergedJob {
-  const meta = sidecar ? withDefaults(sidecar) : null
+export function mergeJob(
+  job: RuntimeCronJobSnapshot,
+  sidecar: BakinJobMeta | undefined,
+  defaultOwner: string,
+): MergedJob {
+  const meta = sidecar ? withDefaults(sidecar, defaultOwner) : null
 
   const schedType = job.schedule.type ?? job.schedule.kind ?? 'cron'
   const schedValue = job.schedule.value ?? job.schedule.expr ?? ''
@@ -76,7 +79,7 @@ export function mergeJob(job: RuntimeCronJobSnapshot, sidecar: BakinJobMeta | un
     displayName: meta?.displayName ?? job.name,
     description: meta?.description,
     agentId: meta?.agentId,  // null for orphans — don't guess, flag for triage
-    owner: meta?.owner ?? getMainAgentId(),
+    owner: meta?.owner ?? defaultOwner,
     requireTriage: meta?.requireTriage ?? (!meta), // orphans need triage
     workflowId: meta?.workflowId,
     taskPrompt: meta?.taskPrompt ?? orphanContext.prompt,
@@ -105,11 +108,11 @@ export function mergeJob(job: RuntimeCronJobSnapshot, sidecar: BakinJobMeta | un
 }
 
 /** Read all jobs merged with sidecar metadata. */
-export async function readMergedJobs(cron: RuntimeCronReader): Promise<MergedJob[]> {
+export async function readMergedJobs(cron: RuntimeCronReader, defaultOwner: string): Promise<MergedJob[]> {
   const runtimeJobs = (await cron.list()).map(runtimeCronToScheduleJob)
   const sidecar = readSidecar()
 
-  const merged = runtimeJobs.map(job => mergeJob(job, sidecar.jobs[job.id]))
+  const merged = runtimeJobs.map(job => mergeJob(job, sidecar.jobs[job.id], defaultOwner))
 
   // Clean up stale sidecar entries for cron jobs deleted from the runtime.
   const activeIds = new Set(runtimeJobs.map(j => j.id))

@@ -12,9 +12,9 @@ import { parseSchedule } from './lib/cron-parser'
 import { createTaskWithEffects } from '../../src/core/task-service'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
-import { getMainAgentId } from '../../src/core/main-agent'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import { checkScheduleSync } from './lib/health-checks'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { BakinJobMeta, BridgePayload, BridgeResult, MergedJob } from './types'
 
 const log = createLogger('schedule')
@@ -88,6 +88,10 @@ function buildBridgeWebhookUrl(): string {
   return secret ? `${base}?secret=${secret}` : base
 }
 
+async function getScheduleDefaultOwner(): Promise<string> {
+  return pluginCtx?.runtime ? getRuntimeMainAgentId(pluginCtx.runtime) : 'main'
+}
+
 // ---------------------------------------------------------------------------
 // Bridge logic (cron → task)
 // ---------------------------------------------------------------------------
@@ -129,7 +133,7 @@ async function handleBridge(req: Request): Promise<Response> {
     return json({ ok: true, skipped: 'not-bakin' } satisfies BridgeResult)
   }
 
-  const defaults = withDefaults(meta)
+  const defaults = withDefaults(meta, await getScheduleDefaultOwner())
 
   // Check pause state
   const pauseState = isPaused(meta)
@@ -291,7 +295,7 @@ const schedulePlugin: BakinPlugin = {
     })
 
     async function readMergedRuntimeJobs(): Promise<MergedJob[]> {
-      return readMergedJobs(ctx.runtime.cron)
+      return readMergedJobs(ctx.runtime.cron, await getRuntimeMainAgentId(ctx.runtime))
     }
 
     /** Convert a merged job to a search document */
@@ -375,12 +379,13 @@ const schedulePlugin: BakinPlugin = {
       })
       const jobId = created.id
 
+      const owner = body.owner ?? await getRuntimeMainAgentId(ctx.runtime)
       const meta: BakinJobMeta = {
         jobId,
         isBakinJob: true,
         displayName: body.name,
         agentId: body.agentId,
-        owner: body.owner ?? getMainAgentId(),
+        owner,
         requireTriage: body.requireTriage ?? false,
         workflowId: body.workflowId,
         taskPrompt: body.taskPrompt,
@@ -457,7 +462,7 @@ const schedulePlugin: BakinPlugin = {
         const meta = getJob(jobId)
         if (!meta) return json({ error: 'Job not found' }, 404)
 
-        const defaults = withDefaults(meta)
+        const defaults = withDefaults(meta, await getRuntimeMainAgentId(ctx.runtime))
         const lastRun = await getLastRun(ctx.runtime.cron, jobId)
         return json({
           job: {
@@ -646,7 +651,7 @@ const schedulePlugin: BakinPlugin = {
           isBakinJob: true,
           displayName: params.name as string,
           agentId: params.agentId as string | undefined,
-          owner: getMainAgentId(),
+          owner: await getRuntimeMainAgentId(ctx.runtime),
           workflowId: params.workflowId as string | undefined,
           taskPrompt: params.taskPrompt as string | undefined,
           taskTitle: params.taskTitle as string | undefined,
@@ -770,7 +775,7 @@ const schedulePlugin: BakinPlugin = {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
         const meta = getJob(params.jobId as string)
         if (!meta) return { ok: false, error: 'Job not found' }
-        const defaults = withDefaults(meta)
+        const defaults = withDefaults(meta, await getRuntimeMainAgentId(ctx.runtime))
         const lastRun = await getLastRun(ctx.runtime.cron, params.jobId as string)
         return {
           ok: true,
@@ -894,7 +899,7 @@ const schedulePlugin: BakinPlugin = {
       id: 'schedule-sync',
       name: 'Runtime cron jobs and Bakin sidecar sync',
       autoFix: true,
-      run: () => checkScheduleSync(getContentDir(), ctx.runtime.cron),
+      run: async () => checkScheduleSync(getContentDir(), ctx.runtime.cron, await getRuntimeMainAgentId(ctx.runtime)),
     })
 
     log.info('Schedule plugin activated')
@@ -903,7 +908,7 @@ const schedulePlugin: BakinPlugin = {
   async onReady() {
     const runtime = pluginCtx?.runtime
     if (!runtime) return
-    const jobs = await readMergedJobs(runtime.cron)
+    const jobs = await readMergedJobs(runtime.cron, await getRuntimeMainAgentId(runtime))
     const bakin = jobs.filter(j => j.isBakinJob)
     const paused = bakin.filter(j => j.paused)
     log.info(`Ready — ${bakin.length} bakin jobs (${paused.length} paused), ${jobs.length} total`)
