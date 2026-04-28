@@ -2,7 +2,7 @@
 
 Bakin is a self-hosted multi-agent orchestration platform. It gives a single user a real-time dashboard into what their AI agents are doing — tasks, projects, workflows, assets, schedules — all powered by markdown files on the filesystem, pushed to the browser via SSE.
 
-Runs on a Mac mini, accessed via Tailscale. No database (except OpenClaw's task SQLite), no SaaS dependencies.
+Runs on a Mac mini, accessed via Tailscale. No SaaS dependencies.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ Runs on a Mac mini, accessed via Tailscale. No database (except OpenClaw's task 
 - **Runtime plugin loader:** `packages/host/src/plugin-host/PluginHost.tsx` wraps the shell. On mount it fetches `/api/plugins/manifest`, then dynamic-imports each plugin's `clientEntry` URL (`/api/plugins/<id>/assets/client.js`). Each plugin module runs `registerPlugin` during load, populating the browser-global nav + slot registry. `AppSidebar` reads nav from `getAllNavItems()`.
 - **User plugins:** Installed into `~/.bakin/plugins/<id>/` via `bakin plugins install <path|github:user/repo>` — the installer copies source, runs `buildUserPlugin()` (in-binary Bun.build + optional `bun install` when the plugin declares deps), and the next server restart picks it up. User plugins structurally match core plugins; the loader doesn't know which bucket a plugin came from.
 - **Plugin lifecycle:** `bakin plugins {list [--check], install [--yes], upgrade [--yes], remove}` — install/upgrade/remove with consent prompts (#142), per-plugin teardown sweep + tarball backup (#119), and an install ledger at `~/.bakin/plugins/lock.json` (mirrors agent-packages lockfile pattern). Core plugins refuse `upgrade` and `remove` via `isCorePlugin()`. Restart-required for module reload. Deep reference: `.claude/specs/plugin-lifecycle.md`.
-- **Storage:** Markdown files, JSON sidecars, and JSONL logs in `~/.bakin/`. Tasks are the sole SQLite exception (in OpenClaw's `flow_runs` table). No other database.
+- **Storage:** Markdown files, JSON sidecars, and JSONL logs in `~/.bakin/`. Tasks live in the Bakin task-store under `~/.bakin/tasks/`.
 - **Real-time:** Server-Sent Events (SSE) push updates to all connected browsers.
 - **Agents:** Managed via OpenClaw gateway, communicate through MCP tools.
 - **Search:** `@antfly/sdk` for full-text + semantic search, `ctx.search` plugin API, `bakin_` table prefix.

@@ -2,11 +2,10 @@
  * Filesystem seeder — creates ~/.imitationcrab/ with all fixture data.
  * Idempotent: skips if directory already exists (use --force to re-seed).
  */
-import { existsSync, mkdirSync, cpSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { homedir } from 'os'
-import { Database } from 'bun:sqlite'
 import { initBakinHome } from '../../packages/core/src/content-dir'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -31,7 +30,6 @@ export function seed(force = false): void {
   // Create directory structure
   mkdirSync(join(MOCK_HOME, 'agents', 'main', 'agent'), { recursive: true })
   mkdirSync(join(MOCK_HOME, 'cron', 'runs'), { recursive: true })
-  mkdirSync(join(MOCK_HOME, 'flows'), { recursive: true })
   mkdirSync(join(MOCK_HOME, 'workspace'), { recursive: true })
   mkdirSync(join(MOCK_HOME, 'bin'), { recursive: true })
 
@@ -62,8 +60,8 @@ export function seed(force = false): void {
     }
   }
 
-  // Create SQLite database with seed data
-  seedDatabase()
+  // Seed Bakin-owned task-store data.
+  seedTasks()
 
   // Create a sample gateway log for today
   seedGatewayLog()
@@ -74,13 +72,21 @@ export function seed(force = false): void {
   console.log(`[seed] Done — ${MOCK_HOME} ready`)
 }
 
-function seedDatabase(): void {
-  const dbPath = join(MOCK_HOME, 'flows', 'registry.sqlite')
-  const db = new Database(dbPath)
-  const sql = readFileSync(join(FIXTURES_DIR, 'seed.sql'), 'utf-8')
-  db.exec(sql)
-  db.close()
-  console.log('[seed] SQLite database seeded')
+function seedTasks(): void {
+  const tasks = JSON.parse(readFileSync(join(FIXTURES_DIR, 'tasks.json'), 'utf-8')) as Array<{
+    id: string
+    createdAt?: string
+  }>
+  const tasksRoot = join(MOCK_HOME, 'tasks')
+
+  for (const task of tasks) {
+    const shard = (task.createdAt || new Date().toISOString()).slice(0, 7)
+    const dir = join(tasksRoot, shard)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, `task-${task.id}.json`), JSON.stringify(task, null, 2) + '\n', 'utf-8')
+  }
+
+  console.log(`[seed] Bakin task store seeded (${tasks.length} tasks)`)
 }
 
 function seedGatewayLog(): void {
