@@ -143,18 +143,22 @@ const searchQueryMock = mock(async (_table: string, query: { text: string }) => 
   total: 1,
 }))
 
+mock.module('../../src/core/app-services', () => ({
+  getAppServices: () => ({
+    search: {
+      tables: { stats: searchStatsMock },
+      query: searchQueryMock,
+    },
+  }),
+}))
+
 mock.module('../../src/core/search-registry', () => ({
   crossTableSearch: crossTableSearchMock,
   reindexContentTypes: reindexContentTypesMock,
-  getSearchHealth: getSearchHealthMock,
   getContentTypes: getContentTypesMock,
   getTableForPlugin: getTableForPluginMock,
   getIndexNames: mock(() => ['embeddings']),
-  getSearchAdapter: mock(() => ({
-    tables: { stats: searchStatsMock },
-    query: searchQueryMock,
-  })),
-  buildSearchAPI: mock(() => ({})),
+  buildSearchAPI: mock(() => ({ health: getSearchHealthMock })),
 }))
 
 // ---------------------------------------------------------------------------

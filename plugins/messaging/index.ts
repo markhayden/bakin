@@ -81,7 +81,7 @@ function flattenChatMessages(messages: Array<{ role: string; content: string }>)
   return messages.map((message) => `${message.role.toUpperCase()}:\n${message.content}`).join('\n\n')
 }
 
-async function chatAgentCompletion(ctx: PluginContext, opts: RuntimeChatOpts): Promise<string> {
+async function sendRuntimeChatCompletion(ctx: PluginContext, opts: RuntimeChatOpts): Promise<string> {
   void opts.signal
   const result = await ctx.runtime.messaging.send({
     agentId: opts.agentId,
@@ -92,7 +92,7 @@ async function chatAgentCompletion(ctx: PluginContext, opts: RuntimeChatOpts): P
   return result.content ?? ''
 }
 
-async function streamAgentMessageResponse(ctx: PluginContext, opts: RuntimeChatOpts): Promise<Response> {
+async function streamRuntimeChatCompletion(ctx: PluginContext, opts: RuntimeChatOpts): Promise<Response> {
   void opts.signal
   const chunks = ctx.runtime.messaging.stream({
     agentId: opts.agentId,
@@ -575,7 +575,7 @@ Format: conversational response in your voice, then a JSON block:
 ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says: ${body.message}`
 
           const sessionKey = `brainstorm-${body.agentId}-${Date.now()}`
-          const content = await chatAgentCompletion(ctx, {
+          const content = await sendRuntimeChatCompletion(ctx, {
             agentId: body.agentId,
             sessionKey,
             messages: [{ role: 'user', content: fullPrompt }],
@@ -765,7 +765,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
               let gwResponse: Response | null = null
 
               try {
-                gwResponse = await streamAgentMessageResponse(ctx, {
+                gwResponse = await streamRuntimeChatCompletion(ctx, {
                   messages,
                   agentId: session.agentId,
                   sessionKey,
@@ -820,7 +820,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
               } else {
                 // Non-streaming fallback
                 try {
-                  fullContent = await chatAgentCompletion(ctx, {
+                  fullContent = await sendRuntimeChatCompletion(ctx, {
                     messages,
                     agentId: session.agentId,
                     sessionKey,
@@ -1273,7 +1273,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
         let fullContent: string
         try {
-          fullContent = await chatAgentCompletion(ctx, {
+          fullContent = await sendRuntimeChatCompletion(ctx, {
             messages,
             agentId: session.agentId,
             sessionKey,

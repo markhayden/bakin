@@ -26,8 +26,8 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { getContentDir } from './content-dir'
+import { getAppServices } from './app-services'
 import { createLogger } from './logger'
-import { getSearchAdapter } from './search-registry'
 
 const log = createLogger('search-migration')
 
@@ -83,7 +83,7 @@ export async function migrateIfNeeded(): Promise<{
   from: number
   to: number
 }> {
-  const search = getSearchAdapter()
+  const search = getAppServices().search
   if (!await search.available()) {
     return { migrated: false, from: 0, to: SCHEMA_VERSION }
   }

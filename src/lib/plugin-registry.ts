@@ -35,10 +35,6 @@ import type {
   PluginHealthCheckInput,
 } from '@bakin/core/plugin-types'
 import type { AppServices } from '@bakin/core/app-services'
-import { createHealthService } from '@bakin/core/app-services'
-import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
-import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
-import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 import { registerRouteDoc } from '../core/api-docs'
 import { addExecTool } from '../../scripts/lib/registry'
 import { runMigrations } from '../core/migrations'
@@ -50,7 +46,7 @@ import { buildSearchAPI } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
 import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
 import { parseManifestPermissions } from '../../packages/core/src/plugins/permissions'
-import { maybeGetAppServices } from '../core/app-services'
+import { getAppServices } from '../core/app-services'
 
 /**
  * Optional static core-plugin table. Set from server.ts on startup so
@@ -78,19 +74,8 @@ export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>
 
 const log = createLogger('plugin-registry')
 
-function createFallbackAppServices(): AppServices {
-  const runtime = createMockRuntimeAdapter()
-  const search = createMockSearchAdapter()
-  return {
-    runtime,
-    search,
-    tasks: createMockBakinTaskStore(),
-    health: createHealthService([runtime, search]),
-  }
-}
-
 function resolveAppServices(services?: AppServices): AppServices {
-  return services ?? maybeGetAppServices() ?? createFallbackAppServices()
+  return services ?? getAppServices()
 }
 
 /** Singleton hook registry shared across all plugins and core modules.

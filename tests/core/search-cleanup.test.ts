@@ -32,7 +32,12 @@ let searchHarness: ReturnType<typeof createSearchAdapterHarness>
 
 mock.module('@/core/search-registry', () => ({
   getContentTypes: mock(),
-  getSearchAdapter: () => searchHarness.adapter,
+}))
+
+mock.module('@/core/app-services', () => ({
+  getAppServices: () => ({
+    search: searchHarness.adapter,
+  }),
 }))
 
 import { runCleanup } from '@/core/search-cleanup'

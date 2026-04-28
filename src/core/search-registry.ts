@@ -26,12 +26,11 @@ import type {
   TableConfig,
   TableHealth,
 } from '@bakin/core/adapters/search'
-import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
 import { broadcast } from './sse'
 import { createLogger } from './logger'
 import { registerSyncHook, registerUnlinkHook } from './watcher'
 import { getContentDir } from './content-dir'
-import { maybeGetAppServices } from './app-services'
+import { getAppServices } from './app-services'
 import {
   findMatchingMapper,
   matchesAnyPattern,
@@ -67,7 +66,6 @@ interface RegistryState {
 
 const _g = globalThis as typeof globalThis & {
   __bakinSearchRegistry?: RegistryState
-  __bakinFallbackSearchAdapter?: SearchAdapter
 }
 
 function getRegistry(): RegistryState {
@@ -83,14 +81,7 @@ function getRegistry(): RegistryState {
 }
 
 export function getSearchAdapter(): SearchAdapter {
-  const services = maybeGetAppServices()
-  if (services?.search) return services.search
-  _g.__bakinFallbackSearchAdapter ??= createMockSearchAdapter({
-    name: 'fallback-search',
-    version: '0.0.0',
-    requiredCoreVersion: '*',
-  })
-  return _g.__bakinFallbackSearchAdapter
+  return getAppServices().search
 }
 
 // ---------------------------------------------------------------------------
@@ -1034,5 +1025,4 @@ function searchEnrichmentFromTableHealth(health: TableHealth | null): SearchEnri
  */
 export function resetSearchRegistry(): void {
   _g.__bakinSearchRegistry = undefined
-  _g.__bakinFallbackSearchAdapter = undefined
 }

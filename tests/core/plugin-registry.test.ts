@@ -3,6 +3,10 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
+import { createHealthService } from '@bakin/core/app-services'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 // ---------------------------------------------------------------------------
 // Section A: HookRegistry (standalone — no mocks needed)
@@ -116,6 +120,7 @@ mock.module('@/core/audit', () => ({
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: mock(),
+  getBakinPaths: mock(() => ({})),
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
   initBakinHome: () => {},
@@ -146,6 +151,14 @@ describe('PluginRegistryImpl', () => {
     // Clear globalThis singletons for fresh instances
     delete (globalThis as any).__bakinPluginRegistry
     delete (globalThis as any).__bakinHookRegistry
+    const runtime = createMockRuntimeAdapter()
+    const search = createMockSearchAdapter()
+    ;(globalThis as any).__bakinAppServices = {
+      runtime,
+      search,
+      tasks: createMockBakinTaskStore(),
+      health: createHealthService([runtime, search]),
+    }
 
     // Reset modules to get a fresh registry singleton
     vi.resetModules()

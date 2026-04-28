@@ -7,15 +7,15 @@
  * never leak their `bakin_` table prefix to the MCP surface.
  */
 import { z } from 'zod'
+import { getAppServices } from '../../src/core/app-services'
 import { addExecTool } from './registry'
 import {
   crossTableSearch,
   reindexContentTypes,
-  getSearchHealth,
   getContentTypes,
   getTableForPlugin,
   getIndexNames,
-  getSearchAdapter,
+  buildSearchAPI,
 } from '../../src/core/search-registry'
 
 /**
@@ -137,7 +137,7 @@ addExecTool({
     if (!pluginId || !key) return { ok: false, error: 'Missing plugin or key parameter' }
     const resolved = resolvePluginTable(pluginId)
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    const search = getSearchAdapter()
+    const search = getAppServices().search
     const stats = await search.tables.stats(resolved.table)
     if (!stats) return { ok: false, error: `Table ${resolved.table} not found or search adapter unavailable` }
     const result = await search.query(resolved.table, {
@@ -259,7 +259,7 @@ addExecTool({
   source: 'core',
   parameters: {},
   handler: async () => {
-    const health = await getSearchHealth()
+    const health = await buildSearchAPI('core', { skipFileBackedWiring: true }).health!()
     const contentTypes = getContentTypes()
     const registered = Array.from(contentTypes.entries()).map(([table, def]) => ({
       table,

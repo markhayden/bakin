@@ -15,7 +15,8 @@
  */
 import { createLogger } from './logger'
 import { getSettings } from './settings'
-import { getContentTypes, getSearchAdapter } from './search-registry'
+import { getAppServices } from './app-services'
+import { getContentTypes } from './search-registry'
 
 const log = createLogger('search-cleanup')
 
@@ -49,7 +50,7 @@ export async function runCleanup(): Promise<CleanupStats[]> {
 
   try {
     const contentTypes = getContentTypes()
-    const search = getSearchAdapter()
+    const search = getAppServices().search
     if (!await search.available()) return []
 
     for (const [tableName, def] of contentTypes) {
