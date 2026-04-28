@@ -4,9 +4,9 @@ Two layers of defense against transient network blips (issue #115).
 
 ## Layer 1: Runtime adapter send retry
 
-Agent delivery goes through `src/core/runtime-registry.ts` and the active
-runtime adapter. Adapter implementations may retry transport-level failures,
-but Bakin treats retry policy as an adapter concern. The OpenClaw adapter keeps
+Agent delivery goes through `getAppServices().runtime` and the active runtime
+adapter. Adapter implementations may retry transport-level failures, but Bakin
+treats retry policy as an adapter concern. The OpenClaw adapter keeps
 provider-specific HTTP details behind `packages/adapter-openclaw`.
 
 - `TypeError('fetch failed')`
@@ -40,6 +40,6 @@ Legacy plain-number entries are migrated to `{ kind: 'structural' }` by `getFail
 
 ## Where to look
 
-- `src/core/runtime-registry.ts` — runtime adapter access
+- `src/core/app-services.ts` — boot-created runtime/search/task service object
 - `packages/adapter-openclaw/src/runtime.ts` — OpenClaw adapter transport
 - `src/core/dispatch.ts` — `classifyDispatchError`, cooldown selection, blocked escalation

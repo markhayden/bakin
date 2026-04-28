@@ -22,6 +22,7 @@ process.env.BAKIN_HOME = testDir
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { installFilesystemRuntimeAppServices } from '../helpers/runtime-app-services'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -33,14 +34,14 @@ mock.module('@bakin/core/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openClawDir,
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
 
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/core/openclaw-config', () => ({
+mock.module('@bakin/adapter-openclaw/config', () => ({
   readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
   resetOpenClawConfigCache: () => {},
   getAgentList: () => openClawAgents,
@@ -62,6 +63,13 @@ beforeEach(() => {
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
   openClawAgents = []
+  installFilesystemRuntimeAppServices({
+    openClawDir,
+    agents: () => openClawAgents,
+    onCreateAgent: (agent) => {
+      openClawAgents = [...openClawAgents.filter((existing) => existing.id !== agent.id), { id: agent.id, identity: { name: agent.name } }]
+    },
+  })
 })
 
 /** Seed two skill-packs with the SAME skill name to collide on. */

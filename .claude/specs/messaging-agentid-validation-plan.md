@@ -236,7 +236,7 @@ Mocks required per CLAUDE.md test-isolation rules:
 - `src/core/content-dir` AND `packages/core/src/content-dir` → temp dir.
 - `src/core/logger` → no-op.
 - `src/core/watcher` → no-op.
-- Active runtime boundary (`ctx.runtime` or `src/core/runtime-registry`) → runtime messaging returns a canned response so the happy path doesn't try to reach a real provider.
+- Active runtime boundary (`ctx.runtime` or `src/core/app-services`) → runtime messaging returns a canned response so the happy path doesn't try to reach a real provider.
 - `src/core/settings` → stub only the settings fields the handler reads.
 
 I'll pattern-match `tests/plugins/messaging/routes.test.ts` for mock scaffolding.

@@ -19,6 +19,7 @@ mock.module('../../../src/core/content-dir', () => ({
   initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
+mock.module('../../../plugins/tasks/lib/flow-store', () => ({}))
 
 // Mock audit to prevent writes to audit.jsonl
 mock.module('../../../src/core/audit', () => ({
@@ -37,7 +38,7 @@ mock.module('../../../src/core/logger', () => ({
 
 // Defense-in-depth: even if another module reaches openclaw-home, redirect it
 // into testDir instead of ~/.openclaw/.
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => testDir,
   getOpenClawPath: (...parts: string[]) => join(testDir, ...parts),
   resetOpenClawHome: mock(),

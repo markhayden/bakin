@@ -135,7 +135,7 @@ UI specifics:
 
 **Mandatory mock setup** (project rule, non-negotiable — see CLAUDE.md "Testing Rules — CRITICAL"):
 
-Every test file must mock both `getContentDir` resolvers (the shim in `src/core/content-dir.ts` AND the canonical `packages/core/src/content-dir.ts`), the OpenClaw home resolver where the code under test still resolves provider paths, the active runtime boundary (`ctx.runtime` or `src/core/runtime-registry`), the logger, and the watcher. Test data goes to `tmpdir()`, never to `~/.bakin/` or `~/.openclaw/`. Cleanup with `afterAll(() => rmSync(testDir, ...))`.
+Every test file must mock both `getContentDir` resolvers (the shim in `src/core/content-dir.ts` AND the canonical `packages/core/src/content-dir.ts`), the OpenClaw home resolver where the code under test still resolves provider paths, the active runtime boundary (`ctx.runtime` or `src/core/app-services`), the logger, and the watcher. Test data goes to `tmpdir()`, never to `~/.bakin/` or `~/.openclaw/`. Cleanup with `afterAll(() => rmSync(testDir, ...))`.
 
 For the new tests in this spec, since we're testing UI components and a thin client-side hook (no server-side filesystem reads), most of those mocks are precautionary — but the rule applies anyway because component imports may transitively pull in modules that read content-dir at module-load.
 

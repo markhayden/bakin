@@ -12,8 +12,8 @@ The team plugin is Bakin's adapter layer over OpenClaw's agent roster. It derive
 
 The orchestrator id is always the literal string `"main"` on every OpenClaw install. Display names come from `identity.name` on that entry. No detection heuristic, no settings override, no rename logic.
 
-- `packages/core/src/main-agent.ts` — `getMainAgentId()`, `tryGetMainAgentId()`, `getMainAgentName()`
-- `packages/core/src/openclaw-config.ts` — single mtime-cached reader for `openclaw.json`. All three helpers above call through here. Live edits are picked up on the next call.
+- `packages/adapter-openclaw/src/main-agent.ts` — `getMainAgentId()`, `tryGetMainAgentId()`, `getMainAgentName()`
+- `packages/adapter-openclaw/src/config.ts` — single mtime-cached reader for `openclaw.json`. All three helpers above call through here. Live edits are picked up on the next call.
 - `src/core/onboarding/runtime.ts` — doctor check that flags missing `main`, duplicate ids, duplicate workspaces. Reports only, never auto-fixes. Run via `bakin check runtime`.
 
 `BakinSettings.agents` and `BakinSettings.mainAgentId` **do not exist**. If you find a reference to them in tests or production code, it's a bug — use `getAgentIds()` / `getMainAgentId()` instead.
@@ -274,7 +274,7 @@ If a future iteration restores any of these, prefer adding back via new componen
 
 | Concern | Test file |
 |---------|-----------|
-| mtime-cached reader + helpers | `tests/core/openclaw-config.test.ts` |
+| mtime-cached reader + helpers | `tests/adapter-openclaw/config.test.ts` |
 | main-agent canonical resolver | `tests/core/main-agent.test.ts` |
 | Adapter validation + dedupe | `tests/plugins/team/openclaw-adapter.test.ts` |
 | Pyramid graph builder | `tests/plugins/team/build-graph.test.ts` |
@@ -300,4 +300,4 @@ All three live at `plugins/team/lib/health-checks.ts`. Migrated out of `src/core
 - **Don't write to openclaw.json for agent add/delete.** Use the CLI adapter (`openclawExec`). The only approved direct write is `setSubagentPermissions()` for dispatch permissions.
 - **Don't write to openclaw.json from validation code.** Integrity problems are the user's job to fix — surface them via the doctor, don't auto-heal.
 - **Don't hard-code the main agent's display name** (e.g. "Main Operator"). It varies per install. Always resolve via `getMainAgentName()` server-side or `useMainAgentId()` + `useAgent(id)` client-side.
-- **Don't skip the test mocks.** `tests/plugins/team/*` must mock `@bakin/core/openclaw-config`, `@bakin/core/openclaw-home`, and `src/core/content-dir` — leaking into `~/.openclaw/` has caused real incidents.
+- **Don't skip the test mocks.** `tests/plugins/team/*` must mock `@bakin/adapter-openclaw/config`, `@bakin/adapter-openclaw/home`, and `src/core/content-dir` — leaking into `~/.openclaw/` has caused real incidents.

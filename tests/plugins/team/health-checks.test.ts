@@ -45,12 +45,12 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openClawDir,
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => openClawDir,
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
@@ -73,19 +73,49 @@ mock.module('@/core/settings', () => ({
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
 let runtimeAgents: RuntimeAgent[] = []
 let runtimeError: Error | null = null
-mock.module('@bakin/core/openclaw-config', () => ({
+const runtimeAgentStore = new Map<string, RuntimeAgent>()
+const runtimeWorkspaceFiles = new Map<string, { path: string; content: string; metadata?: Record<string, unknown> }>()
+mock.module('@bakin/adapter-openclaw/config', () => ({
   readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
   resetOpenClawConfigCache: () => {},
   getAgentList: () => openClawAgents,
   getAgentIds: () => openClawAgents.map((a) => a.id),
   findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
 }))
-mock.module('../../../packages/core/src/openclaw-config', () => ({
+mock.module('../../../packages/adapter-openclaw/src/config', () => ({
   readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
   resetOpenClawConfigCache: () => {},
   getAgentList: () => openClawAgents,
   getAgentIds: () => openClawAgents.map((a) => a.id),
   findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
+}))
+
+mock.module('../../../src/core/app-services', () => ({
+  getAppServices: () => ({
+    runtime: {
+      agents: {
+        list: async () => runtimeAgents,
+        get: async (agentId: string) => runtimeAgentStore.get(agentId) ?? runtimeAgents.find((agent) => agent.id === agentId) ?? null,
+        create: async (input: { id?: string; name: string; role?: string; model?: string; metadata?: Record<string, unknown> }) => {
+          const agent: RuntimeAgent = { id: input.id ?? input.name.toLowerCase(), name: input.name, role: input.role, model: input.model, status: 'active', metadata: input.metadata }
+          runtimeAgentStore.set(agent.id, agent)
+          runtimeAgents = [...runtimeAgents.filter((existing) => existing.id !== agent.id), agent]
+          return agent
+        },
+        updateAllowlist: async () => {},
+        listWorkspaceFiles: async (agentId: string) => Array.from(runtimeWorkspaceFiles.entries())
+          .filter(([key]) => key.startsWith(`${agentId}/`))
+          .map(([, file]) => file),
+        readWorkspaceFile: async (agentId: string, path: string) => runtimeWorkspaceFiles.get(`${agentId}/${path}`) ?? null,
+        writeWorkspaceFile: async (agentId: string, file: { path: string; content: string; metadata?: Record<string, unknown> }) => {
+          runtimeWorkspaceFiles.set(`${agentId}/${file.path}`, { path: file.path, content: file.content, metadata: file.metadata })
+        },
+        removeWorkspaceFile: async (agentId: string, path: string) => {
+          runtimeWorkspaceFiles.delete(`${agentId}/${path}`)
+        },
+      },
+    },
+  }),
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -121,6 +151,8 @@ beforeEach(() => {
   mkdirSync(openClawDir, { recursive: true })
   openClawAgents = []
   runtimeAgents = []
+  runtimeAgentStore.clear()
+  runtimeWorkspaceFiles.clear()
   runtimeError = null
   mockAutoFix = false
 })

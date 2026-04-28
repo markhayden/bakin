@@ -6,11 +6,11 @@ Bakin orchestrates a team of AI agents via the OpenClaw gateway. Each agent has 
 
 ## Agent Profiles
 
-### Source of truth: OpenClaw via Team Plugin
+### Source of truth: runtime adapter via Team Plugin
 
-Agent data lives in the OpenClaw home directory and is accessed through the team plugin adapter (`plugins/team/lib/openclaw-adapter.ts`). **Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw.**
+Agent data is runtime-owned and is accessed through `ctx.runtime` inside the team plugin. With the OpenClaw adapter, that data lives in the OpenClaw home directory. **Bakin reads from OpenClaw through the adapter. Bakin writes to OpenClaw through the adapter. Bakin never copies OpenClaw-owned agent state into core/plugin storage.**
 
-All OpenClaw paths are resolved via `getOpenClawHome()` / `getOpenClawPath()` from `packages/core/src/openclaw-home.ts`. This respects the `OPENCLAW_HOME` env var (defaults to `~/.openclaw/`), enabling dev/test environments via the Imitation Crab mock (`dev/imitation-crab/`).
+All OpenClaw paths are resolved via `getOpenClawHome()` / `getOpenClawPath()` from `packages/adapter-openclaw/src/home.ts`. This respects the `OPENCLAW_HOME` env var (defaults to `~/.openclaw/`), enabling dev/test environments via the Imitation Crab mock (`dev/imitation-crab/`).
 
 - `{OPENCLAW_HOME}/openclaw.json` — agent roster (IDs, names, models, identity, subagent perms)
 - `{OPENCLAW_HOME}/workspace/` — main agent workspace files (resolved via `getMainAgentId()`)
@@ -49,15 +49,15 @@ Agent models are changed via the models plugin API, not direct OpenClaw writes:
 ### Agent IDs
 Bakin uses OpenClaw's canonical agent ids verbatim — no translation layer. The orchestrator id is the literal string `"main"` on **every** install; there is no detection heuristic, no settings override, no fallback. Subagents keep whatever ids OpenClaw assigns. Display names (e.g. "Main Operator", "Crab") come from `identity.name` in `openclaw.json` at render time and never leak into storage keys.
 
-Resolution helpers in `packages/core/src/main-agent.ts`:
-- `getMainAgentId(): string` — returns `"main"` if the entry exists, throws otherwise (with a pointer to `bakin check runtime`)
-- `tryGetMainAgentId(): string | null` — non-throwing variant for UI/degraded paths
-- `getMainAgentName(): string` — reads `identity.name` on the `main` entry, falls back to `"Main"`
+Runtime helpers in `@bakin/core/adapters/runtime`:
+- `getRuntimeMainAgentId(runtime): Promise<string>` — returns `"main"` if the entry exists, throws otherwise (with a pointer to `bakin check runtime`)
+- `getRuntimeMainAgent(runtime): Promise<RuntimeAgent>` — returns the canonical runtime agent
+- `getRuntimeMainAgentName(runtime): Promise<string>` — reads the runtime agent name, falling back to `"Main"`
 
-All three call through `packages/core/src/openclaw-config.ts`, the single mtime-cached reader for `openclaw.json`. Live edits (e.g. renaming `identity.name`) are picked up on the next read without a restart. Callers that need the raw roster use `getAgentIds()` or `findAgentById(id)` from the same module — **never** `BakinSettings.agents` (that field no longer exists).
+Callers get these values from `getAppServices().runtime.agents` or `ctx.runtime.agents`, not from raw provider config. With OpenClaw, the adapter reads `openclaw.json` through `packages/adapter-openclaw/src/config.ts`; live edits are picked up by the adapter cache on the next read. Callers that need the raw roster use runtime adapter methods — **never** `BakinSettings.agents` (that field no longer exists).
 
 ### Roster validation and dedupe
-`plugins/team/lib/openclaw-adapter.ts` validates the roster on every read:
+The OpenClaw runtime adapter validates the roster on every read:
 - If no entry has `id: "main"`, `listAgents()` returns `[]` and logs an error. The UI then renders an empty team rather than a partial/broken pyramid.
 - Duplicate ids → first-wins, error logged with the discarded entry.
 - Duplicate **resolved** workspaces (explicit `workspace` field, falling back to `defaults.workspace`) → first-wins, error logged.
@@ -76,7 +76,7 @@ Self-referencing (agent dispatching to itself) is rejected at both the MCP tool 
 
 ## Agent Communication
 
-### Runtime Messaging (`src/core/runtime-registry.ts`)
+### Runtime Messaging (`AppServices.runtime`)
 Agents run behind the active runtime adapter. Communication flows:
 1. Bakin → runtime adapter messaging API → agent receives message/task
 2. Agent → MCP tools (served by Bakin) → reads/writes state
@@ -89,9 +89,9 @@ Agents run behind the active runtime adapter. Communication flows:
 ## Dispatch Engine (`src/core/dispatch.ts`)
 
 The dispatch system assigns tasks to agents:
-1. Reads `flow_runs` SQLite for tasks in `todo` column with an agent assignment
-2. Checks agent availability (heartbeat, current task count, cooldown)
-3. Sends task to agent via OpenClaw with context (task details, workflow step if applicable)
+1. Reads the Bakin task store via `tasks.readTaskboard`
+2. Checks runtime roster/availability, heartbeat, current task count, and dispatch cooldown
+3. Sends task to the assigned agent through `getAppServices().runtime.messaging`
 4. Moves task to `inProgress` column
 5. Monitors for completion/blocking
 
@@ -159,7 +159,7 @@ MCP sessions bind agent identity via `?agent=chef` query param at connection tim
 ### Live activity feed
 `bakin_log_progress` → `logProgress()` in `src/core/task-service.ts`:
 1. Broadcasts immediately via SSE: `{ type: 'activity', agent, message, ts, taskId, channel }`
-2. Appends to task's log in `flow_runs` SQLite
+2. Appends to the task log through the tasks plugin hook backed by `~/.bakin/tasks`
 
 ### Structured categories (from `scripts/lib/log-progress.ts`):
 `[START]`, `[PROGRESS]`, `[MILESTONE]`, `[BLOCKED]`, `[COMPLETE]`
@@ -206,16 +206,15 @@ Monitors agent and MCP server health:
 
 | File | Purpose |
 |------|---------|
-| `packages/core/src/openclaw-config.ts` | Single mtime-cached reader for `openclaw.json`. Exports `readOpenClawConfig`, `getAgentList`, `getAgentIds`, `findAgentById`, `resetOpenClawConfigCache` |
-| `packages/core/src/main-agent.ts` | Canonical `"main"` resolver: `getMainAgentId`, `tryGetMainAgentId`, `getMainAgentName` |
-| `plugins/team/lib/openclaw-adapter.ts` | Read-only adapter over OpenClaw: validation, dedupe, merges Bakin-owned display data |
+| `src/core/app-services.ts` | Boot-created runtime/search/task service object |
+| `packages/adapter-openclaw/src/config.ts` | OpenClaw adapter-private mtime-cached reader for `openclaw.json` |
+| `packages/adapter-openclaw/src/main-agent.ts` | Adapter-private canonical `"main"` resolver |
+| `plugins/team/index.ts` | Team plugin server: routes, hooks, exec tools. Uses `ctx.runtime.agents` for roster/workspace reads and writes |
 | `plugins/team/lib/build-graph.ts` | Pure pyramid-graph builder — root derived from `mainAgentId`, `reportsTo ?? mainAgentId` resolution, unknown-id fallback |
 | `plugins/team/hooks/use-agent-store.ts` | Client-side Zustand store for agent data |
-| `plugins/team/index.ts` | Team plugin server: routes, hooks, exec tools. Normalizes `reportsTo === mainAgentId → null` on write; degrades unknown `reportsTo` → null on read |
 | `src/core/agents.ts` | Agent status resolution and communication |
-| `src/core/dispatch.ts` | Task dispatch engine. Roster from `getAgentIds()` in openclaw-config |
+| `src/core/dispatch.ts` | Task dispatch engine. Roster from `getAppServices().runtime.agents` |
 | `src/core/mcp-server.ts` | MCP tool server |
-| `src/core/runtime-registry.ts` | Runtime adapter access for messaging, tools, channels, cron, memory, and agent metadata |
 | `packages/adapter-openclaw/src/runtime.ts` | OpenClaw runtime adapter implementation |
 | `src/core/task-service.ts` | Task mutations with side effects |
 | `src/core/audit.ts` | Audit logging |

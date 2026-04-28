@@ -19,7 +19,7 @@ mock.module('@bakin/core/main-agent', () => ({
 }))
 
 mock.module('../../plugins/tasks/lib/flow-store', () => ({}))
-mock.module('../../packages/core/src/openclaw-home', () => ({
+mock.module('../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => '/tmp/bakin-test-content-dir-guard-fake',
   getOpenClawPath: (...parts: string[]) => parts.join('/'),
   resetOpenClawHome: mock(),

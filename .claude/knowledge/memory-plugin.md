@@ -237,7 +237,7 @@ They're intentionally separate — a user debugging a search-quality issue wants
 - C2 — `refactor(memory): rewrite plugin shell, drop bakin_audit, register bakin_memory`
 - C3 — `feat(memory): audit tier indexed into bakin_memory` ✅
   - Pure watcher pattern: `appendAudit` writes disk + broadcasts SSE, memory plugin's indexer picks up audit.jsonl changes and indexes them incrementally using persisted byte offsets. No cross-module hook between core audit and the memory plugin.
-  - Legacy `bakin_audit` table, `TABLES.audit`, and `indexAuditEvent` removed from `src/core/antfly.ts` with no shim.
+  - Legacy `bakin_audit` table, `TABLES.audit`, and `indexAuditEvent` removed from the old core search wrapper with no shim.
   - Stable row IDs: `audit:<16-char-sha256-of-ts|event|agent>` — re-indexing produces no duplicates.
   - Truncation handled: `stats.size < persistedOffset` → restart from offset 0.
   - Trailing incomplete lines (no newline yet) are preserved until the next watcher event.

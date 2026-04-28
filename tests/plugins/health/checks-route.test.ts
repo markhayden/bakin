@@ -40,7 +40,7 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   resetContentDir: () => {},
   initBakinHome: () => {},
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => `${testDir}/.openclaw`,
   getOpenClawPath: (p: string = '') => `${testDir}/.openclaw/${p}`,
 }))

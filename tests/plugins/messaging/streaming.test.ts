@@ -40,7 +40,7 @@ mock.module('../../../src/core/logger', () => ({
 
 mock.module('../../../src/core/audit', () => ({ appendAudit: mock() }))
 mock.module('../../../src/core/watcher', () => ({ watchDir: mock() }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawPath: mock(() => '/tmp/mock-openclaw.json'),
   getOpenClawHome: mock(() => '/tmp/mock-openclaw'),
 }))

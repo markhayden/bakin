@@ -22,7 +22,7 @@ mock.module('../../../src/core/content-dir', () => ({
   initBakinHome: () => {},
 }))
 
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openclawDir,
   getOpenClawPath: (...segments: string[]) => join(openclawDir, ...segments),
 }))

@@ -45,7 +45,7 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   getTaskWithColumn: mock(() => null),
 }))
 
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => testDir,
   getOpenClawPath: (...parts: string[]) => join(testDir, ...parts),
   resetOpenClawHome: mock(),

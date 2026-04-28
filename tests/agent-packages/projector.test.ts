@@ -35,7 +35,7 @@ mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openClawDir,
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},

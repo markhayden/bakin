@@ -47,7 +47,7 @@ mock.module('../../../src/core/settings', () => ({
 }))
 
 let mockKnownAgents: string[] = ['main', 'patch', 'pixel']
-mock.module('../../../src/core/main-agent', () => ({
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
   getMainAgentName: () => 'Main',

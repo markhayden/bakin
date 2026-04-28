@@ -17,10 +17,10 @@
  */
 // IMPORTANT: env vars must land BEFORE any other import. ES-module import
 // hoisting puts our `import` lines above the `mock.module()` calls below,
-// so a transitive import of @bakin/core/openclaw-home can read process.env
+// so a transitive import of @bakin/adapter-openclaw/home can read process.env
 // directly. Setting OPENCLAW_HOME + BAKIN_HOME here is the CLAUDE.md-blessed
 // escape for the "mock arrives too late" case — the test-env safety guard in
-// packages/core/src/openclaw-home.ts compares the resolved path against
+// packages/adapter-openclaw/src/home.ts compares the resolved path against
 // $HOME/.openclaw and only throws when they match. Our temp paths can't
 // match, so the guard passes.
 import { tmpdir } from 'os'
@@ -51,7 +51,7 @@ mock.module('@bakin/core/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openClawDir,
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},

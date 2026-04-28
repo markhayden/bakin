@@ -18,6 +18,7 @@ process.env.BAKIN_HOME = testDir
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { installFilesystemRuntimeAppServices } from '../helpers/runtime-app-services'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -29,14 +30,14 @@ mock.module('@bakin/core/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openClawDir,
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
 
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/core/openclaw-config', () => ({
+mock.module('@bakin/adapter-openclaw/config', () => ({
   readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
   resetOpenClawConfigCache: () => {},
   getAgentList: () => openClawAgents,
@@ -56,6 +57,13 @@ beforeEach(() => {
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
   openClawAgents = []
+  installFilesystemRuntimeAppServices({
+    openClawDir,
+    agents: () => openClawAgents,
+    onCreateAgent: (agent) => {
+      openClawAgents = [...openClawAgents.filter((existing) => existing.id !== agent.id), { id: agent.id, identity: { name: agent.name } }]
+    },
+  })
 })
 
 const NON_INTERACTIVE = {
@@ -119,8 +127,9 @@ describe('agent-assets onboarding component — check()', () => {
     const src = seedAgentPackage()
     await installPackage({ source: src })
 
-    // Simulate someone deleting the projected SOUL.md
-    rmSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'))
+    // Runtime workspace projections are checked by the runtime adapter.
+    // Simulate a missing filesystem-owned projection instead.
+    rmSync(join(testDir, 'agents', 'pixel', 'avatar.jpg'))
 
     const result = await agentAssetsComponent.check()
     expect(result.status).toBe('warn')
@@ -162,10 +171,10 @@ describe('agent-assets onboarding component — check()', () => {
     const src = seedAgentPackage()
     await installPackage({ source: src })
 
-    const soulPath = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
-    writeFileSync(soulPath, '# user wrote this')
+    const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
+    writeFileSync(avatar, 'user-overrode-avatar')
     const { markUserEdited } = await import('../../packages/core/src/agent-packages/markers')
-    markUserEdited(soulPath)
+    markUserEdited(avatar)
 
     const result = await agentAssetsComponent.check()
     expect(result.status).toBe('ok') // userEdited isn't drift; it's a deliberate user lock

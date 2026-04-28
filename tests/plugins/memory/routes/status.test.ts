@@ -30,7 +30,7 @@ mock.module('../../../../packages/core/src/content-dir', () => ({
 mock.module('../../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-mock.module('../../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))

@@ -422,7 +422,7 @@ const onSend: BrainstormOnSend = async (prompt, history, { signal, onToken, onCu
 }
 ```
 
-Server-side streaming goes through `src/core/runtime-registry.ts`: `streamAgentMessageResponse()` returns a raw `Response` with an SSE body, and `chatAgentCompletion()` is the non-streaming fallback used by messaging and projects.
+Server-side agent calls go through the active runtime adapter (`ctx.runtime` in plugins, `getAppServices().runtime` in core). Project and messaging brainstorm routes write SSE events themselves while using `runtime.messaging.send()` for non-streaming provider calls.
 
 ### Architecture notes
 
@@ -451,5 +451,5 @@ src/hooks/use-gateway-status.ts          — Gateway restart sync checker
 src/hooks/use-vertical-resize.ts         — Drag-to-resize hook (messaging panels + brainstorm)
 src/components/ui/dropdown-menu.tsx      — Base dropdown (focus: bg-secondary)
 src/components/ui/sheet.tsx              — Sheet primitive (used by BakinDrawer)
-src/core/runtime-registry.ts             — streamAgentMessageResponse + chatAgentCompletion
+src/core/app-services.ts                 — boot-created runtime/search/task services
 ```

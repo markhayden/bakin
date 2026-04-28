@@ -67,8 +67,10 @@ mock.module('../../../src/core/settings', () => ({
   resetSettingsCache: mock(),
 }))
 
-mock.module('../../../src/core/main-agent', () => ({
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
 mock.module('../../../src/core/mcporter', () => ({
