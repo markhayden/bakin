@@ -84,9 +84,8 @@ plugins/memory/
     indexer.ts          ─ MemoryIndexer: backfill, indexTier, handleWatcherEvent.
                           Currently a skeleton; per-tier logic lands in C3–C8.
     offsets.ts          ─ Incremental JSONL byte-offset tracking (atomic rename).
-    openclaw-adapter.ts ─ Sole module that reads ~/.openclaw/ for the memory plugin.
-    openclaw-gateway.ts ─ Native WebSocket RPC client — gatewayCall + gatewaySubscribe.
-    openclaw-cli.ts     ─ `openclaw memory status/search --json` wrapper. Nothing else.
+    runtime-memory.ts   ─ Thin helpers over ctx.runtime.memory for tier
+                          discovery, list, and detail reads.
     tier-parsers/
       audit-parser.ts     ─ Pure line → MemoryRow parser for ~/.bakin/audit.jsonl.
       durable-parser.ts   ─ H1/H2 chunker for canonical bootstrap files;
@@ -118,8 +117,8 @@ plugins/memory/
                             → MemoryRow | null. First `type=compaction` event
                             wins; summary becomes content; trigger derives from
                             `fromHook` (true→auto, false→manual, absent→unknown);
-                            `tokensAfter` always null (real OpenClaw files never
-                            carry it). Also exports `matchCheckpointFilename`.
+                            `tokensAfter` stays null when the runtime does not
+                            expose it. Also exports `matchCheckpointFilename`.
       dream-parser.ts     ─ Five artifact types from DreamArtifactTypeSchema
                             (phase_doc, short_term_recall, phase_signals,
                             events_log, session_corpus). `parsePhaseDoc` requires
@@ -180,12 +179,17 @@ plugins/memory/
 
 ## Invariants
 
-- **Bakin reads, never writes.** No mutations to any `~/.openclaw/` path.
+- **Bakin reads, never writes runtime memory.** Runtime memory comes through
+  `ctx.runtime.memory`; Bakin does not mutate provider memory paths.
 - **One content type, one table.** `bakin_memory`. The contract test (`getTableForPlugin`) enforces this.
-- **The runtime adapter is the only runtime-home reader.** All other modules (indexer, parsers, routes) must go through the typed runtime memory surfaces.
-- **Path resolution goes through adapter APIs.** No hardcoded runtime-home strings.
+- **The runtime adapter is the only runtime-home reader.** All other modules
+  (indexer, parsers, routes) must go through typed runtime memory surfaces.
+- **Path resolution goes through adapter APIs.** No hardcoded runtime-home
+  strings.
 - **Offsets are atomic.** `writeFileSync(tmp)` → `renameSync(tmp, file)` — never truncate-in-place.
-- **Tests mock everything.** `getContentDir`, logger, watcher, `@bakin/adapter-openclaw/home`, runtime adapters, `vault`, `settings`, `child_process`, global `WebSocket`.
+- **Tests mock everything.** `getContentDir`, logger, watcher, runtime adapters,
+  vault/settings shims as needed, and any adapter-private home resolver touched
+  by the test.
 
 ## Settings
 
@@ -245,7 +249,7 @@ They're intentionally separate — a user debugging a search-quality issue wants
   - Canonical bootstrap files (`SOUL.md`, `MEMORY.md`, `IDENTITY.md`, `USER.md`, `AGENTS.md`, `TOOLS.md`, `BOOTSTRAP.md`, `HEARTBEAT.md`, `DREAMS.md`, `MEMORY-LOG.md`) chunked on H1/H2 boundaries — one row per chunk. H3+ headings stay inside the enclosing H2 body. Files with no headings → single chunk (`headingLevel=0`, `chunkIndex=0`).
   - Stable row ids: `durable:<16-char-sha256(agent|basename|chunkIndex)>` — chunk count is tracked per file so shrinking a file (e.g. deleting an H1) removes the now-orphan chunk keys on reindex.
   - Adapter exposes `durableFilePath`, `durableFileMtime`, and `matchDurablePath(path)` so the watcher can map a fs path back to an `(agent, basename)` pair without re-listing agents everywhere.
-  - Routes: `GET /api/plugins/memory/durable?agent=<id>` lists canonical files present for that agent; `GET /api/plugins/memory/durable/:agent/:basename` returns `{ agent, file, content }`. Both delegate to the adapter — no direct `~/.openclaw/` reads in route code.
+  - Routes: `GET /api/plugins/memory/durable?agent=<id>` lists canonical files present for that agent; `GET /api/plugins/memory/durable/:agent/:basename` returns `{ agent, file, content }`. Both delegate to the runtime adapter — no direct provider-home reads in route code.
 - C5 — `feat(memory): daily-notes tier with runtime/search comparison toggle` ✅
   - One row per runtime daily-note file — no chunking. Runtime memory search usually treats daily notes as whole documents, and they tend to be short-form; splitting them would just fragment recall.
   - Stable row ids: `daily_note:<16-char-sha256(agent|filename)>`. Filename validation via `/^(\d{4}-\d{2}-\d{2})([-.].*)?\.md$/` — `random.md` or `notes.md` return null from the parser and are skipped.
@@ -253,27 +257,27 @@ They're intentionally separate — a user debugging a search-quality issue wants
   - `POST /daily-notes/compare-search` is the whole point of this tier: it runs the same query against both substrates in parallel and returns `{ search, runtime, runtimeStatus, runtimeError? }` so the UI can show a diff. `runtimeStatus` is `'ok' | 'no_index_or_no_match' | 'error'` — the UI treats the last two as non-fatal since runtime memory indexes may not be populated.
   - Runtime side calls `ctx.runtime.memory.search`; Bakin search side reuses the plugin's unified `bakin_memory` query with `{ tier: 'daily_note' }` filter.
 - C6 — `feat(memory): session + turn tiers with WS-driven live updates` ✅
-  - **Session tier.** Data source is primary/fallback: try `gatewayCall('sessions.list', { agentId })` on the native WS client; on any error, fall back to `agents/<id>/sessions/sessions.json` via the adapter. Accepts both `{ sessions: {…} }` and bare `{ 'agent:…': {…} }` shapes — OpenClaw's gateway and FS disagree on the wrapper, so the extractor tolerates both without any adapter-specific branching.
+  - **Session tier.** Data source is `ctx.runtime.memory` / `ctx.runtime.sessions`; the runtime adapter owns any gateway/filesystem fallback needed by the provider. Parsers tolerate the session metadata shapes the adapter returns, but routes and indexers do not read provider files directly.
   - Row ids: `session:<16-char-sha256(agent|sessionKey)>`. Orphan removal runs on every re-index — the indexer tracks `lastSessionKeys: Map<agent, Set<sessionKey>>` and `ctx.search.remove()`s any key that disappeared between runs. Session keys are never rewritten, so this is safe.
   - 30-day backfill window enforced via `opts.backfillDays` — sessions with `updatedAt < now - backfillDays*86_400_000` are skipped. Sessions with missing `updatedAt` pass through (we've got nothing to compare against).
   - Parser defaults fill the gaps between gateway-rich data and FS-sparse data: `status: 'unknown'`, `endedAt: updatedAt`, `origin: null` when unavailable. The row is still useful for row-count and token-rollup surfaces without them.
-  - **Turn tier.** One row per useful JSONL event. Skipped types: `session` header (surfaced via the session tier instead), `model_change`, `thinking_level_change`, any `custom` / `custom_message`, and unknown types. The real OpenClaw JSONL doesn't emit `tool_call` as a discrete event type — it's an assistant `message` with one or more `toolCall` content blocks, so the parser classifies by inspecting the content blocks: any `toolCall` present → `tool_call` row; otherwise `message`. `toolResult` rows surface `toolName` and `toolCallId` from the envelope.
+  - **Turn tier.** One row per useful JSONL event. Skipped types: `session` header (surfaced via the session tier instead), `model_change`, `thinking_level_change`, any `custom` / `custom_message`, and unknown types. Current runtime transcripts encode tool calls as assistant `message` envelopes with `toolCall` content blocks, so the parser classifies by inspecting the content blocks: any `toolCall` present → `tool_call` row; otherwise `message`. `toolResult` rows surface `toolName` and `toolCallId` from the envelope.
   - Row ids: `turn:<16-char-sha256(agent|sessionId|eventId)>`. Content is byte-sliced at 32 KB with `truncated: true` and `rawByteOffset` set to the line's byte offset in the source file — the UI can always jump back to the original line regardless of truncation.
   - **Oversize handling.** Files whose reported size exceeds `skipSessionOverBytes` (default 10 MB) go through a head-only chunker: the first 4 MB are read, parsed, and capped at 2000 rows; no offset is persisted so a later resize doesn't skip the (still-unseen) middle. Full tail-chunking is a follow-up. The reported size comes from `listSessionJsonlFiles(agent).size` (gateway or `statSync`); actual byte reads use `statSync(path).size` so the mocked-size test still exercises the head-path while reading the real tempfile's bytes.
-  - **Incremental offsets.** Normal-sized files use the same `openSync + readSync(offset, length)` pattern as the audit tier. Persisted offsets live in `~/.bakin/plugin-settings/memory/offsets.json`; a second call on an unchanged file reads zero bytes and emits zero rows. If the file shrinks (e.g., OpenClaw swapped it out), offset resets to 0 and the next call re-indexes from the start.
+  - **Incremental offsets.** Normal-sized files use the same offset/range pattern as the audit tier through runtime memory reads. Persisted offsets live in `~/.bakin/plugin-settings/memory/offsets.json`; a second call on an unchanged file reads zero bytes and emits zero rows. If the runtime source shrinks, offset resets to 0 and the next call re-indexes from the start.
   - **Watcher routing.** Chokidar `file.change` on `agents/*/sessions/sessions.json` → `matchSessionStorePath` → re-index that agent's sessions. `file.change` on `agents/*/sessions/<id>.jsonl` → `matchSessionJsonlPath` → turn re-index for that session, skipping `*.reset.*.jsonl` backups. `unlink` on a session JSONL resets the offset so a later recreate starts fresh; `unlink` on `sessions.json` is a no-op (the next gateway call will reflect reality).
   - **WS live updates.** `gatewaySubscribe('sessions.subscribe', {})` runs best-effort at activation — each frame kicks off a session re-index. If the WS dial fails, chokidar on `sessions.json` is the safety net (see the three-consistency-paths architecture in `search-system.md`), so a dead gateway just means slightly higher latency, not broken correctness.
   - **Routes.** `GET /sessions[?agent=&kind=]` (gateway-first list, sorted by `updatedAt` desc), `GET /sessions/:agent/:sessionKey` (detail, re-fetches at request time so a freshly-connected UI doesn't lag the roster), `GET /sessions/:agent/:sessionKey/turns` (search query with `tier=turn, agent=…` filters plus the sessionKey as the q-string — `meta` is indexed as text so the query narrows to the session without a dedicated facet), `GET /turns?agent=&sessionId=` (convenience form for callers that only know the session id). `limit` is clamped to `[1, 500]` with default 100.
 - C7 — `feat(memory): checkpoint tier` ✅
   - **Source.** One `<sessionId>.checkpoint.<checkpointId>.jsonl` sibling of a session transcript → one row. The file replays the session header + messages up to the compaction point and ends with one `type=compaction` event. The parser scans lines for the first compaction, ignores the replayed transcript (those rows belong to the turn tier), and treats additional compactions in the same file (rare) as duplicates the first one wins.
-  - **Field surfacing.** `summary` becomes `content` / `snippet` (2 KB cap). `tokensBefore` carried through unchanged; `tokensAfter` always `null` — real OpenClaw files never emit it. `trigger` derives from `fromHook`: `true → 'auto'`, `false → 'manual'`, absent → `'unknown'`. `createdAt` is ISO-parsed from the compaction's `timestamp`, falling back to file mtime if missing or unparseable.
+  - **Field surfacing.** `summary` becomes `content` / `snippet` (2 KB cap). `tokensBefore` carried through unchanged; `tokensAfter` stays `null` when the runtime does not emit it. `trigger` derives from `fromHook`: `true → 'auto'`, `false → 'manual'`, absent → `'unknown'`. `createdAt` is ISO-parsed from the compaction's `timestamp`, falling back to file mtime if missing or unparseable.
   - Row ids: `checkpoint:<16-char-sha256(agent|sessionId|checkpointId)>`. Stable across re-indexing; unlink removes the row.
   - **Adapter additions.** `listCheckpointJsonlFiles(agent)` returns `{agent, sessionId, checkpointId, filename, path, size, mtimeMs}[]`; `checkpointJsonlPath`, `checkpointJsonlStat`, and `matchCheckpointJsonlPath(path)` round out the watcher surface. The existing `listSessionJsonlFiles` already excludes `*.checkpoint.*.jsonl` so session + checkpoint backfills don't double-index the same files.
   - **Watcher routing.** `file.add` and `file.change` on `agents/*/sessions/*.checkpoint.*.jsonl` route through `matchCheckpointJsonlPath` → `indexCheckpointFile`. `unlink` removes the derived row id directly (no per-file state to forget beyond Antfly's own row). The top-level watch glob (`agents/*/sessions/*.jsonl`) already covers checkpoint files — no new path added.
   - **Routes.** `GET /checkpoints?agent=<id>[&sessionId=<id>&limit=&offset=]` runs a search query with `{tier: 'checkpoint', agent}` filters and the optional `sessionId` as the q-string (meta is indexed as text, so the query narrows without needing a dedicated facet). `GET /checkpoints/:agent/:sessionId/:checkpointId` does the same query with `q=sessionId checkpointId`, then filters the first 20 results by JSON-parsing each row's `meta` field and matching both ids exactly — malformed meta is tolerated and treated as a non-match. Routes never touch the filesystem; the indexer is the single source of truth.
 - C8 — `feat(memory): dream tier` ✅
   - **Source.** Five artifact types (`DreamArtifactTypeSchema`): `phase_doc` (one per `workspace/memory/dreaming/<phase>/<YYYY-MM-DD>.md`), `short_term_recall` (`.dreams/short-term-recall.json`), `phase_signals` (`.dreams/phase-signals.json`), `events_log` (`.dreams/events.jsonl`), `session_corpus` (`.dreams/session-corpus/<YYYY-MM-DD>.{md,txt}`). One `MemoryRow` per file — no chunking.
-  - **Dormant state is real.** On a fresh OpenClaw install `short-term-recall.json` and `events.jsonl` exist but are empty. The parser still emits rows with empty content so the UI can show "dormant" copy rather than a mysterious absence. Phase docs whose filename lacks a YYYY-MM-DD prefix are rejected (not dormant — they're just bad names).
+  - **Dormant state is real.** Some fresh runtime installs expose dream signal files that are present but empty. The parser still emits rows with empty content so the UI can show "dormant" copy rather than a mysterious absence. Phase docs whose filename lacks a YYYY-MM-DD prefix are rejected (not dormant — they're just bad names).
   - Row ids: `dream:<16-char-sha256(agent|artifactType|key)>` where `key` is `<phase>|<date>` for `phase_doc`, the date for `session_corpus`, and the `artifactType` itself for the three no-key signals. Unlink derives the same id and removes it.
   - **Adapter additions.** `listPhaseDocs(agent)` walks `workspace/memory/dreaming/<phase>/*.md`; `listDreamSignalFiles(agent)` enumerates `.dreams/` flat files plus a single-level `session-corpus/` subdir (no deeper recursion). `readPhaseDoc(agent, phase, filename)` and `readDreamSignal(agent, relPath)` both block path traversal. `matchPhaseDocPath(path)` and `matchDreamSignalPath(path)` round-trip filesystem paths back to `(agent, phase, filename)` or `(agent, relPath)` for watcher routing, handling both the collapsed main-agent workspace and per-agent `workspaces/<id>/` layouts.
   - **Watcher routing.** `file.add` / `file.change` on a phase doc path → `indexPhaseDoc`; on a signal file path → `indexDreamSignal`. `unlink` derives the row id from the filename (for phase docs, the `YYYY-MM-DD` prefix) or from `classifyDreamSignal(relPath)` and removes it. The existing watch glob (`workspace/memory/**/*`, `workspaces/*/memory/**/*`) already covers both path shapes.
