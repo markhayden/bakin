@@ -40,6 +40,7 @@ export type {
   ResolveApprovalArgs,
   RuntimeAgent,
   RuntimeAllowlistPatch,
+  RuntimeAvailableModel,
   RuntimeConfigAccess,
   RuntimeMemoryEntry,
   RuntimeMemoryEntryStat,

@@ -60,18 +60,18 @@ afterEach(() => {
 describe('models-cache — round-trip', () => {
   it('writes then reads the same shape', () => {
     const now = Date.now()
-    writePersistedCache({ models: FIXTURE_MODELS, fetchedAt: now, source: 'openclaw' })
+    writePersistedCache({ models: FIXTURE_MODELS, fetchedAt: now, source: 'runtime' })
     const read = readPersistedCache()
     expect(read).not.toBeNull()
     expect(read!.fetchedAt).toBe(now)
-    expect(read!.source).toBe('openclaw')
+    expect(read!.source).toBe('runtime')
     expect(read!.models).toHaveLength(2)
     expect(read!.models[0].id).toBe('anthropic/claude-sonnet-4-6')
   })
 
   it('creates the parent directory if missing', () => {
     // testDir exists but the plugin-settings/models/ subdir does not yet.
-    writePersistedCache({ models: FIXTURE_MODELS, fetchedAt: Date.now(), source: 'openclaw' })
+    writePersistedCache({ models: FIXTURE_MODELS, fetchedAt: Date.now(), source: 'runtime' })
     expect(existsSync(CACHE_FILE)).toBe(true)
   })
 
@@ -83,7 +83,7 @@ describe('models-cache — round-trip', () => {
       provider: 'anthropic',
       description: 'Flagship reasoning model',
     } as AvailableModel
-    writePersistedCache({ models: [enriched], fetchedAt: Date.now(), source: 'openclaw' })
+    writePersistedCache({ models: [enriched], fetchedAt: Date.now(), source: 'runtime' })
     const read = readPersistedCache()
     expect((read!.models[0] as AvailableModel & { description?: string }).description).toBe('Flagship reasoning model')
   })
@@ -112,7 +112,7 @@ describe('models-cache — error paths', () => {
 
 describe('models-cache — clear', () => {
   it('deletes an existing cache file', () => {
-    writePersistedCache({ models: FIXTURE_MODELS, fetchedAt: Date.now(), source: 'openclaw' })
+    writePersistedCache({ models: FIXTURE_MODELS, fetchedAt: Date.now(), source: 'runtime' })
     expect(existsSync(CACHE_FILE)).toBe(true)
     clearPersistedCache()
     expect(existsSync(CACHE_FILE)).toBe(false)

@@ -282,6 +282,17 @@ export interface RuntimeMemorySearchResult {
   metadata?: RuntimeMetadata
 }
 
+export interface RuntimeAvailableModel {
+  id: string
+  name?: string
+  input?: string
+  contextWindow?: number
+  local?: boolean
+  available?: boolean
+  tags?: string[]
+  metadata?: RuntimeMetadata
+}
+
 export interface TaskDispatchArgs {
   bakinTaskId: string
   agentId?: string
@@ -353,6 +364,7 @@ export type UpdateCronJobInput = Partial<Omit<CreateCronJobInput, 'id'>>
 export interface RuntimeConfigAccess {
   get<T = Record<string, unknown>>(): Promise<T>
   update(patch: Record<string, unknown>): Promise<void>
+  replace<T = Record<string, unknown>>(next: T, reason: string): Promise<void>
   raw<T = unknown>(key: string, reason: string): Promise<T>
 }
 
@@ -430,6 +442,10 @@ export interface AgentRuntimeAdapter {
     resolvePath(path: string): Promise<RuntimeMemoryPathMatch | null>
     watchPaths(): Promise<string[]>
     search(query: string, opts?: { agentId?: string; limit?: number }): Promise<RuntimeMemorySearchResult>
+  }
+
+  models: {
+    listAvailable(opts?: { includeUnavailable?: boolean }): Promise<RuntimeAvailableModel[]>
   }
 
   tasks: {
