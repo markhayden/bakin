@@ -2,10 +2,9 @@
  * Session tier parser.
  *
  * One OpenClaw session → one `MemoryRow` with `tier='session'`. The caller
- * (MemoryIndexer) picks the data source: gateway `sessions.list` when the
- * WS gateway is reachable, or `agents/<id>/sessions/sessions.json` as a
- * filesystem fallback. Both paths yield the same session-object shape, so
- * this parser is agnostic.
+ * (MemoryIndexer) reads through runtime memory, which may use provider APIs
+ * or filesystem fallback internally. Both paths yield the same session-object
+ * shape, so this parser is agnostic.
  *
  * Field mapping follows `SessionMetaSchema` in `../types.ts`. Fields that
  * aren't universally present (status, startedAt, runtimeMs, systemSent,
