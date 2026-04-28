@@ -18,9 +18,12 @@ mock.module('@/core/logger', () => ({
 
 mock.module('@/core/settings', () => ({
   getSettings: mock(() => ({
-    antfly: {
-      enabled: true,
-      cleanupInterval: '24h',
+    search: {
+      adapter: 'antfly',
+      settings: {
+        enabled: true,
+        cleanupInterval: '24h',
+      },
     },
   })),
 }))

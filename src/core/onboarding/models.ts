@@ -8,7 +8,7 @@
  *      plugin's multimodal index
  *   3. mixedbread-ai/mxbai-rerank-base-v1 — cross-encoder reranker
  *
- * All three are referenced by default in settings.antfly and the live
+ * All three are referenced by default in settings.search.settings and the live
  * server boot path will spew `[search-migration]` errors if any one is
  * missing. This component detects which models are present on disk and
  * runs `antfly termite pull <model>` for each missing one.

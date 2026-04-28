@@ -362,7 +362,7 @@ export interface SearchSchemaField {
 export interface SearchIndexDefinition {
   /** Index name as stored by the search adapter. Must be stable across restarts. */
   name: string
-  /** Ref into settings.antfly.embedders — 'default', 'visual', or custom. */
+  /** Ref into settings.search.settings.embedders — 'default', 'visual', or custom. */
   embedderRef: string
   /** Handlebars template for this index's embedding input. */
   embeddingTemplate: string

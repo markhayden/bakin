@@ -52,7 +52,7 @@ mock.module('../../../packages/core/src/openclaw-home', () => ({
 let mockAntflyEnabled = true
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
-    antfly: { enabled: mockAntflyEnabled },
+    search: { adapter: 'antfly', settings: { enabled: mockAntflyEnabled } },
     doctor: { autoFixSkill: false },
   }),
   resetSettingsCache: () => {},

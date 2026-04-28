@@ -50,20 +50,23 @@ mock.module('@/core/watcher', () => ({
 
 mock.module('@/core/settings', () => ({
   getSettings: mock(() => ({
-    antfly: {
-      enabled: true,
-      url: 'http://localhost:8080/api/v1',
-      search: {
-        strategy: 'rrf',
-        defaultLimit: 20,
-        reranker: { enabled: false, provider: 'termite', model: 'm', threshold: 0 },
+    search: {
+      adapter: 'antfly',
+      settings: {
+        enabled: true,
+        url: 'http://localhost:8080/api/v1',
+        search: {
+          strategy: 'rrf',
+          defaultLimit: 20,
+          reranker: { enabled: false, provider: 'termite', model: 'm', threshold: 0 },
+        },
+        embedders: {
+          default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+        },
+        chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
+        auditTtl: '90d',
+        cleanupInterval: '24h',
       },
-      embedders: {
-        default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
-      },
-      chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
-      auditTtl: '90d',
-      cleanupInterval: '24h',
     },
   })),
 }))

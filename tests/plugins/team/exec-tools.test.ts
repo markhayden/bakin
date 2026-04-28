@@ -62,7 +62,7 @@ mock.module('../../../src/core/watcher', () => ({
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     mainAgentId: 'main',
-    antfly: { enabled: false, auditTtl: undefined },
+    search: { adapter: 'antfly', settings: { enabled: false, auditTtl: undefined } },
   }),
   resetSettingsCache: mock(),
 }))
