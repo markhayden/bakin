@@ -319,7 +319,7 @@ const eventBus = new BakinEventBus(broadcast)
     if (url.pathname === '/api/internal/continuation' && req.method === 'POST') {
       handleJsonPost(req, res, async (body) => {
         const { completedTaskId, completedTitle } = body as { completedTaskId: string; completedTitle: string }
-        checkAndContinueDependents(completedTaskId, completedTitle, CONTENT_DIR, port).catch(err => {
+        checkAndContinueDependents(completedTaskId, completedTitle, CONTENT_DIR).catch(err => {
           log.error('Continuation check failed', err)
         })
         return { ok: true }
