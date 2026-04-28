@@ -1483,7 +1483,7 @@ scope). Banned patterns:
   runtime adapter
 
 `scripts/` is included because the audit found direct OpenClaw
-client usage there (`scripts/lib/post-discord.ts`,
+client usage there (`scripts/lib/post-channel.ts`,
 `scripts/lib/generate-image.ts`, `scripts/migration/snapshot-agent.ts`,
 `scripts/migration/wipe-and-install-all.ts`). After the hard cutover, those
 imports route through the adapter package or are deleted.

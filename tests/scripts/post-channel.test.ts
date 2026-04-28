@@ -14,12 +14,12 @@ mock.module('../../src/core/content-dir', () => ({
   getBakinPaths: () => ({ assets: join(mockContentDir, 'assets') }),
 }))
 
-import { postDiscord, _resetChannelCache } from '../../scripts/lib/post-discord'
+import { postChannel } from '../../scripts/lib/post-channel'
 
-describe('postDiscord', () => {
+describe('postChannel', () => {
   const originalEnv = { ...process.env }
   const deliverContent = mock(async () => ({
-    deliveries: [{ channelId: 'discord:general', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
+    deliveries: [{ channelId: 'general', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
   }))
   const runtime = {
     channels: { deliverContent },
@@ -32,12 +32,11 @@ describe('postDiscord', () => {
 
   afterEach(() => {
     process.env = { ...originalEnv }
-    _resetChannelCache()
     mock.restore()
   })
 
   it('routes channel delivery through the runtime adapter', async () => {
-    const result = await postDiscord({
+    const result = await postChannel({
       channel: '#general',
       content: 'test message',
       agent: 'chef',
@@ -50,9 +49,9 @@ describe('postDiscord', () => {
     expect(deliverContent).toHaveBeenCalledTimes(1)
     const [call] = deliverContent.mock.calls[0] as unknown as [Record<string, unknown>]
     expect(call).toEqual({
-      channels: ['discord:general'],
+      channels: ['general'],
       content: {
-        title: 'Discord post',
+        title: 'Channel post',
         body: 'test message',
         files: [],
         metadata: {
@@ -68,7 +67,7 @@ describe('postDiscord', () => {
   it('returns a failed exec result when runtime delivery fails', async () => {
     deliverContent.mockRejectedValueOnce(new Error('channel offline'))
 
-    const result = await postDiscord({
+    const result = await postChannel({
       channel: 'general',
       content: 'test',
       agent: 'chef',
@@ -96,7 +95,7 @@ describe('postDiscord', () => {
       writeFileSync(imgAbs, 'fake-image')
       writeFileSync(vidAbs, 'fake-video')
 
-      const result = await postDiscord({
+      const result = await postChannel({
         channel: 'general',
         content: 'Post with attachments',
         agent: 'pixel',
@@ -113,9 +112,9 @@ describe('postDiscord', () => {
   })
 
   it('routes posts to the test channel when test mode is enabled', async () => {
-    process.env.BAKIN_DISCORD_TEST_MODE = '1'
+    process.env.BAKIN_CHANNEL_TEST_MODE = '1'
 
-    const result = await postDiscord({
+    const result = await postChannel({
       channel: 'general',
       content: 'test',
       agent: 'chef',
@@ -126,6 +125,6 @@ describe('postDiscord', () => {
     expect(result.testMode).toBe(true)
     expect(result.requestedChannel).toBe('#general')
     const [call] = deliverContent.mock.calls[0] as unknown as [Record<string, unknown> & { channels: unknown }]
-    expect(call.channels).toEqual(['discord:testing-ground'])
+    expect(call.channels).toEqual(['testing-ground'])
   })
 })

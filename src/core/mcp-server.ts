@@ -31,7 +31,7 @@ import { getAllExecTools, getToolContext } from '../../scripts/lib/registry'
 // Must be imported AFTER registry.ts so the Map is initialized.
 import '../../scripts/lib/log-progress'
 import '../../scripts/lib/generate-image'
-import '../../scripts/lib/post-discord'
+import '../../scripts/lib/post-channel'
 import '../../scripts/lib/get-paths'
 import '../../scripts/lib/heartbeat'
 import '../../scripts/lib/search-tools'

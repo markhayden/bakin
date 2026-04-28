@@ -27,12 +27,12 @@ steps:
     label: Publish
     agent: main-operator
     description: >
-      Post the text-only content using bakin_exec_post_discord.
+      Post the text-only content using bakin_exec_post_channel.
 
       From stepOutputs, extract the caption from stepOutputs['write-copy'].caption.
 
-      Call bakin_exec_post_discord with:
-        - channel: the appropriate Discord channel
+      Call bakin_exec_post_channel with:
+        - channel: the appropriate runtime channel
         - content: the caption text
         - taskId: your task ID
 

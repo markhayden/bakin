@@ -63,8 +63,8 @@ ${toolLines}
 \`\`\`bash
 # Save a file as a managed asset (handles naming + sidecar automatically)
 mcporter call bakin-<agent>.bakin_exec_save_asset taskId=<id> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<desc>"
-# Post to Discord (with optional image/video attachment)
-mcporter call bakin-<agent>.bakin_exec_post_discord channel="<name>" content="<msg>" taskId=<id>
+# Post to a runtime channel (with optional image/video attachment)
+mcporter call bakin-<agent>.bakin_exec_post_channel channel="<name>" content="<msg>" taskId=<id>
 # Generate image via Nano Banana
 mcporter call bakin-<agent>.bakin_exec_gen_image taskId=<id> prompt="<text>" preset=social-portrait model=flash
 # Check workflow gate statuses

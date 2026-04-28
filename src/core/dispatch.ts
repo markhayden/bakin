@@ -530,7 +530,7 @@ These tools help you accomplish the work. Use them as your primary way to save f
 ${mc('bakin_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
 
 # Post to a runtime channel (with optional image/video attachment)
-${mc('bakin_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}
+${mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${task.id}`)}
 
 # Generate image via Nano Banana
 ${mc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}
@@ -843,7 +843,7 @@ function buildWorkflowDispatchMessage(
   if (stepContext.type === 'output') {
     lines.push('')
     lines.push(`# Post to a runtime channel (with optional image/video attachment)`)
-    lines.push(`${wfMc('bakin_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}`);
+    lines.push(`${wfMc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${task.id}`)}`);
   }
   lines.push('```')
   lines.push('')

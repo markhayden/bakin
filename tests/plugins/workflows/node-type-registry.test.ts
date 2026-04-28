@@ -96,7 +96,7 @@ describe('node-type-registry', () => {
         task: 'do the thing',
         dependsOn: ['otherStep'],
         outputs: [{ id: 'script', type: 'string' }],
-        deny_tools: ['post_discord'],
+        deny_tools: ['post_channel'],
       })
       expect(result.success).toBe(true)
     })
