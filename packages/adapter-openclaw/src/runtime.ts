@@ -62,6 +62,7 @@ interface OpenClawCronStoreJob {
   name?: string
   enabled?: boolean
   schedule?: string | { kind?: string; type?: string; expr?: string; value?: string; tz?: string }
+  delivery?: { mode?: string; url?: string; token?: string; channel?: string }
   payload?: { message?: string } & Record<string, unknown>
   createdAt?: string
   updatedAt?: string
@@ -367,6 +368,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         name: input.name,
         enabled: input.enabled ?? true,
         schedule: { kind: 'cron', expr: input.schedule },
+        delivery: cronDeliveryFromMetadata(input.metadata),
         payload: { message: input.command },
         createdAt: now,
         updatedAt: now,
@@ -386,6 +388,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         name: patch.name ?? current.name,
         enabled: patch.enabled ?? current.enabled ?? true,
         schedule: patch.schedule ? { kind: 'cron', expr: patch.schedule } : current.schedule,
+        delivery: patch.metadata ? cronDeliveryFromMetadata(patch.metadata) ?? current.delivery : current.delivery,
         payload: { ...(current.payload ?? {}), ...(patch.command !== undefined ? { message: patch.command } : {}) },
         metadata: patch.metadata ?? current.metadata,
         updatedAt: new Date().toISOString(),
@@ -593,6 +596,11 @@ function cronStoreJobToRuntime(job: OpenClawCronStoreJob): CronJob {
     enabled: job.enabled ?? true,
     metadata: job.metadata,
   }
+}
+
+function cronDeliveryFromMetadata(metadata: RuntimeMetadata | undefined): OpenClawCronStoreJob['delivery'] | undefined {
+  const webhookUrl = metadataValue(metadata, 'webhookUrl')
+  return webhookUrl ? { mode: 'webhook', url: webhookUrl } : undefined
 }
 
 function cronScheduleToString(schedule: OpenClawCronStoreJob['schedule']): string {
