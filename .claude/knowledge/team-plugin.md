@@ -85,7 +85,7 @@ Read path degrades too: in the GET / handler, `degradeUnknownReportsTo()` rewrit
 
 ## CLI Adapter Layer
 
-`plugins/team/lib/openclaw-adapter.ts` wraps OpenClaw CLI commands for agent lifecycle operations. The shared `openclawExec(args)` helper resolves the binary via `settings.openclaw.binaryPath` and uses `execFileAsync`.
+`packages/adapter-openclaw` wraps OpenClaw CLI commands for agent lifecycle operations. The adapter resolves the binary via `settings.runtime.settings.binaryPath` and uses `execFileAsync`.
 
 ### Write operations (shell out to CLI)
 - `addAgent(input)` → `openclaw agents add` + `openclaw agents set-identity`, writes IDENTITY.md/SOUL.md/TOOLS.md

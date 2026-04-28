@@ -33,7 +33,7 @@ export async function createAppServices(): Promise<AppServices> {
     },
   }
 
-  await runtime.initialize({ ...adapterInit, settings: settings.openclaw })
+  await runtime.initialize({ ...adapterInit, settings: settings.runtime.settings })
   await search.initialize({ ...adapterInit, settings: settings.antfly })
 
   const services: AppServices = {

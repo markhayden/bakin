@@ -48,7 +48,10 @@ mock.module('../../../src/core/logger', () => ({
 
 mock.module('../../../src/core/settings', () => ({
   getSettings: mock(() => ({
-    openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+    runtime: {
+      adapter: 'openclaw',
+      settings: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+    },
   })),
 }))
 

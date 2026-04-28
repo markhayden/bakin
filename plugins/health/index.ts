@@ -125,7 +125,7 @@ const healthPlugin: BakinPlugin = {
           errors1h,
           activeSessions: mcp.activeSessions,
           upSince: mcp.upSince,
-          runtimeGatewayPort: settings.openclaw.gatewayPort,
+          runtimeGatewayPort: settings.runtime.settings.gatewayPort,
           server: {
             port: Number(port),
             pid: process.pid,
