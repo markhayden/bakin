@@ -537,6 +537,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     raw: async <T = unknown>(key: string, reason: string): Promise<T> => {
       if (!key) throw new Error('config.raw requires a key')
       if (!reason) throw new Error('config.raw requires a reason')
+      const authProfilesMatch = key.match(/^agents\.([^.]+)\.authProfiles$/)
+      if (authProfilesMatch) {
+        const profilePath = getOpenClawPath('agents', authProfilesMatch[1], 'agent', 'auth-profiles.json')
+        if (!existsSync(profilePath)) return null as T
+        return JSON.parse(readFileSync(profilePath, 'utf-8')) as T
+      }
       const config = readOpenClawConfig() ?? {}
       return (key === '*' ? config : readPath(config as Record<string, unknown>, key)) as T
     },
