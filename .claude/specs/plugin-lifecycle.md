@@ -405,7 +405,7 @@ Specific to this work:
 - Mock `getOpenClawHome` (`@bakin/core/openclaw-home`)
 - Mock the logger
 - Mock the watcher
-- Mock openclaw-client
+- Mock the active runtime boundary (`ctx.runtime` or `src/core/runtime-registry`)
 - `bun test --isolate`
 - `process.env.OPENCLAW_HOME` and `process.env.BAKIN_HOME` set BEFORE imports for any module reading these at load time
 - `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`

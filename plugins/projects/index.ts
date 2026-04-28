@@ -414,10 +414,9 @@ const projectsPlugin: BakinPlugin = {
                 threadId: sessionKey,
               })
             } catch (err) {
-              // Fallback to non-streaming chatCompletion below. Log at warn level
-              // so a real gateway outage (4xx/5xx, network) is still debuggable —
-              // it'd be silently swallowed otherwise.
-              log.warn('streamMessage failed, falling back to chatCompletion', {
+              // Fall back to one-shot runtime messaging below. Log at warn level
+              // so a real runtime transport outage is still debuggable.
+              log.warn('runtime stream failed, falling back to runtime send', {
                 error: err instanceof Error ? err.message : String(err),
                 agentId,
               })

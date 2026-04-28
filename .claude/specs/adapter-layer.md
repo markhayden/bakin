@@ -1522,8 +1522,8 @@ attempts are dead-end at the type layer.
 - `createMockSearchAdapter(overrides?)` — same shape.
 
 Plugin tests build a context with mocks as `ctx.runtime` / `ctx.search`.
-The 30+ `mock.module('@/core/openclaw-client', ...)` patterns scattered
-across today's tests consolidate to one canonical mock surface.
+Provider-client mocks such as `mock.module('@/core/openclaw-client', ...)`
+are refactor blockers and must not be reintroduced.
 
 `tests/plugins/test-helpers.ts` consumes these from `@bakin/sdk/testing`
 instead of carrying ad-hoc mocks.

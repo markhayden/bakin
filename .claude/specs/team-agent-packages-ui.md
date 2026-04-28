@@ -135,7 +135,7 @@ UI specifics:
 
 **Mandatory mock setup** (project rule, non-negotiable — see CLAUDE.md "Testing Rules — CRITICAL"):
 
-Every test file must mock both `getContentDir` resolvers (the shim in `src/core/content-dir.ts` AND the canonical `packages/core/src/content-dir.ts`), the OpenClaw home resolver, the logger, the watcher, and the openclaw-client. Test data goes to `tmpdir()`, never to `~/.bakin/` or `~/.openclaw/`. Cleanup with `afterAll(() => rmSync(testDir, ...))`.
+Every test file must mock both `getContentDir` resolvers (the shim in `src/core/content-dir.ts` AND the canonical `packages/core/src/content-dir.ts`), the OpenClaw home resolver where the code under test still resolves provider paths, the active runtime boundary (`ctx.runtime` or `src/core/runtime-registry`), the logger, and the watcher. Test data goes to `tmpdir()`, never to `~/.bakin/` or `~/.openclaw/`. Cleanup with `afterAll(() => rmSync(testDir, ...))`.
 
 For the new tests in this spec, since we're testing UI components and a thin client-side hook (no server-side filesystem reads), most of those mocks are precautionary — but the rule applies anyway because component imports may transitively pull in modules that read content-dir at module-load.
 
@@ -158,7 +158,7 @@ For the new tests in this spec, since we're testing UI components and a thin cli
 
 **Always do:**
 
-- Maintain CLAUDE.md test isolation rules (mock content-dir + openclaw-home → tmpdir, mock logger, mock watcher, mock openclaw-client) — corruption of `~/.bakin/` from a leaked test has happened multiple times
+- Maintain CLAUDE.md test isolation rules (mock content-dir + provider home paths → tmpdir, mock logger, mock watcher, mock active runtime boundary) — corruption of `~/.bakin/` from a leaked test has happened multiple times
 - Use existing `@bakin/sdk/components` primitives instead of duplicating them inside Teams
 - Refetch package state on `<AdoptDialog>` success so the UI updates without page reload
 - Pass package state through to `AgentCardNode` via `data.packageState` (the React Flow data prop), not via context or external state

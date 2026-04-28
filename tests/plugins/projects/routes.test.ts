@@ -720,7 +720,7 @@ describe('Routes', () => {
       )
     })
 
-    it('falls back to chatCompletion when gateway does not stream', async () => {
+    it('falls back to one-shot runtime send when streaming is unavailable', async () => {
       writeProjectFixture('proj-fallback', { title: 'Fallback' })
       mockRuntimeStreamError('stream unavailable')
       const sendMock = mockRuntimeSend('Full reply in one go')
@@ -762,7 +762,7 @@ describe('Routes', () => {
     it('emits an error event when both streaming and fallback fail', async () => {
       writeProjectFixture('proj-fail', { title: 'Fail Project' })
       mockRuntimeStreamError('unreachable')
-      mockRuntimeSendError('gateway down')
+      mockRuntimeSendError('runtime down')
 
       const route = findRoute(plugin.routes, 'POST', '/:projectId/ask')!
       const { response } = await callRoute(route, plugin.ctx, {
@@ -772,7 +772,7 @@ describe('Routes', () => {
       const events = await consumeSSE(response)
       const errEvent = events.find((e) => e.event === 'error')
       expect(errEvent).toBeDefined()
-      expect((errEvent!.data as { message: string }).message).toMatch(/gateway down|unreachable/i)
+      expect((errEvent!.data as { message: string }).message).toMatch(/runtime down|unreachable/i)
     })
   })
 })
