@@ -226,6 +226,7 @@ export interface RuntimeSkill {
   name: string
   path?: string
   instructions?: string
+  files?: Record<string, string>
   metadata?: RuntimeMetadata
 }
 

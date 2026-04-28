@@ -390,9 +390,19 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         ? [join(getWorkspacePath(agentId), 'skills')]
         : [getOpenClawPath('skills'), join(getOpenClawPath('workspace'), 'skills')]
       for (const root of roots) {
-        const file = join(root, name, 'SKILL.md')
+        const dir = join(root, name)
+        const file = join(dir, 'SKILL.md')
         try {
-          return { name, path: file, instructions: readFileSync(file, 'utf-8') }
+          return {
+            name,
+            path: file,
+            instructions: readFileSync(file, 'utf-8'),
+            files: readSkillTree(dir),
+            metadata: {
+              installedBy: readJsonFile(join(dir, '.installedBy')),
+              userEdited: existsSync(join(dir, '.userEdited')),
+            },
+          }
         } catch {
           // try next root
         }
@@ -402,7 +412,17 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     write: async (skill: RuntimeSkill): Promise<void> => {
       const dir = join(getOpenClawPath('skills'), skill.name)
       mkdirSync(dir, { recursive: true })
-      writeFileSync(join(dir, 'SKILL.md'), skill.instructions ?? '', 'utf-8')
+      const files = skill.files ?? { 'SKILL.md': skill.instructions ?? '' }
+      for (const [rel, content] of Object.entries(files)) {
+        if (!isSafeSkillFilePath(rel)) throw new Error(`Invalid skill file path: ${rel}`)
+        const target = join(dir, rel)
+        mkdirSync(dirname(target), { recursive: true })
+        writeFileSync(target, content, 'utf-8')
+      }
+      const installedBy = skill.metadata?.installedBy
+      if (installedBy) {
+        writeFileSync(join(dir, '.installedBy'), JSON.stringify(installedBy, null, 2), 'utf-8')
+      }
     },
     remove: async (name: string): Promise<void> => {
       rmSync(join(getOpenClawPath('skills'), name), { recursive: true, force: true })
@@ -877,6 +897,43 @@ function getWorkspacePath(agentId: string): string {
 
 function isSafeWorkspaceFile(path: string): boolean {
   return !path.includes('..') && !path.startsWith('/') && !path.includes('\\')
+}
+
+function isSafeSkillFilePath(path: string): boolean {
+  return Boolean(path)
+    && !path.startsWith('/')
+    && !path.includes('\\')
+    && !path.split('/').some((part) => part === '..' || part === '')
+}
+
+function readJsonFile<T = unknown>(path: string): T | null {
+  try {
+    return JSON.parse(readFileSync(path, 'utf-8')) as T
+  } catch {
+    return null
+  }
+}
+
+function readSkillTree(root: string): Record<string, string> {
+  const files: Record<string, string> = {}
+  const walk = (dir: string, prefix = ''): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+      const abs = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(abs, rel)
+      } else if (entry.isFile()) {
+        files[rel] = readFileSync(abs, 'utf-8')
+      }
+    }
+  }
+  try {
+    walk(root)
+  } catch {
+    return {}
+  }
+  return files
 }
 
 function readWorkspaceRootFile(agentId: string, filename: string): string | null {

@@ -1,10 +1,10 @@
 /**
  * plugin-assets onboarding component (S-B in the workflows-plugin spec).
  *
- * Plugins ship OpenClaw runtime skill packages at
+ * Plugins ship runtime skill packages at
  * `defaults/openclaw-skills/{name}/SKILL.md` (+ optional `scripts/`,
- * other sibling files). This component installs them under
- * `~/.openclaw/skills/{name}/` so OpenClaw agents can invoke them.
+ * other sibling files). This component installs them through the configured
+ * runtime adapter so agents can invoke them.
  *
  * Workflow-step skills (S-A in the spec) are handled in-memory by the
  * plugin-skill-loader (`src/lib/plugin-skill-loader.ts`) — they never
@@ -20,17 +20,14 @@
  */
 import { createHash } from 'crypto'
 import {
-  copyFileSync,
   existsSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
-  rmSync,
-  writeFileSync,
 } from 'fs'
-import { join, dirname } from 'path'
+import { join } from 'path'
 import { createLogger } from '../logger'
-import { getOpenClawPath } from '../../../packages/core/src/openclaw-home'
+import { getRuntimeAdapter } from '../runtime-registry'
+import type { RuntimeSkill } from '@bakin/core/adapters/runtime'
 import {
   type PluginLockfile,
   readPluginLockfile,
@@ -103,39 +100,48 @@ export function findSkillsForPlugin(plugin: PluginEntry): Array<{ name: string; 
   return skills
 }
 
-function installedSkillDir(name: string): string {
-  return getOpenClawPath('skills', name)
+function isInstalledMarker(value: unknown): value is InstalledMarker {
+  return Boolean(value)
+    && typeof value === 'object'
+    && typeof (value as InstalledMarker).pluginId === 'string'
+    && typeof (value as InstalledMarker).sha256 === 'string'
 }
 
-function readMarker(skillDir: string): InstalledMarker | null {
-  const markerPath = join(skillDir, '.installedBy')
-  if (!existsSync(markerPath)) return null
-  try {
-    return JSON.parse(readFileSync(markerPath, 'utf-8')) as InstalledMarker
-  } catch {
-    return null
-  }
+function readMarker(skill: RuntimeSkill | null): InstalledMarker | null {
+  const marker = skill?.metadata?.installedBy
+  return isInstalledMarker(marker) ? marker : null
 }
 
-function writeMarker(skillDir: string, marker: InstalledMarker): void {
-  writeFileSync(join(skillDir, '.installedBy'), JSON.stringify(marker, null, 2))
+function isUserEditedSkill(skill: RuntimeSkill | null): boolean {
+  return skill?.metadata?.userEdited === true
 }
 
-function copyTree(src: string, dst: string): void {
-  mkdirSync(dst, { recursive: true })
-  for (const entry of readdirSync(src, { withFileTypes: true })) {
-    const srcPath = join(src, entry.name)
-    const dstPath = join(dst, entry.name)
+function readSkillFiles(sourceDir: string, prefix = ''): Record<string, string> {
+  const files: Record<string, string> = {}
+  for (const entry of readdirSync(join(sourceDir, prefix), { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+    const abs = join(sourceDir, rel)
     if (entry.isDirectory()) {
-      copyTree(srcPath, dstPath)
+      Object.assign(files, readSkillFiles(sourceDir, rel))
     } else if (entry.isFile()) {
-      mkdirSync(dirname(dstPath), { recursive: true })
-      copyFileSync(srcPath, dstPath)
+      files[rel] = readFileSync(abs, 'utf-8')
     }
   }
+  return files
 }
 
-export function scanPluginAssets(plugins: PluginEntry[]): ScanReport {
+function buildRuntimeSkill(skill: { name: string; sourceDir: string }, marker: InstalledMarker): RuntimeSkill {
+  const files = readSkillFiles(skill.sourceDir)
+  return {
+    name: skill.name,
+    instructions: files['SKILL.md'] ?? '',
+    files,
+    metadata: { installedBy: marker },
+  }
+}
+
+export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanReport> {
   const report: ScanReport = {
     totalAvailable: 0,
     missing: [],
@@ -144,25 +150,25 @@ export function scanPluginAssets(plugins: PluginEntry[]): ScanReport {
     userEdited: [],
   }
 
+  const runtime = getRuntimeAdapter()
   for (const plugin of plugins) {
     for (const skill of findSkillsForPlugin(plugin)) {
       report.totalAvailable++
       const ref: SkillRef = { pluginId: plugin.id, name: skill.name }
-      const installedDir = installedSkillDir(skill.name)
-      const installedSkill = join(installedDir, 'SKILL.md')
+      const installedSkill = await runtime.skills.get(skill.name)
 
-      if (!existsSync(installedSkill)) {
+      if (!installedSkill) {
         report.missing.push(ref)
         continue
       }
 
-      if (existsSync(join(installedDir, '.userEdited'))) {
+      if (isUserEditedSkill(installedSkill)) {
         report.userEdited.push(ref)
         continue
       }
 
       const sourceHash = sha256OfFile(join(skill.sourceDir, 'SKILL.md'))
-      const marker = readMarker(installedDir)
+      const marker = readMarker(installedSkill)
       if (marker && marker.sha256 === sourceHash) {
         report.installed.push(ref)
       } else {
@@ -174,31 +180,30 @@ export function scanPluginAssets(plugins: PluginEntry[]): ScanReport {
   return report
 }
 
-export function installPluginAssets(plugins: PluginEntry[]): InstallReport {
+export async function installPluginAssets(plugins: PluginEntry[]): Promise<InstallReport> {
   const report: InstallReport = { installed: [], unchanged: [], skipped: [] }
+  const runtime = getRuntimeAdapter()
 
   for (const plugin of plugins) {
     for (const skill of findSkillsForPlugin(plugin)) {
       const ref: SkillRef = { pluginId: plugin.id, name: skill.name }
-      const installedDir = installedSkillDir(skill.name)
-      const installedSkill = join(installedDir, 'SKILL.md')
       const sourceSkill = join(skill.sourceDir, 'SKILL.md')
       const sourceHash = sha256OfFile(sourceSkill)
+      const installedSkill = await runtime.skills.get(skill.name)
 
-      if (existsSync(installedSkill) && existsSync(join(installedDir, '.userEdited'))) {
+      if (installedSkill && isUserEditedSkill(installedSkill)) {
         report.skipped.push({ ...ref, reason: 'userEdited' })
         log.warn('Skipping user-edited plugin skill', { name: skill.name, pluginId: plugin.id })
         continue
       }
 
-      const marker = readMarker(installedDir)
-      if (existsSync(installedSkill) && marker && marker.sha256 === sourceHash) {
+      const marker = readMarker(installedSkill)
+      if (installedSkill && marker && marker.sha256 === sourceHash) {
         report.unchanged.push(ref)
         continue
       }
 
-      copyTree(skill.sourceDir, installedDir)
-      writeMarker(installedDir, { pluginId: plugin.id, sha256: sourceHash })
+      await runtime.skills.write(buildRuntimeSkill(skill, { pluginId: plugin.id, sha256: sourceHash }))
       report.installed.push(ref)
       log.info('Installed plugin skill', { name: skill.name, pluginId: plugin.id })
     }
@@ -263,7 +268,7 @@ function discoverPlugins(): PluginEntry[] {
 
 async function check(): Promise<CheckResult> {
   const plugins = discoverPlugins()
-  const report = scanPluginAssets(plugins)
+  const report = await scanPluginAssets(plugins)
   const pending = report.missing.length + report.drifted.length
 
   if (report.totalAvailable === 0) {
@@ -300,7 +305,7 @@ async function check(): Promise<CheckResult> {
 async function install(_opts: OnboardingOptions): Promise<InstallResult> {
   const start = Date.now()
   const plugins = discoverPlugins()
-  const report = installPluginAssets(plugins)
+  const report = await installPluginAssets(plugins)
   const durationMs = Date.now() - start
 
   if (report.installed.length === 0 && report.skipped.length === 0) {
@@ -336,7 +341,7 @@ export const pluginAssetsComponent: OnboardingComponent = {
  * actually in `defaults/openclaw-skills/` for each plugin entry. Best-
  * effort — failures are logged but never throw. Called from
  * `installPluginAssets` so the onboarding-driven install path keeps the
- * lockfile in sync with what was projected to `~/.openclaw/skills/`.
+ * lockfile in sync with what was projected to the runtime skill store.
  *
  * Only touches lockfile entries that ALREADY exist (i.e., user plugins
  * that were installed via `bakin plugins install`). Core plugins have no
@@ -383,9 +388,9 @@ export function syncLockfileInstalledSkills(plugins: PluginEntry[]): void {
 // ─── Removal (#119) ──────────────────────────────────────────────────────────
 
 export interface PluginAssetsRemovalPlan {
-  /** Absolute paths of skill dirs that will be removed. */
+  /** Runtime skill names that will be removed. */
   toRemove: string[]
-  /** Absolute paths of skill dirs left in place because of `.userEdited`. */
+  /** Runtime skill names left in place because of `.userEdited`. */
   toKeep: string[]
   /**
    * Skills that the lockfile says this plugin installed but which are
@@ -393,16 +398,23 @@ export interface PluginAssetsRemovalPlan {
    * Surfaced for diagnostics; not deleted.
    */
   missingFromDisk: string[]
+  /** Content snapshot for skills that will be removed, used by uninstall archives. */
+  snapshots: PluginSkillSnapshot[]
+}
+
+export interface PluginSkillSnapshot {
+  name: string
+  files: Record<string, string>
 }
 
 /**
- * Walk `~/.openclaw/skills/` and partition skills owned by `pluginId`
+ * Ask the runtime to partition skills owned by `pluginId`
  * into "remove" vs "keep" (`.userEdited` locked).
  *
  * `ownedSkills` is the authoritative allowlist — the set of skill names
  * the LOCKFILE recorded this plugin installed at install/upgrade time.
- * A skill dir is only removable if it appears in BOTH the allowlist AND
- * carries a matching `.installedBy.pluginId` marker.
+ * A skill is only removable if it appears in BOTH the allowlist AND carries a
+ * matching `.installedBy.pluginId` marker.
  *
  * This defeats the fake-marker scorched-earth attack (security HIGH #2):
  * a malicious plugin that writes `{pluginId: "evil"}` into a victim's
@@ -410,47 +422,42 @@ export interface PluginAssetsRemovalPlan {
  * skills, because the lockfile entry for "evil" never recorded
  * ownership of them.
  */
-export function planPluginAssetsRemoval(
+export async function planPluginAssetsRemoval(
   pluginId: string,
   ownedSkills: readonly string[],
-): PluginAssetsRemovalPlan {
-  const skillsRoot = getOpenClawPath('skills')
-  const plan: PluginAssetsRemovalPlan = { toRemove: [], toKeep: [], missingFromDisk: [] }
-  if (!existsSync(skillsRoot)) {
-    plan.missingFromDisk.push(...ownedSkills)
-    return plan
-  }
-  const onDisk = new Set(
-    readdirSync(skillsRoot, { withFileTypes: true })
-      .filter(e => e.isDirectory())
-      .map(e => e.name),
-  )
+): Promise<PluginAssetsRemovalPlan> {
+  const runtime = getRuntimeAdapter()
+  const plan: PluginAssetsRemovalPlan = { toRemove: [], toKeep: [], missingFromDisk: [], snapshots: [] }
   for (const skillName of ownedSkills) {
-    if (!onDisk.has(skillName)) {
+    const skill = await runtime.skills.get(skillName)
+    if (!skill) {
       plan.missingFromDisk.push(skillName)
       continue
     }
-    const skillDir = join(skillsRoot, skillName)
-    const marker = readMarker(skillDir)
+    const marker = readMarker(skill)
     if (!marker || marker.pluginId !== pluginId) {
-      // Lockfile claims ownership but the on-disk marker disagrees —
+      // Lockfile claims ownership but the runtime marker disagrees —
       // either the plugin lost ownership (manual edit) or another plugin
       // overwrote it. Don't delete; surface as missing so operators can
       // investigate.
       plan.missingFromDisk.push(skillName)
       continue
     }
-    if (existsSync(join(skillDir, '.userEdited'))) {
-      plan.toKeep.push(skillDir)
+    if (isUserEditedSkill(skill)) {
+      plan.toKeep.push(skillName)
     } else {
-      plan.toRemove.push(skillDir)
+      plan.toRemove.push(skillName)
+      plan.snapshots.push({
+        name: skillName,
+        files: skill.files ?? { 'SKILL.md': skill.instructions ?? '' },
+      })
     }
   }
   return plan
 }
 
 /**
- * Tear down OpenClaw skills owned by `pluginId`. Skips any skill with a
+ * Tear down runtime skills owned by `pluginId`. Skips any skill with a
  * `.userEdited` sentinel and reports counts. Used by
  * `bakin plugins remove` (#119).
  *
@@ -460,23 +467,25 @@ export function planPluginAssetsRemoval(
 export async function removePluginAssets(
   pluginId: string,
   ownedSkills: readonly string[],
+  existingPlan?: PluginAssetsRemovalPlan,
 ): Promise<{
   removed: number
   kept: number
-  removedDirs: string[]
-  keptDirs: string[]
+  removedSkills: string[]
+  keptSkills: string[]
   missingFromDisk: string[]
 }> {
-  const plan = planPluginAssetsRemoval(pluginId, ownedSkills)
-  for (const dir of plan.toRemove) {
-    rmSync(dir, { recursive: true, force: true })
-    log.info('Removed OpenClaw skill on plugin uninstall', { dir, pluginId })
+  const runtime = getRuntimeAdapter()
+  const plan = existingPlan ?? await planPluginAssetsRemoval(pluginId, ownedSkills)
+  for (const skillName of plan.toRemove) {
+    await runtime.skills.remove(skillName)
+    log.info('Removed runtime skill on plugin uninstall', { skillName, pluginId })
   }
   return {
     removed: plan.toRemove.length,
     kept: plan.toKeep.length,
-    removedDirs: plan.toRemove,
-    keptDirs: plan.toKeep,
+    removedSkills: plan.toRemove,
+    keptSkills: plan.toKeep,
     missingFromDisk: plan.missingFromDisk,
   }
 }
