@@ -9,7 +9,7 @@
  * What this component adds:
  *   - A CheckResult/InstallResult surface for the T9 orchestrator
  *   - Interactive confirmation + non-interactive-requires-yes guard rails
- *     matching antfly/models
+ *     matching search/search-models
  *   - Post-install verification: the binary must be discoverable AND at
  *     least one per-agent entry must be present in ~/.mcporter/mcporter.json
  */

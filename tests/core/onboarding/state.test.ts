@@ -56,11 +56,11 @@ describe('onboarding state', () => {
   })
 
   it('saveState writes a well-formed marker and loadState reads it back', () => {
-    const state = saveState({ mkdir: 'ok', antfly: 'ok', llm: 'warn' }, '1.2.3')
+    const state = saveState({ mkdir: 'ok', search: 'ok', llm: 'warn' }, '1.2.3')
 
     expect(state.version).toBe(ONBOARDING_VERSION)
     expect(state.bakinVersion).toBe('1.2.3')
-    expect(state.components).toEqual({ mkdir: 'ok', antfly: 'ok', llm: 'warn' })
+    expect(state.components).toEqual({ mkdir: 'ok', search: 'ok', llm: 'warn' })
     expect(typeof state.completedAt).toBe('string')
 
     const onDisk = JSON.parse(readFileSync(join(testDir, '.onboarded'), 'utf-8'))

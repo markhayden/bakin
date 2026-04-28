@@ -1485,9 +1485,11 @@ async function cmdOnboardingSettingsInit(): Promise<void> {
   if (result.status === 'failed') process.exit(1)
 }
 
-async function cmdOnboardingCheckSingle(target: 'runtime' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets'): Promise<void> {
+async function cmdOnboardingCheckSingle(target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets'): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
     runtime: async () => (await import('../src/core/onboarding/runtime')).runtimeComponent,
+    search: async () => (await import('../src/core/onboarding/search')).searchComponent,
+    'search-models': async () => (await import('../src/core/onboarding/search-models')).searchModelsComponent,
     llm: async () => (await import('../src/core/onboarding/credentials')).llmComponent,
     channels: async () => (await import('../src/core/onboarding/credentials')).channelsComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
@@ -1515,8 +1517,8 @@ async function cmdOnboardingCheckAll(): Promise<void> {
 
 async function cmdOnboardingInstallSingle(target: string, args: string[]): Promise<void> {
   const componentMap: Record<string, () => Promise<import('../src/core/onboarding/types').OnboardingComponent>> = {
-    antfly: async () => (await import('../src/core/onboarding/antfly')).antflyComponent,
-    models: async () => (await import('../src/core/onboarding/models')).modelsComponent,
+    search: async () => (await import('../src/core/onboarding/search')).searchComponent,
+    'search-models': async () => (await import('../src/core/onboarding/search-models')).searchModelsComponent,
     mcporter: async () => (await import('../src/core/onboarding/mcporter')).mcporterComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
     'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
@@ -1811,23 +1813,23 @@ export async function main(): Promise<void> {
         break
 
       case 'check':
-        if (sub === 'runtime' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets') {
+        if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets') {
           await cmdOnboardingCheckSingle(sub)
         } else if (sub === 'all') {
           await cmdOnboardingCheckAll()
         } else {
           console.error(`Unknown check target: ${sub}`)
-          console.error('Available: bakin check runtime | llm | channels | plugin-assets | agent-assets | all')
+          console.error('Available: bakin check runtime | search | search-models | llm | channels | plugin-assets | agent-assets | all')
           process.exit(1)
         }
         break
 
       case 'install':
-        if (sub === 'antfly' || sub === 'models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets') {
+        if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets') {
           await cmdOnboardingInstallSingle(sub, args)
         } else {
           console.error(`Unknown install target: ${sub}`)
-          console.error('Available: bakin install antfly | models | mcporter | plugin-assets | agent-assets')
+          console.error('Available: bakin install search | search-models | mcporter | plugin-assets | agent-assets')
           process.exit(1)
         }
         break

@@ -1,7 +1,7 @@
 /**
  * Shared types for the first-run onboarding module.
  *
- * Every component module (mkdir, antfly, models, …) exports a `check()` that
+ * Every component module (mkdir, search, search-models, ...) exports a `check()` that
  * returns CheckResult and an `install()` that returns InstallResult. The
  * orchestrator in index.ts calls them in a fixed dependency order and
  * aggregates the results into the .onboarded marker file.
