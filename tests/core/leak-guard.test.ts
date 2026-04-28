@@ -103,7 +103,7 @@ describe('leak guard — openclaw-home', () => {
     process.env.OPENCLAW_HOME = join(process.env.HOME, '.openclaw')
 
     const { getOpenClawPath } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
-    expect(() => getOpenClawPath('flows', 'registry.sqlite')).toThrow(/real OpenClaw home/)
+    expect(() => getOpenClawPath('agents', 'main', 'agent', 'auth-profiles.json')).toThrow(/real OpenClaw home/)
   })
 
   it('guard message includes remediation instructions', async () => {
