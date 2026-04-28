@@ -128,6 +128,14 @@ Teardown: `unregisterPluginNotificationChannels(pluginId)` is called by `src/lib
 
 Messaging's drawer + calendar resolve channels through this registry (see `plugins/messaging/components/item-detail-drawer.tsx` + `content-calendar.tsx`); the old `CHANNEL_LABELS` / `CHANNEL_INITIALS` / `CHANNEL_ICONS` maps in `plugins/messaging/constants.ts` are gone.
 
+## Runtime Gate Approvals
+
+Workflow gate channel approvals are Bakin-owned durable records, not provider-owned state. `plugins/workflows/lib/approval-store.ts` persists records under `~/.bakin/workflows/approvals/` before `runtime.channels.createApproval()` renders provider messages.
+
+The approval record contains the `approvalId`, workflow/run/task/step owner, request body/options/context, delivery refs, response data, and timestamps. Runtime channel message ids are stored only as delivery refs. Channel interaction payloads carry `approvalId`; the workflows plugin loads the durable record and gets task/step identity from Bakin state before approving or rejecting a gate.
+
+Startup calls `rehydratePendingApprovals()` from `plugins/workflows/lib/approval-rehydration.ts`. It reattaches stored delivery refs to pending workflow instances and retries `runtime.channels.createApproval()` for pending records that were written before rendering completed. Duplicate render windows are tolerated; the durable Bakin approval record remains the source of truth.
+
 ## CRUD Routes
 
 | Method | Path | Behavior |
@@ -219,6 +227,9 @@ Same non-negotiable rules as the rest of the codebase:
 | File | Purpose |
 |------|---------|
 | `plugins/workflows/lib/runtime.ts` | Workflow execution. **READ-ONLY in this overhaul.** |
+| `plugins/workflows/lib/approval-store.ts` | File-backed durable workflow approval records |
+| `plugins/workflows/lib/approval-rehydration.ts` | Startup reattachment/retry for pending workflow approvals |
+| `plugins/workflows/lib/notifications.ts` | Runtime channel notifications and gate approval rendering |
 | `plugins/workflows/lib/parser.ts` | `loadDefinition` + `listDefinitions` — consults the source registry first, falls back to disk |
 | `plugins/workflows/lib/source-registry.ts` | Per-id source index with user-wins precedence |
 | `plugins/workflows/lib/node-type-registry.ts` | Zod schemas + form metadata for the 5 builtins |

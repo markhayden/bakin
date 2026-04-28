@@ -217,7 +217,7 @@ Source: `plugins/team/index.ts:872`
 
 ## `workflows.cancelInstance`
 
-Source: `plugins/workflows/index.ts:440`
+Source: `plugins/workflows/index.ts:454`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -225,7 +225,7 @@ Source: `plugins/workflows/index.ts:440`
 
 ## `workflows.completeStep`
 
-Source: `plugins/workflows/index.ts:432`
+Source: `plugins/workflows/index.ts:446`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -233,7 +233,7 @@ Source: `plugins/workflows/index.ts:432`
 
 ## `workflows.createInstance`
 
-Source: `plugins/workflows/index.ts:429`
+Source: `plugins/workflows/index.ts:443`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -241,7 +241,7 @@ Source: `plugins/workflows/index.ts:429`
 
 ## `workflows.getActiveAgents`
 
-Source: `plugins/workflows/index.ts:436`
+Source: `plugins/workflows/index.ts:450`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -249,7 +249,7 @@ Source: `plugins/workflows/index.ts:436`
 
 ## `workflows.getCurrentStep`
 
-Source: `plugins/workflows/index.ts:431`
+Source: `plugins/workflows/index.ts:445`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -257,7 +257,7 @@ Source: `plugins/workflows/index.ts:431`
 
 ## `workflows.getNotificationChannel`
 
-Source: `plugins/workflows/index.ts:446`
+Source: `plugins/workflows/index.ts:460`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -265,7 +265,7 @@ Source: `plugins/workflows/index.ts:446`
 
 ## `workflows.isGateNotified`
 
-Source: `plugins/workflows/index.ts:437`
+Source: `plugins/workflows/index.ts:451`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -273,7 +273,7 @@ Source: `plugins/workflows/index.ts:437`
 
 ## `workflows.listDefinitions`
 
-Source: `plugins/workflows/index.ts:434`
+Source: `plugins/workflows/index.ts:448`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -281,7 +281,7 @@ Source: `plugins/workflows/index.ts:434`
 
 ## `workflows.listInstances`
 
-Source: `plugins/workflows/index.ts:430`
+Source: `plugins/workflows/index.ts:444`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -289,7 +289,7 @@ Source: `plugins/workflows/index.ts:430`
 
 ## `workflows.listNotificationChannels`
 
-Source: `plugins/workflows/index.ts:445`
+Source: `plugins/workflows/index.ts:459`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -297,7 +297,7 @@ Source: `plugins/workflows/index.ts:445`
 
 ## `workflows.loadDefinition`
 
-Source: `plugins/workflows/index.ts:435`
+Source: `plugins/workflows/index.ts:449`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -305,7 +305,7 @@ Source: `plugins/workflows/index.ts:435`
 
 ## `workflows.loadInstance`
 
-Source: `plugins/workflows/index.ts:427`
+Source: `plugins/workflows/index.ts:441`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -313,7 +313,7 @@ Source: `plugins/workflows/index.ts:427`
 
 ## `workflows.markGateNotified`
 
-Source: `plugins/workflows/index.ts:438`
+Source: `plugins/workflows/index.ts:452`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -321,7 +321,7 @@ Source: `plugins/workflows/index.ts:438`
 
 ## `workflows.matchWorkflow`
 
-Source: `plugins/workflows/index.ts:433`
+Source: `plugins/workflows/index.ts:447`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -329,7 +329,7 @@ Source: `plugins/workflows/index.ts:433`
 
 ## `workflows.saveInstance`
 
-Source: `plugins/workflows/index.ts:428`
+Source: `plugins/workflows/index.ts:442`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -337,7 +337,7 @@ Source: `plugins/workflows/index.ts:428`
 
 ## `workflows.validateStepOutput`
 
-Source: `plugins/workflows/index.ts:439`
+Source: `plugins/workflows/index.ts:453`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability

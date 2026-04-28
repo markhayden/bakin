@@ -44,7 +44,6 @@ import { getContentDir } from '../../src/core/content-dir'
 import { getTask, updateTask } from '../../src/core/task-store'
 import { validateStepOutput } from './lib/schema-validator'
 import {
-  parseGateApprovalId,
   getGateNotificationSettings,
   resolveGateApproval,
   sendGateDecisionSummary,
@@ -53,6 +52,8 @@ import {
   setNotificationRuntime,
   type GateNotificationSettings,
 } from './lib/notifications'
+import { approvalRefFromRecord, findPendingApprovalForGate, getApprovalRecord } from './lib/approval-store'
+import { rehydratePendingApprovals } from './lib/approval-rehydration'
 import type { WorkflowTemplate, WorkflowDefinition, WorkflowInstance, NestedWorkflowStep } from './types'
 
 const log = createLogger('workflows')
@@ -334,12 +335,27 @@ const workflowsPlugin: BakinPlugin = {
     setGateNotificationSettings(gateNotificationSettings)
     const activeGateSettings = () => getGateNotificationSettings() ?? gateNotificationSettings
 
+    const approvalRehydration = await rehydratePendingApprovals({
+      runtime: ctx.runtime,
+      channel: activeGateSettings().approvalChannel || 'general',
+      renderMissingDeliveries: activeGateSettings().approvalChannelAlerts,
+      log,
+    })
+    if (approvalRehydration.pending > 0) {
+      log.info('Rehydrated pending workflow approvals', { ...approvalRehydration })
+    }
+
     unsubscribeApprovalResponses?.()
     unsubscribeApprovalResponses = ctx.runtime.channels.subscribeApprovalResponses(async (event) => {
-      const gate = parseGateApprovalId(event.approvalId)
-      if (!gate) return
+      const approvalRecord = getApprovalRecord(event.approvalId)
+      if (!approvalRecord) {
+        log.warn('Channel approval response ignored: no durable approval record', { approvalId: event.approvalId })
+        return
+      }
 
-      const { taskId, stepId } = gate
+      const taskId = approvalRecord.owner.taskId
+      const stepId = approvalRecord.owner.stepId
+      if (!taskId || !stepId) return
       const approver: ApprovalActor = {
         source: 'channel',
         id: event.response.actor.id,
@@ -348,8 +364,7 @@ const workflowsPlugin: BakinPlugin = {
       const selected = event.response.selectedOption
 
       if (selected === 'approve') {
-        const preInstance = loadInstance(taskId)
-        const approvalRef = preInstance?.stepStates[stepId]?.approvalRef
+        const approvalRef = approvalRefFromRecord(approvalRecord)
         const result = approveGate(taskId, stepId, { approver })
         if (!result.success) {
           log.warn(`Channel approve failed: ${result.errors?.[0] || 'unknown error'}`, { taskId, stepId })
@@ -385,8 +400,7 @@ const workflowsPlugin: BakinPlugin = {
         }
       } else if (selected === 'reject') {
         const rejectReason = event.response.comment || 'Rejected via runtime channel'
-        const preInstance = loadInstance(taskId)
-        const approvalRef = preInstance?.stepStates[stepId]?.approvalRef
+        const approvalRef = approvalRefFromRecord(approvalRecord)
         const result = rejectGate(taskId, stepId, rejectReason, { approver })
         if (!result.success) {
           log.warn(`Channel reject failed: ${result.errors?.[0] || 'unknown error'}`, { taskId, stepId })
@@ -790,7 +804,8 @@ const workflowsPlugin: BakinPlugin = {
 
       // Capture rendered approval reference before approval changes state.
       const preInstance = loadInstance(taskId)
-      const approvalRef = preInstance?.stepStates[stepId]?.approvalRef
+      const approvalRef = approvalRefFromRecord(findPendingApprovalForGate(taskId, stepId))
+        ?? preInstance?.stepStates[stepId]?.approvalRef
 
       const approver = webApprover()
       const result = approveGate(taskId, stepId, { approver })
@@ -855,7 +870,8 @@ const workflowsPlugin: BakinPlugin = {
 
       // Capture rendered approval reference before rejection changes state.
       const preInstance = loadInstance(taskId)
-      const approvalRef = preInstance?.stepStates[stepId]?.approvalRef
+      const approvalRef = approvalRefFromRecord(findPendingApprovalForGate(taskId, stepId))
+        ?? preInstance?.stepStates[stepId]?.approvalRef
 
       const approver = webApprover()
       const result = rejectGate(taskId, stepId, reason, { rewindTo, approver })
