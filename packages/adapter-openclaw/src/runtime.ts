@@ -9,6 +9,7 @@ import type {
   CronRun,
   CreateRuntimeAgentInput,
   RuntimeAgent,
+  RuntimeAvailableModel,
   RuntimeMetadata,
   RuntimeMemorySearchResult,
   RuntimeSkill,
@@ -89,6 +90,20 @@ interface OpenClawCronRunEntry {
   status?: string
   output?: string
   error?: string
+}
+
+interface OpenClawModelListJson {
+  models?: Array<{
+    key?: string
+    id?: string
+    name?: string
+    input?: string
+    contextWindow?: number
+    local?: boolean
+    available?: boolean
+    tags?: string[]
+    missing?: boolean
+  }>
 }
 
 export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
@@ -416,6 +431,29 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
   }
 
+  models = {
+    listAvailable: async (opts?: { includeUnavailable?: boolean }): Promise<RuntimeAvailableModel[]> => {
+      const stdout = await this.exec(['models', 'list', '--all', '--json'])
+      const parsed = parseJsonObject(stdout) as OpenClawModelListJson | null
+      return (parsed?.models ?? [])
+        .map((model): RuntimeAvailableModel | null => {
+          const id = model.key ?? model.id
+          if (!id) return null
+          const available = model.available ?? !model.missing
+          if (!opts?.includeUnavailable && available === false) return null
+          const out: RuntimeAvailableModel = { id, available }
+          if (model.name !== undefined) out.name = model.name
+          if (model.input !== undefined) out.input = model.input
+          if (model.contextWindow !== undefined) out.contextWindow = model.contextWindow
+          if (model.local !== undefined) out.local = model.local
+          if (model.tags !== undefined) out.tags = model.tags
+          if (model.missing) out.metadata = { missing: true }
+          return out
+        })
+        .filter((model): model is RuntimeAvailableModel => model !== null)
+    },
+  }
+
   tasks = {
     dispatch: async (args: { bakinTaskId: string }) => ({ flowId: `flow-${args.bakinTaskId}` }),
     getExecutionStatus: async (flowId: string) => ({ flowId, state: 'unknown' as const }),
@@ -491,6 +529,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     update: async (patch: Record<string, unknown>): Promise<void> => {
       const config = readOpenClawConfig() ?? {}
       writeOpenClawConfig(deepMerge(config as Record<string, unknown>, patch))
+    },
+    replace: async <T = Record<string, unknown>>(next: T, reason: string): Promise<void> => {
+      if (!reason) throw new Error('config.replace requires a reason')
+      writeOpenClawConfig(next as Record<string, unknown>)
     },
     raw: async <T = unknown>(key: string, reason: string): Promise<T> => {
       if (!key) throw new Error('config.raw requires a key')

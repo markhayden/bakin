@@ -100,6 +100,10 @@ export function createMockRuntimeAdapter(
       search: async () => ({ results: [] }),
     },
 
+    models: {
+      listAvailable: async () => [],
+    },
+
     tasks: {
       dispatch: async (args) => {
         const flowId = `flow-${args.bakinTaskId}`
@@ -154,6 +158,7 @@ export function createMockRuntimeAdapter(
     config: {
       get: async <T = Record<string, unknown>>() => ({}) as T,
       update: async () => {},
+      replace: async () => {},
       raw: async <T = unknown>() => undefined as T,
     },
   }

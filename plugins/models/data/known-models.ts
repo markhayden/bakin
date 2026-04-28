@@ -2,9 +2,9 @@
  * Curated catalog of popular models + providers.
  *
  * Bakin-maintained metadata overlay. The actual list of available models
- * comes from OpenClaw at runtime; this file adds display metadata
+ * comes from the runtime adapter; this file adds display metadata
  * (descriptions, cost ranges, tiers, brand icons) that enriches what
- * OpenClaw returns. Models not in this catalog render with OpenClaw's
+ * the runtime returns. Models not in this catalog render with the runtime's
  * raw name + id — no fake entries, no fallbacks.
  *
  * Maintenance: PR new entries here as popular models get configured in
@@ -13,10 +13,10 @@
  */
 
 export interface KnownModel {
-  /** Match against OpenClaw-sourced id. Use the canonical base id; the
+  /** Match against the runtime-sourced id. Use the canonical base id; the
    *  lookup helper also tries with any trailing date suffix stripped. */
   id: string
-  /** Display name; overrides what OpenClaw returns in `name`. */
+  /** Display name; overrides what the runtime returns in `name`. */
   name: string
   description?: string
   /** Short purpose hint; rendered as a badge next to the model name. */
@@ -304,7 +304,7 @@ for (const p of KNOWN_PROVIDERS) providersById.set(p.id, p)
 
 /**
  * Look up a model by id. Tries the exact id first; on miss, strips any
- * trailing `-YYYYMMDD` date suffix (OpenClaw tags some ids with release
+ * trailing `-YYYYMMDD` date suffix (some runtimes tag ids with release
  * dates) and retries. Returns `undefined` for unknown ids so callers can
  * render plain rows.
  */

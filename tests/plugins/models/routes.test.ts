@@ -2,24 +2,22 @@
  * Tests for models plugin routes, exec tools, and hooks.
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { ActivatedPlugin } from '../test-helpers'
 
 // ---------------------------------------------------------------------------
-// Temp directory & mock OpenClaw config
+// Temp directory & mock runtime config
 // ---------------------------------------------------------------------------
 
 const testDir = join(tmpdir(), 'bakin-test-models-routes')
-const mockOpenclawDir = join(testDir, '.openclaw')
 
 // ES imports are hoisted above mock.module — set env so the guards don't trip
-// when plugin modules call getContentDir/getOpenClawHome at init.
+// when plugin modules call getContentDir at init.
 process.env.BAKIN_HOME = testDir
-process.env.OPENCLAW_HOME = mockOpenclawDir
 
-const mockOpenclawConfig = {
+const mockRuntimeConfig = {
   agents: {
     defaults: {
       model: { primary: 'anthropic/claude-sonnet-4-6' },
@@ -49,49 +47,45 @@ const mockOpenclawConfig = {
   },
 }
 
+const runtimeModels = [
+  { id: 'openai-codex/gpt-5.4', name: 'GPT-5.4', available: true, local: false, tags: ['default', 'configured'] },
+  { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', available: true, local: false, tags: ['configured', 'alias:opus'] },
+  { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', available: true, local: false, tags: ['configured', 'fallback#1', 'alias:sonnet'] },
+  { id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', available: true, local: false, tags: ['configured'] },
+  { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', available: true, local: false, tags: [] },
+  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', available: true, local: false, tags: [] },
+  { id: 'xai/grok-4', name: 'Grok 4', available: false, local: false, tags: [] },
+]
+
+let runtimeConfig = cloneConfig(mockRuntimeConfig)
+
+const runtimeMocks = {
+  listAvailable: mock(async () => runtimeModels),
+  replace: mock(async (next: typeof mockRuntimeConfig, reason: string) => {
+    if (!reason) throw new Error('replace reason required')
+    runtimeConfig = cloneConfig(next)
+  }),
+  restart: mock(async () => {}),
+}
+
+function cloneConfig<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-// Mock the openclaw.json path by replacing the constants module-level reads
-// We redirect the file reads to our test directory
-const openclawJsonPath = join(mockOpenclawDir, 'openclaw.json')
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
+// The hook validator requires an explicit content-dir mock.
+const contentDir = join(testDir, '.bakin')
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => contentDir,
+  getBakinPaths: () => ({ root: contentDir }),
 }))
-
-mock.module('os', () => {
-  const os = require('os') as typeof import('os')
-  const { join: pathJoin } = require('path') as typeof import('path')
-  return {
-    ...os,
-    homedir: () => pathJoin(os.tmpdir(), 'bakin-test-models-routes'),
-  }
-})
-
-// The os.homedir mock above routes ~/.bakin to tmpdir, but the hook
-// validator also requires an explicit content-dir mock. Both point at
-// the same tmpdir; this is defense-in-depth.
-mock.module('../../../src/core/content-dir', () => {
-  const { join: pathJoin } = require('path') as typeof import('path')
-  const { tmpdir } = require('os') as typeof import('os')
-  const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
-  return {
-    getContentDir: () => dir,
-    getBakinPaths: () => ({ root: dir }),
-  }
-})
-mock.module('../../../packages/core/src/content-dir', () => {
-  const { join: pathJoin } = require('path') as typeof import('path')
-  const { tmpdir } = require('os') as typeof import('os')
-  const dir = pathJoin(tmpdir(), 'bakin-test-models-routes', '.bakin')
-  return {
-    getContentDir: () => dir,
-    getBakinPaths: () => ({ root: dir }),
-  }
-})
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => contentDir,
+  getBakinPaths: () => ({ root: contentDir }),
+}))
 
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
@@ -102,38 +96,12 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-mock.module('child_process', () => ({
-  execFile: mock((file: string, args: string[], optionsOrCb?: unknown, maybeCb?: (err: Error | null, stdout: string, stderr: string) => void) => {
-    const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
-    if (args[0] === 'models' && args[1] === 'list' && args.includes('--all') && args.includes('--json')) {
-      cb?.(null, JSON.stringify({
-        models: [
-          { key: 'openai-codex/gpt-5.4', name: 'GPT-5.4', available: true, local: false, tags: ['default', 'configured'] },
-          { key: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', available: true, local: false, tags: ['configured', 'alias:opus'] },
-          { key: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', available: true, local: false, tags: ['configured', 'fallback#1', 'alias:sonnet'] },
-          { key: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', available: true, local: false, tags: ['configured'] },
-          { key: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', available: true, local: false, tags: [] },
-          { key: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', available: true, local: false, tags: [] },
-          { key: 'xai/grok-4', name: 'Grok 4', available: false, local: false, tags: [] },
-        ],
-      }), '')
-      return
-    }
-    if (args[0] === 'gateway' && args[1] === 'restart') {
-      cb?.(null, 'ok', '')
-      return
-    }
-    cb?.(new Error(`unexpected execFile call: ${file} ${args.join(' ')}`), '', '')
-  }),
-}))
-
 // ---------------------------------------------------------------------------
 // Import after mocks
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool, makeRequest } from '../test-helpers'
-// Dynamic require — ES imports are hoisted above the `process.env` setup above.
-const modelsPlugin = require('../../../plugins/models').default as typeof import('../../../plugins/models').default
+const modelsPlugin = (await import('../../../plugins/models')).default as typeof import('../../../plugins/models').default
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -141,19 +109,22 @@ const modelsPlugin = require('../../../plugins/models').default as typeof import
 
 let activated: ActivatedPlugin
 
-function writeOpenclawConfig(config = mockOpenclawConfig) {
-  writeFileSync(openclawJsonPath, JSON.stringify(config, null, 2))
+function writeRuntimeConfig(config = mockRuntimeConfig) {
+  runtimeConfig = cloneConfig(config)
 }
 
 beforeAll(async () => {
   mkdirSync(testDir, { recursive: true })
-  mkdirSync(join(mockOpenclawDir, 'agents', 'main', 'agent'), { recursive: true })
-  writeOpenclawConfig()
+  writeRuntimeConfig()
 
   // Plugin settings dir
   mkdirSync(join(testDir, '.bakin', 'plugin-settings'), { recursive: true })
 
   activated = await activatePlugin(modelsPlugin, testDir)
+  activated.ctx.runtime.config.get = (async <T = Record<string, unknown>>() => cloneConfig(runtimeConfig) as T) as typeof activated.ctx.runtime.config.get
+  activated.ctx.runtime.config.replace = runtimeMocks.replace as typeof activated.ctx.runtime.config.replace
+  activated.ctx.runtime.models.listAvailable = runtimeMocks.listAvailable as typeof activated.ctx.runtime.models.listAvailable
+  activated.ctx.runtime.restart = runtimeMocks.restart
 })
 
 afterAll(() => {
@@ -237,7 +208,7 @@ describe('GET /config', () => {
     expect(patch.ownModel).toBeNull()
   })
 
-  it('resolves agent names from OpenClaw identity', async () => {
+  it('resolves agent names from runtime identity', async () => {
     const route = findRoute(activated.routes, 'GET', '/config')!
     const { body } = await callRoute(route, activated.ctx)
     const agents = body.agents as Array<Record<string, unknown>>
@@ -255,7 +226,7 @@ describe('POST /config', () => {
   })
 
   it('updates agent own model', async () => {
-    writeOpenclawConfig() // reset
+    writeRuntimeConfig() // reset
     const route = findRoute(activated.routes, 'POST', '/config')!
     const req = makeRequest('/config', {
       method: 'POST',
@@ -280,7 +251,7 @@ describe('POST /config', () => {
     )
     expect(activated.ctx.activity.log).toHaveBeenCalled()
 
-    writeOpenclawConfig() // reset for other tests
+    writeRuntimeConfig() // reset for other tests
   })
 
   it('clears agent model when set to null', async () => {
@@ -301,7 +272,7 @@ describe('POST /config', () => {
     const patch = (body.agents as Array<Record<string, unknown>>).find((a) => a.agentId === 'patch')!
     expect(patch.ownModel).toBeNull()
 
-    writeOpenclawConfig() // reset
+    writeRuntimeConfig() // reset
   })
 })
 
@@ -321,7 +292,7 @@ describe('POST /defaults', () => {
       expect.anything()
     )
 
-    writeOpenclawConfig() // reset
+    writeRuntimeConfig() // reset
   })
 
   it('updates fallback models', async () => {
@@ -338,7 +309,7 @@ describe('POST /defaults', () => {
     const { body } = await callRoute(getRoute, activated.ctx)
     expect(body.fallbackModels).toEqual(['anthropic/claude-opus-4-6', 'anthropic/claude-haiku-4-5'])
 
-    writeOpenclawConfig() // reset
+    writeRuntimeConfig() // reset
   })
 })
 
@@ -444,7 +415,7 @@ describe('GET /available — response shape invariants', () => {
   })
 
   it('models without a catalog match still render with tier from heuristic', async () => {
-    // The openclaw CLI mock returns google/gemini-2.5-pro. That provider IS
+    // The runtime fixture returns google/gemini-2.5-pro. That provider IS
     // in the catalog but the specific id is not — so the per-model enrichment
     // should be absent but the provider label should still resolve.
     const route = findRoute(activated.routes, 'GET', '/available')!
@@ -467,19 +438,17 @@ describe('POST /gateway/restart', () => {
     const first = await callRoute(availableRoute, activated.ctx)
     expect((first.body.models as unknown[]).length).toBeGreaterThan(0)
 
-    // Restart — will call the real openclaw binary; on CI / without it installed
-    // the restart itself will error (500). We only assert the handler handles
-    // that gracefully without crashing. The important invariant (cache clear)
-    // is covered by the unit-level cache tests; wiring here guards the route.
+    // Restart goes through the runtime adapter and clears the cache layers.
     const restartRoute = findRoute(activated.routes, 'POST', '/gateway/restart')!
     const result = await callRoute(restartRoute, activated.ctx)
-    expect([200, 500]).toContain(result.status)
+    expect(result.status).toBe(200)
+    expect(runtimeMocks.restart).toHaveBeenCalled()
   })
 })
 
 describe('GET /aliases', () => {
   it('returns aliases from config', async () => {
-    writeOpenclawConfig() // ensure fresh
+    writeRuntimeConfig() // ensure fresh
     const route = findRoute(activated.routes, 'GET', '/aliases')!
     const { status, body } = await callRoute(route, activated.ctx)
     expect(status).toBe(200)
@@ -492,7 +461,7 @@ describe('GET /aliases', () => {
 
 describe('POST /aliases', () => {
   it('adds a new alias', async () => {
-    writeOpenclawConfig()
+    writeRuntimeConfig()
     const route = findRoute(activated.routes, 'POST', '/aliases')!
     const req = makeRequest('/aliases', {
       method: 'POST',
@@ -507,11 +476,11 @@ describe('POST /aliases', () => {
     const { body } = await callRoute(getRoute, activated.ctx)
     expect((body.aliases as Record<string, string>).fast).toBe('anthropic/claude-haiku-4-5')
 
-    writeOpenclawConfig() // reset
+    writeRuntimeConfig() // reset
   })
 
   it('deletes an alias', async () => {
-    writeOpenclawConfig()
+    writeRuntimeConfig()
     const route = findRoute(activated.routes, 'POST', '/aliases')!
     const req = makeRequest('/aliases', {
       method: 'POST',
@@ -525,14 +494,14 @@ describe('POST /aliases', () => {
     const { body } = await callRoute(getRoute, activated.ctx)
     expect((body.aliases as Record<string, string>).haiku).toBeUndefined()
 
-    writeOpenclawConfig() // reset
+    writeRuntimeConfig() // reset
   })
 
   it('prepopulates default aliases', async () => {
     // Start with empty models
-    const emptyConfig = JSON.parse(JSON.stringify(mockOpenclawConfig))
+    const emptyConfig = JSON.parse(JSON.stringify(mockRuntimeConfig))
     emptyConfig.agents.defaults.models = {}
-    writeOpenclawConfig(emptyConfig)
+    writeRuntimeConfig(emptyConfig)
 
     const route = findRoute(activated.routes, 'POST', '/aliases')!
     const req = makeRequest('/aliases', {
@@ -550,7 +519,7 @@ describe('POST /aliases', () => {
     expect(aliases.sonnet).toBeDefined()
     expect(aliases.opus).toBeDefined()
 
-    writeOpenclawConfig() // reset
+    writeRuntimeConfig() // reset
   })
 })
 
@@ -604,7 +573,7 @@ describe('GET /gateway/status', () => {
 
   it('returns restartNeeded=true after config change', async () => {
     // Trigger a config change
-    writeOpenclawConfig()
+    writeRuntimeConfig()
     const configRoute = findRoute(activated.routes, 'POST', '/config')!
     await configRoute.handler(
       makeRequest('/config', { method: 'POST', body: { agentId: 'patch', ownModel: 'test-model' } }),
@@ -615,7 +584,7 @@ describe('GET /gateway/status', () => {
     const { body } = await callRoute(statusRoute, activated.ctx)
     expect(body.restartNeeded).toBe(true)
 
-    writeOpenclawConfig() // reset
+    writeRuntimeConfig() // reset
   })
 })
 
@@ -644,7 +613,7 @@ describe('Exec Tools', () => {
 
   describe('bakin_exec_models_get_config', () => {
     it('returns all agent configs', async () => {
-      writeOpenclawConfig()
+      writeRuntimeConfig()
       const tool = findTool(activated.execTools, 'bakin_exec_models_get_config')!
       const result = await callTool(tool, {})
       expect(result.ok).toBe(true)

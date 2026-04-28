@@ -400,7 +400,7 @@ export function ModelsPage() {
   const hasPending = Object.keys(pendingOwn).length > 0 || Object.keys(pendingSub).length > 0
   const defaultsDirty = pendingDefaultModel !== null || pendingDefaultSubagentModel !== undefined || pendingFallbackModels !== null
 
-  // Model options come straight from OpenClaw (via the cache). No fake
+  // Model options come straight from the runtime adapter (via the cache). No fake
   // fallback — if the list is empty, dropdowns stay empty and save
   // buttons disable. The Available tab has its own loading / error UI
   // upstream of this derivation.
@@ -574,7 +574,7 @@ export function ModelsPage() {
             {loading ? (
               <TableSkeleton rows={5} cols={4} />
             ) : agents.length === 0 ? (
-              <EmptyState icon={Users} title="No agents configured in OpenClaw" />
+              <EmptyState icon={Users} title="No agents configured in the runtime" />
             ) : (
               <div className="overflow-hidden rounded-xl border border-border">
                 <Table>
@@ -646,7 +646,7 @@ export function ModelsPage() {
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="size-3.5" />
                   <span>
-                    OpenClaw config changed since the last gateway restart. Model list may be out of date until you restart.
+                    Runtime config changed since the last gateway restart. Model list may be out of date until you restart.
                   </span>
                 </div>
                 <Button
@@ -687,13 +687,13 @@ export function ModelsPage() {
             {!modelsLoaded || (refreshing && availableModels.length === 0) ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card py-12 gap-3 text-sm text-muted-foreground">
                 <RefreshCw className="size-5 animate-spin text-foreground/60" />
-                <div>Querying OpenClaw gateway — this can take up to 30 seconds on first load.</div>
+                <div>Querying runtime gateway — this can take up to 30 seconds on first load.</div>
               </div>
             ) : availableModels.length === 0 ? (
               <div className="rounded-xl border border-border bg-card p-6 space-y-3">
                 <div className="flex items-center gap-2 text-sm text-foreground">
                   <AlertTriangle className="size-4 text-red-400" />
-                  Could not load models from OpenClaw.
+                  Could not load models from the runtime.
                 </div>
                 {modelsError && (
                   <div className="font-mono text-xs text-muted-foreground break-all">{modelsError}</div>
