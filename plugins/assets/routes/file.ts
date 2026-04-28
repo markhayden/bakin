@@ -1,7 +1,6 @@
 /**
  * GET /api/plugins/assets/file — serve an asset file for rendering.
- * Accepts either `?name={filename}` (resolved via the filename resolver)
- * or `?path={relativePath}` (legacy, retained until commit F).
+ * Accepts `?name={filename}` resolved via the filename resolver.
  */
 import { existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
@@ -12,7 +11,6 @@ import { pathForFilename } from '../lib/path-for-filename'
 export async function handleFile(req: Request): Promise<Response> {
   const url = new URL(req.url, 'http://localhost')
   const nameParam = url.searchParams.get('name')
-  const pathParam = url.searchParams.get('path')
 
   let assetPath: string | null = null
   if (nameParam) {
@@ -24,13 +22,8 @@ export async function handleFile(req: Request): Promise<Response> {
     if (!assetPath) {
       return Response.json({ error: 'Filename not found' }, { status: 404 })
     }
-  } else if (pathParam) {
-    if (pathParam.includes('..') || !pathParam.startsWith('assets/')) {
-      return Response.json({ error: 'Invalid path' }, { status: 400 })
-    }
-    assetPath = pathParam
   } else {
-    return Response.json({ error: 'name or path parameter required' }, { status: 400 })
+    return Response.json({ error: 'name parameter required' }, { status: 400 })
   }
 
   const fullPath = join(getContentDir(), assetPath)
