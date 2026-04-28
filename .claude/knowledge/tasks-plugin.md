@@ -2,64 +2,58 @@
 
 ## Overview
 
-The Tasks plugin provides a kanban-style task management system backed by OpenClaw's `flow_runs` SQLite table. Tasks are organized into 7 columns with enforced state transitions, assigned to agents, and tracked with timestamped log entries. The plugin integrates with workflows (gated multi-step pipelines), projects (checklist auto-check), and the dispatch engine (auto-assignment to agents).
+The Tasks plugin provides a kanban-style task management system backed by Bakin's file task store under `~/.bakin/tasks/`. Tasks are organized into 7 columns with enforced state transitions, assigned to agents, and tracked with timestamped log entries. The plugin integrates with workflows (gated multi-step pipelines), projects (checklist auto-check), and the dispatch engine (auto-assignment to agents).
 
 **Plugin ID:** `tasks`
 **Dependencies:** none (other plugins depend on it)
 **Permissions:** `storage.read`, `storage.write`, `events.emit`
-**Storage:** SQLite — `{OPENCLAW_HOME}/flows/registry.sqlite` (shared with OpenClaw, resolved via `getOpenClawPath()`)
+**Storage:** JSON task documents under `getBakinPaths().tasks`
 
 ## Data Model
 
-### Persistence Layer — `flow_runs` Table
+### Persistence Layer — Bakin Task Store
 
-Tasks are stored as rows in OpenClaw's `flow_runs` table, filtered by `owner_key LIKE 'bakin:task:%'`. Each task maps to one `flow_run` row:
+Tasks are stored by `packages/core/src/tasks/store.ts` as one JSON document per task:
 
-| flow_runs column | Bakin usage |
-|---|---|
-| `flow_id` | Task ID (8-char hex) |
-| `owner_key` | `bakin:task:{flow_id}` |
-| `status` | Maps to Bakin columns (see mapping below) |
-| `goal` | Task title (denormalized from state_json) |
-| `state_json` | All Bakin metadata: title, agent, description, log[], dependsOn, etc. |
-| `wait_json` | Gate approval data (`{ type: 'gate_approval', requestedAt }`) for review column |
-| `blocked_task_id` | Sentinel `'blocked'` for blocked column (distinguishes from review) |
-| `blocked_summary` | Blocked reason string |
-| `created_at` / `updated_at` | Unix ms timestamps |
-| `ended_at` | Set when task reaches done/archived |
+```
+~/.bakin/tasks/{YYYY-MM}/task-{id}.json
+```
 
-### Column ↔ Status Mapping
+`src/core/task-store.ts` is the shared task service used by routes, workflows, dispatch, and tests. It delegates to `createFileBakinTaskStore(getBakinPaths().tasks)` and is owned by Bakin core, not by the tasks plugin or runtime execution adapter.
 
-| Bakin Column | flow_runs.status | Disambiguation |
-|---|---|---|
-| backlog | `queued` | `state_json.column = 'backlog'` |
-| todo | `queued` | `state_json.column = 'todo'` (default) |
-| inProgress | `running` | — |
-| review | `waiting` | `blocked_task_id IS NULL` |
-| blocked | `waiting` | `blocked_task_id = 'blocked'` |
-| done | `succeeded` | `state_json.archived` falsy |
-| archived | `succeeded` | `state_json.archived = true` |
-
-Failed/cancelled flows map to `done` column.
-
-### state_json Shape
+### Task JSON Shape
 
 ```typescript
 interface BakinTaskState {
   title: string
   agent?: string           // assigned agent ID
   description?: string     // multi-line task description
-  column?: 'backlog' | 'todo'  // disambiguation for queued status
+  column: 'backlog' | 'todo' | 'inProgress' | 'review' | 'blocked' | 'done' | 'archived'
   dependsOn?: string       // task ID this task depends on
   parentId?: string        // parent task ID for sub-tasks
   createdBy?: string       // agent that created the task
   workflowId?: string      // linked workflow definition ID
   projectId?: string       // linked project ID
   scheduleJobId?: string   // linked schedule job ID
-  archived?: boolean       // true for archived column
   date?: string            // YYYY-MM-DD, set when entering inProgress/review/done/archived
   log?: TaskLogEntry[]     // timestamped progress entries
+  comments?: TaskComment[] // human comments
+  blockedBy?: string[]     // dependency/task blockers
+  blocking?: string[]      // tasks blocked by this task
+  pendingDelete?: boolean
+  execution?: {
+    flowId: string | null
+    state?: string
+    currentStep?: string | null
+    blockingReason?: string | null
+    retryCount?: number
+    startedAt?: string | null
+    endedAt?: string | null
+    lastSyncedAt?: string | null
+  }
   order?: number           // zero-indexed order within the current column
+  createdAt: string
+  updatedAt: string
 }
 ```
 
@@ -131,11 +125,12 @@ archived   → done, todo
 | File | Purpose |
 |------|---------|
 | `plugins/tasks/index.ts` | Plugin entry: registers 12 API routes + 11 exec tools + 9 hooks + archival |
-| `plugins/tasks/lib/flow-store.ts` | SQLite adapter: CRUD, transitions, reorder, archive |
+| `src/core/task-store.ts` | Core task service layer: CRUD, transitions, reorder, archive |
+| `packages/core/src/tasks/store.ts` | Bakin-owned task metadata store |
 | `plugins/tasks/lib/ids.ts` | Task ID generation (crypto-safe) |
 | `plugins/tasks/types.ts` | TypeScript interfaces (Task, TaskColumns, TaskBoard, ColumnId) |
 | `plugins/tasks/constants.ts` | Column config, header maps, status dot colors, badge styles |
-| `src/lib/taskboard.ts` | Re-export shim (delegates to flow-store) |
+| `src/lib/taskboard.ts` | Re-export shim (delegates to task-store) |
 | `src/core/task-service.ts` | Service layer: wraps mutations with side effects (audit, SSE, workflow guards, continuation) |
 | `src/core/dispatch.ts` | Task dispatch engine (auto-assigns todo tasks to agents) |
 | `src/core/continuation.ts` | Dependent task unblocking when a task completes |
@@ -175,32 +170,25 @@ The board follows the official multi-list pattern:
 
 **Filtered board caveat.** When search/agent filters are active, drag reorder operates on the visible subset first and then merges that visible order back into the full column order so hidden tasks keep their relative positions.
 
-**Ordering.** Tasks are ordered explicitly by `state_json.order` (zero-indexed, contiguous within each column). The board query sorts by `json_extract(state_json, '$.order') ASC, updated_at DESC`. New tasks and cross-column moves append with `order = count`; `/reorder` writes the final zero-indexed order snapshot.
+**Ordering.** Tasks are ordered explicitly by `task.order` (zero-indexed, contiguous within each column). Reads sort by `order ASC, updatedAt DESC`. New tasks and cross-column moves append with `order = count`; `/reorder` writes the final zero-indexed order snapshot.
 
 ### Real-Time Updates (SSE)
 
-1. Every write operation in `flow-store.ts` calls `broadcastChange()` which fires `globalThis.__bakinBroadcast({ type: 'taskboard' })`
+1. Every write operation in `task-store.ts` updates the Bakin task store, whose subscription calls `broadcastChange()` and fires `globalThis.__bakinBroadcast({ type: 'taskboard' })`
 2. The SSE server sends this as a `type: 'taskboard'` event to all connected clients
 3. The global `use-sse.ts` hook receives the event and calls `bumpTaskboard()` on the Zustand store
 4. `kanban-board.tsx` subscribes to `taskboardVersion` and re-fetches from `/api/plugins/tasks/` on change
-5. No file watcher needed — SQLite writes trigger SSE broadcasts directly
+5. No file watcher needed for taskboard updates — task-store writes trigger SSE broadcasts directly
 
-### Database Access Pattern
+### Store Access Pattern
 
 ```typescript
-// bun:sqlite sync API with open/close per operation
-import { Database } from 'bun:sqlite'
-
-function withDb<T>(fn: (db: Database) => T): T {
-  const db = openDb()  // WAL mode, 5s busy_timeout
-  try { return fn(db) }
-  finally { db.close() }
-}
+const store = createFileBakinTaskStore(getBakinPaths().tasks)
+store.createSync({ title, column: 'todo', order })
+store.updateSync(task.id, { column: 'inProgress', agent })
 ```
 
-`bun:sqlite` ships with Bun and provides the synchronous, same-shape API that `flow-store.ts` exercises. Tests run under `bun test`, which resolves `bun:sqlite` natively — no shim needed.
-
-All read operations are synchronous. All write operations return `Promise<T>` for backward compatibility with callers that chain `.then()` (workflow runtime, dispatch). Errors are caught and returned as `Promise.reject()` to ensure proper promise rejection.
+The core store is synchronous and file-backed. The plugin service functions keep async return types for callers that already chain `.then()` (workflow runtime, dispatch). Errors are caught and returned as `Promise.reject()` to ensure proper promise rejection.
 
 ## API Routes
 
@@ -239,27 +227,24 @@ All routes are registered at `/api/plugins/tasks/{path}` via the plugin route sy
 | `bakin_exec_tasks_delete` | Delete task |
 | `bakin_exec_tasks_assign` | Assign to agent |
 
-## Hook Registry
+## Task Store Boundary
 
-The tasks plugin registers 9 hooks for cross-plugin communication:
+Task metadata is owned by Bakin core, not the plugin hook registry. The shared
+store lives in `src/core/task-store.ts`; the old
+`plugins/tasks/lib/flow-store.ts` compatibility shim is deleted and must not be
+reintroduced. Core, workflows, projects, schedule, dispatch, and task-service
+call the task store directly instead of invoking `tasks.*` hooks.
 
-| Hook | Parameters | Returns | Used by |
-|------|-----------|---------|---------|
-| `tasks.readTaskboard` | `{}` | `TaskBoard` | workflows, projects, dispatch, task-service |
-| `tasks.createTask` | `{ title, column?, assignee?, description?, workflowId?, createdBy?, id?, parentId?, projectId? }` | `Task` | task-service, workflows |
-| `tasks.moveTask` | `{ identifier, to, from? }` | `void` | task-service |
-| `tasks.blockTask` | `{ identifier, reason, agent? }` | `void` | task-service |
-| `tasks.addTaskLog` | `{ identifier, author, message }` | `void` | task-service |
-| `tasks.updateTask` | `{ identifier, updates }` | `void` | task-service, workflows |
-| `tasks.deleteTask` | `{ identifier }` | `void` | task-service |
-| `tasks.setDependency` | `{ taskId, dependsOnId }` | `void` | task-service |
-| `tasks.clearDependency` | `{ taskId }` | `void` | task-service |
+Main store operations: `readTaskboard`, `createTask`, `moveTask`, `blockTask`,
+`addTaskLog`, `updateTask`, `deleteTask`, `setDependency`, `clearDependency`,
+`assignTask`, and `reorderTasks`.
 
-**Note:** `identifier` accepts either task ID or title (ID preferred, title fallback).
+**Note:** task identifiers accept either task ID or title where the store API
+documents that fallback; ID is preferred.
 
 ## Task Service Layer
 
-`src/core/task-service.ts` wraps raw flow-store mutations with side effects. Both REST routes and MCP tool handlers call these functions to ensure consistent behavior:
+`src/core/task-service.ts` wraps task mutations with side effects. Both REST routes and MCP tool handlers call these functions to ensure consistent behavior:
 
 | Function | Side effects |
 |----------|-------------|
@@ -285,7 +270,7 @@ Configurable via `/settings` page:
 
 ### Auto-Archival
 
-When `autoArchiveDays > 0`, the plugin deletes `flow_runs` rows with `status IN ('succeeded', 'failed', 'cancelled')` and `ended_at` older than the configured threshold. Runs on plugin activation and every 6 hours via `setInterval`.
+When `autoArchiveDays > 0`, the plugin moves old Done tasks to Archived. `archiveOldTasks()` can permanently remove Done/Archived task JSON older than a cutoff. Runs on plugin activation and every 6 hours via `setInterval`.
 
 ## Integration Points
 
@@ -301,7 +286,7 @@ When `autoArchiveDays > 0`, the plugin deletes `flow_runs` rows with `status IN 
 - When a task moves to done or archived, `projects.autoCheckLinkedItem` hook is invoked
 
 ### Dispatch Engine
-- `src/core/dispatch.ts` reads todo tasks and assigns them to available agents
+- `src/core/dispatch.ts` reads todo tasks through `src/core/task-store.ts` and assigns them to available runtime agents
 - `moveTaskToInProgress` moves assigned tasks from todo to inProgress
 - Agents pick up tasks via MCP tools, report progress via `logProgress`, and complete via `reportComplete`
 
@@ -343,7 +328,7 @@ Tasks are indexed in Antfly via `ctx.search` for hybrid (semantic + full-text) s
 
 **Reindex:** `reindex()` generator reads all tasks from all columns via `readTaskboard()`.
 
-**Note:** `indexCompletedTask()` in `src/core/antfly.ts` is deprecated. All search indexing is now handled by the tasks plugin via `ctx.search`.
+**Note:** the old core `indexCompletedTask()` hook is gone. All search indexing is now handled by the tasks plugin via `ctx.search`.
 
 ## Date Handling
 
@@ -355,7 +340,7 @@ Tasks are indexed in Antfly via `ctx.search` for hybrid (semantic + full-text) s
 ## Testing
 
 Test files:
-- `tests/plugins/tasks/flow-store.test.ts` — Unit tests for SQLite adapter: CRUD, transitions, column mapping, archival
+- `tests/core/task-store.test.ts` — Unit tests for the core task store service: CRUD, transitions, ordering, archival
 - `tests/plugins/tasks/routes.test.ts` — Integration tests for REST API routes and MCP exec tools
 
-Run: `bun test --isolate tests/plugins/tasks/`
+Run: `bun test --isolate tests/core/task-store.test.ts tests/plugins/tasks/`

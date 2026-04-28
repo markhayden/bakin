@@ -13,6 +13,7 @@ import type {
   ProposalStatus,
   CalendarItem,
 } from '../types'
+import { DEFAULT_CHANNEL } from '../types'
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -192,7 +193,7 @@ export function addProposals(
     contentType: item.contentType,
     tone: item.tone,
     brief: item.brief,
-    channels: item.channels,
+    channels: normalizeChannels(item.channels),
     status: 'proposed' as ProposalStatus,
   }))
 
@@ -245,7 +246,7 @@ export function upsertProposals(
       existing.contentType = item.contentType
       existing.tone = item.tone
       existing.brief = item.brief
-      if (item.channels) existing.channels = item.channels
+      if (item.channels) existing.channels = normalizeChannels(item.channels)
       existing.messageId = messageId
       existing.revision += 1
       if (existing.status === 'rejected') existing.status = 'revised'
@@ -262,7 +263,7 @@ export function upsertProposals(
         contentType: item.contentType,
         tone: item.tone,
         brief: item.brief,
-        channels: item.channels,
+        channels: normalizeChannels(item.channels),
         status: 'proposed',
       }
       session.proposals.push(newProposal)
@@ -330,15 +331,13 @@ export function confirmSession(sessionId: string, opts: { autoApprove?: boolean 
     const item = createItem({
       title: proposal.title,
       agent: proposal.agentId as CalendarItem['agent'],
-      channel: 'discord',
-      channelTarget: '',
       contentType: proposal.contentType as CalendarItem['contentType'],
       tone: proposal.tone as CalendarItem['tone'],
       scheduledAt: proposal.scheduledAt,
       brief: proposal.brief,
       status: initialStatus,
       sessionId,
-      channels: proposal.channels,
+      channels: normalizeChannels(proposal.channels),
     })
 
     proposal.calendarItemId = item.id
@@ -350,4 +349,10 @@ export function confirmSession(sessionId: string, opts: { autoApprove?: boolean 
   writeFileSync(getSessionPath(sessionId), JSON.stringify(session, null, 2))
 
   return { itemsCreated: itemIds.length, itemIds }
+}
+
+function normalizeChannels(channels: string[] | undefined): string[] {
+  if (!channels) return [DEFAULT_CHANNEL]
+  const normalized = channels.map(channel => channel.trim()).filter(Boolean)
+  return normalized.length > 0 ? normalized : [DEFAULT_CHANNEL]
 }

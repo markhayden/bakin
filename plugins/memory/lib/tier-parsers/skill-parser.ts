@@ -42,7 +42,7 @@ export function parseSkillFile(
       snippet,
       content,
       sourceRef: {
-        backend: 'openclaw',
+        backend: 'runtime',
         path: sourcePath,
         file: 'SKILL.md',
       },

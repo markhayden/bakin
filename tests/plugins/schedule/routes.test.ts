@@ -8,6 +8,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { BakinJobMeta, MergedJob, RunEntry } from '@bakin/schedule/types'
+import type { CreateCronJobInput, CronJob, CronRun, UpdateCronJobInput } from '@bakin/core/adapters/runtime'
 import type { ActivatedPlugin } from '../test-helpers'
 
 // ---------------------------------------------------------------------------
@@ -52,7 +53,10 @@ mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-const mockCreateTask = mock((_opts?: unknown) => Promise.resolve({ id: 'task-new', workflowId: undefined }))
+const mockCreateTask = mock((opts?: unknown) => {
+  void opts
+  return Promise.resolve({ id: 'task-new', workflowId: undefined })
+})
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
@@ -66,34 +70,129 @@ mock.module('../../../src/lib/plugin-registry', () => ({
   }),
 }))
 
-// Mock openclaw-cron
-const mockCronAdd = mock((..._args: unknown[]) => Promise.resolve('new-job-id'))
-const mockCronEdit = mock((..._args: unknown[]) => Promise.resolve())
-const mockCronRemove = mock((..._args: unknown[]) => Promise.resolve())
-const mockCronRun = mock((..._args: unknown[]) => Promise.resolve())
-
-mock.module('@bakin/schedule/lib/openclaw-cron', () => ({
-  cronAdd: (...args: unknown[]) => mockCronAdd(...args),
-  cronEdit: (...args: unknown[]) => mockCronEdit(...args),
-  cronRemove: (...args: unknown[]) => mockCronRemove(...args),
-  cronRun: (...args: unknown[]) => mockCronRun(...args),
-  cronList: mock(() => Promise.resolve([])),
-}))
-
-// Mock jobs-reader — we control what readMergedJobs returns
+// Mock runtime cron and jobs-reader — routes exercise adapter calls while
+// keeping merged schedule data deterministic for route assertions.
 const mockMergedJobs: MergedJob[] = []
-mock.module('@bakin/schedule/lib/jobs-reader', () => ({
-  readMergedJobs: () => mockMergedJobs,
-}))
-
-// Mock runs-reader
+const mockRuntimeCronJobs: CronJob[] = []
 const mockRuns: RunEntry[] = []
-const mockLastRun: RunEntry | null = null
 let lastRunOverride: RunEntry | null = null
 
-mock.module('@bakin/schedule/lib/runs-reader', () => ({
-  readRuns: (_jobId: string, _limit?: number) => mockRuns,
-  getLastRun: (_jobId: string) => lastRunOverride,
+function mergedJobToCronJob(job: MergedJob): CronJob {
+  return {
+    id: job.id,
+    name: job.displayName || job.name || job.id,
+    schedule: job.schedule.value,
+    command: job.taskPrompt || job.taskTitle || `bakin:schedule:${job.displayName || job.name || job.id}`,
+    enabled: job.enabled,
+    metadata: { tz: job.tz, createdAt: job.createdAt },
+  }
+}
+
+function fallbackMergeJob(job: { id: string; name: string; schedule: { value?: string; expr?: string }; enabled: boolean; payload?: Record<string, unknown> }, sidecar?: BakinJobMeta): MergedJob {
+  return {
+    id: job.id,
+    name: job.name,
+    schedule: { type: 'cron', value: job.schedule.value ?? job.schedule.expr ?? '* * * * *' },
+    enabled: job.enabled,
+    isBakinJob: sidecar?.isBakinJob ?? false,
+    displayName: sidecar?.displayName ?? job.name,
+    description: sidecar?.description,
+    agentId: sidecar?.agentId,
+    owner: sidecar?.owner ?? 'main',
+    requireTriage: sidecar?.requireTriage ?? !sidecar,
+    workflowId: sidecar?.workflowId,
+    taskPrompt: sidecar?.taskPrompt ?? (typeof job.payload?.message === 'string' ? job.payload.message : undefined),
+    taskTitle: sidecar?.taskTitle,
+    paused: sidecar?.paused ?? false,
+    pauseUntil: sidecar?.pauseUntil,
+    pauseReason: sidecar?.pauseReason,
+    skipNextN: sidecar?.skipNextN,
+    skippedCount: sidecar?.skippedCount,
+    allowOverlap: sidecar?.allowOverlap ?? false,
+    maxFailures: sidecar?.maxFailures ?? 3,
+    consecutiveFailures: sidecar?.consecutiveFailures ?? 0,
+    lastTaskId: sidecar?.lastTaskId,
+    tz: sidecar?.tz,
+    createdAt: sidecar?.createdAt,
+    humanSchedule: `Human: ${job.schedule.value ?? job.schedule.expr ?? '* * * * *'}`,
+  }
+}
+
+function runEntryToCronRun(run: RunEntry): CronRun {
+  return {
+    id: run.runId,
+    jobId: run.jobId,
+    startedAt: run.timestamp,
+    status: run.status === 'failure' ? 'failed' : run.status === 'skipped' ? 'cancelled' : 'succeeded',
+    error: run.error,
+  }
+}
+
+const mockCronCreate = mock(async (input: CreateCronJobInput): Promise<CronJob> => {
+  const job = {
+    id: input.id ?? 'new-job-id',
+    name: input.name,
+    schedule: input.schedule,
+    command: input.command,
+    enabled: input.enabled ?? true,
+    metadata: input.metadata,
+  }
+  mockRuntimeCronJobs.push(job)
+  return job
+})
+const mockCronUpdate = mock(async (id: string, patch: UpdateCronJobInput): Promise<CronJob> => {
+  const index = mockRuntimeCronJobs.findIndex(job => job.id === id)
+  const current = index === -1
+    ? { id, name: id, schedule: '* * * * *', command: '', enabled: true }
+    : mockRuntimeCronJobs[index]
+  const next = { ...current, ...patch }
+  if (index === -1) mockRuntimeCronJobs.push(next)
+  else mockRuntimeCronJobs[index] = next
+  return next
+})
+const mockCronRemove = mock(async (id: string) => {
+  const index = mockRuntimeCronJobs.findIndex(job => job.id === id)
+  if (index !== -1) mockRuntimeCronJobs.splice(index, 1)
+})
+const mockCronRunNow = mock(async (jobId: string): Promise<CronRun> => ({
+  id: 'run-now',
+  jobId,
+  status: 'succeeded',
+  startedAt: '2026-03-31T09:00:00Z',
+}))
+const mockCronListRuns = mock(async (jobId: string): Promise<CronRun[]> => {
+  if (lastRunOverride && lastRunOverride.jobId === jobId) return [runEntryToCronRun(lastRunOverride)]
+  return mockRuns.filter(run => run.jobId === jobId).map(runEntryToCronRun)
+})
+const mockCronList = mock(async (): Promise<CronJob[]> => {
+  const jobs = new Map<string, CronJob>()
+  for (const job of mockMergedJobs.map(mergedJobToCronJob)) jobs.set(job.id, job)
+  for (const job of mockRuntimeCronJobs) jobs.set(job.id, job)
+  return Array.from(jobs.values())
+})
+
+mock.module('@bakin/core/adapters/runtime/testing', () => ({
+  createMockRuntimeAdapter: () => ({
+    agents: {
+      list: async () => [{ id: 'main', name: 'Main', role: 'Orchestrator' }],
+    },
+    cron: {
+      list: mockCronList,
+      get: async (id: string) => (await mockCronList()).find(job => job.id === id) ?? null,
+      create: mockCronCreate,
+      update: mockCronUpdate,
+      remove: mockCronRemove,
+      runNow: mockCronRunNow,
+      listRuns: mockCronListRuns,
+    },
+  }),
+}))
+
+mock.module('@bakin/schedule/lib/jobs-reader', () => ({
+  readMergedJobs: () => mockMergedJobs,
+  mergeJob: (job: { id: string; name: string; schedule: { value?: string; expr?: string }; enabled: boolean; payload?: Record<string, unknown> }, sidecar?: BakinJobMeta) => (
+    mockMergedJobs.find(merged => merged.id === job.id) ?? fallbackMergeJob(job, sidecar)
+  ),
 }))
 
 // Mock cron-parser — parseSchedule and cronToHuman
@@ -119,8 +218,7 @@ mock.module('@bakin/schedule/lib/cron-parser', () => ({
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool, callSearchRoute } from '../test-helpers'
-// Dynamic require — ES imports are hoisted above top-level env setup above.
-const schedulePlugin = require('@bakin/schedule/index').default as typeof import('@bakin/schedule/index').default
+const schedulePlugin = (await import('@bakin/schedule/index')).default
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 
 // ---------------------------------------------------------------------------
@@ -179,6 +277,7 @@ beforeAll(async () => {
 beforeEach(() => {
   mock.clearAllMocks()
   mockMergedJobs.length = 0
+  mockRuntimeCronJobs.length = 0
   mockRuns.length = 0
   lastRunOverride = null
   // Reset sidecar on disk
@@ -271,11 +370,11 @@ describe('schedule routes', () => {
       expect(body.human).toBe('Every day at 9am')
       expect(body.tz).toBeDefined()
 
-      // Verify cronAdd was called
-      expect(mockCronAdd).toHaveBeenCalledTimes(1)
-      const addArgs = (mockCronAdd.mock.calls[0] as unknown[])[0] as Record<string, unknown>
+      // Verify runtime cron create was called
+      expect(mockCronCreate).toHaveBeenCalledTimes(1)
+      const addArgs = (mockCronCreate.mock.calls[0] as unknown[])[0] as Record<string, unknown>
       expect(addArgs.name).toBe('Morning Tasks')
-      expect(addArgs.cron).toBe('0 9 * * *')
+      expect(addArgs.schedule).toBe('0 9 * * *')
 
       // Verify sidecar entry created
       const meta = getJob('new-job-id')
@@ -400,7 +499,7 @@ describe('schedule routes', () => {
       expect(body.error).toContain('not found')
     })
 
-    it('calls cronEdit when schedule is changed', async () => {
+    it('calls runtime cron update when schedule is changed', async () => {
       upsertJob(makeMeta({ jobId: 'job-123' }))
 
       const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
@@ -409,10 +508,10 @@ describe('schedule routes', () => {
         body: { schedule: '0 10 * * *' },
       })
 
-      expect(mockCronEdit).toHaveBeenCalledWith('job-123', { cron: '0 10 * * *' })
+      expect(mockCronUpdate).toHaveBeenCalledWith('job-123', { schedule: '0 10 * * *' })
     })
 
-    it('calls cronEdit when name is changed', async () => {
+    it('calls runtime cron update when name is changed', async () => {
       upsertJob(makeMeta({ jobId: 'job-123' }))
 
       const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
@@ -421,7 +520,7 @@ describe('schedule routes', () => {
         body: { name: 'Renamed Job' },
       })
 
-      expect(mockCronEdit).toHaveBeenCalledWith('job-123', { name: 'Renamed Job' })
+      expect(mockCronUpdate).toHaveBeenCalledWith('job-123', { name: 'Renamed Job' })
     })
 
     it('returns 400 for bad schedule expression on update', async () => {
@@ -468,7 +567,7 @@ describe('schedule routes', () => {
   // DELETE /:jobId — delete a job
   // -----------------------------------------------------------------------
   describe('DELETE /:jobId', () => {
-    it('deletes a job from openclaw and sidecar', async () => {
+    it('deletes a job from runtime cron and sidecar', async () => {
       upsertJob(makeMeta({ jobId: 'job-del' }))
 
       const route = findRoute(plugin.routes, 'DELETE', '/:jobId')!
@@ -655,7 +754,7 @@ describe('schedule routes', () => {
   // POST /:jobId/run — trigger immediate run
   // -----------------------------------------------------------------------
   describe('POST /:jobId/run', () => {
-    it('triggers an immediate run via cronRun', async () => {
+    it('triggers an immediate run via runtime cron', async () => {
       const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
       expect(route).toBeDefined()
 
@@ -666,7 +765,7 @@ describe('schedule routes', () => {
 
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
-      expect(mockCronRun).toHaveBeenCalledWith('job-run', true)
+      expect(mockCronRunNow).toHaveBeenCalledWith('job-run')
     })
 
     it('returns 400 when jobId is missing', async () => {
@@ -684,7 +783,7 @@ describe('schedule routes', () => {
         body: { jobId: 'job-from-body' },
       })
       expect(status).toBe(200)
-      expect(mockCronRun).toHaveBeenCalledWith('job-from-body', true)
+      expect(mockCronRunNow).toHaveBeenCalledWith('job-from-body')
     })
 
     it('audits and logs the run_now action', async () => {
@@ -898,7 +997,7 @@ describe('schedule exec tools', () => {
       expect(result.cron).toBe('0 9 * * *')
       expect(result.tz).toBeDefined()
 
-      expect(mockCronAdd).toHaveBeenCalledTimes(1)
+      expect(mockCronCreate).toHaveBeenCalledTimes(1)
 
       // Verify sidecar
       const meta = getJob('new-job-id')
@@ -937,7 +1036,7 @@ describe('schedule exec tools', () => {
   // bakin_exec_schedule_update
   // -----------------------------------------------------------------------
   describe('bakin_exec_schedule_update', () => {
-    it('updates sidecar and openclaw fields', async () => {
+    it('updates sidecar and runtime cron fields', async () => {
       upsertJob(makeMeta({ jobId: 'job-upd' }))
 
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_update')!
@@ -952,8 +1051,8 @@ describe('schedule exec tools', () => {
 
       expect(result.ok).toBe(true)
 
-      // cronEdit called for name change
-      expect(mockCronEdit).toHaveBeenCalledWith('job-upd', { name: 'Renamed' })
+      // runtime cron update called for name change
+      expect(mockCronUpdate).toHaveBeenCalledWith('job-upd', { name: 'Renamed' })
 
       const meta = getJob('job-upd')
       expect(meta!.displayName).toBe('Renamed')
@@ -961,7 +1060,7 @@ describe('schedule exec tools', () => {
       expect(meta!.taskPrompt).toBe('Updated prompt')
     })
 
-    it('calls cronEdit when schedule is changed', async () => {
+    it('calls runtime cron update when schedule is changed', async () => {
       upsertJob(makeMeta({ jobId: 'job-upd-sched' }))
 
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_update')!
@@ -970,7 +1069,7 @@ describe('schedule exec tools', () => {
         schedule: '0 10 * * *',
       })
 
-      expect(mockCronEdit).toHaveBeenCalledWith('job-upd-sched', { cron: '0 10 * * *' })
+      expect(mockCronUpdate).toHaveBeenCalledWith('job-upd-sched', { schedule: '0 10 * * *' })
     })
 
     it('returns error when jobId is missing', async () => {
@@ -1095,7 +1194,7 @@ describe('schedule exec tools', () => {
   // bakin_exec_schedule_delete
   // -----------------------------------------------------------------------
   describe('bakin_exec_schedule_delete', () => {
-    it('deletes from openclaw and sidecar', async () => {
+    it('deletes from runtime cron and sidecar', async () => {
       upsertJob(makeMeta({ jobId: 'job-del-tool' }))
 
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_delete')!
@@ -1185,7 +1284,7 @@ describe('schedule exec tools', () => {
   // bakin_exec_schedule_run_now
   // -----------------------------------------------------------------------
   describe('bakin_exec_schedule_run_now', () => {
-    it('triggers cronRun with force=true', async () => {
+    it('triggers runtime cron runNow', async () => {
       upsertJob(makeMeta({ jobId: 'job-rn' }))
 
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_run_now')!
@@ -1195,7 +1294,7 @@ describe('schedule exec tools', () => {
       expect(result.ok).toBe(true)
       expect(result.jobId).toBe('job-rn')
 
-      expect(mockCronRun).toHaveBeenCalledWith('job-rn', true)
+      expect(mockCronRunNow).toHaveBeenCalledWith('job-rn')
     })
 
     it('audits and logs the run', async () => {

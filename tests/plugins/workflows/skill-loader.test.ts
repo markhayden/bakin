@@ -17,12 +17,12 @@ mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => mockTestDir,
   getBakinPaths: () => ({ workflows: join(mockTestDir, 'workflows') }),
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(mockTestDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(mockTestDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
-mock.module('@bakin/tasks/lib/flow-store', () => ({}))
+mock.module('@/core/task-store', () => ({}))
 
 import { loadSkill, listAllSkills, invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
 import {

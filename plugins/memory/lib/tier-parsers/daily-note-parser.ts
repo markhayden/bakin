@@ -2,8 +2,8 @@
  * Daily-note tier parser.
  *
  * One `workspace/memory/YYYY-MM-DD*.md` file → one `MemoryRow`. No chunking;
- * daily notes tend to be short-form activity summaries, and OpenClaw's own
- * LanceDB index already treats them as whole documents.
+ * daily notes tend to be short-form activity summaries, and runtime memory
+ * search usually treats them as whole documents.
  *
  * The filename must start with a `YYYY-MM-DD` prefix and end with `.md`.
  * Anything else returns null — the indexer skips null rows.
@@ -37,7 +37,7 @@ export function parseDailyNote(
     snippet,
     content: body,
     sourceRef: {
-      backend: 'openclaw',
+      backend: 'runtime',
       path: sourcePath,
       file: filename,
     },
@@ -47,7 +47,7 @@ export function parseDailyNote(
       file: filename,
       date,
       sizeBytes,
-      openclawIndexed: true,
+      runtimeIndexed: true,
     }),
   }
 }

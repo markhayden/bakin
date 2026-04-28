@@ -2,7 +2,7 @@
  * Assets-plugin-owned doctor check.
  *
  * Migrated out of src/core/doctor.ts (#139 C3). Behavioral coverage for
- * checkAssets — directory shape, sidecar pairing (missing / orphan /
+ * checkAssets — store shape, sidecar pairing (missing / orphan /
  * misnamed), disk-usage warning, and trash retention.
  */
 import { tmpdir } from 'os'
@@ -15,7 +15,7 @@ process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 mock.module('@/core/content-dir', () => ({
@@ -38,12 +38,12 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
@@ -62,7 +62,8 @@ mock.module('../../../src/core/logger', () => ({
 import { checkAssets } from '../../../plugins/assets/lib/health-checks'
 
 const assetsRoot = join(testDir, 'assets')
-const imagesDir = join(assetsRoot, 'images')
+const storeRoot = join(assetsRoot, 'store')
+const storeDir = join(storeRoot, '2026-03')
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -75,22 +76,18 @@ afterAll(() => {
 })
 
 /**
- * Seed every asset-type subdir + .trash so individual tests focus on the
- * specific signals they care about. Tests that exercise the missing-dir
- * fix path call `seedNothing()` instead.
+ * Seed the filename-as-identity assets tree so individual tests focus on the
+ * specific signals they care about.
  */
 function seedFullAssetsTree() {
-  const types = ['text', 'images', 'video', 'audio', 'plans', 'data', 'other']
-  for (const t of types) {
-    mkdirSync(join(assetsRoot, t, '_unlinked'), { recursive: true })
-    mkdirSync(join(assetsRoot, t, 'library'), { recursive: true })
-  }
+  mkdirSync(storeDir, { recursive: true })
+  mkdirSync(join(assetsRoot, 'inbox'), { recursive: true })
   mkdirSync(join(assetsRoot, '.trash'), { recursive: true })
 }
 
 // ─── Empty / missing tree ─────────────────────────────────────────────────
 
-describe('checkAssets — directory shape', () => {
+describe('checkAssets — store shape', () => {
   it('warns when assets/ directory does not exist (no autoFix)', () => {
     const results = checkAssets(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('assets/ directory not found') && r.autoFixable)).toBe(true)
@@ -100,19 +97,19 @@ describe('checkAssets — directory shape', () => {
     mockAutoFix = true
     const results = checkAssets(testDir)
     expect(existsSync(assetsRoot)).toBe(true)
-    expect(existsSync(join(assetsRoot, 'images', '_unlinked'))).toBe(true)
-    expect(existsSync(join(assetsRoot, 'images', 'library'))).toBe(true)
+    expect(existsSync(join(assetsRoot, 'store'))).toBe(true)
+    expect(existsSync(join(assetsRoot, 'inbox'))).toBe(true)
     expect(existsSync(join(assetsRoot, '.trash'))).toBe(true)
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Created assets/ directory'))).toBe(true)
-    expect(results.some(r => r.status === 'fixed' && r.message.includes('assets/images/'))).toBe(true)
+    expect(results.some(r => r.status === 'fixed' && r.message.includes('assets/store/'))).toBe(true)
+    expect(results.some(r => r.status === 'fixed' && r.message.includes('assets/inbox/'))).toBe(true)
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Created assets/.trash/'))).toBe(true)
   })
 
-  it('warns about each missing type subdir without autoFix when assets/ exists', () => {
+  it('warns about missing required store directories without autoFix when assets/ exists', () => {
     mkdirSync(assetsRoot, { recursive: true })
     const results = checkAssets(testDir)
-    // 7 asset type dirs missing, plus warning for missing/empty conditions
-    expect(results.filter(r => r.status === 'warn' && r.message.includes('Missing assets/'))).toHaveLength(7)
+    expect(results.filter(r => r.status === 'warn' && r.message.includes('Missing assets/'))).toHaveLength(3)
   })
 
   it('reports ok when the tree is fully populated and clean', () => {
@@ -122,6 +119,17 @@ describe('checkAssets — directory shape', () => {
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/0 asset\(s\), all sidecars present/)
   })
+
+  it('warns about legacy top-level type directories instead of scanning them', () => {
+    seedFullAssetsTree()
+    const legacyDir = join(assetsRoot, 'images', 'task-abc')
+    mkdirSync(legacyDir, { recursive: true })
+    writeFileSync(join(legacyDir, 'hero.png'), 'fake-image')
+
+    const results = checkAssets(testDir)
+    expect(results.some(r => r.status === 'warn' && r.message.includes('Unexpected assets/images/'))).toBe(true)
+    expect(results.some(r => r.message.includes('missing .meta.json'))).toBe(false)
+  })
 })
 
 // ─── Missing sidecars ─────────────────────────────────────────────────────
@@ -129,9 +137,7 @@ describe('checkAssets — directory shape', () => {
 describe('checkAssets — missing sidecars', () => {
   it('warns when an asset has no .meta.json (no autoFix)', () => {
     seedFullAssetsTree()
-    const taskDir = join(imagesDir, 'task-abc')
-    mkdirSync(taskDir, { recursive: true })
-    writeFileSync(join(taskDir, 'hero.png'), 'fake-image')
+    writeFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png'), 'fake-image')
 
     const results = checkAssets(testDir)
     const sidecarWarn = results.find(r => r.status === 'warn' && r.message.includes('missing .meta.json sidecar'))
@@ -142,16 +148,23 @@ describe('checkAssets — missing sidecars', () => {
   it('creates stub sidecars in autoFix mode', () => {
     mockAutoFix = true
     seedFullAssetsTree()
-    const taskDir = join(imagesDir, 'task-abc')
-    mkdirSync(taskDir, { recursive: true })
-    writeFileSync(join(taskDir, 'hero.png'), 'fake-image')
+    writeFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png'), 'fake-image')
 
     const results = checkAssets(testDir)
-    expect(existsSync(join(taskDir, 'hero.png.meta.json'))).toBe(true)
-    const stub = JSON.parse(readFileSync(join(taskDir, 'hero.png.meta.json'), 'utf-8'))
+    expect(existsSync(join(storeDir, '20260323-hero-a1b2c3d4.png.meta.json'))).toBe(true)
+    const stub = JSON.parse(readFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png.meta.json'), 'utf-8'))
     expect(stub.agent).toBe('unknown')
-    expect(stub.taskId).toBe('task-abc')
+    expect(stub.taskId).toBeNull()
+    expect(stub.type).toBe('images')
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Created 1 stub sidecar'))).toBe(true)
+  })
+
+  it('warns about non-canonical asset filenames in the store', () => {
+    seedFullAssetsTree()
+    writeFileSync(join(storeDir, 'hero.png'), 'fake-image')
+
+    const results = checkAssets(testDir)
+    expect(results.some(r => r.status === 'warn' && r.message.includes('Non-canonical asset filename'))).toBe(true)
   })
 })
 
@@ -160,12 +173,10 @@ describe('checkAssets — missing sidecars', () => {
 describe('checkAssets — mismatched sidecars', () => {
   it('detects misnamed sidecar without autoFix', () => {
     seedFullAssetsTree()
-    const taskDir = join(imagesDir, 'task-abc')
-    mkdirSync(taskDir, { recursive: true })
-    writeFileSync(join(taskDir, '20260323-hero.png'), 'fake-image')
+    writeFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png'), 'fake-image')
     // Misnamed: uses base "hero" rather than full filename
     writeFileSync(
-      join(taskDir, 'hero.meta.json'),
+      join(storeDir, 'hero.meta.json'),
       JSON.stringify({ author: 'pixel', taskId: 'task-abc', createdAt: '2026-03-23T14:00:00Z' }),
     )
 
@@ -177,13 +188,11 @@ describe('checkAssets — mismatched sidecars', () => {
   it('merges misnamed sidecar into the correctly-named stub under autoFix, normalizing field names', () => {
     mockAutoFix = true
     seedFullAssetsTree()
-    const taskDir = join(imagesDir, 'task-abc')
-    mkdirSync(taskDir, { recursive: true })
-    writeFileSync(join(taskDir, '20260323-hero.png'), 'fake-image')
+    writeFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png'), 'fake-image')
 
     // Pre-existing stub at the correct path (agent: "unknown")
     writeFileSync(
-      join(taskDir, '20260323-hero.png.meta.json'),
+      join(storeDir, '20260323-hero-a1b2c3d4.png.meta.json'),
       JSON.stringify({
         agent: 'unknown',
         taskId: 'task-abc',
@@ -195,7 +204,7 @@ describe('checkAssets — mismatched sidecars', () => {
 
     // Rich misnamed sidecar with legacy field names
     writeFileSync(
-      join(taskDir, 'hero.meta.json'),
+      join(storeDir, 'hero.meta.json'),
       JSON.stringify({
         author: 'pixel',
         taskId: 'task-abc',
@@ -208,19 +217,17 @@ describe('checkAssets — mismatched sidecars', () => {
     const results = checkAssets(testDir)
     expect(results.some(r => r.status === 'fixed' && (r.message.includes('Merged') || r.message.includes('misnamed')))).toBe(true)
 
-    const merged = JSON.parse(readFileSync(join(taskDir, '20260323-hero.png.meta.json'), 'utf-8'))
+    const merged = JSON.parse(readFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png.meta.json'), 'utf-8'))
     expect(merged.agent).toBe('pixel')           // normalized from author
     expect(merged.created).toBe('2026-03-23T14:00:00Z')  // normalized from createdAt
     expect(merged.tool).toBe('dall-e-3')
-    expect(existsSync(join(taskDir, 'hero.meta.json'))).toBe(false)  // mismatched removed
+    expect(existsSync(join(storeDir, 'hero.meta.json'))).toBe(false)  // mismatched removed
   })
 
   it('removes the misnamed sidecar when the correctly-named one already has real content', () => {
     mockAutoFix = true
     seedFullAssetsTree()
-    const taskDir = join(imagesDir, 'task-abc')
-    mkdirSync(taskDir, { recursive: true })
-    writeFileSync(join(taskDir, '20260323-hero.png'), 'fake-image')
+    writeFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png'), 'fake-image')
 
     // Real (non-stub) sidecar at the correct path
     const realMeta = {
@@ -229,16 +236,16 @@ describe('checkAssets — mismatched sidecars', () => {
       created: '2026-03-23T15:00:00Z',
       description: 'Real',
     }
-    writeFileSync(join(taskDir, '20260323-hero.png.meta.json'), JSON.stringify(realMeta, null, 2))
+    writeFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png.meta.json'), JSON.stringify(realMeta, null, 2))
 
     // Misnamed orphan
-    writeFileSync(join(taskDir, 'hero.meta.json'), JSON.stringify({ author: 'someone-else' }))
+    writeFileSync(join(storeDir, 'hero.meta.json'), JSON.stringify({ author: 'someone-else' }))
 
     checkAssets(testDir)
 
     // Real sidecar untouched, mismatched removed
-    expect(JSON.parse(readFileSync(join(taskDir, '20260323-hero.png.meta.json'), 'utf-8'))).toEqual(realMeta)
-    expect(existsSync(join(taskDir, 'hero.meta.json'))).toBe(false)
+    expect(JSON.parse(readFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png.meta.json'), 'utf-8'))).toEqual(realMeta)
+    expect(existsSync(join(storeDir, 'hero.meta.json'))).toBe(false)
   })
 })
 
@@ -247,10 +254,8 @@ describe('checkAssets — mismatched sidecars', () => {
 describe('checkAssets — orphaned meta', () => {
   it('warns about a .meta.json with no associated asset and no near-match', () => {
     seedFullAssetsTree()
-    const taskDir = join(imagesDir, 'task-abc')
-    mkdirSync(taskDir, { recursive: true })
     writeFileSync(
-      join(taskDir, 'totally-unrelated.meta.json'),
+      join(storeDir, 'totally-unrelated.meta.json'),
       JSON.stringify({ agent: 'pixel', taskId: 'task-abc', created: '2026-03-23T00:00:00Z' }),
     )
 
@@ -298,17 +303,15 @@ describe('checkAssets — trash purge', () => {
 describe('checkAssets — disk usage', () => {
   it('warns when the assets tree exceeds 5GB', () => {
     seedFullAssetsTree()
-    const taskDir = join(imagesDir, 'task-abc')
-    mkdirSync(taskDir, { recursive: true })
     // Write a sparse 6 GB file via fs.truncateSync — fast on macOS APFS
-    const bigFile = join(taskDir, 'huge.bin')
+    const bigFile = join(storeDir, '20260323-huge-a1b2c3d4.bin')
     writeFileSync(bigFile, '')
-    require('fs').truncateSync(bigFile, 6 * 1024 * 1024 * 1024)
+    truncateSync(bigFile, 6 * 1024 * 1024 * 1024)
     // Sanity: file is reported as 6 GB
     expect(statSync(bigFile).size).toBe(6 * 1024 * 1024 * 1024)
     // Pair sidecar so it doesn't trip the missing-meta path
     writeFileSync(
-      join(taskDir, 'huge.bin.meta.json'),
+      join(storeDir, '20260323-huge-a1b2c3d4.bin.meta.json'),
       JSON.stringify({ agent: 'pixel', taskId: 'task-abc', created: '2026-03-23T00:00:00Z' }),
     )
 

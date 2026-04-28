@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import yaml from 'js-yaml'
 import {
   activatePlugin,
   findRoute,
@@ -16,6 +17,7 @@ import {
   callSearchRoute,
 } from '../test-helpers'
 import type { ActivatedPlugin } from '../test-helpers'
+import type { ChatChunk, MessageArgs, MessageResult } from '@bakin/core/adapters/runtime'
 
 // ---------------------------------------------------------------------------
 // Test directory
@@ -52,15 +54,15 @@ mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-const mockCreateTask = mock((_opts?: unknown) => Promise.resolve({ id: 'promoted01' }))
+const mockCreateTask = mock((opts?: unknown) => {
+  void opts
+  return Promise.resolve({ id: 'promoted01' })
+})
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
 
-mock.module('../../../plugins/tasks/lib/flow-store', () => {
-  const actual = require('../../../plugins/tasks/lib/flow-store') as typeof import('../../../plugins/tasks/lib/flow-store')
-  return {
-    ...actual,
+mock.module('@/core/task-store', () => ({
   readTaskboard: () => ({
     columns: {
       todo: [{ id: 'board01', title: 'Board Task 1' }],
@@ -71,35 +73,38 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => {
       blocked: [],
       backlog: [],
     },
-    }),
-  }
-})
-
-const mockSendMessage = mock((..._args: unknown[]) => Promise.resolve('Agent reply here'))
-const mockStreamMessage = mock()
-const mockChatCompletion = mock((..._args: unknown[]) => Promise.resolve('Agent reply here'))
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendMessage: (...args: unknown[]) => mockSendMessage(...args),
-  sendChannelMessage: mock(),
-  streamMessage: (...args: unknown[]) => mockStreamMessage(...args),
-  chatCompletion: (...args: unknown[]) => mockChatCompletion(...args),
+  }),
 }))
 
-/** Build a canned streaming gateway Response emitting OpenAI-style SSE chunks. */
-function streamingResponseFor(tokens: string[]): Response {
-  const encoder = new TextEncoder()
-  const body = new ReadableStream({
-    start(controller) {
-      for (const token of tokens) {
-        const chunk = JSON.stringify({ choices: [{ delta: { content: token } }] })
-        controller.enqueue(encoder.encode(`data: ${chunk}\n\n`))
-      }
-      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-      controller.close()
+const mockDeleteTask = mock(async (..._args: unknown[]) => undefined)
+mock.module('../../../src/core/task-store', () => ({
+  readTaskboard: mock(() => ({
+    columns: {
+      todo: [{ id: 'board01', title: 'Board Task 1' }],
+      inProgress: [],
+      review: [],
+      done: [{ id: 'board02', title: 'Done Task' }],
+      archived: [],
+      blocked: [],
+      backlog: [],
     },
-  })
-  return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
-}
+  })),
+  deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
+}))
+mock.module('@/core/task-store', () => ({
+  readTaskboard: mock(() => ({
+    columns: {
+      todo: [{ id: 'board01', title: 'Board Task 1' }],
+      inProgress: [],
+      review: [],
+      done: [{ id: 'board02', title: 'Done Task' }],
+      archived: [],
+      blocked: [],
+      backlog: [],
+    },
+  })),
+  deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
+}))
 
 /** Consume an SSE Response body into a list of {event, data} records. */
 async function consumeSSE(res: Response): Promise<Array<{ event: string; data: unknown }>> {
@@ -126,13 +131,21 @@ async function consumeSSE(res: Response): Promise<Array<{ event: string; data: u
   return events
 }
 
+type ProjectRouteTestGlobal = typeof globalThis & {
+  __bakinBroadcast?: unknown
+  __bakinProjectIndex?: unknown
+  __bakinProjectLock?: unknown
+}
+
+const testGlobal = globalThis as ProjectRouteTestGlobal
+
 // Suppress SSE broadcast
-;(globalThis as any).__bakinBroadcast = mock()
+testGlobal.__bakinBroadcast = mock()
 
 // Clear project index / lock between tests
 function clearGlobals() {
-  ;(globalThis as any).__bakinProjectIndex = undefined
-  ;(globalThis as any).__bakinProjectLock = undefined
+  testGlobal.__bakinProjectIndex = undefined
+  testGlobal.__bakinProjectLock = undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +153,7 @@ function clearGlobals() {
 // ---------------------------------------------------------------------------
 
 import projectsPlugin from '../../../plugins/projects'
+import { readProject as readProjectFile } from '../../../plugins/projects/lib/parser'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -158,7 +172,6 @@ function writeProjectFixture(
   const body = opts.body ?? `# ${title}\nProject body text.`
   const now = new Date().toISOString()
 
-  const yaml = require('js-yaml')
   const fm: Record<string, unknown> = {
     id,
     title,
@@ -185,12 +198,57 @@ function writeProjectFixture(
 
 let plugin: ActivatedPlugin
 
+async function* streamTextChunks(tokens: string[]): AsyncIterable<ChatChunk> {
+  for (const token of tokens) {
+    yield { type: 'text', content: token }
+  }
+}
+
+function mockRuntimeStream(tokens: string[]) {
+  const streamMock = mock((args: MessageArgs) => {
+    void args
+    return streamTextChunks(tokens)
+  })
+  plugin.ctx.runtime.messaging.stream = streamMock
+  return streamMock
+}
+
+function mockRuntimeStreamError(message: string) {
+  const streamMock = mock((args: MessageArgs): AsyncIterable<ChatChunk> => {
+    void args
+    throw new Error(message)
+  })
+  plugin.ctx.runtime.messaging.stream = streamMock
+  return streamMock
+}
+
+function mockRuntimeSend(content: string) {
+  const sendMock = mock((args: MessageArgs): Promise<MessageResult> => {
+    void args
+    return Promise.resolve({
+      id: 'msg-test',
+      content,
+    })
+  })
+  plugin.ctx.runtime.messaging.send = sendMock
+  return sendMock
+}
+
+function mockRuntimeSendError(message: string) {
+  const sendMock = mock(async (args: MessageArgs): Promise<MessageResult> => {
+    void args
+    throw new Error(message)
+  })
+  plugin.ctx.runtime.messaging.send = sendMock
+  return sendMock
+}
+
 beforeEach(async () => {
   clearGlobals()
   if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true })
   mkdirSync(projectsDir, { recursive: true })
   mockCreateTask.mockClear()
-  mockSendMessage.mockClear()
+  mockDeleteTask.mockClear()
   plugin = await activatePlugin(projectsPlugin, testDir)
 })
 
@@ -387,7 +445,7 @@ describe('Routes', () => {
       expect(body.error).toMatch(/not found/i)
     })
 
-    it('invokes tasks.deleteTask hook when deleteLinkedTasks is true', async () => {
+    it('deletes linked Bakin tasks when deleteLinkedTasks is true', async () => {
       writeProjectFixture('proj-linked', {
         title: 'Linked',
         tasks: [{ id: 't001', title: 'Linked Item', checked: false, taskId: 'board01' }],
@@ -398,10 +456,7 @@ describe('Routes', () => {
         searchParams: { projectId: 'proj-linked' },
         body: { deleteLinkedTasks: true },
       })
-      expect(plugin.ctx.hooks.invoke).toHaveBeenCalledWith(
-        'tasks.deleteTask',
-        expect.objectContaining({ identifier: 'board01' }),
-      )
+      expect(mockDeleteTask).toHaveBeenCalledWith('board01')
     })
   })
 
@@ -644,9 +699,7 @@ describe('Routes', () => {
         tasks: [{ id: 't001', title: 'Do stuff', checked: true }],
         assets: [{ filename: '20260401-brief-abcdef12.md', label: 'Brief' }],
       })
-      mockStreamMessage.mockImplementationOnce(() =>
-        Promise.resolve(streamingResponseFor(['Hel', 'lo ', 'world'])),
-      )
+      const streamMock = mockRuntimeStream(['Hel', 'lo ', 'world'])
 
       const route = findRoute(plugin.routes, 'POST', '/:projectId/ask')!
       const { response } = await callRoute(route, plugin.ctx, {
@@ -664,19 +717,17 @@ describe('Routes', () => {
       expect((doneEvent!.data as { content: string }).content).toBe('Hello world')
 
       // Context was built with project metadata
-      expect(mockStreamMessage).toHaveBeenCalledWith(
+      expect(streamMock).toHaveBeenCalledWith(
         expect.objectContaining({
           agentId: 'main',
-          messages: [expect.objectContaining({ role: 'user', content: expect.stringContaining('Ask Project') })],
+          content: expect.stringContaining('Ask Project'),
         }),
       )
     })
 
     it('uses the custom agent and includes history in the prompt', async () => {
       writeProjectFixture('proj-ask2', { title: 'Ask 2' })
-      mockStreamMessage.mockImplementationOnce(() =>
-        Promise.resolve(streamingResponseFor(['ok'])),
-      )
+      const streamMock = mockRuntimeStream(['ok'])
 
       const route = findRoute(plugin.routes, 'POST', '/:projectId/ask')!
       const { response } = await callRoute(route, plugin.ctx, {
@@ -689,20 +740,18 @@ describe('Routes', () => {
         rawResponse: true,
       })
       await consumeSSE(response)
-      expect(mockStreamMessage).toHaveBeenCalledWith(
+      expect(streamMock).toHaveBeenCalledWith(
         expect.objectContaining({
           agentId: 'pixel',
-          messages: [expect.objectContaining({ content: expect.stringContaining('Previous conversation') })],
+          content: expect.stringContaining('Previous conversation'),
         }),
       )
     })
 
-    it('falls back to chatCompletion when gateway does not stream', async () => {
+    it('falls back to one-shot runtime send when streaming is unavailable', async () => {
       writeProjectFixture('proj-fallback', { title: 'Fallback' })
-      mockStreamMessage.mockImplementationOnce(() =>
-        Promise.resolve(new Response('{}', { headers: { 'Content-Type': 'application/json' } })),
-      )
-      mockChatCompletion.mockImplementationOnce(() => Promise.resolve('Full reply in one go'))
+      mockRuntimeStreamError('stream unavailable')
+      const sendMock = mockRuntimeSend('Full reply in one go')
 
       const route = findRoute(plugin.routes, 'POST', '/:projectId/ask')!
       const { response } = await callRoute(route, plugin.ctx, {
@@ -713,6 +762,12 @@ describe('Routes', () => {
       const tokens = events.filter((e) => e.event === 'token').map((e) => (e.data as { text: string }).text)
       expect(tokens).toEqual(['Full reply in one go'])
       expect(events.some((e) => e.event === 'done')).toBe(true)
+      expect(sendMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'main',
+          content: expect.stringContaining('Fallback'),
+        }),
+      )
     })
 
     it('returns 400 when projectId or prompt is missing', async () => {
@@ -734,8 +789,8 @@ describe('Routes', () => {
 
     it('emits an error event when both streaming and fallback fail', async () => {
       writeProjectFixture('proj-fail', { title: 'Fail Project' })
-      mockStreamMessage.mockImplementationOnce(() => Promise.reject(new Error('unreachable')))
-      mockChatCompletion.mockImplementationOnce(() => Promise.reject(new Error('gateway down')))
+      mockRuntimeStreamError('unreachable')
+      mockRuntimeSendError('runtime down')
 
       const route = findRoute(plugin.routes, 'POST', '/:projectId/ask')!
       const { response } = await callRoute(route, plugin.ctx, {
@@ -745,7 +800,7 @@ describe('Routes', () => {
       const events = await consumeSSE(response)
       const errEvent = events.find((e) => e.event === 'error')
       expect(errEvent).toBeDefined()
-      expect((errEvent!.data as { message: string }).message).toMatch(/gateway down|unreachable/i)
+      expect((errEvent!.data as { message: string }).message).toMatch(/runtime down|unreachable/i)
     })
   })
 })
@@ -848,8 +903,7 @@ describe('Exec Tools', () => {
       const result = await callTool(tool, { title: 'Agent Owner' }, 'pixel')
       expect(result.ok).toBe(true)
       // The owner should be 'pixel' (passed as agent param)
-      const { readProject } = require('../../../plugins/projects/lib/parser') as typeof import('../../../plugins/projects/lib/parser')
-      const project = readProject(result.id as string)
+      const project = readProjectFile(result.id as string)
       expect(project!.owner).toBe('pixel')
     })
   })

@@ -19,7 +19,7 @@ Source: `src/core/plugin-scaffold.ts:84`
 
 Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars.
 
-Source: `plugins/assets/index.ts:689`
+Source: `plugins/assets/index.ts:681`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -29,7 +29,7 @@ Source: `plugins/assets/index.ts:689`
 
 Soft-delete an asset (moves to trash with 30-day expiry).
 
-Source: `plugins/assets/index.ts:604`
+Source: `plugins/assets/index.ts:596`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -39,7 +39,7 @@ Source: `plugins/assets/index.ts:604`
 
 Permanently delete all items from trash. This cannot be undone.
 
-Source: `plugins/assets/index.ts:865`
+Source: `plugins/assets/index.ts:857`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -49,7 +49,7 @@ Source: `plugins/assets/index.ts:865`
 
 Retrieve a single asset\
 
-Source: `plugins/assets/index.ts:554`
+Source: `plugins/assets/index.ts:546`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -59,7 +59,7 @@ Source: `plugins/assets/index.ts:554`
 
 Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move.
 
-Source: `plugins/assets/index.ts:630`
+Source: `plugins/assets/index.ts:622`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -67,9 +67,9 @@ Source: `plugins/assets/index.ts:630`
 
 ## `bakin_exec_assets_list`
 
-List assets with optional type filter. Returns asset count and paths.
+List assets with optional type filter. Returns asset count, canonical filenames, and metadata.
 
-Source: `plugins/assets/index.ts:537`
+Source: `plugins/assets/index.ts:529`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -79,7 +79,7 @@ Source: `plugins/assets/index.ts:537`
 
 List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge.
 
-Source: `plugins/assets/index.ts:652`
+Source: `plugins/assets/index.ts:644`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -89,7 +89,7 @@ Source: `plugins/assets/index.ts:652`
 
 Permanently delete a specific trashed asset. This cannot be undone.
 
-Source: `plugins/assets/index.ts:879`
+Source: `plugins/assets/index.ts:871`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -99,7 +99,7 @@ Source: `plugins/assets/index.ts:879`
 
 Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename.
 
-Source: `plugins/assets/index.ts:672`
+Source: `plugins/assets/index.ts:664`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -109,7 +109,7 @@ Source: `plugins/assets/index.ts:672`
 
 Change an asset\
 
-Source: `plugins/assets/index.ts:819`
+Source: `plugins/assets/index.ts:811`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -119,7 +119,7 @@ Source: `plugins/assets/index.ts:819`
 
 Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.
 
-Source: `plugins/assets/index.ts:584`
+Source: `plugins/assets/index.ts:576`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -129,7 +129,7 @@ Source: `plugins/assets/index.ts:584`
 
 Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file.
 
-Source: `plugins/assets/index.ts:841`
+Source: `plugins/assets/index.ts:833`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -139,7 +139,7 @@ Source: `plugins/assets/index.ts:841`
 
 Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending.
 
-Source: `plugins/workflows/index.ts:1320`
+Source: `plugins/workflows/index.ts:1308`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -149,7 +149,7 @@ Source: `plugins/workflows/index.ts:1320`
 
 Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure.
 
-Source: `plugins/workflows/index.ts:1244`
+Source: `plugins/workflows/index.ts:1232`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -157,9 +157,9 @@ Source: `plugins/workflows/index.ts:1244`
 
 ## `bakin_exec_health_doctor`
 
-Run system diagnostics (agent roster, skill sync, gateway, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.
+Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.
 
-Source: `plugins/health/index.ts:251`
+Source: `plugins/health/index.ts:258`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -169,7 +169,7 @@ Source: `plugins/health/index.ts:251`
 
 Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work.
 
-Source: `plugins/health/index.ts:222`
+Source: `plugins/health/index.ts:229`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -179,7 +179,7 @@ Source: `plugins/health/index.ts:222`
 
 Approve a messaging item (draft → scheduled, review → published)
 
-Source: `plugins/messaging/index.ts:1052`
+Source: `plugins/messaging/index.ts:1094`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -189,7 +189,7 @@ Source: `plugins/messaging/index.ts:1052`
 
 Create a new messaging item
 
-Source: `plugins/messaging/index.ts:987`
+Source: `plugins/messaging/index.ts:1033`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -199,7 +199,7 @@ Source: `plugins/messaging/index.ts:987`
 
 Delete a messaging item
 
-Source: `plugins/messaging/index.ts:1093`
+Source: `plugins/messaging/index.ts:1135`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -209,7 +209,7 @@ Source: `plugins/messaging/index.ts:1093`
 
 Get details for a single messaging item
 
-Source: `plugins/messaging/index.ts:972`
+Source: `plugins/messaging/index.ts:1018`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -219,7 +219,7 @@ Source: `plugins/messaging/index.ts:972`
 
 List messaging items with optional filters
 
-Source: `plugins/messaging/index.ts:933`
+Source: `plugins/messaging/index.ts:982`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -229,7 +229,7 @@ Source: `plugins/messaging/index.ts:933`
 
 Update a proposal status or fields (approve, reject, edit)
 
-Source: `plugins/messaging/index.ts:1274`
+Source: `plugins/messaging/index.ts:1316`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -239,7 +239,7 @@ Source: `plugins/messaging/index.ts:1274`
 
 Reject a messaging item back to draft status
 
-Source: `plugins/messaging/index.ts:1070`
+Source: `plugins/messaging/index.ts:1112`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -249,7 +249,7 @@ Source: `plugins/messaging/index.ts:1070`
 
 Confirm a planning session — creates messaging items from approved proposals
 
-Source: `plugins/messaging/index.ts:1308`
+Source: `plugins/messaging/index.ts:1350`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -259,7 +259,7 @@ Source: `plugins/messaging/index.ts:1308`
 
 Create a new planning session for an agent
 
-Source: `plugins/messaging/index.ts:1145`
+Source: `plugins/messaging/index.ts:1187`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -269,7 +269,7 @@ Source: `plugins/messaging/index.ts:1145`
 
 Delete a planning session
 
-Source: `plugins/messaging/index.ts:1188`
+Source: `plugins/messaging/index.ts:1230`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -279,7 +279,7 @@ Source: `plugins/messaging/index.ts:1188`
 
 Get a planning session with full message history and proposals
 
-Source: `plugins/messaging/index.ts:1130`
+Source: `plugins/messaging/index.ts:1172`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -289,7 +289,7 @@ Source: `plugins/messaging/index.ts:1130`
 
 List planning sessions with optional filters
 
-Source: `plugins/messaging/index.ts:1113`
+Source: `plugins/messaging/index.ts:1155`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -299,7 +299,7 @@ Source: `plugins/messaging/index.ts:1113`
 
 Send a message in a planning session (non-streaming, returns full response)
 
-Source: `plugins/messaging/index.ts:1208`
+Source: `plugins/messaging/index.ts:1250`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -309,7 +309,7 @@ Source: `plugins/messaging/index.ts:1208`
 
 Update a planning session title or status
 
-Source: `plugins/messaging/index.ts:1165`
+Source: `plugins/messaging/index.ts:1207`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -319,7 +319,7 @@ Source: `plugins/messaging/index.ts:1165`
 
 Update a messaging item
 
-Source: `plugins/messaging/index.ts:1026`
+Source: `plugins/messaging/index.ts:1068`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -329,7 +329,7 @@ Source: `plugins/messaging/index.ts:1026`
 
 Get model configuration for all agents or a specific agent. Shows effective model (own override or default), subagent model, and system defaults.
 
-Source: `plugins/models/index.ts:784`
+Source: `plugins/models/index.ts:752`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -339,7 +339,7 @@ Source: `plugins/models/index.ts:784`
 
 List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment.
 
-Source: `plugins/models/index.ts:765`
+Source: `plugins/models/index.ts:733`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -349,7 +349,7 @@ Source: `plugins/models/index.ts:765`
 
 Add a new checklist item to a project.
 
-Source: `plugins/projects/index.ts:584`
+Source: `plugins/projects/index.ts:567`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -359,7 +359,7 @@ Source: `plugins/projects/index.ts:584`
 
 Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming.
 
-Source: `plugins/projects/index.ts:774`
+Source: `plugins/projects/index.ts:757`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -369,7 +369,7 @@ Source: `plugins/projects/index.ts:774`
 
 Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed.
 
-Source: `plugins/projects/index.ts:686`
+Source: `plugins/projects/index.ts:669`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -379,7 +379,7 @@ Source: `plugins/projects/index.ts:686`
 
 Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs.
 
-Source: `plugins/projects/index.ts:517`
+Source: `plugins/projects/index.ts:500`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -389,7 +389,7 @@ Source: `plugins/projects/index.ts:517`
 
 Delete a project by ID.
 
-Source: `plugins/projects/index.ts:566`
+Source: `plugins/projects/index.ts:549`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -399,7 +399,7 @@ Source: `plugins/projects/index.ts:566`
 
 Remove an asset reference from a project by filename. Does not delete the asset itself.
 
-Source: `plugins/projects/index.ts:706`
+Source: `plugins/projects/index.ts:689`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -409,7 +409,7 @@ Source: `plugins/projects/index.ts:706`
 
 Get a project by ID including full spec, checklist, progress, and linked board task statuses.
 
-Source: `plugins/projects/index.ts:503`
+Source: `plugins/projects/index.ts:486`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -419,7 +419,7 @@ Source: `plugins/projects/index.ts:503`
 
 Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project.
 
-Source: `plugins/projects/index.ts:638`
+Source: `plugins/projects/index.ts:621`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -429,7 +429,7 @@ Source: `plugins/projects/index.ts:638`
 
 List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount.
 
-Source: `plugins/projects/index.ts:487`
+Source: `plugins/projects/index.ts:470`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -439,7 +439,7 @@ Source: `plugins/projects/index.ts:487`
 
 Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage.
 
-Source: `plugins/projects/index.ts:599`
+Source: `plugins/projects/index.ts:582`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -449,7 +449,7 @@ Source: `plugins/projects/index.ts:599`
 
 Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set.
 
-Source: `plugins/projects/index.ts:662`
+Source: `plugins/projects/index.ts:645`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -459,7 +459,7 @@ Source: `plugins/projects/index.ts:662`
 
 Remove a checklist item from a project.
 
-Source: `plugins/projects/index.ts:619`
+Source: `plugins/projects/index.ts:602`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -469,7 +469,7 @@ Source: `plugins/projects/index.ts:619`
 
 Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage.
 
-Source: `plugins/projects/index.ts:725`
+Source: `plugins/projects/index.ts:708`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -479,7 +479,7 @@ Source: `plugins/projects/index.ts:725`
 
 Update a project\
 
-Source: `plugins/projects/index.ts:539`
+Source: `plugins/projects/index.ts:522`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -489,7 +489,7 @@ Source: `plugins/projects/index.ts:539`
 
 Update a checklist item\
 
-Source: `plugins/projects/index.ts:746`
+Source: `plugins/projects/index.ts:729`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -499,7 +499,7 @@ Source: `plugins/projects/index.ts:746`
 
 Today
 
-Source: `plugins/schedule/index.ts:841`
+Source: `plugins/schedule/index.ts:850`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -509,7 +509,7 @@ Source: `plugins/schedule/index.ts:841`
 
 Create a new scheduled job that creates tasks on the board
 
-Source: `plugins/schedule/index.ts:607`
+Source: `plugins/schedule/index.ts:616`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -519,7 +519,7 @@ Source: `plugins/schedule/index.ts:607`
 
 Delete a scheduled job
 
-Source: `plugins/schedule/index.ts:738`
+Source: `plugins/schedule/index.ts:747`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -529,7 +529,7 @@ Source: `plugins/schedule/index.ts:738`
 
 Get details for a single scheduled job
 
-Source: `plugins/schedule/index.ts:754`
+Source: `plugins/schedule/index.ts:763`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -537,9 +537,9 @@ Source: `plugins/schedule/index.ts:754`
 
 ## `bakin_exec_schedule_list`
 
-List all scheduled jobs (merged OpenClaw + Bakin view)
+List all scheduled jobs (merged runtime cron + Bakin view)
 
-Source: `plugins/schedule/index.ts:580`
+Source: `plugins/schedule/index.ts:589`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -549,7 +549,7 @@ Source: `plugins/schedule/index.ts:580`
 
 Parse a natural language or raw cron schedule expression
 
-Source: `plugins/schedule/index.ts:826`
+Source: `plugins/schedule/index.ts:835`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -559,7 +559,7 @@ Source: `plugins/schedule/index.ts:826`
 
 Pause, resume, or skip runs for a scheduled job
 
-Source: `plugins/schedule/index.ts:697`
+Source: `plugins/schedule/index.ts:706`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -569,7 +569,7 @@ Source: `plugins/schedule/index.ts:697`
 
 Trigger an immediate run of a scheduled job
 
-Source: `plugins/schedule/index.ts:792`
+Source: `plugins/schedule/index.ts:801`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -579,7 +579,7 @@ Source: `plugins/schedule/index.ts:792`
 
 Get run history for a scheduled job
 
-Source: `plugins/schedule/index.ts:810`
+Source: `plugins/schedule/index.ts:819`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -589,7 +589,7 @@ Source: `plugins/schedule/index.ts:810`
 
 Update an existing scheduled job
 
-Source: `plugins/schedule/index.ts:659`
+Source: `plugins/schedule/index.ts:668`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -599,7 +599,7 @@ Source: `plugins/schedule/index.ts:659`
 
 Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip.
 
-Source: `plugins/workflows/index.ts:1264`
+Source: `plugins/workflows/index.ts:1252`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -609,7 +609,7 @@ Source: `plugins/workflows/index.ts:1264`
 
 Assign a task to an agent.
 
-Source: `plugins/tasks/index.ts:705`
+Source: `plugins/tasks/index.ts:688`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -619,7 +619,7 @@ Source: `plugins/tasks/index.ts:705`
 
 Mark a task as blocked with a reason. Use when you cannot proceed.
 
-Source: `plugins/tasks/index.ts:576`
+Source: `plugins/tasks/index.ts:559`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -629,7 +629,7 @@ Source: `plugins/tasks/index.ts:576`
 
 Report that your task is complete. Moves the task to Done and notifies the orchestrator.
 
-Source: `plugins/tasks/index.ts:596`
+Source: `plugins/tasks/index.ts:579`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -639,7 +639,7 @@ Source: `plugins/tasks/index.ts:596`
 
 Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip.
 
-Source: `plugins/tasks/index.ts:505`
+Source: `plugins/tasks/index.ts:488`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -649,7 +649,7 @@ Source: `plugins/tasks/index.ts:505`
 
 Delete a task from the board.
 
-Source: `plugins/tasks/index.ts:684`
+Source: `plugins/tasks/index.ts:667`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -659,7 +659,7 @@ Source: `plugins/tasks/index.ts:684`
 
 Get details about a task — title, description, current column, logs, dependencies, project context.
 
-Source: `plugins/tasks/index.ts:476`
+Source: `plugins/tasks/index.ts:459`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -669,7 +669,7 @@ Source: `plugins/tasks/index.ts:476`
 
 List all tasks on the board. Optionally filter by column or agent.
 
-Source: `plugins/tasks/index.ts:446`
+Source: `plugins/tasks/index.ts:429`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -679,7 +679,7 @@ Source: `plugins/tasks/index.ts:446`
 
 Log a human-readable progress update to the live activity feed. Call this at every significant step.
 
-Source: `plugins/tasks/index.ts:616`
+Source: `plugins/tasks/index.ts:599`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -689,7 +689,7 @@ Source: `plugins/tasks/index.ts:616`
 
 Move a task to a different column on the task board.
 
-Source: `plugins/tasks/index.ts:551`
+Source: `plugins/tasks/index.ts:534`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -699,7 +699,7 @@ Source: `plugins/tasks/index.ts:551`
 
 Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait.
 
-Source: `plugins/tasks/index.ts:635`
+Source: `plugins/tasks/index.ts:618`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -709,7 +709,7 @@ Source: `plugins/tasks/index.ts:635`
 
 Update a task on the board — change title, description, or assigned agent.
 
-Source: `plugins/tasks/index.ts:654`
+Source: `plugins/tasks/index.ts:637`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -717,9 +717,9 @@ Source: `plugins/tasks/index.ts:654`
 
 ## `bakin_exec_team_create_agent`
 
-Create a new agent: registers in OpenClaw, writes persona files, configures dispatch permissions, optionally assigns to a team. Returns next-step instructions.
+Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team. Returns next-step instructions.
 
-Source: `plugins/team/index.ts:1484`
+Source: `plugins/team/index.ts:1779`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -727,9 +727,9 @@ Source: `plugins/team/index.ts:1484`
 
 ## `bakin_exec_team_delete_agent`
 
-Remove an agent from OpenClaw and clean up Bakin state. Requires confirm=true as a safety guard.
+Remove an agent from the active runtime and clean up Bakin state. Requires confirm=true as a safety guard.
 
-Source: `plugins/team/index.ts:1594`
+Source: `plugins/team/index.ts:1889`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -739,7 +739,7 @@ Source: `plugins/team/index.ts:1594`
 
 List all agents with their current status (online/working/available/offline).
 
-Source: `plugins/team/index.ts:1352`
+Source: `plugins/team/index.ts:1646`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -749,7 +749,7 @@ Source: `plugins/team/index.ts:1352`
 
 Get agents that belong to a specific team (e.g. 
 
-Source: `plugins/team/index.ts:1439`
+Source: `plugins/team/index.ts:1734`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -757,9 +757,9 @@ Source: `plugins/team/index.ts:1439`
 
 ## `bakin_exec_team_message`
 
-Send a message to an agent via OpenClaw.
+Send a message to an agent via the active runtime.
 
-Source: `plugins/team/index.ts:1415`
+Source: `plugins/team/index.ts:1710`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -769,7 +769,7 @@ Source: `plugins/team/index.ts:1415`
 
 Get the team that a specific agent belongs to, including all teammates.
 
-Source: `plugins/team/index.ts:1458`
+Source: `plugins/team/index.ts:1753`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -779,7 +779,7 @@ Source: `plugins/team/index.ts:1458`
 
 Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines.
 
-Source: `plugins/team/index.ts:1429`
+Source: `plugins/team/index.ts:1724`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -789,7 +789,7 @@ Source: `plugins/team/index.ts:1429`
 
 Get the full profile for an agent including soul, rules, and tools.
 
-Source: `plugins/team/index.ts:1371`
+Source: `plugins/team/index.ts:1666`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -799,7 +799,7 @@ Source: `plugins/team/index.ts:1371`
 
 Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md).
 
-Source: `plugins/team/index.ts:1400`
+Source: `plugins/team/index.ts:1695`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -809,7 +809,7 @@ Source: `plugins/team/index.ts:1400`
 
 Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents).
 
-Source: `plugins/team/index.ts:1639`
+Source: `plugins/team/index.ts:1934`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -819,7 +819,7 @@ Source: `plugins/team/index.ts:1639`
 
 Get the heartbeat and health status for an agent.
 
-Source: `plugins/team/index.ts:1385`
+Source: `plugins/team/index.ts:1680`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -829,7 +829,7 @@ Source: `plugins/team/index.ts:1385`
 
 Update an existing agent\
 
-Source: `plugins/team/index.ts:1559`
+Source: `plugins/team/index.ts:1854`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -839,7 +839,7 @@ Source: `plugins/team/index.ts:1559`
 
 Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete.
 
-Source: `plugins/workflows/index.ts:1207`
+Source: `plugins/workflows/index.ts:1195`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -849,7 +849,7 @@ Source: `plugins/workflows/index.ts:1207`
 
 Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows.
 
-Source: `plugins/workflows/index.ts:1106`
+Source: `plugins/workflows/index.ts:1100`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -859,7 +859,7 @@ Source: `plugins/workflows/index.ts:1106`
 
 Get the full state of a workflow instance for a task, including step states and history.
 
-Source: `plugins/workflows/index.ts:1178`
+Source: `plugins/workflows/index.ts:1166`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -869,7 +869,7 @@ Source: `plugins/workflows/index.ts:1178`
 
 Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next.
 
-Source: `plugins/workflows/index.ts:1192`
+Source: `plugins/workflows/index.ts:1180`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -879,7 +879,7 @@ Source: `plugins/workflows/index.ts:1192`
 
 List all workflow definitions (templates). Returns name, filename, description, and step count for each.
 
-Source: `plugins/workflows/index.ts:1087`
+Source: `plugins/workflows/index.ts:1081`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -889,7 +889,7 @@ Source: `plugins/workflows/index.ts:1087`
 
 List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled).
 
-Source: `plugins/workflows/index.ts:1165`
+Source: `plugins/workflows/index.ts:1153`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -899,7 +899,7 @@ Source: `plugins/workflows/index.ts:1165`
 
 Start a workflow instance for a task. The task must exist on the board. Returns the created instance.
 
-Source: `plugins/workflows/index.ts:1124`
+Source: `plugins/workflows/index.ts:1118`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability

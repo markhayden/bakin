@@ -38,11 +38,15 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
-mock.module('../../../src/core/main-agent', () => ({ tryGetMainAgentId: () => null }))
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => null,
+  getMainAgentName: () => 'Main',
+}))
 
 interface CheckpointJsonlFile {
   agent: string
@@ -81,54 +85,8 @@ const {
   mockCheckpointJsonlStat: mock<(path: string) => { size: number; mtimeMs: number } | null>(),
 }))()
 
-mock.module('../../../plugins/memory/lib/openclaw-adapter', () => ({
-  listAgentIds: mockListAgentIds,
-  // Checkpoint helpers — the new surface this commit adds.
-  listCheckpointJsonlFiles: mockListCheckpointJsonlFiles,
-  readCheckpoint: mockReadCheckpoint,
-  matchCheckpointJsonlPath: mockMatchCheckpointJsonlPath,
-  checkpointJsonlStat: mockCheckpointJsonlStat,
-  // Other tiers — stubbed so fallthrough matchers don't blow up.
-  readDurableFile: mock(() => null),
-  durableFilePath: mock(() => ''),
-  matchDurablePath: mock(() => null),
-  CANONICAL_DURABLE_FILES: [] as const,
-  listDailyNotes: mock(() => []),
-  readDailyNote: mock(() => null),
-  dailyNotePath: mock(() => ''),
-  dailyNoteMtime: mock(() => null),
-  dailyNoteSize: mock(() => 0),
-  matchDailyNotePath: mock(() => null),
-  readSessionStore: mock(() => null),
-  sessionStorePath: mock(() => ''),
-  matchSessionStorePath: mock(() => null),
-  listSessionJsonlFiles: mock(() => []),
-  sessionJsonlPath: mock(() => ''),
-  sessionJsonlStat: mock(() => null),
-  matchSessionJsonlPath: mock(() => null),
-  // dream tier (C8) — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  listPhaseDocs: mock(() => []),
-  listDreamSignalFiles: mock(() => []),
-  readPhaseDoc: mock(() => null),
-  readDreamSignal: mock(() => null),
-  matchPhaseDocPath: mock(() => null),
-  matchDreamSignalPath: mock(() => null),
-  // skills (tier=durable, kind=skill) — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  DURABLE_KIND_BY_BASENAME: {} as Record<string, string>,
-  durableKindForBasename: mock(() => undefined),
-  listAgentSkills: mock(() => []),
-  readAgentSkill: mock(() => null),
-  skillFilePath: mock(() => ''),
-  skillFileMtime: mock(() => null),
-  matchSkillPath: mock(() => null),
-}))
-
-mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewayCall: mock(() => Promise.reject(new Error('gateway unused'))),
-}))
-
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
-import type { PluginContext } from '../../../src/lib/plugin-types'
+import type { PluginContext } from '@bakin/core/plugin-types'
 
 interface IndexedDoc { key: string; doc: Record<string, unknown> }
 
@@ -148,6 +106,62 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      agents: {
+        list: mock(async () => mockListAgentIds().map((id) => ({ id, name: id }))),
+      },
+      memory: {
+        listTiers: mock(async () => [{ id: 'checkpoint-tier', label: 'Checkpoints', metadata: { sourceKind: 'checkpoint' } }]),
+        listEntries: mock(async (_tierId: string, opts?: { agentId?: string }) =>
+          mockListCheckpointJsonlFiles(opts?.agentId ?? '').map((file) => ({
+            id: file.filename,
+            tierId: 'checkpoint-tier',
+            agentId: file.agent,
+            path: file.path,
+            content: '',
+            metadata: {
+              sourceKind: 'checkpoint',
+              filename: file.filename,
+              sessionId: file.sessionId,
+              checkpointId: file.checkpointId,
+              sizeBytes: file.size,
+              mtimeMs: file.mtimeMs,
+            },
+          })),
+        ),
+        getEntry: mock(async (_tierId: string, id: string, opts?: { agentId?: string }) => {
+          const body = mockReadCheckpoint(opts?.agentId ?? '', id)
+          const stat = mockCheckpointJsonlStat(`/fake/${opts?.agentId ?? 'agent'}/sessions/${id}`)
+          return body === null
+            ? null
+            : {
+                id,
+                tierId: 'checkpoint-tier',
+                agentId: opts?.agentId,
+                path: `/fake/${opts?.agentId ?? 'agent'}/sessions/${id}`,
+                content: body,
+                metadata: stat ? { mtimeMs: stat.mtimeMs, sizeBytes: stat.size } : {},
+              }
+        }),
+        resolvePath: mock(async (path: string) => {
+          const match = mockMatchCheckpointJsonlPath(path)
+          return match
+            ? {
+                tierId: 'checkpoint-tier',
+                id: match.filename,
+                agentId: match.agent,
+                path,
+                metadata: {
+                  sourceKind: 'checkpoint',
+                  filename: match.filename,
+                  sessionId: match.sessionId,
+                  checkpointId: match.checkpointId,
+                },
+              }
+            : null
+        }),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),
@@ -229,7 +243,7 @@ describe('MemoryIndexer.indexTier("checkpoint") — backfill', () => {
       if (agent === 'pixel') return [fakeFile('pixel', 'sess-x', 'cp-c')]
       return []
     })
-    mockReadCheckpoint.mockImplementation((_a, _f) => cmpBody())
+    mockReadCheckpoint.mockImplementation(() => cmpBody())
 
     const { ctx, indexed } = makeCtx()
     const idx = new MemoryIndexer(ctx, {})

@@ -2,7 +2,7 @@
  * Assets-plugin-owned doctor check.
  *
  * Migrated out of src/core/doctor.ts (#139 C3) — verifies the assets/
- * directory shape, sidecar pairing, disk usage, and trash retention.
+ * store shape, sidecar pairing, disk usage, and trash retention.
  *
  * Registered in plugins/assets/index.ts activate() via
  * ctx.registerHealthCheck. runDiagnostics() picks it up through the
@@ -16,6 +16,7 @@ import { getSettings } from '../../../src/core/settings'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
 
 import { createStub } from './sidecar'
+import { yearMonthFromFilename } from './path-for-filename'
 
 const log = createLogger('assets:health')
 
@@ -31,9 +32,10 @@ function fixed(check: string, message: string): HealthCheckResult {
   return { check, status: 'fixed', message, autoFixable: true }
 }
 
-// ─── Asset health: directory shape, sidecars, disk usage, trash ───────────
+// ─── Asset health: store shape, sidecars, disk usage, trash ───────────────
 
-const ASSET_TYPES = ['text', 'images', 'video', 'audio', 'plans', 'data', 'other']
+const REQUIRED_ASSET_DIRS = ['store', 'inbox', '.trash'] as const
+const STORE_SHARD_RE = /^\d{4}-\d{2}$/
 
 const SIDECAR_FIELD_ALIASES: Record<string, string> = {
   author: 'agent',
@@ -50,8 +52,8 @@ const SIDECAR_FIELD_ALIASES: Record<string, string> = {
  * retention for the assets tree under {contentDir}/assets/.
  *
  * Auto-fix paths (gated by settings.doctor.autoFixSkill):
- *   - create missing assets/, type subdirs (with _unlinked/ + library/), and .trash/
- *   - write stub sidecars for assets missing .meta.json
+ *   - create missing assets/, store/, inbox/, and .trash/
+ *   - write stub sidecars for canonical store assets missing .meta.json
  *   - merge misnamed sidecars into the correctly-named ones (normalizing
  *     legacy field names) and remove the source
  *   - purge .trash/ items older than 7 days
@@ -61,7 +63,7 @@ export function checkAssets(contentDir: string): HealthCheckResult[] {
   const autoFix = getSettings().doctor.autoFixSkill
   const assetsRoot = join(contentDir, 'assets')
 
-  // Check assets/ directory exists with all type subdirs
+  // Check assets/ directory exists with filename-as-identity roots.
   if (!existsSync(assetsRoot)) {
     if (autoFix) {
       mkdirSync(assetsRoot, { recursive: true })
@@ -72,28 +74,26 @@ export function checkAssets(contentDir: string): HealthCheckResult[] {
     }
   }
 
-  for (const typeName of ASSET_TYPES) {
-    const typeDir = join(assetsRoot, typeName)
-    if (!existsSync(typeDir)) {
+  for (const dirName of REQUIRED_ASSET_DIRS) {
+    const dirPath = join(assetsRoot, dirName)
+    if (!existsSync(dirPath)) {
       if (autoFix) {
-        mkdirSync(typeDir, { recursive: true })
-        mkdirSync(join(typeDir, '_unlinked'), { recursive: true })
-        mkdirSync(join(typeDir, 'library'), { recursive: true })
-        results.push(fixed('assets', `Created assets/${typeName}/ with _unlinked/ and library/`))
+        mkdirSync(dirPath, { recursive: true })
+        results.push(fixed('assets', `Created assets/${dirName}/ directory`))
       } else {
-        results.push(warn('assets', `Missing assets/${typeName}/ directory`, true))
+        results.push(warn('assets', `Missing assets/${dirName}/ directory`, true))
       }
+    } else {
+      try {
+        if (!statSync(dirPath).isDirectory()) {
+          results.push(warn('assets', `assets/${dirName} exists but is not a directory`))
+        }
+      } catch { /* skip unreadable entry */ }
     }
   }
 
-  // Check for .trash/ directory
   const trashDir = join(assetsRoot, '.trash')
-  if (!existsSync(trashDir)) {
-    if (autoFix) {
-      mkdirSync(trashDir, { recursive: true })
-      results.push(fixed('assets', 'Created assets/.trash/ directory'))
-    }
-  }
+  const storeRoot = join(assetsRoot, 'store')
 
   // Scan for missing sidecars, orphaned meta files, and mismatched sidecars
   let missingMetaCount = 0
@@ -101,98 +101,131 @@ export function checkAssets(contentDir: string): HealthCheckResult[] {
   let mismatchedMetaCount = 0
   let totalAssets = 0
 
-  for (const typeName of ASSET_TYPES) {
-    const typeDir = join(assetsRoot, typeName)
-    if (!existsSync(typeDir)) continue
+  try {
+    const knownRootEntries = new Set<string>(REQUIRED_ASSET_DIRS)
+    const rootEntries = readdirSync(assetsRoot)
+    for (const entry of rootEntries) {
+      if (knownRootEntries.has(entry)) continue
+      const fullPath = join(assetsRoot, entry)
+      try {
+        if (statSync(fullPath).isDirectory()) {
+          results.push(warn('assets', `Unexpected assets/${entry}/ directory is ignored by the filename-as-identity store`))
+        }
+      } catch { /* skip unreadable entries */ }
+    }
+  } catch { /* skip unreadable root */ }
 
+  if (existsSync(storeRoot)) {
+    let shards: string[]
     try {
-      const subdirs = readdirSync(typeDir).filter(d => {
+      shards = readdirSync(storeRoot).filter(d => {
         if (d.startsWith('.')) return false
-        try { return statSync(join(typeDir, d)).isDirectory() } catch { return false }
+        try { return statSync(join(storeRoot, d)).isDirectory() } catch { return false }
       })
+    } catch { shards = [] }
 
-      for (const subdir of subdirs) {
-        const dirPath = join(typeDir, subdir)
-        try {
-          const files = readdirSync(dirPath)
-          const assetFiles = files.filter(f => !f.endsWith('.meta.json') && !f.startsWith('.'))
-          const metaFiles = files.filter(f => f.endsWith('.meta.json'))
-
-          totalAssets += assetFiles.length
-
-          // Check for assets missing sidecar
-          for (const assetFile of assetFiles) {
-            const expectedMeta = assetFile + '.meta.json'
-            if (!metaFiles.includes(expectedMeta)) {
-              missingMetaCount++
-              if (autoFix) {
-                createStub(join(dirPath, assetFile))
-              }
-            }
-          }
-
-          // Check for orphaned or mismatched meta files
-          for (const metaFile of metaFiles) {
-            const assetName = metaFile.replace('.meta.json', '')
-            if (!assetFiles.includes(assetName)) {
-              // Check if this is a near-miss: meta basename matches part of an asset filename
-              const nearMatch = assetFiles.find(af => {
-                // Case 1: asset filename contains the meta base (e.g., "20250727-pop-tart.png" contains "pop-tart")
-                if (af.includes(assetName)) return true
-                // Case 2: meta base matches asset without extension (e.g., "hero-image" matches "hero-image.png")
-                const afBase = af.substring(0, af.lastIndexOf('.'))
-                if (afBase === assetName) return true
-                return false
-              })
-
-              if (nearMatch) {
-                mismatchedMetaCount++
-                const expectedMeta = nearMatch + '.meta.json'
-                log.warn('Mismatched sidecar', { metaFile, likelyAsset: nearMatch, expectedMeta, dir: dirPath })
-
-                if (autoFix) {
-                  // Check if the correctly-named sidecar is a stub (agent: "unknown")
-                  const correctMetaPath = join(dirPath, expectedMeta)
-                  const mismatchedMetaPath = join(dirPath, metaFile)
-                  try {
-                    let isStub = false
-                    if (existsSync(correctMetaPath)) {
-                      const correctContent = JSON.parse(readFileSync(correctMetaPath, 'utf-8'))
-                      isStub = correctContent.agent === 'unknown'
-                    }
-
-                    if (isStub || !existsSync(correctMetaPath)) {
-                      // Merge: read mismatched sidecar, normalize field names, write to correct path
-                      const richMeta = JSON.parse(readFileSync(mismatchedMetaPath, 'utf-8'))
-
-                      // Normalize common field name mistakes
-                      for (const [alias, canonical] of Object.entries(SIDECAR_FIELD_ALIASES)) {
-                        if (richMeta[alias] !== undefined && richMeta[canonical] === undefined) {
-                          richMeta[canonical] = richMeta[alias]
-                          delete richMeta[alias]
-                        }
-                      }
-
-                      writeFileSync(correctMetaPath, JSON.stringify(richMeta, null, 2), 'utf-8')
-                      unlinkSync(mismatchedMetaPath)
-                      log.info('Merged mismatched sidecar', { from: metaFile, to: expectedMeta })
-                    } else {
-                      // Correct sidecar has real content — just remove the orphan
-                      unlinkSync(mismatchedMetaPath)
-                      log.info('Removed orphaned mismatched sidecar', { metaFile })
-                    }
-                  } catch (err) {
-                    log.warn('Failed to auto-fix mismatched sidecar', err, { metaFile })
-                  }
-                }
-              } else {
-                orphanedMetaCount++
-              }
-            }
-          }
-        } catch { /* skip unreadable dirs */ }
+    for (const shard of shards) {
+      const shardDir = join(storeRoot, shard)
+      if (!STORE_SHARD_RE.test(shard)) {
+        results.push(warn('assets', `Unexpected assets/store/${shard}/ shard; canonical shards must be YYYY-MM`))
+        continue
       }
-    } catch { /* skip unreadable type dirs */ }
+
+      try {
+        const files = readdirSync(shardDir)
+        const assetFiles = files.filter(f => {
+          if (f.endsWith('.meta.json') || f.startsWith('.')) return false
+          try { return statSync(join(shardDir, f)).isFile() } catch { return false }
+        })
+        const metaFiles = files.filter(f => {
+          if (!f.endsWith('.meta.json')) return false
+          try { return statSync(join(shardDir, f)).isFile() } catch { return false }
+        })
+
+        totalAssets += assetFiles.length
+
+        // Check for assets missing sidecar
+        for (const assetFile of assetFiles) {
+          const expectedShard = yearMonthFromFilename(assetFile)
+          if (!expectedShard) {
+            results.push(warn('assets', `Non-canonical asset filename assets/store/${shard}/${assetFile}`))
+            continue
+          }
+          if (expectedShard !== shard) {
+            results.push(warn('assets', `Asset assets/store/${shard}/${assetFile} belongs in assets/store/${expectedShard}/`))
+            continue
+          }
+
+          const expectedMeta = assetFile + '.meta.json'
+          if (!metaFiles.includes(expectedMeta)) {
+            missingMetaCount++
+            if (autoFix) {
+              createStub(join(shardDir, assetFile))
+            }
+          }
+        }
+
+        // Check for orphaned or mismatched meta files
+        for (const metaFile of metaFiles) {
+          const assetName = metaFile.replace('.meta.json', '')
+          if (!assetFiles.includes(assetName)) {
+            // Check if this is a near-miss: meta basename matches part of an asset filename
+            const nearMatch = assetFiles.find(af => {
+              // Case 1: asset filename contains the meta base (e.g., "20250727-pop-tart.png" contains "pop-tart")
+              if (af.includes(assetName)) return true
+              // Case 2: meta base matches asset without extension (e.g., "hero-image" matches "hero-image.png")
+              const afBase = af.substring(0, af.lastIndexOf('.'))
+              if (afBase === assetName) return true
+              return false
+            })
+
+            if (nearMatch) {
+              mismatchedMetaCount++
+              const expectedMeta = nearMatch + '.meta.json'
+              log.warn('Mismatched sidecar', { metaFile, likelyAsset: nearMatch, expectedMeta, dir: shardDir })
+
+              if (autoFix) {
+                // Check if the correctly-named sidecar is a stub (agent: "unknown")
+                const correctMetaPath = join(shardDir, expectedMeta)
+                const mismatchedMetaPath = join(shardDir, metaFile)
+                try {
+                  let isStub = false
+                  if (existsSync(correctMetaPath)) {
+                    const correctContent = JSON.parse(readFileSync(correctMetaPath, 'utf-8'))
+                    isStub = correctContent.agent === 'unknown'
+                  }
+
+                  if (isStub || !existsSync(correctMetaPath)) {
+                    // Merge: read mismatched sidecar, normalize field names, write to correct path
+                    const richMeta = JSON.parse(readFileSync(mismatchedMetaPath, 'utf-8'))
+
+                    // Normalize common field name mistakes
+                    for (const [alias, canonical] of Object.entries(SIDECAR_FIELD_ALIASES)) {
+                      if (richMeta[alias] !== undefined && richMeta[canonical] === undefined) {
+                        richMeta[canonical] = richMeta[alias]
+                        delete richMeta[alias]
+                      }
+                    }
+
+                    writeFileSync(correctMetaPath, JSON.stringify(richMeta, null, 2), 'utf-8')
+                    unlinkSync(mismatchedMetaPath)
+                    log.info('Merged mismatched sidecar', { from: metaFile, to: expectedMeta })
+                  } else {
+                    // Correct sidecar has real content — just remove the orphan
+                    unlinkSync(mismatchedMetaPath)
+                    log.info('Removed orphaned mismatched sidecar', { metaFile })
+                  }
+                } catch (err) {
+                  log.warn('Failed to auto-fix mismatched sidecar', err, { metaFile })
+                }
+              }
+            } else {
+              orphanedMetaCount++
+            }
+          }
+        }
+      } catch { /* skip unreadable shard dirs */ }
+    }
   }
 
   if (missingMetaCount > 0) {

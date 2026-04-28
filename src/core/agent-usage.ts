@@ -1,15 +1,13 @@
 /**
  * Agent context/token usage reader.
- * Reads OpenClaw session JSONL files to extract per-agent token usage and cost.
+ * Reads runtime session JSONL entries to extract per-agent token usage and cost.
  */
-import { readdirSync, readFileSync, statSync } from 'fs'
-import { join } from 'path'
 import { createLogger } from './logger'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
+import type { AgentRuntimeAdapter, RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
 
 const log = createLogger('agent-usage')
 
-const OPENCLAW_AGENTS_DIR = getOpenClawPath('agents')
+const SESSION_JSONL_SOURCE_KIND = 'session_jsonl'
 
 export interface AgentUsage {
   agent: string
@@ -58,48 +56,10 @@ interface SessionMessage {
 }
 
 /**
- * Get the most recent session file for an agent.
+ * Parse a session JSONL string and sum up usage across all assistant messages.
  */
-function getLatestSession(agentDir: string): string | null {
-  const sessionsDir = join(agentDir, 'sessions')
+export function parseSessionUsageContent(content: string, agentName: string): AgentUsage | null {
   try {
-    const candidates = readdirSync(sessionsDir)
-      .filter(f => f.endsWith('.jsonl') && !f.includes('.deleted'))
-
-    // Read the session timestamp from the first line of each file to find
-    // the most recent session. File mtime is unreliable — sessions can be
-    // touched out of order.
-    let latest: { path: string; ts: number } | null = null
-    for (const f of candidates) {
-      const filePath = join(sessionsDir, f)
-      try {
-        const firstLine = readFileSync(filePath, 'utf-8').split('\n')[0]
-        const entry = JSON.parse(firstLine)
-        const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0
-        if (!latest || ts > latest.ts) {
-          latest = { path: filePath, ts }
-        }
-      } catch {
-        // Fall back to mtime if first line is unparseable
-        const mtime = statSync(filePath).mtimeMs
-        if (!latest || mtime > latest.ts) {
-          latest = { path: filePath, ts: mtime }
-        }
-      }
-    }
-
-    return latest?.path ?? null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Parse a session JSONL file and sum up usage across all assistant messages.
- */
-function parseSessionUsage(filePath: string, agentName: string): AgentUsage | null {
-  try {
-    const content = readFileSync(filePath, 'utf-8')
     const lines = content.split('\n').filter(l => l.trim())
 
     let sessionId = ''
@@ -114,7 +74,7 @@ function parseSessionUsage(filePath: string, agentName: string): AgentUsage | nu
         const entry = JSON.parse(line) as SessionMessage
 
         if (entry.type === 'session') {
-          sessionId = (entry as any).id || ''
+          sessionId = entry.id || ''
           sessionStarted = entry.timestamp || ''
         }
 
@@ -154,7 +114,7 @@ function parseSessionUsage(filePath: string, agentName: string): AgentUsage | nu
       cost,
     }
   } catch (err) {
-    log.debug('Failed to parse session', { filePath, error: err instanceof Error ? err.message : String(err) })
+    log.debug('Failed to parse session usage', { agentName, error: err instanceof Error ? err.message : String(err) })
     return null
   }
 }
@@ -162,25 +122,85 @@ function parseSessionUsage(filePath: string, agentName: string): AgentUsage | nu
 /**
  * Get usage stats for all agents' most recent sessions.
  */
-export function getAllAgentUsage(): AgentUsage[] {
+export async function getAllAgentUsage(runtime: AgentRuntimeAdapter): Promise<AgentUsage[]> {
   const results: AgentUsage[] = []
 
+  const tierId = await getSessionJsonlTierId(runtime)
+  if (!tierId) return results
+
+  let agents
   try {
-    const agents = readdirSync(OPENCLAW_AGENTS_DIR, { withFileTypes: true })
-      .filter(d => d.isDirectory())
-      .map(d => d.name)
+    agents = await runtime.agents.list()
+  } catch (err) {
+    log.debug('Failed to list runtime agents for usage', { error: err instanceof Error ? err.message : String(err) })
+    return results
+  }
 
-    for (const agent of agents) {
-      const agentDir = join(OPENCLAW_AGENTS_DIR, agent)
-      const sessionFile = getLatestSession(agentDir)
-      if (!sessionFile) continue
+  for (const agent of agents) {
+    const latest = await getLatestSessionEntry(runtime, tierId, agent.id)
+    if (!latest) continue
 
-      const usage = parseSessionUsage(sessionFile, agent)
-      if (usage) results.push(usage)
-    }
-  } catch {
-    // ~/.openclaw/agents/ doesn't exist or not readable
+    const usage = parseSessionUsageContent(latest.content, agent.id)
+    if (usage) results.push(usage)
   }
 
   return results.sort((a, b) => b.tokens.total - a.tokens.total)
+}
+
+async function getSessionJsonlTierId(runtime: AgentRuntimeAdapter): Promise<string | null> {
+  try {
+    const tiers = await runtime.memory.listTiers()
+    return tiers.find((tier) => tier.metadata?.sourceKind === SESSION_JSONL_SOURCE_KIND)?.id ?? null
+  } catch (err) {
+    log.debug('Failed to discover runtime session transcript tier for usage', { error: err instanceof Error ? err.message : String(err) })
+    return null
+  }
+}
+
+async function getLatestSessionEntry(
+  runtime: AgentRuntimeAdapter,
+  tierId: string,
+  agentId: string,
+): Promise<RuntimeMemoryEntry | null> {
+  let entries: RuntimeMemoryEntry[]
+  try {
+    entries = await runtime.memory.listEntries(tierId, { agentId })
+  } catch (err) {
+    log.debug('Failed to list runtime sessions for usage', { agentId, error: err instanceof Error ? err.message : String(err) })
+    return null
+  }
+
+  let latest: { entry: RuntimeMemoryEntry; ts: number } | null = null
+  for (const entry of entries) {
+    if (entry.id.includes('.deleted') || entry.path?.includes('.deleted')) continue
+    let full: RuntimeMemoryEntry | null
+    try {
+      full = await runtime.memory.getEntry(tierId, entry.id, { agentId })
+    } catch (err) {
+      log.debug('Failed to read runtime session for usage', { agentId, sessionId: entry.id, error: err instanceof Error ? err.message : String(err) })
+      continue
+    }
+    if (!full) continue
+    const ts = sessionTimestamp(full.content) ?? timestampMs(full.updatedAt) ?? timestampMs(entry.updatedAt) ?? 0
+    if (!latest || ts > latest.ts) latest = { entry: full, ts }
+  }
+
+  return latest?.entry ?? null
+}
+
+function sessionTimestamp(content: string): number | null {
+  const firstLine = content.split('\n').find((line) => line.trim())
+  if (!firstLine) return null
+  try {
+    const entry = JSON.parse(firstLine) as { timestamp?: string }
+    return timestampMs(entry.timestamp)
+  } catch {
+    return null
+  }
+}
+
+function timestampMs(value: string | undefined): number | null {
+  if (!value) return null
+  const ms = Date.parse(value)
+  return Number.isFinite(ms) ? ms : null
 }

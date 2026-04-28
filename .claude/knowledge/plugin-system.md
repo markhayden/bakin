@@ -106,7 +106,7 @@ PluginLockEntry {
   remoteHeadSha? // last seen remote sha (github only)
   sourceTreeSha? // install/upgrade time tree sha (local only)
   lastSourceTreeSha? // --check time tree sha (local only)
-  installedSkills? // OpenClaw skill names this plugin shipped — the
+  installedSkills? // runtime skill names this plugin shipped — the
                   // authoritative allowlist for uninstall (defeats fake
                   // .installedBy markers per #119 hardening)
 }
@@ -240,7 +240,7 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
    contract)
 2. Call `plugin.onUninstall(ctx)` if defined — log + audit + continue
    on error (a buggy hook must not trap the user)
-3. Plan OpenClaw skill cleanup — partition by the lockfile entry's
+3. Plan runtime skill cleanup — partition by the lockfile entry's
    `installedSkills` allowlist (the authoritative record of what this
    plugin actually installed) intersected with on-disk
    `.installedBy.pluginId` markers,
@@ -248,7 +248,7 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
 4. Snapshot Bakin-owned data via `snapshotUninstall` →
    `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz` (atomic tmp+rename via
    `Bun.spawn(['tar', ...])` against a staging dir for clean tarball
-   structure: `plugins/`, `plugin-settings/`, `openclaw-skills/`)
+   structure: `plugins/`, `plugin-settings/`, `runtime-skills/`)
 5. Sweep registries:
    - `hookRegistry.unregisterByPlugin(id)` — sweeps every handler
      tagged with the plugin id during `ctx.hooks.register`
@@ -323,7 +323,7 @@ Specific `plugin.upgrade.rejected` reasons (`data.reason` field):
 ```ts
 PermissionSchema = z.enum([
   'events.emit',
-  'openclaw.read',
+  'runtime.read',
   'storage.read',
   'storage.write',
 ])
@@ -383,6 +383,8 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `storage: StorageAdapter` | Read/write markdown files in `~/.bakin/` |
 | `events: EventBus` | Pub/sub with pattern matching |
 | `pluginId: string` | This plugin's ID |
+| `runtime: AgentRuntimeAdapter` | Adapter-backed runtime surface for agents, messaging, channels, cron, workspace files, skills, sessions, memory, models, and execution status. Plugins never import runtime provider packages directly. |
+| `tasks: BakinTaskStore` | Bakin-owned task metadata store under `~/.bakin/tasks/`. Runtime execution ids are delivery refs only. |
 | `registerNav(items)` | Add sidebar navigation items (server-side) |
 | `registerRoute(route)` | Add HTTP API route at `/api/plugins/{id}/{path}` |
 | `registerSlot(reg)` | Register React component for a named UI slot (server-side) |
@@ -402,7 +404,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `hooks.invoke<R>(name, data)` | Invoke a hook and get its result (RPC-style) |
 | `search.registerContentType(def)` | Register a searchable content type. Non-filesystem-backed path — plugin owns its own sync. |
 | `search.registerFileBackedContentType(def)` | File-backed variant: auto-wires watcher sync/unlink hooks AND schedules a startup mtime reconcile. |
-| `search.index(key, doc)` | Upsert a document into the Antfly index (fire-and-forget safe) |
+| `search.index(key, doc)` | Upsert a document through the active search adapter (fire-and-forget safe) |
 | `search.remove(key)` | Remove a document from the index |
 | `search.transform(key, ops)` | Atomic metadata update without re-embedding |
 | `search.query(params)` | Search this plugin's content type |
@@ -411,6 +413,14 @@ Both `search.registerContentType` and `search.registerFileBackedContentType`
 auto-register a `GET /search` route on the plugin's router so callers can
 hit `/api/plugins/{id}/search?q=...` without the plugin writing the
 handler by hand.
+
+### Plugins and adapters
+
+Plugins see runtime/search/task services only through `PluginContext` and exec
+tool context. They must not import `@bakin/adapter-openclaw`,
+`@bakin/adapter-antfly`, OpenClaw home/config/client helpers, provider SQLite
+files, or `@antfly/sdk`. If a plugin needs a new runtime/search capability, add
+it to the adapter contract first; do not pierce the boundary from plugin code.
 
 ### PluginSettingsSchema
 ```typescript
@@ -611,14 +621,14 @@ Same pattern is used for the plugin registry
 3. Hooks are RPC-style: one handler per hook name, returns a result.
 
 ### Hook naming convention
-`{pluginId}.{operation}` — e.g., `tasks.readTaskboard`,
+`{pluginId}.{operation}` — e.g., `workflows.loadInstance`,
 `workflows.getCurrentStep`, `projects.readProject`.
 
 ### Current hook registrations
 
 | Plugin | Hooks | Examples |
 |--------|-------|---------|
-| tasks | 9 | `tasks.readTaskboard`, `tasks.createTask`, `tasks.moveTask`, `tasks.blockTask`, `tasks.addTaskLog`, `tasks.updateTask`, `tasks.deleteTask`, `tasks.setDependency`, `tasks.clearDependency` |
+| tasks | 0 task-metadata hooks | Task metadata is owned by `src/core/task-store.ts` and is not exposed through plugin hooks |
 | workflows | 13 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.matchWorkflow`, `workflows.listDefinitions`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
 | assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.listTrash`, `assets.restoreAsset`, `assets.emptyTrash` |
 | team | 7 | `team.listAgents`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
@@ -629,7 +639,7 @@ Same pattern is used for the plugin registry
 ```typescript
 import { getHookRegistry } from '@/lib/plugin-registry'
 const hooks = getHookRegistry()
-const board = await hooks.invoke<TaskBoard>('tasks.readTaskboard', {})
+const instance = await hooks.invoke<WorkflowInstance>('workflows.loadInstance', { taskId })
 ```
 
 **Critical:** No direct imports between plugins or from core → plugins.
@@ -767,10 +777,10 @@ to drop files in place.
 |-----------|--------|----------|
 | `defaults/workflows/*.yaml` | The owning plugin's `activate()` (workflows plugin uses `lib/load-defaults.ts`) | Each YAML is parsed and registered via `ctx.registerWorkflow(def, { readOnly: true })`. User copies under `~/.bakin/workflows/definitions/` always shadow these. |
 | `defaults/workflow-skills/*.md` | `src/lib/plugin-skill-loader.ts`, invoked by the plugin loader after every `activate()` | Each `.md` is parsed (YAML frontmatter for `name` + `output_schema`; body is the instruction) and registered via `ctx.registerSkill()`. In-memory only — no filesystem install. |
-| `defaults/openclaw-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `~/.openclaw/skills/{name}/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
+| `defaults/runtime-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `runtime skill store/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
 
 The first two are S-A (workflow-step skills, in-memory). The third is
-S-B (OpenClaw runtime skills, on disk). See
+S-B (runtime skills, on disk). See
 `.claude/knowledge/workflows-plugin.md` for the full breakdown.
 
 ## Storage Adapter

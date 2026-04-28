@@ -8,7 +8,7 @@ calling one of two methods on `ctx.search` during `activate()`:
 | Method | When to use |
 |---|---|
 | `registerFileBackedContentType(def)` | **Default for any plugin whose source of truth is files on disk under `~/.bakin/`.** Auto-wires the watcher sync/unlink hooks AND registers a startup mtime reconcile. |
-| `registerContentType(def)` | Bare registration for plugins whose data isn't filesystem-backed (SQLite-backed `tasks`, OpenClaw-backed `team`/`schedule`, the audit JSONL log). The plugin owns its own sync calls. |
+| `registerContentType(def)` | Bare registration for plugins whose data isn't filesystem-backed (task-store-backed `tasks`, runtime-adapter-backed `team`/`schedule`, the audit JSONL log). The plugin owns its own sync calls. |
 
 This guide focuses on the file-backed helper. See `search-system.md` for the
 "Three consistency paths" architecture and the rationale.
@@ -190,13 +190,13 @@ The watcher path is the safety net for writes that bypass REST entirely
 - `verifyExists()` checks file existence
 - REST/MCP routes still call `ctx.search.index()` for immediate consistency
 
-### SQLite-backed (tasks)
+### Bakin task-store-backed (tasks)
 - Use `registerContentType()`
-- Plugin owns sync via SQLite triggers / wrapper functions
-- `verifyExists()` queries the table
-- No watcher hooks (filesystem isn't authoritative)
+- Plugin owns sync via task-store wrapper functions
+- `verifyExists()` queries the task store
+- No watcher hooks; the task store subscription drives taskboard SSE and plugin routes call search directly
 
-### OpenClaw-backed (schedule, team)
+### Runtime-adapter-backed (schedule, team)
 - Use `registerContentType()`
 - `reindex()` is empty (data loaded at runtime)
 - `verifyExists()` returns `true` always
@@ -206,7 +206,7 @@ The watcher path is the safety net for writes that bypass REST entirely
 - Registered by the **memory** plugin via `ctx.search.registerContentType()`
   (moved out of `server.ts` during the issue #67 cleanup — `_audit` is no
   longer a synthetic plugin id)
-- TTL configured via `settings.antfly.auditTtl`
+- TTL configured via `settings.search.settings.auditTtl`
 
 ### Messaging plugin (brainstorm sessions)
 - Registered by the **messaging** plugin via `ctx.search.registerFileBackedContentType()`
@@ -217,13 +217,13 @@ The watcher path is the safety net for writes that bypass REST entirely
 
 | Plugin | Table | Source | Helper used |
 |--------|-------|--------|---|
-| tasks | `bakin_tasks` | SQLite `flow_runs` | `registerContentType` |
+| tasks | `bakin_tasks` | Bakin task JSON store | `registerContentType` |
 | assets | `bakin_assets` | `.meta.json` sidecars + binaries | `registerFileBackedContentType` (escape hatches) |
 | projects | `bakin_projects` | Markdown files | `registerFileBackedContentType` (default flow) |
 | workflows | `bakin_workflows` | YAML defs + JSON instances | `registerFileBackedContentType` (two filePatterns) |
-| schedule | `bakin_schedule` | OpenClaw cron jobs | `registerContentType` |
-| team | `bakin_team` | OpenClaw agents | `registerContentType` |
-| memory | `bakin_memory` | `audit.jsonl` + OpenClaw sessions/workspace/memory dirs | `registerContentType` (single table, `tier` facet discriminates across 7 memory tiers) |
+| schedule | `bakin_schedule` | runtime cron jobs | `registerContentType` |
+| team | `bakin_team` | runtime agents | `registerContentType` |
+| memory | `bakin_memory` | `audit.jsonl` + runtime sessions/workspace memory | `registerContentType` (single table, `tier` facet discriminates across 7 memory tiers) |
 | messaging | `bakin_messaging_brainstorm` | brainstorm session JSON files | `registerFileBackedContentType` |
 
 ## Common Pitfalls

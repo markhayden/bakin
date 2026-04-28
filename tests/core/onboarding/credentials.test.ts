@@ -1,31 +1,47 @@
 /**
  * Tests for the credentials onboarding component (LLM + channels).
  *
- * Both checks are warn-only — they never return 'error' and never
+ * Both checks are warn-only - they never return 'error' and never
  * mutate the filesystem. Tests verify:
  *   - Each granular warn state (file missing, wrong shape, empty,
  *     valid) surfaces correctly in CheckResult
- *   - install() for both subcomponents is a hard noop — no fs writes
+ *   - install() for both subcomponents is a hard noop - no fs writes
  *
- * Uses a real temp directory plus a mock on @bakin/core/openclaw-home
- * so the component reads from files we control.
+ * Uses a real temp directory plus a mocked runtime config adapter
+ * so the component reads through the adapter boundary.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 let fakeHome: string
 
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => fakeHome,
-  getOpenClawPath: (...segments: string[]) => join(fakeHome, ...segments),
-}))
+const authProfilesPath = () => join(fakeHome, 'agents', 'main', 'agent', 'auth-profiles.json')
+const runtimeConfigPath = () => join(fakeHome, 'runtime-config.json')
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
+const runtime = {
+  agents: {
+    list: async () => [{ id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' }],
+  },
+  config: {
+    raw: async (key: string) => {
+      if (key === 'agents.main.authProfiles') {
+        if (!existsSync(authProfilesPath())) return null
+        return JSON.parse(readFileSync(authProfilesPath(), 'utf-8'))
+      }
+      if (key === 'channels') {
+        if (!existsSync(runtimeConfigPath())) return null
+        return JSON.parse(readFileSync(runtimeConfigPath(), 'utf-8')).channels
+      }
+      return null
+    },
+  },
+}
+
+mock.module('../../../src/core/app-services', () => ({
+  maybeGetAppServices: () => ({ runtime }),
+  createAppServices: async () => ({ runtime }),
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -62,9 +78,6 @@ describe('onboarding credentials component', () => {
     force: false,
   }
 
-  const authProfilesPath = () => join(fakeHome, 'agents', 'main', 'agent', 'auth-profiles.json')
-  const configPath = () => join(fakeHome, 'openclaw.json')
-
   // -------------------------------------------------------------------------
   // llm component
   // -------------------------------------------------------------------------
@@ -74,7 +87,7 @@ describe('onboarding credentials component', () => {
       const result = await llmComponent.check()
       expect(result.status).toBe('warn')
       expect(result.message).toContain('missing')
-      expect(result.remediation).toContain('OpenClaw')
+      expect(result.remediation).toContain('runtime adapter')
     })
 
     it('reports warn when file has no recognizable entries', async () => {
@@ -110,7 +123,7 @@ describe('onboarding credentials component', () => {
       expect(result.details?.providers).toEqual(['anthropic'])
     })
 
-    it('reports ok from { profiles: [...] } shape (real OpenClaw)', async () => {
+    it('reports ok from { profiles: [...] } shape', async () => {
       writeFileSync(authProfilesPath(), JSON.stringify({
         profiles: [
           { provider: 'anthropic', apiKey: 'sk-ant-real' },
@@ -154,10 +167,10 @@ describe('onboarding credentials component', () => {
   })
 
   describe('llm.install()', () => {
-    it('is a noop that returns the OpenClaw docs URL', async () => {
+    it('is a noop that returns the runtime docs URL', async () => {
       const result = await llmComponent.install(opts)
       expect(result.status).toBe('noop')
-      expect(result.message).toContain('OpenClaw')
+      expect(result.message).toContain('runtime adapter')
     })
   })
 
@@ -166,28 +179,28 @@ describe('onboarding credentials component', () => {
   // -------------------------------------------------------------------------
 
   describe('channels.check()', () => {
-    it('reports warn when openclaw.json is missing', async () => {
+    it('reports warn when runtime channel config is missing', async () => {
       const result = await channelsComponent.check()
       expect(result.status).toBe('warn')
       expect(result.message).toContain('missing')
     })
 
-    it('reports warn when openclaw.json has no channels key', async () => {
-      writeFileSync(configPath(), JSON.stringify({ gateway: { auth: { token: 'x' } } }))
+    it('reports warn when runtime config has no channels key', async () => {
+      writeFileSync(runtimeConfigPath(), JSON.stringify({ runtime: { auth: { token: 'x' } } }))
       const result = await channelsComponent.check()
       expect(result.status).toBe('warn')
-      expect(result.message).toContain('non-empty credential field')
+      expect(result.message).toContain('missing')
     })
 
     it('reports warn when channels is not an object', async () => {
-      writeFileSync(configPath(), JSON.stringify({ channels: 'wrong-type' }))
+      writeFileSync(runtimeConfigPath(), JSON.stringify({ channels: 'wrong-type' }))
       const result = await channelsComponent.check()
       expect(result.status).toBe('warn')
       expect(result.message).toContain('not an object')
     })
 
     it('reports warn when channels exist but all credentials are empty', async () => {
-      writeFileSync(configPath(), JSON.stringify({
+      writeFileSync(runtimeConfigPath(), JSON.stringify({
         channels: {
           discord: { token: '' },
           telegram: { apiKey: '   ' },
@@ -198,7 +211,7 @@ describe('onboarding credentials component', () => {
     })
 
     it('reports ok when any channel has a token', async () => {
-      writeFileSync(configPath(), JSON.stringify({
+      writeFileSync(runtimeConfigPath(), JSON.stringify({
         channels: {
           discord: { token: 'fake-discord-token' },
           telegram: { apiKey: '' },
@@ -210,7 +223,7 @@ describe('onboarding credentials component', () => {
     })
 
     it('reports ok when multiple channels are configured', async () => {
-      writeFileSync(configPath(), JSON.stringify({
+      writeFileSync(runtimeConfigPath(), JSON.stringify({
         channels: {
           discord: { token: 'fake-discord' },
           slack: { token: 'xoxb-fake' },
@@ -222,8 +235,8 @@ describe('onboarding credentials component', () => {
       expect((result.details?.channels as string[]).length).toBe(3)
     })
 
-    it('reports warn when openclaw.json is malformed', async () => {
-      writeFileSync(configPath(), 'not-json {{{')
+    it('reports warn when runtime config is malformed', async () => {
+      writeFileSync(runtimeConfigPath(), 'not-json {{{')
       const result = await channelsComponent.check()
       expect(result.status).toBe('warn')
       expect(result.message).toContain('Could not parse')
@@ -231,10 +244,10 @@ describe('onboarding credentials component', () => {
   })
 
   describe('channels.install()', () => {
-    it('is a noop that returns the OpenClaw docs URL', async () => {
+    it('is a noop that returns the runtime docs URL', async () => {
       const result = await channelsComponent.install(opts)
       expect(result.status).toBe('noop')
-      expect(result.message).toContain('OpenClaw')
+      expect(result.message).toContain('runtime adapter')
     })
   })
 })

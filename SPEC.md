@@ -364,8 +364,8 @@ mock.module('../../packages/core/src/openclaw-home', () => ({
   getOpenClawPath: (...parts: string[]) => join(testOpenClawDir, ...parts),
 }))
 
-// When NOT testing the adapter directly
-mock.module('../../plugins/team/lib/openclaw-adapter', ...)
+// When testing agent runtime behavior, install a runtime adapter mock via
+// globalThis.__bakinFallbackRuntimeAdapter or the plugin test context.
 
 afterAll(() => {
   rmSync(testBakinDir, { recursive: true, force: true })

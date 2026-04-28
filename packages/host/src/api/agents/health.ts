@@ -3,7 +3,7 @@
  *
  * Migrated from src/app/api/agents/health/route.ts for Phase B of #147.
  */
-import { readHeartbeats } from '@/lib/content'
+import { readHeartbeats } from '@/lib/content-files'
 
 const STALE_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
 

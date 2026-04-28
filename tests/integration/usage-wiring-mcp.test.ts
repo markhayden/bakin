@@ -50,14 +50,6 @@ mock.module('../../src/core/watcher', () => ({
   registerUnlinkHook: mock(() => () => {}),
 }))
 
-mock.module('../../src/core/openclaw-client', () => ({
-  openclaw: { sendMessage: mock().mockResolvedValue(undefined) },
-  sendChannelMessage: mock(async () => ({ ok: true })),
-  sendMessage: mock(async () => ({ ok: true })),
-  isHealthy: mock(async () => true),
-  callGateway: mock(async () => ({ ok: true })),
-}))
-
 // Stubbing appendAudit keeps the test in-memory — otherwise tool invocations
 // would try to write to the audit jsonl under testDir.
 mock.module('../../src/core/audit', () => ({

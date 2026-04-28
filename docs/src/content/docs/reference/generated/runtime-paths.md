@@ -10,9 +10,7 @@ This page documents the well-known paths returned by `getBakinPaths()` in `packa
 Resolution order:
 
 1. `BAKIN_HOME` environment variable.
-2. `CONTENT_DIR` compatibility environment variable.
-3. `~/.bakin/` when it exists.
-4. `./content/` fallback.
+2. `~/.bakin/`.
 
 | Key | Purpose |
 | --- | --- |

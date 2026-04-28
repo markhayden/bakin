@@ -3,11 +3,8 @@
 import { useMemo } from 'react'
 import { Clock } from 'lucide-react'
 import {
-  AGENT_STYLES,
-  FALLBACK_STYLE,
   getJobHour,
   getJobMinute,
-  formatJobTime,
   formatHour,
   jobOnDow,
   JobCard,

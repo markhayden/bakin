@@ -1,7 +1,7 @@
 /**
  * Memory plugin — shared types and Zod schemas.
  *
- * Every row written to the `bakin_memory` Antfly table conforms to
+ * Every row written to the `bakin_memory` search table conforms to
  * `MemoryRow`. The `tier` facet discriminates row shape; per-tier details
  * are stored in `meta` (JSON-stringified) and validated at index time
  * against the per-tier meta schemas below.
@@ -28,7 +28,7 @@ export type MemoryTier = z.infer<typeof MemoryTierSchema>
 // ─── SourceRef ───────────────────────────────────────────────────────────────
 
 export const SourceRefSchema = z.object({
-  backend: z.enum(['openclaw', 'bakin']),
+  backend: z.enum(['runtime', 'bakin']),
   path: z.string(),
   file: z.string(),
   offset: z.number().int().nonnegative().optional(),
@@ -136,7 +136,7 @@ export const DailyNoteMetaSchema = z.object({
   file: z.string(),
   date: z.string(),
   sizeBytes: z.number().nonnegative(),
-  openclawIndexed: z.boolean(),
+  runtimeIndexed: z.boolean(),
 })
 export type DailyNoteMeta = z.infer<typeof DailyNoteMetaSchema>
 

@@ -32,7 +32,7 @@ mock.module('../../../../src/core/logger', () => ({
 }))
 
 import { createMemorySearchTool } from '../../../../plugins/memory/mcp/search'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 function makeCtx(results: SearchResponse['results'] = []): { ctx: PluginContext; calls: Array<Parameters<PluginContext['search']['query']>[0]> } {
   const calls: Array<Parameters<PluginContext['search']['query']>[0]> = []
@@ -59,7 +59,7 @@ function makeCtx(results: SearchResponse['results'] = []): { ctx: PluginContext;
         calls.push(p)
         return {
           results,
-          meta: { query: p.q, total: results.length, took_ms: 0, source: 'antfly' },
+          meta: { query: p.q, total: results.length, took_ms: 0, source: 'search' },
         } satisfies SearchResponse
       }),
     },
@@ -124,7 +124,7 @@ describe('memory_search MCP tool — handler', () => {
           agent: 'scout',
           title: 'A',
           snippet: 'snippet',
-          source_backend: 'openclaw',
+          source_backend: 'runtime',
           source_path: '/p',
           updated_at: 1,
           meta: JSON.stringify({ sessionKey: 'sk' }),
@@ -139,7 +139,7 @@ describe('memory_search MCP tool — handler', () => {
     expect(rows[0].tier).toBe('session')
     expect(rows[0].agent).toBe('scout')
     expect(rows[0].score).toBe(0.9)
-    expect((rows[0].sourceRef as { backend: string }).backend).toBe('openclaw')
+    expect((rows[0].sourceRef as { backend: string }).backend).toBe('runtime')
     expect((rows[0].meta as { sessionKey: string }).sessionKey).toBe('sk')
   })
 

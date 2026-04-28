@@ -7,8 +7,7 @@
  * updater coordination work end-to-end.
  *
  * Setup mirrors tests/agent-packages/installer.test.ts — env-var redirect
- * for OPENCLAW_HOME / BAKIN_HOME, plus mock.module for the openclaw-adapter
- * so addAgent doesn't shell out.
+ * for OPENCLAW_HOME / BAKIN_HOME so route tests never touch real OpenClaw.
  */
 import { tmpdir } from 'os'
 import { join as pathJoin } from 'path'
@@ -20,8 +19,10 @@ process.env.OPENCLAW_HOME = openClawDir
 process.env.BAKIN_HOME = testDir
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { createMockRuntimeAdapter } from '../../packages/core/src/adapters/runtime/testing'
+import type { WorkspaceFile } from '../../packages/core/src/adapters/runtime'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -33,38 +34,49 @@ mock.module('@bakin/core/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openClawDir,
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
 
-let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/core/openclaw-config', () => ({
-  readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => openClawAgents,
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
-}))
+type TestGlobal = typeof globalThis & {
+  __bakinAppServices?: { runtime: ReturnType<typeof createMockRuntimeAdapter> }
+}
 
-const adapterMockFactory = () => ({
-  addAgent: async (input: { id: string }) => {
-    openClawAgents.push({ id: input.id, identity: { name: input.id } })
-    return { id: input.id, workspace: join(openClawDir, 'workspaces', input.id) }
-  },
-  addToAllowLists: () => {},
-  removeAgent: async (id: string) => {
-    openClawAgents = openClawAgents.filter((a) => a.id !== id)
-    return true
-  },
-  removeFromAllowLists: () => {},
-  getOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  listAgents: () => [],
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-})
-mock.module('@bakin/team/lib/openclaw-adapter', adapterMockFactory)
-mock.module('../../plugins/team/lib/openclaw-adapter', adapterMockFactory)
+function installRuntimeMock(): void {
+  const runtime = createMockRuntimeAdapter({
+    name: 'route-test-runtime',
+    version: '0.0.0',
+    requiredCoreVersion: '*',
+  })
+  const baseAgents = runtime.agents
+  const appRuntime = {
+    ...runtime,
+    agents: {
+      ...baseAgents,
+      readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
+        const file = join(openClawDir, 'workspaces', agentId, path)
+        try {
+          return {
+            path,
+            content: readFileSync(file, 'utf-8'),
+            updatedAt: statSync(file).mtime.toISOString(),
+            metadata: { userEdited: false },
+          }
+        } catch {
+          return null
+        }
+      },
+      writeWorkspaceFile: async (agentId: string, file: WorkspaceFile) => {
+        const dir = join(openClawDir, 'workspaces', agentId)
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, file.path), file.content, 'utf-8')
+      },
+    },
+  }
+  ;(globalThis as TestGlobal).__bakinAppServices = { runtime: appRuntime }
+}
 
 import * as installRoute from '../../packages/host/src/api/agent-packages/install'
 import * as listRoute from '../../packages/host/src/api/agent-packages/list'
@@ -79,7 +91,7 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
-  openClawAgents = []
+  installRuntimeMock()
 })
 
 function seedAgentPackage(id = 'pixel'): string {

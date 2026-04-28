@@ -31,7 +31,7 @@ mock.module('../../../../src/core/logger', () => ({
 }))
 
 import { recentRoute } from '../../../../plugins/memory/lib/routes/recent'
-import type { PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 
 interface QueryRecorder {
   calls: SearchQueryParams[]
@@ -167,7 +167,7 @@ describe('recentRoute — default behavior', () => {
     expect(res.status).toBe(200)
     expect(Array.isArray(body.results)).toBe(true)
     expect(body.aggregations).toBeDefined()
-    expect(body.meta.source).toBe('antfly')
+    expect(body.meta.source).toBe('search')
   })
 })
 

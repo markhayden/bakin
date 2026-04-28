@@ -69,7 +69,7 @@ const stubResponse = {
   results: [
     { id: 'x', table: 'bakin_tasks', score: 1, fields: { title: 'Foo task' } },
   ],
-  meta: { query: 'foo', total: 1, took_ms: 0, source: 'antfly' as const },
+  meta: { query: 'foo', total: 1, took_ms: 0, source: 'search' as const },
 }
 
 function makeUrl(qs: string): URL {

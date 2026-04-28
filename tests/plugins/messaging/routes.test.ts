@@ -24,12 +24,6 @@ process.env.OPENCLAW_HOME = testDir + '-openclaw'
 // Mocks — must be before any plugin imports
 // ---------------------------------------------------------------------------
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ messaging: testDir }),
@@ -67,6 +61,32 @@ import {
 } from '../test-helpers'
 import type { ActivatedPlugin } from '../test-helpers'
 
+type RuntimeSend = ActivatedPlugin['ctx']['runtime']['messaging']['send']
+type RuntimeStream = ActivatedPlugin['ctx']['runtime']['messaging']['stream']
+
+let mockRuntimeSend = mock(async () => ({ id: 'runtime-msg', content: '' }))
+let mockRuntimeStream = mock(() => emptyRuntimeStream())
+
+async function* emptyRuntimeStream(): AsyncIterable<never> {
+  const items: never[] = []
+  for (const item of items) yield item
+}
+
+function installRuntimeMessagingMocks(): void {
+  plugin.ctx.runtime.messaging.send = mockRuntimeSend as RuntimeSend
+  plugin.ctx.runtime.messaging.stream = mockRuntimeStream as RuntimeStream
+}
+
+function resetRuntimeMessagingMocks(): void {
+  mockRuntimeSend = mock(async () => ({ id: 'runtime-msg', content: '' }))
+  mockRuntimeStream = mock(() => emptyRuntimeStream())
+  installRuntimeMessagingMocks()
+}
+
+function sendRuntimeResponse(content: string): void {
+  mockRuntimeSend.mockImplementationOnce(async () => ({ id: 'runtime-msg', content }))
+}
+
 // ---------------------------------------------------------------------------
 // Seed data helpers
 // ---------------------------------------------------------------------------
@@ -80,8 +100,7 @@ function makeItem(overrides: Partial<CalendarItem> = {}): CalendarItem {
     id: 'item-1',
     title: 'Test Post',
     agent: 'basil',
-    channel: 'discord',
-    channelTarget: '1483917792745885768',
+    channels: ['general'],
     contentType: 'tip',
     tone: 'conversational',
     scheduledAt: '2026-04-10T12:00:00Z',
@@ -103,6 +122,7 @@ beforeAll(async () => {
   mkdirSync(testDir, { recursive: true })
   seedItems([])
   plugin = await activatePlugin(messagingPlugin, testDir)
+  installRuntimeMessagingMocks()
 })
 
 afterAll(() => {
@@ -113,6 +133,7 @@ beforeEach(() => {
   // Reset to empty messaging before each test
   seedItems([])
   mock.clearAllMocks()
+  resetRuntimeMessagingMocks()
 })
 
 // ===========================================================================
@@ -184,7 +205,7 @@ describe('Calendar routes', () => {
           title: 'New Post',
           agent: 'scout',
           scheduledAt: '2026-04-15T10:00:00Z',
-          channel: 'discord',
+          channels: ['general'],
           contentType: 'recipe',
           tone: 'energetic',
           brief: 'Make something tasty',
@@ -205,13 +226,13 @@ describe('Calendar routes', () => {
       expect(body.error).toBeDefined()
     })
 
-    it('defaults channel to discord and status to draft', async () => {
+    it('defaults channels to general and status to draft', async () => {
       const route = findRoute(plugin.routes, 'POST', '/')!
       const { body } = await callRoute(route, plugin.ctx, {
         body: { title: 'Defaults Test', agent: 'nemo', scheduledAt: '2026-04-20T08:00:00Z' },
       })
       const item = body.item as CalendarItem
-      expect(item.channel).toBe('discord')
+      expect(item.channels).toEqual(['general'])
       expect(item.status).toBe('draft')
     })
 
@@ -331,11 +352,8 @@ describe('Calendar routes', () => {
 
     it('approves a review item to published (mocking execFile)', async () => {
       seedItems([makeItem({ id: 'appr-2', status: 'review', draft: { caption: 'Hello!' } })])
-
-      // Mock child_process.execFile used for Discord posting
-      mock.module('child_process', () => ({
-        execFile: mock((_cmd: string, _args: string[], cb: Function) => cb(null, '', '')),
-      }))
+      const sendMessage = mock(async () => ({ deliveries: [] }))
+      plugin.ctx.runtime.channels.sendMessage = sendMessage
 
       const route = findRoute(plugin.routes, 'POST', '/:itemId/approve')!
       const { status, body } = await callRoute(route, plugin.ctx, {
@@ -345,6 +363,12 @@ describe('Calendar routes', () => {
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
       expect((body.item as CalendarItem).status).toBe('published')
+      expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        channels: ['general'],
+        message: expect.objectContaining({
+          body: 'Hello!',
+        }),
+      }))
     })
 
     it('returns 404 for non-existent item', async () => {
@@ -443,86 +467,37 @@ describe('Calendar routes', () => {
       expect(body.error).toBeDefined()
     })
 
-    it('calls the LLM gateway and returns response with suggestions', async () => {
+    it('calls runtime completion and returns response with suggestions', async () => {
       // Set up persona file
       const personaDir = join(testDir, 'team', 'personas')
       mkdirSync(personaDir, { recursive: true })
       writeFileSync(join(personaDir, 'basil.md'), '# Basil\nA nutrition-focused agent.')
 
-      // Set up gateway token
-      const openclawDir = join(tmpdir(), `.openclaw-test-${Date.now()}`)
-      mkdirSync(openclawDir, { recursive: true })
-      writeFileSync(join(openclawDir, 'openclaw.json'), JSON.stringify({
-        gateway: { auth: { token: 'test-token-123' } },
-      }))
-
-      // Mock os.homedir to point to our temp dir
-      mock.module('os', () => {
-        const actual = require('os') as typeof import('os')
-        return { ...actual, homedir: () => join(openclawDir, '..') }
-      })
-
-      const llmResponse = {
-        choices: [{
-          message: {
-            content: `Great ideas coming up!\n\n\`\`\`json\n[{"title":"Morning Smoothie","scheduledAt":"2026-04-15T09:00:00Z","contentType":"recipe","tone":"energetic","brief":"A vibrant smoothie recipe post"}]\n\`\`\``,
-          },
-        }],
-      }
-
-      const originalFetch = globalThis.fetch
-      globalThis.fetch = mock().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(llmResponse),
-        text: () => Promise.resolve(JSON.stringify(llmResponse)),
-      }) as any
-
-      try {
-        const route = findRoute(plugin.routes, 'POST', '/brainstorm')!
-        const { status, body } = await callRoute(route, plugin.ctx, {
-          body: {
-            agentId: 'basil',
-            message: 'I need some recipe ideas for next week',
-            history: [],
-          },
-        })
-
-        // The test might return 500 if homedir mock doesn't work perfectly
-        // with dynamic imports, so we test what we can
-        if (status === 200) {
-          expect(body.response).toBeDefined()
-          expect(body.suggestions).toBeDefined()
-          expect(Array.isArray(body.suggestions)).toBe(true)
-        } else {
-          // Even a 500 means we hit the route properly
-          expect(status).toBe(500)
-        }
-      } finally {
-        globalThis.fetch = originalFetch
-      }
-    })
-
-    // TODO: pre-existing flake on main, unrelated to issue #81. The mock.module('os')
-    // call doesn't reliably swap homedir() after the module graph is warm, so the
-    // route hangs on an outbound fetch instead of failing fast on the missing token.
-    // Re-enable once the brainstorm route is refactored to inject homedir.
-    it.skip('returns 500 when gateway token is missing', async () => {
-      // Use a homedir with no openclaw config
-      mock.module('os', () => {
-        const actual = require('os') as typeof import('os')
-        return { ...actual, homedir: () => join(tmpdir(), 'nonexistent-dir') }
-      })
+      sendRuntimeResponse(
+        `Great ideas coming up!\n\n\`\`\`json\n[{"title":"Morning Smoothie","scheduledAt":"2026-04-15T09:00:00Z","contentType":"recipe","tone":"energetic","brief":"A vibrant smoothie recipe post"}]\n\`\`\``,
+      )
 
       const route = findRoute(plugin.routes, 'POST', '/brainstorm')!
       const { status, body } = await callRoute(route, plugin.ctx, {
         body: {
-          agentId: 'scout',
-          message: 'Ideas please',
+          agentId: 'basil',
+          message: 'I need some recipe ideas for next week',
           history: [],
         },
       })
-      expect(status).toBe(500)
-      expect(body.error).toBeDefined()
+
+      expect(status).toBe(200)
+      expect(body.response).toBe('Great ideas coming up!')
+      expect(body.suggestions).toEqual([
+        expect.objectContaining({
+          title: 'Morning Smoothie',
+          contentType: 'recipe',
+          tone: 'energetic',
+        }),
+      ])
+      expect(mockRuntimeSend).toHaveBeenCalledWith(expect.objectContaining({
+        agentId: 'basil',
+      }))
     })
   })
 })
@@ -636,7 +611,7 @@ describe('Calendar exec tools', () => {
         title: 'Tool Created',
         agent: 'nemo',
         scheduledAt: '2026-04-18T14:00:00Z',
-        channel: 'discord',
+        channels: ['general'],
         contentType: 'workout',
         tone: 'energetic',
         brief: 'High energy workout post',
@@ -660,7 +635,7 @@ describe('Calendar exec tools', () => {
       })
       expect(result.ok).toBe(true)
       const item = result.item as CalendarItem
-      expect(item.channel).toBe('discord')
+      expect(item.channels).toEqual(['general'])
       expect(item.contentType).toBe('post')
       expect(item.tone).toBe('conversational')
       expect(item.status).toBe('draft')

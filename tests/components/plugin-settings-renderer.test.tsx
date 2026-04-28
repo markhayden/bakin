@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { PluginSettingsSchema } from '@/lib/plugin-types'
+import type { PluginSettingsSchema } from '@bakin/core/plugin-types'
 
 const testDir = join(tmpdir(), `bakin-test-settings-renderer-${Date.now()}`)
 

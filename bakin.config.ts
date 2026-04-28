@@ -1,4 +1,4 @@
-import type { BakinConfig } from './src/lib/plugin-types'
+import type { BakinConfig } from '@bakin/core/plugin-types'
 
 const config: BakinConfig = {
   plugins: [

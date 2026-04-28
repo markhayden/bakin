@@ -36,7 +36,7 @@ Two flavors of "is it working":
 
 ```sh
 bakin status   # is the server running, and on what port
-bakin doctor   # full health check across OpenClaw, models, channels, plugins
+bakin doctor   # full health check across runtime, models, channels, plugins
 ```
 
 Run `status` for a quick "is it up". Run `doctor` when something feels off or after a major change.
@@ -53,7 +53,7 @@ Pulls the latest GitHub release, verifies `checksums.txt`, and swaps your binary
 
 ```sh
 bakin logs        # rolling server log
-bakin logs mcp    # MCP gateway audit log
+bakin logs mcp    # MCP audit log
 ```
 
 Log lines go to both stdout and `~/.bakin/logs/server.log` (10 MB rotation, single backup). Tail with the commands above or watch the file directly.
@@ -64,7 +64,7 @@ Log lines go to both stdout and `~/.bakin/logs/server.log` (10 MB rotation, sing
 bakin paths
 ```
 
-Shows where Bakin resolved its home directory, content dir, OpenClaw home, plugin paths, logs, and lock files. Useful when something feels off and you want to confirm where state actually lives.
+Shows where Bakin resolved its home directory, content dir, plugin paths, logs, and lock files. Useful when something feels off and you want to confirm where state actually lives.
 
 ## Reindex search
 

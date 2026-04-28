@@ -1,22 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-
-(() => {
-  const { mkdtempSync } = require('fs')
-  const { tmpdir } = require('os')
-  const { join } = require('path')
-  process.env.BAKIN_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
-  process.env.OPENCLAW_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
-})()
-
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { OpenClawJobsFile, BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
+import type { CronJob } from '@bakin/core/adapters/runtime'
+import type { BakinJobMeta, RuntimeCronJobSnapshot, ScheduleSidecar } from '@bakin/schedule/types'
+
+process.env.BAKIN_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
 
 const testDir = join(tmpdir(), `bakin-test-jobs-${Date.now()}`)
 const sidecarDir = join(testDir, 'schedule')
 const sidecarPath = join(sidecarDir, 'sidecar.json')
-const jobsPath = join(testDir, 'jobs.json')
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -40,17 +33,35 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-// Dynamic require — jobs-reader.ts calls getOpenClawHome at module init.
-// ES imports are hoisted above the IIFE that sets OPENCLAW_HOME, so using
-// require() defers the load until after env is configured.
-const { readOpenClawJobs, mergeJob, readMergedJobs } = require('@bakin/schedule/lib/jobs-reader') as typeof import('@bakin/schedule/lib/jobs-reader')
-
-function writeJobs(jobs: OpenClawJobsFile) {
-  writeFileSync(jobsPath, JSON.stringify(jobs))
-}
+const {
+  runtimeCronToScheduleJob,
+  mergeJob,
+  readMergedJobs,
+} = await import('@bakin/schedule/lib/jobs-reader')
 
 function writeSidecarFile(sidecar: ScheduleSidecar) {
   writeFileSync(sidecarPath, JSON.stringify(sidecar))
+}
+
+function makeCronJob(overrides: Partial<CronJob> = {}): CronJob {
+  return {
+    id: 'j1',
+    name: 'Job',
+    schedule: '0 9 * * *',
+    command: 'Post a daily recipe',
+    enabled: true,
+    ...overrides,
+  }
+}
+
+function makeRuntimeJob(overrides: Partial<RuntimeCronJobSnapshot> = {}): RuntimeCronJobSnapshot {
+  return {
+    id: 'j1',
+    name: 'Job',
+    schedule: { type: 'cron', value: '0 9 * * *' },
+    enabled: true,
+    ...overrides,
+  }
 }
 
 function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
@@ -63,56 +74,61 @@ function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
   }
 }
 
+function cronReader(jobs: CronJob[]) {
+  return {
+    list: async () => jobs,
+  }
+}
+
 describe('schedule/jobs-reader', () => {
+  const defaultOwner = 'main'
+
   beforeEach(() => {
     mkdirSync(sidecarDir, { recursive: true })
+    writeSidecarFile({ version: 1, jobs: {} })
   })
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
   })
 
-  describe('readOpenClawJobs', () => {
-    it('returns empty array when file does not exist', () => {
-      const jobs = readOpenClawJobs('/nonexistent/path.json')
-      expect(jobs).toEqual([])
-    })
+  describe('runtimeCronToScheduleJob', () => {
+    it('normalizes runtime cron jobs for schedule merging', () => {
+      const job = runtimeCronToScheduleJob(makeCronJob({
+        metadata: {
+          tz: 'America/Denver',
+          webhookUrl: 'http://localhost:3737/api/plugins/schedule/bridge',
+          createdAt: '2026-03-27T00:00:00Z',
+          updatedAt: '2026-03-28T00:00:00Z',
+        },
+      }))
 
-    it('reads valid jobs file', () => {
-      writeJobs({
-        version: 1,
-        jobs: [
-          { id: 'j1', name: 'Test', schedule: { type: 'cron', value: '0 9 * * *' }, enabled: true },
-        ],
-      })
-      const jobs = readOpenClawJobs(jobsPath)
-      expect(jobs).toHaveLength(1)
-      expect(jobs[0].id).toBe('j1')
-    })
-
-    it('handles corrupt JSON gracefully', () => {
-      writeFileSync(jobsPath, 'not json')
-      const jobs = readOpenClawJobs(jobsPath)
-      expect(jobs).toEqual([])
+      expect(job.id).toBe('j1')
+      expect(job.schedule.type).toBe('cron')
+      expect(job.schedule.value).toBe('0 9 * * *')
+      expect(job.schedule.tz).toBe('America/Denver')
+      expect(job.payload?.message).toBe('Post a daily recipe')
+      expect(job.delivery?.mode).toBe('webhook')
+      expect(job.createdAt).toBe('2026-03-27T00:00:00Z')
     })
   })
 
   describe('mergeJob', () => {
-    it('merges OpenClaw job without sidecar entry', () => {
-      const job = { id: 'j1', name: 'Raw Job', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true }
-      const merged = mergeJob(job, undefined)
+    it('merges runtime job without sidecar entry', () => {
+      const job = makeRuntimeJob({ id: 'j1', name: 'Raw Job' })
+      const merged = mergeJob(job, undefined, 'boss')
 
       expect(merged.id).toBe('j1')
       expect(merged.name).toBe('Raw Job')
       expect(merged.isBakinJob).toBe(false)
       expect(merged.displayName).toBe('Raw Job')
-      expect(merged.owner).toBe('main')
+      expect(merged.owner).toBe('boss')
       expect(merged.paused).toBe(false)
       expect(merged.humanSchedule).toBe('Daily at 9am')
     })
 
-    it('merges OpenClaw job with sidecar entry', () => {
-      const job = { id: 'j1', name: 'My Job', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true }
+    it('merges runtime job with sidecar entry', () => {
+      const job = makeRuntimeJob({ id: 'j1', name: 'My Job' })
       const sidecar = makeMeta({
         jobId: 'j1',
         isBakinJob: true,
@@ -120,7 +136,7 @@ describe('schedule/jobs-reader', () => {
         agentId: 'basil',
         owner: 'main',
       })
-      const merged = mergeJob(job, sidecar)
+      const merged = mergeJob(job, sidecar, defaultOwner)
 
       expect(merged.isBakinJob).toBe(true)
       expect(merged.displayName).toBe('Morning Report')
@@ -129,9 +145,9 @@ describe('schedule/jobs-reader', () => {
     })
 
     it('uses sidecar defaults for missing fields', () => {
-      const job = { id: 'j1', name: 'Job', schedule: { type: 'cron' as const, value: '0 * * * *' }, enabled: true }
+      const job = makeRuntimeJob({ id: 'j1', schedule: { type: 'cron', value: '0 * * * *' } })
       const sidecar = makeMeta({ jobId: 'j1' })
-      const merged = mergeJob(job, sidecar)
+      const merged = mergeJob(job, sidecar, defaultOwner)
 
       expect(merged.maxFailures).toBe(3)
       expect(merged.allowOverlap).toBe(false)
@@ -140,70 +156,66 @@ describe('schedule/jobs-reader', () => {
     })
 
     it('generates human schedule for interval type', () => {
-      const job = { id: 'j1', name: 'Job', schedule: { type: 'every' as const, value: '60000' }, enabled: true }
-      const merged = mergeJob(job, undefined)
+      const job = makeRuntimeJob({ schedule: { type: 'every', value: '60000' } })
+      const merged = mergeJob(job, undefined, defaultOwner)
       expect(merged.humanSchedule).toBe('Every 60s')
     })
 
     it('generates human schedule for one-shot type', () => {
-      const job = { id: 'j1', name: 'Job', schedule: { type: 'at' as const, value: '2026-04-01T09:00:00Z' }, enabled: true }
-      const merged = mergeJob(job, undefined)
+      const job = makeRuntimeJob({ schedule: { type: 'at', value: '2026-04-01T09:00:00Z' } })
+      const merged = mergeJob(job, undefined, defaultOwner)
       expect(merged.humanSchedule).toContain('Once at')
     })
 
     it('extracts prompt from orphan payload.message', () => {
-      const job = {
-        id: 'j1', name: 'Orphan', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true,
+      const job = makeRuntimeJob({
+        id: 'j1',
+        name: 'Orphan',
         payload: { message: 'Post a daily recipe' },
-      }
-      const merged = mergeJob(job, undefined)
+      })
+      const merged = mergeJob(job, undefined, defaultOwner)
       expect(merged.taskPrompt).toBe('Post a daily recipe')
       expect(merged.requireTriage).toBe(true)
       expect(merged.agentId).toBeUndefined()
     })
 
     it('extracts prompt from bakin:schedule: prefixed message', () => {
-      const job = {
-        id: 'j1', name: 'Lost Bakin Job', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true,
+      const job = makeRuntimeJob({
+        id: 'j1',
+        name: 'Lost Bakin Job',
         payload: { message: 'bakin:schedule:daily-recipe' },
-      }
-      const merged = mergeJob(job, undefined)
+      })
+      const merged = mergeJob(job, undefined, defaultOwner)
       expect(merged.taskPrompt).toBe('daily-recipe')
     })
 
     it('does not override sidecar prompt with payload', () => {
-      const job = {
-        id: 'j1', name: 'Job', schedule: { type: 'cron' as const, value: '0 9 * * *' }, enabled: true,
+      const job = makeRuntimeJob({
+        id: 'j1',
+        name: 'Job',
         payload: { message: 'raw message' },
-      }
+      })
       const sidecar = makeMeta({ jobId: 'j1', taskPrompt: 'Bakin prompt' })
-      const merged = mergeJob(job, sidecar)
+      const merged = mergeJob(job, sidecar, defaultOwner)
       expect(merged.taskPrompt).toBe('Bakin prompt')
-      expect(merged.requireTriage).toBe(false) // has sidecar, not an orphan
+      expect(merged.requireTriage).toBe(false)
     })
 
-    it('normalises OpenClaw kind/expr to type/value', () => {
-      const job = { id: 'j1', name: 'OC Job', schedule: { kind: 'cron' as const, expr: '30 8 * * 1-5' }, enabled: true }
-      const merged = mergeJob(job, undefined)
+    it('normalizes kind/expr to type/value', () => {
+      const job = makeRuntimeJob({ schedule: { kind: 'cron', expr: '30 8 * * 1-5' } })
+      const merged = mergeJob(job, undefined, defaultOwner)
       expect(merged.schedule.type).toBe('cron')
       expect(merged.schedule.value).toBe('30 8 * * 1-5')
     })
   })
 
   describe('readMergedJobs', () => {
-    it('returns empty array when no jobs exist', () => {
-      const jobs = readMergedJobs('/nonexistent/path.json')
+    it('returns empty array when no runtime jobs exist', async () => {
+      const jobs = await readMergedJobs(cronReader([]), defaultOwner)
       expect(jobs).toEqual([])
     })
 
-    it('merges jobs with sidecar data', () => {
-      writeJobs({
-        version: 1,
-        jobs: [
-          { id: 'j1', name: 'Job 1', schedule: { type: 'cron', value: '0 9 * * *' }, enabled: true },
-          { id: 'j2', name: 'Job 2', schedule: { type: 'cron', value: '0 17 * * *' }, enabled: true },
-        ],
-      })
+    it('merges runtime jobs with sidecar data', async () => {
       writeSidecarFile({
         version: 1,
         jobs: {
@@ -211,7 +223,10 @@ describe('schedule/jobs-reader', () => {
         },
       })
 
-      const jobs = readMergedJobs(jobsPath)
+      const jobs = await readMergedJobs(cronReader([
+        makeCronJob({ id: 'j1', name: 'Job 1', schedule: '0 9 * * *' }),
+        makeCronJob({ id: 'j2', name: 'Job 2', schedule: '0 17 * * *' }),
+      ]), defaultOwner)
       expect(jobs).toHaveLength(2)
 
       const j1 = jobs.find(j => j.id === 'j1')!
@@ -222,6 +237,24 @@ describe('schedule/jobs-reader', () => {
       const j2 = jobs.find(j => j.id === 'j2')!
       expect(j2.isBakinJob).toBe(false)
       expect(j2.displayName).toBe('Job 2')
+    })
+
+    it('removes stale sidecar entries for deleted runtime jobs', async () => {
+      writeSidecarFile({
+        version: 1,
+        jobs: {
+          active: makeMeta({ jobId: 'active' }),
+          stale: makeMeta({ jobId: 'stale' }),
+        },
+      })
+
+      await readMergedJobs(cronReader([
+        makeCronJob({ id: 'active', name: 'Active' }),
+      ]), defaultOwner)
+
+      const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8')) as ScheduleSidecar
+      expect(sidecar.jobs.active).toBeDefined()
+      expect(sidecar.jobs.stale).toBeUndefined()
     })
   })
 })

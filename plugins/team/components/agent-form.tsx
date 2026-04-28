@@ -156,7 +156,7 @@ export function AgentForm({
           className="font-mono"
         />
         <p className="text-xs text-muted-foreground">
-          Used in OpenClaw config and workspace paths. Lowercase, no spaces.
+          Used in runtime config and workspace paths. Lowercase, no spaces.
         </p>
       </div>
 
@@ -194,7 +194,7 @@ export function AgentForm({
           spellCheck={false}
         />
         <p className="text-xs text-muted-foreground">
-          Written directly to ~/.openclaw/workspaces/{'{id}'}/SOUL.md
+          Written to the selected runtime workspace as SOUL.md
         </p>
       </div>
 

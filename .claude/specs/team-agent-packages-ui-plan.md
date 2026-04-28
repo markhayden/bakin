@@ -119,7 +119,7 @@ C1 (store extension) ──┬──▶ C2 (badge) ─────────�
 - Merge: store has correct `packageStates` map after load
 - `refreshPackageStates()` re-fetches only the package endpoint
 - Failed `/api/agent-packages` → `packageStates: {}`, agents still load
-- All required mocks per CLAUDE.md (content-dir x2, openclaw-home, logger, watcher, openclaw-client) — even though this is client-side, transitive imports may pull server modules.
+- All required mocks per CLAUDE.md (content-dir x2, provider home paths where applicable, logger, watcher, active runtime boundary) — even though this is client-side, transitive imports may pull server modules.
 
 **Verification:**
 ```bash

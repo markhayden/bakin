@@ -49,6 +49,13 @@ const mockTaskboardColumns = {
   backlog: [],
 }
 
+mock.module('../../../src/core/task-store', () => ({
+  readTaskboard: mock(() => ({ columns: mockTaskboardColumns })),
+}))
+mock.module('@/core/task-store', () => ({
+  readTaskboard: mock(() => ({ columns: mockTaskboardColumns })),
+}))
+
 // Suppress broadcast
 ;(globalThis as any).__bakinBroadcast = mock()
 
@@ -78,27 +85,18 @@ import {
   resolveLinkedTaskStatuses,
 } from '../../../plugins/projects/lib/project-service'
 import { readProject } from '../../../plugins/projects/lib/parser'
-import { getHookRegistry } from '../../../src/lib/plugin-registry'
 
 // ---------------------------------------------------------------------------
 // Setup / Teardown
 // ---------------------------------------------------------------------------
 
-let unregisterTaskboardHook: (() => void) | null = null
-
 beforeEach(() => {
   mkdirSync(projectsDir, { recursive: true })
   clearIndex()
   mockCreateTask.mockClear()
-  unregisterTaskboardHook = getHookRegistry().register(
-    'tasks.readTaskboard',
-    () => ({ columns: mockTaskboardColumns }),
-  )
 })
 
 afterEach(() => {
-  if (unregisterTaskboardHook) unregisterTaskboardHook()
-  unregisterTaskboardHook = null
   rmSync(testDir, { recursive: true, force: true })
 })
 

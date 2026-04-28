@@ -1,11 +1,10 @@
 /**
  * Tests for plugins/memory/lib/tier-parsers/session-parser.ts.
  *
- * Session rows represent one OpenClaw session: either surfaced via the
- * gateway's `sessions.list` RPC or parsed from the on-disk
- * `agents/<id>/sessions/sessions.json` map. Both sources feed the same
- * parser — the indexer picks which reader to call based on gateway
- * reachability.
+ * Session rows represent one session surfaced through runtime memory.
+ * Runtime adapters may satisfy that from provider APIs or from on-disk
+ * `agents/<id>/sessions/sessions.json` data. Both sources feed the same
+ * parser.
  *
  * Parser contract (see types.ts § SessionMetaSchema):
  *   one session object → one MemoryRow with tier='session'.
@@ -81,7 +80,7 @@ describe('parseSession (happy path)', () => {
     expect(validated.tier).toBe('session')
     expect(validated.agent).toBe('basil')
     expect(validated.title).toBe('agent:basil:main')
-    expect(validated.sourceRef.backend).toBe('openclaw')
+    expect(validated.sourceRef.backend).toBe('runtime')
     expect(validated.sourceRef.path).toBe('/path/to/sessions.json')
   })
 
@@ -215,7 +214,7 @@ describe('parseSession (missing-field tolerance)', () => {
     expect(meta.status).toBe('unknown')
   })
 
-  it('populates status when the upstream object provides it (gateway path)', () => {
+  it('populates status when the upstream object provides it', () => {
     const row = parseSession(
       'basil',
       'agent:basil:main',

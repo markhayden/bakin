@@ -91,7 +91,7 @@ Returns API route documentation as JSON.
 
 Search indexed content
 
-Searches across indexed content. Requires Antfly.
+Searches across indexed content through the search adapter.
 
 Parameters: `?q=<query>&table=<optional>&limit=<optional>`
 
@@ -171,7 +171,7 @@ Parameters: `{"pluginId":"string"}`
 
 Trigger reindex
 
-Triggers a full content reindex to Antfly.
+Triggers a full content reindex through the search adapter.
 
 - Visibility: `public`
 - Stability: `stable`

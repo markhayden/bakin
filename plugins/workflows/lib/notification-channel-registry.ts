@@ -79,10 +79,7 @@ export function registerPluginNotificationChannel(
 // activation-order dependency where a plugin activated before workflows would
 // see an empty registry.
 
-registerNotificationChannel({ runtime: 'builtin', id: 'discord',   label: 'Discord',   initials: 'DC', icon: 'MessageSquare' })
-registerNotificationChannel({ runtime: 'builtin', id: 'slack',     label: 'Slack',     initials: 'SL', icon: 'MessageSquare' })
-registerNotificationChannel({ runtime: 'builtin', id: 'email',     label: 'Email',     initials: 'EM', icon: 'Mail' })
-registerNotificationChannel({ runtime: 'builtin', id: 'instagram', label: 'Instagram', initials: 'IG', icon: 'Instagram' })
-registerNotificationChannel({ runtime: 'builtin', id: 'twitter',   label: 'Twitter',   initials: 'TW', icon: 'Twitter' })
-registerNotificationChannel({ runtime: 'builtin', id: 'youtube',   label: 'YouTube',   initials: 'YT', icon: 'Youtube' })
-registerNotificationChannel({ runtime: 'builtin', id: 'tiktok',    label: 'TikTok',    initials: 'TK', icon: 'Music2' })
+registerNotificationChannel({ runtime: 'builtin', id: 'general',       label: 'General',       initials: 'GE', icon: 'MessageSquare' })
+registerNotificationChannel({ runtime: 'builtin', id: 'announcements', label: 'Announcements', initials: 'AN', icon: 'MessageSquare' })
+registerNotificationChannel({ runtime: 'builtin', id: 'alerts',        label: 'Alerts',        initials: 'AL', icon: 'MessageSquare' })
+registerNotificationChannel({ runtime: 'builtin', id: 'email',         label: 'Email',         initials: 'EM', icon: 'Mail' })

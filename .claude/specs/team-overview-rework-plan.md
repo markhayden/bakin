@@ -275,7 +275,7 @@ Layout: full-width grid with sensible column counts at responsive breakpoints (l
 
 1. **Tab union** (line 25): `'overview' | 'memory' | 'heartbeat' | 'soul' | 'rules' | 'tools' | 'skills' | 'knowledge' | 'active-context'`
 2. **TABS array** (27-35): reorder to spec list. Default tab from `?tab=` falls back to `'overview'`.
-3. **Header** (160-232): remove model picker (194-204), team selector (213-224), subagent perms badge (208-212), saving spinner (203). Keep: back arrow, avatar, name, role, gateway-restart banner, delete button.
+3. **Header** (160-232): remove model picker (194-204), team selector (213-224), subagent perms badge (208-212), saving spinner (203). Keep: back arrow, avatar, name, role, runtime-restart banner, delete button.
 4. **Tab dispatch** (272-278): replace with the new mapping. `<FileEditorTab>` callsites for SOUL/AGENTS/TOOLS swap to `<MarkdownEditTab>`. Add `<OverviewTab>`, `<HeartbeatTab>`, `<ActiveContextTab>` rows.
 5. **Delete** `<ProfileTab>` (313-374), `<StatsTab>` + `<Row>` (727-799), `<ProfileSection>` + `<ProfileMarkdown>` (315-328) — all subsumed by the new components.
 6. **Delete** `<FileEditorTab>` (376-445) — replaced by `<MarkdownEditTab>`.

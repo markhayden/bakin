@@ -21,50 +21,27 @@ import type { AssetMeta } from "@bakin/sdk/types"
 interface AssetDetailProps {
   asset: AssetMeta | null
   onClose: () => void
-  onDelete: (path: string) => void
+  onDelete: (filename: string) => void
   onRelink?: () => void
-  onPathChange?: (newPath: string) => void
 }
 
-/**
- * Standalone modal that fetches asset metadata by path and renders AssetDetail.
- * Usable from any context (e.g. task drawer) without needing the full assets page.
- */
-export function AssetDetailModal({ assetPath, filename, onClose }: { assetPath?: string; filename?: string; onClose: () => void }) {
+/** Standalone modal that fetches asset metadata by canonical filename. */
+export function AssetDetailModal({ filename, onClose }: { filename: string; onClose: () => void }) {
   const [asset, setAsset] = useState<AssetMeta | null>(null)
 
   useEffect(() => {
-    const query = filename
-      ? `filename=${encodeURIComponent(filename)}`
-      : assetPath
-        ? `path=${encodeURIComponent(assetPath)}`
-        : null
-    if (!query) { setAsset(null); return }
-    fetch(`/api/plugins/assets/?${query}`)
+    fetch(`/api/plugins/assets/?filename=${encodeURIComponent(filename)}`)
       .then(r => r.ok ? r.json() : { assets: [] })
       .then(d => setAsset(d.assets?.[0] ?? null))
       .catch(() => setAsset(null))
-  }, [assetPath, filename])
-
-  const handlePathChange = async (newPath: string) => {
-    try {
-      // After retype, the filename is stable — prefer it if we have one.
-      const query = filename
-        ? `filename=${encodeURIComponent(filename)}`
-        : `path=${encodeURIComponent(newPath)}`
-      const res = await fetch(`/api/plugins/assets/?${query}`)
-      const data = res.ok ? await res.json() : { assets: [] }
-      if (data.assets?.[0]) setAsset(data.assets[0])
-    } catch (err) { console.error('Failed to fetch retyped asset', err) }
-  }
+  }, [filename])
 
   return (
     <AssetDetail
       asset={asset}
       onClose={onClose}
-      onPathChange={handlePathChange}
-      onDelete={async (path) => {
-        await fetch(`/api/plugins/assets?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
+      onDelete={async (deleteFilename) => {
+        await fetch(`/api/plugins/assets?filename=${encodeURIComponent(deleteFilename)}`, { method: 'DELETE' })
         onClose()
       }}
       showOpenInAssets
@@ -79,7 +56,7 @@ function mimeToFormat(mime: string): 'markdown' | 'yaml' | 'json' | 'text' {
   return 'text'
 }
 
-export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, showOpenInAssets }: AssetDetailProps & { showOpenInAssets?: boolean }) {
+export function AssetDetail({ asset, onClose, onDelete, onRelink, showOpenInAssets }: AssetDetailProps & { showOpenInAssets?: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [activeVariantPath, setActiveVariantPath] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState(false)
@@ -158,7 +135,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
       const res = await fetch('/api/plugins/assets/content', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: displayAsset.path, content: draftContent }),
+        body: JSON.stringify({ filename: displayAsset.filename, content: draftContent }),
       })
       if (res.ok) {
         setEditing(false)
@@ -404,7 +381,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
               {showOpenInAssets && (
                 <Link
                   to="/assets"
-                  search={{ asset: displayAsset.path }}
+                  search={{ asset: displayAsset.filename }}
                   className="flex items-center justify-center gap-1.5 text-xs text-foreground bg-zinc-800 hover:bg-zinc-700 rounded-md px-3 py-1.5 transition-colors"
                 >
                   <ExternalLink className="size-3.5" />
@@ -437,7 +414,7 @@ export function AssetDetail({ asset, onClose, onDelete, onRelink, onPathChange, 
     <DeleteAssetDialog
       open={confirmDelete}
       filename={displayAsset.filename}
-      onConfirm={() => { setConfirmDelete(false); onDelete(displayAsset.path) }}
+      onConfirm={() => { setConfirmDelete(false); onDelete(displayAsset.filename) }}
       onCancel={() => setConfirmDelete(false)}
     />
     </>

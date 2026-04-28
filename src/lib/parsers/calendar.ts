@@ -1,4 +1,4 @@
-import type { CalendarDay, CalendarEvent, RecurringEvent } from '@/types'
+import type { CalendarDay, RecurringEvent } from '@/types'
 
 export function parseCalendar(content: string): { days: CalendarDay[]; recurring: RecurringEvent[] } {
   const days: CalendarDay[] = []

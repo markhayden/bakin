@@ -2,9 +2,8 @@
  * Tasks-plugin-owned doctor checks.
  *
  * Migrated out of src/core/doctor.ts (#139 C2) — these three checks
- * operate on tasks-plugin data (the OpenClaw flow_runs SQLite table
- * Bakin reads via owner_key='bakin:task:%'), so they belong with the
- * plugin that owns that data model.
+ * operate on Bakin-owned task JSON files, so they belong with the plugin that
+ * owns that data model.
  *
  * Registered in plugins/tasks/index.ts activate() via
  * ctx.registerHealthCheck. runDiagnostics() picks them up through the
@@ -12,13 +11,13 @@
  */
 import { existsSync } from 'fs'
 import { join } from 'path'
+import { selectRuntimeMainAgent, type AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { getSettings } from '../../../src/core/settings'
-import { getMainAgentId } from '../../../src/core/main-agent'
-import { getHookRegistry } from '../../../src/lib/plugin-registry'
-import { getAgentIds } from '../../../packages/core/src/openclaw-config'
-import { getOpenClawPath } from '../../../packages/core/src/openclaw-home'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
+import { maybeGetAppServices } from '../../../src/core/app-services'
+import { clearDependency, readTaskboard, reorderTasks } from '../../../src/core/task-store'
+import type { ColumnId, Task } from '../types'
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
@@ -35,34 +34,34 @@ function fixed(check: string, message: string): HealthCheckResult {
   return { check, status: 'fixed', message, autoFixable: true }
 }
 
-// ─── SQLite helper (shared by taskboard + position-integrity checks) ───────
+type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
 
-function openDoctorDb(dbPath: string) {
-  const { Database } = require('bun:sqlite') as typeof import('bun:sqlite')
-  const db = new Database(dbPath)
-  db.exec('PRAGMA journal_mode = WAL')
-  db.exec('PRAGMA busy_timeout = 5000')
-  return db
+async function resolveKnownAgentIds(agentReader?: RuntimeAgentReader): Promise<Set<string>> {
+  const knownAgents = new Set<string>()
+  try {
+    const agents = await (agentReader ?? maybeGetAppServices()?.runtime.agents)?.list()
+    for (const agent of agents ?? []) knownAgents.add(agent.id)
+    const mainAgent = selectRuntimeMainAgent(agents ?? [])
+    if (mainAgent) knownAgents.add(mainAgent.id)
+  } catch {
+    // Adapter health is reported separately; keep this check focused on tasks.
+  }
+  return knownAgents
 }
 
-// ─── Taskboard: flow_runs SQLite reachability ──────────────────────────────
+// ─── Taskboard: Bakin JSON store reachability ──────────────────────────────
 
 /**
- * Verify the OpenClaw flow_runs SQLite table is accessible and count
- * Bakin-owned task rows. Read-only — never writes.
+ * Verify the Bakin task JSON store is accessible and count Bakin-owned tasks.
+ * Read-only — never writes.
  */
 export function checkTaskboard(): HealthCheckResult[] {
   try {
-    const dbPath = getOpenClawPath('flows', 'registry.sqlite')
-    if (!existsSync(dbPath)) {
-      return [warn('taskboard', 'OpenClaw flow_runs database not found at ' + dbPath)]
-    }
-    const db = openDoctorDb(dbPath)
-    const count = db.prepare(`SELECT count(*) as n FROM flow_runs WHERE owner_key LIKE 'bakin:task:%'`).get() as { n: number }
-    db.close()
-    return [ok('taskboard', `${count.n} tasks in flow_runs (SQLite)`)]
+    const board = readTaskboard()
+    const count = Object.values(board.columns).reduce((sum, tasks) => sum + tasks.length, 0)
+    return [ok('taskboard', `${count} tasks in Bakin task JSON store`)]
   } catch (err) {
-    return [error('taskboard', `Failed to query flow_runs: ${err}`)]
+    return [error('taskboard', `Failed to query Bakin task store: ${err}`)]
   }
 }
 
@@ -70,22 +69,22 @@ export function checkTaskboard(): HealthCheckResult[] {
 
 /**
  * Detect orphaned, overloaded, or stale in-progress tasks. Auto-fixes
- * orphaned dependsOn refs on done tasks (clears them via the
- * tasks.clearDependency hook) when settings.doctor.autoFixSkill is true.
+ * orphaned dependsOn refs on done tasks when settings.doctor.autoFixSkill is
+ * true.
  */
-export async function checkTaskConsistency(contentDir: string): Promise<HealthCheckResult[]> {
+export async function checkTaskConsistency(
+  contentDir: string,
+  agentReader?: RuntimeAgentReader,
+): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
   const autoFix = getSettings().doctor.autoFixSkill
-  const hooks = getHookRegistry()
 
   try {
     interface TaskEntry { id: string; title: string; agent?: string; dependsOn?: string; log?: unknown[] }
-    const board = await hooks.invoke<{ columns: { inProgress: TaskEntry[]; done: TaskEntry[]; todo: TaskEntry[]; blocked: TaskEntry[] } }>('tasks.readTaskboard', {})
-    if (!board) { return [warn('task-consistency', 'Taskboard not available (tasks plugin not loaded)')] }
+    const board = readTaskboard() as unknown as { columns: { inProgress: TaskEntry[]; done: TaskEntry[]; todo: TaskEntry[]; blocked: TaskEntry[] } }
     const { columns } = board
 
-    // Known agents from openclaw.json
-    const knownAgents = new Set(getAgentIds())
+    const knownAgents = await resolveKnownAgentIds(agentReader)
 
     // Count tasks per agent
     const agentTaskCount: Record<string, number> = {}
@@ -97,7 +96,7 @@ export async function checkTaskConsistency(contentDir: string): Promise<HealthCh
       }
 
       // In-progress task assigned to unknown agent
-      if (task.agent && !knownAgents.has(task.agent) && task.agent !== getMainAgentId()) {
+      if (task.agent && !knownAgents.has(task.agent)) {
         results.push(warn('task-consistency', `In-progress task "${task.title}" assigned to unknown agent "${task.agent}"`))
       }
 
@@ -125,7 +124,7 @@ export async function checkTaskConsistency(contentDir: string): Promise<HealthCh
       if (task.dependsOn) {
         if (autoFix) {
           try {
-            await hooks.invoke<void>('tasks.clearDependency', { taskId: task.id })
+            await clearDependency(task.id)
             results.push(fixed('task-consistency', `Cleared orphaned dependsOn on done task "${task.title}"`))
           } catch {
             results.push(warn('task-consistency', `Done task "${task.title}" has orphaned dependsOn="${task.dependsOn}" — failed to clear`))
@@ -157,81 +156,44 @@ export async function checkTaskConsistency(contentDir: string): Promise<HealthCh
  * `tasks.order_integrity` to `order-integrity`. With plugin-namespacing
  * the dotted form becomes `tasks.order-integrity` (underscore→hyphen).
  */
-export function checkTaskPositionIntegrity(): HealthCheckResult[] {
+export async function checkTaskPositionIntegrity(): Promise<HealthCheckResult[]> {
   const CHECK = 'order-integrity'
   const autoFix = getSettings().doctor.autoFixSkill
   try {
-    const dbPath = getOpenClawPath('flows', 'registry.sqlite')
-    if (!existsSync(dbPath)) return [ok(CHECK, 'No task database found (OK for fresh install)')]
+    const board = readTaskboard()
+    const entries = Object.entries(board.columns) as Array<[ColumnId, Task[]]>
+    const total = entries.reduce((sum, [, tasks]) => sum + tasks.length, 0)
+    if (total === 0) return [ok(CHECK, 'No tasks to check')]
 
-    const db = openDoctorDb(dbPath)
-
-    try {
-      const rows = db.prepare(
-        `SELECT flow_id, status, state_json, blocked_task_id, updated_at FROM flow_runs WHERE owner_key LIKE 'bakin:task:%'`
-      ).all() as Array<{ flow_id: string; status: string; state_json: string | null; blocked_task_id: string | null; updated_at: number }>
-
-      if (rows.length === 0) return [ok(CHECK, 'No tasks to check')]
-
-      // Check for missing or invalid order values
-      let missingCount = 0
-      const byColumn = new Map<string, Array<{ flowId: string; order: number | null; updatedAt: number }>>()
-
-      for (const row of rows) {
-        const state = row.state_json ? JSON.parse(row.state_json) : {}
-        const ord = typeof state.order === 'number' ? state.order : null
-
-        // Derive column (inlined from flow-store.ts)
-        let col: string
-        switch (row.status) {
-          case 'queued': col = state.column === 'backlog' ? 'backlog' : 'todo'; break
-          case 'running': col = 'inProgress'; break
-          case 'waiting': col = row.blocked_task_id ? 'blocked' : 'review'; break
-          case 'succeeded': col = state.archived ? 'archived' : 'done'; break
-          default: col = 'backlog'
-        }
-
-        if (ord === null) missingCount++
-        if (!byColumn.has(col)) byColumn.set(col, [])
-        byColumn.get(col)!.push({ flowId: row.flow_id, order: ord, updatedAt: row.updated_at })
-      }
-
-      // Check for duplicates within columns
-      let duplicateCount = 0
-      for (const [, colTasks] of byColumn) {
-        const orders = colTasks.filter(t => t.order !== null).map(t => t.order!)
-        const unique = new Set(orders)
-        if (unique.size < orders.length) duplicateCount += orders.length - unique.size
-      }
-
-      if (missingCount === 0 && duplicateCount === 0) {
-        return [ok(CHECK, `All ${rows.length} tasks have valid unique order values`)]
-      }
-
-      const issues = []
-      if (missingCount > 0) issues.push(`${missingCount} missing`)
-      if (duplicateCount > 0) issues.push(`${duplicateCount} duplicates`)
-
-      if (!autoFix) {
-        return [warn(CHECK, `Order issues: ${issues.join(', ')} across ${rows.length} tasks`, true)]
-      }
-
-      // Auto-fix: reassign order per column (zero-indexed) based on updated_at desc
-      const stmt = db.prepare(`UPDATE flow_runs SET state_json = json_set(state_json, '$.order', ?) WHERE flow_id = ?`)
-      const tx = db.transaction(() => {
-        for (const [, colTasks] of byColumn) {
-          colTasks.sort((a, b) => b.updatedAt - a.updatedAt)
-          for (let i = 0; i < colTasks.length; i++) {
-            stmt.run(i, colTasks[i].flowId)
-          }
-        }
-      })
-      tx()
-
-      return [fixed(CHECK, `Fixed order issues (${issues.join(', ')}) across ${rows.length} tasks`)]
-    } finally {
-      db.close()
+    let missingCount = 0
+    let duplicateCount = 0
+    for (const [, tasks] of entries) {
+      const orders = tasks.map((task) => task.order).filter((order): order is number => typeof order === 'number')
+      missingCount += tasks.length - orders.length
+      const unique = new Set(orders)
+      if (unique.size < orders.length) duplicateCount += orders.length - unique.size
     }
+
+    if (missingCount === 0 && duplicateCount === 0) {
+      return [ok(CHECK, `All ${total} tasks have valid unique order values`)]
+    }
+
+    const issues = []
+    if (missingCount > 0) issues.push(`${missingCount} missing`)
+    if (duplicateCount > 0) issues.push(`${duplicateCount} duplicates`)
+
+    if (!autoFix) {
+      return [warn(CHECK, `Order issues: ${issues.join(', ')} across ${total} tasks`, true)]
+    }
+
+    for (const [column, tasks] of entries) {
+      const ordered = [...tasks]
+        .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+        .map((task) => task.id)
+      await reorderTasks(column, ordered)
+    }
+
+    return [fixed(CHECK, `Fixed order issues (${issues.join(', ')}) across ${total} tasks`)]
   } catch (err) {
     return [error(CHECK, `Order check failed: ${(err as Error).message}`)]
   }

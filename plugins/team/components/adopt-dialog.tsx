@@ -15,7 +15,7 @@ import {
 import { Loader2 } from 'lucide-react'
 
 /**
- * Adopt-flow dialog — pre-targets a specific OpenClaw agent. Used from
+ * Adopt-flow dialog — pre-targets a specific runtime agent. Used from
  * the team grid's "Adopt with package" button on unmanaged agents.
  * Equivalent to the install-dialog with `adopt: true` baked in but
  * with friendlier copy.
@@ -71,7 +71,7 @@ export function AdoptDialog({ open, onOpenChange, agentId, onAdopted }: AdoptDia
         <DialogHeader>
           <DialogTitle>Adopt {agentId} into a package</DialogTitle>
           <DialogDescription>
-            Attach an agent-package to an existing OpenClaw agent. Workspace files
+            Attach an agent-package to an existing runtime agent. Workspace files
             stay on disk untouched; Bakin only injects managed markers + projects
             assets and knowledge.
           </DialogDescription>

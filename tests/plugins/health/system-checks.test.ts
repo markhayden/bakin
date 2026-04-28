@@ -16,7 +16,7 @@ process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 let mockUsingBakinHome = true
@@ -41,12 +41,12 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => mockUsingBakinHome,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
@@ -63,30 +63,20 @@ let syncConfigCalls = 0
 mock.module('../../../src/core/mcporter', () => ({
   isMcporterInstalled: () => mockMcporterInstalled,
   installMcporter: () => mockInstallMcporterReturn,
-  verifyConfig: () => ({
+  verifyConfig: async () => ({
     installed: true,
     configExists: true,
     agentEntries: mockAgentEntries,
     staleEntries: mockStaleEntries,
   }),
-  syncConfig: () => { syncConfigCalls++; return ['updated'] },
+  syncConfig: async () => { syncConfigCalls++; return ['updated'] },
 }))
 
-let mockGatewayPing = async () => true
-let mockGatewayPingThrows: Error | null = null
-mock.module('../../../src/core/openclaw-client', () => ({
-  ping: async () => {
-    if (mockGatewayPingThrows) throw mockGatewayPingThrows
-    return mockGatewayPing()
-  },
-  sendMessage: mock(),
-}))
-
-let mockAntflyEnabled = false
-let mockAntflyUrl = 'http://127.0.0.1:8765/api/v1'
-let mockAntflyInstalled = true
-mock.module('../../../src/core/antfly-server', () => ({
-  installed: () => mockAntflyInstalled,
+let mockSearchEnabled = false
+let mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
+let mockSearchInstalled = true
+mock.module('../../../src/core/search-adapter-factory', () => ({
+  isSearchAdapterInstalled: () => mockSearchInstalled,
 }))
 
 const realFetch = globalThis.fetch
@@ -109,12 +99,12 @@ mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     service: { enabled: mockServiceEnabled },
     doctor: { autoFixSkill: mockAutoFix },
-    antfly: { enabled: mockAntflyEnabled, url: mockAntflyUrl },
+    search: { adapter: 'antfly', settings: { enabled: mockSearchEnabled, url: mockSearchUrl } },
   }),
   resetSettingsCache: () => {},
 }))
 
-mock.module('../../../src/core/main-agent', () => ({
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
   getMainAgentName: () => 'Main',
@@ -149,11 +139,47 @@ mock.module('../../../scripts/lib/registry', () => ({
 import { checkContentDir } from '../../../plugins/health/lib/system-checks/content-dir'
 import { checkService } from '../../../plugins/health/lib/system-checks/service'
 import { checkMcporter } from '../../../plugins/health/lib/system-checks/mcporter'
-import { checkGateway } from '../../../plugins/health/lib/system-checks/gateway'
-import { checkAntfly } from '../../../plugins/health/lib/system-checks/antfly'
+import { checkRuntime } from '../../../plugins/health/lib/system-checks/runtime'
+import { checkChannelApprovals } from '../../../plugins/health/lib/system-checks/channel-approvals'
+import { checkSearchAdapter } from '../../../plugins/health/lib/system-checks/search'
 import { checkOrchestratorRules } from '../../../plugins/health/lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from '../../../plugins/health/lib/system-checks/sync-skill'
 import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import type { AgentRuntimeAdapter, RuntimeSkill } from '@bakin/core/adapters/runtime'
+
+let mockRuntime: AgentRuntimeAdapter
+let runtimeWorkspaceFiles: Map<string, string>
+let runtimeSkill: RuntimeSkill | null
+
+function runtimeFileKey(agentId: string, path: string): string {
+  return `${agentId}:${path}`
+}
+
+function makeHealthRuntime(): AgentRuntimeAdapter {
+  const runtime = createMockRuntimeAdapter()
+  runtime.agents.list = async () => [{ id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' }]
+  runtime.agents.readWorkspaceFile = async (agentId, path) => {
+    const content = runtimeWorkspaceFiles.get(runtimeFileKey(agentId, path))
+    return content === undefined ? null : { path, content }
+  }
+  runtime.agents.writeWorkspaceFile = async (agentId, file) => {
+    runtimeWorkspaceFiles.set(runtimeFileKey(agentId, file.path), file.content)
+  }
+  runtime.skills.get = async (name) => name === 'bakin' ? runtimeSkill : null
+  runtime.skills.write = async (skill) => {
+    runtimeSkill = skill
+  }
+  return runtime
+}
+
+function seedMainAgentsMd(content: string): void {
+  runtimeWorkspaceFiles.set(runtimeFileKey('main', 'AGENTS.md'), content)
+}
+
+function readMainAgentsMd(): string {
+  return runtimeWorkspaceFiles.get(runtimeFileKey('main', 'AGENTS.md')) ?? ''
+}
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -167,13 +193,14 @@ beforeEach(() => {
   mockAgentEntries = []
   mockStaleEntries = []
   syncConfigCalls = 0
-  mockGatewayPing = async () => true
-  mockGatewayPingThrows = null
-  mockAntflyEnabled = false
-  mockAntflyInstalled = true
-  mockAntflyUrl = 'http://127.0.0.1:8765/api/v1'
+  mockSearchEnabled = false
+  mockSearchInstalled = true
+  mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
   mockFetchOk = true
   mockFetchHealth = 'green'
+  runtimeWorkspaceFiles = new Map()
+  runtimeSkill = null
+  mockRuntime = makeHealthRuntime()
   restoreFetch()
 })
 
@@ -185,21 +212,12 @@ afterAll(() => {
 // ─── checkContentDir ──────────────────────────────────────────────────────
 
 describe('checkContentDir', () => {
-  it('reports ok when using ~/.bakin/', () => {
+  it('reports the resolved Bakin home path', () => {
     const results = checkContentDir()
     expect(results).toHaveLength(1)
     expect(results[0].check).toBe('content-dir')
     expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/Content directory:/)
-  })
-
-  it('warns when content lives outside ~/.bakin/', () => {
-    mockUsingBakinHome = false
-    mockContentDir = '/some/other/path'
-    const results = checkContentDir()
-    expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/run: bakin init/)
+    expect(results[0].message).toMatch(/Bakin home:/)
   })
 })
 
@@ -246,7 +264,7 @@ describe('checkService', () => {
       const launchDir = join(testDir, 'Library', 'LaunchAgents')
       mkdirSync(launchDir, { recursive: true })
       writeFileSync(
-        join(launchDir, 'com.openclaw.mc.plist'),
+        join(launchDir, 'com.bakin.mc.plist'),
         `<key>WorkingDirectory</key><string>/old/path</string><string>/old/path/server.ts</string>`,
       )
       const results = checkService('/new/project')
@@ -261,116 +279,161 @@ describe('checkService', () => {
 // ─── checkMcporter ────────────────────────────────────────────────────────
 
 describe('checkMcporter', () => {
-  it('warns when mcporter is not installed (no autoFix)', () => {
+  it('warns when mcporter is not installed (no autoFix)', async () => {
     mockMcporterInstalled = false
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warn')
     expect(results[0].autoFixable).toBe(true)
     expect(results[0].message).toMatch(/not installed/)
   })
 
-  it('installs mcporter under autoFix when missing', () => {
+  it('installs mcporter under autoFix when missing', async () => {
     mockMcporterInstalled = false
     mockAutoFix = true
     mockAgentEntries = [{ agent: 'main', correct: true }]
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Installed mcporter'))).toBe(true)
   })
 
-  it('returns an error when install fails under autoFix', () => {
+  it('returns an error when install fails under autoFix', async () => {
     mockMcporterInstalled = false
     mockAutoFix = true
     mockInstallMcporterReturn = false
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(results.some(r => r.status === 'error' && r.message.includes('Failed to install mcporter'))).toBe(true)
   })
 
-  it('reports ok when all agent entries are correct', () => {
+  it('reports ok when all agent entries are correct', async () => {
     mockAgentEntries = [
       { agent: 'main', correct: true },
       { agent: 'patch', correct: true },
     ]
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(results.some(r => r.status === 'ok' && r.message.includes('All 2 agent entries'))).toBe(true)
   })
 
-  it('warns when agent entries are missing or outdated (no autoFix)', () => {
+  it('warns when agent entries are missing or outdated (no autoFix)', async () => {
     mockAgentEntries = [{ agent: 'main', correct: false }]
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(results.some(r => r.status === 'warn' && r.message.includes('1 agent(s) missing or outdated'))).toBe(true)
   })
 
-  it('runs syncConfig under autoFix when entries are wrong', () => {
+  it('runs syncConfig under autoFix when entries are wrong', async () => {
     mockAutoFix = true
     mockAgentEntries = [{ agent: 'main', correct: false }]
-    const results = checkMcporter()
+    const results = await checkMcporter()
     expect(syncConfigCalls).toBeGreaterThanOrEqual(1)
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Config updated'))).toBe(true)
   })
 })
 
-// ─── checkGateway ─────────────────────────────────────────────────────────
+// ─── checkRuntime ─────────────────────────────────────────────────────────
 
-describe('checkGateway', () => {
+describe('checkRuntime', () => {
   it('reports ok when ping succeeds', async () => {
-    mockGatewayPing = async () => true
-    const results = await checkGateway()
+    mockRuntime.ping = async () => true
+    const results = await checkRuntime(mockRuntime)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/reachable/)
   })
 
   it('reports error when ping returns false', async () => {
-    mockGatewayPing = async () => false
-    const results = await checkGateway()
+    mockRuntime.ping = async () => false
+    const results = await checkRuntime(mockRuntime)
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/not responding/)
   })
 
   it('reports error when ping throws', async () => {
-    mockGatewayPingThrows = new Error('connection refused')
-    const results = await checkGateway()
+    mockRuntime.ping = async () => {
+      throw new Error('connection refused')
+    }
+    const results = await checkRuntime(mockRuntime)
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/connection refused/)
   })
 })
 
-// ─── checkAntfly ──────────────────────────────────────────────────────────
+// ─── checkChannelApprovals ────────────────────────────────────────────────
 
-describe('checkAntfly', () => {
-  it('warns when disabled and binary is not installed', async () => {
-    mockAntflyEnabled = false
-    mockAntflyInstalled = false
-    const results = await checkAntfly()
+describe('checkChannelApprovals', () => {
+  it('reports ok when a runtime channel supports interactive approvals', async () => {
+    mockRuntime.channels.list = async () => [{
+      id: 'discord',
+      platform: 'discord',
+      label: 'Discord',
+      capabilities: ['message', 'interactive-approval'],
+    }]
+
+    const results = await checkChannelApprovals(mockRuntime)
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toContain('Discord')
+  })
+
+  it('warns when channel approvals are render-only', async () => {
+    mockRuntime.channels.list = async () => [{
+      id: 'discord',
+      platform: 'discord',
+      label: 'Discord',
+      capabilities: ['message', 'rich-content'],
+    }]
+
+    const results = await checkChannelApprovals(mockRuntime)
+    expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/disabled and binary not installed/)
+    expect(results[0].message).toMatch(/render-only/)
+  })
+
+  it('warns when channel capabilities cannot be inspected', async () => {
+    mockRuntime.channels.list = async () => {
+      throw new Error('channel registry unavailable')
+    }
+
+    const results = await checkChannelApprovals(mockRuntime)
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toMatch(/channel registry unavailable/)
+  })
+})
+
+// ─── checkSearchAdapter ───────────────────────────────────────────────────
+
+describe('checkSearchAdapter', () => {
+  it('warns when disabled and binary is not installed', async () => {
+    mockSearchEnabled = false
+    mockSearchInstalled = false
+    const results = await checkSearchAdapter()
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toMatch(/Search disabled and active search adapter binary is not installed/)
   })
 
   it('reports ok when disabled but the binary is installed', async () => {
-    mockAntflyEnabled = false
-    mockAntflyInstalled = true
-    const results = await checkAntfly()
+    mockSearchEnabled = false
+    mockSearchInstalled = true
+    const results = await checkSearchAdapter()
     expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/Antfly disabled/)
+    expect(results[0].message).toMatch(/Search disabled/)
   })
 
   it('reports error when enabled but the binary is missing', async () => {
-    mockAntflyEnabled = true
-    mockAntflyInstalled = false
-    const results = await checkAntfly()
+    mockSearchEnabled = true
+    mockSearchInstalled = false
+    const results = await checkSearchAdapter()
     expect(results[0].status).toBe('error')
-    expect(results[0].message).toMatch(/Antfly enabled but binary not found/)
+    expect(results[0].message).toMatch(/Search enabled but active search adapter binary was not found/)
   })
 
   it('reports ok when the daemon responds healthy', async () => {
-    mockAntflyEnabled = true
-    mockAntflyInstalled = true
+    mockSearchEnabled = true
+    mockSearchInstalled = true
     mockFetchOk = true
     mockFetchHealth = 'green'
     installMockFetch()
     try {
-      const results = await checkAntfly()
+      const results = await checkSearchAdapter()
       expect(results[0].status).toBe('ok')
       expect(results[0].message).toMatch(/health: green/)
     } finally {
@@ -379,12 +442,12 @@ describe('checkAntfly', () => {
   })
 
   it('reports error when every URL fails', async () => {
-    mockAntflyEnabled = true
-    mockAntflyInstalled = true
+    mockSearchEnabled = true
+    mockSearchInstalled = true
     mockFetchOk = false
     installMockFetch()
     try {
-      const results = await checkAntfly()
+      const results = await checkSearchAdapter()
       expect(results[0].status).toBe('error')
       expect(results[0].message).toMatch(/connection failed/)
     } finally {
@@ -396,19 +459,16 @@ describe('checkAntfly', () => {
 // ─── checkOrchestratorRules ───────────────────────────────────────────────
 
 describe('checkOrchestratorRules', () => {
-  const openClawWorkspace = pathJoin(testDir, 'openclaw', 'workspace')
-
   it('warns when AGENTS.md is missing', async () => {
-    const results = await checkOrchestratorRules()
+    const results = await checkOrchestratorRules(mockRuntime)
     expect(results[0].check).toBe('orchestrator-rules')
     expect(results[0].status).toBe('warn')
     expect(results[0].message).toMatch(/AGENTS.md not found/)
   })
 
   it('warns when block is missing without autoFix', async () => {
-    mkdirSync(openClawWorkspace, { recursive: true })
-    writeFileSync(join(openClawWorkspace, 'AGENTS.md'), '# Main\n\nNo block here.\n')
-    const results = await checkOrchestratorRules()
+    seedMainAgentsMd('# Main\n\nNo block here.\n')
+    const results = await checkOrchestratorRules(mockRuntime)
     expect(results[0].status).toBe('warn')
     expect(results[0].autoFixable).toBe(true)
     expect(results[0].message).toMatch(/missing from AGENTS.md/)
@@ -416,22 +476,19 @@ describe('checkOrchestratorRules', () => {
 
   it('adds the block under autoFix when missing', async () => {
     mockAutoFix = true
-    mkdirSync(openClawWorkspace, { recursive: true })
-    writeFileSync(join(openClawWorkspace, 'AGENTS.md'), '# Main\n')
-    const results = await checkOrchestratorRules()
+    seedMainAgentsMd('# Main\n')
+    const results = await checkOrchestratorRules(mockRuntime)
     expect(results[0].status).toBe('fixed')
-    const after = readFileSync(join(openClawWorkspace, 'AGENTS.md'), 'utf-8')
+    const after = readMainAgentsMd()
     expect(after).toContain('<!-- bakin:orchestrator-rules:start -->')
     expect(after).toContain('<!-- bakin:orchestrator-rules:end -->')
   })
 
   it('reports error when block has start marker but no end marker', async () => {
-    mkdirSync(openClawWorkspace, { recursive: true })
-    writeFileSync(
-      join(openClawWorkspace, 'AGENTS.md'),
+    seedMainAgentsMd(
       '# Main\n\n<!-- bakin:orchestrator-rules:start -->\n(missing end)\n',
     )
-    const results = await checkOrchestratorRules()
+    const results = await checkOrchestratorRules(mockRuntime)
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/no end marker/)
   })
@@ -440,38 +497,38 @@ describe('checkOrchestratorRules', () => {
 // ─── checkAndSyncSkill ────────────────────────────────────────────────────
 
 describe('checkAndSyncSkill', () => {
-  it('errors when the skill source is missing', () => {
+  it('errors when the skill source is missing', async () => {
     const projectRoot = pathJoin(testDir, 'project-no-skill')
     mkdirSync(projectRoot, { recursive: true })
-    const results = checkAndSyncSkill(projectRoot)
+    const results = await checkAndSyncSkill(projectRoot, mockRuntime)
     expect(results[0].check).toBe('skill')
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/source not found/)
   })
 
-  it('errors when the template is missing the exec-tools markers', () => {
+  it('errors when the template is missing the exec-tools markers', async () => {
     const projectRoot = pathJoin(testDir, 'project-no-markers')
     mkdirSync(join(projectRoot, 'skill'), { recursive: true })
     writeFileSync(join(projectRoot, 'skill', 'SKILL.md'), '# Bakin Skill\n(no markers)\n')
-    const results = checkAndSyncSkill(projectRoot)
+    const results = await checkAndSyncSkill(projectRoot, mockRuntime)
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/missing the .*markers/)
   })
 
-  it('warns when the rendered skill is not yet installed (no autoFix)', () => {
+  it('warns when the rendered skill is not yet installed (no autoFix)', async () => {
     const projectRoot = pathJoin(testDir, 'project-ok')
     mkdirSync(join(projectRoot, 'skill'), { recursive: true })
     writeFileSync(
       join(projectRoot, 'skill', 'SKILL.md'),
       '# Bakin Skill\n<!-- bakin:exec-tools:start -->\n<!-- bakin:exec-tools:end -->\n',
     )
-    const results = checkAndSyncSkill(projectRoot)
+    const results = await checkAndSyncSkill(projectRoot, mockRuntime)
     expect(results[0].status).toBe('warn')
     expect(results[0].autoFixable).toBe(true)
-    expect(results[0].message).toMatch(/not installed in OpenClaw/)
+    expect(results[0].message).toMatch(/not installed in runtime/)
   })
 
-  it('installs the skill under autoFix when missing', () => {
+  it('installs the skill under autoFix when missing', async () => {
     mockAutoFix = true
     const projectRoot = pathJoin(testDir, 'project-install')
     mkdirSync(join(projectRoot, 'skill'), { recursive: true })
@@ -479,9 +536,10 @@ describe('checkAndSyncSkill', () => {
       join(projectRoot, 'skill', 'SKILL.md'),
       '# Bakin Skill\n<!-- bakin:exec-tools:start -->\n<!-- bakin:exec-tools:end -->\n',
     )
-    const results = checkAndSyncSkill(projectRoot)
+    const results = await checkAndSyncSkill(projectRoot, mockRuntime)
     expect(results[0].status).toBe('fixed')
-    expect(results[0].message).toMatch(/installed in OpenClaw workspace/)
+    expect(results[0].message).toMatch(/installed in runtime/)
+    expect(runtimeSkill?.instructions).toContain('<!-- bakin:exec-tools:start -->')
   })
 })
 
@@ -514,7 +572,7 @@ describe('checkPluginAssets', () => {
 // ─── Registration smoke test ──────────────────────────────────────────────
 
 describe('plugin registration', () => {
-  it('registers all 9 system + managed-blocks health checks on activate', async () => {
+  it('registers all 10 system + managed-blocks health checks on activate', async () => {
     const healthPlugin = (await import('../../../plugins/health')).default
     const registeredIds: string[] = []
     const noop = mock()
@@ -537,15 +595,17 @@ describe('plugin registration', () => {
       },
       storage: {},
       events: { on: noop, emit: noop, off: noop },
+      runtime: createMockRuntimeAdapter(),
     }
     await healthPlugin.activate(ctx as unknown as Parameters<typeof healthPlugin.activate>[0])
 
-    // 9 system checks (C6: 3, C7: 2, C8: 3, C9: 1)
+    // 10 system checks (C6: 3, C7: 3, C8: 3, C9: 1)
     expect(registeredIds).toContain('content-dir')
     expect(registeredIds).toContain('service')
     expect(registeredIds).toContain('mcporter')
-    expect(registeredIds).toContain('gateway')
-    expect(registeredIds).toContain('antfly')
+    expect(registeredIds).toContain('runtime')
+    expect(registeredIds).toContain('channel-approvals')
+    expect(registeredIds).toContain('search')
     expect(registeredIds).toContain('orchestrator-rules')
     expect(registeredIds).toContain('skill')
     expect(registeredIds).toContain('plugin-assets')

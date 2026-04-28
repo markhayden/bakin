@@ -12,7 +12,7 @@ Contribution points can be marked `experimental` so new surfaces can land in min
 
 Trust is Obsidian-style: manifest declares permissions, Bakin shows them at install, runtime honors them socially now and enforceably later. Distribution is git-based (`bakin install <url>`) with an official curated registry (`registry.bakin.dev/index.json`). Unofficial URLs install with a warning.
 
-OpenClaw access goes exclusively through `ctx.agents.*` / `ctx.platform.*`. No plugin imports `openclaw-client` directly. This makes the future `AgentPlatformAdapter` a factoring of `PluginContext` rather than a rearchitecture.
+Runtime access goes exclusively through `ctx.runtime.*`. No plugin imports provider clients or adapter packages directly. This makes future runtime adapters a factoring of `PluginContext` rather than a rearchitecture.
 
 Uninstall: plugins own their own uninstall behavior (optional `onUninstall` hook). Bakin does not attempt to reverse-index or clean up plugin data automatically — intentional to avoid magic-destroys-user-data scenarios. Tracked as a follow-up issue for future refinement.
 
@@ -40,7 +40,7 @@ export type ContentType = 'recipe' | 'tip' | 'motivation' | 'workout' | 'outdoor
 
 Required changes:
 
-- `ContentAgent` — resolve agents dynamically from OpenClaw (via `ctx.agents.*`) instead of type-level enumeration
+- `ContentAgent` — resolve agents dynamically from the active runtime adapter (via `ctx.runtime.agents.*`) instead of type-level enumeration
 - `ContentChannel` — source from the `workflows.notificationChannels` registry above
 - `ContentType` — user-configurable taxonomy, stored in plugin settings, not a type union
 
@@ -67,7 +67,7 @@ This is a hard gate: until messaging is neutral, the plugin system can't claim "
 - Messaging plugin refactor (see pre-requisite work)
 - All existing core plugins migrated to the new manifest + context contract (dogfood)
 - Permission manifest logged at activation time (UI preview comes later)
-- Audit: no direct `openclaw-client` imports in plugin code
+- Audit: no direct provider-client or adapter-package imports in plugin code
 - `onUninstall` hook (optional per-plugin)
 
 **Out (deferred):**

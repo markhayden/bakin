@@ -31,6 +31,7 @@ mock.module('@bakin/core/main-agent', () => ({
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir }),
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
   initBakinHome: () => {},
@@ -47,12 +48,15 @@ mock.module('../../../src/core/logger', () => ({
 
 mock.module('../../../src/core/settings', () => ({
   getSettings: mock(() => ({
-    openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
+    runtime: {
+      adapter: 'openclaw',
+      settings: {},
+    },
   })),
 }))
 
 const mockDoctorResults = [
-  { check: 'gateway', status: 'ok', message: 'Gateway responding' },
+  { check: 'runtime', status: 'ok', message: 'Runtime responding' },
   { check: 'taskboard', status: 'warn', message: 'Missing columns' },
   { check: 'agents', status: 'error', message: 'Roster mismatch' },
 ]
@@ -91,7 +95,7 @@ mock.module('../../../src/core/search-registry', () => ({
 // Defensive stub — the test isolation hook scans for plugin refs in text
 // and flags any mention of plugins/tasks even though we never import the
 // module. Usage-feed assertions contain /api/plugins/tasks/* strings.
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('@/core/task-store', () => ({}))
 
 // Registry snapshot accessor (plugins list only — exec tool stats are gone).
 ;(globalThis as unknown as { __bakinGetRegistrySnapshot: () => unknown[] }).__bakinGetRegistrySnapshot = () => [
@@ -112,8 +116,7 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({}))
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool } from '../test-helpers'
-// Dynamic require — ES imports are hoisted above top-level env setup above.
-const healthPlugin = require('../../../plugins/health').default as typeof import('../../../plugins/health').default
+const healthPlugin = (await import('../../../plugins/health')).default as typeof import('../../../plugins/health').default
 import { recordUsage, clearUsage } from '../../../src/core/usage'
 
 let activated: ActivatedPlugin
@@ -158,7 +161,6 @@ describe('Health Plugin Routes', () => {
       expect(status).toBe(200)
       expect(body.doctor).toBeDefined()
       expect(body.server).toBeDefined()
-      expect(body.openclawPort).toBe(18789)
       expect(body.upSince).toBe('2026-04-01T00:00:00Z')
       expect(Array.isArray(body.activeSessions)).toBe(true)
       expect((body.activeSessions as unknown[]).length).toBe(1)
@@ -216,6 +218,16 @@ describe('Health Plugin Routes', () => {
       expect(Array.isArray(body)).toBe(true)
       const entries = body as unknown as Array<{ agent: string }>
       expect(entries[0].agent).toBe('patch')
+    })
+  })
+
+  describe('GET /search-status', () => {
+    it('returns search adapter health data', async () => {
+      const route = findRoute(activated.routes, 'GET', '/search-status')!
+      expect(route).toBeDefined()
+      const { status, body } = await callRoute(route, activated.ctx)
+      expect(status).toBe(200)
+      expect(body).toEqual({ enabled: false, tables: [] })
     })
   })
 
@@ -302,7 +314,7 @@ describe('Health Plugin Routes', () => {
     })
 
     it('runs fresh diagnostics when ?fresh=true', async () => {
-      const { runDiagnostics } = require('../../../src/core/doctor') as typeof import('../../../src/core/doctor')
+      const { runDiagnostics } = await import('../../../src/core/doctor')
       const route = findRoute(activated.routes, 'GET', '/doctor')!
 
       const { status, body } = await callRoute(route, activated.ctx, {
@@ -356,7 +368,7 @@ describe('Health Exec Tools', () => {
     })
 
     it('runs fresh diagnostics when fresh=true', async () => {
-      const { runDiagnostics } = require('../../../src/core/doctor') as typeof import('../../../src/core/doctor')
+      const { runDiagnostics } = await import('../../../src/core/doctor')
       const tool = findTool(activated.execTools, 'bakin_exec_health_doctor')!
 
       const result = await callTool(tool, { fresh: true })

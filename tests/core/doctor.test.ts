@@ -14,12 +14,6 @@ const testHome = (() => {
   return { home, openclaw }
 })()
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testHome.home,
   getBakinPaths: () => ({
@@ -48,31 +42,49 @@ mock.module('@/core/content-dir', () => ({
 // Mock settings
 mock.module('@/core/settings', () => ({
   getSettings: mock(() => ({
-    antfly: { enabled: false },
+    runtime: {
+      adapter: 'openclaw',
+      settings: {},
+    },
+    search: { adapter: 'antfly', settings: { enabled: false } },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
-    openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
     service: { enabled: false },
   })),
 }))
 
-// Mock openclaw-config — owns the authoritative agent roster after T2
-mock.module('@bakin/core/openclaw-config', () => ({
-  getAgentIds: mock(() => ['main', 'patch', 'pixel']),
-  findAgentById: mock((id: string) => (['main', 'patch', 'pixel'].includes(id) ? { id } : null)),
-  readOpenClawConfig: mock(() => ({ agents: [{ id: 'main' }, { id: 'patch' }, { id: 'pixel' }] })),
-  resetOpenClawConfigCache: mock(),
-}))
-
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => testHome.openclaw,
   getOpenClawPath: (...parts: string[]) => [testHome.openclaw, ...parts].join('/'),
   resetOpenClawHome: () => {},
 }))
 
-// Mock openclaw-client
-mock.module('@/core/openclaw-client', () => ({
-  ping: mock(async () => false),
-  sendMessage: mock(),
+const mockRuntimeSend = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve({ id: 'runtime-msg' })
+})
+const mockRuntimeAgentsList = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve([
+    { id: 'main', name: 'Main', status: 'active' },
+  ])
+})
+
+const mockAppServices = {
+  runtime: {
+    agents: {
+      list: (...args: unknown[]) => mockRuntimeAgentsList(...args),
+    },
+    messaging: {
+      send: (...args: unknown[]) => mockRuntimeSend(...args),
+    },
+  },
+}
+
+mock.module('@/core/app-services', () => ({
+  getAppServices: () => mockAppServices,
+}))
+mock.module('../../src/core/app-services', () => ({
+  getAppServices: () => mockAppServices,
 }))
 
 // Mock audit (avoid file writes in tests)
@@ -140,6 +152,8 @@ describe('doctor', () => {
       message: '0 plugin assets to install',
       details: { totalAvailable: 0 },
     })
+    mockRuntimeSend.mockClear()
+    mockRuntimeAgentsList.mockClear()
   })
 
   afterEach(() => {
@@ -178,6 +192,32 @@ describe('doctor', () => {
     }
   })
 
+  it('notifies the runtime main agent about unfixable plugin issues', async () => {
+    const registry = await import('../../plugins/health/lib/health-check-registry')
+    registry.registerHealthCheck({
+      runtime: 'plugin',
+      pluginId: 'doctor-test',
+      id: 'doctor-test.unfixable',
+      name: 'Unfixable',
+      run: async () => [{
+        check: 'unfixable-row',
+        status: 'error',
+        message: 'Needs operator attention',
+        autoFixable: false,
+      }],
+    })
+    try {
+      const doctor = await import('@/core/doctor')
+      await doctor.runDiagnostics(contentDir, tempDir)
+      expect(mockRuntimeSend).toHaveBeenCalledWith(expect.objectContaining({
+        agentId: 'main',
+        content: expect.stringContaining('Needs operator attention'),
+      }))
+    } finally {
+      registry.unregisterHealthCheck('doctor-test.unfixable')
+    }
+  })
+
   // plugin-assets coverage moved to tests/plugins/health/system-checks.test.ts
   // when checkPluginAssets migrated to plugins/health/lib/system-checks/ in #139 C8.
 
@@ -191,9 +231,12 @@ describe('doctor', () => {
       const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
-        antfly: { enabled: false },
+        runtime: {
+          adapter: 'openclaw',
+          settings: {},
+        },
+        search: { adapter: 'antfly', settings: { enabled: false } },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
-        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
       // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
@@ -212,9 +255,12 @@ describe('doctor', () => {
       const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
-        antfly: { enabled: false },
+        runtime: {
+          adapter: 'openclaw',
+          settings: {},
+        },
+        search: { adapter: 'antfly', settings: { enabled: false } },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
-        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
       // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
@@ -235,9 +281,12 @@ describe('doctor', () => {
       const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
-        antfly: { enabled: false },
+        runtime: {
+          adapter: 'openclaw',
+          settings: {},
+        },
+        search: { adapter: 'antfly', settings: { enabled: false } },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },
-        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
       // (vi.resetModules is a no-op in the bun:test shim — getSettings reads

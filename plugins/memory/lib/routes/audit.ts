@@ -3,9 +3,9 @@
  *
  * Thin wrapper around `ctx.search.query` that scopes results to
  * tier='audit' and maps URL query params to filters. Result shape is
- * `{ entries, total }` so the UI doesn't have to learn Antfly hit shape.
+ * `{ entries, total }` so the UI doesn't have to learn search hit shape.
  */
-import type { APIRoute, PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
+import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 500
