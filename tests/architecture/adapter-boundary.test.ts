@@ -42,6 +42,18 @@ const DENYLIST = [
     regex: /flow_runs/,
   },
   {
+    label: 'raw SQLite access outside adapter packages',
+    regex: /(?:bun:sqlite|new\s+Database\b|Database\()/,
+  },
+  {
+    label: 'raw OpenClaw CLI command outside runtime adapter',
+    regex: /openclaw\s+(?:cron|flows|agent|config)\b/,
+  },
+  {
+    label: 'raw Discord provider endpoint outside runtime adapter',
+    regex: /(?:discord(?:app)?\.com|discord\.gg|discord\/api)/,
+  },
+  {
     label: 'raw runtime config access outside allowlisted gate',
     regex: /(?:config\.raw|\.raw<)/,
     allow: (rel: string) => rel === 'src/core/runtime-config-raw.ts',
