@@ -2,7 +2,7 @@
  * mcporter component — thin wrapper around the existing src/core/mcporter
  * module. We intentionally do not duplicate the install logic; mcporter.ts
  * already exports `isMcporterInstalled()`, `installMcporter()`, and
- * `syncConfig()` which the server boot path and `bakin setup mcporter`
+ * `syncConfig()` which the server boot path and `bakin install mcporter`
  * both use. This component reuses them so the onboarding flow and the
  * existing code paths stay in sync.
  *

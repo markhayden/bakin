@@ -689,38 +689,6 @@ bakin setup service
 Example test mode: `illustrative`
 Reason: Mutates host service configuration.
 
-### `bakin setup antfly`
-
-Deprecated alias for `bakin install antfly`.
-
-- Visibility: `public`
-- Stability: `deprecated`
-
-Example:
-
-```sh
-bakin setup antfly
-```
-
-Example test mode: `illustrative`
-Reason: Delegates to install and may install dependencies.
-
-### `bakin setup mcporter`
-
-Deprecated alias for `bakin install mcporter`.
-
-- Visibility: `public`
-- Stability: `deprecated`
-
-Example:
-
-```sh
-bakin setup mcporter
-```
-
-Example test mode: `illustrative`
-Reason: Delegates to install and may install dependencies.
-
 ### `bakin mkdir`
 
 Creates or verifies the `~/.bakin` directory tree.
