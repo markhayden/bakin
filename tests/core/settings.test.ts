@@ -10,14 +10,13 @@ describe('Settings', () => {
   beforeEach(() => {
     resetSettingsCache()
     process.env.BAKIN_HOME = TEST_CONTENT_DIR
-    delete process.env.CONTENT_DIR
     if (fs.existsSync(TEST_CONTENT_DIR)) {
       fs.rmSync(TEST_CONTENT_DIR, { recursive: true })
     }
   })
 
   afterEach(() => {
-    delete process.env.CONTENT_DIR
+    delete process.env.BAKIN_HOME
     if (fs.existsSync(TEST_CONTENT_DIR)) {
       fs.rmSync(TEST_CONTENT_DIR, { recursive: true })
     }
