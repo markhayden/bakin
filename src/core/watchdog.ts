@@ -89,12 +89,16 @@ function countAutoRecoveries(task: { log?: { message: string }[] }): number {
   return task.log.filter(e => e.message.startsWith('Auto-recovered:')).length
 }
 
-async function sendWatchdogChannelMessage(channel: string, target: string, message: string): Promise<void> {
+function getNotificationChannel(settings: ReturnType<typeof getSettings>): string | null {
+  const channel = settings.notifications.channel.trim()
+  return channel && channel !== 'none' ? channel : null
+}
+
+async function sendWatchdogChannelMessage(channel: string, message: string): Promise<void> {
   await getRuntimeAdapter().channels.sendMessage({
     channels: [channel],
     message: {
       body: message,
-      metadata: { target },
     },
   })
 }
@@ -209,10 +213,10 @@ export function start(contentDir: string): void {
             log.warn('Failed to log watchdog alert on task', err)
           }
 
-          if (settings.notifications.channel !== 'none') {
+          const notificationChannel = getNotificationChannel(settings)
+          if (notificationChannel) {
             sendWatchdogChannelMessage(
-              settings.notifications.channel,
-              settings.notifications.target || `channel:${settings.watchdog.alertChannelId}`,
+              notificationChannel,
               `⚠️ **Watchdog Alert**: Task "${task.title}" (@${task.agent || 'unassigned'}) has had no progress log in ${minutesStuck}+ minutes.`
             ).catch(err => {
               log.error('Watchdog channel alert failed', err)
@@ -251,10 +255,10 @@ export function start(contentDir: string): void {
                 errorRate,
               })
 
-              if (settings.notifications.channel !== 'none') {
+              const notificationChannel = getNotificationChannel(settings)
+              if (notificationChannel) {
                 sendWatchdogChannelMessage(
-                  settings.notifications.channel,
-                  settings.notifications.target || `channel:${wd.alertChannelId}`,
+                  notificationChannel,
                   `⚠️ **MCP unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
                 ).catch(err => {
                   log.error('MCP 5xx channel alert failed', err)
@@ -297,10 +301,10 @@ export function start(contentDir: string): void {
                 errorRate,
               })
 
-              if (settings.notifications.channel !== 'none') {
+              const notificationChannel = getNotificationChannel(settings)
+              if (notificationChannel) {
                 sendWatchdogChannelMessage(
-                  settings.notifications.channel,
-                  settings.notifications.target || `channel:${wd.alertChannelId}`,
+                  notificationChannel,
                   `⚠️ **REST API unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
                 ).catch(err => {
                   log.error('REST 5xx channel alert failed', err)
@@ -368,7 +372,8 @@ export function start(contentDir: string): void {
       }
 
       // ─── Gate notification check (channel alert) ──────────────────────
-      if (settings.notifications.channel !== 'none' && settings.notifications.gateAlerts !== false) {
+      const gateNotificationChannel = getNotificationChannel(settings)
+      if (gateNotificationChannel && settings.notifications.gateAlerts !== false) {
         try {
           const pendingGates = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; stepStates: Record<string, { status: string; output?: unknown }>; history: Array<Record<string, unknown>> }>>('workflows.listInstances', { statusFilter: 'pending_approval' }) ?? []
 
@@ -411,8 +416,7 @@ export function start(contentDir: string): void {
             msg += `\n\nApprove or reject in Bakin UI.`
 
             sendWatchdogChannelMessage(
-              settings.notifications.channel,
-              settings.notifications.target || `channel:${settings.watchdog.alertChannelId}`,
+              gateNotificationChannel,
               msg
             ).catch(err => {
               log.error('Gate channel notification failed', err, { taskId })

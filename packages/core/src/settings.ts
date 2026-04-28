@@ -43,7 +43,6 @@ export interface BakinSettings {
   watchdog: {
     intervalMs: number
     stuckThresholdMs: number
-    alertChannelId: string
     autoRecover: boolean
     maxAutoRecoveries: number
     /** Window for the rolling MCP 5xx error-rate check. */
@@ -133,8 +132,7 @@ export interface BakinSettings {
     enabled: boolean
   }
   notifications: {
-    channel: 'discord' | 'slack' | 'none'
-    target: string
+    channel: string
     gateAlerts: boolean
   }
   workflow: {
@@ -168,7 +166,6 @@ export const DEFAULT_SETTINGS: BakinSettings = {
   watchdog: {
     intervalMs: 5 * 60 * 1000,
     stuckThresholdMs: 30 * 60 * 1000,
-    alertChannelId: '1483917792745885768',
     autoRecover: true,
     maxAutoRecoveries: 3,
     mcpWindowMs: 60 * 1000,
@@ -231,8 +228,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     enabled: false,
   },
   notifications: {
-    channel: 'none',
-    target: '',
+    channel: '',
     gateAlerts: true,
   },
   workflow: {

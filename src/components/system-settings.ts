@@ -2,7 +2,7 @@
  * "System & Alerts" — virtual settings tab for the core ~/.bakin/settings.json.
  *
  * The plugin settings UI is per-plugin and works on flat key/value JSON. Core
- * settings are nested (watchdog.alertChannelId, notifications.channel, etc).
+ * settings are nested (watchdog.intervalMs, notifications.channel, etc).
  * We expose them through the same renderer by flattening to dotted keys on
  * read and unflattening back to nested objects on save. The renderer never
  * needs to know.
@@ -16,21 +16,9 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
     // ── Alert delivery ────────────────────────────────────────────────
     {
       key: 'notifications.channel',
-      type: 'select',
-      label: 'Alert channel',
-      description: 'Where watchdog alerts (stuck tasks, MCP 5xx outages, gate approvals) are delivered. "None" disables external alerts entirely — they still appear in the in-app SSE feed.',
-      options: [
-        { value: 'none', label: 'None (in-app only)' },
-        { value: 'discord', label: 'Discord' },
-        { value: 'slack', label: 'Slack' },
-      ],
-      default: 'none',
-    },
-    {
-      key: 'notifications.target',
       type: 'string',
-      label: 'Alert target',
-      description: 'Channel or user ID for the selected alert channel. For Discord, use "channel:1234567890". For Slack, use the channel name. Leave blank to fall back to the legacy watchdog.alertChannelId.',
+      label: 'Alert runtime channel',
+      description: 'Runtime channel ID for watchdog alerts, MCP/REST outage alerts, and gate approval reminders. Leave blank for in-app alerts only.',
       default: '',
     },
     {
@@ -40,14 +28,6 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       description: 'Send a notification when a workflow step pauses for human approval.',
       default: true,
     },
-    {
-      key: 'watchdog.alertChannelId',
-      type: 'string',
-      label: 'Discord fallback channel ID',
-      description: 'Used as the Discord channel when "Alert target" is blank. Legacy field — prefer setting "Alert target" above.',
-      default: '',
-    },
-
     // ── Watchdog tunables ─────────────────────────────────────────────
     {
       key: 'watchdog.intervalMs',
