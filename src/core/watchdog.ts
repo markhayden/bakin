@@ -9,7 +9,7 @@ import { getSettings } from './settings'
 import { broadcast } from './sse'
 import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
-import { getAgentLastReply, getRuntimeAdapter } from './runtime-registry'
+import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { getStatsByMs } from './usage'
@@ -59,19 +59,8 @@ function getLastLogTimestamp(task: { log?: { timestamp: string }[] }): Date | nu
 function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): boolean {
   if (!agent) return true
 
-  // Primary signal: did the runtime return a successful reply from this
-  // agent recently? Recorded by runtime messaging — a returned
-  // reply means the runtime routed our request and got a response back,
-  // which is a stronger liveness indicator than an agent-written heartbeat
-  // file (which nothing currently writes).
-  const lastReplyMs = getAgentLastReply(agent)
-  if (lastReplyMs !== null && Date.now() - lastReplyMs < 15 * 60 * 1000) {
-    return false
-  }
-
-  // Fallback: legacy agent-written heartbeat file. Kept so an agent that
-  // explicitly calls bakin_exec_heartbeat still counts as alive even if
-  // the server hasn't pinged them recently.
+  // Agent-written heartbeat file. A runtime liveness signal should be added
+  // as an explicit adapter capability instead of hidden registry state.
   const heartbeatPath = join(contentDir, 'heartbeats', `${agent}.json`)
   try {
     if (!existsSync(heartbeatPath)) return true
@@ -95,7 +84,7 @@ function getNotificationChannel(settings: ReturnType<typeof getSettings>): strin
 }
 
 async function sendWatchdogChannelMessage(channel: string, message: string): Promise<void> {
-  await getRuntimeAdapter().channels.sendMessage({
+  await getAppServices().runtime.channels.sendMessage({
     channels: [channel],
     message: {
       body: message,
@@ -104,7 +93,7 @@ async function sendWatchdogChannelMessage(channel: string, message: string): Pro
 }
 
 async function sendMainAgentAlert(message: string): Promise<void> {
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
   const agentId = await getRuntimeMainAgentId(runtime)
   await runtime.messaging.send({ agentId, content: message })
 }

@@ -50,10 +50,6 @@ mock.module('../../src/core/sse', () => ({
   broadcast: mock(),
 }))
 
-const mockAgentLastReply = mock((agentId: string) => {
-  void agentId
-  return null as number | null
-})
 const mockRuntimeSend = mock((...args: unknown[]) => {
   void args
   return Promise.resolve({ id: 'runtime-msg' })
@@ -63,9 +59,8 @@ const mockRuntimeChannelSend = mock((...args: unknown[]) => {
   return Promise.resolve({ deliveries: [] })
 })
 
-mock.module('../../src/core/runtime-registry', () => ({
-  getAgentLastReply: (agentId: string) => mockAgentLastReply(agentId),
-  getRuntimeAdapter: () => ({
+const mockAppServices = {
+  runtime: {
     agents: {
       list: mock(async () => [{ id: 'main', name: 'Main', status: 'active' }]),
     },
@@ -75,7 +70,14 @@ mock.module('../../src/core/runtime-registry', () => ({
     channels: {
       sendMessage: (...args: unknown[]) => mockRuntimeChannelSend(...args),
     },
-  }),
+  },
+}
+
+mock.module('../../src/core/app-services', () => ({
+  getAppServices: () => mockAppServices,
+}))
+mock.module('@/core/app-services', () => ({
+  getAppServices: () => mockAppServices,
 }))
 
 mock.module('../../src/lib/plugin-registry', () => ({
@@ -103,9 +105,6 @@ describe('watchdog', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-watchdog-'))
     vi.useFakeTimers()
     mock.clearAllMocks()
-    // Default: no recorded runtime reply for any agent (forces watchdog
-    // to fall back to the heartbeat-file path). Individual tests override.
-    mockAgentLastReply.mockReturnValue(null)
     mockRuntimeSend.mockResolvedValue({ id: 'runtime-msg' })
     mockRuntimeChannelSend.mockResolvedValue({ deliveries: [] })
   })
@@ -237,44 +236,6 @@ describe('watchdog', () => {
         'watchdog',
         expect.objectContaining({ id: 'task-2' }),
       )
-    })
-
-    it('does not auto-recover when the runtime has a recent reply from the agent', async () => {
-      const hookRegistry = getHookRegistry()
-      const invokeMock = vi.mocked(hookRegistry.invoke)
-
-      invokeMock.mockImplementation(async (name: string) => {
-        if (name === 'tasks.readTaskboard') {
-          return {
-            columns: {
-              todo: [],
-              inProgress: [
-                {
-                  id: 'task-alive',
-                  title: 'Slow but alive task',
-                  agent: 'pixel',
-                  log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }],
-                },
-              ],
-              done: [],
-            },
-          }
-        }
-        return undefined
-      })
-
-      // Heartbeat file is stale...
-      vi.mocked(isStale).mockReturnValue(true)
-      // ...but the runtime just replied successfully, so the agent is alive.
-      mockAgentLastReply.mockReturnValue(Date.now())
-
-      start(tempDir)
-      await vi.advanceTimersByTimeAsync(1500)
-
-      // No recovery should fire — the task is stuck but the agent is online,
-      // so the watchdog should fall through to the alert path instead.
-      expect(invokeMock).not.toHaveBeenCalledWith('tasks.moveTask', expect.anything())
-      expect(invokeMock).not.toHaveBeenCalledWith('tasks.blockTask', expect.anything())
     })
 
     it('escalates to blocked after max auto-recoveries', async () => {
