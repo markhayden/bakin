@@ -1,22 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
-import { mkdtempSync, writeFileSync, rmSync } from 'fs'
-import { join } from 'path'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'fs'
+import { dirname, join } from 'path'
 import { tmpdir } from 'os'
-
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 mock.module('../../scripts/lib/registry', () => ({
   addExecTool: mock(),
 }))
 
-// Under filename-as-identity, the asset path is a pure function of the
-// canonical filename — no resolver to mock. Tests that need attachments
-// materialize the file at `assets/store/{YYYY-MM}/{filename}` so the
-// existsSync check in post-discord passes.
 let mockContentDir = tmpdir()
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => mockContentDir,
@@ -25,19 +16,18 @@ mock.module('../../src/core/content-dir', () => ({
 
 import { postDiscord, _resetChannelCache } from '../../scripts/lib/post-discord'
 
-// Discord channel discovery response for tests
-const MOCK_CHANNELS = [
-  { id: '111111111111', name: 'general', type: 0 },
-  { id: '222222222222', name: 'approvals', type: 0 },
-  { id: '333333333333', name: 'content', type: 0 },
-]
-
 describe('postDiscord', () => {
   const originalEnv = { ...process.env }
+  const deliverContent = mock(async () => ({
+    deliveries: [{ channelId: 'discord:general', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
+  }))
+  const runtime = {
+    channels: { deliverContent },
+  } as unknown as AgentRuntimeAdapter
 
   beforeEach(() => {
-    process.env.DISCORD_BOT_TOKEN = 'test-bot-token'
-    process.env.DISCORD_GUILD_ID = '999999999999'
+    deliverContent.mockClear()
+    mockContentDir = tmpdir()
   })
 
   afterEach(() => {
@@ -46,192 +36,96 @@ describe('postDiscord', () => {
     mock.restore()
   })
 
-  /**
-   * Helper: mock fetch to handle both channel discovery and message posting.
-   * First call to /guilds/.../channels returns the channel list.
-   * Subsequent calls to /channels/.../messages return a posted message.
-   */
-  function mockFetchWithDiscovery(msgResponse?: { id: string; channel_id: string }) {
-    const msg = msgResponse || { id: 'msg-1', channel_id: '111111111111' }
-    return spyOn(globalThis, "fetch" as any).mockImplementation(async (url: any) => {
-      const urlStr = typeof url === 'string' ? url : url.toString()
-      if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
-        return { ok: true, json: async () => MOCK_CHANNELS } as Response
-      }
-      return { ok: true, json: async () => msg } as Response
-    })
-  }
-
-  it('fails for unknown channel', async () => {
-    mockFetchWithDiscovery()
-    const result = await postDiscord({
-      channel: 'nonexistent',
-      content: 'hello',
-      agent: 'chef',
-    })
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('Unknown Discord channel')
-    expect(result.error).toContain('general')
-  })
-
-  it('fails when Discord is not configured', async () => {
-    delete process.env.DISCORD_BOT_TOKEN
-    delete process.env.DISCORD_GUILD_ID
-    // Prevent fallback to openclaw.json on this machine
-    const origHome = process.env.HOME
-    const origOpenClawHome = process.env.OPENCLAW_HOME
-    process.env.HOME = '/tmp/nonexistent-home'
-    process.env.OPENCLAW_HOME = '/tmp/nonexistent-openclaw'
-    try {
-      const result = await postDiscord({
-        channel: 'general',
-        content: 'hello',
-        agent: 'chef',
-      })
-      expect(result.ok).toBe(false)
-      expect(result.error).toContain('Discord not configured')
-    } finally {
-      process.env.HOME = origHome
-      if (origOpenClawHome !== undefined) process.env.OPENCLAW_HOME = origOpenClawHome
-      else delete process.env.OPENCLAW_HOME
-    }
-  })
-
-  it('strips # prefix from channel name', async () => {
-    const mockFetch = mockFetchWithDiscovery({ id: 'msg-1', channel_id: '111111111111' })
-
+  it('routes channel delivery through the runtime adapter', async () => {
     const result = await postDiscord({
       channel: '#general',
       content: 'test message',
       agent: 'chef',
-    })
-    expect(result.ok).toBe(true)
-    expect(result.channel).toBe('#general')
-    // Verify message was posted to the correct channel
-    const postCall = mockFetch.mock.calls.find((c: any[]) =>
-      (typeof c[0] === 'string' ? c[0] : c[0].toString()).includes('/channels/111111111111/messages')
-    )
-    expect(postCall).toBeTruthy()
-  })
-
-  it('posts successfully and returns message info', async () => {
-    mockFetchWithDiscovery({ id: 'msg-42', channel_id: '111111111111' })
-
-    const result = await postDiscord({
-      channel: 'general',
-      content: 'New post!',
-      agent: 'chef',
       taskId: 'task-123',
-    })
+    }, runtime)
+
     expect(result.ok).toBe(true)
-    expect(result.messageId).toBe('msg-42')
     expect(result.channel).toBe('#general')
-    expect(result.url).toContain('discord.com/channels/999999999999')
     expect(result.taskId).toBe('task-123')
+    expect(deliverContent).toHaveBeenCalledTimes(1)
+    const [call] = deliverContent.mock.calls[0] as unknown as [Record<string, unknown>]
+    expect(call).toEqual({
+      channels: ['discord:general'],
+      content: {
+        title: 'Discord post',
+        body: 'test message',
+        files: [],
+        metadata: {
+          agent: 'chef',
+          taskId: 'task-123',
+          embed: undefined,
+          requestedChannel: '#general',
+        },
+      },
+    })
   })
 
-  it('handles Discord API error response', async () => {
-    spyOn(globalThis, "fetch" as any).mockImplementation(async (url: any) => {
-      const urlStr = typeof url === 'string' ? url : url.toString()
-      if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
-        return { ok: true, json: async () => MOCK_CHANNELS } as Response
-      }
-      return { ok: false, status: 403, text: async () => 'Missing Permissions' } as Response
-    })
+  it('returns a failed exec result when runtime delivery fails', async () => {
+    deliverContent.mockRejectedValueOnce(new Error('channel offline'))
 
     const result = await postDiscord({
       channel: 'general',
       content: 'test',
       agent: 'chef',
-    })
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('403')
-    expect(result.error).toContain('Missing Permissions')
-  })
+    }, runtime)
 
-  it('handles fetch error on message post', async () => {
-    let callCount = 0
-    spyOn(globalThis, "fetch" as any).mockImplementation(async (url: any) => {
-      const urlStr = typeof url === 'string' ? url : url.toString()
-      if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
-        return { ok: true, json: async () => MOCK_CHANNELS } as Response
-      }
-      throw new Error('network unreachable')
-    })
-
-    const result = await postDiscord({
-      channel: 'general',
-      content: 'test',
-      agent: 'chef',
-    })
     expect(result.ok).toBe(false)
-    expect(result.error).toContain('network unreachable')
+    expect(result.error).toContain('channel offline')
   })
 
   it('attaches image and video files resolved via pathForFilename', async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), 'discord-test-'))
+    const tmpDir = mkdtempSync(join(tmpdir(), 'channel-test-'))
     mockContentDir = tmpDir
-    // pathForFilename('20260401-hero-...png') → 'assets/store/2026-04/...'
     const imgRel = 'assets/store/2026-04/20260401-hero-a1b2c3d4.png'
     const vidRel = 'assets/store/2026-04/20260401-clip-e5f6a7b8.mp4'
     const imgAbs = join(tmpDir, imgRel)
     const vidAbs = join(tmpDir, vidRel)
-    const { mkdirSync } = require('fs') as typeof import('fs')
-    const { dirname } = require('path') as typeof import('path')
-    mkdirSync(dirname(imgAbs), { recursive: true })
-    mkdirSync(dirname(vidAbs), { recursive: true })
-    writeFileSync(imgAbs, 'fake-image')
-    writeFileSync(vidAbs, 'fake-video')
+    const expectedFiles = [
+      { name: '20260401-hero-a1b2c3d4.png', path: imgAbs },
+      { name: '20260401-clip-e5f6a7b8.mp4', path: vidAbs },
+    ]
 
-    const mockFetch = mockFetchWithDiscovery({ id: 'msg-att', channel_id: '111111111111' })
+    try {
+      mkdirSync(dirname(imgAbs), { recursive: true })
+      mkdirSync(dirname(vidAbs), { recursive: true })
+      writeFileSync(imgAbs, 'fake-image')
+      writeFileSync(vidAbs, 'fake-video')
 
-    const result = await postDiscord({
-      channel: 'general',
-      content: 'Post with attachments',
-      agent: 'pixel',
-      imageFilename: '20260401-hero-a1b2c3d4.png',
-      videoFilename: '20260401-clip-e5f6a7b8.mp4',
-    })
+      const result = await postDiscord({
+        channel: 'general',
+        content: 'Post with attachments',
+        agent: 'pixel',
+        imageFilename: '20260401-hero-a1b2c3d4.png',
+        videoFilename: '20260401-clip-e5f6a7b8.mp4',
+      }, runtime)
 
-    expect(result.ok).toBe(true)
-    const postCall = mockFetch.mock.calls.find((c: any[]) =>
-      (typeof c[0] === 'string' ? c[0] : c[0].toString()).includes('/channels/111111111111/messages')
-    )
-    expect(postCall).toBeTruthy()
-
-    rmSync(tmpDir, { recursive: true, force: true })
+      expect(result.ok).toBe(true)
+      const [call] = deliverContent.mock.calls[0] as unknown as [Record<string, unknown> & { content: { files: unknown } }]
+      expect(call.content.files).toEqual(expectedFiles)
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true })
+    }
   })
 
-  it('skips attachments when filename resolves to a missing file on disk', async () => {
-    mockFetchWithDiscovery({ id: 'msg-skip', channel_id: '111111111111' })
-
-    const result = await postDiscord({
-      channel: 'general',
-      content: 'Post with missing attachments',
-      agent: 'pixel',
-      // Canonical filenames, but nothing written to disk under store/.
-      imageFilename: '20260401-ghost-00000000.png',
-      videoFilename: '20260401-ghost-11111111.mp4',
-    })
-
-    expect(result.ok).toBe(true)
-  })
-
-  it('handles channel discovery failure', async () => {
-    spyOn(globalThis, "fetch" as any).mockImplementation(async (url: any) => {
-      const urlStr = typeof url === 'string' ? url : url.toString()
-      if (urlStr.includes('/guilds/') && urlStr.includes('/channels')) {
-        return { ok: false, status: 401, text: async () => 'Unauthorized' } as Response
-      }
-      return { ok: true, json: async () => ({ id: 'msg-1', channel_id: '111' }) } as Response
-    })
+  it('routes posts to the test channel when test mode is enabled', async () => {
+    process.env.BAKIN_DISCORD_TEST_MODE = '1'
 
     const result = await postDiscord({
       channel: 'general',
       content: 'test',
       agent: 'chef',
-    })
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('Unknown Discord channel')
+    }, runtime)
+
+    expect(result.ok).toBe(true)
+    expect(result.channel).toBe('#testing-ground')
+    expect(result.testMode).toBe(true)
+    expect(result.requestedChannel).toBe('#general')
+    const [call] = deliverContent.mock.calls[0] as unknown as [Record<string, unknown> & { channels: unknown }]
+    expect(call.channels).toEqual(['discord:testing-ground'])
   })
 })

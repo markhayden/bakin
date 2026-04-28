@@ -14,7 +14,7 @@ import type { BakinTaskStore } from './tasks/store'
 export interface ApprovalActor {
   id: string
   displayName?: string
-  source: 'discord' | 'web' | 'system'
+  source: 'channel' | 'web' | 'system'
 }
 
 // ---------------------------------------------------------------------------

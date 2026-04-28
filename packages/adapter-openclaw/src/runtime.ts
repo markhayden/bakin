@@ -333,9 +333,14 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       for (const channel of args.channels) {
         const ref = splitChannelRef(channel, args.message.metadata)
         const payload: Record<string, unknown> = { channel: ref.channel, message: args.message.body }
+        const files = metadataFiles(args.message.metadata)
         if (ref.target) payload.target = ref.target
         if (args.message.title) payload.title = args.message.title
         if (args.message.threadId) payload.threadId = args.message.threadId
+        if (files.length > 0) {
+          payload.files = files
+          payload.media = files.map(file => file.path)
+        }
         try {
           await this.invokeTool('message_send', payload)
         } catch (err) {
@@ -347,13 +352,16 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
       return { deliveries }
     },
-    deliverContent: async (args: { channels: string[]; content: { title: string; body?: string; url?: string; metadata?: RuntimeMetadata } }) => {
+    deliverContent: async (args: { channels: string[]; content: { title: string; body?: string; url?: string; files?: Array<{ name: string; path: string; contentType?: string }>; metadata?: RuntimeMetadata } }) => {
       return this.channels.sendMessage({
         channels: args.channels,
         message: {
           title: args.content.title,
           body: [args.content.title, args.content.body, args.content.url].filter(Boolean).join('\n\n'),
-          metadata: args.content.metadata,
+          metadata: {
+            ...(args.content.metadata ?? {}),
+            ...(args.content.files ? { files: args.content.files } : {}),
+          },
         },
       })
     },
@@ -732,6 +740,23 @@ function splitChannelRef(channelId: string, metadata: RuntimeMetadata | undefine
 function metadataValue(metadata: RuntimeMetadata | undefined, key: string): string | undefined {
   const value = metadata?.[key]
   return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function metadataFiles(metadata: RuntimeMetadata | undefined): Array<{ name: string; path: string; contentType?: string }> {
+  const value = metadata?.files
+  if (!Array.isArray(value)) return []
+  const files: Array<{ name: string; path: string; contentType?: string }> = []
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue
+    const file = entry as Record<string, unknown>
+    if (typeof file.name !== 'string' || typeof file.path !== 'string') continue
+    files.push({
+      name: file.name,
+      path: file.path,
+      ...(typeof file.contentType === 'string' ? { contentType: file.contentType } : {}),
+    })
+  }
+  return files
 }
 
 function readCronStore(): OpenClawCronStore {

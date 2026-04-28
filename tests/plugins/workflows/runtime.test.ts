@@ -459,14 +459,14 @@ Write a great caption.
 
       approveGate('task-gate-app', 'review-gate', {
         contentDir: testDir,
-        approver: { source: 'discord', id: '999', displayName: 'Approver Person' },
+        approver: { source: 'channel', id: '999', displayName: 'Approver Person' },
       })
 
       const instance = loadInstance('task-gate-app', testDir)
       const gateState = instance!.stepStates['review-gate']
       expect(gateState.decidedAt).toBeTruthy()
       expect(gateState.approver).toEqual({
-        source: 'discord',
+        source: 'channel',
         id: '999',
         displayName: 'Approver Person',
       })
@@ -504,7 +504,7 @@ Write a great caption.
 
       const result = approveGate('task-gate-dur', 'review-gate', {
         contentDir: testDir,
-        approver: { source: 'discord', id: '999', displayName: 'Approver' },
+        approver: { source: 'channel', id: '999', displayName: 'Approver' },
       })
 
       expect(result.decision).toBeDefined()
